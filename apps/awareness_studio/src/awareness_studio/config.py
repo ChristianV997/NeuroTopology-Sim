@@ -48,6 +48,9 @@ OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
+# ── Prompt optimization (TASK-4) ─────────────────────────────────────────────
+PROMPT_OPTIMIZER: str = os.getenv("PROMPT_OPTIMIZER", "none")  # "none" | "dspy_stub"
+
 # ── Backward-compat shims ────────────────────────────────────────────────────
 LLM_MODEL: str = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else OPENAI_MODEL
 LLM_API_KEY: str = ANTHROPIC_API_KEY if LLM_PROVIDER == "anthropic" else OPENAI_API_KEY
