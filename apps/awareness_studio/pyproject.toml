@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awareness-studio"
+version = "0.2.0"
+description = "Book Generator + Guidance Chatbot for Awareness Research"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.28",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+openai   = []                    # No SDK needed — uses stdlib urllib
+embeddings = ["numpy>=1.24"]     # Optional fast path for cosine similarity
+dev = ["pytest>=8", "pytest-cov"]
+
+[project.scripts]
+awareness-chat  = "awareness_studio.chat_cli:main"
+awareness-book  = "awareness_studio.book_generator:main"
+awareness-index = "awareness_studio.index_build:main"
+awareness-eval  = "awareness_studio.eval_runner:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "q001",
+    "mode": "EXPLAIN",
+    "question": "What is not-self via controllability?",
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain", "proven fact", "it is proven"],
+    "min_sources": 2,
+    "notes": "Core anatta operationalization — must separate doctrinal from practical."
+  },
+  {
+    "id": "q002",
+    "mode": "TEACH",
+    "question": "Explain the second arrow — inevitable pain vs added suffering.",
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain", "it is proven"],
+    "min_sources": 2,
+    "notes": "Second arrow framing from book_system seed."
+  },
+  {
+    "id": "q003",
+    "mode": "MATRIX",
+    "question": "Map tanha as gain and upadana as latch.",
+    "must_include": ["Doctrine", "Mechanism", "Operationalization", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 2,
+    "notes": "Forces matrix compliance — all 5 fields must be present."
+  },
+  {
+    "id": "q004",
+    "mode": "CARD",
+    "question": "Create an evidence card for vedana as the cut-point.",
+    "must_include": ["EBT confidence", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain", "proven fact"],
+    "min_sources": 1,
+    "notes": "Card format check — EBT confidence and discriminator required."
+  },
+  {
+    "id": "q005",
+    "mode": "ELABORATE",
+    "question": "What is consciousness in the Awareness Research framework?",
+    "must_include": ["Direct teaching", "Hypothesis", "Guardrails", "Sources used"],
+    "must_not_include": ["I am certain", "consciousness is proven", "we know for certain"],
+    "min_sources": 2,
+    "notes": "Consciousness is an existential topic — must flag as Hypothesis, include guardrails."
+  },
+  {
+    "id": "q006",
+    "mode": "EXPLAIN",
+    "question": "What is samsara — is it doctrine, hypothesis, or metaphor?",
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain", "samsara is a proven fact"],
+    "min_sources": 1,
+    "notes": "Samsara framing test: must separate doctrine/hypothesis/metaphor."
+  },
+  {
+    "id": "q007",
+    "mode": "TEACH",
+    "question": "How does the vedana-tanha-upadana chain work in daily life?",
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 2,
+    "notes": "Core chain operationalization."
+  },
+  {
+    "id": "q008",
+    "mode": "CANONICAL",
+    "question": "Write a canonical paragraph about the cut-point strategy.",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 1,
+    "notes": "Canonical output format."
+  },
+  {
+    "id": "q009",
+    "mode": "ELABORATE",
+    "question": "What are we? Soul, self, or process?",
+    "must_include": ["Direct teaching", "Hypothesis", "Sources used"],
+    "must_not_include": ["we are certainly", "I am certain", "proven"],
+    "min_sources": 1,
+    "notes": "Existential — soul/self question. Must avoid metaphysical certainty."
+  },
+  {
+    "id": "q010",
+    "mode": "MATRIX",
+    "question": "Map the samsara-as-loops model for skeptical audience.",
+    "must_include": ["Mechanism", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 1,
+    "notes": "Q3 framing — info-theory vocabulary expected in chunks."
+  }
+]
