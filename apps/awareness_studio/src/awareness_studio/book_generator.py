@@ -119,7 +119,9 @@ End with the Practices, Common confusions, and Falsifiers sections.
     return system, user
 
 
-def run_book_generator(quadrant: str, chapter: str, words: int) -> str:
+def run_book_generator(
+    quadrant: str, chapter: str, words: int, stream: bool = False
+) -> str:
     index = get_or_build_index()
     extra = _QUADRANT_EXTRA_QUERIES.get(quadrant, "")
     query = f"{chapter} {extra}"
@@ -142,6 +144,15 @@ def run_book_generator(quadrant: str, chapter: str, words: int) -> str:
     from awareness_studio.llm_client import get_llm_client
     client = get_llm_client()
     system, user = build_book_prompt(quadrant, chapter, words, deduped)
+
+    if stream:
+        parts = []
+        for token in client.complete_stream(system, user):
+            print(token, end="", flush=True)
+            parts.append(token)
+        print()
+        return "".join(parts)
+
     return client.complete(system, user)
 
 
@@ -150,6 +161,10 @@ def main() -> None:
     parser.add_argument("--quadrant", choices=list(_QUADRANT_VOICES), required=True)
     parser.add_argument("--chapter", required=True, help="Chapter title")
     parser.add_argument("--words", type=int, default=1200, help="Target word count")
+    parser.add_argument(
+        "--stream", action="store_true",
+        help="Stream output tokens to stdout",
+    )
     parser.add_argument("--build-index", action="store_true", help="Force rebuild index first")
     args = parser.parse_args()
 
@@ -157,8 +172,11 @@ def main() -> None:
         build_index()
         print("[index rebuilt]", file=sys.stderr)
 
-    result = run_book_generator(args.quadrant, args.chapter, args.words)
-    print(result)
+    if args.stream:
+        run_book_generator(args.quadrant, args.chapter, args.words, stream=True)
+    else:
+        result = run_book_generator(args.quadrant, args.chapter, args.words)
+        print(result)
 
 
 if __name__ == "__main__":
