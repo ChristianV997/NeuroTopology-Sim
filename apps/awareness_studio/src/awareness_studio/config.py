@@ -48,8 +48,19 @@ OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-# ── Prompt optimization (TASK-4) ─────────────────────────────────────────────
+# ── Prompt optimization ──────────────────────────────────────────────────────
 PROMPT_OPTIMIZER: str = os.getenv("PROMPT_OPTIMIZER", "none")  # "none" | "dspy_stub"
+
+# ── Tool router (Phase 3) ────────────────────────────────────────────────────
+TOOLS_ENABLED: bool = os.getenv("TOOLS_ENABLED", "false").lower() == "true"
+TOOLS_ALLOWLIST: list = [
+    t.strip() for t in os.getenv("TOOLS_ALLOWLIST", "").split(",") if t.strip()
+]
+TOOLS_MAX_CALLS_PER_REQUEST: int = int(os.getenv("TOOLS_MAX_CALLS_PER_REQUEST", "1"))
+
+# ── External API keys (optional) ─────────────────────────────────────────────
+LINEAR_API_KEY: str = os.getenv("LINEAR_API_KEY", "")
+PUBMED_API_KEY: str = os.getenv("PUBMED_API_KEY", "")  # optional; improves rate limits
 
 # ── Backward-compat shims ────────────────────────────────────────────────────
 LLM_MODEL: str = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else OPENAI_MODEL
