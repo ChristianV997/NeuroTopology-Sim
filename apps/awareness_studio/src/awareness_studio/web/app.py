@@ -22,6 +22,7 @@ Environment:
 import json
 import logging
 import re
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -33,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from awareness_studio import config
 from awareness_studio.answer_modes import build_chat_prompt
+from awareness_studio.orchestrator.orchestrator import Orchestrator, OrchestratorConfig
 from awareness_studio.index_build import get_or_build_index
 from awareness_studio.llm_client import get_llm_client
 from awareness_studio.tool_router import (
@@ -381,6 +383,84 @@ async def airtable_sync_runs(
     rcd = Path(run_cards_dir) if run_cards_dir else None
     summary = sync_runs_from_run_cards(run_cards_dir=rcd, allow_write=allow_write)
     return summary.to_dict()
+
+
+# ── Orchestrator routes ────────────────────────────────────────────────────────
+
+_orch_lock = threading.Lock()
+_active_run_id: Optional[str] = None
+
+
+@app.post("/cmd/orchestrate", dependencies=[Depends(_require_auth)])
+async def cmd_orchestrate(dry_run: bool = Query(default=True)):
+    """Start an orchestrator run. Only one run allowed at a time."""
+    global _active_run_id
+    if not _orch_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="An orchestrator run is already in progress.")
+    try:
+        from awareness_studio.orchestrator.orchestrator import Orchestrator, OrchestratorConfig
+        cfg = OrchestratorConfig(dry_run=dry_run)
+        result = Orchestrator().run(config=cfg)
+        _active_run_id = result.run_id
+        return result.to_dict()
+    finally:
+        _orch_lock.release()
+
+
+@app.get("/cmd/runs/recent")
+async def cmd_runs_recent(limit: int = Query(default=10, ge=1, le=50)):
+    """List recent orchestrator run directories."""
+    orch_base = config.APP_ROOT / "outputs" / "orchestrator"
+    if not orch_base.exists():
+        return {"runs": []}
+    run_dirs = sorted(orch_base.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+    runs = []
+    for d in run_dirs[:limit]:
+        if d.is_dir():
+            artifacts = [f.name for f in d.iterdir() if f.is_file()]
+            runs.append({"run_id": d.name, "artifacts": artifacts})
+    return {"runs": runs}
+
+
+@app.get("/cmd/runs/{run_id}/artifacts")
+async def cmd_run_artifacts(run_id: str):
+    """List artifacts for a specific orchestrator run."""
+    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
+    if not orch_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
+    files = {f.name: str(f) for f in orch_dir.iterdir() if f.is_file()}
+    return {"run_id": run_id, "artifacts": files}
+
+
+@app.get("/cmd/runs/{run_id}/file/{filename}")
+async def cmd_run_file(run_id: str, filename: str):
+    """Serve a text artifact from an orchestrator run."""
+    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
+    fpath = orch_dir / filename
+    if not fpath.exists() or not fpath.is_file():
+        raise HTTPException(status_code=404, detail=f"{filename} not found in run {run_id}.")
+    text = fpath.read_text(encoding="utf-8")
+    return {"run_id": run_id, "filename": filename, "content": text}
+
+
+@app.get("/cmd/orchestrate/stream")
+async def cmd_orchestrate_stream(run_id: str = Query(...)):
+    """Stream orchestrator event log as SSE for a given run_id."""
+    from awareness_studio.orchestrator.event_log import EventLog
+    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
+
+    async def _generate():
+        log = EventLog(orch_dir)
+        events = log.load_all()
+        for ev in events:
+            yield f"data: {ev.to_jsonl()}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
