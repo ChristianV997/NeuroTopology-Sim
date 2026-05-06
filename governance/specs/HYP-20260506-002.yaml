@@ -1,0 +1,51 @@
+id: HYP-20260506-002
+title: "Topological complexity distinguishes conscious from unconscious states (Known)"
+claim_type: "K"
+layer: "Topology"
+summary: >
+  Topological charge Q and Qabs are higher during awake resting-state vs. anesthesia.
+  This tests a known empirical finding using the Q-topology readout pipeline,
+  validated against surrogate-shuffled null distributions.
+
+discriminator:
+  description: "Contrast awake vs. anesthesia across OpenNeuro datasets"
+  mode: dataset_contrast
+  config:
+    datasets:
+      - ds002094
+      - ds005620
+    contrast: awake_vs_anesthesia
+
+readouts:
+  - name: Q
+    module: core/topology.py
+  - name: Qabs
+    module: core/topology.py
+  - name: f_dress
+    module: core/topology.py
+  - name: PCI_surrogate
+    module: validation/pci_validation.py
+
+controls:
+  - name: label_shuffle
+    config:
+      n_shuffles: 100
+  - name: surrogate_generation
+    config:
+      method: phase_randomisation
+
+data:
+  mode: openneuro
+  dataset_id: ds002094
+  params:
+    max_files: 20
+
+pass_fail:
+  criteria: "Mean Qabs(awake) > Mean Qabs(anesthesia) with p < 0.05 after shuffle correction"
+  thresholds: {}
+
+artifacts:
+  expected:
+    - "metrics.csv"
+    - "summary.json"
+    - "plots/*.png"

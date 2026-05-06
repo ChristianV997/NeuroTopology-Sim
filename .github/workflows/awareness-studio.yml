@@ -1,0 +1,44 @@
+name: Awareness Studio
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "apps/awareness_studio/**"
+      - ".github/workflows/awareness-studio.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "apps/awareness_studio/**"
+      - ".github/workflows/awareness-studio.yml"
+
+jobs:
+  test:
+    name: "Python ${{ matrix.python-version }} — offline tests"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install Awareness Studio (dev extras)
+        working-directory: apps/awareness_studio
+        run: pip install -e ".[dev]"
+
+      - name: Run offline tests
+        working-directory: apps/awareness_studio
+        env:
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: pytest -v --tb=short
