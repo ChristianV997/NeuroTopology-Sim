@@ -88,5 +88,50 @@
     "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Q3 framing — info-theory vocabulary expected in chunks."
+  },
+  {
+    "id": "q011",
+    "mode": "EXPLAIN",
+    "question": "What runs support hypothesis HYP-20260506-002?",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 0,
+    "notes": "Sim artifact retrieval — checks Studio can answer about specific hypothesis IDs."
+  },
+  {
+    "id": "q012",
+    "mode": "EXPLAIN",
+    "question": "What was the verdict of the latest discriminator result for a topology hypothesis?",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 0,
+    "notes": "Sim artifact retrieval — checks Studio can answer verdict queries."
+  },
+  {
+    "id": "q013",
+    "mode": "EXPLAIN",
+    "question": "Which simulation runs used synthetic data mode?",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 0,
+    "notes": "Sim artifact retrieval — data mode filtering."
+  },
+  {
+    "id": "q014",
+    "mode": "EXPLAIN",
+    "question": "What metrics were produced in the most recent hypothesis run?",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 0,
+    "notes": "Sim artifact retrieval — metric retrieval from run records."
+  },
+  {
+    "id": "q015",
+    "mode": "EXPLAIN",
+    "question": "Are there any causal (C-type) hypothesis runs and what did they conclude?",
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
+    "min_sources": 0,
+    "notes": "Sim artifact retrieval — C-type run filtering and conclusion retrieval."
   }
 ]
