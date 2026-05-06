@@ -1,0 +1,19 @@
+# Hypothesis spec: vedana gain-control via vortex topology
+spec_id: HYP-20260506-002
+claim_type: topology_gain_control
+layer: biophysical
+data_mode: synthetic
+dataset_id: synthetic_vortex_N64
+
+hypothesis: >
+  Vortex topology (Qz) correlates with intensity gain (I_mean)
+  under controlled diffusion steps, supporting vedana gain-control model.
+
+threshold:
+  I_mean_min: 0.1
+  Qabs_max: 10.0
+
+sim_params:
+  N: 32
+  n_steps: 20
+  seed: 42
