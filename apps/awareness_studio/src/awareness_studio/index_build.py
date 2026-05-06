@@ -109,6 +109,7 @@ def _build_embedding(chunks: List[Chunk]):
     from awareness_studio.retrieval import EmbeddingIndex
 
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _EMBEDDING_FILE.parent.mkdir(parents=True, exist_ok=True)
     texts = [c.text for c in chunks]
     logger.info(
         "Computing %d embeddings (provider=%s)…", len(texts), config.EMBEDDING_PROVIDER
