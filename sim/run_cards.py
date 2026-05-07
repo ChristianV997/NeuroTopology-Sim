@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .run_record_schema import (
+from runs.run_record import (
     CONFOUNDS_CHECKLIST,
-    RunRecord,
+    RunRecordV1 as RunRecord,
     build_run_id,
     canonicalize_paths,
     validate_run_record_dict,
@@ -119,7 +119,7 @@ def save_run_record_json(record: RunRecord, out_dir: Path) -> Path:
     stem = _artifact_stem(ts_compact, record.run_id)
     path = out_dir / f"{stem}.run.json"
 
-    d = record.to_json_dict()
+    d = record.to_sim_dict()
     errors = validate_run_record_dict(d)
     if errors:
         raise ValueError(f"RunRecord validation failed: {errors}")
@@ -167,6 +167,7 @@ def build_run_record(
 
     record = RunRecord(
         run_id=run_id,
+        run_kind=mode,
         created_at=_iso_ts(now),
         mode=mode,
         repo=repo,
