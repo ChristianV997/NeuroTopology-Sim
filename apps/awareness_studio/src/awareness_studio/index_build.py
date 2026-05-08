@@ -29,6 +29,10 @@ _embedding_cache = None  # EmbeddingIndex, typed lazily to avoid circular import
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+# Default sim_artifacts input directory (relative to this app's root)
+_SIM_ARTIFACTS_DIR: Path = config.APP_ROOT / "inputs" / "sim_artifacts"
+
+
 def _load_docs_or_exit(inputs_dir: Path) -> list:
     if not inputs_dir.exists():
         logger.warning(
@@ -60,6 +64,18 @@ def _load_docs_or_exit(inputs_dir: Path) -> list:
         len(docs), inputs_dir,
         "  ".join(f"{k}×{v}" for k, v in sorted(kind_counts.items())),
     )
+    return docs
+
+
+def _load_sim_artifact_docs() -> list:
+    """Load simulation artifact Markdown docs if the sim_artifacts folder exists."""
+    if not _SIM_ARTIFACTS_DIR.exists():
+        return []
+    md_files = list(_SIM_ARTIFACTS_DIR.glob("*.md"))
+    if not md_files:
+        return []
+    docs = load_documents(_SIM_ARTIFACTS_DIR)
+    logger.info("Loaded %d sim artifact doc(s) from %s", len(docs), _SIM_ARTIFACTS_DIR)
     return docs
 
 
@@ -152,6 +168,11 @@ def build_index(
     inputs_dir = Path(inputs_dir) if inputs_dir else config.INPUTS_DIR
 
     docs = _load_docs_or_exit(inputs_dir)
+
+    # Also include simulation artifact docs (closed-loop Studio↔Sim bridge)
+    sim_docs = _load_sim_artifact_docs()
+    docs = docs + sim_docs
+
     if not docs:
         # Return empty index rather than crashing
         if backend == "embedding":

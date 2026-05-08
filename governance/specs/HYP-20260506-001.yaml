@@ -1,0 +1,22 @@
+id: HYP-20260506-001
+title: "Q-topology correlates with phase coherence (Marker)"
+claim_type: "M"
+layer: "Marker"
+summary: >
+  Topological charge Q correlates with EEG phase coherence in resting-state data.
+  This is a descriptive marker hypothesis — no causal claim is made.
+
+data:
+  mode: synthetic
+  params:
+    n_trials: 100
+    noise_level: 0.1
+
+pass_fail:
+  criteria: "Spearman correlation |r| > 0.3 across synthetic trials"
+  thresholds: {}
+
+artifacts:
+  expected:
+    - "metrics.csv"
+    - "summary.json"

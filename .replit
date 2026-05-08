@@ -1,0 +1,15 @@
+run = "cd apps/awareness_studio && uvicorn awareness_studio.web.app:app --host 0.0.0.0 --port $PORT"
+entrypoint = "apps/awareness_studio/src/awareness_studio/web/app.py"
+hidden = [".git", "__pycache__", ".pytest_cache", ".index", ".data"]
+
+[nix]
+channel = "stable-23_11"
+
+[deployment]
+run = ["sh", "-c", "cd apps/awareness_studio && uvicorn awareness_studio.web.app:app --host 0.0.0.0 --port $PORT"]
+
+[env]
+PYTHONPATH = "apps/awareness_studio/src"
+INDEX_BACKEND = "bm25"
+EMBEDDING_PROVIDER = "local_stub"
+TOOLS_ENABLED = "false"
