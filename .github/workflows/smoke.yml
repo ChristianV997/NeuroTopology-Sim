@@ -1,0 +1,74 @@
+name: Smoke
+
+on:
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Cross-system smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+      INDEX_BACKEND: bm25
+      EMBEDDING_PROVIDER: local_stub
+      EMBEDDING_DIM: "64"
+      TOOLS_ENABLED: "false"
+      AIRTABLE_ENABLED: "false"
+      AUTH_ENABLED: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            apps/awareness_studio/pyproject.toml
+
+      - name: Install root dependencies
+        run: pip install -r requirements.txt
+
+      - name: Root synthetic smoke
+        run: python main.py --mode synthetic
+
+      - name: Hypothesis pipeline smoke
+        # Uses HYP-20260507-001.yaml (flat spec format for pipelines/hypothesis.py run())
+        run: |
+          if [ -f governance/specs/HYP-20260507-001.yaml ]; then
+            python -m pipelines.hypothesis \
+              --spec governance/specs/HYP-20260507-001.yaml \
+              --output artifacts/ci_smoke
+          else
+            echo "No bundled flat-format spec found; skipping hypothesis smoke"
+          fi
+
+      - name: Install Awareness Studio
+        working-directory: apps/awareness_studio
+        run: pip install -e ".[dev,embeddings]"
+
+      - name: Export sim artifacts
+        run: |
+          if [ -d artifacts ]; then
+            python -m apps.awareness_studio.tools.export_sim_artifacts \
+              --artifacts-root artifacts \
+              --out-dir apps/awareness_studio/inputs/sim_artifacts
+          else
+            echo "No artifacts directory; skipping export"
+          fi
+
+      - name: Build Awareness index
+        working-directory: apps/awareness_studio
+        run: python -m awareness_studio.index_build --force
+
+      - name: Awareness eval no-LLM
+        working-directory: apps/awareness_studio
+        run: python -m awareness_studio.eval_runner --no-llm --quiet

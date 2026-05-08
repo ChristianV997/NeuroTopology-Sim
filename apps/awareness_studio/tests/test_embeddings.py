@@ -206,3 +206,38 @@ def test_index_build_embedding_e2e(tmp_path):
         cfg.EMBEDDING_PROVIDER = orig_provider
         cfg.DATA_DIR = orig_data
         ib._embedding_cache = None
+
+
+# ── Regression: embedding data directory created on first build ───────────────
+
+def test_index_build_embedding_creates_data_dir(tmp_path, monkeypatch):
+    """build_index(backend='embedding') must create DATA_DIR if it doesn't exist.
+
+    Regression guard for the bug where _EMBEDDING_FILE was opened for write
+    before config.DATA_DIR.mkdir() was called, causing FileNotFoundError in CI
+    when the .data/ directory did not yet exist.
+    """
+    from awareness_studio import config
+    import awareness_studio.index_build as ib
+
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    (inputs / "doc.md").write_text(
+        "# Test\n\nThis is a local stub embedding test.", encoding="utf-8"
+    )
+
+    data_dir = tmp_path / "missing_data_dir"
+    embedding_file = data_dir / "embeddings.json"
+
+    monkeypatch.setattr(config, "DATA_DIR", data_dir)
+    monkeypatch.setattr(ib, "_EMBEDDING_FILE", embedding_file)
+    monkeypatch.setattr(config, "EMBEDDING_PROVIDER", "local_stub")
+    monkeypatch.setattr(ib, "_embedding_cache", None)
+
+    assert not data_dir.exists(), "pre-condition: directory must not exist before build"
+
+    idx = ib.build_index(inputs_dir=inputs, backend="embedding")
+
+    assert data_dir.exists(), "DATA_DIR must be created by build_index"
+    assert embedding_file.exists(), "embeddings.json must be written"
+    assert len(idx.chunks) > 0, "index must contain at least one chunk"
