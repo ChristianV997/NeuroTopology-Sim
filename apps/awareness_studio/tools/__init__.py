@@ -1,1 +1,1 @@
-"""Awareness Studio utility tools."""
+"""tools — CLI utilities for Awareness Studio."""

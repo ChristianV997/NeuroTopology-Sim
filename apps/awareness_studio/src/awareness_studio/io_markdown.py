@@ -64,12 +64,15 @@ def load_documents(inputs_dir: Path) -> List[Document]:
 
     - Sorts by relative path for stable ordering.
     - Skips README / .gitkeep / meta files.
+    - Skips *.run.json sim artifacts (handled by airtable_sync, not RAG ingestion).
     - Assigns stable doc_id = sha256(rel_path)[:16].
     """
     inputs_dir = inputs_dir.resolve()
     docs: List[Document] = []
 
-    # rglob for recursive discovery; sort for determinism
+    # rglob for recursive discovery; sort for determinism.
+    # Only *.md files are collected — *.run.json sim artifacts are intentionally excluded here
+    # (they are consumed by airtable_sync, not RAG ingestion).
     md_paths = sorted(inputs_dir.rglob("*.md"))
 
     for md_path in md_paths:

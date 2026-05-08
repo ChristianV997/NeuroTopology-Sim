@@ -47,6 +47,7 @@ ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_TIMEOUT_S: float = float(os.getenv("OPENAI_TIMEOUT_S", "30"))
 
 # ── Prompt optimization ──────────────────────────────────────────────────────
 PROMPT_OPTIMIZER: str = os.getenv("PROMPT_OPTIMIZER", "none")  # "none" | "dspy_stub"
@@ -69,6 +70,10 @@ CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")  # e.g. "*" or "ht
 AIRTABLE_ENABLED: bool = os.getenv("AIRTABLE_ENABLED", "false").lower() == "true"
 AIRTABLE_API_KEY: str = os.getenv("AIRTABLE_API_KEY", "")
 AIRTABLE_BASE_ID: str = os.getenv("AIRTABLE_BASE_ID", "")
+
+# ── Auth gate (write endpoints) ────────────────────────────────────────────────
+AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
+AUTH_API_KEY: str = os.getenv("AUTH_API_KEY", "")
 
 # ── Backward-compat shims ────────────────────────────────────────────────────
 LLM_MODEL: str = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else OPENAI_MODEL

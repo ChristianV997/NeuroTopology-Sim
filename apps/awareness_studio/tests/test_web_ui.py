@@ -124,3 +124,41 @@ def test_chat_schema_all_fields_present():
     data = resp.json()
     for field in ("answer", "sources_used", "tool_calls", "mode", "request_id", "retrieved"):
         assert field in data, f"Missing schema field: {field}"
+
+
+# ── Auth gate on /airtable/sync/runs ─────────────────────────────────────────
+
+def test_sync_runs_no_auth_required_by_default():
+    """When AUTH_ENABLED is false (default), no key needed."""
+    resp = client.post("/airtable/sync/runs?allow_write=false")
+    assert resp.status_code == 200
+
+
+def test_sync_runs_auth_rejects_missing_key(monkeypatch):
+    import awareness_studio.config as cfg
+    monkeypatch.setattr(cfg, "AUTH_ENABLED", True)
+    monkeypatch.setattr(cfg, "AUTH_API_KEY", "secret-key")
+    resp = client.post("/airtable/sync/runs?allow_write=false")
+    assert resp.status_code == 401
+
+
+def test_sync_runs_auth_accepts_correct_key(monkeypatch):
+    import awareness_studio.config as cfg
+    monkeypatch.setattr(cfg, "AUTH_ENABLED", True)
+    monkeypatch.setattr(cfg, "AUTH_API_KEY", "secret-key")
+    resp = client.post(
+        "/airtable/sync/runs?allow_write=false",
+        headers={"X-Awareness-Key": "secret-key"},
+    )
+    assert resp.status_code == 200
+
+
+def test_sync_runs_auth_rejects_wrong_key(monkeypatch):
+    import awareness_studio.config as cfg
+    monkeypatch.setattr(cfg, "AUTH_ENABLED", True)
+    monkeypatch.setattr(cfg, "AUTH_API_KEY", "secret-key")
+    resp = client.post(
+        "/airtable/sync/runs?allow_write=false",
+        headers={"X-Awareness-Key": "wrong-key"},
+    )
+    assert resp.status_code == 401

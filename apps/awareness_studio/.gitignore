@@ -1,5 +1,6 @@
 .index/
 .data/
+outputs/
 *.egg-info/
 __pycache__/
 *.py[cod]

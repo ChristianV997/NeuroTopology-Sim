@@ -448,13 +448,24 @@ class GatedToolRouter(ToolRouter):
         self._enabled = enabled
         self._calls_this_request: int = 0
 
+    @property
+    def max_calls(self) -> int:
+        return self._max_calls
+
+    @property
+    def remaining_calls(self) -> int:
+        return max(0, self._max_calls - self._calls_this_request)
+
     def reset_request(self) -> None:
         self._calls_this_request = 0
 
     def list_tools(self) -> List[ToolSpec]:
         if not self._enabled:
             return []
-        return [t for t in self._inner.list_tools() if t.name in self._allowlist]
+        tools = self._inner.list_tools()
+        if not self._allowlist:
+            return tools
+        return [t for t in tools if t.name in self._allowlist]
 
     def call_tool(self, name: str, args: dict) -> ToolResult:
         ts = _now()

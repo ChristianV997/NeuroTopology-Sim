@@ -59,6 +59,49 @@ class RunCard:
             run_card_path=path,
         )
 
+    @classmethod
+    def from_run_record_v1(cls, data: dict, path: str = "") -> "RunCard":
+        """Build a RunCard from a ScienceR-Dsim RunRecord v1 .run.json file."""
+        _REQUIRED = ("run_id", "mode", "created_at", "metrics", "artifacts")
+        missing = [k for k in _REQUIRED if k not in data]
+        if missing:
+            raise ValueError(f"RunRecord v1 missing required keys: {missing}")
+
+        artifacts_raw = data["artifacts"]
+        artifacts_list: list
+        if isinstance(artifacts_raw, dict):
+            artifacts_list = [v for v in artifacts_raw.values() if v]
+        elif isinstance(artifacts_raw, list):
+            artifacts_list = artifacts_raw
+        else:
+            artifacts_list = []
+
+        md_path = (
+            artifacts_raw.get("md_path", "") if isinstance(artifacts_raw, dict) else ""
+        )
+        run_card_path = path or (
+            artifacts_raw.get("json_path", "") if isinstance(artifacts_raw, dict) else path
+        )
+
+        input_hash = hashlib.sha256(
+            json.dumps(data.get("input", {}), sort_keys=True).encode()
+        ).hexdigest()[:16]
+
+        notes = data.get("notes", "")
+        if md_path:
+            notes = f"md_path={md_path}" + (f" | {notes}" if notes else "")
+
+        return cls(
+            run_id=data["run_id"],
+            mode=data["mode"],
+            timestamp=data["created_at"],
+            input_hash=input_hash,
+            metrics=data.get("metrics", {}),
+            artifacts=artifacts_list,
+            notes=notes,
+            run_card_path=run_card_path,
+        )
+
     def to_airtable_fields(self) -> Dict[str, Any]:
         summary = (
             f"{self.mode} | {self.run_id[:8]} | "
@@ -236,7 +279,10 @@ def _load_run_cards(files: List[Path]) -> List[RunCard]:
     for path in files:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            cards.append(RunCard.from_dict(data, str(path)))
+            if data.get("schema_version") == "1":
+                cards.append(RunCard.from_run_record_v1(data, str(path)))
+            else:
+                cards.append(RunCard.from_dict(data, str(path)))
         except Exception as exc:
             logger.warning("[airtable-sync] skipping %s: %s", path, exc)
     return cards

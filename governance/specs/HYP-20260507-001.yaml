@@ -1,0 +1,32 @@
+# Hypothesis spec: EEG alpha gain-control via frontal topology stability
+spec_id: HYP-20260507-001
+claim_type: topology_gain_control
+layer: biophysical
+data_mode: synthetic
+dataset_id: synthetic_vortex_alpha_N64
+
+hypothesis: >
+  Frontal alpha oscillations in meditators reflect inhibitory gain-control:
+  higher alpha power correlates with lower impulsivity and lower reactive
+  field variance (I_std). In the simulation, stable vortex topology (low Qabs)
+  should co-occur with low field reactivity (I_std < 0.15), mirroring the
+  alpha-gain-control mechanism observed by Krishna et al. (2025, PubMed 39960276)
+  and Brahmi et al. (2025, PubMed 40933789).
+
+evidence:
+  - pmid: "39960276"
+    finding: "Higher right frontal alpha (p<0.05), lower beta in meditators; alpha inversely correlated with impulsivity"
+  - pmid: "40933789"
+    finding: "Acting with Awareness trait → enhanced theta during meditation; posterior alpha correlates with mind-wandering"
+  - pmid: "35202647"
+    finding: "Mindfulness: PCC-dlPFC connectivity increase + rACC-amygdala decrease = gain-control signature"
+
+threshold:
+  I_std_max: 0.15
+  Qabs_max: 2.0
+  I_mean_min: 0.1
+
+sim_params:
+  N: 64
+  n_steps: 50
+  seed: 7
