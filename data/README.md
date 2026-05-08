@@ -20,6 +20,11 @@ proxies**, not validated consciousness biomarkers. Each window-row carries a
 - `temporal_phase_proxy` — legacy `np.angle` direct path; retained as a
   documented baseline for backward comparison only. Not a valid neural
   phase field.
+- `null_channel_shuffle` / `null_time_reverse` / `null_phase_randomized` —
+  deterministic null-control rows emitted when `compute_nulls=True`. Each null
+  row carries `null_method` and `null_seed` for traceability. Null rows are
+  controls for artifact sensitivity; observed metrics must separate from null
+  distributions before any structural claim can be made.
 
 Q / Qabs / f_dress reported on those rows are proxy summaries. They are not
 validated consciousness observables and require null-control comparison

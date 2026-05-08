@@ -25,12 +25,25 @@ The pipeline currently emits two kinds of rows per window:
 - `metric_kind = "temporal_phase_proxy"` — legacy direct `np.angle` path,
   retained only as a documented baseline for backward comparison.
 
+When `compute_nulls=True`, `run_eeg` also emits matched null-control rows per
+analytic band and window:
+
+- `metric_kind = "null_channel_shuffle"` — channel order permuted (destroys
+  inter-channel coupling, preserves per-channel spectra).
+- `metric_kind = "null_time_reverse"` — samples reversed (destroys causal
+  structure, preserves spectral amplitude).
+- `metric_kind = "null_phase_randomized"` — spectrum-preserving phase
+  randomization (preserves power spectrum, randomizes phase).
+
+Null rows carry `null_method` and `null_seed` columns for traceability. They
+are deterministic: the same `null_seed` + file + window always produces
+identical null rows. These are controls for artifact sensitivity, not proof
+of validity. Observed metrics must separate from null distributions before
+any structural claim can be made.
+
 A montage-aware 2D phase grid is supported by
 `validation.analytic_phase.phase_grid_topology_metrics`, but the EEG runner
-does not yet build such a grid from real sensor positions; that is future
-work. `validation/nulls.py` provides deterministic surrogate transforms
-(channel shuffle, time reverse, spectrum-preserving phase randomization) for
-null-control comparison; full null export is a follow-up PR.
+does not yet build such a grid from real sensor positions; that is future work.
 
 The PCIst-style complexity column has been renamed `pcist_proxy` to make
 clear it is **not** the canonical PCIst measure. The legacy `pcist_surrogate`

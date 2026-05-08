@@ -7,12 +7,16 @@ columns. Each row is tagged with a ``metric_kind`` that distinguishes:
   channel order. A proxy, not a true spatial topology.
 * ``temporal_phase_proxy``  — legacy direct ``np.angle`` path. Retained for
   backward comparison; not a valid neural phase field.
+* ``null_channel_shuffle``  — null control: channel order permuted.
+* ``null_time_reverse``     — null control: samples reversed.
+* ``null_phase_randomized`` — null control: spectrum-preserving phase randomization.
 
-Topology metrics emitted here are exploratory and require null-control
-comparison (see :mod:`validation.nulls`) before any structural claims.
+Null rows are only emitted when ``compute_nulls=True`` (default: False).
+They are controls for artifact sensitivity, not proof of validity.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
@@ -26,6 +30,7 @@ from validation.analytic_phase import (
     channel_phase_gradient_metrics,
     temporal_phase_proxy_metrics,
 )
+from validation.nulls import channel_shuffle, phase_randomize_time, time_reverse
 from validation.pci_validation import pcist_proxy
 
 try:
@@ -145,12 +150,28 @@ def _spectral_ratio(seg: np.ndarray, sfreq: float) -> float:
     return float(high / (low + NUMERICAL_STABILITY_EPSILON))
 
 
+def _stable_window_seed(file_path: Path, start: int, stop: int, base_seed: int) -> int:
+    """Deterministic per-window seed using hashlib (stable across processes)."""
+    payload = f"{file_path.as_posix()}:{start}:{stop}:{base_seed}".encode()
+    return int(hashlib.sha256(payload).hexdigest()[:8], 16)
+
+
+def _null_variants(seg: np.ndarray, seed: int) -> dict[str, np.ndarray]:
+    """Return three deterministic null-control versions of an EEG segment."""
+    return {
+        "channel_shuffle": channel_shuffle(seg, seed=seed),
+        "time_reverse": time_reverse(seg),
+        "phase_randomized": phase_randomize_time(seg, seed=seed),
+    }
+
+
 _BASE_COLS: Tuple[str, ...] = (
     "dataset", "dataset_id", "file",
     "subject_id", "session_id", "condition", "state_label",
     "window_id", "start_sample", "stop_sample", "sfreq",
     "band", "metric_kind",
     "Q", "Qabs", "phase_grad", "f_dress", "spectral_ratio",
+    "null_method", "null_seed",
 )
 
 
@@ -177,6 +198,8 @@ def run(
     include_legacy_proxy: bool = True,
     window_seconds: float = 4.0,
     step_seconds: float = 2.0,
+    compute_nulls: bool = False,
+    null_seed: int = 0,
 ):
     """Run EEG analytic-phase feature extraction and save per-window-per-band rows.
 
@@ -188,6 +211,12 @@ def run(
     include_legacy_proxy : if True, also emit one ``temporal_phase_proxy`` row
         per window with ``band="broadband"`` for backward comparison.
     window_seconds, step_seconds : window length and stride.
+    compute_nulls : if True, emit ``null_channel_shuffle``, ``null_time_reverse``,
+        and ``null_phase_randomized`` rows alongside each ``analytic_phase_proxy``
+        row. Default False; existing callers are unaffected.
+    null_seed : base seed for deterministic null transforms; combined with
+        per-window content via hashlib so each window gets a unique but
+        reproducible seed.
     """
     input_dir = Path(input_dir)
     output_csv = Path(output_csv)
@@ -220,11 +249,12 @@ def run(
             tmpl = _row_template(meta, str(f), sfreq, s, s + win)
             spectral = _spectral_ratio(seg, sfreq)
             pci_val = pcist_proxy(seg) if compute_pci else None
+            w_seed = _stable_window_seed(f, s, s + win, null_seed) if compute_nulls else 0
 
             band_phases = analytic_phases_by_band(seg, sfreq, bands=bands)
             for band_name, phase in band_phases.items():
                 metrics = channel_phase_gradient_metrics(phase)
-                row = {
+                row: dict = {
                     **tmpl,
                     "band": band_name,
                     "metric_kind": metrics["metric_kind"],
@@ -233,10 +263,38 @@ def run(
                     "phase_grad": metrics["phase_grad"],
                     "f_dress": metrics["f_dress"],
                     "spectral_ratio": spectral,
+                    "null_method": "",
+                    "null_seed": "",
                 }
                 if compute_pci:
                     row["pcist_proxy"] = pci_val
                 rows.append(row)
+
+                if compute_nulls:
+                    for method, null_seg in _null_variants(seg, seed=w_seed).items():
+                        null_band_phases = analytic_phases_by_band(
+                            null_seg, sfreq, bands=bands
+                        )
+                        if band_name not in null_band_phases:
+                            continue
+                        null_metrics = channel_phase_gradient_metrics(
+                            null_band_phases[band_name]
+                        )
+                        null_row: dict = {
+                            **tmpl,
+                            "band": band_name,
+                            "metric_kind": f"null_{method}",
+                            "Q": null_metrics["Q"],
+                            "Qabs": null_metrics["Qabs"],
+                            "phase_grad": null_metrics["phase_grad"],
+                            "f_dress": null_metrics["f_dress"],
+                            "spectral_ratio": spectral,
+                            "null_method": method,
+                            "null_seed": w_seed,
+                        }
+                        if compute_pci:
+                            null_row["pcist_proxy"] = pci_val
+                        rows.append(null_row)
 
             if include_legacy_proxy:
                 legacy = temporal_phase_proxy_metrics(seg)
@@ -249,6 +307,8 @@ def run(
                     "phase_grad": legacy["phase_grad"],
                     "f_dress": legacy["f_dress"],
                     "spectral_ratio": spectral,
+                    "null_method": "",
+                    "null_seed": "",
                 }
                 if compute_pci:
                     row["pcist_proxy"] = pci_val
