@@ -213,9 +213,8 @@ def test_index_build_embedding_e2e(tmp_path):
 def test_index_build_embedding_creates_data_dir(tmp_path, monkeypatch):
     """build_index(backend='embedding') must create DATA_DIR if it doesn't exist.
 
-    Regression guard for the bug where _EMBEDDING_FILE was opened for write
-    before config.DATA_DIR.mkdir() was called, causing FileNotFoundError in CI
-    when the .data/ directory did not yet exist.
+    Regression guard: _embedding_file() is called at use-time so monkeypatching
+    config.DATA_DIR after import correctly redirects the write path.
     """
     from awareness_studio import config
     import awareness_studio.index_build as ib
@@ -230,7 +229,6 @@ def test_index_build_embedding_creates_data_dir(tmp_path, monkeypatch):
     embedding_file = data_dir / "embeddings.json"
 
     monkeypatch.setattr(config, "DATA_DIR", data_dir)
-    monkeypatch.setattr(ib, "_EMBEDDING_FILE", embedding_file)
     monkeypatch.setattr(config, "EMBEDDING_PROVIDER", "local_stub")
     monkeypatch.setattr(ib, "_embedding_cache", None)
 
@@ -240,4 +238,34 @@ def test_index_build_embedding_creates_data_dir(tmp_path, monkeypatch):
 
     assert data_dir.exists(), "DATA_DIR must be created by build_index"
     assert embedding_file.exists(), "embeddings.json must be written"
+    assert len(idx.chunks) > 0, "index must contain at least one chunk"
+
+
+def test_index_build_bm25_creates_index_dir(tmp_path, monkeypatch):
+    """build_index(backend='bm25') must create INDEX_DIR if it doesn't exist.
+
+    Regression guard: _index_file() is called at use-time so monkeypatching
+    config.INDEX_DIR after import correctly redirects the write path.
+    """
+    from awareness_studio import config
+    import awareness_studio.index_build as ib
+
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    (inputs / "doc.md").write_text(
+        "# BM25 Test\n\nDynamic index path regression.", encoding="utf-8"
+    )
+
+    index_dir = tmp_path / "missing_index_dir"
+    chunks_file = index_dir / "chunks.json"
+
+    monkeypatch.setattr(config, "INDEX_DIR", index_dir)
+    monkeypatch.setattr(ib, "_bm25_cache", None)
+
+    assert not index_dir.exists(), "pre-condition: directory must not exist before build"
+
+    idx = ib.build_index(inputs_dir=inputs, backend="bm25")
+
+    assert index_dir.exists(), "INDEX_DIR must be created by build_index"
+    assert chunks_file.exists(), "chunks.json must be written"
     assert len(idx.chunks) > 0, "index must contain at least one chunk"
