@@ -30,6 +30,16 @@ python paper/generate_figures.py --results-root results --output-dir paper/figur
 
 `--mode qzt` writes `results/qzt.csv`, `results/events.csv`, and `results/worldlines.json`.
 
+## Contributor Setup Matrix
+
+| Workstream | Required install commands | Verification command |
+| --- | --- | --- |
+| Core pipelines | `pip install -r requirements.txt` | `pytest -q tests` |
+| Awareness Studio | `pip install -e apps/awareness_studio`<br>`pip install -e "apps/awareness_studio[dev]"` | `pytest -q apps/awareness_studio/tests` |
+| Full-stack contributor | `pip install -r requirements.txt`<br>`pip install -e apps/awareness_studio`<br>`pip install -e "apps/awareness_studio[dev]"` | `pytest -q tests && pytest -q apps/awareness_studio/tests` |
+
+For setup details and isolation recommendations, see [docs/contributing.md](docs/contributing.md). If you are working in the UI surface, also review [apps/awareness_studio/README.md](apps/awareness_studio/README.md).
+
 ## External systems and live sensors
 - Configure connectors in `config/defaults.yaml` under `external.connectors`.
 - Supported connector types:
