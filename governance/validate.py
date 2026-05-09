@@ -12,8 +12,11 @@ Rules:
 """
 from __future__ import annotations
 
+import argparse
+from pathlib import Path
 from typing import List
 
+from governance.io import load_spec
 from governance.spec import HypothesisSpec
 
 VALID_CLAIM_TYPES = {"M", "K", "C"}
@@ -74,3 +77,52 @@ def validate_spec(spec: HypothesisSpec) -> None:
 
     if errors:
         raise ValidationError(spec.id or "<unknown>", errors)
+
+
+def _iter_spec_paths(path: Path) -> List[Path]:
+    if path.is_file():
+        return [path]
+    if path.is_dir():
+        spec_paths = sorted(
+            [p for p in path.iterdir() if p.suffix in {".yaml", ".yml", ".json"}]
+        )
+        return spec_paths
+    raise FileNotFoundError(f"Path does not exist: {path}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate governance hypothesis specs.")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default="governance/specs",
+        help="Spec file or directory to validate (default: governance/specs)",
+    )
+    args = parser.parse_args()
+
+    targets = _iter_spec_paths(Path(args.path))
+    if not targets:
+        print(f"No spec files found in {args.path}")
+        return 1
+
+    failures: List[str] = []
+    for spec_path in targets:
+        try:
+            spec = load_spec(spec_path)
+            validate_spec(spec)
+            print(f"PASS {spec_path}")
+        except Exception as exc:  # noqa: BLE001 - CLI should surface all validation/load errors
+            failures.append(f"FAIL {spec_path}: {exc}")
+
+    if failures:
+        for failure in failures:
+            print(failure)
+        print(f"Validation failed: {len(failures)} file(s) invalid.")
+        return 1
+
+    print(f"Validation passed: {len(targets)} file(s) checked.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
