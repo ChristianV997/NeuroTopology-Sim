@@ -45,8 +45,11 @@ def run_qzt(checkpoint_dir: str):
 
 def main():
     ap = argparse.ArgumentParser()
+    # NOTE: CLI argument contracts by mode are documented in docs/mode_contracts.md.
     ap.add_argument("--mode", required=True, choices=["synthetic", "qzt", "eeg", "physionet", "physics", "cross-domain", "external", "db"])
+    # --input is mode-dependent: directory for qzt/eeg/physionet, but a required .npy file for physics.
     ap.add_argument("--input", default="data/checkpoints")
+    # "results/out.csv" is a sentinel default; eeg/physionet reinterpret it to mode-specific output paths.
     ap.add_argument("--output", default="results/out.csv")
     ap.add_argument("--dataset", default="ds002094")
     ap.add_argument("--results-root", default="results")
@@ -56,16 +59,19 @@ def main():
     ap.add_argument("--max-records", type=int, default=None)
     args = ap.parse_args()
 
+    # Dispatch behavior and artifacts differ per mode; see docs/mode_contracts.md for canonical contracts.
     if args.mode == "synthetic":
         run_synthetic()
     elif args.mode == "qzt":
         run_qzt(args.input)
     elif args.mode == "eeg":
+        # When --output is left at the sentinel default, derive a dataset-scoped metrics path.
         default_out = Path("results") / args.dataset / f"metrics_{args.dataset}.csv"
         out_path = args.output if args.output != "results/out.csv" else str(default_out)
         df = run_eeg(args.input, out_path, dataset=args.dataset, compute_pci=args.compute_pci)
         print(df.head())
     elif args.mode == "physionet":
+        # Same sentinel behavior as eeg mode: use a mode-specific default metrics output path.
         default_out = Path("results") / "physionet_gaba" / "metrics_physionet_gaba.csv"
         out_path = args.output if args.output != "results/out.csv" else str(default_out)
         df = run_physionet(args.input, out_path)
