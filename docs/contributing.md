@@ -104,7 +104,6 @@ CI runs governance validation in a separate fast `governance-validate` job befor
   - Align values with `governance/schema.json` and `governance/spec.py` comments
 - **ID format issues**
   - Use `HYP-YYYYMMDD-NNN` format to satisfy schema pattern.
-
 ## Related documentation
 - Root project overview and setup matrix: [../README.md](../README.md)
 - Awareness Studio details: [../apps/awareness_studio/README.md](../apps/awareness_studio/README.md)
