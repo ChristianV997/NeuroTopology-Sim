@@ -75,6 +75,32 @@ AIRTABLE_BASE_ID: str = os.getenv("AIRTABLE_BASE_ID", "")
 AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
 AUTH_API_KEY: str = os.getenv("AUTH_API_KEY", "")
 
+# ── Prompt optimization ──────────────────────────────────────────────────────
+PROMPT_OPTIMIZER: str = os.getenv("PROMPT_OPTIMIZER", "none")  # "none" | "dspy_stub"
+
+# ── Tool router (Phase 3) ────────────────────────────────────────────────────
+TOOLS_ENABLED: bool = os.getenv("TOOLS_ENABLED", "false").lower() == "true"
+TOOLS_ALLOWLIST: list = [
+    t.strip() for t in os.getenv("TOOLS_ALLOWLIST", "").split(",") if t.strip()
+]
+TOOLS_MAX_CALLS_PER_REQUEST: int = int(os.getenv("TOOLS_MAX_CALLS_PER_REQUEST", "1"))
+
+# ── External API keys (optional) ─────────────────────────────────────────────
+LINEAR_API_KEY: str = os.getenv("LINEAR_API_KEY", "")
+PUBMED_API_KEY: str = os.getenv("PUBMED_API_KEY", "")  # optional; improves rate limits
+
+# ── Web / CORS ────────────────────────────────────────────────────────────────
+CORS_ALLOW_ORIGINS: str = os.getenv("CORS_ALLOW_ORIGINS", "")  # e.g. "*" or "https://myapp.com"
+
+# ── Airtable Ops Mirror ───────────────────────────────────────────────────────
+AIRTABLE_ENABLED: bool = os.getenv("AIRTABLE_ENABLED", "false").lower() == "true"
+AIRTABLE_API_KEY: str = os.getenv("AIRTABLE_API_KEY", "")
+AIRTABLE_BASE_ID: str = os.getenv("AIRTABLE_BASE_ID", "")
+
+# ── Auth gate (write endpoints) ────────────────────────────────────────────────
+AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
+AUTH_API_KEY: str = os.getenv("AUTH_API_KEY", "")
+
 # ── Backward-compat shims ────────────────────────────────────────────────────
 LLM_MODEL: str = ANTHROPIC_MODEL if LLM_PROVIDER == "anthropic" else OPENAI_MODEL
 LLM_API_KEY: str = ANTHROPIC_API_KEY if LLM_PROVIDER == "anthropic" else OPENAI_API_KEY

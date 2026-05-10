@@ -308,7 +308,7 @@ def run(
             )
             for band_name, phase in band_phases.items():
                 metrics = channel_phase_gradient_metrics(phase)
-                row = {
+                row: dict = {
                     **tmpl,
                     "band": band_name,
                     "metric_kind": metrics["metric_kind"],
@@ -365,7 +365,7 @@ def run(
                     null_metrics = channel_phase_gradient_metrics(
                         null_band_phases[band_name]
                     )
-                    null_row = {
+                    null_row: dict = {
                         **tmpl,
                         "band": band_name,
                         "metric_kind": f"null_{method}",
