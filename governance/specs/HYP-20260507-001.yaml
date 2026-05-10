@@ -1,0 +1,56 @@
+id: HYP-20260507-001
+title: Synthetic vortex alpha topology stability as a candidate gain-control marker
+claim_type: K
+layer: Topology
+summary: >
+  In synthetic vortex-alpha simulations, lower absolute winding magnitude is a
+  candidate marker for gain-control stability and may co-occur with lower field
+  reactivity under matched controls.
+
+discriminator:
+  description: >
+    Contrast synthetic runs with low-Qabs topology stability against high-Qabs
+    runs while holding seed protocol and integration settings fixed.
+  mode: stimulus_sweep
+  config:
+    axis: q_abs_regime
+    low_q_abs_max: 2.0
+    high_q_abs_min: 3.0
+
+controls:
+  - name: matched_seed_protocol
+    config:
+      seed: 7
+      n_steps: 50
+      grid_n: 64
+  - name: topology_null_reference
+    config:
+      q_net_target: 0
+
+readouts:
+  - name: I_std
+    module: sciencer_d.btc_icft.simulations.synthetic_d
+  - name: q_abs
+    module: sciencer_d.btc_icft.simulations.synthetic_t
+  - name: q_net
+    module: sciencer_d.btc_icft.simulations.synthetic_t
+
+data:
+  mode: synthetic
+  dataset_id: synthetic_vortex_alpha_N64
+  params:
+    N: 64
+    n_steps: 50
+    seed: 7
+
+pass_fail:
+  criteria: Candidate topology-stability marker consistency under synthetic controls.
+  thresholds:
+    I_std_max: 0.15
+    Qabs_max: 2.0
+    I_mean_min: 0.1
+
+artifacts:
+  expected:
+    - outputs/btc_icft/synthetic_validation/synthetic_metrics.json
+    - outputs/btc_icft/synthetic_validation/report.md

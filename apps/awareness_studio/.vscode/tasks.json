@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Awareness: Setup",
+      "type": "shell",
+      "command": "bash scripts/bootstrap.sh",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "new" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Awareness: Smoke (offline gates)",
+      "type": "shell",
+      "command": "make smoke",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": "test",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Awareness: Start Web UI",
+      "type": "shell",
+      "command": "make web",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": "none",
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" },
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "started server process",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    },
+    {
+      "label": "Awareness: Orchestrate Dry Run",
+      "type": "shell",
+      "command": "curl -s -X POST http://localhost:8000/cmd/orchestrate?dry_run=true | python3 -m json.tool",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "dependsOn": "Awareness: Start Web UI",
+      "problemMatcher": []
+    },
+    {
+      "label": "Awareness: Test",
+      "type": "shell",
+      "command": "make test",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": { "kind": "test", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Awareness: Rebuild Index",
+      "type": "shell",
+      "command": "make index",
+      "options": { "cwd": "${workspaceFolder}/apps/awareness_studio" },
+      "group": "none",
+      "presentation": { "reveal": "always", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}
