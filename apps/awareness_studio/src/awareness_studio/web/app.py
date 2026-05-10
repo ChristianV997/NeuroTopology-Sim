@@ -468,22 +468,15 @@ async def cmd_run_file(run_id: str, filename: str):
 @app.get("/cmd/orchestrate/stream")
 async def cmd_orchestrate_stream(run_id: str = Query(...)):
     """Stream orchestrator event log as SSE for a given run_id."""
-    from awareness_studio.orchestrator.event_model import EventEnvelope
     orch_dir = _find_orchestrator_run_dir(run_id)
+    from awareness_studio.orchestrator.event_log import EventLog
 
     async def _generate():
         if orch_dir is not None:
-            events_path = _resolve_orchestrator_artifact_path(orch_dir, "events.jsonl")
-            with events_path.open(encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        ev = EventEnvelope.from_dict(json.loads(line))
-                    except Exception:
-                        continue
-                    yield f"data: {ev.to_jsonl()}\n\n"
+            log = EventLog(orch_dir)
+            events = log.load_all()
+            for ev in events:
+                yield f"data: {ev.to_jsonl()}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
