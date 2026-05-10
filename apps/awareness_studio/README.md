@@ -4,6 +4,12 @@ Local app: **Book Generator CLI** + **Guidance Chatbot CLI** backed by Notion-ex
 
 ## Setup
 
+## Root task-runner notes
+
+- Root `Makefile` targets are convenience wrappers for common workflows.
+- `make test-awareness` and `make test-all` require Awareness Studio dev extras first (`pip install -e '.[dev]'` inside this directory).
+
+
 ```bash
 pip install -e apps/awareness_studio
 cp apps/awareness_studio/.env.example apps/awareness_studio/.env

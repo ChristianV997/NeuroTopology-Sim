@@ -16,6 +16,7 @@ def extract_level_m_features(signal: list[float]) -> dict[str, float]:
             "artifact_score": 1.0,
         }
 
+    signal_mean = _safe_mean(signal)
     spectral_power_proxy = _safe_mean([v * v for v in signal])
 
     hist = Counter(round(v, 1) for v in signal)
@@ -24,11 +25,11 @@ def extract_level_m_features(signal: list[float]) -> dict[str, float]:
         p = c / n
         entropy_proxy -= p * math.log2(p)
 
-    symbolic = ''.join('1' if v >= _safe_mean(signal) else '0' for v in signal)
-    lzc_proxy = len({symbolic[i:j] for i in range(n) for j in range(i + 1, min(n, i + 4) + 1)}) / max(n, 1)
+    symbolic = ''.join('1' if v >= signal_mean else '0' for v in signal)
+    lzc_proxy = len({symbolic[i:j] for i in range(n) for j in range(i + 1, min(n, i + 4) + 1)}) / n
 
     jumps = [abs(signal[i] - signal[i - 1]) for i in range(1, n)]
-    artifact_score = min(1.0, _safe_mean(jumps) / (abs(_safe_mean(signal)) + 1e-6)) if jumps else 0.0
+    artifact_score = min(1.0, _safe_mean(jumps) / (abs(signal_mean) + 1e-6)) if jumps else 0.0
 
     return {
         "spectral_power_proxy": spectral_power_proxy,

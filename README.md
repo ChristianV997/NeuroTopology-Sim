@@ -63,18 +63,34 @@ comparison, and (c) labeled state-change validation (e.g. LOC/ROC).
 Datasets are not embedded. Place them under `data/raw/` using the paths in `data/README.md`.
 
 ## Quick start
+
+### Core quick start
 ```bash
 pip install -r requirements.txt
-python main.py --mode synthetic
-python main.py --mode qzt --input data/checkpoints
-python main.py --mode eeg --dataset ds002094 --input data/raw/ds002094 --output results/ds002094.csv --compute-pci
-python main.py --mode physics --input /path/to/sample.npy --output results/the_well.csv
-python main.py --mode cross-domain --results-root results --output results/cross_domain.csv
-python main.py --mode external --config config/defaults.yaml --output results/live_sensors.csv --db data/runs.sqlite --max-records 100
-python paper/generate_figures.py --results-root results --output-dir paper/figures
+make smoke-core
+make test-core
 ```
 
-`--mode qzt` writes `results/qzt.csv`, `results/events.csv`, and `results/worldlines.json`.
+Direct equivalents if `make` is unavailable:
+
+```bash
+python main.py --mode synthetic
+python -m pytest tests/ -v --tb=short
+```
+
+### Awareness Studio setup
+```bash
+cd apps/awareness_studio
+pip install -e '.[dev]'
+python -m pytest tests/ -v --tb=short
+```
+
+### Full-stack contributors
+Install root requirements and Awareness Studio dev extras before running:
+
+```bash
+make test-all
+```
 
 ## Contributor Setup Matrix
 
