@@ -389,6 +389,28 @@ async def airtable_sync_runs(
 
 _orch_lock = threading.Lock()
 _active_run_id: Optional[str] = None
+_SAFE_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _find_orchestrator_run_dir(run_id: str) -> Optional[Path]:
+    if not _SAFE_PATH_SEGMENT.fullmatch(run_id):
+        raise HTTPException(status_code=400, detail="Invalid run_id format.")
+    orch_base = config.APP_ROOT / "outputs" / "orchestrator"
+    if not orch_base.exists():
+        return None
+    for run_dir in orch_base.iterdir():
+        if run_dir.is_dir() and run_dir.name == run_id:
+            return run_dir
+    return None
+
+
+def _resolve_orchestrator_artifact_path(run_dir: Path, filename: str) -> Path:
+    if not _SAFE_PATH_SEGMENT.fullmatch(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename format.")
+    for fpath in run_dir.iterdir():
+        if fpath.is_file() and fpath.name == filename:
+            return fpath
+    raise HTTPException(status_code=404, detail=f"{filename} not found in run {run_dir.name}.")
 
 
 @app.post("/cmd/orchestrate", dependencies=[Depends(_require_auth)])
@@ -425,8 +447,8 @@ async def cmd_runs_recent(limit: int = Query(default=10, ge=1, le=50)):
 @app.get("/cmd/runs/{run_id}/artifacts")
 async def cmd_run_artifacts(run_id: str):
     """List artifacts for a specific orchestrator run."""
-    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
-    if not orch_dir.exists():
+    orch_dir = _find_orchestrator_run_dir(run_id)
+    if orch_dir is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
     files = {f.name: str(f) for f in orch_dir.iterdir() if f.is_file()}
     return {"run_id": run_id, "artifacts": files}
@@ -435,10 +457,10 @@ async def cmd_run_artifacts(run_id: str):
 @app.get("/cmd/runs/{run_id}/file/{filename}")
 async def cmd_run_file(run_id: str, filename: str):
     """Serve a text artifact from an orchestrator run."""
-    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
-    fpath = orch_dir / filename
-    if not fpath.exists() or not fpath.is_file():
-        raise HTTPException(status_code=404, detail=f"{filename} not found in run {run_id}.")
+    orch_dir = _find_orchestrator_run_dir(run_id)
+    if orch_dir is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found.")
+    fpath = _resolve_orchestrator_artifact_path(orch_dir, filename)
     text = fpath.read_text(encoding="utf-8")
     return {"run_id": run_id, "filename": filename, "content": text}
 
@@ -446,14 +468,15 @@ async def cmd_run_file(run_id: str, filename: str):
 @app.get("/cmd/orchestrate/stream")
 async def cmd_orchestrate_stream(run_id: str = Query(...)):
     """Stream orchestrator event log as SSE for a given run_id."""
+    orch_dir = _find_orchestrator_run_dir(run_id)
     from awareness_studio.orchestrator.event_log import EventLog
-    orch_dir = config.APP_ROOT / "outputs" / "orchestrator" / run_id
 
     async def _generate():
-        log = EventLog(orch_dir)
-        events = log.load_all()
-        for ev in events:
-            yield f"data: {ev.to_jsonl()}\n\n"
+        if orch_dir is not None:
+            log = EventLog(orch_dir)
+            events = log.load_all()
+            for ev in events:
+                yield f"data: {ev.to_jsonl()}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
