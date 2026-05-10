@@ -1,0 +1,36 @@
+dataset_id: ds005620
+benchmark_id: ds005620_mt_residual_v0
+default_task: awake_vs_sedated
+default_out: outputs/btc_icft/ds005620/mt_residual
+mock_default: true
+allowed_tasks:
+  - awake_vs_sedated
+  - responsive_vs_unresponsive
+  - experience_vs_no_experience
+required_outputs:
+  - features_mt.csv
+  - metrics_mt.json
+  - nulls.json
+  - ablations.json
+  - leakage_report.json
+  - artifact_report.json
+  - omega_event.json
+  - report.md
+promotion_gate:
+  min_delta_auc: 0.03
+  max_delta_ece: 0.0
+  require_nulls_passed: true
+  require_ablations_passed: true
+  require_no_leakage: true
+  require_no_artifact_dominance: true
+guardrails:
+  - topology_not_consciousness_proof
+  - q_not_self
+  - q_not_soul
+  - q_abs_not_suffering
+  - f_dress_not_karma
+  - unresponsive_not_unconscious
+  - sedated_not_no_experience
+  - no_liberation_claims
+  - no_afterlife_claims
+  - no_ontology_claims
