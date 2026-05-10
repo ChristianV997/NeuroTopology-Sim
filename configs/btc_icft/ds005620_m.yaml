@@ -1,0 +1,23 @@
+dataset_id: ds005620
+baseline_id: ds005620_level_m_v0
+default_task: awake_vs_sedated
+default_out: outputs/btc_icft/ds005620/m_baseline
+mock_default: true
+allowed_tasks:
+  - awake_vs_sedated
+  - responsive_vs_unresponsive
+  - experience_vs_no_experience
+required_outputs:
+  - features_m.csv
+  - metrics_m.json
+  - artifact_report.json
+  - leakage_report.json
+  - omega_event.json
+  - report.md
+guardrails:
+  - unresponsive_not_unconscious
+  - sedated_not_no_experience
+  - behavior_not_report
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
