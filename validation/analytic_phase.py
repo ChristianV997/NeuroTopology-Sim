@@ -107,6 +107,29 @@ def analytic_phases_by_band(
     return out
 
 
+
+
+def analytic_phase_amplitude_by_band(
+    data: np.ndarray,
+    sfreq: float,
+    bands: Optional[Mapping[str, Tuple[float, float]]] = None,
+) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+    """Return ``{band_name: (phase, amplitude)}`` from Hilbert analytic signal."""
+    bands = bands if bands is not None else DEFAULT_EEG_BANDS
+    nyq = sfreq / 2.0
+    out: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"data must be 2D (channels x samples), got shape {arr.shape}")
+    for name, (lo, hi) in bands.items():
+        if hi >= nyq:
+            continue
+        _validate_band(lo, hi, sfreq)
+        sos = butter(4, [lo / nyq, hi / nyq], btype="band", output="sos")
+        filtered = sosfiltfilt(sos, arr, axis=-1)
+        analytic = hilbert(filtered, axis=-1)
+        out[name] = (np.angle(analytic), np.abs(analytic))
+    return out
 def temporal_phase_proxy_metrics(data: np.ndarray) -> Dict[str, float]:
     """Legacy direct ``np.angle`` proxy.
 

@@ -41,6 +41,13 @@ remains as an alias for backward compatibility.
 Future work:
 - Montage-aware 2D phase-grid interpolation feeding
   `phase_grid_topology_metrics`.
+- Wire deterministic null surrogates into per-window CSV output.
 - Automated null-summary artifacts (z-score separation tables) using
   `validation.nulls.compute_null_summary`.
 - LOC/ROC and seizure-state validation stratified by `state_label`.
+
+## Montage-aware phase-grid topology
+- `compute_phase_grid_topology=True` emits `metric_kind=phase_grid_topology` rows.
+- Sensor-space topology uses montage coordinates instead of channel order.
+- `analytic_phase_proxy` is a channel-order proxy; `phase_grid_topology` is geometry-aware.
+- Remains exploratory and requires null controls + state labels for validation.

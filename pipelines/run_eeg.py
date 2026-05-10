@@ -26,9 +26,15 @@ import pandas as pd
 
 from validation.analytic_phase import (
     DEFAULT_EEG_BANDS,
+    analytic_phase_amplitude_by_band,
     analytic_phases_by_band,
     channel_phase_gradient_metrics,
     temporal_phase_proxy_metrics,
+)
+from validation.montage_topology import (
+    get_channel_xy,
+    phase_grid_topology_from_band,
+    triangulate_xy,
 )
 from validation.nulls import channel_shuffle, phase_randomize_time, time_reverse
 from validation.pci_validation import pcist_proxy
@@ -171,6 +177,7 @@ _BASE_COLS: Tuple[str, ...] = (
     "window_id", "start_sample", "stop_sample", "sfreq",
     "band", "metric_kind",
     "Q", "Qabs", "phase_grad", "f_dress", "spectral_ratio",
+    "n_triangles", "n_valid_triangles", "defect_density",
     "null_method", "null_seed", "window_null_seed",
 )
 
@@ -198,6 +205,9 @@ def run(
     include_legacy_proxy: bool = True,
     window_seconds: float = 4.0,
     step_seconds: float = 2.0,
+    compute_phase_grid_topology: bool = False,
+    montage: str | None = "standard_1020",
+    amp_quantile: float | None = 0.1,
     compute_nulls: bool = False,
     null_seed: int = 0,
 ):
@@ -213,6 +223,12 @@ def run(
     include_legacy_proxy : if True, also emit one ``temporal_phase_proxy`` row
         per window with ``band="broadband"`` for backward comparison.
     window_seconds, step_seconds : window length and stride.
+    compute_phase_grid_topology : if True, emit additional
+        ``phase_grid_topology`` rows using montage-aware sensor geometry.
+    montage : MNE montage name used to derive channel XY coordinates for
+        ``phase_grid_topology`` rows.
+    amp_quantile : optional quantile threshold used to mask low-amplitude
+        triangle windows for ``phase_grid_topology`` rows.
     compute_nulls : if True, emit ``null_channel_shuffle``, ``null_time_reverse``,
         and ``null_phase_randomized`` rows alongside each ``analytic_phase_proxy``
         row. Default False; existing callers are unaffected.
@@ -246,6 +262,17 @@ def run(
             continue
         sfreq = float(raw.info["sfreq"])
         meta = _infer_metadata(f, dataset)
+        topo_idx = None
+        topo_xy = None
+        topo_tri = None
+        if compute_phase_grid_topology:
+            try:
+                topo_names, topo_xy = get_channel_xy(raw, montage=montage)
+                topo_tri = triangulate_xy(topo_xy)
+                raw_names_l = [c.lower() for c in raw.ch_names]
+                topo_idx = [raw_names_l.index(n.lower()) for n in topo_names]
+            except Exception:
+                topo_idx = None
         win = max(int(round(window_seconds * sfreq)), MIN_SEGMENT_SAMPLES)
         step = max(int(round(step_seconds * sfreq)), 1)
         if raw.n_times < win:
@@ -274,6 +301,11 @@ def run(
                         null_pci_cache[method] = pcist_proxy(null_seg)
 
             band_phases = analytic_phases_by_band(seg, sfreq, bands=bands)
+            band_phase_amp = (
+                analytic_phase_amplitude_by_band(seg, sfreq, bands=bands)
+                if compute_phase_grid_topology
+                else {}
+            )
             for band_name, phase in band_phases.items():
                 metrics = channel_phase_gradient_metrics(phase)
                 row: dict = {
@@ -285,6 +317,9 @@ def run(
                     "phase_grad": metrics["phase_grad"],
                     "f_dress": metrics["f_dress"],
                     "spectral_ratio": spectral,
+                    "n_triangles": np.nan,
+                    "n_valid_triangles": np.nan,
+                    "defect_density": np.nan,
                     "null_method": "",
                     "null_seed": "",
                     "window_null_seed": "",
@@ -293,6 +328,37 @@ def run(
                     row["pcist_proxy"] = pci_val
                 rows.append(row)
 
+                if compute_phase_grid_topology and topo_idx is not None and topo_tri is not None and band_name in band_phase_amp:
+                    phase_band, amp_band = band_phase_amp[band_name]
+                    try:
+                        topo_metrics = phase_grid_topology_from_band(
+                            phase_band[topo_idx, :],
+                            topo_xy,
+                            topo_tri,
+                            amplitude=amp_band[topo_idx, :],
+                            amp_quantile=amp_quantile,
+                        )
+                        topo_row = {
+                            **tmpl,
+                            "band": band_name,
+                            "metric_kind": "phase_grid_topology",
+                            "Q": topo_metrics["Q"],
+                            "Qabs": topo_metrics["Qabs"],
+                            "phase_grad": topo_metrics["phase_grad"],
+                            "f_dress": topo_metrics["f_dress"],
+                            "spectral_ratio": spectral,
+                            "n_triangles": topo_metrics["n_triangles"],
+                            "n_valid_triangles": topo_metrics["n_valid_triangles"],
+                            "defect_density": topo_metrics["defect_density"],
+                            "null_method": "",
+                            "null_seed": "",
+                            "window_null_seed": "",
+                        }
+                        if compute_pci:
+                            topo_row["pcist_proxy"] = pci_val
+                        rows.append(topo_row)
+                    except Exception:
+                        pass
                 for method, null_band_phases in null_phase_cache.items():
                     if band_name not in null_band_phases:
                         continue
@@ -327,6 +393,9 @@ def run(
                     "phase_grad": legacy["phase_grad"],
                     "f_dress": legacy["f_dress"],
                     "spectral_ratio": spectral,
+                    "n_triangles": np.nan,
+                    "n_valid_triangles": np.nan,
+                    "defect_density": np.nan,
                     "null_method": "",
                     "null_seed": "",
                     "window_null_seed": "",
