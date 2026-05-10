@@ -1,3 +1,8 @@
+.PHONY: validate-governance test-root test-awareness smoke eval-awareness check
+
+validate-governance:
+	python -m governance.validate
+
 test-root:
 	pytest tests/ -v --tb=short
 
@@ -13,8 +18,3 @@ eval-awareness:
 check:
 	$(MAKE) test-root
 	$(MAKE) smoke
-
-.PHONY: validate-governance
-
-validate-governance:
-	python -m governance.validate
