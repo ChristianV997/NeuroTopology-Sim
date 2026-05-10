@@ -17,8 +17,8 @@ def canonical_json(d: Dict[str, Any]) -> str:
     return json.dumps(d, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def _event_id(stage: str, run_id: str, payload: Dict[str, Any]) -> str:
-    blob = canonical_json({"run_id": run_id, "stage": stage, "payload": payload})
+def _event_id(stage: str, run_id: str, status: str, payload: Dict[str, Any]) -> str:
+    blob = canonical_json({"run_id": run_id, "stage": stage, "status": status, "payload": payload})
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
@@ -48,7 +48,7 @@ class EventEnvelope:
     ) -> "EventEnvelope":
         payload = payload or {}
         ts = (_now or datetime.now(timezone.utc)).isoformat()
-        eid = _event_id(stage, run_id, payload)
+        eid = _event_id(stage, run_id, status, payload)
         return cls(
             event_id=eid,
             run_id=run_id,

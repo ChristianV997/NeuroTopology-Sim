@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .run_record_schema import (
+from runs.run_record import (
     CONFOUNDS_CHECKLIST,
-    RunRecord,
+    RunRecordV1 as RunRecord,
     build_run_id,
     canonicalize_paths,
     validate_run_record_dict,
@@ -119,7 +119,7 @@ def save_run_record_json(record: RunRecord, out_dir: Path) -> Path:
     stem = _artifact_stem(ts_compact, record.run_id)
     path = out_dir / f"{stem}.run.json"
 
-    d = record.to_json_dict()
+    d = record.to_sim_dict()
     errors = validate_run_record_dict(d)
     if errors:
         raise ValueError(f"RunRecord validation failed: {errors}")
@@ -160,13 +160,20 @@ def build_run_record(
     ts_compact = _compact_ts(now)
     stem = _artifact_stem(ts_compact, run_id)
 
+    def _repo_rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(_REPO_ROOT))
+        except ValueError:
+            return str(p)
+
     artifacts: Dict[str, str] = {
-        "md_path": f"outputs/run_cards/{stem}.md",
-        "json_path": f"outputs/run_cards/{stem}.run.json",
+        "md_path": _repo_rel(_out_dir / f"{stem}.md"),
+        "json_path": _repo_rel(_out_dir / f"{stem}.run.json"),
     }
 
     record = RunRecord(
         run_id=run_id,
+        run_kind=mode,
         created_at=_iso_ts(now),
         mode=mode,
         repo=repo,

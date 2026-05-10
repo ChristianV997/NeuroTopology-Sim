@@ -107,3 +107,57 @@ def test_run_physics_valid_npy(tmp_path):
     assert {"z", "Q", "Qabs"}.issubset(df.columns)
     assert len(df) > 0
     assert (tmp_path / "out.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# hypothesis pipeline
+# ---------------------------------------------------------------------------
+
+def test_hypothesis_run_writes_summary_json(tmp_path):
+    from pipelines.hypothesis import run
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "spec_id: TEST-001\nclaim_type: test\nsim_params:\n  N: 8\n  n_steps: 5\n  seed: 0\n"
+    )
+    run(spec, tmp_path / "out")
+    assert (tmp_path / "out" / "summary.json").exists()
+
+
+def test_hypothesis_run_writes_run_record_json(tmp_path):
+    from pipelines.hypothesis import run
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "spec_id: TEST-002\nsim_params:\n  N: 8\n  n_steps: 5\n  seed: 1\n"
+    )
+    run(spec, tmp_path / "out")
+    assert (tmp_path / "out" / "RunRecord.json").exists()
+
+
+def test_hypothesis_run_record_keys(tmp_path):
+    import json
+    from pipelines.hypothesis import run
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "spec_id: TEST-003\nverdict_threshold:\n  I_mean_min: 0.0\nsim_params:\n  N: 8\n  n_steps: 5\n  seed: 2\n"
+    )
+    run(spec, tmp_path / "out")
+    data = json.loads((tmp_path / "out" / "RunRecord.json").read_text())
+    assert data["run_kind"] == "hypothesis"
+    assert data["spec_id"] == "TEST-003"
+    assert "I_mean" in data["metrics"]
+    assert data["verdict"] in ("PASS", "FAIL")
+
+
+def test_hypothesis_run_record_run_id_stable(tmp_path):
+    import json
+    from pathlib import Path
+    from pipelines.hypothesis import run
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "spec_id: STABLE-001\nsim_params:\n  N: 8\n  n_steps: 3\n  seed: 7\n"
+    )
+    run(spec, tmp_path / "out1")
+    run(spec, tmp_path / "out2")
+    r1 = json.loads((tmp_path / "out1" / "RunRecord.json").read_text())
+    r2 = json.loads((tmp_path / "out2" / "RunRecord.json").read_text())
+    assert r1["run_id"] == r2["run_id"]

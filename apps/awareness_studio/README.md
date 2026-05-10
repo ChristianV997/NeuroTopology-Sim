@@ -184,7 +184,83 @@ inputs/notion_export/*.md
         └─ EmbeddingIndex      ← INDEX_BACKEND=embedding (openai or stub)
         ↓ prompts.py + answer_modes.py  (Monk+Scientist templates)
         ↓ llm_client.py       (BaseLLMClient → AnthropicClient | OpenAIClient)
-   chat_cli.py           --mode --stream
+   chat_cli.py           --mode --stream --tools
    book_generator.py     --quadrant --chapter --words --stream
    eval_runner.py        --no-llm | full LLM
+   web/app.py            FastAPI + SSE + Control Panel UI
+        ├─ tool_router.py        pubmed_search | biorxiv_search | linear_list_issues
+        └─ integrations/
+              airtable_client.py  REST v0 client (stdlib urllib)
+              airtable_sync.py    Ops Mirror: Runs / Claims / Work Queue
+```
+
+---
+
+## Airtable Ops Mirror
+
+Airtable is an **optional, write-gated** ops layer — not canonical knowledge.
+Writes are disabled by default and require both the env flag and an explicit CLI/API flag.
+
+```bash
+# 1. Set env vars in .env
+AIRTABLE_ENABLED=true
+AIRTABLE_API_KEY=patXXXXXXXXXXXXXX   # Personal Access Token from airtable.com/account
+AIRTABLE_BASE_ID=appXXXXXXXXXXXXXX   # Base ID from Airtable API docs URL
+
+# 2. Create tables in your base (column names must match exactly):
+#    Runs:       run_id | mode | timestamp | input_hash | metrics_json | artifacts_json | run_card_path | summary | notes
+#    Claims:     claim_id | claim_text | claim_type | status | confounds | discriminator | linked_runs
+#    Work Queue: task | priority | repo | status | links
+
+# 3. Check status (no API calls)
+awareness-airtable status
+
+# 4. Dry-run sync (safe — shows what would be written)
+awareness-airtable sync-runs
+
+# 5. Live write (requires AIRTABLE_ENABLED=true)
+awareness-airtable sync-runs --allow-write
+```
+
+**Safety gates:**
+- `AIRTABLE_ENABLED=false` (default) — all mutations blocked at client level
+- `--allow-write` must be passed explicitly; web endpoint requires `?allow_write=true`
+- Reads (`/airtable/status`) always safe — no API calls, config check only
+- Claims and Work Queue are read-only stubs pending schema finalization
+
+---
+
+## Control Panel (Web UI)
+
+```bash
+# Start the server
+uvicorn awareness_studio.web.app:app --reload --port 8000
+
+# Open in browser
+open http://localhost:8000
+```
+
+Features: chat with SSE streaming · mode selector · tools toggle · sources panel · tool_calls panel · sidebar buttons for tools/list, literature search, evidence card drafts, Linear issues, Airtable status/sync.
+
+**Deploy on Replit:**
+1. Fork the repo into Replit
+2. Replit auto-reads `.replit` and runs `uvicorn` on `$PORT`
+3. Set secrets: `ANTHROPIC_API_KEY`, optionally `AIRTABLE_API_KEY`, `LINEAR_API_KEY`
+4. Click Run — the Control Panel opens on the Replit URL
+
+**CORS (for Expo / mobile):**
+```bash
+CORS_ALLOW_ORIGINS=*   # or comma-separated origins
+```
+
+**Stable `/chat` schema (Expo-ready):**
+```json
+{
+  "answer": "...",
+  "sources_used": ["c1", "c2"],
+  "tool_calls": [{"tool_name": "pubmed_search", "success": true, "result_summary": "returned 3 results"}],
+  "mode": "EXPLAIN",
+  "request_id": "req-abc123",
+  "retrieved": 8
+}
 ```

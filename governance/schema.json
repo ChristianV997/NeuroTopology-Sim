@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HypothesisSpec",
+  "description": "Awareness Research v0.2 hypothesis specification for governance-gated simulation runs.",
+  "type": "object",
+  "required": ["id", "title", "claim_type", "layer", "summary"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^HYP-[0-9]{8}-[0-9]+$",
+      "description": "Unique identifier, format HYP-YYYYMMDD-NNN"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "claim_type": {
+      "type": "string",
+      "enum": ["M", "K", "C"],
+      "description": "M=Marker, K=Known, C=Causal"
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["Marker", "Topology", "Substrate"]
+    },
+    "summary": { "type": "string", "minLength": 1 },
+    "discriminator": {
+      "type": "object",
+      "required": ["description", "mode"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "mode": {
+          "type": "string",
+          "enum": ["stimulus_sweep", "dataset_contrast", "transition_probe"]
+        },
+        "config": { "type": "object" }
+      }
+    },
+    "readouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "module": { "type": "string" }
+        }
+      }
+    },
+    "controls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "config": { "type": "object" }
+        }
+      }
+    },
+    "alternatives_considered": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Required for claim_type C"
+    },
+    "data": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["openneuro", "synthetic", "external", "tribe_future"]
+        },
+        "dataset_id": { "type": "string" },
+        "params": { "type": "object" }
+      }
+    },
+    "pass_fail": {
+      "type": "object",
+      "properties": {
+        "criteria": { "type": "string" },
+        "thresholds": {
+          "type": "object",
+          "description": "Non-empty required for claim_type C"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "expected": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "if": {
+    "properties": { "claim_type": { "enum": ["K", "C"] } }
+  },
+  "then": {
+    "required": ["discriminator", "controls", "readouts"]
+  }
+}

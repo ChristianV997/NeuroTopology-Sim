@@ -99,4 +99,4 @@ class EmbeddingIndex:
             key=lambda x: x[1],
             reverse=True,
         )
-        return [(self.chunks[i], s) for i, s in scores[:k] if s > 0]
+        return [(self.chunks[i], s) for i, s in scores[:k]]

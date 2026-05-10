@@ -406,9 +406,8 @@ class Orchestrator:
 
     @staticmethod
     def _make_run_id(cfg: OrchestratorConfig, now: datetime) -> str:
-        blob = json.dumps(
-            {"seed": cfg.seed, "dry_run": cfg.dry_run,
-             "ts": now.isoformat()},
-            sort_keys=True,
-        )
+        d: dict = {"seed": cfg.seed, "dry_run": cfg.dry_run}
+        if not cfg.dry_run:
+            d["ts"] = now.isoformat()
+        blob = json.dumps(d, sort_keys=True)
         return hashlib.sha256(blob.encode()).hexdigest()[:16]

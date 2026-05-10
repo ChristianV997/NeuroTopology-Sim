@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class EventLog:
-    """Thread-safe append-only JSONL log rooted at out_dir/events.jsonl."""
+    """Append-only JSONL log rooted at out_dir/events.jsonl.
+
+    Not process-safe; callers should serialize concurrent writes externally.
+    """
 
     def __init__(self, out_dir: Path) -> None:
         self._path = Path(out_dir) / "events.jsonl"
