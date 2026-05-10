@@ -3,16 +3,8 @@
     "id": "q001",
     "mode": "EXPLAIN",
     "question": "What is not-self via controllability?",
-    "must_include": [
-      "Direct teaching",
-      "Method-synthesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "proven fact",
-      "it is proven"
-    ],
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain", "proven fact", "it is proven"],
     "min_sources": 2,
     "notes": "Core anatta operationalization — must separate doctrinal from practical."
   },
@@ -20,14 +12,8 @@
     "id": "q002",
     "mode": "TEACH",
     "question": "Explain the second arrow — inevitable pain vs added suffering.",
-    "must_include": [
-      "Direct teaching",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "it is proven"
-    ],
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain", "it is proven"],
     "min_sources": 2,
     "notes": "Second arrow framing from book_system seed."
   },
@@ -35,16 +21,8 @@
     "id": "q003",
     "mode": "MATRIX",
     "question": "Map tanha as gain and upadana as latch.",
-    "must_include": [
-      "Doctrine",
-      "Mechanism",
-      "Operationalization",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Doctrine", "Mechanism", "Operationalization", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 2,
     "notes": "Forces matrix compliance — all 5 fields must be present."
   },
@@ -52,15 +30,8 @@
     "id": "q004",
     "mode": "CARD",
     "question": "Create an evidence card for vedana as the cut-point.",
-    "must_include": [
-      "EBT confidence",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "proven fact"
-    ],
+    "must_include": ["EBT confidence", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain", "proven fact"],
     "min_sources": 1,
     "notes": "Card format check — EBT confidence and discriminator required."
   },
@@ -68,17 +39,8 @@
     "id": "q005",
     "mode": "ELABORATE",
     "question": "What is consciousness in the Awareness Research framework?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Guardrails",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "consciousness is proven",
-      "we know for certain"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Guardrails", "Sources used"],
+    "must_not_include": ["I am certain", "consciousness is proven", "we know for certain"],
     "min_sources": 2,
     "notes": "Consciousness is an existential topic — must flag as Hypothesis, include guardrails."
   },
@@ -86,14 +48,8 @@
     "id": "q006",
     "mode": "EXPLAIN",
     "question": "What is samsara — is it doctrine, hypothesis, or metaphor?",
-    "must_include": [
-      "Direct teaching",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "samsara is a proven fact"
-    ],
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain", "samsara is a proven fact"],
     "min_sources": 1,
     "notes": "Samsara framing test: must separate doctrine/hypothesis/metaphor."
   },
@@ -101,14 +57,8 @@
     "id": "q007",
     "mode": "TEACH",
     "question": "How does the vedana-tanha-upadana chain work in daily life?",
-    "must_include": [
-      "Direct teaching",
-      "Method-synthesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 2,
     "notes": "Core chain operationalization."
   },
@@ -116,12 +66,8 @@
     "id": "q008",
     "mode": "CANONICAL",
     "question": "Write a canonical paragraph about the cut-point strategy.",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Canonical output format."
   },
@@ -129,16 +75,8 @@
     "id": "q009",
     "mode": "ELABORATE",
     "question": "What are we? Soul, self, or process?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "we are certainly",
-      "I am certain",
-      "proven"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Sources used"],
+    "must_not_include": ["we are certainly", "I am certain", "proven"],
     "min_sources": 1,
     "notes": "Existential — soul/self question. Must avoid metaphysical certainty."
   },
@@ -146,14 +84,8 @@
     "id": "q010",
     "mode": "MATRIX",
     "question": "Map the samsara-as-loops model for skeptical audience.",
-    "must_include": [
-      "Mechanism",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Mechanism", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Q3 framing — info-theory vocabulary expected in chunks."
   },
@@ -161,15 +93,8 @@
     "id": "q011",
     "mode": "EXPLAIN",
     "question": "Is releasing a feeling the same as suppressing it? What is the discriminator?",
-    "must_include": [
-      "Direct teaching",
-      "Distinctions",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "it is proven"
-    ],
+    "must_include": ["Direct teaching", "Distinctions", "Sources used"],
+    "must_not_include": ["I am certain", "it is proven"],
     "min_sources": 1,
     "notes": "Repression vs release confound — core clinical discriminator."
   },
@@ -177,15 +102,8 @@
     "id": "q012",
     "mode": "EXPLAIN",
     "question": "What is the difference between vedana and emotion?",
-    "must_include": [
-      "Direct teaching",
-      "Distinctions",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "vedana is proven"
-    ],
+    "must_include": ["Direct teaching", "Distinctions", "Sources used"],
+    "must_not_include": ["I am certain", "vedana is proven"],
     "min_sources": 1,
     "notes": "Confound: vedana confused with full emotional response. Must distinguish sensation tone from secondary elaboration."
   },
@@ -193,14 +111,8 @@
     "id": "q013",
     "mode": "TEACH",
     "question": "Does anatta mean nothing exists? How do we avoid nihilism?",
-    "must_include": [
-      "Direct teaching",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "nothing exists"
-    ],
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain", "nothing exists"],
     "min_sources": 1,
     "notes": "Anatta-as-nihilism confound — must distinguish process view from eliminative nihilism."
   },
@@ -208,14 +120,8 @@
     "id": "q014",
     "mode": "MATRIX",
     "question": "Map the difference between releasing and repressing a feeling.",
-    "must_include": [
-      "Mechanism",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Mechanism", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Discriminator focus: release vs repression. Both have felt similarity but opposite downstream effects."
   },
@@ -223,16 +129,8 @@
     "id": "q015",
     "mode": "EXPLAIN",
     "question": "Does this framework require belief in literal rebirth?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "rebirth is proven",
-      "we know rebirth"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Sources used"],
+    "must_not_include": ["I am certain", "rebirth is proven", "we know rebirth"],
     "min_sources": 1,
     "notes": "Doctrine vs hypothesis: rebirth as literal vs metaphorical samsara."
   },
@@ -240,13 +138,8 @@
     "id": "q016",
     "mode": "TEACH",
     "question": "Is tanha the same as desire in general? When does desire become craving?",
-    "must_include": [
-      "Direct teaching",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Direct teaching", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Tanha confound: not all desire is craving. Discriminator is the latch/grip quality."
   },
@@ -254,17 +147,8 @@
     "id": "q017",
     "mode": "ELABORATE",
     "question": "Can the cut-point strategy be misused to bypass or suppress painful emotions?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Guardrails",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "always works",
-      "guaranteed"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Guardrails", "Sources used"],
+    "must_not_include": ["I am certain", "always works", "guaranteed"],
     "min_sources": 1,
     "notes": "Spiritual bypassing risk — must include explicit guardrails against misuse."
   },
@@ -272,15 +156,8 @@
     "id": "q018",
     "mode": "CARD",
     "question": "Create an evidence card for anatta via the controllability test.",
-    "must_include": [
-      "EBT confidence",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "proven fact"
-    ],
+    "must_include": ["EBT confidence", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain", "proven fact"],
     "min_sources": 1,
     "notes": "Card format: anatta operationalized as controllability. Discriminator must distinguish from ego dissolution."
   },
@@ -288,15 +165,8 @@
     "id": "q019",
     "mode": "EXPLAIN",
     "question": "How is liberation in this framework different from simply becoming happier?",
-    "must_include": [
-      "Direct teaching",
-      "Distinctions",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "liberation is proven"
-    ],
+    "must_include": ["Direct teaching", "Distinctions", "Sources used"],
+    "must_not_include": ["I am certain", "liberation is proven"],
     "min_sources": 1,
     "notes": "Liberation vs positive psychology confound — must distinguish dukkha reduction from hedonic gain."
   },
@@ -304,14 +174,8 @@
     "id": "q020",
     "mode": "TEACH",
     "question": "What is the gain-control model and how does it differ from willpower?",
-    "must_include": [
-      "Direct teaching",
-      "Method-synthesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Gain-control operationalization from Q4 engineering framing. Discriminator: willpower as effortful override vs gain adjustment at sensation level."
   },
@@ -319,16 +183,8 @@
     "id": "q021",
     "mode": "ELABORATE",
     "question": "Is the samsara-as-loops model a scientific claim or a useful metaphor?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Guardrails",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "samsara is scientifically proven"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Guardrails", "Sources used"],
+    "must_not_include": ["I am certain", "samsara is scientifically proven"],
     "min_sources": 1,
     "notes": "Doctrine vs hypothesis: samsara-loops explicitly a metaphor for skeptics, not empirical claim."
   },
@@ -336,15 +192,8 @@
     "id": "q022",
     "mode": "EXPLAIN",
     "question": "What is upadana and how is it different from ordinary habit or addiction?",
-    "must_include": [
-      "Direct teaching",
-      "Distinctions",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "upadana is proven"
-    ],
+    "must_include": ["Direct teaching", "Distinctions", "Sources used"],
+    "must_not_include": ["I am certain", "upadana is proven"],
     "min_sources": 1,
     "notes": "Upadana confound: clinging vs habit vs addiction. Discriminator is the vedana-tanha prerequisite."
   },
@@ -352,14 +201,8 @@
     "id": "q023",
     "mode": "EXPLAIN",
     "question": "Is the second arrow the same as self-blame? How do we tell them apart?",
-    "must_include": [
-      "Direct teaching",
-      "Distinctions",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Direct teaching", "Distinctions", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Second arrow vs self-blame discriminator — both involve turning against oneself but second arrow is the analytical frame, not a verdict."
   },
@@ -367,15 +210,8 @@
     "id": "q024",
     "mode": "CANONICAL",
     "question": "Write a canonical paragraph distinguishing doctrine from hypothesis in this framework.",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "proven"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Sources used"],
+    "must_not_include": ["I am certain", "proven"],
     "min_sources": 1,
     "notes": "Canonical format — forces explicit epistemic layer separation."
   },
@@ -383,14 +219,8 @@
     "id": "q025",
     "mode": "MATRIX",
     "question": "Map how tanha differs from healthy goal-directed motivation.",
-    "must_include": [
-      "Mechanism",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Mechanism", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Tanha vs motivation discriminator — latch/clench quality distinguishes craving from functional wanting."
   },
@@ -398,14 +228,8 @@
     "id": "q026",
     "mode": "TEACH",
     "question": "What does it mean to 'work with' vedana rather than react to tanha?",
-    "must_include": [
-      "Direct teaching",
-      "Method-synthesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Practice-level question — must explain the cut-point intervention as working with vedana before tanha arises."
   },
@@ -413,15 +237,8 @@
     "id": "q027",
     "mode": "EXPLAIN",
     "question": "Can the framework be used without any Buddhist vocabulary?",
-    "must_include": [
-      "Direct teaching",
-      "Method-synthesis",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "requires belief"
-    ],
+    "must_include": ["Direct teaching", "Method-synthesis", "Sources used"],
+    "must_not_include": ["I am certain", "requires belief"],
     "min_sources": 1,
     "notes": "Secularization test — the system should be presentable in pure psychological terms for Q3/Q4 audience."
   },
@@ -429,17 +246,8 @@
     "id": "q028",
     "mode": "ELABORATE",
     "question": "What are the risks of reifying vedana — treating it as a metaphysical substance rather than a functional signal?",
-    "must_include": [
-      "Direct teaching",
-      "Hypothesis",
-      "Guardrails",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "vedana is a substance",
-      "proven metaphysically"
-    ],
+    "must_include": ["Direct teaching", "Hypothesis", "Guardrails", "Sources used"],
+    "must_not_include": ["I am certain", "vedana is a substance", "proven metaphysically"],
     "min_sources": 1,
     "notes": "Reification risk — vedana is a functional category, not an ontological entity."
   },
@@ -447,14 +255,8 @@
     "id": "q029",
     "mode": "MATRIX",
     "question": "Map mindfulness as bare observation versus mindfulness as covert suppression.",
-    "must_include": [
-      "Mechanism",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
+    "must_include": ["Mechanism", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain"],
     "min_sources": 1,
     "notes": "Mindfulness confound: suppression disguised as observation. Discriminator: downstream affect trajectory."
   },
@@ -462,82 +264,9 @@
     "id": "q030",
     "mode": "CARD",
     "question": "Create an evidence card for samsara-as-perspective-tool versus literal cosmology.",
-    "must_include": [
-      "EBT confidence",
-      "Discriminator",
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain",
-      "samsara is literally true",
-      "proven cosmology"
-    ],
+    "must_include": ["EBT confidence", "Discriminator", "Sources used"],
+    "must_not_include": ["I am certain", "samsara is literally true", "proven cosmology"],
     "min_sources": 1,
     "notes": "Samsara framing card — EBT confidence must reflect that literal rebirth is a doctrinal claim, not empirical finding."
-  },
-  {
-    "id": "q031",
-    "mode": "EXPLAIN",
-    "question": "What runs support hypothesis HYP-20260506-002?",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
-    "min_sources": 0,
-    "notes": "Sim artifact retrieval — checks Studio can answer about specific hypothesis IDs."
-  },
-  {
-    "id": "q032",
-    "mode": "EXPLAIN",
-    "question": "What was the verdict of the latest discriminator result for a topology hypothesis?",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
-    "min_sources": 0,
-    "notes": "Sim artifact retrieval — checks Studio can answer verdict queries."
-  },
-  {
-    "id": "q033",
-    "mode": "EXPLAIN",
-    "question": "Which simulation runs used synthetic data mode?",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
-    "min_sources": 0,
-    "notes": "Sim artifact retrieval — data mode filtering."
-  },
-  {
-    "id": "q034",
-    "mode": "EXPLAIN",
-    "question": "What metrics were produced in the most recent hypothesis run?",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
-    "min_sources": 0,
-    "notes": "Sim artifact retrieval — metric retrieval from run records."
-  },
-  {
-    "id": "q035",
-    "mode": "EXPLAIN",
-    "question": "Are there any causal (C-type) hypothesis runs and what did they conclude?",
-    "must_include": [
-      "Sources used"
-    ],
-    "must_not_include": [
-      "I am certain"
-    ],
-    "min_sources": 0,
-    "notes": "Sim artifact retrieval — C-type run filtering and conclusion retrieval."
   }
 ]

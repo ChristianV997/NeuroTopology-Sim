@@ -75,7 +75,7 @@ def _openai_embed_batch(texts: List[str]) -> List[List[float]]:
         },
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=config.OPENAI_TIMEOUT_S) as resp:
             result = json.load(resp)
     except urllib.error.HTTPError as exc:
         body = exc.read().decode(errors="replace")
