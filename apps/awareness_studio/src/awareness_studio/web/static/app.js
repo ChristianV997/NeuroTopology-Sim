@@ -338,6 +338,14 @@ async function runCommand(cmd, btn) {
       const d = await r.json();
       showResults('Airtable Sync', d);
 
+    } else if (cmd === 'orchestrate-dry-run') {
+      await runOrchestrateDryRun();
+      return; // panel handles its own state
+
+    } else if (cmd === 'runs-recent') {
+      const d = await (await fetch(BASE + '/cmd/runs/recent')).json();
+      showResults('Recent Orchestrator Runs', d);
+
     } else if (cmd === 'health') {
       const d = await (await fetch(BASE + '/health')).json();
       showResults('Health', d);
@@ -349,5 +357,104 @@ async function runCommand(cmd, btn) {
     label.textContent = origText;
     // deactivate button after a moment so it's clear it ran
     setTimeout(() => btn.classList.remove('active'), 1500);
+  }
+}
+
+// ── Orchestrator panel ────────────────────────────────────────────────────────
+
+const orchPanel = document.getElementById('orch-panel');
+const orchStages = document.getElementById('orch-stages');
+const orchArtifacts = document.getElementById('orch-artifacts');
+const orchRunId = document.getElementById('orch-run-id');
+const orchClose = document.getElementById('orch-close');
+
+orchClose.addEventListener('click', () => orchPanel.classList.add('hidden'));
+
+const STAGE_ICONS = {
+  start: '○', ok: '●', error: '✕', skip: '–',
+};
+
+function orchShowStage(stage, status, durMs) {
+  let el = document.getElementById('orch-stage-' + stage);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'orch-stage-' + stage;
+    el.className = 'orch-stage';
+    el.innerHTML = `<span class="st-icon"></span><span class="st-name">${stage}</span><span class="st-dur"></span>`;
+    orchStages.appendChild(el);
+  }
+  el.className = 'orch-stage ' + status;
+  el.querySelector('.st-icon').textContent = STAGE_ICONS[status] || '?';
+  if (durMs !== undefined) el.querySelector('.st-dur').textContent = durMs.toFixed(0) + 'ms';
+}
+
+async function runOrchestrateDryRun() {
+  orchStages.innerHTML = '';
+  orchArtifacts.innerHTML = '';
+  orchRunId.textContent = '…';
+  orchPanel.classList.remove('hidden');
+
+  const orchBtn = document.getElementById('orch-btn');
+  if (orchBtn) orchBtn.disabled = true;
+
+  try {
+    const resp = await fetch(BASE + '/cmd/orchestrate?dry_run=true', { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      orchStages.innerHTML = `<div style="color:#f44336">Error: ${err.detail || resp.statusText}</div>`;
+      return;
+    }
+    const result = await resp.json();
+    orchRunId.textContent = result.run_id || '';
+
+    // Show stages
+    for (const stage of result.stages_completed || []) {
+      orchShowStage(stage, 'ok');
+    }
+    for (const stage of result.stages_failed || []) {
+      orchShowStage(stage, 'error');
+    }
+
+    // Stream events for timing info
+    if (result.run_id) {
+      try {
+        const evResp = await fetch(BASE + '/cmd/orchestrate/stream?run_id=' + result.run_id);
+        const reader = evResp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+            try {
+              const ev = JSON.parse(line.slice(6));
+              if (ev.status === 'ok' && ev.duration_ms !== undefined) {
+                orchShowStage(ev.stage, 'ok', ev.duration_ms);
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
+      // Show artifacts
+      const artResp = await fetch(BASE + '/cmd/runs/' + result.run_id + '/artifacts');
+      if (artResp.ok) {
+        const artData = await artResp.json();
+        orchArtifacts.innerHTML = '<strong style="font-size:11px">Artifacts</strong><br>';
+        for (const fname of Object.keys(artData.artifacts || {})) {
+          const a = document.createElement('a');
+          a.href = BASE + '/cmd/runs/' + result.run_id + '/file/' + fname;
+          a.target = '_blank';
+          a.textContent = fname;
+          orchArtifacts.appendChild(a);
+        }
+      }
+    }
+  } finally {
+    if (orchBtn) orchBtn.disabled = false;
   }
 }

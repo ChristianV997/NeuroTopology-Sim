@@ -13,6 +13,7 @@ os.environ.setdefault("AIRTABLE_ENABLED", "false")
 from awareness_studio.integrations.airtable_sync import (
     RunCard,
     SyncSummary,
+    _load_run_cards,
     airtable_status,
     make_run_card,
     save_run_card,
@@ -276,3 +277,99 @@ def test_airtable_sync_runs_dry_run_endpoint():
     data = resp.json()
     assert "dry_run" in data
     assert data["dry_run"] is True
+
+
+# ── RunRecord v1 format support ───────────────────────────────────────────────
+
+def _run_record_v1_dict(run_id="abcdef1234567890"):
+    return {
+        "schema_version": "1",
+        "run_id": run_id,
+        "created_at": "2025-01-15T12:00:00+00:00",
+        "mode": "psi",
+        "repo": "ScienceR-Dsim",
+        "git_commit": "abc1234",
+        "argv": [],
+        "input": {"N": 16, "n_steps": 5, "seed": 42},
+        "metrics": {
+            "I_mean": 0.5, "I_std": 0.1, "I_final": 0.45,
+            "vort_mean": 1.2, "n_steps": 5.0,
+            "Qz_mean": 0.0, "Qabs_mean": 0.0, "f_dress": 0.0,
+        },
+        "artifacts": {
+            "md_path": "outputs/run_cards/run_20250115T120000_abcdef12.md",
+            "json_path": "outputs/run_cards/run_20250115T120000_abcdef12.run.json",
+        },
+        "confounds": ["reproducibility_seed_fixed"],
+        "guardrails": {"I_final_above_zero": True},
+        "h8_falsifiers": [{"prediction": "I>0", "discriminator": "I<=0", "status": "PASS"}],
+        "notes": "test run",
+    }
+
+
+def test_run_card_from_run_record_v1_parses():
+    data = _run_record_v1_dict()
+    card = RunCard.from_run_record_v1(data, path="/tmp/test.run.json")
+    assert card.run_id == data["run_id"]
+    assert card.mode == "psi"
+
+
+def test_run_card_from_run_record_v1_timestamp_from_created_at():
+    data = _run_record_v1_dict()
+    card = RunCard.from_run_record_v1(data)
+    assert card.timestamp == "2025-01-15T12:00:00+00:00"
+
+
+def test_run_card_from_run_record_v1_artifacts_as_list():
+    data = _run_record_v1_dict()
+    card = RunCard.from_run_record_v1(data)
+    assert isinstance(card.artifacts, list)
+    assert any("md" in a for a in card.artifacts)
+
+
+def test_run_card_from_run_record_v1_md_path_in_notes():
+    data = _run_record_v1_dict()
+    card = RunCard.from_run_record_v1(data)
+    assert "md_path" in card.notes
+
+
+def test_run_card_from_run_record_v1_input_hash_deterministic():
+    data = _run_record_v1_dict()
+    c1 = RunCard.from_run_record_v1(data)
+    c2 = RunCard.from_run_record_v1(data)
+    assert c1.input_hash == c2.input_hash
+
+
+def test_run_card_from_run_record_v1_missing_field_raises():
+    data = _run_record_v1_dict()
+    del data["run_id"]
+    with pytest.raises(ValueError, match="missing required keys"):
+        RunCard.from_run_record_v1(data)
+
+
+def test_load_run_cards_detects_v1_format(tmp_path):
+    import json as _json
+    path = tmp_path / "test.run.json"
+    path.write_text(_json.dumps(_run_record_v1_dict()), encoding="utf-8")
+    cards = _load_run_cards([path])
+    assert len(cards) == 1
+    assert cards[0].mode == "psi"
+
+
+def test_load_run_cards_v1_airtable_fields_valid(tmp_path):
+    import json as _json
+    path = tmp_path / "test.run.json"
+    path.write_text(_json.dumps(_run_record_v1_dict()), encoding="utf-8")
+    cards = _load_run_cards([path])
+    fields = cards[0].to_airtable_fields()
+    assert "run_id" in fields
+    assert "metrics_json" in fields
+
+
+def test_sync_runs_discovers_v1_json(tmp_path):
+    import json as _json
+    path = tmp_path / "test.run.json"
+    path.write_text(_json.dumps(_run_record_v1_dict()), encoding="utf-8")
+    summary = sync_runs_from_run_cards(run_cards_dir=tmp_path, allow_write=False)
+    assert summary.total == 1
+    assert len(summary.planned) == 1

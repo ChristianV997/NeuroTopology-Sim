@@ -26,6 +26,15 @@
   </button>
 
   <div class="sidebar-divider"></div>
+  <div class="sidebar-section">Orchestrator</div>
+  <button class="sidebar-btn" data-cmd="orchestrate-dry-run" id="orch-btn">
+    <span class="icon">▶</span><span class="label">Orchestrate Dry Run</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="runs-recent">
+    <span class="icon">☰</span><span class="label">Recent runs</span>
+  </button>
+
+  <div class="sidebar-divider"></div>
   <div class="sidebar-section">Tools</div>
   <button class="sidebar-btn" data-cmd="tools-list">
     <span class="icon">⚙</span><span class="label">List tools</span>
@@ -93,6 +102,17 @@
     </div>
   </div>
 </main>
+
+<!-- ── Orchestrator log panel ── -->
+<div id="orch-panel" class="orch-panel hidden">
+  <div id="orch-header">
+    <span id="orch-title">Orchestrator</span>
+    <span id="orch-run-id" class="mono muted"></span>
+    <button id="orch-close">×</button>
+  </div>
+  <div id="orch-stages"></div>
+  <div id="orch-artifacts"></div>
+</div>
 
 <!-- ── Results slide-over ── -->
 <div id="results-panel">
