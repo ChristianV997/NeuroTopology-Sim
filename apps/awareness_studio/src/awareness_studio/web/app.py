@@ -468,8 +468,8 @@ async def cmd_run_file(run_id: str, filename: str):
 @app.get("/cmd/orchestrate/stream")
 async def cmd_orchestrate_stream(run_id: str = Query(...)):
     """Stream orchestrator event log as SSE for a given run_id."""
-    orch_dir = _find_orchestrator_run_dir(run_id)
     from awareness_studio.orchestrator.event_log import EventLog
+    orch_dir = _find_orchestrator_run_dir(run_id)
 
     async def _generate():
         if orch_dir is not None:
