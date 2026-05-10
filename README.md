@@ -69,6 +69,14 @@ Datasets are not embedded. Place them under `data/raw/` using the paths in `data
 pip install -r requirements.txt
 make smoke-core
 make test-core
+make test-awareness
+make test-all
+python main.py --mode qzt --input data/checkpoints
+python main.py --mode eeg --dataset ds002094 --input data/raw/ds002094 --output results/ds002094.csv --compute-pci
+python main.py --mode physics --input /path/to/sample.npy --output results/the_well.csv
+python main.py --mode cross-domain --results-root results --output results/cross_domain.csv
+python main.py --mode external --config config/defaults.yaml --output results/live_sensors.csv --db data/runs.sqlite --max-records 100
+python paper/generate_figures.py --results-root results --output-dir paper/figures
 ```
 
 Direct equivalents if `make` is unavailable:
@@ -117,4 +125,3 @@ For setup details and isolation recommendations, see [docs/contributing.md](docs
 - `analytic_phase_proxy` remains channel-order proxy; `phase_grid_topology` is geometry-aware sensor-space topology.
 - Still exploratory; requires null-control and state-label validation before scientific promotion.
 - Future work: source-space topology and LOC/ROC benchmark.
-

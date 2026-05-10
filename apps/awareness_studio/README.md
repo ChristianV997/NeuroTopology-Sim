@@ -2,6 +2,8 @@
 
 Local app: **Book Generator CLI** + **Guidance Chatbot CLI** backed by Notion-exported knowledge.
 
+For shared smoke/test commands, use the root task runner targets in [the repository Quick start](../../README.md#quick-start) (`make smoke-core`, `make test-core`, `make test-awareness`, `make test-all`).
+
 ## Setup
 
 ## Root task-runner notes
