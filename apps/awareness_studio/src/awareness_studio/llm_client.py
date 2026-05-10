@@ -116,7 +116,7 @@ class OpenAIClient(BaseLLMClient):
             },
         )
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=config.OPENAI_TIMEOUT_S) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode(errors="replace")
@@ -159,7 +159,7 @@ class OpenAIClient(BaseLLMClient):
             },
         )
         try:
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=config.OPENAI_TIMEOUT_S) as resp:
                 for raw_line in resp:
                     line = raw_line.decode("utf-8").rstrip("\n")
                     if not line.startswith("data:"):

@@ -1,0 +1,66 @@
+name: Awareness Studio
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "apps/awareness_studio/**"
+      - "runs/**"
+      - "sim/**"
+      - "governance/**"
+      - "pipelines/hypothesis.py"
+      - ".github/workflows/awareness-studio.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "apps/awareness_studio/**"
+      - "runs/**"
+      - "sim/**"
+      - "governance/**"
+      - "pipelines/hypothesis.py"
+      - ".github/workflows/awareness-studio.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: "Python ${{ matrix.python-version }} — offline tests"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    defaults:
+      run:
+        working-directory: apps/awareness_studio
+
+    env:
+      EMBEDDING_PROVIDER: local_stub
+      EMBEDDING_DIM: "64"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: apps/awareness_studio/pyproject.toml
+
+      - name: Install package + dev + embeddings deps
+        run: pip install -e ".[dev,embeddings]"
+
+      - name: Run offline test suite
+        env:
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: pytest -v --tb=short
+
+      - name: Eval harness — no-llm golden check
+        env:
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: python -m awareness_studio.eval_runner --no-llm --quiet

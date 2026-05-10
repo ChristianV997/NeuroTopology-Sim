@@ -1,1 +1,1 @@
-"""ScienceR D package."""
+"""ScienceR-D package root."""

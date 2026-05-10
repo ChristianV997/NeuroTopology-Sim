@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "awareness-studio"
-version = "0.2.0"
+version = "0.3.0"
 description = "Book Generator + Guidance Chatbot for Awareness Research"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,13 +15,21 @@ dependencies = [
 [project.optional-dependencies]
 openai   = []                    # No SDK needed — uses stdlib urllib
 embeddings = ["numpy>=1.24"]     # Optional fast path for cosine similarity
-dev = ["pytest>=8", "pytest-cov"]
+web = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "aiofiles>=23.0",
+    "httpx>=0.27",
+]
+dev = ["pytest>=8", "pytest-cov", "fastapi>=0.111", "uvicorn[standard]>=0.29", "httpx>=0.27", "aiofiles>=23.0"]
 
 [project.scripts]
 awareness-chat  = "awareness_studio.chat_cli:main"
 awareness-book  = "awareness_studio.book_generator:main"
 awareness-index = "awareness_studio.index_build:main"
 awareness-eval  = "awareness_studio.eval_runner:main"
+awareness-web      = "awareness_studio.web.app:main"
+awareness-airtable = "awareness_studio.airtable_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Awareness Studio — Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>Awareness Studio</h1>
+  <span class="badge">Control Panel</span>
+  <div class="status-dot" title="Backend status"></div>
+  <span class="status-label">connecting…</span>
+</header>
+
+<!-- ── Sidebar ── -->
+<aside>
+  <div class="sidebar-section">Chat</div>
+  <button class="sidebar-btn active" data-cmd="health">
+    <span class="icon">♥</span><span class="label">Health check</span>
+  </button>
+
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-section">Orchestrator</div>
+  <button class="sidebar-btn" data-cmd="orchestrate-dry-run" id="orch-btn">
+    <span class="icon">▶</span><span class="label">Orchestrate Dry Run</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="runs-recent">
+    <span class="icon">☰</span><span class="label">Recent runs</span>
+  </button>
+
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-section">Tools</div>
+  <button class="sidebar-btn" data-cmd="tools-list">
+    <span class="icon">⚙</span><span class="label">List tools</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="lit-search">
+    <span class="icon">🔬</span><span class="label">Literature search</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="lit-card">
+    <span class="icon">📋</span><span class="label">Evidence card draft</span>
+  </button>
+
+  <div class="sidebar-divider"></div>
+  <div class="sidebar-section">Integrations</div>
+  <button class="sidebar-btn" data-cmd="linear-search">
+    <span class="icon">◈</span><span class="label">Linear issues</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="airtable-status">
+    <span class="icon">⊞</span><span class="label">Airtable status</span>
+  </button>
+  <button class="sidebar-btn" data-cmd="airtable-sync">
+    <span class="icon">↑</span><span class="label">Airtable sync runs</span>
+  </button>
+</aside>
+
+<!-- ── Main ── -->
+<main>
+  <!-- Chat history -->
+  <div id="chat-history">
+    <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 0;">
+      Ask anything about vedanā, taṇhā, upādāna, samsara, or the Awareness Research framework.
+    </div>
+  </div>
+
+  <!-- Input bar -->
+  <div id="input-bar">
+    <div class="input-controls">
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="mode-select">Mode</label>
+        <select id="mode-select">
+          <option value="EXPLAIN">EXPLAIN</option>
+          <option value="TEACH">TEACH</option>
+          <option value="ELABORATE">ELABORATE</option>
+          <option value="MATRIX">MATRIX</option>
+          <option value="CARD">CARD</option>
+          <option value="CANONICAL">CANONICAL</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label class="ctrl-label" for="k-input">k</label>
+        <input type="number" id="k-input" value="8" min="1" max="20" style="width:54px;" />
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="stream-toggle" checked />
+        Stream
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="tools-toggle" />
+        Tools
+      </label>
+    </div>
+    <div class="input-row">
+      <textarea id="question-input" rows="1"
+        placeholder="Ask: What is vedanā? | find PubMed papers on PCI…"></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+</main>
+
+<!-- ── Orchestrator log panel ── -->
+<div id="orch-panel" class="orch-panel hidden">
+  <div id="orch-header">
+    <span id="orch-title">Orchestrator</span>
+    <span id="orch-run-id" class="mono muted"></span>
+    <button id="orch-close">×</button>
+  </div>
+  <div id="orch-stages"></div>
+  <div id="orch-artifacts"></div>
+</div>
+
+<!-- ── Results slide-over ── -->
+<div id="results-panel">
+  <div id="results-header">
+    <span id="results-title">Results</span>
+    <button id="results-close">×</button>
+  </div>
+  <pre id="results-body"></pre>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

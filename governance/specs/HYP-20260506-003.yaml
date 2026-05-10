@@ -1,0 +1,62 @@
+id: HYP-20260506-003
+title: "Topological transitions causally predict stimulus onset responses (Causal)"
+claim_type: "C"
+layer: "Topology"
+summary: >
+  Abrupt topological transitions (rapid change in Q) precede or coincide with
+  stimulus-evoked EEG responses. This is a causal claim — topology drives
+  perception dynamics, not merely correlates with them.
+
+discriminator:
+  description: "Sweep stimulus onset timing vs. topological transition index"
+  mode: stimulus_sweep
+  config:
+    sweep_range_ms: [-200, 400]
+    step_ms: 10
+
+readouts:
+  - name: Q
+    module: core/topology.py
+  - name: Qabs
+    module: core/topology.py
+  - name: f_dress
+    module: core/topology.py
+  - name: PCI_surrogate
+    module: validation/pci_validation.py
+
+controls:
+  - name: label_shuffle
+    config:
+      n_shuffles: 200
+  - name: surrogate_generation
+    config:
+      method: phase_randomisation
+  - name: temporal_reversal
+    config: {}
+
+alternatives_considered:
+  - "Topology tracks but does not drive stimulus responses (correlation confound)"
+  - "Apparent transitions are noise artefacts in small EEG windows"
+  - "Effect is specific to one dataset and does not replicate cross-domain"
+
+data:
+  mode: openneuro
+  dataset_id: ds002094
+  params:
+    max_files: 50
+    epoch_window_ms: 600
+
+pass_fail:
+  criteria: >
+    Transition index is predictive of stimulus onset with AUC > 0.65 on held-out
+    data, AND effect survives 200-shuffle correction (p < 0.01).
+  thresholds:
+    auc_min: 0.65
+    p_max: 0.01
+    n_shuffles: 200
+
+artifacts:
+  expected:
+    - "metrics.csv"
+    - "summary.json"
+    - "plots/*.png"

@@ -5,6 +5,7 @@ research program. Metrics are model-derived features; they are not metaphysical
 claims about self, soul, liberation, or consciousness essence.
 """
 
-__all__ = [
-    "schemas",
-]
+from . import schemas
+from .schemas import MBaselineResult, ResidualGateInput, ResidualGateResult
+
+__all__ = ["schemas", "MBaselineResult", "ResidualGateInput", "ResidualGateResult"]

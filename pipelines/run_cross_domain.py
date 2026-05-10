@@ -75,15 +75,20 @@ def run(results_root: str | Path, output_csv: str | Path):
             n_init=10,
         ).fit_predict(X)
 
-    # Compute Q–PCIst correlation across all EEG datasets that have PCIst
+    # Compute Q–complexity correlation across EEG datasets, preferring
+    # pcist_proxy (current naming) and falling back to legacy PCIst.
     pci_frames = []
     for ds in ["ds002094", "ds005620", "ds001787", "ds003969", "ds003816"]:
         f = results_root / ds / f"metrics_{ds}.csv"
         if not f.exists():
             f = results_root / f"{ds}.csv"
         tmp = _safe_read_csv(f)
-        if "PCIst" in tmp.columns and "Qabs" in tmp.columns:
-            pci_frames.append(tmp[["Qabs", "PCIst"]])
+        if "Qabs" not in tmp.columns:
+            continue
+        if "pcist_proxy" in tmp.columns:
+            pci_frames.append(tmp[["Qabs", "pcist_proxy"]])
+        elif "PCIst" in tmp.columns:
+            pci_frames.append(tmp[["Qabs", "PCIst"]].rename(columns={"PCIst": "pcist_proxy"}))
     if pci_frames:
         all_pci = pd.concat(pci_frames, ignore_index=True)
         corr = q_pcist_correlation(all_pci)
