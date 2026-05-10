@@ -1,0 +1,29 @@
+dataset_id: ds005620
+inspection_id: ds005620_bids_inspection_v0
+default_out: outputs/btc_icft/ds005620/bids_inspection
+required_outputs:
+  - file_inventory.json
+  - label_candidates.json
+  - contract_report.json
+  - report.md
+recognized_eeg_extensions:
+  - .edf
+  - .bdf
+  - .set
+  - .vhdr
+  - .fif
+  - .eeg
+recognized_metadata_files:
+  - participants.tsv
+  - participants.json
+  - events.tsv
+  - channels.tsv
+guardrails:
+  - no_real_data_download
+  - no_model_training
+  - no_unsafe_label_inference
+  - unresponsive_not_unconscious
+  - sedated_not_no_experience
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
