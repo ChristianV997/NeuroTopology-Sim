@@ -20,6 +20,24 @@ REPORT_BANNED_PHRASES = {
 }
 
 
+def _foam_block_reason(q_net: int | float, q_abs: int | float) -> tuple[bool, str]:
+    blocked = q_net == 0 or q_abs > 2
+    if not blocked:
+        return False, ""
+    if q_net == 0 and q_abs > 2:
+        return True, "zero_net_high_q_abs_foam"
+    if q_net == 0:
+        return True, "zero_net_foam"
+    return True, "high_q_abs_foam"
+
+
+def _validate_report_safety(report: str) -> None:
+    report_lower = report.lower()
+    for phrase in REPORT_BANNED_PHRASES:
+        if phrase in report_lower:
+            raise ValueError(f"Unsafe report phrase detected: {phrase}")
+
+
 def run_synthetic_validation(out_dir: str) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -28,8 +46,10 @@ def run_synthetic_validation(out_dir: str) -> dict:
     tb, tr = trained_trajectory()
     winding = synthetic_winding_summary()
 
-    random_phase_foam_blocked = winding["q_net"] == 0 or winding["q_abs"] > 2
-    random_phase_foam_block_reason = "high_q_abs_zero_net_foam" if random_phase_foam_blocked else ""
+    random_phase_foam_blocked, random_phase_foam_block_reason = _foam_block_reason(
+        winding["q_net"],
+        winding["q_abs"],
+    )
     metrics = {
         "reactive_delta_d_lock": rr - rb,
         "trained_delta_d_lock": tr - tb,
@@ -53,8 +73,7 @@ def run_synthetic_validation(out_dir: str) -> dict:
         f"- Random phase foam promotion safe: {metrics['random_phase_foam_promotion_safe']}\n"
         f"- Random phase foam blocked: {metrics['random_phase_foam_blocked']} ({metrics['random_phase_foam_block_reason']})\n"
     )
-    for phrase in REPORT_BANNED_PHRASES:
-        assert phrase not in report.lower()
+    _validate_report_safety(report)
 
     (out / "synthetic_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (out / "omega_event.json").write_text(json.dumps(omega_event, indent=2), encoding="utf-8")

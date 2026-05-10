@@ -3,7 +3,13 @@ import math
 import subprocess
 import sys
 
-from sciencer_d.btc_icft.simulations.validation_runner import run_synthetic_validation
+import pytest
+
+from sciencer_d.btc_icft.simulations.validation_runner import (
+    _foam_block_reason,
+    _validate_report_safety,
+    run_synthetic_validation,
+)
 
 
 def test_synthetic_output_contract(tmp_path):
@@ -34,7 +40,7 @@ def test_synthetic_output_contract(tmp_path):
     assert expected_keys.issubset(metrics)
     assert metrics["random_phase_foam_promotion_safe"] is False
     assert metrics["random_phase_foam_blocked"] is True
-    assert metrics["random_phase_foam_block_reason"] == "high_q_abs_zero_net_foam"
+    assert metrics["random_phase_foam_block_reason"] == "zero_net_high_q_abs_foam"
     assert metrics["random_phase_foam_q_net"] == 0
     assert metrics["random_phase_foam_q_abs"] == 10
     assert math.isfinite(metrics["random_phase_foam_f_dress"])
@@ -75,3 +81,15 @@ def test_synthetic_validation_cli_smoke(tmp_path):
     assert (tmp_path / "synthetic_metrics.json").exists()
     assert (tmp_path / "omega_event.json").exists()
     assert (tmp_path / "report.md").exists()
+
+
+def test_foam_block_reason_matrix():
+    assert _foam_block_reason(0, 10) == (True, "zero_net_high_q_abs_foam")
+    assert _foam_block_reason(0, 2) == (True, "zero_net_foam")
+    assert _foam_block_reason(1, 10) == (True, "high_q_abs_foam")
+    assert _foam_block_reason(1, 2) == (False, "")
+
+
+def test_validate_report_safety_runtime_exception():
+    with pytest.raises(ValueError, match="Unsafe report phrase detected"):
+        _validate_report_safety("This report proves consciousness under synthetic telemetry.")
