@@ -1,0 +1,51 @@
+dataset_scope: local_eeg_label_adapter_readiness
+pipeline_id: dataset_label_adapter_readiness_v0
+default_data_root: data
+default_out: outputs/btc_icft/label_adapter_readiness
+
+known_datasets:
+  - DS005620
+  - DS002094
+  - ds001787
+  - ds003969
+  - ds003816
+  - PhysioNet_GABA
+
+required_outputs:
+  - adapter_readiness_summary.json
+  - omega_event.json
+  - report.md
+
+readiness_statuses:
+  - metadata_file_not_found
+  - metadata_empty_or_unreadable
+  - no_candidate_label_column
+  - insufficient_label_values
+  - needs_explicit_mapping
+  - ready_to_activate
+  - planning_required
+
+guardrails:
+  - no_data_download
+  - no_model_training
+  - no_label_inference
+  - no_target_fabrication
+  - no_sedated_to_no_experience
+  - no_unresponsive_to_unconscious
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
+  - q_not_self
+  - q_not_soul
+  - q_abs_not_suffering
+  - f_dress_not_karma
+
+notes:
+  - Non-invasive read-only layer; does not activate P12 contracts.
+  - Activation requires human declaration of explicit_label_column and binary mapping.
+  - Metadata files must be locally present; no download is performed.
+  - PyYAML is NOT required; tests may inspect this file as plain text.
+  - Does not modify P13 target injection files.
+  - Does not modify legacy DS005620 mt_real semantics.
