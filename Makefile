@@ -25,3 +25,9 @@ check:
 	$(MAKE) validate-governance
 	$(MAKE) test-core
 	$(MAKE) smoke-core
+
+validate-ds005620-artifacts:
+	python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620
+
+validate-ds005620-mt-real:
+	python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620 --stage mt_real

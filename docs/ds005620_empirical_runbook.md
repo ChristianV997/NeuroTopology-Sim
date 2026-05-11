@@ -317,3 +317,15 @@ Add the P4/P5/P6 commands as their modules land.
 - generated outputs are not committed
 - Level O/C/Q work is not mixed into DS005620 empirical PRs
 ```
+
+## Artifact Contract Validation
+
+Run after DS005620 stage pipelines emit outputs:
+
+```bash
+python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620
+python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620 --stage mt_real
+make validate-ds005620-mt-real
+```
+
+This validator checks local artifact shape and guardrail language. It does not compute scientific evidence and does not promote claims.
