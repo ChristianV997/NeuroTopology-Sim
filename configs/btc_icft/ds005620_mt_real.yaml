@@ -1,0 +1,11 @@
+dataset_id: ds005620
+pipeline_id: ds005620_mt_real_residual_v0
+default_m_features: outputs/btc_icft/ds005620/m_real/features_m.csv
+default_t_features: outputs/btc_icft/ds005620/t_real/features_t.csv
+default_out: outputs/btc_icft/ds005620/mt_real
+default_task: awake_vs_sedated
+required_inputs: [features_m.csv, features_t.csv]
+required_outputs: [features_joined.csv, metrics_mt_real.json, nulls_real.json, ablations_real.json, leakage_report.json, artifact_report.json, omega_event.json, report.md]
+metrics: [auc_m, auc_mt, delta_auc, brier_m, brier_mt, ece_m, ece_mt, delta_ece]
+promotion_gate: {min_delta_auc: 0.03, max_delta_ece: 0.0, require_nulls_passed: true, require_ablations_passed: true, require_no_leakage: true, require_no_artifact_dominance: true}
+guardrails: [no_data_download, no_level_o, no_level_c_q, no_ontology_claims, no_liberation_claims, no_soul_afterlife_claims, q_not_self, q_not_soul, q_abs_not_suffering, f_dress_not_karma, unresponsive_not_unconscious, sedated_not_no_experience]
