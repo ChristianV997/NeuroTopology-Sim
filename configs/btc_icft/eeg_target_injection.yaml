@@ -1,0 +1,11 @@
+dataset_scope: local_eeg_target_injection
+pipeline_id: eeg_target_injection_v0
+default_dataset_id: DS005620
+default_m_features: outputs/btc_icft/eeg_level_m/DS005620/features_m_signal.csv
+default_label_alignment: outputs/btc_icft/eeg_labels/DS005620_active/label_alignment.csv
+default_out: outputs/btc_icft/eeg_targets/DS005620
+required_inputs: [features_m_signal.csv, label_alignment.csv]
+required_outputs: [features_m_signal_labeled.csv, target_injection_rows.csv, target_injection_report.json, rejected_targets.json, omega_event.json, report.md]
+join_keys: [dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end]
+target_statuses: [labeled_explicit_target, unlabeled_no_explicit_target, rejected_no_matching_m_row, rejected_non_aligned_label, rejected_missing_y, rejected_invalid_y, rejected_conflicting_target]
+guardrails: [no_data_download,no_model_training,no_label_inference,no_target_fabrication,no_sedated_to_no_experience,no_unresponsive_to_unconscious,no_legacy_mt_real_change,no_level_o,no_ontology_claims,no_soul_afterlife_claims,no_liberation_claims,q_not_self,q_not_soul,q_abs_not_suffering,f_dress_not_karma]
