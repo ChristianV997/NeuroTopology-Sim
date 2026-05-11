@@ -47,5 +47,35 @@ def test_cli(tmp_path):
     p=subprocess.run(c,capture_output=True,text=True); assert p.returncode==0 and '"ready_for_target_aware_p11": false' in p.stdout.lower()
     p=subprocess.run(c+['--mock-binary-targets','--out',str(tmp_path/'b')],capture_output=True,text=True); assert p.returncode==0 and '"ready_for_target_aware_p11": true' in p.stdout.lower()
     p=subprocess.run([sys.executable,'-m','sciencer_d.btc_icft.pipelines.inject_eeg_targets'],capture_output=True,text=True); assert p.returncode!=0
-    p=subprocess.run(c+['--run-p11-smoke'],capture_output=True,text=True); assert p.returncode!=0
+    p=subprocess.run(c+['--run-p11-smoke'],capture_output=True,text=True); assert p.returncode!=0 and 'requires explicit binary targets' in p.stdout.lower()
     cfg=Path('configs/btc_icft/eeg_target_injection.yaml').read_text(); assert 'required_outputs' in cfg and 'target_statuses' in cfg and 'guardrails' in cfg
+
+def test_mock_fixture_aligns_with_t_features(tmp_path):
+    tdir=tmp_path/'t'
+    subprocess.run([sys.executable,'-m','sciencer_d.btc_icft.pipelines.run_eeg_level_t_signal','--dataset-id','DS005620','--out',str(tdir),'--mock-fixture'],check=True,capture_output=True,text=True)
+    tf=str(tdir/'features_t_signal.csv')
+    out=tmp_path/'inj'
+    p=subprocess.run([sys.executable,'-m','sciencer_d.btc_icft.pipelines.inject_eeg_targets','--dataset-id','DS005620','--out',str(out),'--mock-fixture','--mock-binary-targets','--t-features',tf],capture_output=True,text=True)
+    assert p.returncode==0
+    mrows=list(csv.DictReader(open(out/'features_m_signal_labeled.csv',encoding='utf-8')))
+    trows=list(csv.DictReader(open(tf,encoding='utf-8')))
+    key=lambda r: tuple(r[k] for k in ['dataset_id','row_id','source_file','window_id','window_start_s','window_end_s','sample_start','sample_end'])
+    tkeys={key(r) for r in trows}
+    assert all(key(r) in tkeys for r in mrows)
+    assert any(r['target_status']=='labeled_explicit_target' and r['y']=='1' for r in mrows)
+    assert any(r['target_status']=='labeled_explicit_target' and r['y']=='0' for r in mrows)
+
+def test_mock_non_binary_still_blocks_p11_smoke(tmp_path):
+    tdir=tmp_path/'t'
+    subprocess.run([sys.executable,'-m','sciencer_d.btc_icft.pipelines.run_eeg_level_t_signal','--dataset-id','DS005620','--out',str(tdir),'--mock-fixture'],check=True,capture_output=True,text=True)
+    tf=str(tdir/'features_t_signal.csv')
+    p=subprocess.run([sys.executable,'-m','sciencer_d.btc_icft.pipelines.inject_eeg_targets','--dataset-id','DS005620','--out',str(tmp_path/'inj'),'--mock-fixture','--run-p11-smoke','--t-features',tf,'--p11-out',str(tmp_path/'p11')],capture_output=True,text=True)
+    assert p.returncode!=0 and 'requires explicit binary targets' in p.stdout.lower()
+
+def test_non_aligned_label_not_injected():
+    m=[mrow(0)]
+    l=[lrow(0,'1','unaligned','ignored')]
+    r=inject_explicit_targets(m,l,'DS005620')
+    assert r.n_labeled_rows==0
+    assert r.labeled_m_rows[0]['target_status']=='unlabeled_no_explicit_target'
+    assert any(x['target_status']=='rejected_non_aligned_label' for x in r.rejected_rows)
