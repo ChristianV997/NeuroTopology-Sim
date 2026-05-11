@@ -31,3 +31,9 @@ validate-ds005620-artifacts:
 
 validate-ds005620-mt-real:
 	python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620 --stage mt_real
+
+validate-eeg-signal-artifacts:
+	python tools/validate_eeg_signal_artifacts.py --root outputs/btc_icft --dataset-id DS005620
+
+smoke-eeg-signal-pipeline:
+	python tools/run_eeg_signal_pipeline_smoke.py --dataset-id DS005620 --root outputs/btc_icft --validate
