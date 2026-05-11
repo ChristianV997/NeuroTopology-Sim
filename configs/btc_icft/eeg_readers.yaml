@@ -1,0 +1,33 @@
+dataset_id: ds005620
+pipeline_id: eeg_reader_adapter_inspection_v0
+default_out: outputs/btc_icft/ds005620/eeg_readers
+
+required_outputs:
+  - reader_capability_report.json
+  - file_readability_report.json
+  - channel_inventory.json
+  - report.md
+
+supported_fixture_extensions:
+  - .txt
+  - .csv
+  - .tsv
+
+known_eeg_extensions:
+  - .edf
+  - .bdf
+  - .set
+  - .vhdr
+  - .fif
+  - .eeg
+
+guardrails:
+  - no_data_download
+  - no_model_training
+  - no_feature_extraction
+  - no_level_t_topology
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
+  - no_consciousness_proof_claims
