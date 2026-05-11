@@ -2,8 +2,9 @@ import csv, json, subprocess, sys
 from pathlib import Path
 import pytest
 import importlib.util
-_spec=importlib.util.spec_from_file_location("v","tools/validate_ds005620_artifacts.py")
-_mod=importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+import sys
+_spec=importlib.util.spec_from_file_location("validate_ds005620_artifacts","tools/validate_ds005620_artifacts.py")
+_mod=importlib.util.module_from_spec(_spec); sys.modules[_spec.name]=_mod; _spec.loader.exec_module(_mod)
 validate_all=_mod.validate_all; ValidationError=_mod.ValidationError
 
 def mk(root:Path):

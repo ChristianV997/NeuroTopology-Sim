@@ -11,7 +11,8 @@ def _write_csv(path, rows):
 def test_loaders_and_missing(tmp_path):
     m=build_mock_ds005620_level_m_rows()[0]
     mfile=tmp_path/'features_m.csv'; tfile=tmp_path/'features_t.csv'
-    _write_csv(mfile,[m.__dict__]); t=mod.build_mock_ds005620_level_t_rows()[0]; _write_csv(tfile,[t.__dict__])
+    mrow={**m.__dict__,"session_id":"ses-01","run_id":"run-01","window_id":f"win-{m.row_id}"}
+    _write_csv(mfile,[mrow]); t=mod.build_mock_ds005620_level_t_rows()[0]; _write_csv(tfile,[t.__dict__])
     assert mod.load_level_m_real_features(str(mfile))
     assert mod.load_level_t_real_features(str(tfile))
     with pytest.raises(FileNotFoundError): mod.load_level_m_real_features(str(tmp_path/'x.csv'))

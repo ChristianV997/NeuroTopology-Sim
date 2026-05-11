@@ -13,17 +13,24 @@ BANNED_REPORT_PHRASES = (
     "q equals self", "q equals soul", "q_abs equals suffering", "f_dress equals karma",
 )
 M_REQUIRED_COLUMNS = ("row_id","subject_id","session_id","run_id","window_id","task_label","state_label","behavior_label","report_label","spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score")
-T_REQUIRED_COLUMNS = ("row_id","subject_id","task_label","q_net","q_abs","f_dress","defect_density","n_valid_triangles","topology_quality")
+T_REQUIRED_COLUMNS = ("row_id","subject_id","session_id","run_id","window_id","task_label","q_net","q_abs","f_dress","defect_density","n_valid_triangles","topology_quality")
 KEY_FIELDS = ("row_id","subject_id","task_label")
 
 @dataclass(frozen=True)
 class LevelTFeatureRow:
-    row_id: str; subject_id: str; task_label: str
+    row_id: str; subject_id: str; session_id: str; run_id: str; window_id: str; task_label: str
     q_net: float; q_abs: float; f_dress: float; defect_density: float; n_valid_triangles: int; topology_quality: float
 
 @dataclass(frozen=True)
 class LevelMTFeatureRow(LevelMFeatureRow):
     q_net: float; q_abs: float; f_dress: float; defect_density: float; n_valid_triangles: int; topology_quality: float
+
+@dataclass(frozen=True)
+class LevelMTRealJoinedRow(LevelMTFeatureRow):
+    session_id: str
+    run_id: str
+    window_id: str
+
 
 def _validate_safe_text(text: str) -> None:
     low=text.lower()
@@ -46,17 +53,19 @@ def load_level_t_real_features(path:str)->list[LevelTFeatureRow]:
     with p.open() as f: rows=list(csv.DictReader(f))
     miss=_missing(set(rows[0].keys() if rows else []), T_REQUIRED_COLUMNS)
     if miss: raise ValueError(f"Missing required Level T columns: {', '.join(miss)}")
-    return [LevelTFeatureRow(row_id=r['row_id'],subject_id=r['subject_id'],task_label=r['task_label'],q_net=float(r['q_net']),q_abs=float(r['q_abs']),f_dress=float(r['f_dress']),defect_density=float(r['defect_density']),n_valid_triangles=int(r['n_valid_triangles']),topology_quality=float(r['topology_quality'])) for r in rows]
+    return [LevelTFeatureRow(row_id=r['row_id'],subject_id=r['subject_id'],session_id=r['session_id'],run_id=r['run_id'],window_id=r['window_id'],task_label=r['task_label'],q_net=float(r['q_net']),q_abs=float(r['q_abs']),f_dress=float(r['f_dress']),defect_density=float(r['defect_density']),n_valid_triangles=int(r['n_valid_triangles']),topology_quality=float(r['topology_quality'])) for r in rows]
 
 def build_mock_ds005620_level_t_rows()->list[LevelTFeatureRow]:
     out=[]
     for m in build_mock_ds005620_level_m_rows():
         q_net=0.35 if m.state_label=="awake" else 0.65; q_abs=q_net+0.2; f=(q_abs-abs(q_net))/q_abs
-        out.append(LevelTFeatureRow(m.row_id,m.subject_id,m.task_label,q_net,q_abs,f,q_abs/20.0,20,0.8))
+        session_id=getattr(m,'session_id','ses-01'); run_id=getattr(m,'run_id','run-01'); window_id=getattr(m,'window_id',f"win-{m.row_id}")
+        out.append(LevelTFeatureRow(m.row_id,m.subject_id,session_id,run_id,window_id,m.task_label,q_net,q_abs,f,q_abs/20.0,20,0.8))
     return out
 
-def join_level_m_t_real_rows(m_rows:list[LevelMFeatureRow], t_rows:list[LevelTFeatureRow])->list[LevelMTFeatureRow]:
-    def key(r): return tuple(getattr(r,k) for k in KEY_FIELDS)
+def join_level_m_t_real_rows(m_rows:list[LevelMFeatureRow], t_rows:list[LevelTFeatureRow])->list[LevelMTRealJoinedRow]:
+    def key(r):
+        return (r.row_id,r.subject_id,getattr(r,"session_id","ses-01"),getattr(r,"run_id","run-01"),getattr(r,"window_id",f"win-{r.row_id}"),r.task_label)
     m_keys=[key(r) for r in m_rows]; t_keys=[key(r) for r in t_rows]
     if len(set(m_keys))!=len(m_keys): raise ValueError("duplicate M composite keys")
     if len(set(t_keys))!=len(t_keys): raise ValueError("duplicate T composite keys")
@@ -64,7 +73,11 @@ def join_level_m_t_real_rows(m_rows:list[LevelMFeatureRow], t_rows:list[LevelTFe
     for m in m_rows:
         k=key(m); t=tm.get(k)
         if t is None: raise ValueError("M rows lack matching T rows")
-        unmatched_t.discard(k); out.append(LevelMTFeatureRow(**{**asdict(m),**asdict(t)}))
+        unmatched_t.discard(k)
+        session_id=t.session_id if getattr(t,'session_id',None) else getattr(m,'session_id','ses-01')
+        run_id=t.run_id if getattr(t,'run_id',None) else getattr(m,'run_id','run-01')
+        window_id=t.window_id if getattr(t,'window_id',None) else getattr(m,'window_id',f"win-{m.row_id}")
+        out.append(LevelMTRealJoinedRow(**{**asdict(m),**asdict(t),"session_id":session_id,"run_id":run_id,"window_id":window_id}))
     return sorted(out,key=lambda r:r.row_id)
 
 def join_level_m_and_t_rows(m_rows,t_rows): return join_level_m_t_real_rows(m_rows,t_rows)
@@ -79,7 +92,7 @@ def _select(rows,task):
             if y is None and r.behavior_label in {"responsive","unresponsive"}: y=1 if r.behavior_label=="unresponsive" else 0
         elif task=="experience_vs_no_experience":
             if y is None and r.report_label in {"experience","no_experience"}: y=1 if r.report_label=="no_experience" else 0
-        if y is not None: out.append(LevelMTFeatureRow(**{**asdict(r),"y":y,"task_label":task}))
+        if y is not None: out.append(LevelMTRealJoinedRow(**{**asdict(r),"y":y,"task_label":task}))
     return out
 
 def _auc(y,s):
@@ -108,7 +121,9 @@ def evaluate_mt_residual(rows,task):
 def write_mt_real_outputs(result, out_dir, joined_rows):
     b=Path(out_dir); b.mkdir(parents=True,exist_ok=True)
     with (b/'features_joined.csv').open('w',newline='') as f:
-        w=csv.DictWriter(f,fieldnames=list(asdict(joined_rows[0]).keys())); w.writeheader(); [w.writerow(asdict(r)) for r in joined_rows]
+        fieldnames=["row_id","subject_id","session_id","run_id","window_id","task_label","spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score","q_net","q_abs","f_dress","defect_density","topology_quality"]
+        extras=[k for k in asdict(joined_rows[0]).keys() if k not in fieldnames]
+        w=csv.DictWriter(f,fieldnames=fieldnames+extras); w.writeheader(); [w.writerow(asdict(r)) for r in joined_rows]
     (b/'metrics_mt_real.json').write_text(json.dumps({'metrics_m':result.metrics_m,'metrics_mt':result.metrics_mt,'delta_auc':result.delta_auc,'delta_ece':result.delta_ece,'promoted':result.promoted,'promotion_reason':result.promotion_reason},indent=2))
     (b/'nulls_real.json').write_text(json.dumps(result.null_report,indent=2)); (b/'ablations_real.json').write_text(json.dumps(result.ablation_report,indent=2))
     (b/'leakage_report.json').write_text(json.dumps(result.leakage_report,indent=2)); (b/'artifact_report.json').write_text(json.dumps(result.artifact_report,indent=2)); (b/'omega_event.json').write_text(json.dumps(result.omega_event,indent=2))
