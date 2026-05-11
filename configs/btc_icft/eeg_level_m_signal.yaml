@@ -1,0 +1,47 @@
+dataset_scope: local_eeg_level_m_signal
+pipeline_id: eeg_level_m_signal_features_v0
+default_dataset_id: DS005620
+default_signal_blocks: outputs/btc_icft/ds005620/signal_blocks
+default_out: outputs/btc_icft/eeg_level_m/DS005620
+required_inputs:
+  - window_inventory.csv
+required_outputs:
+  - features_m_signal.csv
+  - feature_quality_report.json
+  - artifact_report.json
+  - skipped_windows.json
+  - omega_event.json
+  - report.md
+feature_columns:
+  - dataset_id
+  - row_id
+  - source_file
+  - window_id
+  - window_start_s
+  - window_end_s
+  - sample_start
+  - sample_end
+  - n_channels
+  - n_samples
+  - sample_rate_hz
+  - spectral_power_proxy
+  - entropy_proxy
+  - lzc_proxy
+  - artifact_score
+  - feature_status
+  - warnings
+feature_proxies:
+  - spectral_power_proxy
+  - entropy_proxy
+  - lzc_proxy
+  - artifact_score
+guardrails:
+  - no_data_download
+  - no_model_training
+  - no_label_inference
+  - no_level_t_topology
+  - no_residual_promotion
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
