@@ -24,43 +24,6 @@ def _write_mock_signal(path: Path, dataset_id: str) -> None:
         w=csv.DictWriter(f, fieldnames=cols); w.writeheader()
         for i in range(2):
             w.writerow({"dataset_id":dataset_id,"row_id":f"r{i}","source_file":"f.edf","window_id":f"w{i}","window_start_s":str(i),"window_end_s":str(i+1),"sample_start":str(i*10),"sample_end":str((i+1)*10)})
-
-
-
-def _load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if str(payload.get("dataset_id", "")) != dataset_id:
-        raise ValueError("external contract dataset_id must match --dataset-id")
-    if payload.get("status") != "active_reviewed_external_contract":
-        raise ValueError("external contract status must be active_reviewed_external_contract")
-    explicit_label_column = str(payload.get("explicit_label_column", "")).strip()
-    if not explicit_label_column:
-        raise ValueError("external contract explicit_label_column must be non-empty")
-    positive_values = [str(x) for x in payload.get("positive_values", []) if str(x)]
-    negative_values = [str(x) for x in payload.get("negative_values", []) if str(x)]
-    if not positive_values or not negative_values:
-        raise ValueError("external contract positive_values and negative_values must be non-empty")
-    if set(positive_values).intersection(negative_values):
-        raise ValueError("external contract positive_values and negative_values must not overlap")
-    join_keys = payload.get("join_keys", [])
-    if join_keys != _REQUIRED_SIGNAL_COLS:
-        raise ValueError("external contract join_keys must match strict required join keys")
-
-    return EEGLabelContract(
-        dataset_id=dataset_id,
-        title=str(payload.get("title") or f"Reviewed external EEG label contract for {dataset_id}"),
-        source_hint=str(payload.get("source_hint") or "reviewed_external_contract"),
-        status="active",
-        label_scope=str(payload.get("label_scope") or "window"),
-        explicit_label_column=explicit_label_column,
-        positive_values=positive_values,
-        negative_values=negative_values,
-        join_keys=list(join_keys),
-        allowed_metadata_extensions=[str(x) for x in payload.get("allowed_metadata_extensions", [".csv", ".tsv", ".json"])],
-        caveats=[str(x) for x in payload.get("caveats", [])],
-        guardrails=[str(x) for x in payload.get("guardrails", [])],
-    )
-
 def _write_mock_meta(path: Path, active: bool) -> None:
     rows=[{"dataset_id":"DS005620","row_id":"r0","source_file":"f.edf","window_id":"w0","window_start_s":"0","window_end_s":"1","sample_start":"0","sample_end":"10","explicit_state_label":"target"},{"dataset_id":"DS005620","row_id":"r1","source_file":"f.edf","window_id":"w1","window_start_s":"1","window_end_s":"2","sample_start":"10","sample_end":"20","explicit_state_label":"control"}]
     path.write_text("\n".join([",".join(rows[0].keys())]+[",".join(r.values()) for r in rows]), encoding="utf-8")
@@ -120,10 +83,12 @@ def load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
         )
 
     # Require exact strict join keys.
-    join_keys = data.get("join_keys") or []
-    if list(join_keys) != _STRICT_JOIN_KEYS:
+    join_keys = tuple(data.get("join_keys") or [])
+    expected_join_keys = tuple(_STRICT_JOIN_KEYS)
+    if join_keys != expected_join_keys:
         errors.append(
-            "External contract join_keys must match strict required join keys exactly"
+            "External contract join_keys must match strict required join keys exactly; "
+            f"expected {list(expected_join_keys)} got {list(join_keys)}"
         )
 
     if errors:

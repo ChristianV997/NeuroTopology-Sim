@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 from sciencer_d.btc_icft.labels.eeg_label_contracts import *
 
-
-
 def _write_external_contract(path: Path, **overrides) -> Path:
     payload = {
         "dataset_id": "DS005620",
@@ -25,7 +23,7 @@ def _write_external_contract(path: Path, **overrides) -> Path:
         "guardrails": ["no_label_inference", "no_target_fabrication"],
     }
     payload.update(overrides)
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    _write_contract(path, payload)
     return path
 
 def _signal_row():
@@ -119,7 +117,6 @@ def _valid_external_contract(dataset_id: str = "DS005620") -> dict:
     return {
         "dataset_id": dataset_id,
         "status": "active_reviewed_external_contract",
-        "contract_status": "active_reviewed_external_contract",
         "explicit_label_column": "trial_type",
         "positive_values": ["focus"],
         "negative_values": ["mind_wandering"],
@@ -178,7 +175,6 @@ def test_external_contract_wrong_status_blocks(tmp_path: Path):
     data = {
         **_valid_external_contract(),
         "status": "preview_human_reviewed_not_active",
-        "contract_status": "preview_human_reviewed_not_active",
     }
     contract_path = tmp_path / "contract.json"
     _write_contract(contract_path, data)
@@ -188,7 +184,7 @@ def test_external_contract_wrong_status_blocks(tmp_path: Path):
 
 def test_external_contract_missing_status_blocks(tmp_path: Path):
     from sciencer_d.btc_icft.pipelines.align_eeg_labels import load_external_contract
-    data = {k: v for k, v in _valid_external_contract().items() if k not in {"contract_status", "status"}}
+    data = {k: v for k, v in _valid_external_contract().items() if k != "status"}
     contract_path = tmp_path / "contract.json"
     _write_contract(contract_path, data)
     with pytest.raises(ValueError, match="status"):
