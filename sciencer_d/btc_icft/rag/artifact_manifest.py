@@ -265,7 +265,7 @@ def _extract_csv_summary(path: Path) -> tuple[str, str]:
         if not rows:
             return path.stem, "empty_csv"
         header = rows[0]
-        summary = f"columns={header}; preview_rows={len(rows)-1}"[:500]
+        summary = f"columns={header}; row_count={len(rows)-1}"[:500]
         return path.stem, summary
     except Exception as exc:
         return path.stem, f"read_error: {exc}"
@@ -291,8 +291,10 @@ def extract_summary(path: Path) -> tuple[str, str]:
         return _extract_json_summary(path)
     if ext == ".jsonl":
         try:
-            line = path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-            data = json.loads(line)
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if not lines:
+                return path.stem, "empty_jsonl"
+            data = json.loads(lines[0])
             summary = "; ".join(f"{k}={v!r}" for k, v in list(data.items())[:5])[:500]
             return path.stem, summary
         except Exception as exc:

@@ -7,6 +7,7 @@ sciencer_d/btc_icft/rag/artifact_manifest.py (P20.0).
 from __future__ import annotations
 
 import csv
+import datetime
 import importlib.util
 import json
 import subprocess
@@ -238,7 +239,6 @@ def test_21_quarantined_in_quarantined_json(tmp_path):
     bad_file.write_text(
         "# Test\neeg proves consciousness claim here.\n", encoding="utf-8"
     )
-    import datetime
     records = mod.scan_artifacts(bad_file.parent)
     mod.write_outputs(records, out, bad_file.parent, datetime.datetime.utcnow().isoformat() + "Z")
     data = json.loads((out / "quarantined_artifacts.json").read_text())
@@ -297,9 +297,6 @@ def test_26_no_openai_notion_imports():
 def test_27_p16_files_not_imported():
     cli_src = CLI_PATH.read_text()
     mod_src = MOD_PATH.read_text()
-    for src in (cli_src, mod_src):
-        assert "ds005620_contract_activation" not in src or "import" not in src.split("ds005620_contract_activation")[0].splitlines()[-1]
-    # Simpler check: neither source file directly imports the p16 activation module
     for src in (cli_src, mod_src):
         assert "from sciencer_d.btc_icft.pipelines" not in src
         assert "import ds005620_contract_activation" not in src
