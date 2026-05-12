@@ -54,7 +54,7 @@ def test_scan_mock_fixtures(tmp_path):
 def test_write_outputs_creates_all_files(tmp_path):
     mod = _load_mod()
     out = tmp_path / "out"
-    mod.write_outputs([], out, tmp_path, datetime.datetime.utcnow().isoformat() + "Z")
+    mod.write_outputs([], out, tmp_path, datetime.datetime.now(datetime.timezone.utc).isoformat())
     required = [
         "rag_artifact_manifest.jsonl",
         "rag_artifact_manifest.json",

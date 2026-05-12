@@ -178,7 +178,7 @@ def infer_index_priority(path: Path, stage: str, claim_safety_status: str) -> in
     if claim_safety_status == "quarantined_banned_phrase":
         return 5
     name = path.name.lower()
-    if any(p in name for p in _HIGH_PRIORITY_NAMES) or name == "report.md":
+    if any(p in name for p in _HIGH_PRIORITY_NAMES):
         return 1
     if stage in _STAGE_PRIORITIES:
         return _STAGE_PRIORITIES[stage]

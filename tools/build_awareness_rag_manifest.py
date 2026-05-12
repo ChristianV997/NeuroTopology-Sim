@@ -60,7 +60,7 @@ def main() -> int:
 
     mod = _load_manifest_module()
     out_dir = Path(args.out)
-    generated_at = datetime.datetime.utcnow().isoformat() + "Z"
+    generated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     if args.mock_fixture:
         with tempfile.TemporaryDirectory() as tmp:

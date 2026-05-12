@@ -240,7 +240,7 @@ def test_21_quarantined_in_quarantined_json(tmp_path):
         "# Test\neeg proves consciousness claim here.\n", encoding="utf-8"
     )
     records = mod.scan_artifacts(bad_file.parent)
-    mod.write_outputs(records, out, bad_file.parent, datetime.datetime.utcnow().isoformat() + "Z")
+    mod.write_outputs(records, out, bad_file.parent, datetime.datetime.now(datetime.timezone.utc).isoformat())
     data = json.loads((out / "quarantined_artifacts.json").read_text())
     quarantined_paths = [a["relative_path"] for a in data["quarantined_artifacts"]]
     assert any("bad.md" in p for p in quarantined_paths)
