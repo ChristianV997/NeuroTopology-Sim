@@ -116,6 +116,45 @@ def get_label_contract(dataset_id: str) -> EEGLabelContract:
     return registry[dataset_id]
 
 
+def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelContract:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if str(payload.get("dataset_id", "")) != dataset_id:
+        raise ValueError("external contract dataset_id must match --dataset-id")
+    status = payload.get("contract_status")
+    if not status and payload.get("status"):
+        status = payload.get("status")
+    if status != "active_reviewed_external_contract":
+        raise ValueError("external contract contract_status must be active_reviewed_external_contract")
+    explicit_label_column = str(payload.get("explicit_label_column", "")).strip()
+    if not explicit_label_column:
+        raise ValueError("external contract explicit_label_column must be non-empty")
+    positive_values = [str(x) for x in payload.get("positive_values", []) if str(x)]
+    negative_values = [str(x) for x in payload.get("negative_values", []) if str(x)]
+    if not positive_values:
+        raise ValueError("external contract positive_values must be non-empty")
+    if not negative_values:
+        raise ValueError("external contract negative_values must be non-empty")
+    if set(positive_values).intersection(negative_values):
+        raise ValueError("external contract positive_values and negative_values must not overlap")
+    join_keys = payload.get("join_keys", [])
+    if join_keys != _REQUIRED_SIGNAL_COLS:
+        raise ValueError("external contract join_keys must match strict required join keys")
+    return EEGLabelContract(
+        dataset_id=dataset_id,
+        title=str(payload.get("title") or f"Reviewed external EEG label contract for {dataset_id}"),
+        source_hint=str(payload.get("source_hint") or "reviewed_external_contract"),
+        status="active",
+        label_scope=str(payload.get("label_scope") or "window"),
+        explicit_label_column=explicit_label_column,
+        positive_values=positive_values,
+        negative_values=negative_values,
+        join_keys=list(join_keys),
+        allowed_metadata_extensions=[str(x) for x in payload.get("allowed_metadata_extensions", [".csv", ".tsv", ".json"])],
+        caveats=[str(x) for x in payload.get("caveats", [])],
+        guardrails=[str(x) for x in payload.get("guardrails", [])],
+    )
+
+
 def load_metadata_rows(path: str) -> list[dict]:
     p = Path(path)
     if not p.exists():
