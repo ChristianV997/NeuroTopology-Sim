@@ -1,0 +1,42 @@
+# Awareness RAG Manifest config (P20.0)
+# No PyYAML required — read as plain text
+dataset_scope: awareness_rag_manifest
+pipeline_id: awareness_rag_manifest_v0
+default_root: outputs/btc_icft
+default_docs: docs
+default_out: outputs/btc_icft/rag_manifest
+required_outputs:
+  - rag_artifact_manifest.jsonl
+  - rag_artifact_manifest.json
+  - rag_index_priority.csv
+  - rag_ingestion_plan.md
+  - quarantined_artifacts.json
+  - omega_event.json
+  - report.md
+stage_priority:
+  target_aware_activation: 1
+  ds005620_contract_activation: 1
+  eeg_signal_mt: 1
+  eeg_labels: 2
+  eeg_targets: 2
+  eeg_level_t: 2
+  eeg_level_m: 2
+  signal_blocks: 3
+  eeg_studies: 3
+  label_adapter_readiness: 2
+  label_contract_drafts: 2
+  eeg_reader_preflight: 2
+  docs: 1
+guardrails:
+  - no_external_api
+  - no_embeddings_created
+  - no_label_inference
+  - no_target_fabrication
+  - no_claim_promotion
+  - no_contract_activation
+  - no_p11_gate_modification
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
