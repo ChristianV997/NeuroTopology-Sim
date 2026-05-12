@@ -118,7 +118,6 @@ def get_label_contract(dataset_id: str) -> EEGLabelContract:
 
 _REQUIRED_EXTERNAL_CONTRACT_FIELDS = (
     "dataset_id",
-    "contract_status",
     "explicit_label_column",
     "positive_values",
     "negative_values",
@@ -136,7 +135,7 @@ def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelCont
     Validation:
       - file exists, JSON readable
       - dataset_id matches caller's dataset_id
-      - contract_status == 'active_reviewed_external_contract'
+      - contract_status == 'active_reviewed_external_contract' (or legacy 'status' field)
       - explicit_label_column non-empty
       - positive_values, negative_values are non-empty lists with no overlap
       - join_keys contains all strict keys
@@ -160,16 +159,18 @@ def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelCont
             f"External reviewed contract missing required fields: {missing}"
         )
 
-    if data["dataset_id"] != dataset_id:
+    if str(data.get("dataset_id", "")) != dataset_id:
         raise ValueError(
-            f"External reviewed contract dataset_id is {data['dataset_id']!r}, "
+            f"External reviewed contract dataset_id is {data.get('dataset_id')!r}, "
             f"expected {dataset_id!r}"
         )
 
-    if data["contract_status"] != _EXPECTED_EXTERNAL_CONTRACT_STATUS:
+    # Support legacy 'status' field as fallback for 'contract_status'
+    contract_status = data.get("contract_status") or data.get("status")
+    if contract_status != _EXPECTED_EXTERNAL_CONTRACT_STATUS:
         raise ValueError(
             f"External reviewed contract contract_status is "
-            f"{data['contract_status']!r}, expected "
+            f"{contract_status!r}, expected "
             f"{_EXPECTED_EXTERNAL_CONTRACT_STATUS!r}"
         )
 
@@ -214,19 +215,19 @@ def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelCont
 
     return EEGLabelContract(
         dataset_id=dataset_id,
-        title=f"EEG explicit label contract from external reviewed P17.1 artifact for {dataset_id}",
-        source_hint="external_reviewed_contract",
+        title=str(data.get("title") or f"EEG explicit label contract from external reviewed P17.1 artifact for {dataset_id}"),
+        source_hint=str(data.get("source_hint") or "external_reviewed_contract"),
         status="active",
         label_scope=label_scope,
         explicit_label_column=label_column,
         positive_values=[str(v) for v in positive],
         negative_values=[str(v) for v in negative],
         join_keys=list(contract_keys),
-        allowed_metadata_extensions=[".csv", ".tsv", ".json"],
-        caveats=[
+        allowed_metadata_extensions=[str(x) for x in data.get("allowed_metadata_extensions") or [".csv", ".tsv", ".json"]],
+        caveats=[str(x) for x in data.get("caveats") or [
             "Contract sourced from external reviewed P17.1 artifact; "
             "no labels inferred and no targets fabricated.",
-        ],
+        ]],
         guardrails=list(data.get("guardrails") or [
             "no_label_inference",
             "no_target_fabrication",

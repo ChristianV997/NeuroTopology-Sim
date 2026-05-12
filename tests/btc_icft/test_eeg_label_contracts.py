@@ -8,6 +8,26 @@ import pytest
 from sciencer_d.btc_icft.labels.eeg_label_contracts import *
 
 
+
+def _write_external_contract(path: Path, **overrides) -> Path:
+    payload = {
+        "dataset_id": "DS005620",
+        "title": "Reviewed external contract",
+        "source_hint": "reviewed_external_contract",
+        "contract_status": "active_reviewed_external_contract",
+        "label_scope": "window",
+        "explicit_label_column": "explicit_state_label",
+        "positive_values": ["target"],
+        "negative_values": ["control"],
+        "join_keys": ["dataset_id","row_id","source_file","window_id","window_start_s","window_end_s","sample_start","sample_end"],
+        "allowed_metadata_extensions": [".csv", ".tsv", ".json"],
+        "caveats": [],
+        "guardrails": ["no_label_inference", "no_target_fabrication"],
+    }
+    payload.update(overrides)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
 def _signal_row():
     return {"dataset_id":"DS005620","row_id":"r1","source_file":"f.edf","window_id":"w1","window_start_s":"0","window_end_s":"1","sample_start":"0","sample_end":"10"}
 
@@ -304,3 +324,54 @@ def test_external_contract_missing_file_returns_nonzero(tmp_path: Path):
     )
     assert r.returncode != 0
     assert "External reviewed contract" in r.stderr
+
+def test_cli_external_contract_validation_and_alignment(tmp_path: Path):
+    s = tmp_path/"s.csv"
+    s.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end\nDS005620,r0,f.edf,w0,0,1,0,10\n")
+    m = tmp_path/"m.csv"
+    m.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end,explicit_state_label\nDS005620,r0,f.edf,w0,0,1,0,10,target\n")
+    c = _write_external_contract(tmp_path/"contract.json")
+    out = tmp_path/"out"
+    r = subprocess.run([sys.executable,"-m","sciencer_d.btc_icft.pipelines.align_eeg_labels","--dataset-id","DS005620","--signal-features",str(s),"--metadata",str(m),"--external-contract",str(c),"--out",str(out)],capture_output=True,text=True)
+    assert r.returncode == 0
+    rep=json.loads((out/"label_alignment_report.json").read_text())
+    assert rep["n_targets_available"] == 1 and rep["explicit_targets_available"] is True
+
+
+def test_cli_external_contract_rejections(tmp_path: Path):
+    s = tmp_path/"s.csv"
+    s.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end\nDS005620,r0,f.edf,w0,0,1,0,10\n")
+    m = tmp_path/"m.csv"
+    m.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end,explicit_state_label\nDS005620,r0,f.edf,w0,0,1,0,10,target\n")
+    def run_bad(payload):
+        c = _write_external_contract(tmp_path/"bad.json", **payload)
+        return subprocess.run([sys.executable,"-m","sciencer_d.btc_icft.pipelines.align_eeg_labels","--dataset-id","DS005620","--signal-features",str(s),"--metadata",str(m),"--external-contract",str(c),"--out",str(tmp_path/"o")],capture_output=True,text=True)
+    assert run_bad({"dataset_id":"DSX"}).returncode != 0
+    assert run_bad({"contract_status":"inactive_until_metadata_supplied"}).returncode != 0
+    assert run_bad({"explicit_label_column":""}).returncode != 0
+    assert run_bad({"positive_values":[]}).returncode != 0
+    assert run_bad({"negative_values":[]}).returncode != 0
+    assert run_bad({"positive_values":["target"],"negative_values":["target"]}).returncode != 0
+    assert run_bad({"join_keys":["dataset_id"]}).returncode != 0
+
+def test_external_contract_legacy_status_compatibility(tmp_path: Path):
+    c = _write_external_contract(tmp_path/"legacy.json")
+    payload = json.loads(c.read_text())
+    payload.pop("contract_status")
+    payload["status"] = "active_reviewed_external_contract"
+    c.write_text(json.dumps(payload), encoding="utf-8")
+    loaded = load_external_eeg_label_contract(str(c), "DS005620")
+    assert loaded.status == "active"
+
+
+def test_cli_rejects_external_plus_activate_mock(tmp_path: Path):
+    s = tmp_path/"s.csv"
+    s.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end\nDS005620,r0,f.edf,w0,0,1,0,10\n")
+    m = tmp_path/"m.csv"
+    m.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end,explicit_state_label\nDS005620,r0,f.edf,w0,0,1,0,10,target\n")
+    c = _write_external_contract(tmp_path/"contract.json")
+    out = tmp_path/"out"
+    r = subprocess.run([sys.executable,"-m","sciencer_d.btc_icft.pipelines.align_eeg_labels","--dataset-id","DS005620","--signal-features",str(s),"--metadata",str(m),"--external-contract",str(c),"--activate-mock-contract","--out",str(out)],capture_output=True,text=True)
+    assert r.returncode != 0
+    assert "cannot be combined" in r.stdout
+    assert not (out/"label_alignment_report.json").exists()
