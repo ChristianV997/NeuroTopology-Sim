@@ -1,0 +1,37 @@
+dataset_scope: local_eeg_mne_adapter
+pipeline_id: eeg_mne_adapter_v0
+default_dataset_id: DS005620
+default_out: outputs/btc_icft/eeg_mne_extract/DS005620
+default_window_seconds: 2.0
+default_max_windows: 10
+required_outputs:
+  - mne_signal_metadata.json
+  - mne_signal_windows.csv
+  - mne_signal_window_values.json
+  - mne_extraction_report.json
+  - omega_event.json
+  - report.md
+supported_extensions:
+  - .edf
+  - .bdf
+  - .gdf
+  - .set
+  - .fdt
+  - .vhdr
+  - .vmrk
+  - .eeg
+  - .cnt
+  - .fif
+guardrails:
+  - no_data_download
+  - mne_optional_only
+  - no_hard_dependencies
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation
+  - no_p11_gate_modification
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
