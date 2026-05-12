@@ -1,0 +1,144 @@
+# DS005620 Real Benchmark Readiness Gate — P18.0 Configuration
+#
+# This config governs the P18.0 readiness gate for real/local DS005620
+# target-aware benchmark planning.
+#
+# P18.0 does NOT run P9/P10/P11 automatically.
+# P18.0 does NOT infer labels or fabricate targets.
+# P18.0 does NOT activate contracts.
+
+dataset_scope: ds005620_real_benchmark_readiness
+pipeline_id: ds005620_real_benchmark_readiness_v0
+dataset_id: DS005620
+
+default_out: outputs/btc_icft/ds005620_real_benchmark_readiness
+
+# ---- Core guards (never change these) -----------------------------------
+
+auto_benchmark_execution_allowed: false
+label_inference_allowed: false
+target_fabrication_allowed: false
+contract_activation_allowed: false
+data_download_allowed: false
+
+# ---- Expected inputs (default paths) ------------------------------------
+
+expected_inputs:
+  reviewed_contract: outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json
+  metadata: data/DS005620/events.tsv
+  signal_blocks: outputs/btc_icft/eeg_signal_blocks_from_mne/DS005620
+  level_m: outputs/btc_icft/eeg_level_m/DS005620
+  level_t: outputs/btc_icft/eeg_level_t/DS005620
+
+# ---- Required output files ----------------------------------------------
+
+required_outputs:
+  - ds005620_benchmark_readiness.json
+  - benchmark_input_statuses.json
+  - dry_run_command_plan.json
+  - execution_blockers.json
+  - omega_event.json
+  - report.md
+
+# ---- Strict join keys (all 8 required) ----------------------------------
+
+strict_join_keys:
+  - dataset_id
+  - row_id
+  - source_file
+  - window_id
+  - window_start_s
+  - window_end_s
+  - sample_start
+  - sample_end
+
+# ---- Required canonical signal block files ------------------------------
+
+required_signal_block_files:
+  - signal_block_inventory.json
+  - window_inventory.csv
+  - window_signal_values.json
+  - reader_alignment_report.json
+
+# ---- Readiness conditions -----------------------------------------------
+
+readiness_conditions:
+  ready_for_p12_alignment:
+    requires:
+      - reviewed_contract_ready
+      - metadata_file_ready
+      - canonical_signal_blocks_ready
+  ready_for_p13_target_injection:
+    requires:
+      - ready_for_p12_alignment
+      - label_alignment_csv_present
+  ready_for_p11_target_aware_benchmark:
+    requires:
+      - ready_for_p13_target_injection
+      - level_m_features_ready
+      - level_t_features_ready
+  ready_for_real_benchmark:
+    requires:
+      - ready_for_p11_target_aware_benchmark
+
+# ---- Dry-run command plan stages (do not execute) -----------------------
+
+dry_run_plan_stages:
+  - stage: P17.1
+    description: Materialize reviewed external contract
+    blocked_by: missing_reviewed_contract
+  - stage: P19.1
+    description: MNE signal extraction from local EEG files
+    blocked_by: missing_local_eeg_files
+  - stage: P19.2
+    description: Canonical signal-block conversion
+    blocked_by: p19_2_converter_not_yet_implemented
+  - stage: P9
+    description: Level M signal feature extraction
+    blocked_by: canonical_signal_blocks_not_ready
+  - stage: P10
+    description: Level T signal topology extraction
+    blocked_by: canonical_signal_blocks_not_ready
+  - stage: P12
+    description: Label alignment with reviewed external contract
+    blocked_by: level_m_features_not_ready
+  - stage: P13
+    description: Target injection
+    blocked_by: label_alignment_not_ready
+  - stage: P11
+    description: Target-aware M+T benchmark (future P18.1 scope)
+    blocked_by: targets_not_ready
+
+# ---- Guardrails ---------------------------------------------------------
+
+guardrails:
+  - no_data_download
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation
+  - no_automatic_benchmark_run
+  - no_p11_gate_modification
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
+
+# ---- Forbidden phrases in all outputs -----------------------------------
+
+forbidden_phrases:
+  - "proves consciousness"
+  - "consciousness proven"
+  - "soul proven"
+  - "afterlife proven"
+  - "liberation detected"
+  - "ontology solved"
+  - "ultimate reality"
+  - "q equals self"
+  - "q equals soul"
+  - "q_abs equals suffering"
+  - "f_dress equals karma"
+  - "sedated implies no_experience"
+  - "unresponsive implies unconscious"
+  - "topology proves liberation"
+  - "eeg proves consciousness"
