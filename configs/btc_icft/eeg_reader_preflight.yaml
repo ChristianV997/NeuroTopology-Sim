@@ -1,0 +1,46 @@
+dataset_scope: local_eeg_reader_preflight
+pipeline_id: eeg_reader_preflight_v0
+default_dataset_id: DS005620
+default_root: data/DS005620
+default_out: outputs/btc_icft/eeg_reader_preflight/DS005620
+required_outputs:
+  - eeg_file_manifest.csv
+  - reader_capability_report.json
+  - reader_preflight_summary.json
+  - extraction_blockers.json
+  - omega_event.json
+  - report.md
+text_fixture_extensions:
+  - .csv
+  - .tsv
+  - .txt
+dependency_gated_extensions:
+  mne:
+    - .edf
+    - .bdf
+    - .gdf
+    - .set
+    - .fdt
+    - .vhdr
+    - .vmrk
+    - .eeg
+    - .cnt
+    - .fif
+  wfdb:
+    - .hea
+    - .dat
+  scipy:
+    - .mat
+guardrails:
+  - no_data_download
+  - no_binary_parsing
+  - no_hard_dependencies
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation
+  - no_p11_gate_modification
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
