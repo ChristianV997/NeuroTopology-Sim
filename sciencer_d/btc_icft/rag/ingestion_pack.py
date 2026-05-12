@@ -15,6 +15,10 @@ SAFE_CLAIM = (
     "BTC/ICFT artifacts remain candidate proxy and operational telemetry evidence only; "
     "human review is required before any empirical or ontological interpretation."
 )
+DEFAULT_MAX_CHARS_PER_CHUNK = 1800
+DEFAULT_OVERLAP_CHARS = 200
+DEFAULT_INCLUDE_PRIORITY_MAX = 3
+WITHHOLD_PREFIX = "withhold_chunk::"
 
 SCIENTIFIC_GUARDRAILS: tuple[str, ...] = (
     "Do not claim EEG/topology/Q/Q_abs/f_dress prove consciousness, self, soul, liberation, afterlife, enlightenment, or ontology.",
@@ -101,8 +105,8 @@ def _hash16(value: str) -> str:
 
 
 def _detect_chunk_role(record: dict) -> str:
-    path = str(record.get("relative_path", "")).lower()
-    file_name = Path(path).name
+    relative_path_lower = str(record.get("relative_path", "")).lower()
+    file_name = Path(relative_path_lower).name
     stage = str(record.get("stage", "unknown"))
     file_type = str(record.get("file_type", ""))
     status = str(record.get("claim_safety_status", ""))
@@ -150,13 +154,13 @@ def _read_manifest_jsonl(path: Path, max_artifacts: int | None = None) -> list[d
 
 def _load_source_text(record: dict, artifact_root: Path) -> str:
     source_path = Path(str(record.get("path", "")))
-    rel = Path(str(record.get("relative_path", "")))
+    relative_path = Path(str(record.get("relative_path", "")))
 
     candidate_paths = [source_path]
-    if not source_path.is_file() and rel:
-        candidate_paths.append(artifact_root / rel)
-        if str(rel).startswith("docs/"):
-            candidate_paths.append(artifact_root.parent / rel)
+    if not source_path.is_file() and relative_path:
+        candidate_paths.append(artifact_root / relative_path)
+        if str(relative_path).startswith("docs/"):
+            candidate_paths.append(artifact_root.parent / relative_path)
 
     for path in candidate_paths:
         if path.is_file():
@@ -172,7 +176,7 @@ def _chunk_text(text: str, max_chars_per_chunk: int, overlap_chars: int) -> list
     if not text:
         return []
     if max_chars_per_chunk <= 0:
-        max_chars_per_chunk = 1800
+        max_chars_per_chunk = DEFAULT_MAX_CHARS_PER_CHUNK
     if overlap_chars < 0:
         overlap_chars = 0
     if overlap_chars >= max_chars_per_chunk:
@@ -225,10 +229,10 @@ def build_ingestion_pack(
     artifact_root: Path,
     docs_root: Path,
     out_dir: Path,
-    max_chars_per_chunk: int = 1800,
-    overlap_chars: int = 200,
+    max_chars_per_chunk: int = DEFAULT_MAX_CHARS_PER_CHUNK,
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
     max_artifacts: int | None = None,
-    include_priority_max: int = 3,
+    include_priority_max: int = DEFAULT_INCLUDE_PRIORITY_MAX,
     include_quarantined: bool = False,
 ) -> dict:
     generated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -299,18 +303,22 @@ def build_ingestion_pack(
                 next_action=(
                     str(record.get("next_action", "index_in_scheduled_batch"))
                     if include
-                    else f"withhold_chunk::{include_reason}"
+                    else f"{WITHHOLD_PREFIX}{include_reason}"
                 ),
             )
             chunks.append(chunk)
 
     # Outputs
-    chunk_dicts = [c.to_dict() for c in chunks]
-    included_chunks = [
-        c for c in chunk_dicts
-        if c["claim_safety_status"] == "safe" and c["index_priority"] <= include_priority_max
-    ]
-    quarantined_chunks = [c for c in chunk_dicts if c["claim_safety_status"] != "safe"]
+    chunk_dicts: list[dict] = []
+    included_chunks: list[dict] = []
+    quarantined_chunks: list[dict] = []
+    for chunk in chunks:
+        payload = chunk.to_dict()
+        chunk_dicts.append(payload)
+        if payload["claim_safety_status"] != "safe":
+            quarantined_chunks.append(payload)
+        if payload["claim_safety_status"] == "safe" and payload["index_priority"] <= include_priority_max:
+            included_chunks.append(payload)
 
     with (out_dir / "rag_ingestion_chunks.jsonl").open("w", encoding="utf-8") as fh:
         for chunk in chunk_dicts:
@@ -448,7 +456,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
 
     artifacts: list[dict] = []
 
-    def _add(relative_path: str, payload: str, *, file_type: str, stage: str, dataset_id: str, safety: str, priority: int, mode: str, forbidden: list[str] | None = None, summary: str = "") -> None:
+    def _add_artifact(relative_path: str, payload: str, *, file_type: str, stage: str, dataset_id: str, safety: str, priority: int, mode: str, forbidden: list[str] | None = None, summary: str = "") -> None:
         path = root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(payload, encoding="utf-8")
@@ -475,7 +483,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
             }
         )
 
-    _add(
+    _add_artifact(
         "report.md",
         "# Report\n\nCandidate proxy summary for controlled benchmark telemetry.",
         file_type="md",
@@ -486,7 +494,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
         mode="artifact_explainer",
         summary="mock report",
     )
-    _add(
+    _add_artifact(
         "omega_event.json",
         json.dumps({"event_type": "mock", "safe_claim": SAFE_CLAIM, "no_external_api_called": True}),
         file_type="json",
@@ -497,7 +505,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
         mode="claim_card_generator",
         summary="mock omega event",
     )
-    _add(
+    _add_artifact(
         "metrics_signal_mt.json",
         json.dumps({"q": 0.1, "q_abs": 0.2, "f_dress": 0.01, "safe_claim": "candidate proxy"}),
         file_type="json",
@@ -508,7 +516,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
         mode="topology_metric_explainer",
         summary="mock metrics",
     )
-    _add(
+    _add_artifact(
         "configs/awareness_rag_ingestion_pack.yaml",
         "dataset_scope: awareness_rag_ingestion_pack\npipeline_id: awareness_rag_ingestion_pack_v0\n",
         file_type="yaml",
@@ -519,7 +527,7 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
         mode="artifact_explainer",
         summary="mock config",
     )
-    _add(
+    _add_artifact(
         "quarantine/bad_claim.md",
         "eeg proves consciousness in this banned mock phrase",
         file_type="md",
@@ -539,7 +547,14 @@ def create_mock_fixture_manifest(tmp_dir: Path) -> tuple[Path, Path]:
     return manifest_path, root
 
 
-def build_with_mock_fixture(out_dir: Path, max_chars_per_chunk: int = 1800, overlap_chars: int = 200, max_artifacts: int | None = None, include_priority_max: int = 3, include_quarantined: bool = False) -> dict:
+def build_with_mock_fixture(
+    out_dir: Path,
+    max_chars_per_chunk: int = DEFAULT_MAX_CHARS_PER_CHUNK,
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
+    max_artifacts: int | None = None,
+    include_priority_max: int = DEFAULT_INCLUDE_PRIORITY_MAX,
+    include_quarantined: bool = False,
+) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         manifest_path, artifact_root = create_mock_fixture_manifest(tmp_path)

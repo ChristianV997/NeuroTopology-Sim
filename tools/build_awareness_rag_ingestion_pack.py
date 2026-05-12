@@ -9,6 +9,15 @@ import sys
 from pathlib import Path
 
 
+def _parse_bool_str(value: str) -> bool:
+    lowered = str(value).strip().lower()
+    if lowered in {"true", "1", "yes", "y"}:
+        return True
+    if lowered in {"false", "0", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError("expected one of: true/false/1/0/yes/no")
+
+
 def _load_module():
     module_name = "sciencer_d.btc_icft.rag.ingestion_pack"
     module_path = (
@@ -38,7 +47,7 @@ def main() -> int:
     parser.add_argument(
         "--include-quarantined",
         default=False,
-        type=lambda x: str(x).lower() == "true",
+        type=_parse_bool_str,
         help="Include quarantined chunks in index candidate outputs",
     )
     parser.add_argument("--mock-fixture", action="store_true")

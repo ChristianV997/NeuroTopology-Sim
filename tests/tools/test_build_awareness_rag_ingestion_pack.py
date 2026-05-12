@@ -29,7 +29,7 @@ def _run_cli(args: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(CLI_PATH)] + args, capture_output=True, text=True)
 
 
-def _load_mod():
+def _load_module():
     module_name = "sciencer_d.btc_icft.rag.ingestion_pack"
     if module_name in sys.modules:
         return sys.modules[module_name]
@@ -61,7 +61,7 @@ def test_mock_fixture_generates_chunks(tmp_path):
 
 
 def test_chunk_has_required_fields(tmp_path):
-    mod = _load_mod()
+    mod = _load_module()
     out = tmp_path / "out"
     _run_cli(["--mock-fixture", "--out", str(out)])
     first = json.loads((out / "rag_ingestion_chunks.jsonl").read_text().splitlines()[0])
@@ -88,6 +88,7 @@ def test_mock_has_quarantined_withheld_default(tmp_path):
 
 
 def test_include_quarantined_sets_withhold_override(tmp_path):
+    mod = _load_module()
     out = tmp_path / "out"
     _run_cli([
         "--mock-fixture",
@@ -97,7 +98,7 @@ def test_include_quarantined_sets_withhold_override(tmp_path):
     rows = [json.loads(line) for line in (out / "rag_ingestion_chunks.jsonl").read_text().splitlines() if line.strip()]
     quarantined = [r for r in rows if r["claim_safety_status"] != "safe"]
     assert quarantined
-    assert all(not str(r["next_action"]).startswith("withhold_chunk::quarantined") for r in quarantined)
+    assert all(not str(r["next_action"]).startswith(f"{mod.WITHHOLD_PREFIX}quarantined") for r in quarantined)
 
 
 def test_priority_filter_withholds_high_priority_number(tmp_path):
