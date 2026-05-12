@@ -1,0 +1,42 @@
+dataset_scope: local_target_aware_activation_smoke
+pipeline_id: target_aware_activation_smoke_v0
+default_dataset_id: DS005620
+default_root: outputs/btc_icft
+default_out: outputs/btc_icft/target_aware_activation/DS005620
+
+required_outputs:
+  - activation_smoke_summary.json
+  - activation_stage_results.json
+  - target_aware_metrics_snapshot.json
+  - activation_guardrail_report.json
+  - omega_event.json
+  - report.md
+
+required_stages:
+  - p14_adapter_readiness
+  - p12_explicit_label_alignment
+  - p10_level_t_signal_topology
+  - p13_target_injection
+  - p11_target_aware_signal_mt
+
+guardrails:
+  - no_data_download
+  - no_real_contract_activation
+  - no_label_inference
+  - no_target_fabrication
+  - no_p11_gate_modification
+  - no_sedated_to_no_experience
+  - no_unresponsive_to_unconscious
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
+
+notes:
+  - Controlled smoke test only; no empirical conclusion.
+  - Only explicit declared mock binary mappings may produce y targets.
+  - Real contract activation requires separate human-reviewed PR.
+  - PyYAML is NOT required; tests may inspect this file as plain text.
+  - Does not modify P11 promotion criteria.
+  - Does not modify legacy DS005620 mt_real semantics.
