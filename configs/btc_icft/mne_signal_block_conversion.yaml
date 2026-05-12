@@ -1,0 +1,39 @@
+dataset_scope: local_mne_signal_block_conversion
+pipeline_id: mne_signal_block_conversion_v0
+default_dataset_id: DS005620
+default_mne_extract: outputs/btc_icft/eeg_mne_extract/DS005620
+default_out: outputs/btc_icft/eeg_signal_blocks_from_mne/DS005620
+required_inputs:
+  - mne_signal_metadata.json
+  - mne_signal_windows.csv
+  - mne_signal_window_values.json
+required_outputs:
+  - signal_block_inventory.json
+  - window_inventory.csv
+  - window_signal_values.json
+  - reader_alignment_report.json
+  - rejected_windows.json
+  - omega_event.json
+  - report.md
+strict_join_keys:
+  - dataset_id
+  - row_id
+  - source_file
+  - window_id
+  - window_start_s
+  - window_end_s
+  - sample_start
+  - sample_end
+guardrails:
+  - no_data_download
+  - no_mne_required
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation
+  - no_automatic_benchmark_run
+  - no_p11_gate_modification
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
