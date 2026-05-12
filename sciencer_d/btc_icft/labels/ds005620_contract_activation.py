@@ -40,6 +40,18 @@ _DEFAULT_JOIN_KEYS = [
 
 _POSITIVE_HINTS = ("label", "state", "condition", "group", "class", "target", "response", "task")
 _NEGATIVE_HINTS = ("notes", "description", "comment", "narrative", "text", "filename", "file", "path", "url")
+_FREE_TEXT_MIN_LENGTH = 30
+_FREE_TEXT_WITH_SPACE_MIN_LENGTH = 16
+_MAX_LABEL_UNIQUE_VALUES = 20
+_NEXT_STEP_REQUIRED_DECLARATIONS = [
+    "explicit_label_column",
+    "positive_values",
+    "negative_values",
+    "label_scope",
+    "join_keys",
+    "metadata provenance",
+    "no-shortcut justification",
+]
 
 
 @dataclass
@@ -141,8 +153,23 @@ def _looks_like_free_text(column: str, values: list[str]) -> bool:
         return True
     if not values:
         return False
-    longish = [v for v in values if len(v) > 30 or (" " in v and len(v) > 16)]
-    return len(longish) >= max(1, len(values) // 2)
+    longish = [
+        v
+        for v in values
+        if len(v) > _FREE_TEXT_MIN_LENGTH
+        or (" " in v and len(v) > _FREE_TEXT_WITH_SPACE_MIN_LENGTH)
+    ]
+    return len(longish) >= max(1, (len(values) + 1) // 2)
+
+
+def _human_join(items: list[str]) -> str:
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
 
 
 def _looks_like_file_path(column: str, values: list[str]) -> bool:
@@ -190,7 +217,7 @@ def audit_metadata_values(metadata_rows: list[dict]) -> list[DS005620MetadataVal
             rejected_reason = "likely_file_path"
         elif _looks_like_free_text(col, unique_values):
             rejected_reason = "likely_free_text"
-        elif n_unique > 20:
+        elif n_unique > _MAX_LABEL_UNIQUE_VALUES:
             rejected_reason = "too_many_unique_values"
         elif not any(h in col.lower() for h in _POSITIVE_HINTS):
             rejected_reason = "no_label_signal"
@@ -251,27 +278,37 @@ def prepare_ds005620_activation_proposal(
         }
     )
 
-    blockers: list[str] = []
     metadata_exists = bool(metadata_rows)
-    if not metadata_rows:
-        blockers.append("metadata_required")
-
+    gates = {
+        "metadata_file_exists": metadata_exists,
+        "explicit_label_column_declared": False,
+        "positive_values_declared": False,
+        "negative_values_declared": False,
+        "label_scope_declared": True,
+        "join_keys_declared": True,
+        "both_classes_present": False,
+        "ambiguous_values_rejected": len(unresolved_values) == 0,
+        "human_review_required": False,
+        "contract_activation_allowed": False,
+    }
+    gate_to_blocker = {
+        "metadata_file_exists": "metadata_required",
+        "explicit_label_column_declared": "explicit_label_column_required",
+        "positive_values_declared": "positive_values_required",
+        "negative_values_declared": "negative_values_required",
+        "both_classes_present": "both_classes_required",
+        "ambiguous_values_rejected": "ambiguous_values_rejected",
+        "human_review_required": "human_review_required",
+    }
+    blockers: list[str] = [gate_to_blocker[g] for g, ok in gates.items() if g in gate_to_blocker and not ok]
     blockers.extend(
         [
-            "explicit_label_column_required",
-            "positive_values_required",
-            "negative_values_required",
-            "both_classes_required",
-            "human_review_required",
             "semantic_justification_required",
             "no_shortcut_inference_confirmation_required",
             "separate_contract_activation_pr_required",
         ]
     )
-    if unresolved_values:
-        blockers.append("ambiguous_values_rejected")
-
-    blockers = sorted(set(blockers), key=blockers.index)
+    blockers = list(dict.fromkeys(blockers))
 
     proposal = DS005620ActivationProposal(
         dataset_id="DS005620",
@@ -478,6 +515,11 @@ def write_ds005620_activation_outputs(result: DS005620ActivationResult, out_dir:
     p.write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
     outputs[p.name] = str(p)
 
+    required_decl = _human_join(_NEXT_STEP_REQUIRED_DECLARATIONS)
+    next_step = (
+        f"Open a separate contract-activation PR only after a human reviewer declares "
+        f"{required_decl}."
+    )
     report = "\n".join(
         [
             "# DS005620 Human-Reviewed Contract Activation Packet",
@@ -522,7 +564,7 @@ def write_ds005620_activation_outputs(result: DS005620ActivationResult, out_dir:
             "",
             "## Next required step",
             "",
-            "Open a separate contract-activation PR only after a human reviewer declares explicit_label_column, positive_values, negative_values, label_scope, join_keys, metadata provenance, and no-shortcut justification.",
+            next_step,
         ]
     ) + "\n"
     _validate_safe_text(report)

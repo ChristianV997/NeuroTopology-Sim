@@ -83,12 +83,13 @@ def run(
     result = prepare_ds005620_activation_proposal(metadata_rows, drafts_payload)
     outputs = write_ds005620_activation_outputs(result, out_dir)
 
-    print(json.dumps({
+    summary = {
         "dataset_id": result.dataset_id,
         "contract_activation_allowed": result.activation_proposal.get("contract_activation_allowed", False),
         "n_metadata_rows": result.n_metadata_rows,
         "outputs": outputs,
-    }, indent=2))
+    }
+    print(json.dumps(summary, indent=2))
     return 0
 
 

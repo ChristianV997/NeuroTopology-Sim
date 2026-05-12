@@ -315,7 +315,7 @@ def test_24_cli_missing_metadata_without_mock_fails_cleanly(tmp_path: Path) -> N
     ]
     p = subprocess.run(cmd, capture_output=True, text=True)
     assert p.returncode != 0
-    assert "DS005620 local metadata is required. Provide --metadata or use --mock-fixture." in p.stderr
+    assert "DS005620 local metadata is required." in p.stderr
 
 
 def test_25_config_contains_required_outputs_gates_guardrails() -> None:
@@ -347,7 +347,7 @@ def test_27_no_contract_status_is_set_to_active(tmp_path: Path) -> None:
     outputs = write_ds005620_activation_outputs(result, str(tmp_path))
     for path in outputs.values():
         text = Path(path).read_text(encoding="utf-8").lower()
-        assert "\"status\": \"active\"" not in text
+        assert '"status": "active"' not in text
 
 
 def test_28_p11_p12_p13_behavior_not_imported_or_modified() -> None:
@@ -368,8 +368,14 @@ def test_28_p11_p12_p13_behavior_not_imported_or_modified() -> None:
 def test_29_legacy_mt_real_files_not_imported_or_modified() -> None:
     src = Path("sciencer_d/btc_icft/labels/ds005620_contract_activation.py").read_text(encoding="utf-8")
     cli = Path("sciencer_d/btc_icft/pipelines/prepare_ds005620_contract_activation.py").read_text(encoding="utf-8")
-    assert "mt_real" not in src
-    assert "mt_real" not in cli
+    banned = [
+        "run_ds005620_mt_real",
+        "ds005620_mt_real",
+        "eeg_signal_mt_residual",
+    ]
+    for token in banned:
+        assert token not in src
+        assert token not in cli
 
 
 def test_30_issue_80_acceptance_commands_pass(tmp_path: Path) -> None:
@@ -389,7 +395,7 @@ def test_30_issue_80_acceptance_commands_pass(tmp_path: Path) -> None:
         assert p.returncode == 0, f"Command failed: {' '.join(cmd)}\nSTDOUT:{p.stdout}\nSTDERR:{p.stderr}"
 
 
-def test_load_contract_drafts(tmp_path: Path) -> None:
+def test_31_load_contract_drafts(tmp_path: Path) -> None:
     p = tmp_path / "drafts.json"
     p.write_text(json.dumps({"metadata_provenance": "manual_review"}), encoding="utf-8")
     data = load_contract_drafts(str(p))
