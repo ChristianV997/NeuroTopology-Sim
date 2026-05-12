@@ -1,0 +1,29 @@
+dataset_scope: local_dataset_contract_drafts
+pipeline_id: dataset_contract_drafts_v0
+default_readiness_dir: outputs/btc_icft/label_adapter_readiness
+default_out: outputs/btc_icft/label_contract_drafts
+required_outputs:
+  - contract_draft_summary.json
+  - contract_drafts.json
+  - human_review_checklists.json
+  - activation_blockers.json
+  - omega_event.json
+  - report.md
+draft_statuses:
+  - draft_inactive_human_review_required
+  - draft_blocked_no_metadata
+  - draft_blocked_no_candidate_column
+  - draft_blocked_needs_explicit_mapping
+  - draft_blocked_insufficient_values
+guardrails:
+  - no_data_download
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation_without_human_review
+  - no_sedated_to_no_experience
+  - no_unresponsive_to_unconscious
+  - no_legacy_mt_real_change
+  - no_level_o
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims

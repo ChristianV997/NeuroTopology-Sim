@@ -2,6 +2,7 @@ dataset_scope: ds005620_contract_activation
 pipeline_id: ds005620_contract_activation_v0
 dataset_id: DS005620
 default_out: outputs/btc_icft/ds005620_contract_activation
+
 required_outputs:
   - activation_proposal.json
   - human_review_packet.json
@@ -9,6 +10,7 @@ required_outputs:
   - activation_blockers.json
   - omega_event.json
   - report.md
+
 activation_gates:
   - metadata_file_exists
   - explicit_label_column_declared
@@ -20,6 +22,21 @@ activation_gates:
   - ambiguous_values_rejected
   - human_review_required
   - contract_activation_allowed
+
+contract_activation_allowed: false
+
+default_label_scope: window
+
+default_join_keys:
+  - dataset_id
+  - row_id
+  - source_file
+  - window_id
+  - window_start_s
+  - window_end_s
+  - sample_start
+  - sample_end
+
 guardrails:
   - no_data_download
   - no_label_inference
@@ -36,7 +53,28 @@ guardrails:
   - no_ontology_claims
   - no_soul_afterlife_claims
   - no_liberation_claims
+
+required_human_decisions:
+  - choose explicit_label_column
+  - declare positive_values
+  - declare negative_values
+  - declare label_scope
+  - verify join_keys
+  - verify metadata provenance
+  - justify semantic mapping
+  - confirm no shortcut inference
+  - approve contract activation in separate PR
+
+candidate_metadata_formats:
+  - .csv
+  - .tsv
+  - .json
+
 notes:
-  - P16 activation-planning scaffold only; does not activate a real contract.
-  - Requires explicit human declarations in a separate contract-activation PR.
-  - PyYAML is not required; this config is consumed as plain text by tests/tooling.
+  - Read-only audit; no labels inferred, no targets fabricated, no data downloaded.
+  - contract_activation_allowed is always false from this pipeline.
+  - Real contract activation requires a separate human-reviewed PR.
+  - Does not modify P11 promotion gates.
+  - Does not modify legacy DS005620 mt_real semantics.
+  - contract_drafts.json from P14.1 is used as inactive hints only.
+  - PyYAML is NOT required; tests may inspect this file as plain text.
