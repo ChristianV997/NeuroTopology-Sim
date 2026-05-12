@@ -1,0 +1,31 @@
+# Awareness RAG ingestion pack config (P20.1)
+dataset_scope: awareness_rag_ingestion_pack
+pipeline_id: awareness_rag_ingestion_pack_v0
+default_manifest: outputs/btc_icft/rag_manifest/rag_artifact_manifest.jsonl
+default_artifact_root: outputs/btc_icft
+default_docs: docs
+default_out: outputs/btc_icft/rag_ingestion_pack
+default_chunking:
+  max_chars_per_chunk: 1800
+  overlap_chars: 200
+index_policy:
+  include_priority_max: 3
+  include_quarantined: false
+required_outputs:
+  - rag_ingestion_chunks.jsonl
+  - rag_ingestion_pack.json
+  - rag_ingestion_index.csv
+  - withheld_or_quarantined_chunks.json
+  - omega_event.json
+  - report.md
+guardrails:
+  - no_external_api
+  - no_embeddings_created
+  - no_vector_db_setup
+  - no_label_inference
+  - no_target_fabrication
+  - no_contract_activation
+  - no_benchmark_execution
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
