@@ -1,4 +1,5 @@
 from __future__ import annotations
+import csv
 import json
 import subprocess
 import sys
@@ -6,6 +7,24 @@ from pathlib import Path
 import pytest
 from sciencer_d.btc_icft.labels.eeg_label_contracts import *
 
+def _write_external_contract(path: Path, **overrides) -> Path:
+    payload = {
+        "dataset_id": "DS005620",
+        "title": "Reviewed external contract",
+        "source_hint": "reviewed_external_contract",
+        "status": "active_reviewed_external_contract",
+        "label_scope": "window",
+        "explicit_label_column": "explicit_state_label",
+        "positive_values": ["target"],
+        "negative_values": ["control"],
+        "join_keys": ["dataset_id","row_id","source_file","window_id","window_start_s","window_end_s","sample_start","sample_end"],
+        "allowed_metadata_extensions": [".csv", ".tsv", ".json"],
+        "caveats": [],
+        "guardrails": ["no_label_inference", "no_target_fabrication"],
+    }
+    payload.update(overrides)
+    _write_contract(path, payload)
+    return path
 
 def _signal_row():
     return {"dataset_id":"DS005620","row_id":"r1","source_file":"f.edf","window_id":"w1","window_start_s":"0","window_end_s":"1","sample_start":"0","sample_end":"10"}
@@ -97,7 +116,7 @@ _STRICT_JOIN_KEYS = ["dataset_id","row_id","source_file","window_id","window_sta
 def _valid_external_contract(dataset_id: str = "DS005620") -> dict:
     return {
         "dataset_id": dataset_id,
-        "contract_status": "active_reviewed_external_contract",
+        "status": "active_reviewed_external_contract",
         "explicit_label_column": "trial_type",
         "positive_values": ["focus"],
         "negative_values": ["mind_wandering"],
@@ -153,19 +172,22 @@ def test_external_contract_wrong_dataset_id_blocks(tmp_path: Path):
 
 def test_external_contract_wrong_status_blocks(tmp_path: Path):
     from sciencer_d.btc_icft.pipelines.align_eeg_labels import load_external_contract
-    data = {**_valid_external_contract(), "contract_status": "preview_human_reviewed_not_active"}
+    data = {
+        **_valid_external_contract(),
+        "status": "preview_human_reviewed_not_active",
+    }
     contract_path = tmp_path / "contract.json"
     _write_contract(contract_path, data)
-    with pytest.raises(ValueError, match="contract_status"):
+    with pytest.raises(ValueError, match="status"):
         load_external_contract(str(contract_path), "DS005620")
 
 
 def test_external_contract_missing_status_blocks(tmp_path: Path):
     from sciencer_d.btc_icft.pipelines.align_eeg_labels import load_external_contract
-    data = {k: v for k, v in _valid_external_contract().items() if k != "contract_status"}
+    data = {k: v for k, v in _valid_external_contract().items() if k != "status"}
     contract_path = tmp_path / "contract.json"
     _write_contract(contract_path, data)
-    with pytest.raises(ValueError, match="contract_status"):
+    with pytest.raises(ValueError, match="status"):
         load_external_contract(str(contract_path), "DS005620")
 
 
@@ -201,7 +223,7 @@ def test_external_contract_overlapping_values_blocks(tmp_path: Path):
     data = {**_valid_external_contract(), "positive_values": ["focus"], "negative_values": ["focus"]}
     contract_path = tmp_path / "contract.json"
     _write_contract(contract_path, data)
-    with pytest.raises(ValueError, match="overlap"):
+    with pytest.raises(ValueError, match="overlap|must not overlap"):
         load_external_contract(str(contract_path), "DS005620")
 
 
@@ -278,3 +300,32 @@ def test_p18_dry_run_p12_no_blocked_handshake_blocker(tmp_path: Path):
     p12_cmd = next((c for c in result.dry_run_command_plan if c["stage"] == "P12"), None)
     assert p12_cmd is not None
     assert "blocked_p12_external_contract_handshake_missing" not in p12_cmd.get("blockers", [])
+
+def test_cli_external_contract_validation_and_alignment(tmp_path: Path):
+    s = tmp_path/"s.csv"
+    s.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end\nDS005620,r0,f.edf,w0,0,1,0,10\n")
+    m = tmp_path/"m.csv"
+    m.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end,explicit_state_label\nDS005620,r0,f.edf,w0,0,1,0,10,target\n")
+    c = _write_external_contract(tmp_path/"contract.json")
+    out = tmp_path/"out"
+    r = subprocess.run([sys.executable,"-m","sciencer_d.btc_icft.pipelines.align_eeg_labels","--dataset-id","DS005620","--signal-features",str(s),"--metadata",str(m),"--external-contract",str(c),"--out",str(out)],capture_output=True,text=True)
+    assert r.returncode == 0
+    rep=json.loads((out/"label_alignment_report.json").read_text())
+    assert rep["n_targets_available"] == 1 and rep["explicit_targets_available"] is True
+
+
+def test_cli_external_contract_rejections(tmp_path: Path):
+    s = tmp_path/"s.csv"
+    s.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end\nDS005620,r0,f.edf,w0,0,1,0,10\n")
+    m = tmp_path/"m.csv"
+    m.write_text("dataset_id,row_id,source_file,window_id,window_start_s,window_end_s,sample_start,sample_end,explicit_state_label\nDS005620,r0,f.edf,w0,0,1,0,10,target\n")
+    def run_bad(payload):
+        c = _write_external_contract(tmp_path/"bad.json", **payload)
+        return subprocess.run([sys.executable,"-m","sciencer_d.btc_icft.pipelines.align_eeg_labels","--dataset-id","DS005620","--signal-features",str(s),"--metadata",str(m),"--external-contract",str(c),"--out",str(tmp_path/"o")],capture_output=True,text=True)
+    assert run_bad({"dataset_id":"DSX"}).returncode != 0
+    assert run_bad({"status":"inactive_until_metadata_supplied"}).returncode != 0
+    assert run_bad({"explicit_label_column":""}).returncode != 0
+    assert run_bad({"positive_values":[]}).returncode != 0
+    assert run_bad({"negative_values":[]}).returncode != 0
+    assert run_bad({"positive_values":["target"],"negative_values":["target"]}).returncode != 0
+    assert run_bad({"join_keys":["dataset_id"]}).returncode != 0

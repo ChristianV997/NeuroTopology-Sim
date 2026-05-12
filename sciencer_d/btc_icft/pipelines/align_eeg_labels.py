@@ -24,11 +24,9 @@ def _write_mock_signal(path: Path, dataset_id: str) -> None:
         w=csv.DictWriter(f, fieldnames=cols); w.writeheader()
         for i in range(2):
             w.writerow({"dataset_id":dataset_id,"row_id":f"r{i}","source_file":"f.edf","window_id":f"w{i}","window_start_s":str(i),"window_end_s":str(i+1),"sample_start":str(i*10),"sample_end":str((i+1)*10)})
-
 def _write_mock_meta(path: Path, active: bool) -> None:
     rows=[{"dataset_id":"DS005620","row_id":"r0","source_file":"f.edf","window_id":"w0","window_start_s":"0","window_end_s":"1","sample_start":"0","sample_end":"10","explicit_state_label":"target"},{"dataset_id":"DS005620","row_id":"r1","source_file":"f.edf","window_id":"w1","window_start_s":"1","window_end_s":"2","sample_start":"10","sample_end":"20","explicit_state_label":"control"}]
     path.write_text("\n".join([",".join(rows[0].keys())]+[",".join(r.values()) for r in rows]), encoding="utf-8")
-
 
 def load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
     """Load and validate a reviewed external contract JSON, returning an EEGLabelContract.
@@ -54,11 +52,11 @@ def load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
             f"--dataset-id {dataset_id!r}"
         )
 
-    # Require contract_status == active_reviewed_external_contract
-    contract_status = data.get("contract_status")
+    # Accept either status key for compatibility across reviewed contract generators.
+    contract_status = data.get("status", data.get("contract_status"))
     if contract_status != _EXTERNAL_CONTRACT_REQUIRED_STATUS:
         errors.append(
-            f"External contract contract_status is {contract_status!r}; "
+            f"External contract status is {contract_status!r}; "
             f"expected {_EXTERNAL_CONTRACT_REQUIRED_STATUS!r}"
         )
 
@@ -84,12 +82,13 @@ def load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
             f"External contract positive_values and negative_values overlap: {sorted(overlap)}"
         )
 
-    # Require all strict join keys present
-    contract_keys = set(data.get("join_keys") or [])
-    missing_keys = [k for k in _STRICT_JOIN_KEYS if k not in contract_keys]
-    if missing_keys:
+    # Require exact strict join keys.
+    join_keys = tuple(data.get("join_keys") or [])
+    expected_join_keys = tuple(_STRICT_JOIN_KEYS)
+    if join_keys != expected_join_keys:
         errors.append(
-            f"External contract join_keys missing required strict keys: {missing_keys}"
+            "External contract join_keys must match strict required join keys exactly; "
+            f"expected {list(expected_join_keys)} got {list(join_keys)}"
         )
 
     if errors:
@@ -106,7 +105,7 @@ def load_external_contract(path: str, dataset_id: str) -> EEGLabelContract:
         explicit_label_column=explicit_label_column,
         positive_values=list(positive_values),
         negative_values=list(negative_values),
-        join_keys=_STRICT_JOIN_KEYS[:],
+        join_keys=list(_STRICT_JOIN_KEYS),
         allowed_metadata_extensions=list(data.get("allowed_metadata_extensions") or _DEFAULT_METADATA_EXTENSIONS),
         caveats=list(data.get("caveats") or _DEFAULT_CAVEATS),
         guardrails=list(data.get("guardrails") or _DEFAULT_GUARDRAILS),
@@ -133,7 +132,6 @@ def run(dataset_id:str, signal_features:str, metadata:str|None, out_dir:str, act
         contract=get_label_contract(dataset_id)
         if activate_mock_contract:
             contract.status="active"; contract.explicit_label_column="explicit_state_label"; contract.positive_values=["target"]; contract.negative_values=["control"]
-
     signals=load_signal_rows(signal_features); metas=load_metadata_rows(metadata)
     result=align_eeg_labels(dataset_id, signals, metas, contract)
     write_label_alignment_outputs(result, out_dir)
