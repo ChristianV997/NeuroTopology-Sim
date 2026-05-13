@@ -73,6 +73,27 @@ def _build_report(state_dict: dict, task_inv: dict, snapshot_id: str, dataset_id
     return "\n".join(lines)
 
 
+def _build_next_actions(state_dict: dict) -> dict:
+    next_action = state_dict.get("next_action", "unknown")
+    chain = [
+        "run_mock_e2e",
+        "build_artifact_manifest",
+        "export_evidence_packet",
+        "generate_paper_skeleton",
+        "ready_for_real_local_preflight_or_review",
+    ]
+    try:
+        current_idx = chain.index(next_action)
+    except ValueError:
+        current_idx = -1
+    return {
+        "current_next_action": next_action,
+        "chain": chain,
+        "remaining": chain[current_idx:] if current_idx >= 0 else [],
+        "completed": chain[:current_idx] if current_idx >= 0 else [],
+    }
+
+
 def _write_outputs(
     out_dir: str,
     state_dict: dict,
@@ -87,22 +108,35 @@ def _write_outputs(
     state_path = p / "runtime_state.json"
     state_path.write_text(json.dumps(state_dict, indent=2, default=str), encoding="utf-8")
 
+    # Write task inventory as both canonical and alias name required by spec
     inv_path = p / "task_inventory.json"
     inv_path.write_text(json.dumps(task_inv, indent=2, default=str), encoding="utf-8")
+    inv_alias_path = p / "runtime_inventory.json"
+    inv_alias_path.write_text(json.dumps(task_inv, indent=2, default=str), encoding="utf-8")
 
     snap_path = p / "runtime_snapshot.json"
     snap_path.write_text(json.dumps(snapshot, indent=2, default=str), encoding="utf-8")
 
+    next_actions = _build_next_actions(state_dict)
+    next_actions_path = p / "runtime_next_actions.json"
+    next_actions_path.write_text(json.dumps(next_actions, indent=2, default=str), encoding="utf-8")
+
     report_text = _build_report(state_dict, task_inv, snapshot.get("snapshot_id", ""), dataset_id)
+    # Write report as both names (runtime_report.md is canonical; report.md required by spec)
     report_path = p / "runtime_report.md"
     report_path.write_text(report_text, encoding="utf-8")
+    report_alias_path = p / "report.md"
+    report_alias_path.write_text(report_text, encoding="utf-8")
 
     return {
         "runtime_state.json": str(state_path),
         "task_inventory.json": str(inv_path),
+        "runtime_inventory.json": str(inv_alias_path),
         "runtime_snapshot.json": str(snap_path),
+        "runtime_next_actions.json": str(next_actions_path),
         "runtime_event_log.jsonl": event_log_path,
         "runtime_report.md": str(report_path),
+        "report.md": str(report_alias_path),
     }
 
 
