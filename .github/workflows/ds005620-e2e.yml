@@ -19,5 +19,8 @@ jobs:
         run: |
           python -m governance.validate
           python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
+          python -m pytest tests/btc_icft/test_ds005620_e2e_ci_contract.py -q
           make ds005620-e2e-mock
           make validate-ds005620-e2e
+          make validate-ds005620-e2e-json
+          make validate-ds005620-contracts

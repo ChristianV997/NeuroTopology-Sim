@@ -1,0 +1,38 @@
+{
+  "contract_id": "ds005620.p18_1.execution_summary",
+  "version": "0.1",
+  "artifact": "ds005620_real_benchmark_execution.json",
+  "required_top_level_keys": [
+    "dataset_id",
+    "mode",
+    "dry_run",
+    "execute_requested",
+    "peer_reviewed_contract_confirmed",
+    "p12_executed",
+    "p13_executed",
+    "p11_executed",
+    "p12_succeeded",
+    "p13_succeeded",
+    "p11_succeeded",
+    "benchmark_completed",
+    "artifact_root",
+    "execution_blockers",
+    "warnings",
+    "safe_claim"
+  ],
+  "required_boolean_keys": [
+    "dry_run",
+    "execute_requested",
+    "peer_reviewed_contract_confirmed",
+    "p12_executed",
+    "p13_executed",
+    "p11_executed",
+    "p12_succeeded",
+    "p13_succeeded",
+    "p11_succeeded",
+    "benchmark_completed"
+  ],
+  "required_string_keys": ["dataset_id", "mode", "artifact_root", "safe_claim"],
+  "required_list_keys": ["execution_blockers", "warnings"],
+  "forbidden_phrases": ["proves consciousness", "soul proven", "ontology solved"]
+}

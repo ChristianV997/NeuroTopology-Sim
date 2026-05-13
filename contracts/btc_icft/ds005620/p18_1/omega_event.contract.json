@@ -1,0 +1,33 @@
+{
+  "contract_id": "ds005620.p18_1.omega_event",
+  "version": "0.1",
+  "artifact": "omega_event.json",
+  "required_top_level_keys": [
+    "event_id",
+    "event_type",
+    "dataset_id",
+    "p12_executed",
+    "p13_executed",
+    "p11_executed",
+    "benchmark_completed",
+    "labels_inferred",
+    "targets_fabricated",
+    "source_contracts_modified",
+    "legacy_mt_real_modified",
+    "contracts_activated_by_executor",
+    "p11_promotion_gate_modified",
+    "consciousness_claims_made",
+    "safe_claim",
+    "forbidden_claims"
+  ],
+  "required_false_keys": [
+    "labels_inferred",
+    "targets_fabricated",
+    "source_contracts_modified",
+    "legacy_mt_real_modified",
+    "contracts_activated_by_executor",
+    "p11_promotion_gate_modified",
+    "consciousness_claims_made"
+  ],
+  "forbidden_phrases": ["ontology proof claim", "empirical claim from mock e2e"]
+}

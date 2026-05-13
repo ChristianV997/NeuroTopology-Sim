@@ -1,0 +1,26 @@
+{
+  "contract_id": "ds005620.p18_1.stage_results",
+  "version": "0.1",
+  "artifact": "stage_results.json",
+  "required_top_level_keys": ["stages"],
+  "required_list_keys": ["stages"],
+  "allowed_stage_ids": ["P12", "P13", "P11"],
+  "required_stage_keys": [
+    "stage_id",
+    "stage_name",
+    "command",
+    "ready_to_run",
+    "would_execute",
+    "executed",
+    "skipped",
+    "succeeded",
+    "exit_code",
+    "blockers",
+    "expected_outputs",
+    "actual_outputs",
+    "stdout_preview",
+    "stderr_preview",
+    "duration_seconds"
+  ],
+  "forbidden_phrases": ["no label inference", "no target fabrication"]
+}

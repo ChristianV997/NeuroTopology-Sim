@@ -245,3 +245,13 @@ make validate-ds005620-e2e-json
 ```
 
 - Real/local execution still requires human data placement and peer-review confirmation before running execute mode.
+
+## Contract validation
+
+Run the contract validator after E2E validation:
+
+```bash
+make validate-ds005620-contracts
+```
+
+P18.1 artifact shape is now contract-tested in CI.
