@@ -1,0 +1,8 @@
+{
+  "contract_id": "ds005620.p18_1.execution_blockers",
+  "version": "0.1",
+  "artifact": "execution_blockers.json",
+  "required_top_level_keys": ["execution_blockers", "stage_blockers", "all_blockers", "blocker_counts"],
+  "required_list_keys": ["execution_blockers", "all_blockers"],
+  "forbidden_phrases": ["no runtime package implementation"]
+}

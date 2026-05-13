@@ -1,0 +1,17 @@
+{
+  "contract_id": "ds005620.p18_1.stage_execution_plan",
+  "version": "0.1",
+  "artifact": "stage_execution_plan.json",
+  "required_top_level_keys": ["stages", "paths"],
+  "required_list_keys": ["stages"],
+  "allowed_stage_ids": ["P12", "P13", "P11"],
+  "required_stage_keys": [
+    "stage_id",
+    "stage_name",
+    "command",
+    "command_str",
+    "ready_to_run",
+    "expected_outputs"
+  ],
+  "forbidden_phrases": ["automatic contract activation", "dataset download"]
+}

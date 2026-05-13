@@ -546,3 +546,113 @@ def test_no_stage_executes_without_peer_review_even_with_runner(tmp_path: Path):
     assert result.p12_executed is False
     assert result.p13_executed is False
     assert result.p11_executed is False
+
+
+def test_cli_execute_without_peer_review_exits_nonzero(tmp_path: Path):
+    r = subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--execute", "--out", str(tmp_path / "blocked")],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+
+
+def test_cli_execute_without_peer_review_writes_core_artifacts(tmp_path: Path):
+    out = tmp_path / "blocked"
+    r = subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--execute", "--out", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    for name in _P18_1_ARTIFACTS:
+        assert (out / name).is_file(), name
+
+
+def test_cli_execute_without_peer_review_does_not_execute_stages(tmp_path: Path):
+    out = tmp_path / "blocked"
+    subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--execute", "--out", str(out)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    summary = json.loads((out / "ds005620_real_benchmark_execution.json").read_text())
+    blockers = json.loads((out / "execution_blockers.json").read_text())
+    assert summary["p12_executed"] is False
+    assert summary["p13_executed"] is False
+    assert summary["p11_executed"] is False
+    assert "execute_requested_without_peer_reviewed_contract_confirmation" in blockers["execution_blockers"]
+
+
+def test_validator_json_out_writes_summary(tmp_path: Path):
+    out = tmp_path / "mock_e2e"
+    subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--mock-e2e", "--execute", "--peer-reviewed-contract-confirmed", "--out", str(out)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    json_out = out / "validation_summary.json"
+    rv = subprocess.run(
+        [sys.executable, "tools/validate_ds005620_e2e_execution.py", "--root", str(out), "--json-out", str(json_out)],
+        capture_output=True,
+        text=True,
+    )
+    assert rv.returncode == 0
+    summary = json.loads(json_out.read_text())
+    assert summary["ok"] is True
+    assert "checked_artifacts" in summary
+
+
+def test_validator_quiet_suppresses_pass_output(tmp_path: Path):
+    out = tmp_path / "mock_e2e"
+    subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--mock-e2e", "--execute", "--peer-reviewed-contract-confirmed", "--out", str(out)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    rv = subprocess.run(
+        [sys.executable, "tools/validate_ds005620_e2e_execution.py", "--root", str(out), "--quiet"],
+        capture_output=True,
+        text=True,
+    )
+    assert rv.returncode == 0
+    assert "PASS" not in rv.stdout
+
+
+def test_validator_fails_cleanly_when_root_missing(tmp_path: Path):
+    missing = tmp_path / "not_found"
+    rv = subprocess.run(
+        [sys.executable, "tools/validate_ds005620_e2e_execution.py", "--root", str(missing), "--json-out", str(tmp_path / "sum.json")],
+        capture_output=True,
+        text=True,
+    )
+    assert rv.returncode == 1
+
+
+def test_validator_reports_p11_labeled_feature_check_in_json_failures(tmp_path: Path):
+    out = tmp_path / "mock_e2e"
+    subprocess.run(
+        [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark", "--mock-e2e", "--execute", "--peer-reviewed-contract-confirmed", "--out", str(out)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    stage_results_path = out / "stage_results.json"
+    stage_results = json.loads(stage_results_path.read_text())
+    for stage in stage_results.get("stages", []):
+        if stage.get("stage_id") == "P11":
+            stage["command"] = ["python", "-m", "sciencer_d.btc_icft.pipelines.run_eeg_signal_mt", "--m-features", "features_m_signal.csv"]
+    stage_results_path.write_text(json.dumps(stage_results, indent=2) + "\n", encoding="utf-8")
+
+    json_out = out / "validation_summary.json"
+    rv = subprocess.run(
+        [sys.executable, "tools/validate_ds005620_e2e_execution.py", "--root", str(out), "--json-out", str(json_out), "--quiet"],
+        capture_output=True,
+        text=True,
+    )
+    assert rv.returncode == 1
+    summary = json.loads(json_out.read_text())
+    assert any("P11 command must consume the P13 features_m_signal_labeled.csv" in f for f in summary["failures"])

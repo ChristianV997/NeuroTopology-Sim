@@ -231,3 +231,27 @@ A future paper-skeleton PR should:
 3. Report `metrics_signal_mt.json` results with full provenance.
 4. State explicitly what the result is *not* a claim of.
 5. Be independently peer-reviewed before merge.
+
+
+## CI and automation safety
+
+- The mock E2E path is CI-gated via `.github/workflows/ds005620-e2e.yml`.
+- Unsafe execute behavior is enforced: `--execute` without `--peer-reviewed-contract-confirmed` exits nonzero and still writes blocked artifacts.
+- Dry-run behavior remains safe-by-default: omitting `--execute` exits 0 and executes no stages.
+- Machine-readable validation is available with:
+
+```bash
+make validate-ds005620-e2e-json
+```
+
+- Real/local execution still requires human data placement and peer-review confirmation before running execute mode.
+
+## Contract validation
+
+Run the contract validator after E2E validation:
+
+```bash
+make validate-ds005620-contracts
+```
+
+P18.1 artifact shape is now contract-tested in CI.

@@ -1,4 +1,4 @@
-name: DS005620 E2E Mock
+name: DS005620 E2E
 
 on:
   push:
@@ -8,46 +8,53 @@ on:
     paths:
       - 'sciencer_d/btc_icft/**'
       - 'tools/validate_ds005620_e2e_execution.py'
+      - 'tools/validate_ds005620_contracts.py'
       - 'tools/build_ds005620_artifact_manifest.py'
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
+      - 'contracts/btc_icft/ds005620/p18_1/**'
       - 'tests/btc_icft/**'
       - 'Makefile'
+      - '.github/workflows/ds005620-e2e.yml'
   pull_request:
     paths:
       - 'sciencer_d/btc_icft/**'
       - 'tools/validate_ds005620_e2e_execution.py'
+      - 'tools/validate_ds005620_contracts.py'
       - 'tools/build_ds005620_artifact_manifest.py'
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
+      - 'contracts/btc_icft/ds005620/p18_1/**'
       - 'tests/btc_icft/**'
       - 'Makefile'
+      - '.github/workflows/ds005620-e2e.yml'
   workflow_dispatch:
 
 jobs:
-  ds005620-e2e-mock:
+  ds005620-e2e:
     name: DS005620 E2E Mock Run
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run btc_icft tests
-        run: python -m pytest tests/btc_icft/ -q --tb=short
-
-      - name: Run mock E2E benchmark
-        run: make ds005620-e2e-mock
-
-      - name: Validate E2E execution artifacts
-        run: make validate-ds005620-e2e
+      - name: Governance and DS005620 mock E2E gate
+        run: |
+          python -m governance.validate
+          python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
+          python -m pytest tests/btc_icft/test_ds005620_e2e_ci_contract.py -q
+          make ds005620-e2e-mock
+          make validate-ds005620-e2e
+          make validate-ds005620-e2e-json
+          make validate-ds005620-contracts
 
       - name: Run autonomy check
         run: make ds005620-autonomy-check
@@ -57,5 +64,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ds005620-e2e-artifacts
-          path: outputs/btc_icft/ds005620_real_benchmark_execution_mock/
+          path: |
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/
+            outputs/btc_icft/science_runtime_inspection/
+            outputs/btc_icft/ds005620_real_local_preflight/
           retention-days: 7

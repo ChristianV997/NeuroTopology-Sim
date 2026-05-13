@@ -1,0 +1,8 @@
+{
+  "contract_id": "ds005620.p18_1.validation_summary",
+  "version": "0.1",
+  "artifact": "validation_summary.json",
+  "required_top_level_keys": ["ok", "root", "failures", "checked_artifacts", "checked_stages", "benchmark_completed"],
+  "required_list_keys": ["failures", "checked_artifacts", "checked_stages"],
+  "forbidden_phrases": ["metaphysical", "ontology proof"]
+}

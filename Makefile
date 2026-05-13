@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-e2e-ci ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime
 
 validate-governance:
 	python -m governance.validate
@@ -47,6 +47,21 @@ ds005620-e2e-mock:
 validate-ds005620-e2e:
 	python tools/validate_ds005620_e2e_execution.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock
 
+validate-ds005620-e2e-json:
+	python tools/validate_ds005620_e2e_execution.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --json-out outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
+
+validate-ds005620-contracts:
+	python tools/validate_ds005620_contracts.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --validation-summary outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
+
+ds005620-e2e-ci:
+	python -m governance.validate
+	python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
+	python -m pytest tests/btc_icft/test_ds005620_e2e_ci_contract.py -q
+	$(MAKE) ds005620-e2e-mock
+	$(MAKE) validate-ds005620-e2e
+	$(MAKE) validate-ds005620-e2e-json
+	$(MAKE) validate-ds005620-contracts
+
 ds005620-build-manifest:
 	python tools/build_ds005620_artifact_manifest.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --out outputs/btc_icft/ds005620_real_benchmark_execution_mock
 
@@ -65,4 +80,4 @@ ds005620-preflight:
 ds005620-test-runtime:
 	python -m pytest tests/btc_icft/test_science_runtime_events.py tests/btc_icft/test_science_runtime_state.py tests/btc_icft/test_science_task_inventory.py tests/btc_icft/test_science_runtime_snapshots.py tests/btc_icft/test_ds005620_artifact_manifest.py tests/btc_icft/test_ds005620_evidence_packet.py tests/btc_icft/test_ds005620_paper_skeleton.py tests/btc_icft/test_ds005620_real_local_preflight.py -v --tb=short
 
-ds005620-autonomy-check: ds005620-e2e-mock validate-ds005620-e2e ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-test-runtime
+ds005620-autonomy-check: ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-test-runtime

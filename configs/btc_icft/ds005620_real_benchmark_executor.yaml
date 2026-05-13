@@ -110,3 +110,14 @@ forbidden_phrases:
   - "unresponsive implies unconscious"
   - "topology proves liberation"
   - "eeg proves consciousness"
+
+
+ci_contract:
+  mock_e2e_workflow: ".github/workflows/ds005620-e2e.yml"
+  required_commands:
+    - "python -m governance.validate"
+    - "python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q"
+    - "make ds005620-e2e-mock"
+    - "make validate-ds005620-e2e"
+  real_data_required: false
+  secrets_required: false
