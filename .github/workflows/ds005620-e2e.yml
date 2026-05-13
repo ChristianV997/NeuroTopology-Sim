@@ -1,20 +1,53 @@
 name: DS005620 E2E
 
 on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'sciencer_d/btc_icft/**'
+      - 'tools/validate_ds005620_e2e_execution.py'
+      - 'tools/validate_ds005620_contracts.py'
+      - 'tools/build_ds005620_ci_evidence_report.py'
+      - 'tools/build_ds005620_artifact_manifest.py'
+      - 'tools/export_ds005620_evidence_packet.py'
+      - 'tools/generate_ds005620_paper_skeleton.py'
+      - 'contracts/btc_icft/ds005620/p18_1/**'
+      - 'tests/btc_icft/**'
+      - 'Makefile'
+      - '.github/workflows/ds005620-e2e.yml'
   pull_request:
+    paths:
+      - 'sciencer_d/btc_icft/**'
+      - 'tools/validate_ds005620_e2e_execution.py'
+      - 'tools/validate_ds005620_contracts.py'
+      - 'tools/build_ds005620_ci_evidence_report.py'
+      - 'tools/build_ds005620_artifact_manifest.py'
+      - 'tools/export_ds005620_evidence_packet.py'
+      - 'tools/generate_ds005620_paper_skeleton.py'
+      - 'contracts/btc_icft/ds005620/p18_1/**'
+      - 'tests/btc_icft/**'
+      - 'Makefile'
+      - '.github/workflows/ds005620-e2e.yml'
   workflow_dispatch:
 
 jobs:
   ds005620-e2e:
+    name: DS005620 E2E Mock Run
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Governance and DS005620 mock E2E gate
         run: |
           python -m governance.validate
@@ -25,6 +58,16 @@ jobs:
           make validate-ds005620-e2e-json
           make validate-ds005620-contracts
           make ds005620-ci-evidence-report
+
+      - name: Run autonomy packaging and runtime checks
+        run: |
+          make ds005620-build-manifest
+          make ds005620-export-evidence
+          make ds005620-paper-skeleton
+          make ds005620-inspect-runtime
+          make ds005620-preflight
+          make ds005620-test-runtime
+
       - name: Upload DS005620 mock E2E evidence
         uses: actions/upload-artifact@v4
         if: always()
@@ -46,3 +89,13 @@ jobs:
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p11_signal_mt/metrics_signal_mt.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ds005620-e2e-artifacts
+          path: |
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/
+            outputs/btc_icft/science_runtime_inspection/
+            outputs/btc_icft/ds005620_real_local_preflight/
+          retention-days: 7
