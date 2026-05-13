@@ -1,0 +1,58 @@
+name: Agent Handoff
+description: Structured handoff between parallel agent lanes.
+title: "[Agent Handoff] "
+labels:
+  - handoff
+  - ds005620
+body:
+  - type: input
+    id: agent_name
+    attributes:
+      label: agent name
+    validations:
+      required: true
+  - type: input
+    id: branch
+    attributes:
+      label: branch
+    validations:
+      required: true
+  - type: input
+    id: pr
+    attributes:
+      label: PR
+      placeholder: PR number or link
+    validations:
+      required: true
+  - type: textarea
+    id: files_changed
+    attributes:
+      label: files changed
+    validations:
+      required: true
+  - type: textarea
+    id: tests_run
+    attributes:
+      label: tests run
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: blockers
+    validations:
+      required: true
+  - type: textarea
+    id: next_prompt
+    attributes:
+      label: next prompt
+      description: Prompt to seed the next agent lane.
+    validations:
+      required: true
+  - type: textarea
+    id: conflict_risks
+    attributes:
+      label: conflict risks
+      description: Note overlap risks with Opus/Codex lane outputs.
+    validations:
+      required: true

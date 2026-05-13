@@ -1,0 +1,13 @@
+# Catch-all owner rule for all repository paths.
+* @ChristianV997
+
+# DS005620-sensitive benchmark and execution paths require owner review.
+sciencer_d/btc_icft/p18/ @ChristianV997
+sciencer_d/btc_icft/p11/ @ChristianV997
+sciencer_d/btc_icft/p12/ @ChristianV997
+sciencer_d/btc_icft/p13/ @ChristianV997
+
+# GitHub governance, docs, and tests can follow normal owner review.
+.github/ @ChristianV997
+docs/ @ChristianV997
+tests/ @ChristianV997
