@@ -170,6 +170,9 @@ Each command includes `ready_to_run`, `requires`, `expected_outputs`, and `block
 
 ## P18.1 Handoff
 
+P18.1 mock E2E is CI-protected by `.github/workflows/ds005620-e2e.yml`.
+
+
 P18.0 plans readiness. **P18.1 (`run_ds005620_real_benchmark`)** executes
 the guarded P12 → P13 → P11 chain when peer review is confirmed.
 

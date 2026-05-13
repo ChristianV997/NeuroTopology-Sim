@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json ds005620-e2e-ci
 
 validate-governance:
 	python -m governance.validate
@@ -46,3 +46,12 @@ ds005620-e2e-mock:
 
 validate-ds005620-e2e:
 	python tools/validate_ds005620_e2e_execution.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock
+
+validate-ds005620-e2e-json:
+	python tools/validate_ds005620_e2e_execution.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --json-out outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
+
+ds005620-e2e-ci:
+	python -m governance.validate
+	python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
+	$(MAKE) ds005620-e2e-mock
+	$(MAKE) validate-ds005620-e2e

@@ -1,0 +1,23 @@
+name: DS005620 E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ds005620-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Governance and DS005620 mock E2E gate
+        run: |
+          python -m governance.validate
+          python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
+          make ds005620-e2e-mock
+          make validate-ds005620-e2e

@@ -206,6 +206,8 @@ def main(argv=None) -> int:
     for key, path in out_paths.items():
         print(f"    {key}: {path}", file=sys.stderr)
 
+    if a.execute and not a.peer_reviewed_contract_confirmed and result.execution_blockers:
+        return 2
     if not result.dry_run and not result.benchmark_completed:
         return 2
     return 0
