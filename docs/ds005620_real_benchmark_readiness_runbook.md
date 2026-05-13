@@ -170,16 +170,21 @@ Each command includes `ready_to_run`, `requires`, `expected_outputs`, and `block
 
 ## P18.1 Handoff
 
+P18.0 plans readiness. **P18.1 (`run_ds005620_real_benchmark`)** executes
+the guarded P12 → P13 → P11 chain when peer review is confirmed.
+
 After P18.0 reports `ready_for_p12_alignment: True`:
 
 1. Verify `p12_external_contract.json` with an independent peer reviewer.
-2. Run P12 alignment with `--external-contract` flag.
-3. Run P13 target injection.
-4. Run P11 target-aware benchmark.
-5. Open a **P18.1 PR** with all benchmark artifacts and metrics.
+2. Smoke-test the integration with `make ds005620-e2e-mock` — runs the
+   real P12 / P13 / P11 CLIs against in-tree fixtures.
+3. Validate with `make validate-ds005620-e2e`.
+4. Run real/local: `python -m sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark --execute --peer-reviewed-contract-confirmed --out <real_out>`.
+5. Open a P18.1 results PR with the produced artifacts.
 
-Do NOT run P18.1 without peer review of the reviewed external contract.
-Do NOT open P18.1 PR if `ready_for_p12_alignment: False`.
+Do NOT run P18.1 in execute mode without peer review of the reviewed
+external contract.
+Do NOT open a P18.1 results PR if `ready_for_p12_alignment: False`.
 
 ---
 

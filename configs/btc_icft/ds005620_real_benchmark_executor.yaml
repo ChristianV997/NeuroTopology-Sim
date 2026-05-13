@@ -1,0 +1,112 @@
+# DS005620 Real Benchmark Executor — P18.1 Configuration
+#
+# Governs the guarded executor for the DS005620 P12 -> P13 -> P11 chain.
+# Default mode is dry-run. Real execution requires both:
+#   --execute
+#   --peer-reviewed-contract-confirmed
+
+pipeline_id: ds005620_real_benchmark_executor_v0
+dataset_id: DS005620
+peer_review_required: true
+dry_run_default: true
+mock_e2e_available: true
+
+# ---- Default paths (overridable from CLI) -------------------------------
+
+default_paths:
+  reviewed_contract: outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json
+  metadata: data/DS005620/events.tsv
+  signal_blocks: outputs/btc_icft/eeg_signal_blocks_from_mne/DS005620
+  level_m: outputs/btc_icft/eeg_level_m/DS005620
+  level_t: outputs/btc_icft/eeg_level_t/DS005620
+  p12_out: outputs/btc_icft/eeg_labels/DS005620_reviewed
+  p13_out: outputs/btc_icft/eeg_targets/DS005620_reviewed
+  p11_out: outputs/btc_icft/eeg_signal_mt/DS005620_reviewed
+  default_out: outputs/btc_icft/ds005620_real_benchmark_execution
+
+# ---- Stage definitions --------------------------------------------------
+
+stages:
+  - stage_id: P12
+    stage_name: align_eeg_labels (external reviewed contract)
+    module: sciencer_d.btc_icft.pipelines.align_eeg_labels
+    requires:
+      - reviewed_contract
+      - metadata
+      - level_m/features_m_signal.csv
+    expected_outputs:
+      - p12_out/label_alignment.csv
+  - stage_id: P13
+    stage_name: inject_eeg_targets
+    module: sciencer_d.btc_icft.pipelines.inject_eeg_targets
+    requires:
+      - level_m/features_m_signal.csv
+      - p12_out/label_alignment.csv
+    expected_outputs:
+      - p13_out/features_m_signal_labeled.csv
+  - stage_id: P11
+    stage_name: run_eeg_signal_mt (target-aware)
+    module: sciencer_d.btc_icft.pipelines.run_eeg_signal_mt
+    requires:
+      - p13_out/features_m_signal_labeled.csv
+      - level_t/features_t_signal.csv
+    expected_outputs:
+      - p11_out/metrics_signal_mt.json
+
+# ---- Required output artifacts ------------------------------------------
+
+required_outputs:
+  - ds005620_real_benchmark_execution.json
+  - stage_execution_plan.json
+  - stage_results.json
+  - execution_blockers.json
+  - omega_event.json
+  - report.md
+
+# ---- Omega invariants (must always be false) ----------------------------
+
+omega_invariants_false:
+  - labels_inferred
+  - targets_fabricated
+  - source_contracts_modified
+  - legacy_mt_real_modified
+  - contracts_activated_by_executor
+  - p11_promotion_gate_modified
+  - consciousness_claims_made
+
+# ---- Guardrails ---------------------------------------------------------
+
+guardrails:
+  - no_label_inference
+  - no_target_fabrication
+  - no_automatic_contract_activation
+  - no_p11_promotion_gate_modification
+  - no_legacy_mt_real_modification
+  - no_data_download
+  - no_new_required_dependency
+  - no_level_o_c_q
+  - no_ontology_claims
+  - no_soul_afterlife_claims
+  - no_liberation_claims
+  - no_filename_derived_labels
+  - no_topology_derived_labels
+  - no_artifact_derived_labels
+
+# ---- Forbidden phrases (executor scans report.md) -----------------------
+
+forbidden_phrases:
+  - "proves consciousness"
+  - "consciousness proven"
+  - "soul proven"
+  - "afterlife proven"
+  - "liberation detected"
+  - "ontology solved"
+  - "ultimate reality"
+  - "q equals self"
+  - "q equals soul"
+  - "q_abs equals suffering"
+  - "f_dress equals karma"
+  - "sedated implies no_experience"
+  - "unresponsive implies unconscious"
+  - "topology proves liberation"
+  - "eeg proves consciousness"

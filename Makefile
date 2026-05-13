@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e
 
 validate-governance:
 	python -m governance.validate
@@ -37,3 +37,12 @@ validate-eeg-signal-artifacts:
 
 smoke-eeg-signal-pipeline:
 	python tools/run_eeg_signal_pipeline_smoke.py --dataset-id DS005620 --root outputs/btc_icft --validate
+
+ds005620-e2e-dry-run:
+	python -m sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark --out outputs/btc_icft/ds005620_real_benchmark_execution
+
+ds005620-e2e-mock:
+	python -m sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark --mock-e2e --execute --peer-reviewed-contract-confirmed --out outputs/btc_icft/ds005620_real_benchmark_execution_mock
+
+validate-ds005620-e2e:
+	python tools/validate_ds005620_e2e_execution.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock
