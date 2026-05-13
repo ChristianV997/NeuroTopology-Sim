@@ -1,0 +1,73 @@
+name: Science Runtime Bug
+description: Bug report for DS005620 runtime/benchmark command behavior.
+title: "[Runtime Bug] "
+labels:
+  - bug
+  - ds005620
+body:
+  - type: textarea
+    id: failing_command
+    attributes:
+      label: failing command
+      placeholder: Exact command and args
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: actual behavior
+    validations:
+      required: true
+  - type: input
+    id: artifact_root
+    attributes:
+      label: artifact root
+      placeholder: outputs/btc_icft/...
+    validations:
+      required: true
+  - type: textarea
+    id: validation_output
+    attributes:
+      label: validation output
+      description: Include validator, CI, or pytest output excerpt.
+    validations:
+      required: true
+  - type: dropdown
+    id: stage_affected
+    attributes:
+      label: stage affected
+      options:
+        - P12 label alignment
+        - P13 target injection
+        - P11 benchmark execution
+        - P18 readiness/executor/autonomy
+        - CI / validator
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: real_data_involved
+    attributes:
+      label: whether real data involved
+      options:
+        - "no"
+        - "yes"
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: guardrails_affected
+    attributes:
+      label: whether guardrails affected
+      options:
+        - "no"
+        - "yes"
+        - unknown
+    validations:
+      required: true

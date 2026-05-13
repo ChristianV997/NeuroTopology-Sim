@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-e2e-ci ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-e2e-ci github-governance-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime
 
 validate-governance:
 	python -m governance.validate
@@ -81,3 +81,6 @@ ds005620-test-runtime:
 	python -m pytest tests/btc_icft/test_science_runtime_events.py tests/btc_icft/test_science_runtime_state.py tests/btc_icft/test_science_task_inventory.py tests/btc_icft/test_science_runtime_snapshots.py tests/btc_icft/test_ds005620_artifact_manifest.py tests/btc_icft/test_ds005620_evidence_packet.py tests/btc_icft/test_ds005620_paper_skeleton.py tests/btc_icft/test_ds005620_real_local_preflight.py -v --tb=short
 
 ds005620-autonomy-check: ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-test-runtime
+
+github-governance-check:
+	python -m pytest tests/btc_icft/test_github_workflow_governance.py -q

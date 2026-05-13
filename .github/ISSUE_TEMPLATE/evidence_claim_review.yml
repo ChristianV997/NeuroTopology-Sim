@@ -1,0 +1,87 @@
+name: Evidence Claim Review
+description: Structured review for evidence/claim language before merge.
+title: "[Claim Review] "
+labels:
+  - review
+  - ds005620
+body:
+  - type: textarea
+    id: claim_text
+    attributes:
+      label: claim text
+    validations:
+      required: true
+  - type: input
+    id: evidence_artifact
+    attributes:
+      label: evidence artifact
+      placeholder: Path to report/JSON/manifest
+    validations:
+      required: true
+  - type: input
+    id: dataset
+    attributes:
+      label: dataset
+      placeholder: e.g. DS005620
+    validations:
+      required: true
+  - type: dropdown
+    id: null_control_status
+    attributes:
+      label: null/control status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: ablation_status
+    attributes:
+      label: ablation status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: leakage_status
+    attributes:
+      label: leakage status
+      options:
+        - none detected
+        - suspected
+        - confirmed
+    validations:
+      required: true
+  - type: dropdown
+    id: artifact_report_status
+    attributes:
+      label: artifact report status
+      options:
+        - valid and complete
+        - incomplete
+        - invalid
+    validations:
+      required: true
+  - type: dropdown
+    id: proposed_evidence_state
+    attributes:
+      label: proposed evidence state
+      options:
+        - exploratory only
+        - benchmark-gated
+        - blocked pending controls
+    validations:
+      required: true
+  - type: dropdown
+    id: reviewer_decision
+    attributes:
+      label: reviewer decision
+      options:
+        - approve wording
+        - request changes
+        - block merge
+    validations:
+      required: true

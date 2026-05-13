@@ -1,0 +1,75 @@
+name: DS005620 Pipeline Task
+description: Structured planning for DS005620 phase-scoped pipeline work.
+title: "[DS005620 Pipeline] "
+labels:
+  - ds005620
+body:
+  - type: dropdown
+    id: phase
+    attributes:
+      label: phase
+      options:
+        - P17 contract
+        - P18 readiness/executor/autonomy
+        - P19 extraction/conversion
+        - P9 features
+        - P10 features
+        - P11 benchmark
+        - docs/tests only
+    validations:
+      required: true
+  - type: input
+    id: target_module
+    attributes:
+      label: target module
+      placeholder: e.g. sciencer_d/btc_icft/pipelines
+    validations:
+      required: true
+  - type: textarea
+    id: expected_artifacts
+    attributes:
+      label: expected artifacts
+      description: List files or directories expected from this task.
+    validations:
+      required: true
+  - type: textarea
+    id: input_prerequisites
+    attributes:
+      label: input prerequisites
+      description: Contracts, local files, approvals, or prior PR dependencies.
+    validations:
+      required: true
+  - type: textarea
+    id: output_contract
+    attributes:
+      label: output contract
+      description: Required schema or interface guarantees.
+    validations:
+      required: true
+  - type: textarea
+    id: validation_commands
+    attributes:
+      label: validation commands
+      description: Paste exact commands that prove completion (`github-governance-check` validates governance templates/docs tests).
+      value: |
+        python -m governance.validate
+        # validates governance templates/docs checks
+        make github-governance-check
+        python -m pytest tests/btc_icft -q
+    validations:
+      required: true
+  - type: checkboxes
+    id: guardrail_checklist
+    attributes:
+      label: guardrail checklist
+      options:
+        - label: No label inference
+          required: true
+        - label: No target fabrication
+          required: true
+        - label: No P11 gate modification without explicit approval
+          required: true
+        - label: No data download in CI or issue automation
+          required: true
+        - label: No ontology/metaphysical claims
+          required: true
