@@ -36,6 +36,8 @@ jobs:
   ds005620-e2e:
     name: DS005620 E2E Mock Run
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 15
 
     steps:
