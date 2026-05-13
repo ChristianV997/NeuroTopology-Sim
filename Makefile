@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-e2e-ci
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci
 
 validate-governance:
 	python -m governance.validate
@@ -53,6 +53,11 @@ validate-ds005620-e2e-json:
 validate-ds005620-contracts:
 	python tools/validate_ds005620_contracts.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --validation-summary outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
 
+
+
+ds005620-ci-evidence-report:
+	python tools/build_ds005620_ci_evidence_report.py --root outputs/btc_icft/ds005620_real_benchmark_execution_mock --validation-summary outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json --contract-summary outputs/btc_icft/ds005620_real_benchmark_execution_mock/contract_validation_summary.json --json-out outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.json --markdown-out outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.md
+
 ds005620-e2e-ci:
 	python -m governance.validate
 	python -m pytest tests/btc_icft/test_ds005620_real_benchmark_executor.py -q
@@ -61,3 +66,4 @@ ds005620-e2e-ci:
 	$(MAKE) validate-ds005620-e2e
 	$(MAKE) validate-ds005620-e2e-json
 	$(MAKE) validate-ds005620-contracts
+	$(MAKE) ds005620-ci-evidence-report

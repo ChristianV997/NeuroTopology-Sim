@@ -46,3 +46,17 @@ This contract layer provides replay-safe interfaces for later autonomy logic.
 Allowed safe claim:
 
 > DS005620 P18.1 artifacts are now contract-validated for stable automation and replay-safe downstream tooling.
+
+## CI evidence report linkage
+P18.2 adds a CI evidence report generated at mock artifact root:
+- `ci_evidence_report.json`
+- `ci_evidence_report.md`
+
+The report ingests:
+- `validation_summary.json` (P18.1 E2E validator output)
+- `contract_validation_summary.json` (contract validator output)
+
+This keeps machine-readable CI evidence aligned with contract validation outcomes.
+
+## GitHub Actions artifact
+Workflow `.github/workflows/ds005620-e2e.yml` uploads a downloadable artifact named `ds005620-mock-e2e-evidence` containing P18.1 core artifacts, validator outputs, CI evidence report files, and selected P12/P13/P11 outputs for audit.

@@ -24,3 +24,25 @@ jobs:
           make validate-ds005620-e2e
           make validate-ds005620-e2e-json
           make validate-ds005620-contracts
+          make ds005620-ci-evidence-report
+      - name: Upload DS005620 mock E2E evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds005620-mock-e2e-evidence
+          path: |
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ds005620_real_benchmark_execution.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_execution_plan.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_results.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/execution_blockers.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/omega_event.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/report.md
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/contract_validation_summary.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.md
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p12_eeg_labels/label_alignment.csv
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p13_eeg_targets/features_m_signal_labeled.csv
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p11_signal_mt/metrics_signal_mt.json
+          if-no-files-found: warn
+          retention-days: 14
