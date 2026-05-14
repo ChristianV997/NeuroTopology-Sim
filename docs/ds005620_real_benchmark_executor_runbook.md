@@ -255,3 +255,21 @@ make validate-ds005620-contracts
 ```
 
 P18.1 artifact shape is now contract-tested in CI.
+
+## CI evidence bundle
+
+Generate CI evidence files after mock E2E validation:
+
+```bash
+make ds005620-ci-evidence-report
+```
+
+GitHub Actions uploads artifact `ds005620-mock-e2e-evidence` including:
+- six P18.1 core artifacts
+- `validation_summary.json`
+- `contract_validation_summary.json`
+- `ci_evidence_report.json`
+- `ci_evidence_report.md`
+- selected P12/P13/P11 outputs (`label_alignment.csv`, `features_m_signal_labeled.csv`, `metrics_signal_mt.json`)
+
+This evidence bundle supports engineering validation and contract audit only. It does not establish empirical findings.
