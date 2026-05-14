@@ -90,6 +90,7 @@ jobs:
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p11_signal_mt/metrics_signal_mt.json
           if-no-files-found: warn
           retention-days: 14
+
       - name: Upload E2E artifacts
         if: always()
         uses: actions/upload-artifact@v4
