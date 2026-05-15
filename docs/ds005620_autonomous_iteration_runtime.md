@@ -181,6 +181,21 @@ P21 is a coordinator, not a replacement:
 - Never promotes ontology candidates from runtime artifacts
 - Never makes metaphysical proof claims
 
+## Extension to multi-dataset autonomous iteration
+
+P22 generalizes this DS005620-specific pattern across the full dataset registry (DS005620, DS002094, ds001787, ds003969, ds003816, PhysioNet_GABA). It uses the same safe-step-only design and the same hardcoded guardrails, but runs across every registered dataset and computes a per-dataset next action plus a global next action.
+
+```bash
+make multi-dataset-autonomous-iteration
+make multi-dataset-autonomous-iteration-dry-run
+make real-data-source-matrix
+make validate-real-data-source-matrix
+```
+
+Outputs are written to `outputs/btc_icft/multi_dataset_autonomous_iteration/` (iteration state) and `outputs/btc_icft/multi_dataset_real_execution/` (matrix).
+
+See `docs/multi_dataset_real_execution_framework.md` for the full multi-dataset spec. DS005620-specific Makefile targets continue to work unchanged.
+
 ## Recommended operator workflow
 
 1. Run dry-run to see the plan: `make ds005620-autonomous-iteration-dry-run`

@@ -4,6 +4,12 @@ P20 adds a deterministic real artifact build operator that plans DS005620 local
 artifact preparation without executing real data or weakening label, target,
 ontology, or language guardrails.
 
+**DS005620 is the first fully supported profile.** P22 generalizes this pattern
+across the registry (DS005620, DS002094, ds001787, ds003969, ds003816,
+PhysioNet_GABA). See `docs/multi_dataset_real_execution_framework.md` for the
+multi-dataset spec. The DS005620-specific commands and outputs documented below
+continue to work unchanged after P22.
+
 ## What this operator does
 
 - Inspects all prerequisite artifact paths for a real DS005620 run.

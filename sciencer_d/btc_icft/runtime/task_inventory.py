@@ -237,6 +237,61 @@ def build_default_science_task_registry() -> ScienceTaskRegistry:
             tags=["runtime", "inspect"],
         ),
         ScienceTaskRecord(
+            task_id="multi_dataset_real_execution_matrix",
+            module="sciencer_d.btc_icft.pipelines.plan_multi_dataset_real_execution",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.plan_multi_dataset_real_execution",
+                "--out", "outputs/btc_icft/multi_dataset_real_execution",
+            ],
+            description=(
+                "P22 multi-dataset real-execution readiness matrix: registry-driven "
+                "per-dataset status across local data / labels / readers / artifact "
+                "operator / execution gate / empirical readiness / ontology scope."
+            ),
+            required_inputs=["configs/btc_icft/multi_dataset_real_sources.json"],
+            expected_outputs=[
+                "dataset_source_matrix.json",
+                "local_data_availability_matrix.json",
+                "label_contract_readiness_matrix.json",
+                "eeg_reader_readiness_matrix.json",
+                "artifact_operator_matrix.json",
+                "real_execution_gate_matrix.json",
+                "autonomous_iteration_matrix.json",
+                "empirical_readiness_matrix.json",
+                "ontology_scope_matrix.json",
+                "next_actions.json",
+                "operator_report.md",
+            ],
+            tags=["p22", "multi_dataset", "matrix", "real_execution"],
+        ),
+        ScienceTaskRecord(
+            task_id="multi_dataset_autonomous_iteration",
+            module="sciencer_d.btc_icft.pipelines.run_multi_dataset_autonomous_iteration",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.run_multi_dataset_autonomous_iteration",
+                "--out", "outputs/btc_icft/multi_dataset_autonomous_iteration",
+            ],
+            description=(
+                "P22 multi-dataset autonomous iteration runtime: runs safe per-dataset "
+                "planning/inspection steps and computes per-dataset next actions. "
+                "Never executes real data or downloads."
+            ),
+            required_inputs=["configs/btc_icft/multi_dataset_real_sources.json"],
+            expected_outputs=[
+                "iteration_state.json",
+                "iteration_plan.json",
+                "iteration_results.json",
+                "iteration_decision_log.json",
+                "iteration_next_actions.json",
+                "iteration_artifact_index.json",
+                "iteration_report.md",
+                "iteration_events.jsonl",
+            ],
+            tags=["p22", "multi_dataset", "autonomous", "iteration"],
+        ),
+        ScienceTaskRecord(
             task_id="ds005620_autonomous_iteration",
             module="sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration",
             command=[

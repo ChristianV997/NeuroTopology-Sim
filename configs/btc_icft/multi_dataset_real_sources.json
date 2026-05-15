@@ -1,0 +1,236 @@
+{
+  "schema_version": "p22.0",
+  "description": "Multi-dataset real-execution source manifest. Defines per-dataset source hints, local-root candidates, reader expectations, and per-dataset support flags. No automatic downloads, no label inference.",
+  "safe_claim": "P22 generalizes the DS005620 real-execution planning pattern into a registry-driven multi-dataset framework that inspects local readiness, plans artifact preparation, computes next actions, and preserves manual real-data and human-review boundaries.",
+  "datasets": [
+    {
+      "dataset_id": "DS005620",
+      "title": "OpenNeuro meditation EEG study DS005620",
+      "source_hint": "OpenNeuro",
+      "source_url_hint": "https://openneuro.org/datasets/ds005620",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".set", ".vhdr", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/DS005620",
+        "data/ds005620",
+        "inputs/DS005620",
+        "inputs/ds005620"
+      ],
+      "metadata_candidates": [
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv",
+        "participants.tsv",
+        "metadata.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".set", ".vhdr", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": true,
+      "dataset_specific_executor_available": true,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "DS005620 is the first fully supported profile via P18.3/P20/P21. Legacy output paths preserved for backward compatibility.",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    },
+    {
+      "dataset_id": "DS002094",
+      "title": "OpenNeuro EEG study DS002094",
+      "source_hint": "OpenNeuro",
+      "source_url_hint": "https://openneuro.org/datasets/ds002094",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".set", ".vhdr", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/DS002094",
+        "data/ds002094",
+        "inputs/DS002094",
+        "inputs/ds002094"
+      ],
+      "metadata_candidates": [
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv",
+        "participants.tsv",
+        "metadata.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".set", ".vhdr", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": false,
+      "dataset_specific_executor_available": false,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    },
+    {
+      "dataset_id": "ds001787",
+      "title": "OpenNeuro meditation EEG dataset ds001787",
+      "source_hint": "OpenNeuro",
+      "source_url_hint": "https://openneuro.org/datasets/ds001787",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".set", ".vhdr", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/ds001787",
+        "data/DS001787",
+        "inputs/ds001787",
+        "inputs/DS001787"
+      ],
+      "metadata_candidates": [
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv",
+        "participants.tsv",
+        "metadata.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".set", ".vhdr", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": false,
+      "dataset_specific_executor_available": false,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    },
+    {
+      "dataset_id": "ds003969",
+      "title": "OpenNeuro meditation EEG dataset ds003969",
+      "source_hint": "OpenNeuro",
+      "source_url_hint": "https://openneuro.org/datasets/ds003969",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".set", ".vhdr", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/ds003969",
+        "data/DS003969",
+        "inputs/ds003969",
+        "inputs/DS003969"
+      ],
+      "metadata_candidates": [
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv",
+        "participants.tsv",
+        "metadata.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".set", ".vhdr", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": false,
+      "dataset_specific_executor_available": false,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    },
+    {
+      "dataset_id": "ds003816",
+      "title": "OpenNeuro meditation EEG dataset ds003816",
+      "source_hint": "OpenNeuro",
+      "source_url_hint": "https://openneuro.org/datasets/ds003816",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".set", ".vhdr", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/ds003816",
+        "data/DS003816",
+        "inputs/ds003816",
+        "inputs/DS003816"
+      ],
+      "metadata_candidates": [
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv",
+        "participants.tsv",
+        "metadata.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".set", ".vhdr", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": false,
+      "dataset_specific_executor_available": false,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    },
+    {
+      "dataset_id": "PhysioNet_GABA",
+      "title": "PhysioNet GABA EEG study",
+      "source_hint": "PhysioNet",
+      "source_url_hint": "https://physionet.org/",
+      "expected_modality": "EEG",
+      "expected_formats": [".edf", ".bdf", ".fif", ".csv", ".tsv"],
+      "canonical_local_roots": [
+        "data/physionet_gaba",
+        "data/PhysioNet_GABA",
+        "inputs/physionet_gaba",
+        "inputs/PhysioNet_GABA"
+      ],
+      "metadata_candidates": [
+        "labels.csv",
+        "metadata.csv",
+        "conditions.tsv",
+        "events.tsv",
+        "events.csv",
+        "*_events.tsv",
+        "*_events.csv"
+      ],
+      "raw_eeg_extensions": [".edf", ".bdf", ".fif", ".csv", ".tsv"],
+      "label_contract_required": true,
+      "human_review_required": true,
+      "real_execution_supported": false,
+      "dataset_specific_executor_available": false,
+      "generic_artifact_operator_supported": true,
+      "generic_execution_gate_supported": true,
+      "autonomous_iteration_supported": true,
+      "notes": "Subject-level join (group/condition). Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor.",
+      "guardrails": [
+        "no_data_download",
+        "no_label_inference",
+        "no_target_fabrication",
+        "no_auto_real_execution",
+        "no_auto_peer_review_confirmation"
+      ]
+    }
+  ]
+}
