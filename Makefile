@@ -98,6 +98,7 @@ ds005620-autonomy-check:
 	$(MAKE) ds005620-paper-skeleton
 	$(MAKE) ds005620-inspect-runtime
 	$(MAKE) ds005620-test-runtime
+	$(MAKE) ds005620-generated-language-check
 
 ds005620-ontology-eval-mock:
 	python -m sciencer_d.btc_icft.pipelines.evaluate_ds005620_ontology_claims --execution-root outputs/btc_icft/ds005620_real_benchmark_execution_mock --out outputs/btc_icft/ds005620_ontology_evaluation_mock
@@ -123,3 +124,18 @@ ontology-language-check-strict-outputs:
 
 ontology-language-baseline-candidate:
 	python tools/validate_ontology_claim_language.py --root . --scan-mode repo --no-baseline --write-baseline outputs/btc_icft/claim_language_baseline_candidate.json --json-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.json --markdown-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.md || true
+
+
+ds005620-generated-language-check:
+	python tools/validate_ds005620_generated_language.py --root . --json-out outputs/btc_icft/ds005620_generated_language_validation.json --markdown-out outputs/btc_icft/ds005620_generated_language_validation.md
+
+ds005620-generated-artifact-check:
+	$(MAKE) ds005620-e2e-mock
+	$(MAKE) validate-ds005620-e2e-json
+	$(MAKE) validate-ds005620-contracts
+	$(MAKE) ds005620-build-manifest
+	$(MAKE) ds005620-ontology-eval-mock
+	$(MAKE) ds005620-export-evidence
+	$(MAKE) ds005620-paper-skeleton
+	$(MAKE) ds005620-ci-evidence-report
+	$(MAKE) ds005620-generated-language-check

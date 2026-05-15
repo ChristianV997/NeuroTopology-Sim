@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-VERSION = "0.2"
+VERSION = "0.3"
 VALIDATOR = "ontology_claim_language"
 
 FORBIDDEN_PHRASES = [
@@ -82,9 +82,21 @@ def _load_baseline(path: Path) -> tuple[list[dict], set[tuple[str, str, str]]]:
     return entries, keys
 
 
-def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], list[str]]:
+DS005620_GENERATED_ROOTS = [
+    "outputs/btc_icft/ds005620_real_benchmark_execution_mock",
+    "outputs/btc_icft/ds005620_ontology_evaluation_mock",
+    "outputs/btc_icft/science_runtime_inspection",
+    "outputs/btc_icft/ds005620_real_local_preflight",
+    "outputs/btc_icft/ds005620_real_execution_gate",
+    "outputs/btc_icft/ds005620_publication_package",
+    "outputs/btc_icft/ds005620_real_controls",
+    "outputs/btc_icft/ds005620_claim_promotion",
+]
+
+def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], list[str], list[str]]:
     files: list[Path] = []
     skipped_roots: list[str] = []
+    scanned_generated_roots: list[str] = []
     mode = args.scan_mode
     include_docs = mode in {"repo", "docs"}
     include_outputs = mode in {"repo", "outputs", "generated"} or args.strict_outputs
@@ -93,10 +105,15 @@ def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], li
     if include_docs:
         files.extend(_iter_files(root / args.docs_root, args.include_tests) or [])
     if include_outputs:
-        for out in args.output_roots:
+        output_roots = args.output_roots
+        if mode == "generated" and args.generated_output_profile == "ds005620":
+            output_roots = DS005620_GENERATED_ROOTS
+        for out in output_roots:
             out_root = root / out
             if out_root.exists():
                 files.extend(_iter_files(out_root, args.include_tests) or [])
+                if mode == "generated":
+                    scanned_generated_roots.append(str(Path(out)))
             else:
                 skipped_roots.append(str(Path(out)))
     if include_repo:
@@ -116,7 +133,7 @@ def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], li
             continue
         seen.add(rel)
         scan_files.append(f)
-    return scan_files, skipped_roots
+    return scan_files, skipped_roots, scanned_generated_roots
 
 
 def validate(args: argparse.Namespace) -> tuple[int, dict]:
@@ -128,7 +145,7 @@ def validate(args: argparse.Namespace) -> tuple[int, dict]:
     else:
         baseline_entries, baseline_keys = _load_baseline(root / args.baseline)
 
-    scan_files, skipped_roots = _collect_files(root, args)
+    scan_files, skipped_roots, scanned_generated_roots = _collect_files(root, args)
 
     all_violations: list[dict] = []
     forbidden_count = 0
@@ -202,6 +219,9 @@ def validate(args: argparse.Namespace) -> tuple[int, dict]:
         "scan_mode": args.scan_mode,
         "forbidden_phrase_count": forbidden_count,
         "unsafe_mapping_count": unsafe_count,
+        "generated_output_profile": args.generated_output_profile,
+        "scanned_generated_roots": scanned_generated_roots,
+        "missing_generated_roots": skipped_roots if args.scan_mode == "generated" else [],
     }
 
     json_out = root / args.json_out
@@ -220,7 +240,11 @@ def validate(args: argparse.Namespace) -> tuple[int, dict]:
         md += [f"- `{v['path']}:{v['line']}` [{v['category']}] `{_sanitize(v['phrase'])}`" for v in baselined]
     else:
         md.append("- None")
-    md += ["", "## Skipped roots", ""] + ([f"- `{r}`" for r in skipped_roots] or ["- None"]) + ["", "## Cleanup recommendation", "", "- Keep baseline entries narrow and temporary; fix generated artifacts instead of waiving them."]
+    md += ["", "## Skipped roots", ""] + ([f"- `{r}`" for r in skipped_roots] or ["- None"])
+    if args.scan_mode == "generated":
+        md += ["", "## Scanned generated roots", ""] + ([f"- `{r}`" for r in scanned_generated_roots] or ["- None"])
+        md += ["", "## Missing generated roots", ""] + ([f"- `{r}`" for r in skipped_roots] or ["- None"])
+    md += ["", "## Cleanup recommendation", "", "- Keep baseline entries narrow and temporary; fix generated artifacts instead of waiving them."]
     md_out.write_text("\n".join(md) + "\n", encoding="utf-8")
 
     if not args.quiet:
@@ -241,6 +265,7 @@ def main() -> int:
     parser.add_argument("--fail-on-baseline", action="store_true")
     parser.add_argument("--strict-outputs", action="store_true")
     parser.add_argument("--scan-mode", choices=["repo", "docs", "outputs", "generated"], default="repo")
+    parser.add_argument("--generated-output-profile", choices=["generic", "ds005620"], default="generic")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--include-repo-docs", type=_parse_bool, default=True)
     parser.add_argument("--include-outputs", type=_parse_bool, default=True)
