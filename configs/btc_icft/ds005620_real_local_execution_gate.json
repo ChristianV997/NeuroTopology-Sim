@@ -1,0 +1,97 @@
+{
+  "pipeline_id": "ds005620_real_local_execution_gate",
+  "dataset_id": "DS005620",
+  "dry_run_only": true,
+  "executes_real_benchmark": false,
+  "downloads_data": false,
+  "peer_review_required": true,
+  "human_confirmation_required": true,
+  "required_artifact_groups": [
+    "metadata",
+    "reviewed_contract",
+    "mne_extract",
+    "signal_blocks",
+    "level_m",
+    "level_t"
+  ],
+  "default_paths": {
+    "metadata": "data/DS005620/events.tsv",
+    "reviewed_contract": "outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json",
+    "mne_extract": "outputs/btc_icft/eeg_mne_extract/DS005620",
+    "signal_blocks": "outputs/btc_icft/eeg_signal_blocks_from_mne/DS005620",
+    "level_m": "outputs/btc_icft/eeg_level_m/DS005620/features_m_signal.csv",
+    "level_t": "outputs/btc_icft/eeg_level_t/DS005620/features_t_signal.csv",
+    "execution_root": "outputs/btc_icft/ds005620_real_benchmark_execution"
+  },
+  "strict_join_keys": [
+    "dataset_id",
+    "row_id",
+    "source_file",
+    "window_id",
+    "window_start_s",
+    "window_end_s",
+    "sample_start",
+    "sample_end"
+  ],
+  "contract_static_checks": [
+    "dataset_id == DS005620",
+    "contract_status == active_reviewed_external_contract",
+    "explicit_label_column present and non-empty",
+    "positive_values present and non-empty",
+    "negative_values present and non-empty",
+    "positive_values and negative_values do not overlap",
+    "join_keys include all strict join keys",
+    "label_inference_enabled not true",
+    "targets_fabricated not true",
+    "filename_derived_labels not true",
+    "topology_derived_labels not true",
+    "artifact_derived_labels not true",
+    "automatic_activation not true",
+    "no unsafe ontology language"
+  ],
+  "next_action_order": [
+    "provide_metadata",
+    "run_p17_1_reviewed_contract_materializer",
+    "fix_reviewed_contract",
+    "run_p19_1_mne_extraction",
+    "run_p19_2_signal_block_conversion",
+    "run_p9_level_m_signal",
+    "run_p10_level_t_signal",
+    "human_peer_review_required"
+  ],
+  "forbidden_phrases": [
+    "proves consciousness",
+    "consciousness proven",
+    "soul proven",
+    "afterlife proven",
+    "liberation detected",
+    "ontology solved",
+    "ultimate reality",
+    "q equals self",
+    "q equals soul",
+    "q_abs equals suffering",
+    "f_dress equals karma",
+    "sedated implies no_experience",
+    "unresponsive implies unconscious",
+    "topology proves liberation",
+    "eeg proves consciousness"
+  ],
+  "guardrails": {
+    "no_label_inference": true,
+    "no_target_fabrication": true,
+    "no_real_execution": true,
+    "no_data_download": true,
+    "no_automatic_peer_review_confirmation": true,
+    "no_automatic_contract_activation": true,
+    "no_empirical_claim_from_artifact_readiness": true,
+    "no_ontology_promotion": true,
+    "no_metaphysical_proof_claims": true
+  },
+  "post_execution_required_controls": [
+    "nulls.json",
+    "ablations.json",
+    "leakage_report.json",
+    "artifact_report.json"
+  ],
+  "safe_claim": "P18.3 adds a deterministic real/local execution gate that inspects DS005620 prerequisites and prepares human-reviewed execution commands without running real data or weakening label/target/ontology guardrails."
+}

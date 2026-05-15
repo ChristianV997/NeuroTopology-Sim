@@ -236,5 +236,32 @@ def build_default_science_task_registry() -> ScienceTaskRegistry:
             ],
             tags=["runtime", "inspect"],
         ),
+        ScienceTaskRecord(
+            task_id="ds005620_real_execution_gate",
+            module="sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution",
+                "--out", "outputs/btc_icft/ds005620_real_execution_gate",
+            ],
+            description=(
+                "P18.3 real/local execution gate: inspects prerequisites and prepares "
+                "human-reviewed execution commands without running real data."
+            ),
+            required_inputs=[
+                "data/DS005620/events.tsv",
+                "outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json",
+            ],
+            expected_outputs=[
+                "ready_for_real_execution.json",
+                "real_execution_gate.json",
+                "real_execution_command_plan.json",
+                "human_peer_review_checklist.json",
+                "human_peer_review_checklist.md",
+                "missing_artifacts.json",
+                "report.md",
+            ],
+            tags=["p18", "gate", "real_local", "preflight"],
+        ),
     ]
     return ScienceTaskRegistry(tasks=tasks)

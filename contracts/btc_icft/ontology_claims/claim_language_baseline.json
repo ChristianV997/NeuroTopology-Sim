@@ -685,6 +685,159 @@
       "reason": "legacy_guardrail_context",
       "expires": null,
       "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "proves consciousness",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "consciousness proven",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "soul proven",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "afterlife proven",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "liberation detected",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "ontology solved",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "ultimate reality",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "q equals self",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "q equals soul",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "q_abs equals suffering",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "f_dress equals karma",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "sedated implies no_experience",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "unresponsive implies unconscious",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "topology proves liberation",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "topology proves",
+      "category": "metric_to_ontology_shortcut",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "eeg proves consciousness",
+      "category": "forbidden_phrase",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
+    },
+    {
+      "path": "configs/btc_icft/ds005620_real_local_execution_gate.json",
+      "line": null,
+      "phrase": "eeg proves",
+      "category": "metric_to_ontology_shortcut",
+      "reason": "forbidden_phrase_list_data_not_generated_output",
+      "expires": null,
+      "owner": "repo"
     }
   ]
 }

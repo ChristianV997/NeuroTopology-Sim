@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ds005620-real-execution-gate ds005620-real-operator-check
 
 validate-governance:
 	python -m governance.validate
@@ -82,6 +82,13 @@ ds005620-inspect-runtime:
 
 ds005620-preflight:
 	python -m sciencer_d.btc_icft.pipelines.preflight_ds005620_real_local --out outputs/btc_icft/ds005620_real_local_preflight; true
+
+ds005620-real-execution-gate:
+	python -m sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution --out outputs/btc_icft/ds005620_real_execution_gate
+
+ds005620-real-operator-check:
+	$(MAKE) ds005620-preflight
+	$(MAKE) ds005620-real-execution-gate
 
 ds005620-test-runtime:
 	python -m pytest tests/btc_icft/test_science_runtime_events.py tests/btc_icft/test_science_runtime_event_log.py tests/btc_icft/test_science_runtime_state.py tests/btc_icft/test_science_task_inventory.py tests/btc_icft/test_science_runtime_snapshots.py tests/btc_icft/test_ds005620_artifact_manifest.py tests/btc_icft/test_ds005620_evidence_packet.py tests/btc_icft/test_ds005620_paper_skeleton.py tests/btc_icft/test_ds005620_real_local_preflight.py -v --tb=short
