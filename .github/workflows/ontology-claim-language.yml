@@ -18,7 +18,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run claim-language validator
         run: |
-          python tools/validate_ontology_claim_language.py --root . --output-roots outputs/btc_icft --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+          python tools/validate_ontology_claim_language.py --root . --scan-mode repo --baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
       - name: Upload validator report
         if: always()
         uses: actions/upload-artifact@v4
