@@ -93,3 +93,75 @@ def test_missing_contract_summary_warns_and_false(tmp_path: Path):
     rep = build_report(tmp_path, tmp_path/'missing_v.json', tmp_path/'missing_c.json')
     assert rep['contract_validation_ok'] is False
     assert any('missing contract summary' in w for w in rep['warnings'])
+
+
+# O4 ontology integration tests
+
+def _seed_ontology_root(tmp_path: Path) -> Path:
+    ont = tmp_path / "ontology"
+    ont.mkdir()
+    (ont / "ontology_claim_evaluation.json").write_text(json.dumps({
+        "max_claim_scope": "engineering_runtime",
+        "promotion_state": "engineering_validated",
+        "ontology_claim_status": "ontology_quarantined",
+        "claims": [],
+        "blockers": ["run_mode_is_mock_e2e"],
+        "safe_claim": "Ontology evaluation constrains claim scopes.",
+    }), encoding="utf-8")
+    (ont / "ontology_promotion_decision.json").write_text(json.dumps({
+        "ontology_promotion": False,
+        "empirical_marker_promotion": False,
+        "empirical_topology_promotion": False,
+        "mechanism_promotion": False,
+        "metaphysical_promotion": False,
+    }), encoding="utf-8")
+    (ont / "bridge_claim_status.json").write_text(
+        json.dumps({"bridge_statuses": []}), encoding="utf-8"
+    )
+    return ont
+
+
+def test_ci_report_includes_ontology_fields(tmp_path: Path):
+    _seed(tmp_path)
+    ont = _seed_ontology_root(tmp_path)
+    rep = build_report(tmp_path, tmp_path / "missing_v.json", tmp_path / "missing_c.json",
+                       ontology_root=str(ont))
+    assert "ontology_available" in rep
+    assert "ontology_max_claim_scope" in rep
+    assert "ontology_promotion_state" in rep
+    assert "ontology_claim_status" in rep
+    assert "ontology_promotion" in rep
+    assert "empirical_marker_promotion" in rep
+    assert "empirical_topology_promotion" in rep
+    assert "mechanism_promotion" in rep
+    assert "metaphysical_promotion" in rep
+
+
+def test_ci_report_markdown_includes_ontology_section(tmp_path: Path):
+    _seed(tmp_path)
+    ont = _seed_ontology_root(tmp_path)
+    rep = build_report(tmp_path, tmp_path / "missing_v.json", tmp_path / "missing_c.json",
+                       ontology_root=str(ont))
+    md = build_markdown(rep)
+    assert "## Ontology Evaluation Summary" in md
+    assert "ontology_available" in md
+
+
+def test_ci_report_does_not_promote_empirical_claims_from_mock(tmp_path: Path):
+    _seed(tmp_path)
+    ont = _seed_ontology_root(tmp_path)
+    rep = build_report(tmp_path, tmp_path / "missing_v.json", tmp_path / "missing_c.json",
+                       ontology_root=str(ont))
+    assert rep["empirical_marker_promotion"] is False
+    assert rep["empirical_topology_promotion"] is False
+    assert rep["mechanism_promotion"] is False
+    assert rep["metaphysical_promotion"] is False
+    assert rep["ontology_promotion"] is False
+
+
+def test_ci_report_warns_when_ontology_missing(tmp_path: Path):
+    _seed(tmp_path)
+    rep = build_report(tmp_path, tmp_path / "missing_v.json", tmp_path / "missing_c.json",
+                       ontology_root=str(tmp_path / "nonexistent_ont"))
+    assert rep["ontology_available"] is False
+    assert "ontology_evaluation_missing" in rep["warnings"]

@@ -111,3 +111,49 @@ def test_makefile_and_workflow_and_baseline_contract_present():
     assert "--baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json" in wf
     assert "--no-baseline" not in wf
     assert baseline["baseline_version"] == "0.1" and isinstance(baseline["entries"], list)
+
+
+def test_generated_ds005620_profile_scans_only_ds005620_output_roots(tmp_path: Path):
+    (tmp_path / "docs").mkdir(); (tmp_path / "docs/a.md").write_text("ontology solved\n", encoding="utf-8")
+    out = tmp_path / "outputs/btc_icft/ds005620_real_benchmark_execution_mock"
+    out.mkdir(parents=True)
+    (out / "safe.md").write_text("clean\n", encoding="utf-8")
+    assert run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline").returncode == 0
+
+
+def test_generated_ds005620_profile_missing_roots_listed_without_failure(tmp_path: Path):
+    result = run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline")
+    assert result.returncode == 0
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert len(data["missing_generated_roots"]) > 0
+
+
+def test_generated_ds005620_profile_does_not_scan_docs_contracts_or_configs(tmp_path: Path):
+    (tmp_path / "docs").mkdir(); (tmp_path / "docs/a.md").write_text("ontology solved\n", encoding="utf-8")
+    (tmp_path / "contracts").mkdir(); (tmp_path / "contracts/a.md").write_text("ontology solved\n", encoding="utf-8")
+    (tmp_path / "configs").mkdir(); (tmp_path / "configs/a.md").write_text("ontology solved\n", encoding="utf-8")
+    (tmp_path / "sciencer_d").mkdir(); (tmp_path / "sciencer_d/a.md").write_text("ontology solved\n", encoding="utf-8")
+    assert run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline").returncode == 0
+
+
+def test_generated_report_includes_scanned_generated_roots(tmp_path: Path):
+    out = tmp_path / "outputs/btc_icft/ds005620_ontology_evaluation_mock"
+    out.mkdir(parents=True)
+    (out / "safe.md").write_text("clean\n", encoding="utf-8")
+    run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline")
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert "outputs/btc_icft/ds005620_ontology_evaluation_mock" in data["scanned_generated_roots"]
+
+
+def test_generated_report_includes_missing_generated_roots(tmp_path: Path):
+    run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline")
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert "outputs/btc_icft/ds005620_real_execution_gate" in data["missing_generated_roots"]
+
+
+def test_strict_outputs_generated_no_baseline_does_not_allow_baselined_generated_violations(tmp_path: Path):
+    out = tmp_path / "outputs/btc_icft/ds005620_real_benchmark_execution_mock"
+    out.mkdir(parents=True)
+    (out / "unsafe.md").write_text("ontology solved\n", encoding="utf-8")
+    _write_baseline(tmp_path, [{"path": "outputs/btc_icft/ds005620_real_benchmark_execution_mock/unsafe.md", "line": None, "phrase": "ontology solved", "category": "forbidden_phrase", "reason": "pending_cleanup", "expires": None, "owner": "repo"}])
+    assert run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline").returncode == 1

@@ -81,3 +81,83 @@ def test_negative_space_disclaimers_has_non_claims(tmp_path):
     text = Path(artifacts["negative_space_disclaimers.md"]).read_text(encoding="utf-8")
     assert "engineering" in text.lower()
     assert "metaphysical" in text.lower()
+
+
+def _setup_ontology_root(tmp_path: Path) -> Path:
+    ont = tmp_path / "ontology"
+    ont.mkdir(exist_ok=True)
+    (ont / "ontology_claim_evaluation.json").write_text(
+        json.dumps({
+            "max_claim_scope": "engineering_runtime",
+            "promotion_state": "engineering_validated",
+            "ontology_claim_status": "ontology_quarantined",
+            "claims": [],
+            "blockers": ["run_mode_is_mock_e2e"],
+            "safe_claim": "Ontology evaluation constrains claim scopes.",
+        }),
+        encoding="utf-8",
+    )
+    (ont / "ontology_promotion_decision.json").write_text(
+        json.dumps({
+            "ontology_promotion": False,
+            "empirical_marker_promotion": False,
+            "empirical_topology_promotion": False,
+            "mechanism_promotion": False,
+            "metaphysical_promotion": False,
+        }),
+        encoding="utf-8",
+    )
+    (ont / "bridge_claim_status.json").write_text(
+        json.dumps({"bridge_statuses": []}), encoding="utf-8",
+    )
+    (ont / "claim_scope_matrix.json").write_text(
+        json.dumps({
+            "engineering_runtime": {"allowed": True, "max_state": "engineering_validated", "blockers": []},
+        }),
+        encoding="utf-8",
+    )
+    return ont
+
+
+def test_paper_skeleton_includes_ontology_section(tmp_path):
+    ev_path = _setup_evidence(tmp_path)
+    ont = _setup_ontology_root(tmp_path)
+    artifacts = generate_paper_skeleton(str(ev_path), str(tmp_path / "out"), ontology_root=str(ont))
+    skeleton = Path(artifacts["paper_skeleton.md"]).read_text(encoding="utf-8")
+    assert "## Ontology and Claim Scope" in skeleton
+
+
+def test_reviewer_checklist_includes_ontology_review(tmp_path):
+    ev_path = _setup_evidence(tmp_path)
+    ont = _setup_ontology_root(tmp_path)
+    artifacts = generate_paper_skeleton(str(ev_path), str(tmp_path / "out"), ontology_root=str(ont))
+    checklist = Path(artifacts["reviewer_checklist.md"]).read_text(encoding="utf-8")
+    assert "## Ontology Review Checklist" in checklist
+    assert "ontology candidates remain quarantined" in checklist.lower()
+
+
+def test_negative_space_disclaimers_include_quarantine(tmp_path):
+    ev_path = _setup_evidence(tmp_path)
+    ont = _setup_ontology_root(tmp_path)
+    artifacts = generate_paper_skeleton(str(ev_path), str(tmp_path / "out"), ontology_root=str(ont))
+    disclaimers = Path(artifacts["negative_space_disclaimers.md"]).read_text(encoding="utf-8")
+    assert "quarantined" in disclaimers.lower()
+    assert "mock" in disclaimers.lower()
+
+
+def test_generated_paper_artifacts_avoid_banned_phrases(tmp_path):
+    ev_path = _setup_evidence(tmp_path)
+    ont = _setup_ontology_root(tmp_path)
+    artifacts = generate_paper_skeleton(str(ev_path), str(tmp_path / "out"), ontology_root=str(ont))
+    for name, path in artifacts.items():
+        text = Path(path).read_text(encoding="utf-8").lower()
+        for phrase in _BANNED:
+            assert phrase not in text, f"banned phrase in {name}: {phrase!r}"
+
+
+def test_require_ontology_raises_when_missing(tmp_path):
+    ev_path = _setup_evidence(tmp_path)
+    with pytest.raises(SystemExit):
+        generate_paper_skeleton(str(ev_path), str(tmp_path / "out"),
+                                ontology_root=str(tmp_path / "missing"),
+                                require_ontology=True)

@@ -51,3 +51,12 @@ This validator blocks language overreach at repo level while ontology evaluation
 
 ## What it does not validate
 It does not evaluate ontology correctness, scientific truth, real-data causal validity, or contract sufficiency.
+
+## DS005620 generated-output profile
+Use `make ds005620-generated-language-check` to enforce strict generated-output language validation for DS005620 artifacts only. This runs `scan-mode generated` with `--generated-output-profile ds005620`, scans only DS005620 generated output roots, skips missing roots, and writes JSON/Markdown reports.
+
+## Publication package readiness
+This gate protects generated evidence packets, CI evidence reports, and paper skeleton outputs by failing unsafe claim language before publication-facing artifacts are consumed downstream.
+
+## Fixing generated template failures
+If this gate fails, edit the generator/template text that emitted unsafe language and regenerate artifacts. Do not add baseline waivers for generated artifacts.

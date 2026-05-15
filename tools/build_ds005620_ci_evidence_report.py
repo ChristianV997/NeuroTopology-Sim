@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Ensure repo root is on sys.path when running as a script from tools/.
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from sciencer_d.btc_icft.ontology.artifact_reader import summarize_ontology_for_packet
 
 BANNED_PHRASES = (
     "proves consciousness",
@@ -22,6 +28,8 @@ BANNED_PHRASES = (
     "eeg proves consciousness",
 )
 
+_DEFAULT_ONTOLOGY_ROOT = "outputs/btc_icft/ds005620_ontology_evaluation_mock"
+
 
 def _load_json(path: Path):
     if not path.exists():
@@ -29,7 +37,13 @@ def _load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_report(root: Path, validation_summary: Path, contract_summary: Path) -> dict:
+def build_report(
+    root: Path,
+    validation_summary: Path,
+    contract_summary: Path,
+    *,
+    ontology_root: str | None = None,
+) -> dict:
     failures: list[str] = []
     warnings: list[str] = []
 
@@ -62,8 +76,14 @@ def build_report(root: Path, validation_summary: Path, contract_summary: Path) -
 
     stages = {s.get("stage_id"): s for s in stage_results.get("stages", []) if isinstance(s, dict)}
 
+    # Ontology summary
+    _ont_root = Path(ontology_root) if ontology_root else Path(_DEFAULT_ONTOLOGY_ROOT)
+    ontology_summary = summarize_ontology_for_packet(_ont_root)
+    if not ontology_summary["ontology_available"]:
+        warnings.append("ontology_evaluation_missing")
+
     report = {
-        "report_version": "p18.2-ci-evidence-v1",
+        "report_version": "p18.2-ci-evidence-v2",
         "dataset_id": execution.get("dataset_id", "DS005620"),
         "pipeline_id": "ds005620_real_benchmark_execution_mock",
         "artifact_root": str(root),
@@ -96,6 +116,17 @@ def build_report(root: Path, validation_summary: Path, contract_summary: Path) -
         "warnings": warnings,
         "safe_claim": "DS005620 mock E2E CI now emits a downloadable evidence bundle for engineering validation and contract audit.",
         "ci_claim_scope": "mock_e2e_engineering_validation_only",
+        # Ontology fields
+        "ontology_available": ontology_summary["ontology_available"],
+        "ontology_max_claim_scope": ontology_summary["max_claim_scope"],
+        "ontology_promotion_state": ontology_summary["promotion_state"],
+        "ontology_claim_status": ontology_summary["ontology_claim_status"],
+        "ontology_promotion": ontology_summary["ontology_promotion"],
+        "empirical_marker_promotion": ontology_summary["empirical_marker_promotion"],
+        "empirical_topology_promotion": ontology_summary["empirical_topology_promotion"],
+        "mechanism_promotion": ontology_summary["mechanism_promotion"],
+        "metaphysical_promotion": ontology_summary["metaphysical_promotion"],
+        "ontology_safe_claim": ontology_summary["safe_claim"],
     }
     return report
 
@@ -133,6 +164,21 @@ def build_markdown(report: dict) -> str:
         f"- warnings: `{report['warnings']}`",
         f"- failures: `{report['failures']}`",
         "",
+        "## Ontology Evaluation Summary",
+        "",
+        f"- ontology_available: `{report['ontology_available']}`",
+        f"- scope: `{report['ontology_max_claim_scope']}`",
+        f"- promotion state: `{report['ontology_promotion_state']}`",
+        f"- ontology status: `{report['ontology_claim_status']}`",
+        f"- empirical_marker_promotion: `{report['empirical_marker_promotion']}`",
+        f"- empirical_topology_promotion: `{report['empirical_topology_promotion']}`",
+        f"- mechanism_promotion: `{report['mechanism_promotion']}`",
+        f"- metaphysical_promotion: `{report['metaphysical_promotion']}`",
+        "",
+        "Engineering runtime validation only. "
+        "Empirical Level M / T claims are blocked pending real execution and controls. "
+        "Substrate / theory / ontology candidates remain quarantined.",
+        "",
         "## CI claim scope",
         f"- {report['ci_claim_scope']}",
         "",
@@ -157,10 +203,20 @@ def main(argv=None) -> int:
     ap.add_argument("--contract-summary", required=True)
     ap.add_argument("--json-out", required=True)
     ap.add_argument("--markdown-out", required=True)
+    ap.add_argument(
+        "--ontology-root",
+        default=_DEFAULT_ONTOLOGY_ROOT,
+        help="Path to ontology evaluation output directory",
+    )
     args = ap.parse_args(argv)
 
     root = Path(args.root)
-    report = build_report(root, Path(args.validation_summary), Path(args.contract_summary))
+    report = build_report(
+        root,
+        Path(args.validation_summary),
+        Path(args.contract_summary),
+        ontology_root=args.ontology_root,
+    )
 
     json_out = Path(args.json_out)
     json_out.parent.mkdir(parents=True, exist_ok=True)
