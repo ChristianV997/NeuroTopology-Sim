@@ -1,0 +1,99 @@
+name: Publication Readiness Review
+description: Structured gate for publication packaging and ontology-aware claim readiness.
+title: "[Publication Readiness Review] "
+labels:
+  - review
+  - ds005620
+body:
+  - type: input
+    id: package_path
+    attributes:
+      label: package path
+      placeholder: Path to publication package root
+    validations:
+      required: true
+  - type: input
+    id: manuscript_draft_path
+    attributes:
+      label: manuscript draft path
+    validations:
+      required: true
+  - type: input
+    id: evidence_packet_path
+    attributes:
+      label: evidence packet path
+    validations:
+      required: true
+  - type: input
+    id: artifact_manifest_path
+    attributes:
+      label: artifact manifest path
+    validations:
+      required: true
+  - type: input
+    id: claim_promotion_decision_path
+    attributes:
+      label: claim promotion decision path
+    validations:
+      required: true
+  - type: input
+    id: ontology_evaluation_path
+    attributes:
+      label: ontology evaluation path
+    validations:
+      required: true
+  - type: input
+    id: controls_root
+    attributes:
+      label: controls root
+    validations:
+      required: true
+  - type: input
+    id: reviewer_checklist_path
+    attributes:
+      label: reviewer checklist path
+    validations:
+      required: true
+  - type: dropdown
+    id: requested_publication_status
+    attributes:
+      label: requested publication status
+      options:
+        - protocol_only
+        - engineering_runtime_report
+        - empirical_candidate_report
+        - blocked_pending_controls
+        - blocked_pending_review
+    validations:
+      required: true
+  - type: checkboxes
+    id: required_checklist
+    attributes:
+      label: required checklist
+      options:
+        - label: Real execution completed, or package is clearly protocol-only
+          required: true
+        - label: Validation summary passed
+          required: true
+        - label: Contract validation passed
+          required: true
+        - label: Human-reviewed contract status documented
+          required: true
+        - label: Nulls documented
+          required: true
+        - label: Ablations documented
+          required: true
+        - label: Leakage report documented
+          required: true
+        - label: Artifact report documented
+          required: true
+        - label: Claim scope matrix included
+          required: true
+        - label: Ontology claims quarantined where required
+          required: true
+        - label: Limitations section included
+          required: true
+        - label: Reproducibility commands included
+          required: true
+        - label: No banned overclaim language
+          required: true
