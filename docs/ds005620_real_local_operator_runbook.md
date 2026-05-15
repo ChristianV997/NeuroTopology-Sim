@@ -262,6 +262,8 @@ This regenerates the full publication artifact chain with real data context.
 
 | Target | Purpose |
 |---|---|
+| `make ds005620-autonomous-iteration` | Run P21 full safe iteration loop (14 auto steps + decision) |
+| `make ds005620-autonomous-iteration-dry-run` | Dry-run: plan only, no commands executed |
 | `make ds005620-real-artifact-plan` | Run P20 artifact build operator, write 6 outputs |
 | `make ds005620-real-readiness-loop` | Run artifact plan + P18.3 execution gate |
 | `make ds005620-real-execution-gate` | Run P18.3 gate, write 7 outputs |

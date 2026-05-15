@@ -237,6 +237,32 @@ def build_default_science_task_registry() -> ScienceTaskRegistry:
             tags=["runtime", "inspect"],
         ),
         ScienceTaskRecord(
+            task_id="ds005620_autonomous_iteration",
+            module="sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration",
+                "--out", "outputs/btc_icft/ds005620_autonomous_iteration",
+            ],
+            description=(
+                "P21 autonomous iteration runtime: runs all safe mock/validation/planning/"
+                "gate steps in order, records decisions, and stops at manual real-data or "
+                "human-review boundaries."
+            ),
+            required_inputs=[],
+            expected_outputs=[
+                "iteration_state.json",
+                "iteration_plan.json",
+                "iteration_results.json",
+                "iteration_decision_log.json",
+                "iteration_next_action.json",
+                "iteration_artifact_index.json",
+                "iteration_report.md",
+                "iteration_events.jsonl",
+            ],
+            tags=["p21", "autonomous", "iteration", "controller"],
+        ),
+        ScienceTaskRecord(
             task_id="ds005620_real_artifact_plan",
             module="sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
             command=[
