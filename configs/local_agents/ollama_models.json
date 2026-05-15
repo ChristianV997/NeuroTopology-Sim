@@ -1,0 +1,29 @@
+{
+  "description": "Ollama model configuration for the local agent research loop (P23). Ollama is optional.",
+  "base_url": "http://localhost:11434",
+  "default_model": "llama3",
+  "connect_timeout_s": 3,
+  "request_timeout_s": 60,
+  "models": [
+    {
+      "model_id": "llama3",
+      "display_name": "Llama 3",
+      "use_for": ["status_summary", "next_action_hint"],
+      "notes": "Default model. Used for brief status summaries only."
+    },
+    {
+      "model_id": "mistral",
+      "display_name": "Mistral",
+      "use_for": ["status_summary"],
+      "notes": "Alternative if llama3 not available."
+    }
+  ],
+  "guardrails": {
+    "ollama_required_for_loop": false,
+    "ollama_makes_empirical_claims": false,
+    "ollama_executes_real_data": false,
+    "ollama_infers_labels": false,
+    "ollama_fabricates_targets": false
+  },
+  "notes": "Ollama is optional. Loop always runs without it. is_available() is checked before any call."
+}

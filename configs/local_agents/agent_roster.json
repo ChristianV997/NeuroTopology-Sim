@@ -1,0 +1,105 @@
+{
+  "description": "Agent role roster for the local autonomous research team runtime (P23).",
+  "roles": [
+    {
+      "role_id": "mock_runner",
+      "display_name": "Mock E2E Runner",
+      "description": "Runs mock end-to-end pipeline for DS005620. No real data.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": ["make ds005620-e2e-mock", "make validate-ds005620-e2e"],
+      "blocked_commands": [],
+      "notes": "P18.1 mock execution only."
+    },
+    {
+      "role_id": "validator",
+      "display_name": "Pipeline Validator",
+      "description": "Validates all pipeline outputs: contracts, language, ontology.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": [
+        "make validate-ds005620-contracts",
+        "make ds005620-generated-language-check",
+        "make validate-real-data-source-matrix"
+      ],
+      "blocked_commands": [],
+      "notes": ""
+    },
+    {
+      "role_id": "artifact_planner",
+      "display_name": "Artifact Planner",
+      "description": "Plans real artifact preparation. Does not execute real data.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": ["make ds005620-real-artifact-plan", "make real-data-source-matrix"],
+      "blocked_commands": [],
+      "notes": "P20 operator only."
+    },
+    {
+      "role_id": "gate_inspector",
+      "display_name": "Real Execution Gate Inspector",
+      "description": "Runs P18.3 execution gate checks. Always reports human_peer_review_required.",
+      "safe_to_auto_run": true,
+      "requires_human_review": true,
+      "requires_real_data": false,
+      "allowed_commands": ["make ds005620-real-execution-gate"],
+      "blocked_commands": [],
+      "notes": "Never confirms peer review."
+    },
+    {
+      "role_id": "obsidian_syncer",
+      "display_name": "Obsidian Vault Syncer",
+      "description": "Mirrors loop state and matrix outputs into Obsidian vault.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": ["make sync-obsidian"],
+      "blocked_commands": [],
+      "notes": "Write-only to vault_root; never touches source artifacts."
+    },
+    {
+      "role_id": "matrix_builder",
+      "display_name": "Multi-Dataset Matrix Builder",
+      "description": "Builds and validates the multi-dataset readiness matrix.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": [
+        "make real-data-source-matrix",
+        "make validate-real-data-source-matrix"
+      ],
+      "blocked_commands": [],
+      "notes": "P22 matrix only."
+    },
+    {
+      "role_id": "real_data_executor",
+      "display_name": "Real Data Executor",
+      "description": "Executes real dataset pipelines. ALWAYS requires human peer review and gate confirmation.",
+      "safe_to_auto_run": false,
+      "requires_human_review": true,
+      "requires_real_data": true,
+      "allowed_commands": [],
+      "blocked_commands": [
+        "--execute --peer-reviewed-contract-confirmed",
+        "wget",
+        "curl",
+        "dandi download"
+      ],
+      "notes": "Never auto-run. Requires gate + human confirmation."
+    },
+    {
+      "role_id": "safety_watcher",
+      "display_name": "Safety Watcher",
+      "description": "Monitors all loop events for policy violations and guardrail breaches.",
+      "safe_to_auto_run": true,
+      "requires_human_review": false,
+      "requires_real_data": false,
+      "allowed_commands": ["make local-agent-policy-check"],
+      "blocked_commands": [],
+      "notes": "Reads events; never writes to source artifacts."
+    }
+  ]
+}

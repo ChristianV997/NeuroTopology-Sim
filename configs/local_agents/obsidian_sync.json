@@ -1,0 +1,25 @@
+{
+  "description": "Obsidian vault sync configuration for the local agent research loop (P23).",
+  "vault_root": null,
+  "science_outputs_root": "outputs/btc_icft",
+  "loop_outputs_root": "outputs/local_agent_loop",
+  "index_note": "ScienceR-Dsim/INDEX.md",
+  "dataset_folder": "ScienceR-Dsim/datasets",
+  "loop_folder": "ScienceR-Dsim/loop",
+  "matrix_folder": "ScienceR-Dsim/matrix",
+  "tag": "sciencer-dsim",
+  "datasets": [
+    "DS005620",
+    "DS002094",
+    "ds001787",
+    "ds003969",
+    "ds003816",
+    "PhysioNet_GABA"
+  ],
+  "guardrails": {
+    "syncs_real_data_to_vault": false,
+    "modifies_source_artifacts": false,
+    "uploads_to_cloud": false
+  },
+  "notes": "vault_root must be set via --vault CLI arg or OBSIDIAN_VAULT env var. Sync is optional; loop runs without it."
+}
