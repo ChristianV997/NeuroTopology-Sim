@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ontology-language-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology
 
 validate-governance:
 	python -m governance.validate
@@ -117,4 +117,10 @@ ontology-governance-docs-check:
 	python -m pytest tests/btc_icft/test_ontology_review_governance_docs.py -q
 
 ontology-language-check:
-	python tools/validate_ontology_claim_language.py --root . --output-roots outputs/btc_icft --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+	python tools/validate_ontology_claim_language.py --root . --scan-mode repo --baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+
+ontology-language-check-strict-outputs:
+	python tools/validate_ontology_claim_language.py --root . --scan-mode outputs --strict-outputs --no-baseline --json-out outputs/btc_icft/ontology_claim_language_validation_strict_outputs.json --markdown-out outputs/btc_icft/ontology_claim_language_validation_strict_outputs.md
+
+ontology-language-baseline-candidate:
+	python tools/validate_ontology_claim_language.py --root . --scan-mode repo --no-baseline --write-baseline outputs/btc_icft/claim_language_baseline_candidate.json --json-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.json --markdown-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.md || true
