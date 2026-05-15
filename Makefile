@@ -114,4 +114,10 @@ github-governance-check:
 	python -m pytest tests/btc_icft/test_github_workflow_governance.py -q
 
 ontology-language-check:
-	python tools/validate_ontology_claim_language.py --root . --output-roots outputs/btc_icft --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+	python tools/validate_ontology_claim_language.py --root . --scan-mode repo --baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+
+ontology-language-check-strict-outputs:
+	python tools/validate_ontology_claim_language.py --root . --scan-mode outputs --strict-outputs --no-baseline --json-out outputs/btc_icft/ontology_claim_language_validation_strict_outputs.json --markdown-out outputs/btc_icft/ontology_claim_language_validation_strict_outputs.md
+
+ontology-language-baseline-candidate:
+	python tools/validate_ontology_claim_language.py --root . --scan-mode repo --no-baseline --write-baseline outputs/btc_icft/claim_language_baseline_candidate.json --json-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.json --markdown-out outputs/btc_icft/ontology_claim_language_validation_unbaselined.md || true
