@@ -1,0 +1,127 @@
+{
+  "matrix_id": "ds005620_ontology_evidence_requirement_matrix_v1",
+  "description": "Required artifacts and controls per claim scope. Determines max promotion state for each scope.",
+  "version": 1,
+  "rows": [
+    {
+      "scope": "engineering_runtime",
+      "requires_real_execution": false,
+      "requires_reviewed_labels": false,
+      "requires_controls": false,
+      "requires_nulls": false,
+      "requires_ablations": false,
+      "requires_leakage_report": false,
+      "requires_artifact_report": false,
+      "requires_human_review": false,
+      "requires_independent_dataset": false,
+      "requires_mechanism_evidence": false,
+      "max_promotion_state": "engineering_validated",
+      "allowed_claim_template": "Engineering runtime validated DS005620 mock/local end-to-end orchestration without empirical promotion.",
+      "forbidden_claim_categories": [
+        "empirical_marker_promotion",
+        "empirical_topology_promotion",
+        "substrate_claim",
+        "theory_promotion",
+        "ontology_claim"
+      ]
+    },
+    {
+      "scope": "marker_association",
+      "requires_real_execution": true,
+      "requires_reviewed_labels": true,
+      "requires_controls": true,
+      "requires_nulls": true,
+      "requires_ablations": false,
+      "requires_leakage_report": true,
+      "requires_artifact_report": true,
+      "requires_human_review": true,
+      "requires_independent_dataset": false,
+      "requires_mechanism_evidence": false,
+      "max_promotion_state": "empirical_candidate",
+      "allowed_claim_template": "Level M markers show measurable association with reviewed labels under controls.",
+      "forbidden_claim_categories": [
+        "substrate_claim",
+        "theory_promotion",
+        "ontology_claim"
+      ]
+    },
+    {
+      "scope": "topology_residual",
+      "requires_real_execution": true,
+      "requires_reviewed_labels": true,
+      "requires_controls": true,
+      "requires_nulls": true,
+      "requires_ablations": true,
+      "requires_leakage_report": true,
+      "requires_artifact_report": true,
+      "requires_human_review": true,
+      "requires_independent_dataset": false,
+      "requires_mechanism_evidence": false,
+      "max_promotion_state": "empirical_candidate",
+      "allowed_claim_template": "Topology telemetry shows residual predictive value beyond Level M markers under reviewed labels and controls.",
+      "forbidden_claim_categories": [
+        "substrate_claim",
+        "theory_promotion",
+        "ontology_claim"
+      ]
+    },
+    {
+      "scope": "mechanism_candidate",
+      "requires_real_execution": true,
+      "requires_reviewed_labels": true,
+      "requires_controls": true,
+      "requires_nulls": true,
+      "requires_ablations": true,
+      "requires_leakage_report": true,
+      "requires_artifact_report": true,
+      "requires_human_review": true,
+      "requires_independent_dataset": false,
+      "requires_mechanism_evidence": true,
+      "max_promotion_state": "mechanism_candidate",
+      "allowed_claim_template": "A specific mechanism is proposed as a candidate, contingent on independent biophysical evidence.",
+      "forbidden_claim_categories": [
+        "theory_promotion",
+        "ontology_claim"
+      ]
+    },
+    {
+      "scope": "theory_consistency",
+      "requires_real_execution": false,
+      "requires_reviewed_labels": false,
+      "requires_controls": false,
+      "requires_nulls": false,
+      "requires_ablations": false,
+      "requires_leakage_report": false,
+      "requires_artifact_report": false,
+      "requires_human_review": true,
+      "requires_independent_dataset": false,
+      "requires_mechanism_evidence": false,
+      "max_promotion_state": "theory_consistency_only",
+      "allowed_claim_template": "Findings are discussed as theoretically consistent with the dynamical organization framework, not as empirical confirmation of theory.",
+      "forbidden_claim_categories": [
+        "ontology_claim",
+        "empirical_promotion_from_theory_alone"
+      ]
+    },
+    {
+      "scope": "ontology_candidate",
+      "requires_real_execution": true,
+      "requires_reviewed_labels": true,
+      "requires_controls": true,
+      "requires_nulls": true,
+      "requires_ablations": true,
+      "requires_leakage_report": true,
+      "requires_artifact_report": true,
+      "requires_human_review": true,
+      "requires_independent_dataset": true,
+      "requires_mechanism_evidence": true,
+      "max_promotion_state": "ontology_quarantined",
+      "allowed_claim_template": "An ontology candidate is articulated and held in quarantine; it is not promoted to any empirical or metaphysical conclusion.",
+      "forbidden_claim_categories": [
+        "ontology_claim",
+        "metaphysical_proof",
+        "consciousness_proof"
+      ]
+    }
+  ]
+}

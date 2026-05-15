@@ -121,6 +121,7 @@ Returns exit code 0 when all ready, 1 when blocked.
 2. `make ds005620-e2e-mock` — full chain
 3. `make validate-ds005620-e2e` — artifact validator
 4. `make ds005620-autonomy-check` — kernel check
+5. `make ds005620-ontology-check` — ontology claim evaluation (see `docs/ontology_layer.md`)
 
 ---
 
