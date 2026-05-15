@@ -237,6 +237,29 @@ def build_default_science_task_registry() -> ScienceTaskRegistry:
             tags=["runtime", "inspect"],
         ),
         ScienceTaskRecord(
+            task_id="ds005620_real_artifact_plan",
+            module="sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
+                "--out", "outputs/btc_icft/ds005620_real_artifact_operator",
+            ],
+            description=(
+                "P20 real artifact build operator: plans DS005620 local artifact preparation "
+                "without executing real data or weakening guardrails."
+            ),
+            required_inputs=[],
+            expected_outputs=[
+                "real_artifact_build_plan.json",
+                "real_artifact_stage_status.json",
+                "real_artifact_next_command.json",
+                "real_artifact_required_paths.json",
+                "real_artifact_commands.sh",
+                "real_artifact_operator_report.md",
+            ],
+            tags=["p20", "operator", "real_local", "planning"],
+        ),
+        ScienceTaskRecord(
             task_id="ds005620_real_execution_gate",
             module="sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution",
             command=[

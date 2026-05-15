@@ -1,0 +1,60 @@
+{
+  "pipeline_id": "ds005620_real_artifact_operator",
+  "dataset_id": "DS005620",
+  "dry_run_only": true,
+  "executes_real_benchmark": false,
+  "downloads_data": false,
+  "executes_real_data_automatically": false,
+  "peer_review_required": true,
+  "human_confirmation_required": true,
+  "planner_version": "p20.0",
+  "default_paths": {
+    "metadata": "data/DS005620/events.tsv",
+    "raw_eeg_root": "data/DS005620/raw",
+    "reviewed_contract_source": "data/DS005620/ds005620_activation_declaration.json",
+    "reviewed_contract_materialized": "outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json",
+    "reader_preflight": "outputs/btc_icft/eeg_reader_preflight/DS005620",
+    "mne_extract": "outputs/btc_icft/eeg_mne_extract/DS005620",
+    "signal_blocks": "outputs/btc_icft/eeg_signal_blocks_from_mne/DS005620",
+    "level_m": "outputs/btc_icft/eeg_level_m/DS005620/features_m_signal.csv",
+    "level_t": "outputs/btc_icft/eeg_level_t/DS005620/features_t_signal.csv",
+    "real_execution_gate": "outputs/btc_icft/ds005620_real_execution_gate/ready_for_real_execution.json",
+    "operator_root": "outputs/btc_icft/ds005620_real_artifact_operator"
+  },
+  "stage_ids": [
+    "metadata",
+    "raw_eeg_root",
+    "reviewed_contract_source",
+    "reviewed_contract_materialized",
+    "eeg_reader_preflight",
+    "mne_extraction",
+    "canonical_signal_blocks",
+    "level_m_features",
+    "level_t_features",
+    "real_execution_gate"
+  ],
+  "next_action_order": [
+    "provide_metadata",
+    "provide_raw_eeg",
+    "prepare_reviewed_contract_declaration",
+    "run_reviewed_contract_materializer",
+    "run_eeg_reader_preflight",
+    "run_mne_extraction",
+    "run_signal_block_conversion",
+    "run_level_m_signal",
+    "run_level_t_signal",
+    "run_real_execution_gate",
+    "follow_real_execution_gate_next_action",
+    "human_peer_review_required"
+  ],
+  "guardrails": {
+    "executes_real_benchmark": false,
+    "downloads_data": false,
+    "executes_real_data_automatically": false,
+    "auto_confirms_peer_review": false,
+    "infers_labels": false,
+    "fabricates_targets": false,
+    "modifies_p18_3_gate": false
+  },
+  "safe_claim": "P20 adds a deterministic real artifact build operator that plans DS005620 local artifact preparation without executing real data or weakening label, target, ontology, or language guardrails."
+}
