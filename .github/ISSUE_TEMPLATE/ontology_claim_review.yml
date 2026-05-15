@@ -1,0 +1,187 @@
+name: Ontology Claim Review
+description: Structured ontology-aware review for empirical claim scope and promotion.
+title: "[Ontology Claim Review] "
+labels:
+  - review
+  - ds005620
+body:
+  - type: input
+    id: claim_title
+    attributes:
+      label: claim title
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_claim_text
+    attributes:
+      label: proposed claim text
+    validations:
+      required: true
+  - type: dropdown
+    id: ontology_layer
+    attributes:
+      label: ontology layer
+      options:
+        - D phenomenology/context
+        - M marker
+        - T topology telemetry
+        - C substrate/mechanism candidate
+        - Q theory construct
+        - O ontology candidate
+        - Ω governance/evidence state
+    validations:
+      required: true
+  - type: dropdown
+    id: claim_scope
+    attributes:
+      label: claim scope
+      options:
+        - engineering_runtime
+        - marker_association
+        - topology_residual
+        - mechanism_candidate
+        - theory_consistency
+        - ontology_candidate
+        - blocked_overreach
+        - rejected
+    validations:
+      required: true
+  - type: input
+    id: dataset_run_id
+    attributes:
+      label: dataset/run ID
+      placeholder: e.g. DS005620 or DS005620:run-2026-05-14
+    validations:
+      required: true
+  - type: input
+    id: execution_root
+    attributes:
+      label: execution root
+      placeholder: Path to execution root directory
+    validations:
+      required: true
+  - type: input
+    id: evidence_packet_path
+    attributes:
+      label: evidence packet path
+      placeholder: Path to evidence packet JSON/MD
+    validations:
+      required: true
+  - type: input
+    id: controls_root
+    attributes:
+      label: controls root
+      placeholder: Path to controls/nulls/ablations directory
+    validations:
+      required: true
+  - type: dropdown
+    id: null_controls_status
+    attributes:
+      label: null controls status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: ablation_status
+    attributes:
+      label: ablation status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: leakage_report_status
+    attributes:
+      label: leakage report status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: artifact_report_status
+    attributes:
+      label: artifact report status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: dropdown
+    id: human_reviewed_contract_status
+    attributes:
+      label: human-reviewed contract status
+      options:
+        - complete
+        - partial
+        - missing
+    validations:
+      required: true
+  - type: textarea
+    id: alternative_explanations
+    attributes:
+      label: alternative explanations
+      description: List plausible alternatives that could explain the result.
+    validations:
+      required: true
+  - type: textarea
+    id: falsifiers
+    attributes:
+      label: falsifiers
+      description: List observations that would contradict the claim.
+    validations:
+      required: true
+  - type: dropdown
+    id: requested_promotion_state
+    attributes:
+      label: requested promotion state
+      options:
+        - approve_engineering_claim
+        - approve_marker_candidate
+        - approve_topology_candidate
+        - block_pending_real_execution
+        - block_pending_controls
+        - block_pending_human_review
+        - quarantine_C_Q_O_claim
+        - reject_overreach
+    validations:
+      required: true
+  - type: dropdown
+    id: reviewer_decision
+    attributes:
+      label: reviewer decision
+      options:
+        - approve_engineering_claim
+        - approve_marker_candidate
+        - approve_topology_candidate
+        - block_pending_real_execution
+        - block_pending_controls
+        - block_pending_human_review
+        - quarantine_C_Q_O_claim
+        - reject_overreach
+    validations:
+      required: true
+  - type: checkboxes
+    id: required_attestations
+    attributes:
+      label: required attestations
+      options:
+        - label: I am not claiming empirical support from mock E2E alone
+          required: true
+        - label: I am not mapping EEG/topology metrics directly to ontology
+          required: true
+        - label: I am not treating sedation/unresponsiveness as direct experience labels
+          required: true
+        - label: I have listed alternative explanations
+          required: true
+        - label: I have listed falsifiers
+          required: true
+        - label: I have included required controls or marked claim as blocked
+          required: true
