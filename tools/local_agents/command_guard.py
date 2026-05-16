@@ -1,14 +1,21 @@
 """
-Command policy guard for the local agent research loop (P23).
+Command policy guard for the local agent research loop (P23/P24).
 
 Maintains an allowlist of safe commands and a blocklist of forbidden
 substrings. Every command is evaluated before execution.
+
+CLI (P24):
+    python -m tools.local_agents.command_guard --check-defaults
+    python -m tools.local_agents.command_guard --command "make ds005620-e2e-mock"
+    python -m tools.local_agents.command_guard --json-out outputs/local_agents/policy_check.json
 
 stdlib only. No subprocess calls in this module.
 """
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -39,10 +46,17 @@ _DEFAULT_ALLOWLIST_PREFIXES: list[str] = [
     "make validate-real-data-source-matrix",
     "make local-agent-policy-check",
     "make local-agent-loop-dry-run",
+    "make local-agent-loop-once",
+    "make local-agent-status",
+    "make local-agent-healthcheck",
+    "make local-agent-scheduler-plan",
     "make sync-obsidian",
     "make validate-governance",
     "make test-root",
     "make smoke",
+    "make ds005620-generated-artifact-check",
+    "make ontology-language-check",
+    "make github-governance-check",
     # Python module invocations (planning, validation, inspection — no real data)
     "python -m sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
     "python -m sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration --dry-run",
@@ -190,3 +204,143 @@ def evaluate_command(command: str, policy: Optional[CommandPolicy] = None) -> Co
         reason="Blocked: command not in allowlist (allow_unlisted_safe=False)",
         category="blocked_not_allowlisted",
     )
+
+
+# ---------------------------------------------------------------------------
+# P24 CLI
+# ---------------------------------------------------------------------------
+
+_BLOCKED_EXAMPLES = [
+    "wget https://openneuro.org/data.zip",
+    "curl -O https://dandiarchive.org/data.tar",
+    "dandi download https://dandiarchive.org/dandiset/000001",
+    "git push origin main",
+    "git merge feature-branch",
+    "rm -rf /data",
+    "python -m sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark --execute --peer-reviewed-contract-confirmed",
+    "aws s3 cp s3://bucket/data.zip .",
+    "sudo apt install something",
+]
+
+_ALLOWED_EXAMPLES = [
+    "make ds005620-e2e-mock",
+    "make validate-ds005620-contracts",
+    "make ds005620-real-artifact-plan",
+    "make real-data-source-matrix",
+    "make local-agent-loop-dry-run",
+]
+
+
+def check_policy_defaults(policy: Optional[CommandPolicy] = None) -> dict:
+    """Run default policy validation. Returns result dict with ok, violations, warnings."""
+    if policy is None:
+        policy = CommandPolicy()
+
+    violations: list[str] = []
+    warnings: list[str] = []
+
+    if not policy.allowlist_prefixes:
+        violations.append("allowlist_prefixes is empty")
+    if not policy.blocklist_substrings:
+        violations.append("blocklist_substrings is empty")
+
+    blocked_examples_passed = True
+    for cmd in _BLOCKED_EXAMPLES:
+        dec = evaluate_command(cmd, policy)
+        if dec.allowed:
+            violations.append(f"Dangerous command not blocked: {cmd!r}")
+            blocked_examples_passed = False
+
+    allowed_examples_passed = True
+    for cmd in _ALLOWED_EXAMPLES:
+        dec = evaluate_command(cmd, policy)
+        if not dec.allowed:
+            warnings.append(f"Expected safe command not allowed: {cmd!r}")
+            allowed_examples_passed = False
+
+    # Verify key blocklist substrings present
+    required_blocklist = ["wget", "curl", "dandi download", "git push", "git merge", "rm -rf"]
+    for bad in required_blocklist:
+        if bad not in policy.blocklist_substrings:
+            violations.append(f"Required blocklist substring missing: {bad!r}")
+
+    ok = len(violations) == 0
+    return {
+        "ok": ok,
+        "allowed_count": len(policy.allowlist_prefixes),
+        "blocked_count": len(policy.blocklist_substrings),
+        "blocked_examples_passed": blocked_examples_passed,
+        "allowed_examples_passed": allowed_examples_passed,
+        "guardrails": {
+            "executes_real_data": False,
+            "downloads_data": False,
+            "auto_confirms_peer_review": False,
+            "auto_pushes_git": False,
+            "auto_merges_pr": False,
+        },
+        "violations": violations,
+        "warnings": warnings,
+    }
+
+
+def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Command policy guard CLI (P24)")
+    p.add_argument("--policy", default=None, help="Path to command_policy.json")
+    p.add_argument("--check-defaults", action="store_true", default=False,
+                   help="Validate default policy configuration")
+    p.add_argument("--command", default=None, help="Evaluate a specific command")
+    p.add_argument("--json-out", default=None, help="Write JSON result to this path")
+    return p.parse_args(argv)
+
+
+def main(argv: Optional[list] = None) -> int:
+    args = _parse_args(argv)
+
+    policy: Optional[CommandPolicy] = None
+    policy_path = args.policy or "configs/local_agents/command_policy.json"
+    try:
+        if Path(policy_path).exists():
+            policy = CommandPolicy.load(policy_path)
+        else:
+            policy = CommandPolicy()
+    except Exception as exc:
+        print(f"ERROR loading policy: {exc}", file=sys.stderr)
+        return 2
+
+    result: dict = {"ok": True, "policy_path": policy_path}
+
+    if args.command:
+        dec = evaluate_command(args.command, policy)
+        result = {
+            "ok": dec.allowed,
+            "policy_path": policy_path,
+            "command": args.command,
+            "allowed": dec.allowed,
+            "reason": dec.reason,
+            "category": dec.category,
+            "matched_blocklist": dec.matched_blocklist,
+            "matched_allowlist": dec.matched_allowlist,
+            "violations": [] if dec.allowed else [dec.reason],
+            "warnings": [],
+        }
+        exit_code = 0 if dec.allowed else 1
+    elif args.check_defaults:
+        check = check_policy_defaults(policy)
+        result = {"policy_path": policy_path, **check}
+        exit_code = 0 if check["ok"] else 1
+    else:
+        check = check_policy_defaults(policy)
+        result = {"policy_path": policy_path, **check}
+        exit_code = 0 if check["ok"] else 1
+
+    if args.json_out:
+        out = Path(args.json_out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result, indent=2), encoding="utf-8")
+
+    print(json.dumps(result, indent=2))
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

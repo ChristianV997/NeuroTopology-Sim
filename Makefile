@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan
 
 validate-governance:
 	python -m governance.validate
@@ -181,13 +181,22 @@ validate-real-data-source-matrix:
 	python tools/validate_multi_dataset_real_execution_matrix.py --root outputs/btc_icft/multi_dataset_real_execution
 
 local-agent-policy-check:
-	python -c "from tools.local_agents.command_guard import CommandPolicy; p = CommandPolicy(); print('Allowlist entries:', len(p.allowlist_prefixes)); print('Blocklist entries:', len(p.blocklist_substrings))"
+	python -m tools.local_agents.command_guard --policy configs/local_agents/command_policy.json --check-defaults --json-out outputs/local_agents/policy_check.json
 
 local-agent-loop-dry-run:
-	python -m tools.local_agents.research_loop --dry-run --out outputs/local_agent_loop
+	python -m tools.local_agents.research_loop --dry-run --out outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
 
 local-agent-loop-once:
-	python -m tools.local_agents.research_loop --once --out outputs/local_agent_loop
+	python -m tools.local_agents.research_loop --once --out outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
 
 sync-obsidian:
-	python -m tools.local_agents.research_loop --dry-run --out outputs/local_agent_loop $(if $(VAULT),--vault $(VAULT),)
+	python -m tools.local_agents.obsidian_sync --root outputs/btc_icft --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/local_agents/obsidian_sync_result.json
+
+local-agent-status:
+	python -m tools.local_agents.status --root outputs/btc_icft --local-agent-root outputs/local_agents --out outputs/local_agents/local_agent_status.json
+
+local-agent-healthcheck:
+	python -m tools.local_agents.healthcheck --root outputs/btc_icft --local-agent-root outputs/local_agents --out outputs/local_agents/local_agent_healthcheck.json
+
+local-agent-scheduler-plan:
+	python -m tools.local_agents.scheduler_plan --out outputs/local_agents

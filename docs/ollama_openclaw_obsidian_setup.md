@@ -2,7 +2,7 @@
 
 ## Overview
 
-The local autonomous research team runtime (P23) integrates three optional
+The local autonomous research team runtime (P23/P24) integrates three optional
 external tools:
 
 - **Ollama** — local LLM for status summaries (offline, no API key)
@@ -112,28 +112,44 @@ Open Obsidian and create a new vault at any local path, e.g. `~/research-vault`.
 ### Sync
 
 ```bash
+# P24 direct Obsidian sync CLI:
 make sync-obsidian VAULT=~/research-vault
 # or
-python -m tools.local_agents.research_loop --dry-run --vault ~/research-vault
+python -m tools.local_agents.obsidian_sync --root outputs/btc_icft --vault ~/research-vault
+
+# Also written during research loop:
+make local-agent-loop-dry-run VAULT=~/research-vault
 ```
 
-### Vault structure after sync
+### Vault structure after sync (P24)
 
 ```
 ~/research-vault/
   ScienceR-Dsim/
-    INDEX.md
-    datasets/
+    00_Dashboard/
+      Status.md
+      Open_Tasks.md
+      Agent_Roster.md
+    01_Datasets/
       DS005620.md
       DS002094.md
       ds001787.md
       ds003969.md
       ds003816.md
       PhysioNet_GABA.md
-    loop/
-      loop_state.md
-    matrix/
-      matrix.md
+      Multi_Dataset_Matrix.md
+    02_Runtime/
+      Autonomous_Iteration_Log.md
+    03_Evidence/
+      Evidence_Ledger.md
+    04_Ontology/
+      Claim_Scope_Matrix.md
+    99_Agent_Memory/
+      runs.jsonl
+    INDEX.md            (P23 compat)
+    datasets/           (P23 compat)
+    loop/               (P23 compat)
+    matrix/             (P23 compat)
 ```
 
 ### What is synced
@@ -166,7 +182,7 @@ python -m tools.local_agents.research_loop \
     --vault ~/research-vault \
     --use-ollama \
     --ollama-model llama3 \
-    --out outputs/local_agent_loop \
+    --out outputs/local_agents \
     --json
 
 # 3. Open Obsidian to review the ledger
@@ -181,4 +197,4 @@ python -m tools.local_agents.research_loop \
 | Ollama not available | Loop continues without it; check `ollama serve` |
 | Vault path doesn't exist | Create the directory or vault first |
 | Command blocked by policy | Check `configs/local_agents/command_policy.json` |
-| Loop exits nonzero | Check `outputs/local_agent_loop/loop_next_action.json` |
+| Loop exits nonzero | Check `outputs/local_agents/research_loop_next_action.json` |

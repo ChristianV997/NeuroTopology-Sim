@@ -38,8 +38,8 @@ from tools.local_agents.agent_roles import load_agent_roster
 # Research loop core (19 tests)
 # ---------------------------------------------------------------------------
 
-def test_loop_version_is_p23():
-    assert _LOOP_VERSION == "p23.0"
+def test_loop_version_is_p24():
+    assert _LOOP_VERSION == "p24.0"
 
 
 def test_guardrails_all_false():
@@ -91,7 +91,7 @@ def test_loop_events_have_source(tmp_path):
     run_research_loop(config)
     events = read_events(out / "loop_events.jsonl")
     for e in events:
-        assert e.get("source") == "p23_research_loop"
+        assert e.get("source") == "p24_research_loop"
 
 
 def test_loop_state_json_has_required_fields(tmp_path):

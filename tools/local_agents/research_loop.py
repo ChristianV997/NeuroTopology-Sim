@@ -31,8 +31,8 @@ from tools.local_agents.safe_runner import SafeCommandResult, run_safe_command
 from tools.local_agents.state_reader import read_sciencer_state
 
 
-_LOOP_VERSION = "p23.0"
-_SOURCE = "p23_research_loop"
+_LOOP_VERSION = "p24.0"
+_SOURCE = "p24_research_loop"
 
 _GUARDRAILS = {
     "executes_real_data": False,
@@ -56,15 +56,13 @@ _GUARDRAILS = {
 }
 
 _DEFAULT_SAFE_COMMANDS = [
-    "make ds005620-e2e-mock",
-    "make validate-ds005620-e2e",
-    "make validate-ds005620-contracts",
-    "make ds005620-generated-language-check",
-    "make ds005620-real-artifact-plan",
-    "make ds005620-real-execution-gate",
+    "make ds005620-autonomous-iteration",
     "make real-data-source-matrix",
-    "make validate-real-data-source-matrix",
-    "make multi-dataset-autonomous-iteration-dry-run",
+    "make multi-dataset-autonomous-iteration",
+    "make ds005620-generated-artifact-check",
+    "make ontology-language-check",
+    "make github-governance-check",
+    "make sync-obsidian",
 ]
 
 
@@ -73,7 +71,7 @@ class ResearchLoopConfig:
     dry_run: bool = True
     once: bool = False
     max_commands: int = 20
-    out_dir: str = "outputs/local_agent_loop"
+    out_dir: str = "outputs/local_agents"
     vault_root: Optional[str] = None
     policy_path: Optional[str] = None
     timeout_s: int = 120
@@ -140,6 +138,7 @@ def run_research_loop(
     out = Path(config.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     events_path = out / "loop_events.jsonl"
+    events_path_p24 = out / "events.jsonl"
 
     policy = CommandPolicy()
     if config.policy_path:
@@ -150,13 +149,15 @@ def run_research_loop(
     if config.dry_run:
         policy.dry_run_always = True
 
-    append_event(events_path, {
+    start_ev = {
         "event": "loop_start",
         "loop_version": _LOOP_VERSION,
         "dry_run": config.dry_run,
         "ts": _timestamp(),
         "source": _SOURCE,
-    })
+    }
+    append_event(events_path, start_ev)
+    append_event(events_path_p24, start_ev)
 
     commands = config.safe_commands[: config.max_commands]
     results: list[SafeCommandResult] = []
@@ -184,6 +185,7 @@ def run_research_loop(
         }
         ev["event_id"] = event_hash(ev)
         append_event(events_path, ev)
+        append_event(events_path_p24, ev)
 
         if not result.allowed:
             warnings.append(f"Blocked command: {cmd} — {result.blocked_reason}")
@@ -228,6 +230,14 @@ def run_research_loop(
     )
     output_files = write_loop_report(report, out)
 
+    # P24: also write named output files
+    _write_p24_outputs(out, report, results, next_action, next_command, warnings)
+    for fname in ["research_loop_plan.json", "research_loop_results.json",
+                  "research_loop_next_action.json", "research_loop_report.md"]:
+        fpath = out / fname
+        if fpath.exists():
+            output_files.append(str(fpath))
+
     # Optional Obsidian sync
     if config.vault_root:
         try:
@@ -240,14 +250,16 @@ def run_research_loop(
         except Exception as exc:
             warnings.append(f"Obsidian sync error: {exc}")
 
-    append_event(events_path, {
+    end_ev = {
         "event": "loop_end",
         "next_action": next_action,
         "steps_run": len(results),
         "ts": _timestamp(),
         "source": _SOURCE,
         "guardrails": dict(_GUARDRAILS),
-    })
+    }
+    append_event(events_path, end_ev)
+    append_event(events_path_p24, end_ev)
 
     passed = sum(1 for r in results if r.allowed and r.exit_code in (0, None))
     failed = sum(1 for r in results if r.allowed and r.exit_code not in (0, None))
@@ -266,6 +278,67 @@ def run_research_loop(
         guardrails=dict(_GUARDRAILS),
         warnings=warnings,
     )
+
+
+def _write_p24_outputs(
+    out: Path,
+    report,
+    results: list,
+    next_action: str,
+    next_command: str,
+    warnings: list,
+) -> None:
+    """Write P24 standardized output filenames alongside legacy ones."""
+    import json as _json
+
+    plan = {
+        "loop_version": report.loop_version,
+        "dry_run": report.dry_run,
+        "status": "complete" if report.steps_failed == 0 else "failed",
+        "steps_total": report.steps_total,
+        "steps_completed": report.steps_completed,
+        "steps_failed": report.steps_failed,
+        "steps_blocked": report.steps_blocked,
+        "guardrails": report.guardrails,
+    }
+    (out / "research_loop_plan.json").write_text(_json.dumps(plan, indent=2), encoding="utf-8")
+
+    step_results = [
+        {
+            "command": getattr(r, "command", ""),
+            "allowed": getattr(r, "allowed", True),
+            "exit_code": getattr(r, "exit_code", None),
+            "blocked_reason": getattr(r, "blocked_reason", ""),
+            "elapsed_s": getattr(r, "elapsed_s", 0.0),
+        }
+        for r in results
+    ]
+    (out / "research_loop_results.json").write_text(_json.dumps(step_results, indent=2), encoding="utf-8")
+
+    next_action_doc = {
+        "next_action": next_action,
+        "next_command": next_command,
+        "warnings": warnings,
+    }
+    (out / "research_loop_next_action.json").write_text(_json.dumps(next_action_doc, indent=2), encoding="utf-8")
+
+    md_lines = [
+        "# Research Loop Report (P24)",
+        "",
+        f"- loop_version: `{report.loop_version}`",
+        f"- dry_run: `{report.dry_run}`",
+        f"- steps_total: `{report.steps_total}`",
+        f"- steps_failed: `{report.steps_failed}`",
+        f"- next_action: `{next_action}`",
+        "",
+        "## Guardrails",
+        "",
+        "All hardcoded `false`.",
+        "",
+        "---",
+        "#local-agent #sciencer-dsim",
+    ]
+    (out / "research_loop_report.md").write_text("\n".join(md_lines), encoding="utf-8")
 
 
 def _next_command_for_action(action: str) -> str:
@@ -295,7 +368,7 @@ def _parse_args(argv: Optional[list] = None) -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", default=False, help="Plan only; do not execute commands")
     p.add_argument("--once", action="store_true", default=False, help="Run only the first command")
     p.add_argument("--max-commands", type=int, default=20, help="Maximum commands to run per invocation")
-    p.add_argument("--out", default="outputs/local_agent_loop", help="Output directory for loop reports")
+    p.add_argument("--out", default="outputs/local_agents", help="Output directory for loop reports")
     p.add_argument("--vault", default=None, help="Obsidian vault root (optional)")
     p.add_argument("--policy", default=None, help="Path to command_policy.json override")
     p.add_argument("--timeout-s", type=int, default=120, help="Per-command timeout in seconds")

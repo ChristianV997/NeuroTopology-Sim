@@ -1,16 +1,16 @@
-# Local Autonomous Research Team Runtime (P23)
+# Local Autonomous Research Team Runtime (P23/P24)
 
 ## Purpose
 
 P23 adds the first safe local autonomous research operations layer to
-ScienceR-Dsim. It runs only allowlisted safe commands, mirrors outputs into
-Obsidian, optionally uses Ollama if available, and preserves all real-data
-and human-review boundaries.
+ScienceR-Dsim. P24 hardens it into a scheduler-ready local operations loop
+with policy validation CLI, status/healthcheck outputs, direct Obsidian sync,
+and optional Ollama support.
 
-**Safe claim**: This PR adds a local autonomous research operations layer that
-runs only allowlisted safe commands, mirrors outputs into Obsidian, optionally
-uses Ollama if available, and preserves all real-data and human-review
-boundaries.
+**Safe claim**: P24 hardens the local autonomous research runtime into a
+scheduler-ready safe loop with policy validation, status/healthcheck outputs,
+direct Obsidian sync, and optional Ollama support while preserving all
+real-data, human-review, and GitHub boundaries.
 
 ## Architecture
 
@@ -38,27 +38,54 @@ make local-agent-loop-dry-run
 # Run one iteration:
 make local-agent-loop-once
 
-# Check policy (list allowlist/blocklist):
+# Check policy with CLI (P24):
 make local-agent-policy-check
 
-# Sync outputs to Obsidian vault:
+# Sync outputs to Obsidian vault (P24 direct CLI):
 make sync-obsidian VAULT=<vault_root>
+
+# Status report (P24):
+make local-agent-status
+
+# Healthcheck (P24):
+make local-agent-healthcheck
+
+# Scheduler plan (cron/systemd/launchd/OpenClaw examples) (P24):
+make local-agent-scheduler-plan
 ```
 
 ## CLI
 
 ```bash
+# Research loop
 python -m tools.local_agents.research_loop --dry-run
-python -m tools.local_agents.research_loop --once --out outputs/local_agent_loop
+python -m tools.local_agents.research_loop --once --out outputs/local_agents
 python -m tools.local_agents.research_loop --max-commands 5 --vault ~/vault
 python -m tools.local_agents.research_loop --use-ollama --ollama-model llama3
+
+# Command guard (P24)
+python -m tools.local_agents.command_guard --check-defaults
+python -m tools.local_agents.command_guard --command "make ds005620-e2e-mock"
+python -m tools.local_agents.command_guard --policy configs/local_agents/command_policy.json --check-defaults --json-out outputs/local_agents/policy_check.json
+
+# Status (P24)
+python -m tools.local_agents.status --root outputs/btc_icft --local-agent-root outputs/local_agents
+
+# Healthcheck (P24)
+python -m tools.local_agents.healthcheck --root outputs/btc_icft --local-agent-root outputs/local_agents
+
+# Scheduler plan (P24)
+python -m tools.local_agents.scheduler_plan --out outputs/local_agents
+
+# Obsidian sync (P24)
+python -m tools.local_agents.obsidian_sync --root outputs/btc_icft --vault obsidian
 ```
 
-Options:
+Research loop options:
 - `--dry-run` — plan only; no commands executed
 - `--once` — run only the first command
 - `--max-commands N` — stop after N commands
-- `--out <dir>` — output directory (default: `outputs/local_agent_loop`)
+- `--out <dir>` — output directory (default: `outputs/local_agents`)
 - `--vault <path>` — Obsidian vault root (optional)
 - `--policy <path>` — custom command_policy.json
 - `--timeout-s N` — per-command timeout
@@ -141,16 +168,27 @@ Six skills in `.openclaw/skills/`:
 
 ## Outputs
 
-`outputs/local_agent_loop/`:
+All outputs written to `outputs/local_agents/` (P24 standard directory):
 
 | File | Contents |
 |---|---|
-| `loop_state.json` | Overall loop state: counts, status |
-| `loop_next_action.json` | next_action, next_command, warnings |
-| `loop_guardrails.json` | All guardrails (all false) |
-| `loop_step_results.json` | Per-step results |
-| `loop_report.md` | Human-readable report |
-| `loop_events.jsonl` | Append-only event log |
+| `research_loop_plan.json` | Loop plan: version, commands, guardrails (P24) |
+| `research_loop_results.json` | Per-step results list (P24) |
+| `research_loop_next_action.json` | next_action, next_command, warnings (P24) |
+| `research_loop_report.md` | Human-readable loop report (P24) |
+| `events.jsonl` | Append-only event log (P24 name) |
+| `loop_state.json` | Overall loop state (P23 compat) |
+| `loop_next_action.json` | next_action (P23 compat) |
+| `loop_guardrails.json` | All guardrails (P23 compat) |
+| `loop_step_results.json` | Per-step results (P23 compat) |
+| `loop_report.md` | Human-readable report (P23 compat) |
+| `loop_events.jsonl` | Append-only event log (P23 compat) |
+| `policy_check.json` | Command guard policy check output (P24) |
+| `local_agent_status.json` | Comprehensive system status (P24) |
+| `local_agent_healthcheck.json` | Health check results (P24) |
+| `scheduler_plan.json` | Scheduler design (cron/systemd/launchd) (P24) |
+| `scheduler_report.md` | Scheduler plan as Markdown (P24) |
+| `obsidian_sync_result.json` | Obsidian sync outcome (P24) |
 
 ## What this layer never does
 
