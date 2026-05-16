@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop
 
 validate-governance:
 	python -m governance.validate
@@ -200,3 +200,21 @@ local-agent-healthcheck:
 
 local-agent-scheduler-plan:
 	python -m tools.local_agents.scheduler_plan --out outputs/local_agents
+
+local-ops-healthcheck:
+	python -m tools.local_ops.healthcheck --out outputs/local_ops/local_ops_healthcheck.json --output-root outputs/local_ops --local-agent-root outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
+
+local-ops-status:
+	python -m tools.local_ops.status --out outputs/local_ops/local_ops_status.json --output-root outputs/local_ops --local-agent-root outputs/local_agents --btc-root outputs/btc_icft
+
+local-ops-install-plan:
+	python -m tools.local_ops.install_plan --out outputs/local_ops
+
+local-ops-run-once:
+	python -m tools.local_ops.runner --mode once --out outputs/local_ops --local-agent-root outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
+
+local-ops-run-loop-dry-run:
+	python -m tools.local_ops.runner --mode dry-run --out outputs/local_ops --local-agent-root outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
+
+local-ops-run-loop:
+	python -m tools.local_ops.runner --mode loop --max-iterations $(if $(MAX_ITERATIONS),$(MAX_ITERATIONS),3) --interval-seconds $(if $(INTERVAL_SECONDS),$(INTERVAL_SECONDS),1800) --out outputs/local_ops --local-agent-root outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)

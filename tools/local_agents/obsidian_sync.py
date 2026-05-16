@@ -138,7 +138,11 @@ def _matrix_note(matrix_root: Path) -> str:
         "",
     ]
     for ds_id, entry in matrix.items():
-        lines.append(f"- **{ds_id}**: `{entry.get('real_execution_supported', False)}`")
+        if isinstance(entry, dict):
+            supported = entry.get("real_execution_supported", False)
+        else:
+            supported = entry
+        lines.append(f"- **{ds_id}**: `{supported}`")
     lines += ["", "---", "", "#sciencer-dsim #matrix"]
     return "\n".join(lines)
 

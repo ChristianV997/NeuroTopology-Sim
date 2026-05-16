@@ -1,0 +1,49 @@
+{
+  "runner_version": "p25.0",
+  "default_interval_seconds": 1800,
+  "max_iterations_default": 1,
+  "max_consecutive_failures": 3,
+  "lock_ttl_seconds": 7200,
+  "retention_keep_last": 25,
+  "output_root": "outputs/local_ops",
+  "local_agent_output_root": "outputs/local_agents",
+  "vault": "obsidian",
+  "safe_command_sequence": [
+    "make local-agent-healthcheck",
+    "make local-agent-loop-once",
+    "make local-agent-status",
+    "make sync-obsidian"
+  ],
+  "optional_safe_commands": [
+    "make real-data-source-matrix",
+    "make multi-dataset-autonomous-iteration",
+    "make validate-real-data-source-matrix"
+  ],
+  "forbidden_command_substrings": [
+    "--execute --peer-reviewed-contract-confirmed",
+    "dandi download",
+    "openneuro download",
+    "wget",
+    "curl",
+    "aws s3 cp",
+    "rm -rf",
+    "git push",
+    "gh pr merge",
+    "gh pr close",
+    ".env",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GITHUB_TOKEN"
+  ],
+  "guardrails": {
+    "executes_real_data": false,
+    "downloads_data": false,
+    "auto_confirms_peer_review": false,
+    "auto_pushes_git": false,
+    "auto_merges_pr": false,
+    "auto_closes_pr": false,
+    "auto_runs_real_benchmark": false,
+    "infers_labels": false,
+    "fabricates_targets": false
+  }
+}

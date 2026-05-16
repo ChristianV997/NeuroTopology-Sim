@@ -1,4 +1,4 @@
-# Local Autonomous Research Team Runtime (P23/P24)
+# Local Autonomous Research Team Runtime (P23/P24/P25)
 
 ## Purpose
 
@@ -210,3 +210,15 @@ All outputs written to `outputs/local_agents/` (P24 standard directory):
 - Never adds cloud API dependencies.
 - Never requires API keys.
 - Never runs a background daemon.
+
+## Continuous Operations Runner (P25)
+
+P25 builds on P24 with a finite, lock-protected runner. See:
+`docs/local_continuous_operations_runner.md`
+
+Key P25 Makefile targets:
+- `make local-ops-run-once` — one safe cycle
+- `make local-ops-run-loop-dry-run` — dry-run (no commands executed)
+- `make local-ops-run-loop MAX_ITERATIONS=3` — finite loop
+- `make local-ops-healthcheck` — P25 healthcheck
+- `make local-ops-install-plan` — generate scheduler templates

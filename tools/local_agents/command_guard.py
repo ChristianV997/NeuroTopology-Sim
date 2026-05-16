@@ -57,6 +57,13 @@ _DEFAULT_ALLOWLIST_PREFIXES: list[str] = [
     "make ds005620-generated-artifact-check",
     "make ontology-language-check",
     "make github-governance-check",
+    # P25 local ops runner targets
+    "make local-ops-run-once",
+    "make local-ops-run-loop-dry-run",
+    "make local-ops-run-loop",
+    "make local-ops-healthcheck",
+    "make local-ops-status",
+    "make local-ops-install-plan",
     # Python module invocations (planning, validation, inspection — no real data)
     "python -m sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
     "python -m sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration --dry-run",
