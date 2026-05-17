@@ -19,6 +19,8 @@ def _write_external_contract(path: Path, **overrides) -> Path:
         "positive_values": ["target"],
         "negative_values": ["control"],
         "join_keys": ["dataset_id","row_id","source_file","window_id","window_start_s","window_end_s","sample_start","sample_end"],
+        "metadata_provenance": "mock_metadata.csv",
+        "activation_provenance": "mock_activation.json",
         "allowed_metadata_extensions": [".csv", ".tsv", ".json"],
         "caveats": [],
         "guardrails": ["no_label_inference", "no_target_fabrication"],
