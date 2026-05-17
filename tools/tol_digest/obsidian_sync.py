@@ -5,7 +5,7 @@ from pathlib import Path
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--root',required=True); ap.add_argument('--vault',required=True); ap.add_argument('--out',required=True); ap.add_argument('--strict',action='store_true'); a=ap.parse_args(argv)
     root=Path(a.root); base=Path(a.vault)/'07_ToL'; base.mkdir(parents=True,exist_ok=True)
-    files=['ToL_Index.md','Book_Thesis.md','Doctrine_Map.md','Scientific_Observables.md','Quarantined_Claims.md','Research_Roadmap.md','Chapter_Seeds.md']
+    files=['ToL_Index.md','Book_Thesis.md','Doctrine_Map.md','Scientific_Observables.md','Quarantined_Claims.md','Research_Roadmap.md','Chapter_Seeds.md','Book_Spine.md','Chapter_Seed_Bank.md','ToL_to_DS005620_Observable_Bridge.md','Public_Language_Rewrite_Guide.md','Synthesis_Report.md']
     missing=[]
     for n in files:
         (base/n).write_text(f'# {n[:-3].replace("_"," ")}\n\nnot available\n',encoding='utf-8')

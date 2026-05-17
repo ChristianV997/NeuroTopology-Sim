@@ -28,3 +28,8 @@ No empirical proof, no clinical guarantees, no metaphysical validation.
 Run `make tol-digest` then use `book_insights.md` and chapter seeds.
 ## How to use for research
 Use `research_hypotheses.md` + observables map + falsifiers sections.
+
+## P28 synthesis stage
+Run synthesis only from validated digest outputs, not raw ToL files.
+
+Targets: `tol-book-spine`, `tol-research-roadmap`, `tol-public-language-guide`, `validate-tol-synthesis`, `tol-synthesis-cycle`.

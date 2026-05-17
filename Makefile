@@ -234,3 +234,28 @@ tol-digest-cycle:
 	$(MAKE) validate-tol-digest
 	$(MAKE) tol-sync-obsidian
 	$(MAKE) ontology-language-check
+
+tol-book-spine:
+	python -m tools.tol_digest.book_spine --root outputs/tol_digest --out outputs/tol_digest
+
+tol-research-roadmap:
+	python -m tools.tol_digest.research_roadmap --root outputs/tol_digest --out outputs/tol_digest
+
+tol-public-language-guide:
+	python -m tools.tol_digest.public_language_guide --root outputs/tol_digest --out outputs/tol_digest/public_language_rewrite_guide.md
+
+validate-tol-synthesis:
+	python -m tools.tol_digest.synthesis_validator --root outputs/tol_digest --json-out outputs/tol_digest/tol_synthesis_validation.json
+
+tol-synthesis-cycle:
+	$(MAKE) tol-digest
+	-$(MAKE) tol-digest-strict-check
+	-$(MAKE) tol-digest-safety-report
+	$(MAKE) validate-tol-digest
+	$(MAKE) tol-book-spine
+	$(MAKE) tol-research-roadmap
+	$(MAKE) tol-public-language-guide
+	$(MAKE) validate-tol-synthesis
+	$(MAKE) tol-sync-obsidian
+	$(MAKE) ontology-language-check
+	$(MAKE) ds005620-generated-language-check
