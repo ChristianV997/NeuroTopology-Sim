@@ -218,3 +218,19 @@ local-ops-run-loop-dry-run:
 
 local-ops-run-loop:
 	python -m tools.local_ops.runner --mode loop --max-iterations $(if $(MAX_ITERATIONS),$(MAX_ITERATIONS),3) --interval-seconds $(if $(INTERVAL_SECONDS),$(INTERVAL_SECONDS),1800) --out outputs/local_ops --local-agent-root outputs/local_agents --vault $(if $(VAULT),$(VAULT),obsidian)
+
+
+tol-digest:
+	python -m tools.tol_digest.report_writer --input inputs/tol --out outputs/tol_digest
+
+validate-tol-digest:
+	python -m tools.tol_digest.validator --root outputs/tol_digest --json-out outputs/tol_digest/tol_digest_validation.json
+
+tol-sync-obsidian:
+	python -m tools.tol_digest.obsidian_sync --root outputs/tol_digest --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/tol_digest/tol_obsidian_sync_result.json
+
+tol-digest-cycle:
+	$(MAKE) tol-digest
+	$(MAKE) validate-tol-digest
+	$(MAKE) tol-sync-obsidian
+	$(MAKE) ontology-language-check
