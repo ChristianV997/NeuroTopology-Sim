@@ -1,0 +1,9 @@
+{
+  "groups": [
+    {"name": "tol_public_safe", "claim_scope": "quarantine_context", "patterns": ["outputs/tol_digest/book_spine.md", "outputs/tol_digest/chapter_seed_bank.md", "outputs/tol_digest/research_roadmap.md", "outputs/tol_digest/tol_to_ds005620_observable_bridge.md", "outputs/tol_digest/public_language_rewrite_guide.md", "outputs/tol_digest/tol_synthesis_report.md", "outputs/tol_digest/book_insights.md", "outputs/tol_digest/research_hypotheses.md", "outputs/tol_digest/quarantine_report.md"]},
+    {"name": "ds005620_empirical", "claim_scope": "empirical_contract", "patterns": ["outputs/btc_icft/**/report.md", "outputs/btc_icft/**/omega_event.json", "outputs/btc_icft/**/validation_summary.json", "outputs/btc_icft/**/artifact_manifest.json", "outputs/btc_icft/**/evidence_packet.json", "outputs/btc_icft/eeg_labels/**/label_alignment_report.json", "outputs/btc_icft/eeg_labels/**/external_alignment_inspection.json"]},
+    {"name": "local_ops", "claim_scope": "operations_status", "patterns": ["outputs/local_ops/local_ops_status.json", "outputs/local_ops/local_ops_report.md", "outputs/local_ops/action_queue.md", "outputs/local_ops/workboard.md"]},
+    {"name": "obsidian_notes", "claim_scope": "notes_non_empirical", "patterns": ["obsidian/07_ToL/*.md", "obsidian/00_Dashboard/*.md", "obsidian/03_Evidence/*.md", "obsidian/04_Ontology/*.md"]}
+  ],
+  "exclude_patterns": [".env", "**/.env", "**/secrets/**", "**/*api*key*", "data/**", "**/*.edf", "**/*.bdf", "**/*.set", "**/*.fif", "**/*.eeg", "inputs/tol/**", "**/*.bin", "**/*.zip"]
+}

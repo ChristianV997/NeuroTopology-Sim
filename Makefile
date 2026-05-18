@@ -259,3 +259,27 @@ tol-synthesis-cycle:
 	$(MAKE) tol-sync-obsidian
 	$(MAKE) ontology-language-check
 	$(MAKE) ds005620-generated-language-check
+
+openai-rag-policy-check:
+	python -m tools.openai_rag.policy --policy configs/openai_rag/rag_policy.json --json-out outputs/openai_rag/rag_policy_check.json
+
+openai-rag-manifest:
+	python -m tools.openai_rag.artifact_manifest --config configs/openai_rag/artifact_sources.json --out outputs/openai_rag
+
+openai-rag-dry-run-sync:
+	$(MAKE) openai-rag-policy-check
+	$(MAKE) openai-rag-manifest
+	python -m tools.openai_rag.sync_plan --manifest outputs/openai_rag/artifact_manifest.json --out outputs/openai_rag --mode dry_run
+
+openai-rag-query-mock:
+	$(MAKE) openai-rag-manifest
+	python -m tools.openai_rag.query_client --query "Summarize current ScienceR-Dsim system state." --mode mock --out outputs/openai_rag/query_mock_response.json
+
+openai-rag-api-smoke:
+	python -m api.rag_server --smoke-test
+
+openai-rag-sync:
+	python -m tools.openai_rag.sync_plan --manifest outputs/openai_rag/artifact_manifest.json --out outputs/openai_rag --mode live --live --confirm-upload
+
+openai-rag-query:
+	python -m tools.openai_rag.query_client --query "$(QUERY)" --mode live --live --vector-store-id "$(VECTOR_STORE_ID)" --out outputs/openai_rag/query_live_response.json
