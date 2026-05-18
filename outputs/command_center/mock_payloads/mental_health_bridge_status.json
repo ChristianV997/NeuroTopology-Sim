@@ -1,0 +1,57 @@
+{
+  "bridge_status": "available",
+  "claim_scope": [
+    "research_hypothesis",
+    "wellness_support",
+    "clinical_claim_blocked",
+    "medical_device_claim_blocked"
+  ],
+  "core_thesis": "Mental health improves when a living system becomes more viable, flexible, embodied, socially connected, and less trapped by rigid self-models.",
+  "evidence_state": "requires_validation",
+  "generated_at": "2026-05-18T21:49:48.521291+00:00",
+  "guardrails": {
+    "clinician_replacement_allowed": false,
+    "diagnosis_claims_allowed": false,
+    "emergency_support_required_for_crisis": true,
+    "hidden_surveillance_allowed": false,
+    "q_qabs_fdress_candidate_telemetry_only": true,
+    "treatment_claims_allowed": false
+  },
+  "limitations": [
+    "No diagnosis",
+    "No clinical efficacy claims",
+    "No real-data execution",
+    "No OpenAI calls",
+    "No replacement for human/professional/emergency support"
+  ],
+  "next_actions": [
+    "run validation protocols",
+    "build dashboard",
+    "review with domain experts"
+  ],
+  "ok": true,
+  "outputs_available": {
+    "body_brain_mind_observable_matrix.json": true,
+    "clinical_translation_map.md": true,
+    "disorder_to_dynamics_matrix.json": true,
+    "funding_and_product_opportunity_map.md": true,
+    "intervention_safety_ladder.md": true,
+    "mental_flexibility_master_model.md": true,
+    "mental_health_bridge_report.md": true,
+    "ml_feature_schema.json": true,
+    "validation_protocols.md": true
+  },
+  "product_stage": "research_artifact_dashboard",
+  "safety_level": "non_diagnostic_research_and_wellness_only",
+  "source_artifacts": [
+    "outputs/tol_digest/mental_health_bridge/mental_flexibility_master_model.md",
+    "outputs/tol_digest/mental_health_bridge/disorder_to_dynamics_matrix.json",
+    "outputs/tol_digest/mental_health_bridge/ml_feature_schema.json",
+    "outputs/tol_digest/mental_health_bridge/intervention_safety_ladder.md",
+    "outputs/tol_digest/mental_health_bridge/clinical_translation_map.md",
+    "outputs/tol_digest/mental_health_bridge/body_brain_mind_observable_matrix.json",
+    "outputs/tol_digest/mental_health_bridge/funding_and_product_opportunity_map.md",
+    "outputs/tol_digest/mental_health_bridge/validation_protocols.md",
+    "outputs/tol_digest/mental_health_bridge/mental_health_bridge_report.md"
+  ]
+}

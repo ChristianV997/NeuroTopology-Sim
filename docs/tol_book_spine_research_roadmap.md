@@ -26,3 +26,6 @@ No raw-source synthesis, no ontology promotion, no proof claims.
 No empirical validation from text-only ToL artifacts.
 ## Next research steps
 Execute real-data studies only under separate governed pipelines.
+
+## P34 Mental Flexibility Bridge
+P34 extends the ToL synthesis into a research/wellness-safe mental-flexibility and systems-medicine bridge with ML feature schemas, observable matrices, safety tiers, clinical translation boundaries, and validation protocols. It does not introduce diagnosis, clinical efficacy, cure, or clinician-replacement claims.

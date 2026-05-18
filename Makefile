@@ -329,3 +329,25 @@ command-center-api-smoke:
 	$(MAKE) command-center-openapi
 	$(MAKE) command-center-frontend-pack
 	$(MAKE) command-center-guardrails-status
+
+.PHONY: mental-health-bridge validate-mental-health-bridge mental-health-bridge-sync-obsidian mental-health-bridge-command-center-payloads mental-health-bridge-cycle
+
+mental-health-bridge:
+	python -m tools.tol_digest.mental_health_bridge.generator --root outputs/tol_digest --out outputs/tol_digest/mental_health_bridge
+
+validate-mental-health-bridge:
+	python -m tools.tol_digest.mental_health_bridge.validator --root outputs/tol_digest/mental_health_bridge --json-out outputs/tol_digest/mental_health_bridge/mental_health_bridge_validation.json
+
+mental-health-bridge-sync-obsidian:
+	python -m tools.tol_digest.mental_health_bridge.obsidian_sync --root outputs/tol_digest/mental_health_bridge --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/tol_digest/mental_health_bridge/obsidian_sync_result.json
+
+mental-health-bridge-command-center-payloads:
+	python -m tools.tol_digest.mental_health_bridge.command_center_payloads --root outputs/tol_digest/mental_health_bridge --out outputs/command_center/mock_payloads/mental_health_bridge_status.json
+
+mental-health-bridge-cycle:
+	$(MAKE) mental-health-bridge
+	$(MAKE) validate-mental-health-bridge
+	$(MAKE) mental-health-bridge-sync-obsidian
+	$(MAKE) mental-health-bridge-command-center-payloads
+	$(MAKE) ontology-language-check
+	$(MAKE) ds005620-generated-language-check

@@ -33,3 +33,6 @@ never put OPENAI_API_KEY in Replit frontend; frontend calls backend only; backen
 Backend-only secret handling.
 ## What the frontend must never do
 Never call OpenAI directly; never store secrets client-side; never infer ontology claims.
+
+## P34 mental-health bridge status payload
+The command-center mock payload set now includes `mental_health_bridge_status.json`, a research/wellness-safe status payload for the P34 mental-flexibility systems-medicine bridge. Guardrails keep diagnosis, clinical efficacy, and clinician-replacement claims blocked.
