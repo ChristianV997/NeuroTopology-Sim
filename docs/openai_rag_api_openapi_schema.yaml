@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info: {title: ScienceR-Dsim OpenAI RAG API, version: p29.0}
+paths:
+  /health: {get: {responses: {'200': {description: OK}}}}
+  /artifacts/manifest: {get: {responses: {'200': {description: Manifest}}}}
+  /rag/status: {get: {responses: {'200': {description: Status}}}}
+  /chat:
+    post:
+      requestBody: {required: true}
+      responses: {'200': {description: Chat response}}
+  /query:
+    post:
+      requestBody: {required: true}
+      responses: {'200': {description: Query response}}
