@@ -283,3 +283,26 @@ openai-rag-sync:
 
 openai-rag-query:
 	python -m tools.openai_rag.query_client --query "$(QUERY)" --mode live --live --vector-store-id "$(VECTOR_STORE_ID)" --out outputs/openai_rag/query_live_response.json
+
+command-center-status:
+	python -m tools.command_center.status_adapter --out outputs/command_center/command_center_status.json
+
+command-center-mock-payloads:
+	python -m tools.command_center.mock_payloads --out outputs/command_center/mock_payloads
+
+command-center-openapi:
+	python -m tools.command_center.openapi_builder --out outputs/command_center/openapi.json
+
+command-center-frontend-pack:
+	python -m tools.command_center.frontend_pack --out outputs/command_center
+
+command-center-guardrails-status:
+	python -m tools.command_center.guardrails_status --out outputs/command_center/mock_payloads/guardrails_status.json
+
+command-center-api-smoke:
+	python -m api.rag_server --smoke-test
+	$(MAKE) command-center-status
+	$(MAKE) command-center-mock-payloads
+	$(MAKE) command-center-openapi
+	$(MAKE) command-center-frontend-pack
+	$(MAKE) command-center-guardrails-status
