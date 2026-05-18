@@ -30,7 +30,7 @@ apps/awareness_studio/inputs/notion_export/
 export NOTION_EXPORT_DIR=/path/to/your/exports
 ```
 
-Then rebuild the index:
+Then rebuild the index. Re-run the same command after adding or editing Theravāda/SuttaCentral doctrine cards or Markdown exports so the local BM25/embedding index picks them up:
 
 ```bash
 python -m awareness_studio.index_build --force

@@ -91,7 +91,7 @@ stress signal → safe reorientation → positive affect → nervous-system cohe
 - SN 22.12 — anicca aggregate algorithm
 - SN 22.13 — dukkha aggregate algorithm
 - SN 22.14 — anattā aggregate algorithm
-- SN 22.59 — Anattalakkhaṇa control/no-self proof
+- SN 22.59 — Anattalakkhaṇa control/no-self scaffold
 - SN 22.89 — Khemaka subtle I-am residue
 - SN 36.6 — Sallatha / second arrow
 - AN 2.30 — Vimutti, greed/ignorance blockers

@@ -34,8 +34,10 @@ def _stable_doc_id(rel_path: str) -> str:
 
 
 def infer_source_kind(path: Path) -> str:
-    """Match filename (case-insensitive) against known source-kind patterns."""
-    name = path.stem.lower()
+    """Match a Markdown path (case-insensitive) against known source-kind patterns."""
+    # Include parent directory names so nested exports such as
+    # ``notion_export/SuttaCentral/sn22_59.md`` retain their source kind.
+    name = path.with_suffix("").as_posix().lower()
     for kind, patterns in _SOURCE_KIND_PATTERNS:
         for pat in patterns:
             if re.search(pat, name):

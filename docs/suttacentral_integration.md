@@ -91,8 +91,8 @@ Use the same Awareness Research governance pattern:
 
 1. Connector must run offline tests using small fixtures.
 2. Live network mode must be opt-in.
-3. Every card must include `uid`, `source_url`, `text_role`, `tol_function`, `claim_type`, and `ontology_guardrail`.
-4. Markdown exports must index through Awareness Studio without breaking BM25 or embedding backends.
+3. Every card must include `uid`, `title`, `collection`, `source_url`, `source_kind`, `translation_lang`, `text_role`, `tol_function`, `claim_type`, `ontology_guardrail`, and `summary`.
+4. Markdown exports must index through Awareness Studio without breaking BM25 or embedding backends; rebuild with `cd apps/awareness_studio && python -m awareness_studio.index_build --force` after adding or editing Theravāda doctrine cards.
 5. No doctrine card may be promoted to empirical evidence without linked artifacts in the Evidence Ledger.
 
 ## Implementation phases
@@ -121,11 +121,11 @@ The connector must not encode metaphysical claims as facts. It should support la
 - "AN 2.30 supports a two-axis release model: passion-release and ignorance-release."
 - "Ud 8.3 acts as an endpoint firewall against annihilationism and eternalism."
 
-It must avoid:
+It must avoid any wording that:
 
-- "The suttas prove consciousness topology."
-- "Nibbāna equals a measurable physics state."
-- "Q/Qabs/fdress are canonical Buddhist entities."
+- promotes suttas into evidence for consciousness-topology claims;
+- equates Nibbāna with project telemetry such as Q, Qabs, or fdress;
+- treats Q, Qabs, or fdress as Buddhist canonical doctrine items.
 
 ## Book/RAG use
 
