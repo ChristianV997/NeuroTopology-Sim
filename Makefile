@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query
 
 validate-governance:
 	python -m governance.validate
@@ -259,6 +259,29 @@ tol-synthesis-cycle:
 	$(MAKE) tol-sync-obsidian
 	$(MAKE) ontology-language-check
 	$(MAKE) ds005620-generated-language-check
+
+
+laptop-setup-plan:
+	python -m tools.local_setup.setup_plan --out outputs/local_setup/setup_plan.json --markdown-out outputs/local_setup/setup_plan.md
+
+laptop-setup-doctor:
+	python -m tools.local_setup.env_probe --out outputs/local_setup/environment_report.json --markdown-out outputs/local_setup/environment_report.md
+
+laptop-smoke:
+	python -m tools.local_setup.smoke_runner --mode run --out outputs/local_setup/smoke_results.json --markdown-out outputs/local_setup/smoke_results.md
+
+laptop-smoke-dry-run:
+	python -m tools.local_setup.smoke_runner --mode dry-run --out outputs/local_setup/smoke_results.json --markdown-out outputs/local_setup/smoke_results.md
+
+laptop-troubleshoot-report:
+	python -m tools.local_setup.troubleshoot --env outputs/local_setup/environment_report.json --smoke outputs/local_setup/smoke_results.json --markdown-out outputs/local_setup/troubleshoot_report.md
+
+laptop-safe-run:
+	$(MAKE) laptop-setup-doctor
+	$(MAKE) laptop-smoke-dry-run
+	$(MAKE) local-agent-healthcheck
+	$(MAKE) local-ops-healthcheck
+	$(MAKE) local-ops-run-loop-dry-run
 
 openai-rag-policy-check:
 	python -m tools.openai_rag.policy --policy configs/openai_rag/rag_policy.json --json-out outputs/openai_rag/rag_policy_check.json
