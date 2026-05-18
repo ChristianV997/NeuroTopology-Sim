@@ -16,6 +16,7 @@ from typing import List
 from awareness_studio.doc_schema import Document
 
 _SOURCE_KIND_PATTERNS: List[tuple] = [
+    ("theravada_sutta",   [r"theravada", r"suttacentral", r"sutta", r"pali", r"tipitaka"]),
     ("book_system",      [r"book_system", r"book.seed.*arte.*soltar", r"sistema.*generaci"]),
     ("book_seed_q1",     [r"book_seed_q1", r"q1[^0-9]", r"autoayuda", r"soltar.para.vivir"]),
     ("book_seed_q2",     [r"book_seed_q2", r"q2[^0-9]", r"therav", r"manual.*soltar"]),
