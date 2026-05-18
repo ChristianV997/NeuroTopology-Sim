@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop
+.PHONY: validate-governance test-root test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query
 
 validate-governance:
 	python -m governance.validate
@@ -282,3 +282,27 @@ laptop-safe-run:
 	$(MAKE) local-agent-healthcheck
 	$(MAKE) local-ops-healthcheck
 	$(MAKE) local-ops-run-loop-dry-run
+
+openai-rag-policy-check:
+	python -m tools.openai_rag.policy --policy configs/openai_rag/rag_policy.json --json-out outputs/openai_rag/rag_policy_check.json
+
+openai-rag-manifest:
+	python -m tools.openai_rag.artifact_manifest --config configs/openai_rag/artifact_sources.json --out outputs/openai_rag
+
+openai-rag-dry-run-sync:
+	$(MAKE) openai-rag-policy-check
+	$(MAKE) openai-rag-manifest
+	python -m tools.openai_rag.sync_plan --manifest outputs/openai_rag/artifact_manifest.json --out outputs/openai_rag --mode dry_run
+
+openai-rag-query-mock:
+	$(MAKE) openai-rag-manifest
+	python -m tools.openai_rag.query_client --query "Summarize current ScienceR-Dsim system state." --mode mock --out outputs/openai_rag/query_mock_response.json
+
+openai-rag-api-smoke:
+	python -m api.rag_server --smoke-test
+
+openai-rag-sync:
+	python -m tools.openai_rag.sync_plan --manifest outputs/openai_rag/artifact_manifest.json --out outputs/openai_rag --mode live --live --confirm-upload
+
+openai-rag-query:
+	python -m tools.openai_rag.query_client --query "$(QUERY)" --mode live --live --vector-store-id "$(VECTOR_STORE_ID)" --out outputs/openai_rag/query_live_response.json
