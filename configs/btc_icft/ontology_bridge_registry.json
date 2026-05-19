@@ -1,0 +1,195 @@
+{
+  "registry_id": "ds005620_ontology_bridge_registry_v1",
+  "description": "Bridge claims between ontology layers (D/M/T/C/Q/O/Omega) for DS005620 and adjacent benchmarks.",
+  "version": 1,
+  "bridges": [
+    {
+      "bridge_id": "B1_M_MARKERS_TO_REVIEWED_LABELS",
+      "source_layer": "M_MARKER",
+      "target_layer": "D_PHENOMENOLOGY",
+      "allowed_claim": "Marker features are evaluated against explicit reviewed labels.",
+      "forbidden_claims": [
+        "marker association implies internal experience",
+        "marker association implies awareness"
+      ],
+      "required_artifacts": [
+        "features_m_signal_labeled.csv",
+        "label_alignment.csv",
+        "evidence_packet.json"
+      ],
+      "required_controls": [
+        "leakage_report.json",
+        "artifact_report.json"
+      ],
+      "falsifiers": [
+        "marker performance disappears under label shuffle",
+        "target leakage explains marker performance",
+        "class imbalance dominates result"
+      ],
+      "alternative_explanations": [
+        "metadata leakage",
+        "artifact confound",
+        "preprocessing confound"
+      ],
+      "promotion_thresholds": {
+        "requires_real_execution": true,
+        "requires_reviewed_labels": true
+      },
+      "always_quarantined": false
+    },
+    {
+      "bridge_id": "B2_T_RESIDUAL_OVER_M",
+      "source_layer": "T_TOPOLOGY",
+      "target_layer": "M_MARKER",
+      "allowed_claim": "Topology telemetry may show residual predictive value beyond Level M markers under reviewed labels.",
+      "forbidden_claims": [
+        "topology equals consciousness",
+        "topology proves awareness"
+      ],
+      "required_artifacts": [
+        "metrics_signal_mt.json",
+        "nulls.json",
+        "ablations.json",
+        "leakage_report.json",
+        "artifact_report.json"
+      ],
+      "required_controls": [
+        "nulls.json",
+        "ablations.json",
+        "leakage_report.json",
+        "artifact_report.json"
+      ],
+      "falsifiers": [
+        "T contribution disappears under label shuffle null",
+        "T contribution is explained by artifact quality",
+        "T contribution fails subject-level split"
+      ],
+      "alternative_explanations": [
+        "artifact dominance",
+        "class imbalance",
+        "metadata leakage",
+        "preprocessing confound"
+      ],
+      "promotion_thresholds": {
+        "requires_real_execution": true,
+        "requires_controls": true
+      },
+      "always_quarantined": false
+    },
+    {
+      "bridge_id": "B3_DYNAMICAL_ORGANIZATION_CANDIDATE",
+      "source_layer": "T_TOPOLOGY",
+      "target_layer": "Q_THEORY",
+      "allowed_claim": "Residual topology may motivate a dynamical organization bridge hypothesis.",
+      "forbidden_claims": [
+        "topology proves liberation",
+        "ontology solved"
+      ],
+      "required_artifacts": [
+        "real_execution_evidence_packet.json",
+        "controls_summary.json",
+        "alternative_explanations_report.json"
+      ],
+      "required_controls": [
+        "nulls.json",
+        "ablations.json",
+        "leakage_report.json",
+        "artifact_report.json"
+      ],
+      "falsifiers": [
+        "topology contribution is unstable across preprocessing variants",
+        "topology contribution vanishes under artifact controls"
+      ],
+      "alternative_explanations": [
+        "measurement artifact",
+        "model instability",
+        "non-neural confound"
+      ],
+      "promotion_thresholds": {
+        "requires_real_execution": true,
+        "requires_controls": true,
+        "requires_human_review": true
+      },
+      "always_quarantined": false
+    },
+    {
+      "bridge_id": "B4_NO_DIRECT_CONSCIOUSNESS_EQUIVALENCE",
+      "source_layer": "T_TOPOLOGY",
+      "target_layer": "O_ONTOLOGY_CANDIDATE",
+      "allowed_claim": "Topology telemetry is not equivalent to conscious experience or ontology.",
+      "forbidden_claims": [
+        "eeg proves consciousness",
+        "topology proves liberation"
+      ],
+      "required_artifacts": [],
+      "required_controls": [],
+      "falsifiers": [],
+      "alternative_explanations": [],
+      "promotion_thresholds": {},
+      "always_quarantined": true
+    },
+    {
+      "bridge_id": "B5_SUBSTRATE_MECHANISM_REQUIRES_INDEPENDENT_EVIDENCE",
+      "source_layer": "C_SUBSTRATE",
+      "target_layer": "Q_THEORY",
+      "allowed_claim": "Substrate mechanisms require independent biophysical evidence beyond EEG benchmark performance.",
+      "forbidden_claims": [
+        "benchmark result is a substrate proof"
+      ],
+      "required_artifacts": [
+        "independent_mechanism_evidence_packet.json"
+      ],
+      "required_controls": [
+        "mechanism_controls.json"
+      ],
+      "falsifiers": [
+        "mechanism evidence fails independent replication",
+        "mechanism evidence does not affect benchmark-relevant readouts"
+      ],
+      "alternative_explanations": [
+        "epiphenomenal correlation",
+        "measurement confound",
+        "unrelated substrate dynamics"
+      ],
+      "promotion_thresholds": {
+        "requires_independent_mechanism_evidence": true
+      },
+      "always_quarantined": false
+    },
+    {
+      "bridge_id": "B6_ONTOLOGY_REMAINS_QUARANTINED",
+      "source_layer": "Q_THEORY",
+      "target_layer": "O_ONTOLOGY_CANDIDATE",
+      "allowed_claim": "Ontology candidates remain quarantined unless multiple independent evidence families converge.",
+      "forbidden_claims": [
+        "ontology solved",
+        "ultimate reality"
+      ],
+      "required_artifacts": [
+        "independent_dataset_replication.json",
+        "mechanism_evidence_packet.json",
+        "alternative_explanations_report.json"
+      ],
+      "required_controls": [
+        "cross_dataset_controls.json",
+        "mechanism_controls.json"
+      ],
+      "falsifiers": [
+        "cross-dataset failure",
+        "mechanism failure",
+        "simpler explanations dominate"
+      ],
+      "alternative_explanations": [
+        "statistical artifact",
+        "domain-specific confound",
+        "theory underdetermination"
+      ],
+      "promotion_thresholds": {
+        "requires_independent_dataset": true,
+        "requires_mechanism_evidence": true,
+        "requires_alternatives_evaluated": true
+      },
+      "always_quarantined": true
+    }
+  ]
+}

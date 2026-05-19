@@ -13,3 +13,21 @@ required_outputs:
 seed_contracts: [DS005620, DS002094, ds001787, ds003969, ds003816, PhysioNet_GABA]
 required_statuses: [aligned, rejected_missing_label, rejected_unknown_label_value, rejected_ambiguous_mapping, rejected_missing_join_key, rejected_conflicting_label, rejected_contract_inactive]
 guardrails: [no_data_download, no_model_training, no_label_inference, no_target_fabrication, no_sedated_to_no_experience, no_unresponsive_to_unconscious, no_legacy_mt_real_change, no_level_o, no_ontology_claims, no_soul_afterlife_claims, no_liberation_claims, q_not_self, q_not_soul, q_abs_not_suffering, f_dress_not_karma]
+external_contract_support:
+  enabled: true
+  accepted_statuses:
+    - active_reviewed_external_contract
+  default_external_contract: outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json
+  required_fields:
+    - dataset_id
+    - contract_status
+    - explicit_label_column
+    - positive_values
+    - negative_values
+    - label_scope
+    - join_keys
+    - metadata_provenance
+    - guardrails
+  guardrails:
+    - external_contract_requires_human_review
+    - no_external_contract_fallback_to_inference

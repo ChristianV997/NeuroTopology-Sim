@@ -1,0 +1,9 @@
+{
+  "chat_model": "gpt-5.5",
+  "synthesis_model": "gpt-5.5",
+  "strict_model": "gpt-5.5",
+  "embedding_model": "text-embedding-3-large",
+  "max_output_tokens": 700,
+  "temperature": 0.1,
+  "include_file_search_results": true
+}

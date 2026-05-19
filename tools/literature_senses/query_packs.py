@@ -1,0 +1,7 @@
+import argparse
+from .common import write_json
+Q=['active_inference_allostasis','computational_psychiatry','topological_data_analysis_hodge_sheaf','bioelectricity_basal_cognition','biosemiotics_meaning_making','rate_distortion_self_model','viability_cybernetics','ecological_psychology_affordances','enactivism_autopoiesis','information_geometry_belief_space','consciousness_theory_comparison','meditation_adverse_effects','anesthesia_consciousness','eeg_phase_topology','toe_field_topology_information','quantum_measurement_decoherence','cosmology_constraints_dark_sector','condensed_matter_topological_phases','ai_machine_consciousness_audit','clinical_safety_digital_mental_health']
+if __name__=='__main__':
+ p=argparse.ArgumentParser();p.add_argument('--out',required=True);a=p.parse_args();packs=[]
+ for i,q in enumerate(Q,1): packs.append({"query_id":q,"title":q.replace('_',' ').title(),"purpose":"P37 fixture sensing","queries":[q.replace('_',' ')],"sources":["local_fixture","arxiv","pubmed"],"recency_weight":0.4,"review_weight":0.2,"preprint_allowed":True,"maps_to_constructs":["boundary","information","safety escalation"],"maps_to_repo_modules":["toe_research","tol_digest","btc_icft","mental_health_bridge","local_ops","command_center","openai_rag"],"expected_evidence_tiers":["T1_preprint_unreplicated","T2_peer_reviewed_single_study"],"falsifier_keywords":["null result","no effect"],"unsafe_claim_boundaries":["no diagnosis"],"priority":i})
+ write_json(a.out,{"query_packs":packs})

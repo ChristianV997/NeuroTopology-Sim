@@ -9,6 +9,7 @@ on:
       - 'sciencer_d/btc_icft/**'
       - 'tools/validate_ds005620_e2e_execution.py'
       - 'tools/validate_ds005620_contracts.py'
+      - 'tools/build_ds005620_ci_evidence_report.py'
       - 'tools/build_ds005620_artifact_manifest.py'
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
@@ -21,6 +22,7 @@ on:
       - 'sciencer_d/btc_icft/**'
       - 'tools/validate_ds005620_e2e_execution.py'
       - 'tools/validate_ds005620_contracts.py'
+      - 'tools/build_ds005620_ci_evidence_report.py'
       - 'tools/build_ds005620_artifact_manifest.py'
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
@@ -34,6 +36,8 @@ jobs:
   ds005620-e2e:
     name: DS005620 E2E Mock Run
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 15
 
     steps:
@@ -55,9 +59,40 @@ jobs:
           make validate-ds005620-e2e
           make validate-ds005620-e2e-json
           make validate-ds005620-contracts
+          make ds005620-ci-evidence-report
 
-      - name: Run autonomy check
-        run: make ds005620-autonomy-check
+      - name: Run autonomy packaging and runtime checks
+        run: |
+          make ds005620-build-manifest
+          make ds005620-export-evidence
+          make ds005620-paper-skeleton
+          make ds005620-inspect-runtime
+          make ds005620-test-runtime
+          make ds005620-generated-language-check
+
+      - name: Upload DS005620 mock E2E evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds005620-mock-e2e-evidence
+          path: |
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ds005620_real_benchmark_execution.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_execution_plan.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_results.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/execution_blockers.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/omega_event.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/report.md
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/validation_summary.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/contract_validation_summary.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.json
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.md
+            outputs/btc_icft/ds005620_generated_language_validation.json
+            outputs/btc_icft/ds005620_generated_language_validation.md
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p12_eeg_labels/label_alignment.csv
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p13_eeg_targets/features_m_signal_labeled.csv
+            outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p11_signal_mt/metrics_signal_mt.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload E2E artifacts
         if: always()

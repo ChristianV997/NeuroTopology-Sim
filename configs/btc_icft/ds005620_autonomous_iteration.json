@@ -1,0 +1,60 @@
+{
+  "pipeline_id": "ds005620_autonomous_iteration",
+  "dataset_id": "DS005620",
+  "iteration_version": "p21.0",
+  "dry_run_default": false,
+  "executes_real_data": false,
+  "downloads_data": false,
+  "auto_confirms_peer_review": false,
+  "executes_real_benchmark": false,
+  "auto_runs_mne_extraction": false,
+  "auto_runs_level_m_extraction": false,
+  "auto_runs_level_t_extraction": false,
+  "infers_labels": false,
+  "fabricates_targets": false,
+  "output_root": "outputs/btc_icft/ds005620_autonomous_iteration",
+  "timeout_s": 300,
+  "allowed_auto_steps": [
+    "ds005620_e2e_mock",
+    "validate_e2e",
+    "validate_e2e_json",
+    "validate_contracts",
+    "ci_evidence_report",
+    "artifact_manifest",
+    "ontology_eval",
+    "evidence_export",
+    "paper_skeleton",
+    "runtime_inspection",
+    "generated_language_check",
+    "real_local_preflight",
+    "real_artifact_plan",
+    "real_execution_gate"
+  ],
+  "manual_required_steps": [
+    "manual_real_execution"
+  ],
+  "forbidden_auto_commands": [
+    "--execute --peer-reviewed-contract-confirmed",
+    "dandi download",
+    "openneuro download",
+    " wget ",
+    " curl ",
+    "aws s3 cp"
+  ],
+  "guardrails": {
+    "executes_real_data": false,
+    "downloads_data": false,
+    "auto_confirms_peer_review": false,
+    "executes_real_benchmark": false,
+    "auto_runs_mne_extraction": false,
+    "auto_runs_level_m_extraction": false,
+    "auto_runs_level_t_extraction": false,
+    "infers_labels": false,
+    "fabricates_targets": false,
+    "weakens_p18_3_gate": false,
+    "weakens_p20_operator": false,
+    "weakens_ontology_quarantine": false,
+    "weakens_language_firewall": false
+  },
+  "safe_claim": "P21 adds a safe autonomous iteration runtime that executes mock/planning/validation steps, records decisions, and stops at manual real-data or human-review boundaries."
+}

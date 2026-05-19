@@ -1,0 +1,18 @@
+{
+  "checked_files": [
+    "outputs/tol_digest/mental_health_bridge/clinical_translation_map.md",
+    "outputs/tol_digest/mental_health_bridge/intervention_safety_ladder.md",
+    "outputs/tol_digest/mental_health_bridge/mental_flexibility_master_model.md",
+    "outputs/tol_digest/mental_health_bridge/disorder_to_dynamics_matrix.json",
+    "outputs/tol_digest/mental_health_bridge/generation_manifest.json",
+    "outputs/tol_digest/mental_health_bridge/validation_protocols.md",
+    "outputs/tol_digest/mental_health_bridge/mental_health_bridge_report.md",
+    "outputs/tol_digest/mental_health_bridge/ml_feature_schema.json",
+    "outputs/tol_digest/mental_health_bridge/body_brain_mind_observable_matrix.json",
+    "outputs/tol_digest/mental_health_bridge/funding_and_product_opportunity_map.md",
+    "outputs/tol_digest/mental_health_bridge/obsidian_sync_result.json"
+  ],
+  "errors": [],
+  "ok": true,
+  "warnings": []
+}

@@ -121,6 +121,7 @@ Returns exit code 0 when all ready, 1 when blocked.
 2. `make ds005620-e2e-mock` — full chain
 3. `make validate-ds005620-e2e` — artifact validator
 4. `make ds005620-autonomy-check` — kernel check
+5. `make ds005620-ontology-check` — ontology claim evaluation (see `docs/ontology_layer.md`)
 
 ---
 
@@ -184,3 +185,28 @@ P18.2 does NOT:
 All P18.2 artifacts are scanned for banned phrases before output.
 The paper skeleton and evidence packet both include explicit negative-space
 statements that avoid naming the forbidden concepts literally.
+
+---
+
+## P21 DS005620 Autonomous Iteration Runtime
+
+P21 adds a safe autonomous iteration controller that runs all safe mock/validation/planning/gate steps in order, records decisions in a structured event log, and stops at manual real-data or human-review boundaries.
+
+**Safe claim**: P21 adds a safe autonomous iteration runtime that executes mock/planning/validation steps, records decisions, and stops at manual real-data or human-review boundaries.
+
+**Module**: `sciencer_d/btc_icft/runtime/ds005620_autonomous_iteration.py`
+
+**CLI**: `python -m sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration`
+
+**Makefile targets**:
+- `make ds005620-autonomous-iteration` — run all 14 safe auto steps
+- `make ds005620-autonomous-iteration-dry-run` — plan without executing
+
+**Outputs** (`outputs/btc_icft/ds005620_autonomous_iteration/`):
+- `iteration_state.json`, `iteration_plan.json`, `iteration_results.json`
+- `iteration_decision_log.json`, `iteration_next_action.json`
+- `iteration_artifact_index.json`, `iteration_report.md`, `iteration_events.jsonl`
+
+**The loop never executes real DS005620 data, downloads data, confirms peer review, or weakens any guardrail.**
+
+See `docs/ds005620_autonomous_iteration_runtime.md` for full documentation.
