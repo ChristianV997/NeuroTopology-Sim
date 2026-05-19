@@ -386,3 +386,31 @@ literature-senses-cycle:
 	$(MAKE) ontology-language-check || true
 	$(MAKE) ds005620-generated-language-check || true
 	$(MAKE) command-center-api-smoke || true
+
+.PHONY: project-corpus-inventory project-corpus-digest validate-project-corpus-digest project-corpus-sync-obsidian project-corpus-command-center-payloads project-corpus-rag-pack project-corpus-cycle
+
+project-corpus-inventory:
+	python -m tools.project_corpus_digest.inventory --roots . --out outputs/project_corpus_digest
+
+project-corpus-digest:
+	python -m tools.project_corpus_digest.digestor --root outputs/project_corpus_digest --out outputs/project_corpus_digest
+
+validate-project-corpus-digest:
+	python -m tools.project_corpus_digest.validator --root outputs/project_corpus_digest --json-out outputs/project_corpus_digest/project_corpus_validation.json
+
+project-corpus-sync-obsidian:
+	python -m tools.project_corpus_digest.obsidian_sync --root outputs/project_corpus_digest --vault obsidian/10_Project_Corpus --out outputs/project_corpus_digest/obsidian_sync_result.json
+
+project-corpus-command-center-payloads:
+	python -m tools.project_corpus_digest.command_center_payloads --root outputs/project_corpus_digest --out outputs/command_center/mock_payloads
+
+project-corpus-rag-pack:
+	python -m tools.project_corpus_digest.rag_pack --root outputs/project_corpus_digest --out outputs/project_corpus_digest
+
+project-corpus-cycle:
+	$(MAKE) project-corpus-inventory
+	$(MAKE) project-corpus-digest
+	$(MAKE) validate-project-corpus-digest
+	$(MAKE) project-corpus-sync-obsidian
+	$(MAKE) project-corpus-command-center-payloads
+	$(MAKE) project-corpus-rag-pack
