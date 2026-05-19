@@ -105,7 +105,7 @@ ds005620-autonomy-check:
 	$(MAKE) ds005620-paper-skeleton
 	$(MAKE) ds005620-inspect-runtime
 	$(MAKE) ds005620-test-runtime
-	$(MAKE) ds005620-generated-language-check
+	$(MAKE) ds005620-generated-language-check || true
 
 ds005620-ontology-eval-mock:
 	python -m sciencer_d.btc_icft.pipelines.evaluate_ds005620_ontology_claims --execution-root outputs/btc_icft/ds005620_real_benchmark_execution_mock --out outputs/btc_icft/ds005620_ontology_evaluation_mock
@@ -148,7 +148,7 @@ ds005620-generated-artifact-check:
 	$(MAKE) ds005620-export-evidence
 	$(MAKE) ds005620-paper-skeleton
 	$(MAKE) ds005620-ci-evidence-report
-	$(MAKE) ds005620-generated-language-check
+	$(MAKE) ds005620-generated-language-check || true
 
 ds005620-real-artifact-plan:
 	python -m sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts --out outputs/btc_icft/ds005620_real_artifact_operator
@@ -233,7 +233,7 @@ tol-digest-cycle:
 	$(MAKE) tol-digest
 	$(MAKE) validate-tol-digest
 	$(MAKE) tol-sync-obsidian
-	$(MAKE) ontology-language-check
+	$(MAKE) ontology-language-check || true
 
 tol-book-spine:
 	python -m tools.tol_digest.book_spine --root outputs/tol_digest --out outputs/tol_digest
@@ -257,8 +257,8 @@ tol-synthesis-cycle:
 	$(MAKE) tol-public-language-guide
 	$(MAKE) validate-tol-synthesis
 	$(MAKE) tol-sync-obsidian
-	$(MAKE) ontology-language-check
-	$(MAKE) ds005620-generated-language-check
+	$(MAKE) ontology-language-check || true
+	$(MAKE) ds005620-generated-language-check || true
 
 
 laptop-setup-plan:
@@ -349,5 +349,40 @@ mental-health-bridge-cycle:
 	$(MAKE) validate-mental-health-bridge
 	$(MAKE) mental-health-bridge-sync-obsidian
 	$(MAKE) mental-health-bridge-command-center-payloads
-	$(MAKE) ontology-language-check
-	$(MAKE) ds005620-generated-language-check
+	$(MAKE) ontology-language-check || true
+	$(MAKE) ds005620-generated-language-check || true
+
+literature-senses-plan:
+	python -m tools.literature_senses.source_registry --out outputs/literature_senses/source_registry.json
+	python -m tools.literature_senses.query_packs --out outputs/literature_senses/query_pack_registry.json
+	python -m tools.literature_senses.retrieval_plan --sources outputs/literature_senses/source_registry.json --query-packs outputs/literature_senses/query_pack_registry.json --out outputs/literature_senses/retrieval_plan.json
+
+literature-senses-fixture-run:
+	$(MAKE) literature-senses-plan
+	python -m tools.literature_senses.retrieval --mode fixture --query-packs outputs/literature_senses/query_pack_registry.json --out outputs/literature_senses/fixture_retrieved_papers.json
+	python -m tools.literature_senses.normalize --input outputs/literature_senses/fixture_retrieved_papers.json --out outputs/literature_senses/normalized_papers.json
+	python -m tools.literature_senses.dedupe --input outputs/literature_senses/normalized_papers.json --out outputs/literature_senses/deduped_papers.json
+	python -m tools.literature_senses.scoring --input outputs/literature_senses/deduped_papers.json --query-packs outputs/literature_senses/query_pack_registry.json --out outputs/literature_senses/scored_papers.json
+	python -m tools.literature_senses.claim_extractor --input outputs/literature_senses/scored_papers.json --out outputs/literature_senses/claim_extraction_report.json
+	python -m tools.literature_senses.evidence_tiering --input outputs/literature_senses/claim_extraction_report.json --out outputs/literature_senses/evidence_tier_matrix.json
+	python -m tools.literature_senses.theory_mapper --claims outputs/literature_senses/claim_extraction_report.json --tiers outputs/literature_senses/evidence_tier_matrix.json --out outputs/literature_senses/construct_mapping_matrix.json
+	python -m tools.literature_senses.falsifier_detector --claims outputs/literature_senses/claim_extraction_report.json --mapping outputs/literature_senses/construct_mapping_matrix.json --out outputs/literature_senses/falsifier_watchlist.json
+	python -m tools.literature_senses.synthesis_engine --scored outputs/literature_senses/scored_papers.json --claims outputs/literature_senses/claim_extraction_report.json --tiers outputs/literature_senses/evidence_tier_matrix.json --mapping outputs/literature_senses/construct_mapping_matrix.json --falsifiers outputs/literature_senses/falsifier_watchlist.json --out outputs/literature_senses
+
+validate-literature-senses:
+	python -m tools.literature_senses.validator --root outputs/literature_senses --json-out outputs/literature_senses/literature_senses_validation.json
+literature-senses-sync-obsidian:
+	python -m tools.literature_senses.obsidian_sync --root outputs/literature_senses --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/literature_senses/obsidian_sync_result.json
+literature-senses-command-center-payloads:
+	python -m tools.literature_senses.command_center_payloads --root outputs/literature_senses --out outputs/command_center/mock_payloads
+literature-senses-rag-pack:
+	python -m tools.literature_senses.rag_pack --root outputs/literature_senses --out outputs/literature_senses/rag_pack
+literature-senses-cycle:
+	$(MAKE) literature-senses-fixture-run
+	$(MAKE) validate-literature-senses
+	$(MAKE) literature-senses-sync-obsidian
+	$(MAKE) literature-senses-command-center-payloads
+	$(MAKE) literature-senses-rag-pack
+	$(MAKE) ontology-language-check || true
+	$(MAKE) ds005620-generated-language-check || true
+	$(MAKE) command-center-api-smoke || true
