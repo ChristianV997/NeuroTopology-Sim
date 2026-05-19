@@ -414,3 +414,39 @@ project-corpus-cycle:
 	$(MAKE) project-corpus-sync-obsidian
 	$(MAKE) project-corpus-command-center-payloads
 	$(MAKE) project-corpus-rag-pack
+
+.PHONY: public-repo-harvest-plan public-repo-harvest-fixture-run validate-public-repo-harvest public-repo-harvest-sync-obsidian public-repo-harvest-command-center-payloads public-repo-harvest-rag-pack public-repo-harvest-cycle
+
+public-repo-harvest-plan:
+	python -m tools.public_repo_harvest.source_repo_registry --out outputs/public_repo_harvest/source_repo_registry.json
+	python -m tools.public_repo_harvest.query_packs --out outputs/public_repo_harvest/repo_search_query_pack.json
+
+public-repo-harvest-fixture-run:
+	$(MAKE) public-repo-harvest-plan
+	python -m tools.public_repo_harvest.fixture_candidates --registry outputs/public_repo_harvest/source_repo_registry.json --query-packs outputs/public_repo_harvest/repo_search_query_pack.json --out outputs/public_repo_harvest/candidate_repo_matrix.json
+	python -m tools.public_repo_harvest.license_scanner --candidates outputs/public_repo_harvest/candidate_repo_matrix.json --out outputs/public_repo_harvest/license_compatibility_matrix.json
+	python -m tools.public_repo_harvest.pattern_classifier --candidates outputs/public_repo_harvest/candidate_repo_matrix.json --licenses outputs/public_repo_harvest/license_compatibility_matrix.json --out outputs/public_repo_harvest/reusable_pattern_registry.json
+	python -m tools.public_repo_harvest.subsystem_mapper --patterns outputs/public_repo_harvest/reusable_pattern_registry.json --out outputs/public_repo_harvest/subsystem_integration_blueprint.json
+	python -m tools.public_repo_harvest.compatibility_patch_plan --blueprint outputs/public_repo_harvest/subsystem_integration_blueprint.json --out outputs/public_repo_harvest/compatibility_patch_plan.json
+	python -m tools.public_repo_harvest.external_systems_scorecard --candidates outputs/public_repo_harvest/candidate_repo_matrix.json --out outputs/public_repo_harvest/external_systems_scorecard.json
+	python -m tools.public_repo_harvest.priority_queue --scorecard outputs/public_repo_harvest/external_systems_scorecard.json --out outputs/public_repo_harvest/integration_priority_queue.json
+	python -m tools.public_repo_harvest.reporting --root outputs/public_repo_harvest
+
+validate-public-repo-harvest:
+	python -m tools.public_repo_harvest.validator --root outputs/public_repo_harvest --json-out outputs/public_repo_harvest/public_repo_harvest_validation.json
+
+public-repo-harvest-sync-obsidian:
+	python -m tools.public_repo_harvest.obsidian_sync --root outputs/public_repo_harvest --vault obsidian --out outputs/public_repo_harvest/obsidian_sync_result.json
+
+public-repo-harvest-command-center-payloads:
+	python -m tools.public_repo_harvest.command_center_payloads --root outputs/public_repo_harvest --out outputs/command_center/mock_payloads
+
+public-repo-harvest-rag-pack:
+	python -m tools.public_repo_harvest.rag_pack --root outputs/public_repo_harvest --out outputs/public_repo_harvest/rag_pack
+
+public-repo-harvest-cycle:
+	$(MAKE) public-repo-harvest-fixture-run
+	$(MAKE) validate-public-repo-harvest
+	$(MAKE) public-repo-harvest-sync-obsidian
+	$(MAKE) public-repo-harvest-command-center-payloads
+	$(MAKE) public-repo-harvest-rag-pack

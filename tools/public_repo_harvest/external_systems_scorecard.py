@@ -1,0 +1,6 @@
+import argparse
+from .common import read_json, write_json
+if __name__=='__main__':
+ p=argparse.ArgumentParser();p.add_argument('--candidates',required=True);p.add_argument('--out',required=True);a=p.parse_args();c=read_json(a.candidates)['candidates']
+ rows=[{"id":f"score_{i:03d}","repo_full_name":r['repo'],"repo_url":f"https://github.com/{r['repo']}","source_domain":r['domain'],"license_name":r['likely_license'],"license_spdx":r['likely_license'],"license_status":"compatible" if r['likely_license'] in ['MIT','Apache-2.0','BSD-2-Clause','BSD-3-Clause','ISC'] else "pattern_only","compatibility_status":"safe_to_adapt" if r['likely_license']!='unknown' else "manual_review_required","useful_for_subsystems":["research_fabric"],"reusable_patterns":["architecture"],"copied_artifacts":[],"pattern_only_artifacts":["contracts"],"risk_notes":["no direct copy unless compatible"],"attribution_required":True,"integration_priority":"P1" if r['total_priority_score']>120 else "P2","claim_scope":"artifact_pattern","evidence_state":"fixture","guardrails":["no_live_api_default"],"next_actions":["review adapter blueprint"],"system_capability":"public_repo_pattern_source","score":r['total_priority_score']} for i,r in enumerate(c,1)]
+ write_json(a.out,{"external_systems_scorecard":rows})
