@@ -531,3 +531,34 @@ ds005620-real-runbook-cycle:
 	$(MAKE) validate-ds005620-real-runbook
 	$(MAKE) ds005620-real-runbook-sync-obsidian
 	$(MAKE) ds005620-real-runbook-command-center-payloads
+
+ds005620-post-execution-controls:
+	python -m tools.ds005620_post_execution_controls.execution_artifact_audit --execution-root outputs/btc_icft/ds005620_real_benchmark_execution --runbook-root outputs/btc_icft/ds005620_real_runbook --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.null_controls_plan --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.ablation_plan --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.leakage_report --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.artifact_report --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.statistical_report --out outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.empirical_claim_gate --root outputs/btc_icft/ds005620_post_execution_controls --json-out outputs/btc_icft/ds005620_post_execution_controls/empirical_claim_gate.json
+	python -m tools.ds005620_post_execution_controls.publication_readiness --root outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.control_runbook --root outputs/btc_icft/ds005620_post_execution_controls
+	python -m tools.ds005620_post_execution_controls.reporting --root outputs/btc_icft/ds005620_post_execution_controls
+
+validate-ds005620-post-execution-controls:
+	python -m tools.ds005620_post_execution_controls.validator --root outputs/btc_icft/ds005620_post_execution_controls
+
+ds005620-post-execution-controls-sync-obsidian:
+	python -m tools.ds005620_post_execution_controls.obsidian_sync --root outputs/btc_icft/ds005620_post_execution_controls --obsidian-root obsidian/15_DS005620_Post_Execution_Controls
+
+ds005620-post-execution-controls-command-center-payloads:
+	python -m tools.ds005620_post_execution_controls.command_center_payloads --out outputs/command_center/mock_payloads
+
+ds005620-post-execution-controls-rag-pack:
+	python -m tools.ds005620_post_execution_controls.rag_pack --root outputs/btc_icft/ds005620_post_execution_controls/rag_pack
+
+ds005620-post-execution-controls-cycle:
+	$(MAKE) ds005620-post-execution-controls
+	$(MAKE) validate-ds005620-post-execution-controls
+	$(MAKE) ds005620-post-execution-controls-sync-obsidian
+	$(MAKE) ds005620-post-execution-controls-command-center-payloads
+	$(MAKE) ds005620-post-execution-controls-rag-pack
