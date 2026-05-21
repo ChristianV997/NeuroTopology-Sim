@@ -1,0 +1,122 @@
+[
+  {
+    "id": "F1",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F2",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F3",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F4",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F5",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F6",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F7",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F8",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F9",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  },
+  {
+    "id": "F10",
+    "claim_affected": "x",
+    "affected_subsystems": [
+      "x"
+    ],
+    "observable_required": "x",
+    "failure_condition": "x",
+    "claim_demotion_action": "x",
+    "next_experiment_or_simulation": "x",
+    "priority": "high"
+  }
+]

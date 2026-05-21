@@ -1,0 +1,16 @@
+{
+  "inputs": {
+    "outputs/literature_senses": false,
+    "outputs/project_corpus_digest": false,
+    "outputs/public_repo_harvest": false,
+    "outputs/tol_digest": true,
+    "outputs/tol_digest/mental_health_bridge": true
+  },
+  "status": [
+    "not_available",
+    "not_available",
+    "not_available",
+    "available",
+    "available"
+  ]
+}

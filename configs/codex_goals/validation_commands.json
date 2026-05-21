@@ -1,0 +1,6 @@
+{
+  "commands": [
+    "python -m governance.validate",
+    "python -m pytest tests/btc_icft -q"
+  ]
+}

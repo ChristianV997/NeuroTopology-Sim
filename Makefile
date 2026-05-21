@@ -450,3 +450,65 @@ public-repo-harvest-cycle:
 	$(MAKE) public-repo-harvest-sync-obsidian
 	$(MAKE) public-repo-harvest-command-center-payloads
 	$(MAKE) public-repo-harvest-rag-pack
+
+toe-literature-bridge:
+	python -m tools.toe_research.literature_bridge.generator --roots outputs/literature_senses outputs/project_corpus_digest outputs/public_repo_harvest outputs/tol_digest outputs/tol_digest/mental_health_bridge --out outputs/toe_research/literature_bridge
+	python -m tools.toe_research.literature_bridge.topology_telemetry_digest --out outputs/toe_research/literature_bridge/topology_telemetry_upgrade_digest.md
+	python -m tools.toe_research.literature_bridge.active_inference_digest --out outputs/toe_research/literature_bridge/active_inference_allostasis_digest.md
+	python -m tools.toe_research.literature_bridge.computational_psychiatry_digest --out outputs/toe_research/literature_bridge/computational_psychiatry_digest.md
+	python -m tools.toe_research.literature_bridge.bioelectric_digest --out outputs/toe_research/literature_bridge/bioelectric_basal_cognition_digest.md
+	python -m tools.toe_research.literature_bridge.cosmology_constraints --out outputs/toe_research/literature_bridge/cosmology_constraint_matrix.json
+	python -m tools.toe_research.literature_bridge.gravitational_wave_constraints --out outputs/toe_research/literature_bridge/gravitational_wave_constraint_matrix.json
+	python -m tools.toe_research.literature_bridge.adversarial_consciousness_matrix --out outputs/toe_research/literature_bridge/consciousness_theory_adversarial_matrix.json
+	python -m tools.toe_research.literature_bridge.equation_registry --out outputs/toe_research/literature_bridge/equation_candidate_registry.json
+	python -m tools.toe_research.literature_bridge.falsifier_registry --out outputs/toe_research/literature_bridge/toe_falsifier_watchlist.json
+	python -m tools.toe_research.literature_bridge.reporting --root outputs/toe_research/literature_bridge --out outputs/toe_research/literature_bridge/toe_literature_bridge_report.md
+
+validate-toe-literature-bridge:
+	python -m tools.toe_research.literature_bridge.validator --root outputs/toe_research/literature_bridge --json-out outputs/toe_research/literature_bridge/toe_literature_bridge_validation.json
+
+toe-literature-bridge-sync-obsidian:
+	python -m tools.toe_research.literature_bridge.obsidian_sync --root outputs/toe_research/literature_bridge --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/toe_research/literature_bridge/obsidian_sync_result.json
+
+toe-literature-bridge-command-center-payloads:
+	python -m tools.toe_research.literature_bridge.command_center_payloads --root outputs/toe_research/literature_bridge --out outputs/command_center/mock_payloads
+
+toe-literature-bridge-rag-pack:
+	python -m tools.toe_research.literature_bridge.rag_pack --root outputs/toe_research/literature_bridge --out outputs/toe_research/literature_bridge/rag_pack
+
+toe-literature-bridge-cycle:
+	$(MAKE) toe-literature-bridge
+	$(MAKE) validate-toe-literature-bridge
+	$(MAKE) toe-literature-bridge-sync-obsidian
+	$(MAKE) toe-literature-bridge-command-center-payloads
+	$(MAKE) toe-literature-bridge-rag-pack
+	$(MAKE) ontology-language-check || true
+	$(MAKE) ds005620-generated-language-check || true
+	$(MAKE) command-center-api-smoke || true
+
+codex-goal:
+	python -m tools.codex_goals.goal_builder --preset toe_research --out outputs/codex_goals
+	python -m tools.codex_goals.reporting --root outputs/codex_goals --out outputs/codex_goals/goal_pack_report.md
+
+validate-codex-goal:
+	python -m tools.codex_goals.goal_validator --root outputs/codex_goals --json-out outputs/codex_goals/goal_policy_validation.json
+
+codex-goal-render:
+	python -m tools.codex_goals.prompt_renderer --root outputs/codex_goals --out outputs/codex_goals/generated_codex_prompt.md
+
+codex-goal-scorecard:
+	python -m tools.codex_goals.scorecard --root outputs/codex_goals --out outputs/codex_goals/contribution_scorecard.json
+
+codex-goal-sync-obsidian:
+	python -m tools.codex_goals.obsidian_sync --root outputs/codex_goals --vault $(if $(VAULT),$(VAULT),obsidian) --out outputs/codex_goals/obsidian_sync_result.json
+
+codex-goal-command-center-payloads:
+	python -m tools.codex_goals.command_center_payloads --root outputs/codex_goals --out outputs/command_center/mock_payloads
+
+codex-goal-cycle:
+	$(MAKE) codex-goal
+	$(MAKE) validate-codex-goal
+	$(MAKE) codex-goal-render
+	$(MAKE) codex-goal-scorecard
+	$(MAKE) codex-goal-sync-obsidian
+	$(MAKE) codex-goal-command-center-payloads

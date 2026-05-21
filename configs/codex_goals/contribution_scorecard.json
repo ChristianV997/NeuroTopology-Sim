@@ -1,0 +1,10 @@
+{
+  "minimum_total": 85,
+  "required_minimums": {
+    "guardrail_preservation": 10,
+    "validator_strength": 8,
+    "test_coverage": 8,
+    "artifact_completeness": 8,
+    "makefile_integration": 8
+  }
+}

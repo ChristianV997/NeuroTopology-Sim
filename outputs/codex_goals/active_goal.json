@@ -1,0 +1,55 @@
+{
+  "goal_id": "P40",
+  "name": "P40 \u2014 TOE Literature Bridge + Constraint/Falsifier Matrix",
+  "mode": "Comprehensive high-contribution vertical subsystem run.",
+  "contribution_target": ">4,000 useful lines if justified.",
+  "required_surfaces": [
+    "package",
+    "schema",
+    "generator",
+    "validator",
+    "outputs",
+    "Obsidian sync",
+    "command-center payloads",
+    "RAG pack",
+    "docs",
+    "tests",
+    "Makefile cycle",
+    "PR body"
+  ],
+  "required_outputs": [
+    "active_goal.json",
+    "active_goal.md"
+  ],
+  "required_make_targets": [
+    "codex-goal",
+    "validate-codex-goal",
+    "codex-goal-cycle"
+  ],
+  "validation_commands": [
+    "python -m governance.validate"
+  ],
+  "guardrails": [
+    "no real data",
+    "no live APIs",
+    "no API keys",
+    "no OpenAI calls",
+    "no clinical claims",
+    "no ontology promotion",
+    "no proof claims",
+    "no Q/Qabs/fdress proof claims",
+    "no TOE validation claim"
+  ],
+  "forbidden_patterns": [
+    "ignore guardrails",
+    "copy everything",
+    "final theory validated"
+  ],
+  "success_criteria": [
+    "validators pass"
+  ],
+  "pr_body_sections": [
+    "Summary",
+    "Tests run"
+  ]
+}

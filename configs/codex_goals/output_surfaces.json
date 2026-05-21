@@ -1,0 +1,16 @@
+{
+  "surfaces": [
+    "package",
+    "schema",
+    "generator",
+    "validator",
+    "outputs",
+    "obsidian sync",
+    "command-center payloads",
+    "rag pack",
+    "docs",
+    "tests",
+    "makefile cycle",
+    "pr body"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "artifacts": [],
+  "claim_scope": "engineering_runtime_or_research_hypothesis",
+  "evidence_state": "artifact_retrieval_only",
+  "guardrails_applied": [
+    "no_ontology_promotion",
+    "q_qabs_fdress_candidate_telemetry_only",
+    "tol_quarantine_respected"
+  ],
+  "ok": true,
+  "source_artifacts": []
+}
