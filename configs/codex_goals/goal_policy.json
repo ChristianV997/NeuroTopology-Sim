@@ -1,0 +1,16 @@
+{
+  "required_fields": [
+    "goal_id",
+    "name",
+    "mode",
+    "contribution_target",
+    "required_surfaces",
+    "required_outputs",
+    "required_make_targets",
+    "validation_commands",
+    "guardrails",
+    "forbidden_patterns",
+    "success_criteria",
+    "pr_body_sections"
+  ]
+}

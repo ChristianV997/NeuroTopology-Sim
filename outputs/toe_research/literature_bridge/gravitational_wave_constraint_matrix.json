@@ -1,0 +1,60 @@
+[
+  {
+    "constraint_id": "G1",
+    "observable": "Kerr ringdown",
+    "standard_GR_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "deviation absent",
+    "required_dataset": "Kerr ringdown",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "G2",
+    "observable": "quasi-normal modes",
+    "standard_GR_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "deviation absent",
+    "required_dataset": "quasi-normal modes",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "G3",
+    "observable": "black-hole spectroscopy",
+    "standard_GR_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "deviation absent",
+    "required_dataset": "black-hole spectroscopy",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "G4",
+    "observable": "area theorem",
+    "standard_GR_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "deviation absent",
+    "required_dataset": "area theorem",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "G5",
+    "observable": "GR reduction limit",
+    "standard_GR_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "deviation absent",
+    "required_dataset": "GR reduction limit",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "equations": [
+      "h(t)=\u03a3_n A_n e^{-t/\u03c4_n} cos(\u03c9_n t + \u03c6_n)",
+      "\u03c9_n = \u03c9_n^Kerr(M,a)(1 + \u03b4_n)",
+      "\u03c4_n = \u03c4_n^Kerr(M,a)(1 + \u03b3_n)",
+      "A_final \u2265 A_1 + A_2"
+    ]
+  }
+]

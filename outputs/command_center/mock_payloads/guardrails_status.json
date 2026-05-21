@@ -1,0 +1,25 @@
+{
+  "guardrails": [
+    {
+      "file": "outputs/btc_icft/ontology_claim_language_validation.json",
+      "ok": false
+    },
+    {
+      "file": "outputs/btc_icft/ds005620_generated_language_validation.json",
+      "ok": true
+    }
+  ],
+  "last_checked": "2026-05-20T17:36:01.756801Z",
+  "ok": false,
+  "ontology_promotion_allowed": false,
+  "safe_to_answer_publicly": false,
+  "safe_to_run_real_data": false,
+  "violations": [
+    "outputs/btc_icft/ontology_claim_language_validation.json"
+  ],
+  "warnings": [
+    "missing:outputs/tol_digest/tol_digest_validation.json",
+    "missing:outputs/tol_digest/tol_synthesis_validation.json",
+    "missing:outputs/openai_rag/rag_policy_check.json"
+  ]
+}

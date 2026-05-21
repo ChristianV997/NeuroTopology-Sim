@@ -1,0 +1,6 @@
+import argparse,json
+from pathlib import Path
+EQ=[('EQ-001','Q = (1 / 2π) Σ_p wrap(Δφ_p)'),('EQ-002','Qabs = (1 / 2π) Σ_p |wrap(Δφ_p)|'),('EQ-003','fdress = (Qabs - |Q|) / (|Q| + ε)'),('EQ-004','E_sheaf(x) = Σ_(v,e) ||ρ_{v←e}(x_e) - x_v||²'),('EQ-005','F = E_q[ln q(s) - ln p(o, s)]'),('EQ-006','A = ∫ [c₁||x-x*||² + c₂||u||² + c₃||dμ/dt||²]dt'),('EQ-007','C_exit(x₀ → x_target) = min_u ∫ [||x(t)-x_target||² + λ||u(t)||²]dt'),('EQ-008','H²(z) = ...'),('EQ-009','w(z) = w₀ + w_a z/(1+z)'),('EQ-010','ω_n = ω_n^Kerr(M,a)(1 + δ_n); τ_n = τ_n^Kerr(M,a)(1 + γ_n)')]
+def main():
+ p=argparse.ArgumentParser();p.add_argument('--out',required=True);a=p.parse_args();rows=[{'equation_id':i,'name':i,'expression':e,'variables':[],'domain':'theory','maps_to_constructs':[],'assumptions':[],'known_limits':[],'observables':[],'falsifiers':[],'claim_scope':'research_hypothesis','evidence_state':'conceptual_mapping','blocked_claims':['no proof']} for i,e in EQ];Path(a.out).write_text(json.dumps(rows,indent=2))
+if __name__=='__main__':main()

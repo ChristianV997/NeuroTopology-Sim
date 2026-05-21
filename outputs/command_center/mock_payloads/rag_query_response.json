@@ -1,0 +1,15 @@
+{
+  "answer": "Mock response from indexed project artifacts.",
+  "citations": [],
+  "claim_scope": "engineering_runtime_or_research_hypothesis",
+  "evidence_state": "artifact_retrieval_only",
+  "guardrails_applied": [
+    "no_ontology_promotion",
+    "q_qabs_fdress_candidate_telemetry_only",
+    "tol_quarantine_respected"
+  ],
+  "limitations": [
+    "This response is based on indexed artifacts, not real-data execution."
+  ],
+  "source_artifacts": []
+}

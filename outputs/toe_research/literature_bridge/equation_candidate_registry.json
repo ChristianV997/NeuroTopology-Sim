@@ -1,0 +1,172 @@
+[
+  {
+    "equation_id": "EQ-001",
+    "name": "EQ-001",
+    "expression": "Q = (1 / 2\u03c0) \u03a3_p wrap(\u0394\u03c6_p)",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-002",
+    "name": "EQ-002",
+    "expression": "Qabs = (1 / 2\u03c0) \u03a3_p |wrap(\u0394\u03c6_p)|",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-003",
+    "name": "EQ-003",
+    "expression": "fdress = (Qabs - |Q|) / (|Q| + \u03b5)",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-004",
+    "name": "EQ-004",
+    "expression": "E_sheaf(x) = \u03a3_(v,e) ||\u03c1_{v\u2190e}(x_e) - x_v||\u00b2",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-005",
+    "name": "EQ-005",
+    "expression": "F = E_q[ln q(s) - ln p(o, s)]",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-006",
+    "name": "EQ-006",
+    "expression": "A = \u222b [c\u2081||x-x*||\u00b2 + c\u2082||u||\u00b2 + c\u2083||d\u03bc/dt||\u00b2]dt",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-007",
+    "name": "EQ-007",
+    "expression": "C_exit(x\u2080 \u2192 x_target) = min_u \u222b [||x(t)-x_target||\u00b2 + \u03bb||u(t)||\u00b2]dt",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-008",
+    "name": "EQ-008",
+    "expression": "H\u00b2(z) = ...",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-009",
+    "name": "EQ-009",
+    "expression": "w(z) = w\u2080 + w_a z/(1+z)",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  },
+  {
+    "equation_id": "EQ-010",
+    "name": "EQ-010",
+    "expression": "\u03c9_n = \u03c9_n^Kerr(M,a)(1 + \u03b4_n); \u03c4_n = \u03c4_n^Kerr(M,a)(1 + \u03b3_n)",
+    "variables": [],
+    "domain": "theory",
+    "maps_to_constructs": [],
+    "assumptions": [],
+    "known_limits": [],
+    "observables": [],
+    "falsifiers": [],
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "conceptual_mapping",
+    "blocked_claims": [
+      "no proof"
+    ]
+  }
+]

@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-20T17:35:53.168091+00:00",
+  "toe_validation_claims_allowed": false,
+  "final_theory_claims_allowed": false,
+  "consciousness_proof_claims_allowed": false,
+  "clinical_claims_allowed": false,
+  "ontology_promotion_allowed": false,
+  "q_qabs_fdress_proof_claims_allowed": false,
+  "real_data_auto_execution_allowed": false,
+  "live_api_calls_allowed": false,
+  "api_key_exposure_allowed": false,
+  "active_goal": "P40",
+  "preset": "toe_research",
+  "contribution_target": ">4,000 useful lines if justified.",
+  "required_surfaces": [
+    "package"
+  ],
+  "guardrails": [
+    "no proof"
+  ],
+  "forbidden_patterns": [
+    "final theory"
+  ],
+  "next_actions": [
+    "validate"
+  ]
+}

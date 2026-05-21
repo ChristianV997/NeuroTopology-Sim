@@ -1,0 +1,87 @@
+[
+  {
+    "constraint_id": "C1",
+    "observable": "\u039bCDM",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "\u039bCDM",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C2",
+    "observable": "BAO",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "BAO",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C3",
+    "observable": "DESI",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "DESI",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C4",
+    "observable": "CMB",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "CMB",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C5",
+    "observable": "SNe",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "SNe",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C6",
+    "observable": "Euclid lensing",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "Euclid lensing",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C7",
+    "observable": "Hubble tension",
+    "standard_model_expectation": "baseline",
+    "allowed_toe_deviation": "bounded",
+    "falsifier": "data reject",
+    "required_dataset": "Hubble tension",
+    "claim_scope": "evidence_mapping",
+    "evidence_state": "conceptual_mapping"
+  },
+  {
+    "constraint_id": "C8",
+    "observable": "dark energy equation of state",
+    "standard_model_expectation": "w=-1",
+    "allowed_toe_deviation": "w0,wa bounded",
+    "falsifier": "inconsistency",
+    "required_dataset": "joint",
+    "claim_scope": "research_hypothesis",
+    "evidence_state": "requires_validation",
+    "equations": [
+      "H\u00b2(z)=...",
+      "w(z)=w\u2080 + w_a z/(1+z)",
+      "H\u00b2_TOE(z)=H\u00b2_\u039bCDM(z)+\u0394H\u00b2_TOE(z; \u03b8)"
+    ]
+  }
+]
