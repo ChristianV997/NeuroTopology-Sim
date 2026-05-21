@@ -1,0 +1,52 @@
+{
+  "pull_requests": [
+    {
+      "pr_number": 144,
+      "branch": "claude/p18-2-runtime-autonomy-kernel",
+      "mergeability": "mergeable",
+      "changed_files": 0,
+      "additions": 0,
+      "deletions": 0,
+      "status": "open",
+      "unique_commits_vs_main": false,
+      "superseded_by_pr": 151,
+      "recommended_action": "close_as_superseded_by_pr_151"
+    },
+    {
+      "pr_number": 149,
+      "branch": "claude/p18-2-runtime-autonomy-kernel-conflict-fix",
+      "mergeability": "mergeable",
+      "changed_files": 0,
+      "additions": 0,
+      "deletions": 0,
+      "status": "open",
+      "unique_commits_vs_main": false,
+      "superseded_by_pr": 150,
+      "recommended_action": "close_as_superseded_by_pr_150"
+    },
+    {
+      "pr_number": 142,
+      "branch": "stale/pr-142",
+      "mergeability": "unknown",
+      "changed_files": 0,
+      "additions": 0,
+      "deletions": 0,
+      "status": "open",
+      "unique_commits_vs_main": null,
+      "superseded_by_pr": null,
+      "recommended_action": "manual_review_required"
+    },
+    {
+      "pr_number": 143,
+      "branch": "stale/pr-143",
+      "mergeability": "unknown",
+      "changed_files": 0,
+      "additions": 0,
+      "deletions": 0,
+      "status": "open",
+      "unique_commits_vs_main": null,
+      "superseded_by_pr": null,
+      "recommended_action": "manual_review_required"
+    }
+  ]
+}
