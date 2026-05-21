@@ -1,0 +1,336 @@
+{
+  "info": {
+    "title": "ScienceR-Dsim Command Center API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/actions/queue": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/artifacts/manifest": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/guardrails/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/local-ops/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/rag/query": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "mock",
+                      "dry_run",
+                      "live"
+                    ],
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query",
+                  "mode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/rag/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/rag/sync-plan": {
+      "post": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/tol/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}

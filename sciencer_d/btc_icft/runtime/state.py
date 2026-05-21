@@ -1,6 +1,7 @@
 """
-Science runtime state and snapshot (P18.2).
+Science runtime state and snapshot (P18.2 / O4).
 Loads P18.1 execution artifacts and builds a structured runtime state.
+Includes ontology evaluation status when available.
 """
 from __future__ import annotations
 
@@ -10,13 +11,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+from sciencer_d.btc_icft.ontology.artifact_reader import summarize_ontology_for_packet
+
 
 _NEXT_ACTION_CHAIN = [
     "run_mock_e2e",
     "build_artifact_manifest",
+    "evaluate_ontology_claims",
     "export_evidence_packet",
     "generate_paper_skeleton",
-    "ready_for_real_local_preflight_or_review",
+    "run_real_execution_gate",
+    "follow_real_execution_gate_next_action",
+    "human_peer_review_required",
 ]
 
 
@@ -39,6 +45,14 @@ class ScienceRuntimeState:
     last_updated: str
     predictive_metrics_available: bool = False
     real_local_preflight_ready: bool = False
+    ontology_available: bool = False
+    ontology_max_claim_scope: str = "engineering_runtime"
+    ontology_promotion_state: str = "engineering_validated"
+    ontology_claim_status: str = "ontology_quarantined"
+    ontology_next_action: Optional[str] = None
+    real_execution_gate_exists: bool = False
+    real_execution_gate_ready: bool = False
+    real_execution_gate_next_action: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
 
@@ -59,11 +73,17 @@ def _determine_next_action(state_partial: dict) -> str:
         return "run_mock_e2e"
     if not state_partial.get("artifact_manifest_exists"):
         return "build_artifact_manifest"
+    if not state_partial.get("ontology_evaluation_exists"):
+        return "evaluate_ontology_claims"
     if not state_partial.get("evidence_packet_exists"):
         return "export_evidence_packet"
     if not state_partial.get("paper_skeleton_exists"):
         return "generate_paper_skeleton"
-    return "ready_for_real_local_preflight_or_review"
+    if not state_partial.get("real_execution_gate_exists"):
+        return "run_real_execution_gate"
+    if not state_partial.get("real_execution_gate_ready"):
+        return "follow_real_execution_gate_next_action"
+    return "human_peer_review_required"
 
 
 def load_latest_execution(artifact_root: str) -> Optional[dict]:
@@ -84,6 +104,8 @@ def build_runtime_state(
     manifest_dir: Optional[str] = None,
     evidence_dir: Optional[str] = None,
     skeleton_dir: Optional[str] = None,
+    ontology_root: Optional[str] = None,
+    gate_dir: Optional[str] = None,
 ) -> ScienceRuntimeState:
     execution = load_latest_execution(artifact_root)
 
@@ -121,11 +143,33 @@ def build_runtime_state(
     evidence_exists = (Path(evidence_dir) / "evidence_packet.json").exists()
     skeleton_exists = (Path(skeleton_dir) / "paper_skeleton.md").exists()
 
+    # Ontology evaluation status
+    _ont_root = Path(ontology_root) if ontology_root else Path("outputs/btc_icft/ds005620_ontology_evaluation_mock")
+    ontology_eval_exists = (_ont_root / "ontology_claim_evaluation.json").exists()
+    ontology_summary = summarize_ontology_for_packet(_ont_root) if ontology_eval_exists else {}
+
+    # Real execution gate status
+    _gate_dir = Path(gate_dir) if gate_dir else Path("outputs/btc_icft/ds005620_real_execution_gate")
+    gate_ready_path = _gate_dir / "ready_for_real_execution.json"
+    gate_exists = gate_ready_path.exists()
+    gate_ready = False
+    gate_next_action: Optional[str] = None
+    if gate_exists:
+        try:
+            gate_data = json.loads(gate_ready_path.read_text(encoding="utf-8"))
+            gate_ready = bool(gate_data.get("ready_for_real_execution", False))
+            gate_next_action = gate_data.get("next_action")
+        except Exception:
+            pass
+
     partial = {
         "mock_e2e_run": mock_e2e_run,
         "artifact_manifest_exists": manifest_exists,
+        "ontology_evaluation_exists": ontology_eval_exists,
         "evidence_packet_exists": evidence_exists,
         "paper_skeleton_exists": skeleton_exists,
+        "real_execution_gate_exists": gate_exists,
+        "real_execution_gate_ready": gate_ready,
     }
     next_action = _determine_next_action(partial)
 
@@ -159,6 +203,14 @@ def build_runtime_state(
         warnings=[],
         last_updated=_ts_now(),
         predictive_metrics_available=predictive_metrics_path is not None,
+        ontology_available=bool(ontology_summary.get("ontology_available", False)),
+        ontology_max_claim_scope=str(ontology_summary.get("max_claim_scope", "engineering_runtime")),
+        ontology_promotion_state=str(ontology_summary.get("promotion_state", "engineering_validated")),
+        ontology_claim_status=str(ontology_summary.get("ontology_claim_status", "ontology_quarantined")),
+        ontology_next_action="evaluate_ontology_claims" if not ontology_eval_exists else None,
+        real_execution_gate_exists=gate_exists,
+        real_execution_gate_ready=gate_ready,
+        real_execution_gate_next_action=gate_next_action,
     )
 
 
@@ -190,6 +242,14 @@ def build_runtime_snapshot(state: ScienceRuntimeState, snapshot_id: Optional[str
         "last_updated": state.last_updated,
         "predictive_metrics_available": state.predictive_metrics_available,
         "real_local_preflight_ready": state.real_local_preflight_ready,
+        "ontology_available": state.ontology_available,
+        "ontology_max_claim_scope": state.ontology_max_claim_scope,
+        "ontology_promotion_state": state.ontology_promotion_state,
+        "ontology_claim_status": state.ontology_claim_status,
+        "ontology_next_action": state.ontology_next_action,
+        "real_execution_gate_exists": state.real_execution_gate_exists,
+        "real_execution_gate_ready": state.real_execution_gate_ready,
+        "real_execution_gate_next_action": state.real_execution_gate_next_action,
         "extra": state.extra,
     }
 

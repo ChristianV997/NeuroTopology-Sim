@@ -16,6 +16,7 @@ from typing import List
 from awareness_studio.doc_schema import Document
 
 _SOURCE_KIND_PATTERNS: List[tuple] = [
+    ("theravada_sutta",   [r"theravada", r"suttacentral", r"sutta", r"pali", r"tipitaka"]),
     ("book_system",      [r"book_system", r"book.seed.*arte.*soltar", r"sistema.*generaci"]),
     ("book_seed_q1",     [r"book_seed_q1", r"q1[^0-9]", r"autoayuda", r"soltar.para.vivir"]),
     ("book_seed_q2",     [r"book_seed_q2", r"q2[^0-9]", r"therav", r"manual.*soltar"]),
@@ -33,8 +34,10 @@ def _stable_doc_id(rel_path: str) -> str:
 
 
 def infer_source_kind(path: Path) -> str:
-    """Match filename (case-insensitive) against known source-kind patterns."""
-    name = path.stem.lower()
+    """Match a Markdown path (case-insensitive) against known source-kind patterns."""
+    # Include parent directory names so nested exports such as
+    # ``notion_export/SuttaCentral/sn22_59.md`` retain their source kind.
+    name = path.with_suffix("").as_posix().lower()
     for kind, patterns in _SOURCE_KIND_PATTERNS:
         for pat in patterns:
             if re.search(pat, name):

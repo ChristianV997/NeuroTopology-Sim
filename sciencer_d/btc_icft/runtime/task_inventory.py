@@ -236,5 +236,136 @@ def build_default_science_task_registry() -> ScienceTaskRegistry:
             ],
             tags=["runtime", "inspect"],
         ),
+        ScienceTaskRecord(
+            task_id="multi_dataset_real_execution_matrix",
+            module="sciencer_d.btc_icft.pipelines.plan_multi_dataset_real_execution",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.plan_multi_dataset_real_execution",
+                "--out", "outputs/btc_icft/multi_dataset_real_execution",
+            ],
+            description=(
+                "P22 multi-dataset real-execution readiness matrix: registry-driven "
+                "per-dataset status across local data / labels / readers / artifact "
+                "operator / execution gate / empirical readiness / ontology scope."
+            ),
+            required_inputs=["configs/btc_icft/multi_dataset_real_sources.json"],
+            expected_outputs=[
+                "dataset_source_matrix.json",
+                "local_data_availability_matrix.json",
+                "label_contract_readiness_matrix.json",
+                "eeg_reader_readiness_matrix.json",
+                "artifact_operator_matrix.json",
+                "real_execution_gate_matrix.json",
+                "autonomous_iteration_matrix.json",
+                "empirical_readiness_matrix.json",
+                "ontology_scope_matrix.json",
+                "next_actions.json",
+                "operator_report.md",
+            ],
+            tags=["p22", "multi_dataset", "matrix", "real_execution"],
+        ),
+        ScienceTaskRecord(
+            task_id="multi_dataset_autonomous_iteration",
+            module="sciencer_d.btc_icft.pipelines.run_multi_dataset_autonomous_iteration",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.run_multi_dataset_autonomous_iteration",
+                "--out", "outputs/btc_icft/multi_dataset_autonomous_iteration",
+            ],
+            description=(
+                "P22 multi-dataset autonomous iteration runtime: runs safe per-dataset "
+                "planning/inspection steps and computes per-dataset next actions. "
+                "Never executes real data or downloads."
+            ),
+            required_inputs=["configs/btc_icft/multi_dataset_real_sources.json"],
+            expected_outputs=[
+                "iteration_state.json",
+                "iteration_plan.json",
+                "iteration_results.json",
+                "iteration_decision_log.json",
+                "iteration_next_actions.json",
+                "iteration_artifact_index.json",
+                "iteration_report.md",
+                "iteration_events.jsonl",
+            ],
+            tags=["p22", "multi_dataset", "autonomous", "iteration"],
+        ),
+        ScienceTaskRecord(
+            task_id="ds005620_autonomous_iteration",
+            module="sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.run_ds005620_autonomous_iteration",
+                "--out", "outputs/btc_icft/ds005620_autonomous_iteration",
+            ],
+            description=(
+                "P21 autonomous iteration runtime: runs all safe mock/validation/planning/"
+                "gate steps in order, records decisions, and stops at manual real-data or "
+                "human-review boundaries."
+            ),
+            required_inputs=[],
+            expected_outputs=[
+                "iteration_state.json",
+                "iteration_plan.json",
+                "iteration_results.json",
+                "iteration_decision_log.json",
+                "iteration_next_action.json",
+                "iteration_artifact_index.json",
+                "iteration_report.md",
+                "iteration_events.jsonl",
+            ],
+            tags=["p21", "autonomous", "iteration", "controller"],
+        ),
+        ScienceTaskRecord(
+            task_id="ds005620_real_artifact_plan",
+            module="sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.plan_ds005620_real_artifacts",
+                "--out", "outputs/btc_icft/ds005620_real_artifact_operator",
+            ],
+            description=(
+                "P20 real artifact build operator: plans DS005620 local artifact preparation "
+                "without executing real data or weakening guardrails."
+            ),
+            required_inputs=[],
+            expected_outputs=[
+                "real_artifact_build_plan.json",
+                "real_artifact_stage_status.json",
+                "real_artifact_next_command.json",
+                "real_artifact_required_paths.json",
+                "real_artifact_commands.sh",
+                "real_artifact_operator_report.md",
+            ],
+            tags=["p20", "operator", "real_local", "planning"],
+        ),
+        ScienceTaskRecord(
+            task_id="ds005620_real_execution_gate",
+            module="sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution",
+            command=[
+                "python", "-m",
+                "sciencer_d.btc_icft.pipelines.prepare_ds005620_real_local_execution",
+                "--out", "outputs/btc_icft/ds005620_real_execution_gate",
+            ],
+            description=(
+                "P18.3 real/local execution gate: inspects prerequisites and prepares "
+                "human-reviewed execution commands without running real data."
+            ),
+            required_inputs=[
+                "data/DS005620/events.tsv",
+                "outputs/btc_icft/ds005620_reviewed_contract/p12_external_contract.json",
+            ],
+            expected_outputs=[
+                "ready_for_real_execution.json",
+                "real_execution_gate.json",
+                "real_execution_command_plan.json",
+                "human_peer_review_checklist.json",
+                "human_peer_review_checklist.md",
+                "missing_artifacts.json",
+                "report.md",
+            ],
+            tags=["p18", "gate", "real_local", "preflight"],
+        ),
     ]
     return ScienceTaskRegistry(tasks=tasks)

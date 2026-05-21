@@ -1,0 +1,21 @@
+{
+  "version": "p29.0",
+  "default_model": "gpt-5.5",
+  "fallback_model": "gpt-5.5",
+  "requires_server_side_key": true,
+  "allow_openai_calls_by_default": false,
+  "allow_uploads_by_default": false,
+  "allowed_modes": ["mock", "dry_run", "live"],
+  "default_mode": "mock",
+  "guardrails": {
+    "no_api_key_logging": true,
+    "no_client_side_key": true,
+    "no_real_data_execution": true,
+    "no_dataset_download": true,
+    "no_label_inference": true,
+    "no_target_fabrication": true,
+    "no_ontology_promotion": true,
+    "q_qabs_fdress_candidate_telemetry_only": true,
+    "tol_quarantine_respected": true
+  }
+}

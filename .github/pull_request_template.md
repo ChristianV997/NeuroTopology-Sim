@@ -44,6 +44,42 @@ Required checklist:
 - [ ] No empirical claim from mock E2E
 - [ ] No metaphysical/ontology proof claim
 
+## Ontology / Claim Scope
+
+Checklist:
+- [ ] No ontology or empirical claim touched
+- [ ] Engineering-runtime claim only
+- [ ] Marker-level claim: M
+- [ ] Topology telemetry claim: T
+- [ ] Substrate/mechanism candidate claim: C
+- [ ] Theory-consistency claim: Q
+- [ ] Ontology-candidate claim: O
+- [ ] Governance/evidence-state claim: Ω
+
+## Claim Promotion Requirements
+
+Checklist:
+- [ ] Mock-only results are described as engineering validation only
+- [ ] Real execution artifacts exist before empirical claims
+- [ ] Human-reviewed label contract exists before target claims
+- [ ] Null controls exist before residual topology claims
+- [ ] Ablations exist before topology contribution claims
+- [ ] Leakage report exists before predictive claims
+- [ ] Artifact report exists before metric interpretation
+- [ ] Alternative explanations are listed
+- [ ] Falsifiers are listed
+- [ ] C/Q/O claims remain quarantined unless independent evidence exists
+
+## Ontology Guardrails
+
+Checklist:
+- [ ] No metric-to-ontology shortcut
+- [ ] No state-label shortcut
+- [ ] No direct equivalence between topology metrics and self/soul/experience/suffering
+- [ ] No metaphysical proof claim
+- [ ] No empirical claim from mock E2E
+- [ ] No O-layer claim promoted from EEG metrics alone
+
 ## Tests Run
 
 Checklist:

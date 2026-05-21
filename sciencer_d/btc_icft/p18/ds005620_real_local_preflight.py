@@ -255,8 +255,27 @@ def write_preflight_outputs(result: DS005620RealLocalPreflightResult, out_dir: s
         "ts": result.ts,
         "input_statuses": statuses_serializable,
     }
+    # Write canonical name + spec-required alias
     json_path = p / "preflight_report.json"
     json_path.write_text(json.dumps(report_json, indent=2), encoding="utf-8")
+    alias_json_path = p / "real_local_preflight.json"
+    alias_json_path.write_text(json.dumps(report_json, indent=2), encoding="utf-8")
+
+    # Write next-actions file required by Phase 3 spec
+    next_actions = {
+        "next_action": result.next_action,
+        "all_ready": result.all_ready,
+        "ready_for_p18_1_execute": result.all_ready,
+        "blocker_count": len(result.blockers),
+        "next_command": (
+            "python -m sciencer_d.btc_icft.pipelines.run_ds005620_real_benchmark "
+            "--execute --peer-reviewed-contract-confirmed --out <out>"
+            if result.all_ready
+            else f"# First resolve: {result.next_action}"
+        ),
+    }
+    next_actions_path = p / "real_local_next_actions.json"
+    next_actions_path.write_text(json.dumps(next_actions, indent=2), encoding="utf-8")
 
     lines = [
         "# DS005620 Real/Local Preflight Report",
@@ -287,8 +306,14 @@ def write_preflight_outputs(result: DS005620RealLocalPreflightResult, out_dir: s
 
     md_path = p / "preflight_report.md"
     md_path.write_text("\n".join(lines), encoding="utf-8")
+    # Write report.md alias required by spec
+    report_md_path = p / "report.md"
+    report_md_path.write_text("\n".join(lines), encoding="utf-8")
 
     return {
         "preflight_report.json": str(json_path),
+        "real_local_preflight.json": str(alias_json_path),
+        "real_local_next_actions.json": str(next_actions_path),
         "preflight_report.md": str(md_path),
+        "report.md": str(report_md_path),
     }

@@ -24,6 +24,7 @@ _BANNED_PHRASES = (
 
 _ALLOWED_SCOPES = {"window", "file", "run", "subject", "session"}
 _REQUIRED_SIGNAL_COLS = ["dataset_id", "row_id", "source_file", "window_id", "window_start_s", "window_end_s", "sample_start", "sample_end"]
+_EXTERNAL_CONTRACT_REQUIRED_GUARDRAILS = {"no_label_inference", "no_target_fabrication"}
 
 
 @dataclass
@@ -116,42 +117,93 @@ def get_label_contract(dataset_id: str) -> EEGLabelContract:
     return registry[dataset_id]
 
 
-def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelContract:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    if str(payload.get("dataset_id", "")) != dataset_id:
+def load_external_label_contract(path: str) -> dict:
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"External contract not found: {path}")
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"External contract JSON parse failed: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("External contract must be a JSON object")
+    return payload
+
+
+def validate_external_label_contract(contract: dict, dataset_id: str | None = None) -> dict:
+    declared_dataset = str(contract.get("dataset_id", "")).strip()
+    if not declared_dataset:
+        raise ValueError("external contract dataset_id must be non-empty")
+    if dataset_id is not None and declared_dataset != dataset_id:
         raise ValueError("external contract dataset_id must match --dataset-id")
-    status = payload.get("contract_status")
-    if not status and payload.get("status"):
-        status = payload.get("status")
+    status = str(contract.get("contract_status", contract.get("status", ""))).strip()
     if status != "active_reviewed_external_contract":
         raise ValueError("external contract contract_status must be active_reviewed_external_contract")
-    explicit_label_column = str(payload.get("explicit_label_column", "")).strip()
+    explicit_label_column = str(contract.get("explicit_label_column", "")).strip()
     if not explicit_label_column:
         raise ValueError("external contract explicit_label_column must be non-empty")
-    positive_values = [str(x) for x in payload.get("positive_values", []) if str(x)]
-    negative_values = [str(x) for x in payload.get("negative_values", []) if str(x)]
+    positive_values = [str(x).strip() for x in contract.get("positive_values", []) if str(x).strip()]
+    negative_values = [str(x).strip() for x in contract.get("negative_values", []) if str(x).strip()]
     if not positive_values:
-        raise ValueError("external contract positive_values must be non-empty")
+        raise ValueError("external contract positive_values must be non-empty list[str]")
     if not negative_values:
-        raise ValueError("external contract negative_values must be non-empty")
+        raise ValueError("external contract negative_values must be non-empty list[str]")
     if set(positive_values).intersection(negative_values):
         raise ValueError("external contract positive_values and negative_values must not overlap")
-    join_keys = payload.get("join_keys", [])
-    if join_keys != _REQUIRED_SIGNAL_COLS:
-        raise ValueError("external contract join_keys must match strict required join keys")
+    if not str(contract.get("label_scope", "")).strip():
+        raise ValueError("external contract label_scope must be present")
+    join_keys = [str(x) for x in contract.get("join_keys", [])]
+    missing_keys = [k for k in _REQUIRED_SIGNAL_COLS if k not in join_keys]
+    if missing_keys:
+        raise ValueError(f"external contract join_keys missing strict keys: {missing_keys}")
+    metadata_provenance = contract.get("metadata_provenance")
+    if metadata_provenance is None or not str(metadata_provenance).strip():
+        raise ValueError("external contract metadata_provenance must be present")
+    guardrails = [str(x) for x in contract.get("guardrails", [])]
+    if not guardrails:
+        raise ValueError("external contract guardrails must be present")
+    missing_guardrails = sorted(_EXTERNAL_CONTRACT_REQUIRED_GUARDRAILS.difference(set(guardrails)))
+    if missing_guardrails:
+        raise ValueError(f"external contract guardrails missing required entries: {missing_guardrails}")
+    return normalize_external_label_contract(contract)
+
+
+def normalize_external_label_contract(contract: dict) -> dict:
+    dataset_id = str(contract.get("dataset_id")).strip()
+    return {
+        "dataset_id": dataset_id,
+        "title": str(contract.get("title") or f"Reviewed external EEG label contract for {dataset_id}"),
+        "source_hint": str(contract.get("source_hint") or "reviewed_external_contract"),
+        "status": "active",
+        "contract_status": "active_reviewed_external_contract",
+        "label_scope": str(contract.get("label_scope") or "window"),
+        "explicit_label_column": str(contract.get("explicit_label_column") or "").strip(),
+        "positive_values": [str(x).strip() for x in contract.get("positive_values", []) if str(x).strip()],
+        "negative_values": [str(x).strip() for x in contract.get("negative_values", []) if str(x).strip()],
+        "join_keys": [str(x) for x in contract.get("join_keys", [])],
+        "allowed_metadata_extensions": [str(x) for x in contract.get("allowed_metadata_extensions", [".csv", ".tsv", ".json"])],
+        "caveats": [str(x) for x in contract.get("caveats", [])],
+        "guardrails": [str(x) for x in contract.get("guardrails", [])],
+        "metadata_provenance": contract.get("metadata_provenance"),
+        "activation_provenance": contract.get("activation_provenance"),
+    }
+
+
+def load_external_eeg_label_contract(path: str, dataset_id: str) -> EEGLabelContract:
+    payload = validate_external_label_contract(load_external_label_contract(path), dataset_id)
     return EEGLabelContract(
-        dataset_id=dataset_id,
-        title=str(payload.get("title") or f"Reviewed external EEG label contract for {dataset_id}"),
-        source_hint=str(payload.get("source_hint") or "reviewed_external_contract"),
-        status="active",
-        label_scope=str(payload.get("label_scope") or "window"),
-        explicit_label_column=explicit_label_column,
-        positive_values=positive_values,
-        negative_values=negative_values,
-        join_keys=list(join_keys),
-        allowed_metadata_extensions=[str(x) for x in payload.get("allowed_metadata_extensions", [".csv", ".tsv", ".json"])],
-        caveats=[str(x) for x in payload.get("caveats", [])],
-        guardrails=[str(x) for x in payload.get("guardrails", [])],
+        dataset_id=payload["dataset_id"],
+        title=payload["title"],
+        source_hint=payload["source_hint"],
+        status=payload["status"],
+        label_scope=payload["label_scope"],
+        explicit_label_column=payload["explicit_label_column"],
+        positive_values=payload["positive_values"],
+        negative_values=payload["negative_values"],
+        join_keys=payload["join_keys"],
+        allowed_metadata_extensions=payload["allowed_metadata_extensions"],
+        caveats=payload["caveats"],
+        guardrails=payload["guardrails"],
     )
 
 

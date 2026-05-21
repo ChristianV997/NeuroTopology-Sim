@@ -1,6 +1,7 @@
 results/
 data/raw/
 outputs/
+obsidian/
 __pycache__/
 *.pyc
 project_manifest.json

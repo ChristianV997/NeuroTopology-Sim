@@ -1,0 +1,27 @@
+{
+  "description": "Schedule configuration for the local agent research loop (P23). No background daemon yet.",
+  "schedule_enabled": false,
+  "notes": "Background daemon scheduling is not yet implemented. Run manually via make targets or CLI.",
+  "manual_targets": [
+    {
+      "target": "make local-agent-loop-dry-run",
+      "description": "Dry-run loop — plan only, no command execution",
+      "safe_to_auto_run": true
+    },
+    {
+      "target": "make local-agent-loop-once",
+      "description": "Run one iteration of the loop",
+      "safe_to_auto_run": true
+    },
+    {
+      "target": "make local-agent-policy-check",
+      "description": "Check command policy against blocklist",
+      "safe_to_auto_run": true
+    },
+    {
+      "target": "make sync-obsidian",
+      "description": "Sync outputs to Obsidian vault (requires --vault)",
+      "safe_to_auto_run": true
+    }
+  ]
+}
