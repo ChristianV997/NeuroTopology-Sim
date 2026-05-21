@@ -562,3 +562,35 @@ ds005620-post-execution-controls-cycle:
 	$(MAKE) ds005620-post-execution-controls-sync-obsidian
 	$(MAKE) ds005620-post-execution-controls-command-center-payloads
 	$(MAKE) ds005620-post-execution-controls-rag-pack
+
+
+ds002094-executor:
+	python -m tools.ds002094_executor.registry --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.local_data_preflight --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.contract_requirements --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.reader_preflight --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.mne_adapter_plan --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.level_m_adapter_plan --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.level_t_adapter_plan --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.artifact_plan --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.real_execution_gate --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.post_execution_controls_interface --out outputs/btc_icft/ds002094_executor
+	python -m tools.ds002094_executor.readiness_report --out outputs/btc_icft/ds002094_executor
+validate-ds002094-executor:
+	python -m tools.ds002094_executor.validator --root outputs/btc_icft/ds002094_executor
+
+ds002094-executor-sync-obsidian:
+	python -m tools.ds002094_executor.obsidian_sync --root outputs/btc_icft/ds002094_executor --vault $(if $(VAULT),$(VAULT),obsidian)
+
+ds002094-executor-command-center-payloads:
+	python -m tools.ds002094_executor.command_center_payloads --root outputs/btc_icft/ds002094_executor --out outputs/command_center/mock_payloads
+
+ds002094-executor-rag-pack:
+	python -m tools.ds002094_executor.rag_pack --root outputs/btc_icft/ds002094_executor
+
+ds002094-executor-cycle:
+	$(MAKE) ds002094-executor
+	$(MAKE) validate-ds002094-executor
+	$(MAKE) ds002094-executor-sync-obsidian
+	$(MAKE) ds002094-executor-command-center-payloads
+	$(MAKE) ds002094-executor-rag-pack
