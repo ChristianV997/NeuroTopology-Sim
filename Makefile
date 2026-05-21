@@ -512,3 +512,22 @@ codex-goal-cycle:
 	$(MAKE) codex-goal-scorecard
 	$(MAKE) codex-goal-sync-obsidian
 	$(MAKE) codex-goal-command-center-payloads
+
+
+ds005620-real-runbook:
+	python -m tools.ds005620_real_runbook.readiness_report --out outputs/btc_icft/ds005620_real_runbook
+
+validate-ds005620-real-runbook:
+	python -m tools.ds005620_real_runbook.validator --root outputs/btc_icft/ds005620_real_runbook
+
+ds005620-real-runbook-sync-obsidian:
+	python -m tools.ds005620_real_runbook.obsidian_sync --root outputs/btc_icft/ds005620_real_runbook --out outputs/obsidian/ds005620_real_runbook
+
+ds005620-real-runbook-command-center-payloads:
+	python -m tools.ds005620_real_runbook.command_center_payloads --root outputs/btc_icft/ds005620_real_runbook --out outputs/command_center/mock_payloads
+
+ds005620-real-runbook-cycle:
+	$(MAKE) ds005620-real-runbook
+	$(MAKE) validate-ds005620-real-runbook
+	$(MAKE) ds005620-real-runbook-sync-obsidian
+	$(MAKE) ds005620-real-runbook-command-center-payloads
