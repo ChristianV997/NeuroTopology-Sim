@@ -75,3 +75,57 @@ def test_failure_is_recorded_not_fabricated():
     assert res.error != ""
     assert res.betti1 == 0 and res.n_regions == 0
     assert res.provenance == "real_fmri"
+
+
+def test_load_participants_parses_tsv_and_coerces(tmp_path):
+    from dual_engine.fmri_tda_pipeline import load_participants
+    tsv = "participant_id\tAge\tGender\tOSITJ\nsub-CTL01\t62\tF\t10\nODP01\t72\tM\t1\n"
+    (tmp_path / "participants.tsv").write_text(tsv, encoding="utf-8")
+    cov = load_participants(str(tmp_path))
+    assert cov["sub-CTL01"]["Age"] == 62.0          # numeric coerced to float
+    assert cov["sub-CTL01"]["Gender"] == "F"        # non-numeric kept as string
+    assert cov["sub-ODP01"]["OSITJ"] == 1.0         # id normalized to include sub- prefix
+    assert "participant_id" not in cov["sub-CTL01"]  # id column dropped from covariates
+
+
+def test_load_participants_absent_is_empty(tmp_path):
+    from dual_engine.fmri_tda_pipeline import load_participants
+    assert load_participants(str(tmp_path)) == {}
+
+
+def test_subject_result_roundtrip_ignores_unknown_keys():
+    from dual_engine.fmri_tda_pipeline import SubjectResult
+    r = SubjectResult("s", "CTL", 10, 40, 1, 2, 0.5, 0.3, 0.4, 5.0, 1.1, "real_fmri",
+                      covariates={"Age": 62.0})
+    d = r.to_dict()
+    d["some_future_field"] = "ignored"  # forward-compat: unknown keys dropped
+    r2 = SubjectResult.from_dict(d)
+    assert r2.subject_id == "s" and r2.covariates == {"Age": 62.0}
+
+
+def test_aggregate_and_markdown(tmp_path):
+    from dual_engine.fmri_tda_pipeline import (
+        synthetic_bold_fixture, run_subject, aggregate_subject_files, render_markdown_summary,
+    )
+    import json
+    # emit one per-group subjects file each, then aggregate into a cohort
+    paths = []
+    for gi, grp in enumerate(("CTL", "ODN", "ODP")):
+        subs = []
+        for i in range(2):
+            p = synthetic_bold_fixture(str(tmp_path / f"{grp}{i}.nii.gz"), group=grp,
+                                       n_t=36, dim=12, seed=gi * 10 + i)
+            subs.append(run_subject(f"{grp}{i}", grp, p, t_r=2.5, provenance="real_fmri").to_dict())
+        fp = tmp_path / f"subjects_{grp}.json"
+        fp.write_text(json.dumps({"provenance": "real_fmri", "group": grp, "subjects": subs}))
+        paths.append(str(fp))
+
+    payload = aggregate_subject_files(paths, provenance="real_fmri")
+    assert payload["n_subjects"] == 6
+    assert set(payload["group_stats"]["total_persistence_h1"]["group_n"].keys()) == {"CTL", "ODN", "ODP"}
+
+    md = render_markdown_summary(payload)
+    assert "fMRI-TDA cohort result (real_fmri)" in md
+    assert "| total_persistence_h1 |" in md
+    # a real-data payload must NOT carry the synthetic warning banner
+    assert "Not a real-data run" not in md

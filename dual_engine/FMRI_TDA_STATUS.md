@@ -1,8 +1,26 @@
 # ds000245 fMRI TDA — Status & Honest Findings
 
-**Bottom line:** the pipeline is built, self-tested, and ready to run — but it has **not**
-been run on the real ds000245 volumes, for two independent, verified reasons. No empirical
-result is claimed.
+**Bottom line:** the pipeline is built, self-tested, and ready to run. The two blockers below
+were about running it *inside the build sandbox*; both are now resolved by running it in
+**GitHub Actions** instead (see "Easiest way to run it" below). No empirical result is claimed
+here — the numbers appear on the workflow run page once you trigger it.
+
+## Easiest way to run it (resolves both blockers)
+
+Trigger the **`fMRI-TDA ds000245`** workflow from the repo's **Actions** tab → *Run workflow*.
+It needs no secrets. It:
+
+- pulls ds000245 straight from the **OpenNeuro public S3 bucket** (`--no-sign-request`), so the
+  data is local to the runner — sidestepping Blocker 1 entirely (no base64/MCP channel), and
+- uses the **authentic ds000245 `participants.tsv`** from OpenNeuro (Age, Gender, MMSE, **OSITJ**),
+  not the mismatched meditation-EEG metadata that was in the Drive copy — resolving Blocker 2.
+
+It fans out one job per group (CTL/ODN/ODP), runs the pipeline, and produces:
+- a **rendered group-comparison table** in the run summary (F, p, η² per metric), and
+- a downloadable **`cohort-result`** artifact (`cohort_result.json` + `summary.md`).
+
+The two blockers below are retained for the record; they describe why the *sandbox* couldn't
+run it, which the CI path avoids.
 
 ## What was verified (real, checked facts)
 

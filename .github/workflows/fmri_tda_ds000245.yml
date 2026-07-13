@@ -1,0 +1,160 @@
+name: fMRI-TDA ds000245
+
+# Real-data run of the resting-state fMRI functional-connectivity + persistent-homology
+# pipeline (dual_engine/fmri_tda_pipeline.py) on OpenNeuro ds000245 (Parkinson's olfactory
+# dysfunction: 15 CTL, 15 ODN, 15 ODP). Data is pulled directly from the OpenNeuro public S3
+# bucket, so this run carries the AUTHENTIC ds000245 participants.tsv covariates (Age, Gender,
+# MMSE, OSITJ) -- not the mismatched metadata found in the Google Drive copy.
+#
+# Trigger it manually from the Actions tab ("Run workflow"). No secrets required: OpenNeuro S3
+# is read with --no-sign-request. Results appear as (a) a rendered table in the run summary and
+# (b) a downloadable `cohort-result` artifact (cohort_result.json).
+#
+# Method note (honest scoping): ds000245 BOLD is raw/native-space (no fMRIPrep normalization in
+# this pipeline). The default parcellation is therefore a deterministic NATIVE-SPACE coordinate
+# parcellation -- reproducible but NOT an anatomical atlas. Supplying an MNI atlas here without
+# registration would silently mis-register, so `atlas_url` is optional and off by default.
+
+on:
+  workflow_dispatch:
+    inputs:
+      groups:
+        description: "Groups to process (space-separated subset of: CTL ODN ODP)"
+        required: false
+        default: "CTL ODN ODP"
+      atlas_url:
+        description: "Optional URL to a labels NIfTI already in the BOLD's native space (leave blank for native-space coordinate parcellation)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  DATASET: ds000245
+  T_R: "2.5"
+
+jobs:
+  # ---- Fan-out: one job per group, each pulls only its subjects' BOLD from OpenNeuro S3 ----
+  run-group:
+    name: "Process ${{ matrix.group }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [CTL, ODN, ODP]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if group not requested
+        id: gate
+        run: |
+          if echo "${{ github.event.inputs.groups }}" | grep -qw "${{ matrix.group }}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Group ${{ matrix.group }} not in requested set -- skipping."
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install nibabel nilearn ripser networkx statsmodels scikit-learn scipy numpy pandas
+
+      - name: Download ds000245 BOLD for ${{ matrix.group }} from OpenNeuro S3
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p data/${DATASET}
+          # only this group's resting-state BOLD volumes (native space)
+          aws s3 sync --no-sign-request "s3://openneuro.org/${DATASET}" "data/${DATASET}" \
+            --exclude "*" --include "sub-${{ matrix.group }}*/func/*_bold.nii*"
+          # authentic covariate table + dataset descriptor (small text files)
+          aws s3 cp --no-sign-request "s3://openneuro.org/${DATASET}/participants.tsv" "data/${DATASET}/participants.tsv" || true
+          aws s3 cp --no-sign-request "s3://openneuro.org/${DATASET}/dataset_description.json" "data/${DATASET}/dataset_description.json" || true
+          echo "Downloaded subjects:"; ls -1 data/${DATASET} | grep "^sub-${{ matrix.group }}" || true
+          du -sh data/${DATASET} || true
+
+      - name: Optional atlas download
+        if: steps.gate.outputs.run == 'true' && github.event.inputs.atlas_url != ''
+        run: |
+          curl -fsSL "${{ github.event.inputs.atlas_url }}" -o data/atlas_labels.nii.gz
+          echo "ATLAS_ARG=--atlas data/atlas_labels.nii.gz" >> "$GITHUB_ENV"
+
+      - name: Run pipeline for ${{ matrix.group }}
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          python -m dual_engine.fmri_tda_pipeline \
+            --bids-root "data/${DATASET}" \
+            --group "${{ matrix.group }}" \
+            --t-r "${T_R}" \
+            ${ATLAS_ARG:-} \
+            --emit-subjects "outputs/fmri_tda/subjects_${{ matrix.group }}.json"
+
+      - name: Upload per-group results
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: subjects-${{ matrix.group }}
+          path: outputs/fmri_tda/subjects_${{ matrix.group }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---- Aggregate: merge the per-group subject files -> cohort stats + rendered summary ----
+  aggregate:
+    name: Aggregate cohort + group statistics
+    needs: run-group
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal deps
+        run: pip install numpy scipy
+
+      - name: Download all per-group artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: subjects-*
+          path: incoming
+          merge-multiple: true
+
+      - name: Aggregate + write step summary
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FILES=(incoming/subjects_*.json)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "## fMRI-TDA ds000245 — no per-group results found" >> "$GITHUB_STEP_SUMMARY"
+            echo "All group jobs failed or were skipped; nothing to aggregate." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          python -m dual_engine.fmri_tda_pipeline --aggregate "${FILES[@]}" --out outputs/fmri_tda
+          {
+            echo ""
+            echo "---"
+            echo "_Parcellation: native-space coordinate parcellation (not an anatomical atlas; no MNI registration in this pipeline). Covariates (Age, Gender, MMSE, OSITJ) are the authentic ds000245 participants.tsv pulled from OpenNeuro S3. n=15/group; interpret with effect sizes + CIs, not bare p-values._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cohort result
+        uses: actions/upload-artifact@v4
+        with:
+          name: cohort-result
+          path: |
+            outputs/fmri_tda/cohort_result.json
+            outputs/fmri_tda/summary.md
+          if-no-files-found: error
+          retention-days: 90
