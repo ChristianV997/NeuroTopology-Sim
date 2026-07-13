@@ -34,6 +34,39 @@ def test_unbaselined_violation_exits_1(tmp_path: Path):
     assert run_cli(tmp_path, "--no-baseline").returncode == 1
 
 
+def test_baseline_file_itself_is_never_scanned_as_a_violation(tmp_path: Path):
+    # Regression: the baseline file catalogs known phrases (each entry has a "phrase" key), so
+    # it will always contain the literal forbidden strings it's cataloging. It must be excluded
+    # from the scan outright, not merely happen to survive scanning. Pretty-print it here so it
+    # cannot coast on any same-line text coincidence -- each phrase is fully isolated on its own
+    # line, forcing the exclusion (not a heuristic) to be what saves it.
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/a.md").write_text("clean\n", encoding="utf-8")
+    baseline_dir = tmp_path / "contracts/btc_icft/ontology_claims"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "claim_language_baseline.json").write_text(
+        json.dumps(
+            {
+                "baseline_version": "0.1",
+                "purpose": "Known legacy ontology-language findings allowed only until cleaned up.",
+                "entries": [
+                    {"path": "docs/other.md", "line": None, "phrase": "proves consciousness",
+                     "category": "forbidden_phrase", "reason": "legacy", "expires": None, "owner": "repo"},
+                    {"path": "docs/other.md", "line": None, "phrase": "ontology solved",
+                     "category": "forbidden_phrase", "reason": "legacy", "expires": None, "owner": "repo"},
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    result = run_cli(tmp_path)
+    assert result.returncode == 0
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert data["unbaselined_violation_count"] == 0
+    assert data["baselined_violation_count"] == 0  # entries reference docs/other.md, which doesn't exist
+
+
 def test_baselined_violation_appears_in_baselined_violations(tmp_path: Path):
     (tmp_path / "docs").mkdir(); (tmp_path / "docs/a.md").write_text("ontology solved\n", encoding="utf-8")
     _write_baseline(tmp_path, [{"path": "docs/a.md", "line": None, "phrase": "ontology solved", "category": "forbidden_phrase", "reason": "pending_cleanup", "expires": None, "owner": "repo"}])
@@ -149,6 +182,63 @@ def test_generated_report_includes_missing_generated_roots(tmp_path: Path):
     run_cli(tmp_path, "--scan-mode", "generated", "--generated-output-profile", "ds005620", "--strict-outputs", "--no-baseline")
     data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
     assert "outputs/btc_icft/ds005620_real_execution_gate" in data["missing_generated_roots"]
+
+
+def test_pretty_printed_json_denylist_is_not_a_violation(tmp_path: Path):
+    # Regression: a phrase denylist config (e.g. a RAG forbidden-answer-patterns file) that is
+    # pretty-printed puts the "forbidden" key on a different line than the phrase strings it
+    # lists. The scanner must recognize the phrase is nested under a denylist-named key
+    # structurally (via JSON parse), not merely by same-line text matching.
+    (tmp_path / "outputs/rag_pack").mkdir(parents=True)
+    (tmp_path / "outputs/rag_pack/denylist.json").write_text(
+        json.dumps({"forbidden": ["proves consciousness", "topology proves liberation"]}, indent=2),
+        encoding="utf-8",
+    )
+    result = run_cli(tmp_path, "--no-baseline")
+    assert result.returncode == 0
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert data["unbaselined_violation_count"] == 0
+
+
+def test_single_line_json_denylist_still_not_a_violation(tmp_path: Path):
+    # The pre-fix same-line heuristic already handled this case; keep it covered.
+    (tmp_path / "outputs/rag_pack").mkdir(parents=True)
+    (tmp_path / "outputs/rag_pack/denylist.json").write_text(
+        '{"forbidden": ["ontology solved"]}\n', encoding="utf-8",
+    )
+    assert run_cli(tmp_path, "--no-baseline").returncode == 0
+
+
+def test_yaml_denylist_config_is_not_a_violation(tmp_path: Path):
+    (tmp_path / "outputs/rag_pack").mkdir(parents=True)
+    (tmp_path / "outputs/rag_pack/denylist.yaml").write_text(
+        "forbidden:\n  - proves consciousness\n  - ontology solved\n", encoding="utf-8",
+    )
+    assert run_cli(tmp_path, "--no-baseline").returncode == 0
+
+
+def test_phrase_outside_denylist_key_in_same_json_file_still_flagged(tmp_path: Path):
+    # No loophole: a genuine claim elsewhere in a file that happens to also contain an
+    # unrelated denylist-named key must still be caught.
+    (tmp_path / "outputs/rag_pack").mkdir(parents=True)
+    (tmp_path / "outputs/rag_pack/mixed.json").write_text(
+        json.dumps({"forbidden": ["some other phrase"], "conclusion": "eeg proves consciousness"}),
+        encoding="utf-8",
+    )
+    result = run_cli(tmp_path, "--no-baseline")
+    assert result.returncode == 1
+    data = json.loads((tmp_path / "outputs/btc_icft/ontology_claim_language_validation.json").read_text())
+    assert data["unbaselined_violation_count"] >= 1
+    assert any(v["phrase"] == "proves consciousness" for v in data["violations"])
+
+
+def test_malformed_json_denylist_falls_back_to_line_heuristic(tmp_path: Path):
+    # A file that fails to parse (e.g. hand-edited, trailing comma) is not silently exempted --
+    # the structural check degrades to empty (no suppression), and the existing same-line
+    # heuristic still applies where it matches.
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/broken.json").write_text('{"forbidden": ["ontology solved",]}\n', encoding="utf-8")
+    assert run_cli(tmp_path, "--no-baseline").returncode == 0  # same-line heuristic still saves it
 
 
 def test_strict_outputs_generated_no_baseline_does_not_allow_baselined_generated_violations(tmp_path: Path):

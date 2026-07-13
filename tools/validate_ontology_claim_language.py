@@ -27,6 +27,7 @@ UNSAFE_MAPPINGS = {
 SKIP_DIRS = {".git", ".venv", "venv", "env", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 SCAN_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml"}
 SECTION_SKIP_TERMS = ("forbidden", "guardrail", "blocked", "cannot be claimed", "unsafe examples")
+DENYLIST_KEY_TERMS = ("forbidden", "banned", "blocked", "denylist", "deny_list", "blocklist", "block_list")
 
 
 def _parse_bool(value: str) -> bool:
@@ -71,6 +72,55 @@ def _markdown_skip_mask(lines: list[str]) -> list[bool]:
             stack.append((level, own_skip or parent_skip))
         mask[idx] = stack[-1][1] if stack else False
     return mask
+
+
+def _collect_strings(node) -> list[str]:
+    if isinstance(node, str):
+        return [node]
+    if isinstance(node, list):
+        return [s for item in node for s in _collect_strings(item)]
+    if isinstance(node, dict):
+        return [s for v in node.values() for s in _collect_strings(v)]
+    return []
+
+
+def _denylist_config_strings(text: str, suffix: str) -> set[str] | None:
+    """Lowercased string values nested under a denylist-named key (forbidden/banned/...) in a
+    parsed JSON or YAML file. These are a phrase denylist's own config, not a claim, regardless
+    of which physical line each string lands on when pretty-printed.
+
+    Returns `None` (not an empty set) if the file doesn't parse or the suffix is unsupported --
+    the caller must treat `None` as "structural check unavailable" and fall back to the same-line
+    text heuristic, NOT as "no denylist keys found". Collapsing that distinction to an empty set
+    would be wrong: on a single-line (non-pretty-printed) JSON file, an unrelated denylist key
+    can share a physical line with a genuine claim, and the old text heuristic would wrongly
+    suppress it. The structural check must be authoritative whenever parsing succeeds.
+    """
+    try:
+        if suffix == ".json":
+            data = json.loads(text)
+        elif suffix in {".yaml", ".yml"}:
+            import yaml
+            data = yaml.safe_load(text)
+        else:
+            return None
+    except Exception:
+        return None
+
+    out: set[str] = set()
+
+    def _walk(node) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if any(term in str(key).lower() for term in DENYLIST_KEY_TERMS):
+                    out.update(s.lower() for s in _collect_strings(value))
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(data)
+    return out
 
 
 def _load_baseline(path: Path) -> tuple[list[dict], set[tuple[str, str, str]]]:
@@ -125,6 +175,14 @@ def _collect_files(root: Path, args: argparse.Namespace) -> tuple[list[Path], li
     excluded = {"tools/validate_ontology_claim_language.py", args.json_out, args.markdown_out}
     if args.write_baseline:
         excluded.add(args.write_baseline)
+    if not args.no_baseline:
+        # The baseline file itself catalogs known forbidden phrases (each entry has a
+        # "phrase" key) -- it must never be scanned as if it were prose making a claim.
+        # This previously "worked" only by accident: a same-line text heuristic happened to
+        # match the substring "forbidden" inside the unrelated value "forbidden_phrase" on
+        # every baseline entry. Fixing that heuristic's precision (see _denylist_config_strings)
+        # removes the accidental cover, so the exclusion must be explicit.
+        excluded.add(args.baseline)
     for f in files:
         rel = f.relative_to(root).as_posix()
         if rel in seen or rel in excluded:
@@ -158,21 +216,40 @@ def validate(args: argparse.Namespace) -> tuple[int, dict]:
         except UnicodeDecodeError:
             continue
         lines = text.splitlines()
-        md_skip = _markdown_skip_mask(lines) if path.suffix.lower() == ".md" else [False] * len(lines)
+        suffix = path.suffix.lower()
+        md_skip = _markdown_skip_mask(lines) if suffix == ".md" else [False] * len(lines)
+        # Structural check: strings nested under a denylist-named JSON/YAML key (e.g. a RAG
+        # forbidden-answer-patterns config) are the guardrail's own data, not a claim -- this
+        # holds regardless of which line a pretty-printed value lands on. When the file parses,
+        # this is AUTHORITATIVE (see _denylist_config_strings docstring for why: the same-line
+        # heuristic below is not safe to OR in, since a single-line JSON file can have an
+        # unrelated denylist key share a physical line with a genuine claim). The same-line
+        # heuristic is used only as a fallback for files that fail to parse.
+        denylist_strings = _denylist_config_strings(text, suffix) if suffix in {".json", ".yaml", ".yml"} else None
 
         for i, line in enumerate(lines, start=1):
             ll = line.lower()
-            if path.suffix.lower() == ".md" and md_skip[i - 1]:
+            if suffix == ".md" and md_skip[i - 1]:
                 continue
             for phrase in FORBIDDEN_PHRASES:
                 if phrase in ll:
-                    if path.suffix.lower() in {".json", ".yaml", ".yml"} and any(k in ll for k in ["forbidden", "banned", "blocked", "cannot be claimed", "unsafe examples"]):
-                        continue
+                    if suffix in {".json", ".yaml", ".yml"}:
+                        if denylist_strings is not None:
+                            if any(phrase in s for s in denylist_strings):
+                                continue
+                        elif any(k in ll for k in ["forbidden", "banned", "blocked", "cannot be claimed", "unsafe examples"]):
+                            continue
                     all_violations.append({"path": rel, "line": i, "phrase": phrase, "category": "forbidden_phrase", "severity": "error", "context": _sanitize(line.strip()[:160])})
                     forbidden_count += 1
             for category, patterns in UNSAFE_MAPPINGS.items():
                 for phrase in patterns:
                     if phrase in ll:
+                        if suffix in {".json", ".yaml", ".yml"}:
+                            if denylist_strings is not None:
+                                if any(phrase in s for s in denylist_strings):
+                                    continue
+                            elif any(k in ll for k in ["forbidden", "banned", "blocked", "cannot be claimed", "unsafe examples"]):
+                                continue
                         all_violations.append({"path": rel, "line": i, "phrase": phrase, "category": category, "severity": "error", "context": _sanitize(line.strip()[:160])})
                         unsafe_count += 1
 
