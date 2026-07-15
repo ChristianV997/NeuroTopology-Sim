@@ -100,11 +100,11 @@ mapping), even where the group p-value is only a trend.
   unambiguously absent.
 - **Gate** (metric validity; phase-randomized surrogates on the DMN \|charge\|
   metric): the identical signed BOLD \|charge\| metric passed decisively on
-  ds005237 (z≈−5) and (as CSD) on ds005620/ds003969 (z≈−13), so it reflects genuine
-  spatial phase structure, not a spectral artifact. A ds006072-specific gate (2
-  sessions, 200 surrogates) is compute-heavy on 360 parcels (as on ds005237) and
-  was left running; the persistence verdict does not depend on it, since it is a
-  *null* — the metric is valid (established), and it simply returns to baseline.
+  ds005237 (z≈−5) and (as CSD) on ds005620/ds003969 (z≈−13). The **ds006072-specific
+  gate** (2 sessions, 200 FT surrogates each) **passes decisively**: real DMN
+  \|charge\| = 9.05 / 10.65 vs phase-randomized null ≈ 25.2 / 25.9, **z = −14.0 /
+  −13.4, 2/2 pass** — the metric reflects genuine spatial phase structure on this
+  data too, so the persistence null is a *true* null, not an insensitive metric.
 
 ## 8. Confounds
 
