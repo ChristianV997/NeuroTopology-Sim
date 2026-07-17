@@ -7,3 +7,8 @@ pyyaml
 joblib
 mne
 pytest
+torch>=2.0.0
+torch-geometric>=2.3.0
+pytorch-lightning>=2.0.0
+tensorboard>=2.12.0
+wandb>=0.15.0
