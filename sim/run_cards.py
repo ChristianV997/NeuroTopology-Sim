@@ -202,44 +202,56 @@ def run_psi_os(
     out_dir: Optional[Path] = None,
     _now: Optional[datetime] = None,
 ) -> Tuple[RunRecord, Path, Path]:
-    """Run a psi/vortex simulation and emit dual run artifacts."""
+    """Run a psi-field vortex simulation and emit dual run artifacts.
+
+    Integrates the complex Ginzburg-Landau equation (CGL),
+    ``dA/dt = A + (1+i*c1)*lap(A) - (1+i*c2)*|A|^2*A`` -- the canonical amplitude
+    equation for oscillatory media -- rather than a plain diffusion step. Unlike
+    diffusion (a heat equation, which only smooths noise to a uniform field and
+    cannot sustain topological structure), CGL spontaneously nucleates spiral-wave
+    phase singularities whose cores go to |A|->0, giving a genuine, non-trivial
+    winding charge to measure (and matching the amplitude-dip convention
+    ``core.defects.detect_defects`` expects).
+    """
     import numpy as np
+    from core.topology import compute_Qz, compute_f_dress
 
     rng = np.random.default_rng(seed)
 
-    # Build a minimal psi field (|ψ|² = intensity)
-    psi = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
-    psi /= np.abs(psi).mean() + 1e-9
+    # Small-amplitude seed so the CGL nonlinear term doesn't immediately blow up.
+    psi = 0.1 * (rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N)))
 
+    c1, c2, dt = 0.5, -0.5, 0.05  # standard defect-turbulence regime parameters
     intensities = []
     for _ in range(n_steps):
-        # Minimal gradient-descent-like relaxation
         lap = (
             np.roll(psi, 1, 0) + np.roll(psi, -1, 0) +
             np.roll(psi, 1, 1) + np.roll(psi, -1, 1) - 4 * psi
         )
-        psi = psi + 0.01 * lap
+        psi = psi + dt * (psi + (1 + 1j * c1) * lap - (1 + 1j * c2) * np.abs(psi) ** 2 * psi)
         intensities.append(float(np.abs(psi).mean()))
+
+    if not np.all(np.isfinite(psi)):
+        raise ValueError(
+            f"CGL integration diverged (N={N}, n_steps={n_steps}, seed={seed}); "
+            "reduce dt or n_steps"
+        )
 
     I_series = np.array(intensities)
 
-    try:
-        from core.topology import compute_Qz, compute_f_dress
-        psi3d = psi[np.newaxis, :, :]
-        Qz = float(compute_Qz(psi3d))
-        Qabs = float(abs(Qz))
-        f_dress = float(compute_f_dress(Qz, Qabs))
-    except Exception:
-        Qz = 0.0
-        Qabs = 0.0
-        f_dress = 0.0
-
-    try:
-        from validation.synthetic import single_vortex
-        ref = single_vortex(N=N)
-        vort_mean = float(np.abs(ref).mean())
-    except Exception:
-        vort_mean = float(np.abs(psi).mean())
+    # compute_Qz's default axis=2 treats the LAST axis as the z-slice stack (see
+    # validation/synthetic.py's own psi[:, :, None] convention) -- psi[np.newaxis]
+    # would put the singleton on axis 0 instead, silently yielding all-empty
+    # plaquettes (nx=1) and therefore Qabs=0 on every field, real or not.
+    Qz_arr, Qabs_arr = compute_Qz(psi[:, :, np.newaxis])
+    Qz = float(Qz_arr[0])
+    Qabs = float(Qabs_arr[0])
+    f_dress = compute_f_dress(Qz_arr, Qabs_arr)
+    # Fraction of grid points near a defect core (low local amplitude), a genuine
+    # vortex-density diagnostic from the actual simulated field -- replaces the
+    # prior placeholder that reported a fixed reference field's mean amplitude
+    # regardless of what the simulation actually produced.
+    vort_mean = float(np.mean(np.abs(psi) < 0.2 * np.abs(psi).mean()))
 
     metrics: Dict[str, float] = {
         "I_mean": float(I_series.mean()),
@@ -259,8 +271,8 @@ def run_psi_os(
 
     h8_falsifiers = [
         {
-            "prediction": "Vortex intensity I_mean > 0 under relaxation",
-            "discriminator": "I_mean <= 0 would falsify diffusion model",
+            "prediction": "Vortex intensity I_mean > 0 under CGL evolution",
+            "discriminator": "I_mean <= 0 would falsify the CGL amplitude equation",
             "status": "PASS" if metrics["I_mean"] > 0 else "FAIL",
         },
     ]

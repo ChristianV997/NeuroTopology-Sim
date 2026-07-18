@@ -137,6 +137,22 @@ def phase_randomize_surrogate(
     return out
 
 
+def _eval_metric_safe(metric_fn, s: np.ndarray, kwargs: dict):
+    """Evaluate metric_fn on one surrogate; return (value_or_None, failed: bool).
+
+    Module-level (not a closure) so it is picklable for joblib's loky/multiprocessing
+    backends. Exceptions are caught per-surrogate, matching the prior serial loop's
+    semantics exactly (one bad surrogate does not abort the gate).
+    """
+    try:
+        v = float(metric_fn(s, **kwargs))
+    except Exception:
+        return None, True
+    if not np.isfinite(v):
+        return None, True
+    return v, False
+
+
 def surrogate_test_topology_metric(
     real_timeseries: np.ndarray,
     metric_fn,
@@ -146,6 +162,7 @@ def surrogate_test_topology_metric(
     preserve_cross_channel_lag: bool = False,
     two_sided: bool = False,
     random_state=None,
+    n_jobs: int = 1,
 ) -> dict:
     """Gate a scalar topology/connectivity metric against a phase-randomized null.
 
@@ -159,6 +176,12 @@ def surrogate_test_topology_metric(
         directional hypothesis (more conservative).
     Surrogates on which metric_fn raises are counted in ``n_failed`` and excluded;
     statistics use only successful surrogates, and n_surrogates reflects that.
+
+    ``n_jobs`` (default 1, serial) is forwarded to ``joblib.Parallel`` to evaluate
+    ``metric_fn`` on the ``n_surrogates`` surrogates concurrently -- this loop, not
+    surrogate generation, is the dominant cost for expensive topology/PH metrics.
+    Pass -1 for all cores. Results (including which surrogates failed) are
+    identical to the serial path for any n_jobs; only wall-clock changes.
     """
     kwargs = metric_kwargs or {}
     real_value = float(metric_fn(_validate_ts(real_timeseries), **kwargs))
@@ -169,18 +192,14 @@ def surrogate_test_topology_metric(
         real_timeseries, method=method, n_surrogates=n_surrogates,
         random_state=random_state, preserve_cross_channel_lag=preserve_cross_channel_lag)
 
-    vals = []
-    n_failed = 0
-    for s in surr:
-        try:
-            v = float(metric_fn(s, **kwargs))
-        except Exception:
-            n_failed += 1
-            continue
-        if np.isfinite(v):
-            vals.append(v)
-        else:
-            n_failed += 1
+    if n_jobs == 1:
+        results = [_eval_metric_safe(metric_fn, s, kwargs) for s in surr]
+    else:
+        from joblib import Parallel, delayed
+        results = Parallel(n_jobs=n_jobs)(delayed(_eval_metric_safe)(metric_fn, s, kwargs) for s in surr)
+
+    vals = [v for v, failed in results if not failed]
+    n_failed = sum(1 for _v, failed in results if failed)
     vals = np.asarray(vals, dtype=float)
     n_used = int(vals.size)
     if n_used < 2:

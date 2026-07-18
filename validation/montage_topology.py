@@ -62,10 +62,46 @@ def triangulate_xy(xy: np.ndarray) -> np.ndarray:
     return simplices
 
 
+def _wrapped_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    return np.angle(np.exp(1j * (b - a)))
+
+
 def triangle_winding(phi0, phi1, phi2) -> float:
-    wrapped_diff = lambda a, b: np.angle(np.exp(1j * (b - a)))
-    total = wrapped_diff(phi0, phi1) + wrapped_diff(phi1, phi2) + wrapped_diff(phi2, phi0)
+    total = _wrapped_diff(phi0, phi1) + _wrapped_diff(phi1, phi2) + _wrapped_diff(phi2, phi0)
     return float(total / (2.0 * np.pi))
+
+
+def triangle_winding_batch(phase_arr: np.ndarray, tri_arr: np.ndarray) -> np.ndarray:
+    """Vectorized winding for every triangle at once (elementwise identical to
+    calling ``triangle_winding`` in a Python loop over ``tri_arr``, just without
+    the loop).
+
+    ``phase_arr`` may be 1D ``(n_channels,)`` (single sample) or 2D
+    ``(n_channels, n_t)`` (batch across time). ``tri_arr`` is ``(n_tri, 3)`` int
+    vertex indices. Returns ``(n_tri,)`` or ``(n_tri, n_t)`` respectively,
+    replacing the per-triangle Python list comprehensions in
+    ``sensor_phase_topology_metrics``/``signed_defect_map`` with a single gather
+    + vectorized wrapped-difference sum (the same pattern
+    ``core.topology.compute_Qz`` already uses on the regular grid).
+    """
+    phi = np.asarray(phase_arr, dtype=float)[np.asarray(tri_arr, dtype=int)]  # (n_tri, 3, ...)
+    phi0, phi1, phi2 = phi[:, 0, ...], phi[:, 1, ...], phi[:, 2, ...]
+    total = _wrapped_diff(phi0, phi1) + _wrapped_diff(phi1, phi2) + _wrapped_diff(phi2, phi0)
+    return total / (2.0 * np.pi)
+
+
+def _edge_diffs_batch(phase_arr: np.ndarray, tri_arr: np.ndarray) -> np.ndarray:
+    """All three wrapped edge differences for every triangle, flattened.
+
+    Same value set as the ``edge_diffs`` Python-loop accumulation in
+    ``sensor_phase_topology_metrics`` (order differs, irrelevant since only
+    ``mean(abs(.))`` is ever taken downstream).
+    """
+    phi = np.asarray(phase_arr, dtype=float)[np.asarray(tri_arr, dtype=int)]
+    d01 = _wrapped_diff(phi[:, 0, ...], phi[:, 1, ...])
+    d12 = _wrapped_diff(phi[:, 1, ...], phi[:, 2, ...])
+    d20 = _wrapped_diff(phi[:, 2, ...], phi[:, 0, ...])
+    return np.concatenate([d01.ravel(), d12.ravel(), d20.ravel()])
 
 
 def sensor_phase_topology_metrics(
@@ -102,16 +138,8 @@ def sensor_phase_topology_metrics(
     if not np.any(valid):
         raise ValueError("No valid triangles remain")
 
-    local_w = np.array([triangle_winding(*phase_arr[t]) for t in tri_arr[valid]], dtype=float)
-
-    edge_diffs = []
-    for t in tri_arr[valid]:
-        i, j, k = t
-        edge_diffs.extend([
-            np.angle(np.exp(1j * (phase_arr[j] - phase_arr[i]))),
-            np.angle(np.exp(1j * (phase_arr[k] - phase_arr[j]))),
-            np.angle(np.exp(1j * (phase_arr[i] - phase_arr[k]))),
-        ])
+    local_w = triangle_winding_batch(phase_arr, tri_arr[valid])
+    edge_diffs = _edge_diffs_batch(phase_arr, tri_arr[valid])
 
     Q_sum = float(np.sum(local_w))
     Q = float(np.round(Q_sum))
@@ -252,9 +280,7 @@ def signed_defect_map(
         phase_vec, xy, triangles, amp_vec, amp_quantile
     )
     valid_tri = tri_arr[valid]
-    signed_winding = np.array(
-        [triangle_winding(*phase_arr[t]) for t in valid_tri], dtype=float
-    )
+    signed_winding = triangle_winding_batch(phase_arr, valid_tri)
     # centroid of each valid triangle in the input xy coordinate space
     centroid_xy = xy_arr[valid_tri].mean(axis=1)
     chirality = np.sign(signed_winding).astype(int)

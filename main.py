@@ -4,7 +4,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from validation.synthetic import single_vortex, double_vortex, validate_vortex_charges
+from validation.synthetic import (
+    single_vortex, double_vortex, validate_vortex_charges,
+    validate_dynamical_ground_truth,
+)
 from core.topology import compute_Qz
 from pipelines.run_qzt import run as run_qzt_pipeline
 from pipelines.run_eeg import run as run_eeg
@@ -15,7 +18,14 @@ from pipelines.run_external import run as run_external
 from database.database import connect, start_run, finish_run, add_metric, add_artifact
 
 def run_synthetic():
-    """Run synthetic validation checks and save summary metrics."""
+    """Run synthetic validation checks and save summary metrics.
+
+    Two families: the original STATIC known-charge fields (single/double
+    vortex, unchanged contract below) and the DYNAMICAL ground-truth
+    generators (Kuramoto lattice + CGL PDE) that give a time-evolving,
+    tunable-defect-density oracle -- see validation/synthetic.py module
+    docstring for why the static fields alone are insufficient.
+    """
     out = Path("results/synthetic")
     out.mkdir(parents=True, exist_ok=True)
     psi = single_vortex()
@@ -36,6 +46,11 @@ def run_synthetic():
     df["pass_charge_check"] = df["case"].map(passes)
     df.to_csv(out / "synthetic_summary.csv", index=False)
     print(df)
+
+    dyn = validate_dynamical_ground_truth()
+    dyn_df = pd.DataFrame([dyn])
+    dyn_df.to_csv(out / "dynamical_ground_truth_summary.csv", index=False)
+    print(dyn_df)
 
 def run_qzt(checkpoint_dir: str):
     """Run QZT pipeline and write outputs into results root."""
