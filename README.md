@@ -99,7 +99,9 @@ The PCIst-style complexity column has been renamed `pcist_proxy` to make clear i
 | ds006072 (sevoflurane) | analytic_phase_proxy + leida_state | ✓ | ✓ | ✓ | Ready for inference |
 | ds003969 (EEG during sleep) | analytic_phase_proxy (Kuramoto order) | ✓ | ✓ | ✓ | Ready for inference |
 
-Roadmap: TemplateFlow cortical geometry + neuromaps spatial-null framework (Phase 4) will enable H0-component-count tracking across parcellated regions, closing the final methodological gap (currently only temporal, not spatial nulls).
+**Spatial null (spin test):** the temporal-only-null gap is now closed for sensor-space signed maps. `validation/spatial_nulls.py` implements a hand-rolled Alexander-Bloch/Váša **spin test** — a rigid rotation of the sensor geometry about its centroid with greedy bijective reassignment — that preserves spatial autocorrelation while randomizing a map's alignment to a regional partition. It is strictly more conservative than a naive label shuffle (empirically ~5× wider null on a smooth map, so a shuffle would over-reject). `spin_test_signed_defect_region_contrast()` applies it turnkey to `signed_defect_map` output (per-triangle winding on the triangle-centroid cloud, regions assigned by the same majority vote as `net_charge_by_region`). Verified by a 5-lens adversarial review.
+
+Roadmap: TemplateFlow cortical geometry + the full `neuromaps` spherical-surface spin-test family (Phase 4) will extend this from the sensor plane to true cortical-surface geometry and enable H0-component-count tracking across parcellated regions.
 
 ## Note
 Datasets are not embedded. Place them under `data/raw/` using the paths in `data/README.md`.
@@ -346,8 +348,9 @@ Place raw data in `data/raw/<dataset_id>/` (e.g., `data/raw/ds005620/`). See `da
 - Low-latency vortex tracking (<100ms end-to-end)
 
 ### Phase 4: Spatial Nulls & Geometry (Q4 2026)
+- ✅ **Sensor-space spin test shipped** — `validation/spatial_nulls.py` (Alexander-Bloch/Váša rigid-rotation null + turnkey `signed_defect_map` wrapper; adversarially verified)
 - TemplateFlow cortical geometry (fsLR/fsaverage + Schaefer/Yeo parcellations)
-- neuromaps spatial-null framework (9 published spin-test variants)
+- neuromaps spherical-surface spin-test family (extends the sensor-plane null to true cortical geometry)
 - H0-component-count regional tracking + permutation tests
 - Source-space topology via inverse models (sLORETA, eLORETA)
 

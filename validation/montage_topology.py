@@ -306,6 +306,56 @@ def _require_defect_map(defect_map: dict) -> None:
         raise ValueError(f"defect_map missing required keys: {sorted(missing)}")
 
 
+def assign_triangles_to_regions(
+    defect_map: dict,
+    region_labels: dict,
+    channel_names: list[str],
+) -> np.ndarray:
+    """Per-triangle region label by majority vote of the triangle's 3 vertices.
+
+    Returns an ``object`` array of length ``n_valid_triangles`` aligned to
+    ``defect_map["signed_winding"]`` / ``["centroid_xy"]``: each entry is the
+    region label, or ``None`` when any vertex is unlabeled or the three vertex
+    labels have no majority (the exact rule ``net_charge_by_region`` aggregates
+    with — that function calls this one, and spatial-null callers
+    (``validation/spatial_nulls``) reuse it instead of re-deriving the labeling).
+
+    ``region_labels`` may be keyed by channel *name* (``dict[str, str]``) or by
+    channel *index* (``dict[int, str]``); ``channel_names`` is the ordered
+    channel list that resolves a vertex index to its name.
+    """
+    _require_defect_map(defect_map)
+    tri_idx = np.asarray(defect_map["triangle_indices"], dtype=int)
+    if not isinstance(channel_names, (list, tuple)) or len(channel_names) == 0:
+        raise ValueError("channel_names must be a non-empty list of channel names")
+
+    keys = list(region_labels.keys())
+    by_index = len(keys) > 0 and all(isinstance(k, (int, np.integer)) for k in keys)
+
+    def label_of(ch_index: int):
+        if by_index:
+            return region_labels.get(int(ch_index))
+        if ch_index < 0 or ch_index >= len(channel_names):
+            raise ValueError(
+                f"triangle references channel index {ch_index} outside channel_names "
+                f"(len {len(channel_names)}); defect_map and channel_names are inconsistent"
+            )
+        return region_labels.get(channel_names[ch_index])
+
+    out = np.empty(tri_idx.shape[0], dtype=object)
+    for r, row in enumerate(tri_idx):
+        labs = [label_of(v) for v in row]
+        if any(l is None for l in labs):
+            out[r] = None
+            continue
+        uniq, counts = np.unique(np.asarray(labs, dtype=object), return_counts=True)
+        if counts.max() < 2:  # all three different -> no majority
+            out[r] = None
+            continue
+        out[r] = uniq[int(np.argmax(counts))]
+    return out
+
+
 def net_charge_by_region(
     defect_map: dict,
     region_labels: dict,
@@ -328,24 +378,11 @@ def net_charge_by_region(
     rather than a fabricated zero.
     """
     _require_defect_map(defect_map)
-    tri_idx = np.asarray(defect_map["triangle_indices"], dtype=int)
     signed = np.asarray(defect_map["signed_winding"], dtype=float)
     chir = np.asarray(defect_map["chirality"], dtype=float)
-    if not isinstance(channel_names, (list, tuple)) or len(channel_names) == 0:
-        raise ValueError("channel_names must be a non-empty list of channel names")
 
-    keys = list(region_labels.keys())
-    by_index = len(keys) > 0 and all(isinstance(k, (int, np.integer)) for k in keys)
-
-    def label_of(ch_index: int):
-        if by_index:
-            return region_labels.get(int(ch_index))
-        if ch_index < 0 or ch_index >= len(channel_names):
-            raise ValueError(
-                f"triangle references channel index {ch_index} outside channel_names "
-                f"(len {len(channel_names)}); defect_map and channel_names are inconsistent"
-            )
-        return region_labels.get(channel_names[ch_index])
+    # Per-triangle region via majority vote (shared with spatial-null callers).
+    tri_region = assign_triangles_to_regions(defect_map, region_labels, channel_names)
 
     region_net: dict[str, float] = {}
     region_abs: dict[str, float] = {}
@@ -353,16 +390,10 @@ def net_charge_by_region(
     region_chir_sum: dict[str, float] = {}
     n_unassigned = 0
 
-    for row, w, c in zip(tri_idx, signed, chir):
-        labs = [label_of(v) for v in row]
-        if any(l is None for l in labs):
+    for region, w, c in zip(tri_region, signed, chir):
+        if region is None:  # unlabeled vertex or no majority -> never guessed
             n_unassigned += 1
             continue
-        uniq, counts = np.unique(np.asarray(labs, dtype=object), return_counts=True)
-        if counts.max() < 2:  # all three different -> no majority
-            n_unassigned += 1
-            continue
-        region = uniq[int(np.argmax(counts))]
         region_net[region] = region_net.get(region, 0.0) + float(w)
         region_abs[region] = region_abs.get(region, 0.0) + abs(float(w))
         region_n[region] = region_n.get(region, 0) + 1
@@ -380,6 +411,9 @@ def net_charge_by_region(
         "region_n_triangles": region_n,
         "region_mean_chirality": region_mean_chirality,
         "n_unassigned": int(n_unassigned),
+        # per-triangle region label (aligned to defect_map signed_winding/centroid_xy;
+        # None where unassigned) so spatial-null callers reuse this exact labeling.
+        "triangle_region": tri_region,
         "metric_kind": "net_charge_by_region",
     }
 

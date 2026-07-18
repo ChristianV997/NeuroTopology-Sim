@@ -6,8 +6,15 @@ scikit-learn
 pyyaml
 joblib
 mne
-gudhi
 pytest
+mne-bids
+edfio
+eegdash
+the_well
+ripser
+persim
+h5py
+gudhi
 torch>=2.0.0
 torch-geometric>=2.3.0
 pytorch-lightning>=2.0.0
