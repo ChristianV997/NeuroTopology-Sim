@@ -1,0 +1,209 @@
+# Deployment Research Configuration
+# Configuration for sequential deployment orchestration and research analysis
+
+deployment_research:
+  version: "1.0"
+  description: "Performance optimization validation on three real neuroscience datasets"
+
+  datasets:
+    ds005620:
+      name: "Anesthesia EEG"
+      description: "ds005620: 98 subjects, 64 channels, 51.2 Hz sampling"
+      data_type: "EEG"
+      subjects: 98
+      channels: 64
+      duration_minutes: 20
+      sampling_rate_hz: 51.2
+
+      expected_speedup: 13.8
+      speedup_mechanism: "vectorized pdist + cdist + joblib parallelization"
+
+      metric_kinds:
+        - "montage_topology"
+        - "spatial_clustering"
+        - "defect_detection"
+
+      success_criteria:
+        montage_topology_time_ms: [50, 200]
+        speedup_multiplier: [4, 14]
+        defect_detection_nonzero: true
+
+      research_focus:
+        - "anesthesia state classification via topology"
+        - "spatial clustering robustness"
+        - "electrode montage effects on topology detection"
+
+    ds000245:
+      name: "fMRI Spectral TDA"
+      description: "ds000245: 45 subjects, spectral topological data analysis"
+      data_type: "fMRI"
+      subjects: 45
+      rois: 64
+      duration_seconds: 600
+      sampling_rate_hz: 0.5
+
+      expected_speedup: 17.6
+      speedup_mechanism: "batched einsum coherence + vectorized landscape"
+
+      metric_kinds:
+        - "coherence_spectrum"
+        - "spectral_landscape"
+        - "persistence_homology"
+        - "band_mass"
+
+      success_criteria:
+        coherence_time_ms: [10, 50]
+        speedup_multiplier: [5, 18]
+        landscape_computation_successful: true
+
+      research_focus:
+        - "frequency-resolved topology across fMRI bands"
+        - "ROI-level connectivity topological structure"
+        - "persistent homology as alternative to charge"
+
+    nki_rs:
+      name: "Fast-TR BOLD Phase-Topology"
+      description: "NKI-RS: Fast-TR BOLD data (TR=0.645s), Nyquist=0.78 Hz"
+      data_type: "fMRI"
+      subjects_available: 1000
+      subjects_sample: 5
+      tr_seconds: 0.645
+      nyquist_hz: 0.78
+      vortex_precession_hz_range: [1, 10]
+
+      expected_speedup: 10
+      speedup_mechanism: "vectorized Hilbert transform + plaquette topology"
+
+      metric_kinds:
+        - "phase_topology"
+        - "nyquist_validation"
+        - "aliasing_elimination"
+
+      success_criteria:
+        phase_topology_time_ms: [100, 300]
+        nyquist_hz: [0.75, 0.80]
+        speedup_multiplier: [5, 15]
+        vortex_resolved: true
+
+      research_focus:
+        - "fast-TR advantage over slow-TR for phase topology"
+        - "Nyquist frequency sufficiency for vortex detection"
+        - "population-level phase dynamics at resolution limit"
+
+  analysis:
+    comparative_metrics:
+      - name: "mean_speedup"
+        description: "Average speedup across all datasets"
+        target_range: [8, 15]
+
+      - name: "per_dataset_speedup"
+        description: "Individual speedup per dataset"
+        per_dataset:
+          ds005620: [4, 14]
+          ds000245: [5, 18]
+          nki_rs: [5, 15]
+
+      - name: "temporal_distribution"
+        description: "Per-subject time distribution across datasets"
+
+      - name: "error_rates_by_dataset"
+        description: "Failed subjects or data quality issues"
+        acceptable_error_rate: 0.05
+
+    research_questions:
+      - question: "Which optimization mechanism has highest ROI?"
+        analysis: "Compare speedup per line-of-code changed in each optimization"
+
+      - question: "Do speedup estimates align with measurements?"
+        analysis: "Compare predicted vs measured speedups for each dataset"
+
+      - question: "Are results reproducible across re-runs?"
+        analysis: "Run orchestrator twice with same seed, verify identical metrics"
+
+      - question: "What are the failure modes and recovery strategies?"
+        analysis: "Document which datasets/subjects failed and why"
+
+      - question: "How do topology metrics vary across modalities?"
+        analysis: "Cross-dataset correlation: EEG charge vs fMRI persistence vs phase"
+
+      - question: "Is fast-TR BOLD advantage validated?"
+        analysis: "Confirm NKI-RS Nyquist is sufficient for vortex precession"
+
+  hypothesis_testing:
+    h1_eeg_anesthesia:
+      description: "EEG spatial topology predicts anesthesia state"
+      dataset: "ds005620"
+      variables:
+        predictor: "q_z"
+        target: "anesthesia_state"
+      expected_accuracy: [0.70, 0.95]
+      statistical_test: "logistic regression + permutation test"
+
+    h2_topology_stability:
+      description: "Topology metrics stable within modality across subjects"
+      dataset: "all"
+      variables:
+        metric: "q_abs_mean"
+        grouping: "dataset"
+      expected_within_group_cv: [0.15, 0.50]
+      statistical_test: "anova + effect size"
+
+    h3_spectral_resolution:
+      description: "Spectral TDA resolves frequency bands better than time-averaged"
+      dataset: "ds000245"
+      variables:
+        comparison: "band_mass vs global_charge"
+      expected_improvement: [1.2, 3.0]
+      statistical_test: "correlation analysis"
+
+  output_structure:
+    metadata:
+      - "timestamp"
+      - "git_commit"
+      - "git_branch"
+      - "python_version"
+      - "numpy_version"
+      - "scipy_version"
+
+    per_dataset:
+      - "deployment.log"
+      - "deployment_summary.json"
+      - "metrics.json or metrics.csv"
+      - "analysis/ subdirectory"
+
+    research_outputs:
+      - "DEPLOYMENT_RESULTS_REPORT.md"
+      - "DEPLOYMENT_RESULTS.json"
+      - "cross_dataset_analysis.json"
+      - "hypothesis_testing_summary.md"
+
+  reproducibility:
+    version_control:
+      - capture: "git_commit_hash"
+        use_case: "exact code reproduction"
+
+      - capture: "git_branch"
+        use_case: "feature branch identification"
+
+      - capture: "uncommitted_changes"
+        use_case: "detect local modifications"
+
+    environment:
+      - capture: "python_version"
+        use_case: "language runtime compatibility"
+
+      - capture: "numpy_scipy_versions"
+        use_case: "numerical library consistency"
+
+      - capture: "platform_cpu_info"
+        use_case: "platform-dependent performance"
+
+    execution:
+      - capture: "wall_clock_start_time"
+        use_case: "execution timeline"
+
+      - capture: "total_duration"
+        use_case: "benchmark reproducibility"
+
+      - capture: "system_load"
+        use_case: "resource contention detection"
