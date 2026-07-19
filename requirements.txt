@@ -14,6 +14,12 @@ the_well
 ripser
 persim
 h5py
+# Used by analysis/permutation.py::mixedlm_group_effect -- the correct fix for
+# the pseudoreplication bug found in the ds001787 report (window-pooled
+# permutation tests found p<0.001 for effects that were really driven by a
+# handful of subjects; MixedLM properly partitions within/between-subject
+# variance instead of discarding it via per-subject aggregation). BSD-licensed.
+statsmodels
 # Pinned (unlike the rest of this file): these are used directly by
 # tools/stream_process_openneuro_dataset.py and tools/stream_process_ds001787.py
 # (S3 dataset sync + the `aws` CLI subprocess) but were previously undeclared here,
