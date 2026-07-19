@@ -54,3 +54,31 @@ def test_row_ids_unique_across_acquisitions(monkeypatch):
     rows = mod.build_and_extract_real_windows("/fake", max_windows_per_file=1)
     row_ids = [r.row_id for r in rows]
     assert len(row_ids) == len(set(row_ids)), f"duplicate row_ids: {row_ids}"
+
+
+def test_cli_real_output_feeds_level_t(tmp_path, bids_root):
+    """Regression test for the P9(real)->P10 handoff: run_ds005620_m_real --real must
+    write per-window rows that load_level_m_window_features (Level T's loader) can
+    actually consume. Previously features_m.csv held only one aggregate summary row,
+    so Level T raised ValueError('Missing required columns: [...]') on any real run.
+    """
+    import subprocess
+    import sys
+
+    out = tmp_path / "m_real"
+    r = subprocess.run(
+        [
+            sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_m_real",
+            "--real", "--bids-root", bids_root, "--out", str(out),
+            "--window-seconds", "4", "--max-windows-per-file", "2", "--max-channels", "4",
+        ],
+        capture_output=True, text=True,
+    )
+    assert r.returncode == 0, r.stderr
+
+    from sciencer_d.btc_icft.level_t.ds005620_real_topology import load_level_m_window_features
+
+    rows = load_level_m_window_features(str(out))
+    assert len(rows) > 0
+    assert len({row["row_id"] for row in rows}) == len(rows)  # unique
+    assert all(row["source_file"] for row in rows)

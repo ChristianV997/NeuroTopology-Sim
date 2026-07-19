@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import csv
 import json
 import math
@@ -63,6 +63,7 @@ class LevelMRealWindowResult:
     safe_claim: str
     forbidden_claims: list[str]
     warnings: list[str]
+    rows: list[dict] = field(default_factory=list)
 
 
 def _validate_safe_text(text: str) -> None:
@@ -273,6 +274,7 @@ def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str) -> LevelMRe
         class_balance=_class_balance(y_true), auc=auc, brier=brier, ece=ece, leakage_detected=bool(leakage_report["leakage_detected"]),
         artifact_dominance=bool(artifact_report["artifact_dominance"]), artifact_report=artifact_report, leakage_report=leakage_report,
         omega_event=omega_event, safe_claim=safe_claim, forbidden_claims=forbidden_claims, warnings=warnings,
+        rows=[asdict(r) for r in selected],
     )
 
 
@@ -286,12 +288,22 @@ def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -
     omega_path = base / "omega_event.json"
     report_path = base / "report.md"
 
+    # Per-window rows (not just the aggregate summary): this is the contract
+    # `ds005620_real_topology.load_level_m_window_features` requires (REQUIRED_M_COLUMNS)
+    # to compute Level T topology aligned to each Level M window. Previously this file
+    # held only one aggregate row, which silently broke the P9->P10 handoff.
+    row_fieldnames = list(LevelMWindowRow.__dataclass_fields__.keys())
     with features_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["dataset_id", "task", "n_rows", "n_subjects", "n_windows", "auc", "brier", "ece"])
+        writer = csv.DictWriter(f, fieldnames=row_fieldnames)
         writer.writeheader()
-        writer.writerow({"dataset_id": result.dataset_id, "task": result.task, "n_rows": result.n_rows, "n_subjects": result.n_subjects, "n_windows": result.n_windows, "auc": result.auc, "brier": result.brier, "ece": result.ece})
+        for row in result.rows:
+            out_row = dict(row)
+            out_row["warnings"] = "; ".join(row.get("warnings") or [])
+            writer.writerow(out_row)
 
-    metrics_path.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
+    # rows are already in features_m.csv; keep metrics_m.json aggregate-only
+    metrics_dict = {k: v for k, v in asdict(result).items() if k != "rows"}
+    metrics_path.write_text(json.dumps(metrics_dict, indent=2), encoding="utf-8")
     artifact_path.write_text(json.dumps(result.artifact_report, indent=2), encoding="utf-8")
     leakage_path.write_text(json.dumps(result.leakage_report, indent=2), encoding="utf-8")
     omega_path.write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
