@@ -78,14 +78,85 @@ def test_cli(tmp_path: Path):
     c = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--out", str(tmp_path / "o"), "--mock-fixture"]
     r = subprocess.run(c, capture_output=True, text=True)
     assert r.returncode == 0
+
+    # neither --real nor --mock-fixture: must fail loudly, not silently pick one
     c2 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--m-windows", str(tmp_path / "nope"), "--out", str(tmp_path / "o2")]
     r2 = subprocess.run(c2, capture_output=True, text=True)
     assert r2.returncode != 0
-    assert "Run run_ds005620_m_real first or use --mock-fixture" in (r2.stdout + r2.stderr)
-    c3 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--out", str(tmp_path / "o3"), "--real"]
+    assert "One of --real or --mock-fixture is required" in (r2.stdout + r2.stderr)
+
+    # --real with a missing m-windows dir: same missing-input error as --mock-fixture's non-fallback path
+    c3 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--m-windows", str(tmp_path / "nope"), "--out", str(tmp_path / "o3"), "--real"]
     r3 = subprocess.run(c3, capture_output=True, text=True)
     assert r3.returncode != 0
-    assert "Use --mock-fixture for offline validation" in (r3.stdout + r3.stderr)
+    assert "Run run_ds005620_m_real first or use --mock-fixture" in (r3.stdout + r3.stderr)
+
+    # --real and --mock-fixture together: rejected as contradictory
+    c4 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--out", str(tmp_path / "o4"), "--real", "--mock-fixture"]
+    r4 = subprocess.run(c4, capture_output=True, text=True)
+    assert r4.returncode != 0
+    assert "mutually exclusive" in (r4.stdout + r4.stderr)
+
+    # --real with an existing m-windows table whose source files don't exist: skips
+    # gracefully (zeroed row + warning) rather than crashing or fabricating data.
+    m_dir = tmp_path / "m_missing_files"
+    m_dir.mkdir()
+    with (m_dir / "features_m.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(_m_rows()[0].keys()))
+        w.writeheader()
+        w.writerows(_m_rows())
+    c5 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds005620_t_real", "--m-windows", str(m_dir), "--out", str(tmp_path / "o5"), "--real"]
+    r5 = subprocess.run(c5, capture_output=True, text=True)
+    assert r5.returncode == 0, r5.stderr
+    with (tmp_path / "o5" / "features_t.csv").open(encoding="utf-8") as f:
+        out_rows = list(csv.DictReader(f))
+    assert len(out_rows) == 2
+    assert all(row["q_abs"] == "0.0" for row in out_rows)  # skipped: no real signal available
+
+
+def test_real_topology_derived_from_signal_not_metadata(tmp_path: Path, monkeypatch):
+    """Regression test for the fabrication bug: compute_real_topology_for_window must
+    produce different output for different signal content, not a constant derived from
+    row_id/metadata text (that was compute_fixture_topology_for_window's hash-based
+    behavior, previously wired unconditionally into build_level_t_rows_from_m_windows
+    regardless of the --real/--mock-fixture flags).
+    """
+    import numpy as np
+
+    f1 = tmp_path / "a.edf"
+    f2 = tmp_path / "b.edf"
+    f1.write_bytes(b"x")  # only needs to exist; read_window_signal is monkeypatched
+    f2.write_bytes(b"x")
+
+    signals = {
+        str(f1): np.array([[1.0, 1.0, 1.0, 1.0] for _ in range(4)]),  # 4ch, constant -> zero topology
+        str(f2): np.array([[float(i % 7) for i in range(40)] for _ in range(6)]),  # 6ch, varying
+    }
+    monkeypatch.setattr(
+        "data.bids_ingest.read_window_signal",
+        lambda path, *a, **k: signals[path],
+    )
+
+    row_a = {"row_id": "ra", "subject_id": "s1", "session_id": None, "run_id": None,
+              "window_id": "w0", "task_label": "awake", "source_file": str(f1),
+              "window_start_s": "0", "window_end_s": "1"}
+    row_b = {"row_id": "rb", "subject_id": "s1", "session_id": None, "run_id": None,
+              "window_id": "w1", "task_label": "sedated", "source_file": str(f2),
+              "window_start_s": "0", "window_end_s": "1"}
+
+    out_a = topo.compute_real_topology_for_window(row_a)
+    out_b = topo.compute_real_topology_for_window(row_b)
+
+    # Same function, different real signal in -> different topology out (not the same
+    # constant regardless of content, and not a hash of row_id/metadata text).
+    assert (out_a.q_abs, out_a.n_valid_triangles) != (out_b.q_abs, out_b.n_valid_triangles)
+
+    # Calling again with row_a's row_id but row_b's signal must match row_b's result,
+    # proving the output tracks signal content, not the row_id string.
+    row_a_relabeled = {**row_a, "row_id": "totally_different_row_id", "source_file": str(f2)}
+    out_relabeled = topo.compute_real_topology_for_window(row_a_relabeled)
+    assert out_relabeled.q_abs == out_b.q_abs
+    assert out_relabeled.n_valid_triangles == out_b.n_valid_triangles
 
 
 def test_config_contains_contract():

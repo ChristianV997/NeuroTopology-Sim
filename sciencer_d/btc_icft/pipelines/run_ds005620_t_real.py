@@ -22,8 +22,11 @@ def main() -> int:
     p.add_argument("--real", action="store_true")
     a = p.parse_args()
 
-    if a.real:
-        print("Real EEG topology extraction is not implemented in this Level T scaffold. Use --mock-fixture for offline validation.", file=sys.stderr)
+    if a.real and a.mock_fixture:
+        print("--real and --mock-fixture are mutually exclusive.", file=sys.stderr)
+        return 2
+    if not a.real and not a.mock_fixture:
+        print("One of --real or --mock-fixture is required.", file=sys.stderr)
         return 2
 
     if a.mock_fixture:
@@ -38,7 +41,9 @@ def main() -> int:
             print(str(e), file=sys.stderr)
             return 2
 
-    rows = topo.build_level_t_rows_from_m_windows(m_rows, mock_fixture=True)
+    rows = topo.build_level_t_rows_from_m_windows(
+        m_rows, mock_fixture=a.mock_fixture, real=a.real
+    )
     topo.result_rows_cache = rows
     q = topo.build_topology_quality_report(rows)
     n = topo.build_null_placeholder_report(rows)

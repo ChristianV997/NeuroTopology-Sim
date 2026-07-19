@@ -4,7 +4,16 @@ from dataclasses import asdict, dataclass
 import csv
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+from sciencer_d.btc_icft.level_t.eeg_signal_topology import compute_topology_from_channels
+
+# reuse repo path so `from data...` resolves when run as a module (mirrors
+# ds005620_windows_real.py's approach for the same import problem)
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 BANNED_REPORT_PHRASES = (
     "proves consciousness",
@@ -110,9 +119,75 @@ def compute_fixture_topology_for_window(m_row: dict, index: int = 0) -> LevelTRe
     )
 
 
-def build_level_t_rows_from_m_windows(m_rows: list[dict], mock_fixture: bool = False) -> list[LevelTRealTopologyRow]:
+def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16) -> LevelTRealTopologyRow:
+    """Compute topology telemetry from the ACTUAL EEG signal for one window.
+
+    Unlike `compute_fixture_topology_for_window` (which derives numbers from a hash of
+    row_id/metadata text, independent of signal content), this reads the real per-channel
+    samples for the window and computes topology from them via
+    `eeg_signal_topology.compute_topology_from_channels` (the same real, signal-derived
+    computation already used by the generic multi-dataset Level T pipeline).
+
+    If the source file can't be read (missing file, out-of-range window, unsupported
+    format), returns a zero/`topology_status`-flagged row with a warning instead of
+    raising, matching the generic pipeline's skip-and-report convention.
+    """
+    from data.bids_ingest import read_window_signal
+
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = float(m_row.get("window_start_s") or 0.0)
+    window_end_s = float(m_row.get("window_end_s") or 0.0)
+    warnings: list[str] = []
+
+    def _zero_row(reason: str) -> LevelTRealTopologyRow:
+        warnings.append(reason)
+        return LevelTRealTopologyRow(
+            row_id=row_id, subject_id=str(m_row.get("subject_id")),
+            session_id=m_row.get("session_id") or None, run_id=m_row.get("run_id") or None,
+            window_id=str(m_row.get("window_id")), task_label=m_row.get("task_label") or None,
+            q_net=0.0, q_abs=0.0, f_dress=0.0, defect_density=0.0,
+            n_triangles=0, n_valid_triangles=0, topology_quality=0.0,
+            null_method="real_none", null_seed=0,
+            source_file=source_file, window_start_s=window_start_s, window_end_s=window_end_s,
+            warnings=warnings,
+        )
+
+    if not source_file or not Path(source_file).exists():
+        return _zero_row(f"source file not found: {source_file!r}; topology skipped")
+
+    try:
+        channels = read_window_signal(
+            source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
+        )
+    except ValueError as exc:
+        return _zero_row(f"window skipped: {exc}")
+
+    channel_data = [list(map(float, ch)) for ch in channels]
+    (
+        q_net, q_abs, f_dress, defect_density,
+        n_triangles, n_valid_triangles, topology_quality,
+    ) = compute_topology_from_channels(channel_data)
+
+    return LevelTRealTopologyRow(
+        row_id=row_id, subject_id=str(m_row.get("subject_id")),
+        session_id=m_row.get("session_id") or None, run_id=m_row.get("run_id") or None,
+        window_id=str(m_row.get("window_id")), task_label=m_row.get("task_label") or None,
+        q_net=q_net, q_abs=q_abs, f_dress=f_dress, defect_density=defect_density,
+        n_triangles=n_triangles, n_valid_triangles=n_valid_triangles, topology_quality=topology_quality,
+        null_method="real_none", null_seed=int(_h(row_id) % (2**31 - 1)),
+        source_file=source_file, window_start_s=window_start_s, window_end_s=window_end_s,
+        warnings=warnings,
+    )
+
+
+def build_level_t_rows_from_m_windows(
+    m_rows: list[dict], mock_fixture: bool = False, real: bool = False
+) -> list[LevelTRealTopologyRow]:
+    if real:
+        return [compute_real_topology_for_window(r) for r in m_rows]
     if not mock_fixture:
-        raise ValueError("real EEG topology extraction is not implemented in this scaffold; use --mock-fixture")
+        raise ValueError("real EEG topology extraction requires --real or --mock-fixture")
     return [compute_fixture_topology_for_window(r, i) for i, r in enumerate(m_rows)]
 
 
