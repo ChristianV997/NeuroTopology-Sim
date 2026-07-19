@@ -40,3 +40,14 @@ not reimplemented). CLI now requires exactly one of --real/--mock-fixture.
 Verified end-to-end: 12 real windows -> 12 distinct q_abs values (previously: hash
 noise). Regression test proves output tracks signal, not row_id text.
 Full suite: 1625 passed, 9 skipped.
+
+## P2 — DONE
+Built `tools/stream_process_openneuro_dataset.py`: per-subject sync -> real M+T
+extraction -> per-subject CSV -> delete raw -> manifest checkpoint (resume-safe).
+Scoped to DS005620 only for now (the only dataset with a working real extraction
+path); DATASET_PROCESSORS is the plug-in point for others once they have one.
+Deviated from the original plan's "Parquet feature store": pyarrow/fastparquet
+are not in requirements.txt and this repo's convention is plain CSV everywhere
+(features_m.csv, features_t.csv) — used per-subject CSV files instead rather than
+adding a new dependency for something CSV already does adequately here.
+7/7 tests pass (manifest resume, raw-deletion, failure isolation, --limit).
