@@ -10,10 +10,11 @@ the ds005620 module; `--real` never falls back to it (see
 `build_level_t_rows_from_m_windows`, copied verbatim including the mutual-exclusivity
 contract enforced by the CLI).
 
-BANNED_REPORT_PHRASES is copied verbatim from the ds005620 module (not weakened),
-plus two ds003969-relevant additions (`enlightenment proven`, `nirvana confirmed`)
-matching the guard added to ds003969_windows.py -- overclaiming risk here is
-meditation-tradition-specific, not just consciousness/soul/afterlife generic.
+BANNED_REPORT_PHRASES is imported from the shared
+`sciencer_d.btc_icft.report_guardrails` module (previously a verbatim copy of
+the ds005620 tuple with two meditation-specific additions,
+`enlightenment proven`/`nirvana confirmed`, that had drifted out of sync with
+the older ds005620 copies -- consolidated to a single source of truth).
 """
 from __future__ import annotations
 
@@ -25,25 +26,11 @@ import sys
 from pathlib import Path
 
 from sciencer_d.btc_icft.level_t.eeg_signal_topology import compute_topology_from_channels
+from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-
-BANNED_REPORT_PHRASES = (
-    "proves consciousness",
-    "soul proven",
-    "afterlife proven",
-    "liberation detected",
-    "enlightenment proven",
-    "nirvana confirmed",
-    "ontology solved",
-    "ultimate reality",
-    "q equals self",
-    "q equals soul",
-    "q_abs equals suffering",
-    "f_dress equals karma",
-)
 
 REQUIRED_M_COLUMNS = [
     "row_id", "subject_id", "session_id", "run_id", "window_id", "task_label",
@@ -90,10 +77,7 @@ class LevelTRealTopologyResult:
 
 
 def _validate_safe_text(text: str) -> None:
-    low = text.lower()
-    for phrase in BANNED_REPORT_PHRASES:
-        if phrase in low:
-            raise ValueError(f"banned phrase detected: {phrase}")
+    validate_safe_text(text)
 
 
 def _h(text: str) -> int:

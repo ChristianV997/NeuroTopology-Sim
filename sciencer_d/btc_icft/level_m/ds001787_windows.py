@@ -27,21 +27,7 @@ import math
 from pathlib import Path
 
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features
-
-BANNED_REPORT_PHRASES = (
-    "proves consciousness",
-    "soul proven",
-    "afterlife proven",
-    "liberation detected",
-    "enlightenment proven",
-    "nirvana confirmed",
-    "ontology solved",
-    "ultimate reality",
-    "q equals self",
-    "q equals soul",
-    "q_abs equals suffering",
-    "f_dress equals karma",
-)
+from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
 
 
 @dataclass
@@ -93,10 +79,7 @@ class LevelMRealWindowResult:
 
 
 def _validate_safe_text(text: str) -> None:
-    low = text.lower()
-    for phrase in BANNED_REPORT_PHRASES:
-        if phrase in low:
-            raise ValueError(f"banned phrase detected: {phrase}")
+    validate_safe_text(text)
 
 
 def _class_balance(y_true: list[int]) -> dict[str, int]:
