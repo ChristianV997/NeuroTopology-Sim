@@ -1,0 +1,35 @@
+dataset_id: ds001787
+pipeline_id: ds001787_m_real_windows_v0
+default_task: expert_vs_novice
+default_out: outputs/btc_icft/ds001787/m_real
+modes:
+  fixed:
+    n_fixed_windows: 6
+    window_seconds: 10.0
+  probe_locked:
+    requires: code/MW_Current_TextFileBIDS.zip
+    alignment_match_rate_gate: 0.9
+required_inputs:
+  - bids_root (real EEG synced from s3://openneuro.org/ds001787)
+required_outputs:
+  - features_m.csv
+  - metrics_m.json
+  - artifact_report.json
+  - leakage_report.json
+  - omega_event.json
+  - report.md
+allowed_tasks:
+  - expert_vs_novice
+guardrails:
+  - no_data_download
+  - no_level_t_topology
+  - no_residual_promotion
+  - expert_not_awakened
+  - novice_not_deficient
+  - behavior_not_report
+  - state_not_experience
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims
