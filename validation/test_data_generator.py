@@ -17,7 +17,9 @@ from dataclasses import asdict
 
 def generate_brainavision_triplet(subject: str, condition: str, run: str, out_dir: Path,
                                   n_channels: int = 64, sfreq: float = 5000.0,
-                                  duration_s: float = 60.0, seed: int = 42):
+                                  duration_s: float = 60.0, seed: int = 42,
+                                  task: str = None, acq: str = None,
+                                  ch_names: list[str] = None):
     """Generate a synthetic BrainVision EEG triplet for testing.
 
     Parameters
@@ -38,10 +40,38 @@ def generate_brainavision_triplet(subject: str, condition: str, run: str, out_di
         Recording duration in seconds (default 60)
     seed : int
         Random seed for reproducibility
+    task : str
+        BIDS task label (overrides condition for filename)
+    acq : str
+        BIDS acquisition label (e.g., "EC", "rest")
+    ch_names : list[str]
+        Channel names (must be 10-20 compatible or list of n_channels)
     """
+    # Default ds005620 channel list (64 channels including VEOG, HEOG, EMG)
+    DS005620_CHANNELS = [
+        "Iz", "O2", "Oz", "O1", "PO8", "PO4", "POz", "PO3", "PO7",
+        "P8", "P6", "P4", "P2", "Pz", "P1", "P3", "P5", "P7",
+        "TP10", "TP8", "CP6", "CP4", "CP2", "CPz", "CP1", "CP3", "CP5", "TP7", "TP9",
+        "T8", "C6", "C4", "C2", "Cz", "C1", "C3", "C5", "T7",
+        "FT8", "FC6", "FC4", "FC2", "FCz", "FC1", "FC3", "FC5", "FT7",
+        "F8", "F6", "F4", "F2", "Fz", "F1", "F3", "F5", "F7",
+        "AF4", "AFz", "AF3", "Fp2", "Fpz", "Fp1",
+        "VEOG", "HEOG", "EMG"
+    ]
+
     rng = np.random.RandomState(seed)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use provided task/acq or default from condition
+    if task is None:
+        task = condition
+    if acq is None:
+        acq = "EC" if condition == "awake" else "rest"
+
+    # Use provided channel names or default
+    if ch_names is None:
+        ch_names = DS005620_CHANNELS[:n_channels]
 
     # Generate synthetic EEG data
     n_samples = int(sfreq * duration_s)
@@ -72,9 +102,9 @@ def generate_brainavision_triplet(subject: str, condition: str, run: str, out_di
     # Quantize to 16-bit (as in real BrainVision)
     signal = np.int16(signal * 1000)  # Scale to use full int16 range
 
-    # Build filenames
-    run_str = f"_{run}" if run else ""
-    base = f"sub-{subject}_task-{condition}_acq-EC{run_str}_eeg"
+    # Build filenames using BIDS convention
+    run_str = f"_run-{run}" if run else ""
+    base = f"sub-{subject}_task-{task}_acq-{acq}{run_str}_eeg"
 
     # Write .eeg (binary data file)
     eeg_path = out_dir / f"{base}.eeg"
@@ -82,7 +112,6 @@ def generate_brainavision_triplet(subject: str, condition: str, run: str, out_di
 
     # Write .vhdr (header file)
     vhdr_path = out_dir / f"{base}.vhdr"
-    ch_names = [f"Ch{i+1:02d}" for i in range(n_channels)]
 
     # Build vhdr content (BrainVision format, case-sensitive)
     vhdr_lines = [
@@ -103,13 +132,13 @@ def generate_brainavision_triplet(subject: str, condition: str, run: str, out_di
         "[Binary Infos]",
         "BinaryFormat=INT_16",
         "",
-        "[Channel Infos]",
-        "Ch=1"
+        "[Channel Infos]"
     ]
 
-    # Add channel specifications
+    # Add channel specifications using proper 10-20 channel names
     for i in range(n_channels):
-        vhdr_lines.append(f"Ch{i+1}=Ch{i+1:02d},,0.1,µV,0.0,{int(1e6/sfreq)},Fpz")
+        ch = ch_names[i]
+        vhdr_lines.append(f"Ch{i+1}={ch},,0.1,µV,0.0,{int(1e6/sfreq)},Fpz")
 
     vhdr_lines.extend([
         "",
@@ -179,14 +208,26 @@ def generate_ds005620_test_dataset(base_dir: Path, subjects: list[str],
         generated["subjects"][sub] = {"conditions": {}}
 
         for cond in conditions:
-            # Awake: one recording; Sed: multiple runs
-            runs = [""] if cond == "awake" else ["run-1", "run-2", "run-3"]
+            if cond == "awake":
+                # Awake: EC acquisition, one recording
+                runs = [""]
+                acq = "EC"
+                task = "awake"
+            elif cond == "sed":
+                # Sed: rest acquisition (not EC), multiple runs
+                runs = ["1", "2", "3"]
+                acq = "rest"
+                task = "sed"
+            else:
+                continue
 
             for run in runs:
+                # Use ds005620 channel list (64 channels including EOG/EMG)
                 vhdr = generate_brainavision_triplet(
-                    sub, cond, run, sub_dir, seed=hash((sub, cond, run)) % (2**31)
+                    sub, cond, run, sub_dir, seed=hash((sub, cond, run)) % (2**31),
+                    task=task, acq=acq
                 )
-                run_label = run.split("-")[1] if run else ""
+                run_label = run
                 generated["subjects"][sub]["conditions"].setdefault(cond, []).append({
                     "run": run_label,
                     "vhdr": str(vhdr)
