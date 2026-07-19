@@ -20,6 +20,11 @@ def main() -> int:
     p.add_argument("--out", default="outputs/btc_icft/ds005620/t_real")
     p.add_argument("--mock-fixture", action="store_true")
     p.add_argument("--real", action="store_true")
+    p.add_argument("--compute-nulls", action="store_true", help="Run the (compute-heavy) real surrogate null gate; off by default.")
+    p.add_argument("--n-surrogates", type=int, default=50, help="Surrogates per window for the null gate (only used with --compute-nulls).")
+    p.add_argument("--gate-sample-size", type=int, default=20, help="Bound the number of windows the null gate runs on; 0 means gate all windows.")
+    p.add_argument("--n-permutations", type=int, default=2000, help="Permutations for the group-significance report.")
+    p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
 
     if a.real and a.mock_fixture:
@@ -56,7 +61,18 @@ def main() -> int:
         forbidden_claims=["No topology proof.","No consciousness proof.","No self or soul claim.","No liberation or enlightenment claim.","No afterlife claim.","No ontology proof.","No Q/self, Q/soul, Q_abs/suffering, or f_dress/karma equivalence."],
         warnings=[],
     )
-    paths = topo.write_level_t_topology_outputs(res, a.out)
+    group_significance_report = topo.build_group_significance_report(
+        rows, m_rows, n_permutations=a.n_permutations, seed=a.seed
+    )
+    null_gate_report = None
+    if a.compute_nulls:
+        null_gate_report = topo.build_null_gate_report(
+            rows, m_rows, n_surrogates=a.n_surrogates, seed=a.seed,
+            sample_size=(a.gate_sample_size if a.gate_sample_size > 0 else None),
+        )
+    paths = topo.write_level_t_topology_outputs(
+        res, a.out, null_gate_report=null_gate_report, group_significance_report=group_significance_report
+    )
     for k, v in paths.items():
         print(f"{k}: {v}")
     return 0

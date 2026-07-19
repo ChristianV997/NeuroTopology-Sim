@@ -11,6 +11,21 @@ required_outputs:
   - artifact_alignment_report.json
   - omega_event.json
   - report.md
+optional_outputs:
+  - null_gate_report.json
+  - group_significance_report.json
+statistics:
+  group_significance:
+    enabled_by_default: true
+    method: subject_blocked_permutation_test (primary), permutation_test (window_pooled, naive, reported side by side)
+    n_permutations: 2000
+    seed: 0
+  null_gate:
+    enabled_by_default: false
+    cli_flag: --compute-nulls
+    method: phase_randomize_time surrogates, compute_null_summary z-score
+    n_surrogates: 50
+    gate_sample_size: 20
 required_columns:
   - row_id
   - subject_id

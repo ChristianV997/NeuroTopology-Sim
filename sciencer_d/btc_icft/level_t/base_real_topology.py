@@ -22,6 +22,33 @@ exists at the per-dataset shim layer, unchanged from the caller's perspective,
 but no longer leaks into the shared logic itself -- the shared function has no
 hidden dependency on which dataset module happens to have set its own global
 before the call).
+
+Phase 3 addition: `build_null_gate_report` and `build_group_significance_report`
+replace the `"status": "placeholder_only", "real_nulls_performed": False` stub
+that every one of the three pre-consolidation files wrote (a self-reporting
+"we didn't run this" blob, referencing `validation.nulls`' function names as
+strings without ever calling them). Both are now real:
+- `build_null_gate_report` calls `validation.nulls.phase_randomize_time` on
+  the actual per-channel signal and recomputes topology on each surrogate --
+  the same phase-randomization surrogate gate used manually, ad hoc, in prior
+  report-writing sessions, now committed as reusable pipeline code. Compute-
+  heavy (N surrogates x per-window topology recomputation), so it is opt-in
+  and bounded by `sample_size` by default -- gating every window in a
+  1000+-window dataset by default would make every real run dramatically
+  slower for a check most callers don't need every time.
+- `build_group_significance_report` uses `analysis.permutation`'s
+  window-pooled and subject-blocked permutation tests (Phase 1) to test
+  whether a Level M grouping column (`state_label` by default -- present in
+  every dataset's Level M output: awake/sedated, meditation/thinking,
+  expert/novice) predicts Level T topology metrics. Joins Level T rows back
+  to Level M rows by row_id (same join `build_artifact_alignment_report`
+  already does for artifact_score) since Level T rows do not themselves carry
+  the semantic group label, only `task_label`. Cheap (no surrogates), so it
+  runs by default whenever exactly 2 group values are present; reports
+  `"not_applicable"` with a reason otherwise (e.g. more than 2 task values,
+  or a continuous variable like ds001787's depth-of-meditation rating, which
+  needs a correlation test this function does not attempt -- see that
+  dataset's own report for how that analysis was actually done).
 """
 from __future__ import annotations
 
@@ -31,6 +58,8 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+
+import numpy as np
 
 from sciencer_d.btc_icft.level_t.eeg_signal_topology import compute_topology_from_channels
 from sciencer_d.btc_icft.report_guardrails import validate_safe_text
@@ -218,6 +247,165 @@ def build_null_placeholder_report(rows: list[LevelTRealTopologyRow]) -> dict:
     return {"status": "placeholder_only", "real_nulls_performed": False, "methods_planned": ["channel_shuffle", "time_reverse", "phase_randomization"], "note": "Null controls are placeholders at Level T extraction; residual benchmark controls run in Issue #54.", "n_rows": len(rows)}
 
 
+def compute_surrogate_gate_for_window(
+    m_row: dict, n_surrogates: int = 50, seed: int = 0, max_channels: int | None = 16,
+) -> dict:
+    """Phase-randomization surrogate gate for one window: is the observed
+    topological charge (q_abs) genuine cross-channel structure, or would a
+    phase-randomized surrogate with the same per-channel power spectrum give
+    a similar value?
+
+    Reads the real per-channel signal (same source as `compute_real_topology_for_window`),
+    generates `n_surrogates` phase-randomized copies via
+    `validation.nulls.phase_randomize_time` (preserves each channel's power
+    spectrum, destroys cross-channel phase relationships), recomputes q_abs on
+    each surrogate, and returns `validation.nulls.compute_null_summary` (a
+    z-score of the observed value against the surrogate null distribution)
+    plus row identity. Returns a `{"status": "skipped", ...}` dict (not a
+    raised exception) if the source file can't be read, matching this
+    module's existing skip-and-report convention.
+    """
+    from data.bids_ingest import read_window_signal
+    from validation.nulls import compute_null_summary, phase_randomize_time
+
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = float(m_row.get("window_start_s") or 0.0)
+    window_end_s = float(m_row.get("window_end_s") or 0.0)
+
+    if not source_file or not Path(source_file).exists():
+        return {"row_id": row_id, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
+
+    try:
+        channels = read_window_signal(
+            source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
+        )
+    except ValueError as exc:
+        return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
+
+    channel_data = [list(map(float, ch)) for ch in channels]
+    observed_q_abs = compute_topology_from_channels(channel_data)[1]  # (q_net, q_abs, ...)
+
+    arr = np.asarray(channel_data, dtype=float)
+    surrogate_q_abs = []
+    for i in range(n_surrogates):
+        surrogate = phase_randomize_time(arr, seed=seed + i)
+        surrogate_q_abs.append(compute_topology_from_channels(surrogate.tolist())[1])
+
+    summary = compute_null_summary(observed_q_abs, surrogate_q_abs)
+    return {"row_id": row_id, "status": "gated", "n_surrogates": n_surrogates, **summary}
+
+
+def build_null_gate_report(
+    rows: list[LevelTRealTopologyRow], m_rows: list[dict],
+    n_surrogates: int = 50, seed: int = 0, sample_size: int | None = 20, max_channels: int | None = 16,
+) -> dict:
+    """Aggregate `compute_surrogate_gate_for_window` over (optionally a bounded
+    sample of) rows.
+
+    `sample_size` bounds compute cost: gating every window in a large dataset
+    by default would make every real run substantially slower for a check
+    most callers don't need every time. `sample_size=None` gates all rows.
+    Sampling uses a fixed seeded choice, so results are reproducible.
+    """
+    by_id = {str(m.get("row_id")): m for m in m_rows}
+    candidate_rows = [r for r in rows if r.row_id in by_id]
+
+    if sample_size is not None and len(candidate_rows) > sample_size:
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
+        candidate_rows = [candidate_rows[i] for i in sorted(idx)]
+
+    gate_results = [
+        compute_surrogate_gate_for_window(by_id[r.row_id], n_surrogates=n_surrogates, seed=seed, max_channels=max_channels)
+        for r in candidate_rows
+    ]
+    gated = [g for g in gate_results if g["status"] == "gated"]
+    skipped = [g for g in gate_results if g["status"] == "skipped"]
+    z_values = [g["z"] for g in gated if g["z"] == g["z"]]  # filter nan
+
+    return {
+        "status": "real_nulls_performed",
+        "real_nulls_performed": True,
+        "method": "phase_randomize_time",
+        "n_surrogates_per_window": n_surrogates,
+        "n_windows_gated": len(gated),
+        "n_windows_skipped": len(skipped),
+        "n_windows_total_candidates": len(rows),
+        "mean_abs_z": float(np.mean(np.abs(z_values))) if z_values else float("nan"),
+        "n_passed_z_ge_2": sum(1 for z in z_values if abs(z) >= 2.0),
+        "seed": seed,
+        "sample_size": sample_size,
+        "gate_results": gate_results,
+    }
+
+
+def build_group_significance_report(
+    rows: list[LevelTRealTopologyRow], m_rows: list[dict],
+    group_col: str = "state_label", value_cols: tuple[str, ...] = ("q_net", "q_abs", "f_dress", "defect_density"),
+    n_permutations: int = 2000, seed: int = 0,
+) -> dict:
+    """Test whether a Level M grouping column (default `state_label`) predicts
+    each Level T topology metric, using both the window-pooled and
+    subject-blocked permutation tests from `analysis.permutation`.
+
+    Joins Level T rows back to Level M rows by row_id (Level T rows do not
+    themselves carry the semantic group label, only `task_label`). Reports
+    `"not_applicable"` with a reason if `group_col` is absent from the joined
+    data or doesn't have exactly 2 distinct non-null values -- this function
+    only covers the 2-group comparison case; continuous-variable correlation
+    (e.g. a 0-3 depth rating) needs a different test this function does not
+    attempt.
+    """
+    import pandas as pd
+
+    from analysis.permutation import permutation_test, subject_blocked_permutation_test
+
+    by_id = {str(m.get("row_id")): m for m in m_rows}
+    joined = []
+    for r in rows:
+        m = by_id.get(r.row_id)
+        if m is None:
+            continue
+        group_val = m.get(group_col)
+        if group_val in (None, ""):
+            continue
+        joined.append({"subject_id": r.subject_id, "group": group_val, **{c: getattr(r, c) for c in value_cols}})
+
+    if not joined:
+        return {"status": "not_applicable", "reason": f"no rows with a non-null {group_col!r} value", "group_col": group_col}
+
+    df = pd.DataFrame(joined)
+    groups = sorted(df["group"].unique(), key=str)
+    if len(groups) != 2:
+        return {
+            "status": "not_applicable",
+            "reason": f"{group_col!r} has {len(groups)} distinct values ({groups}), this report only covers 2-group comparisons",
+            "group_col": group_col,
+        }
+
+    metric_results = {}
+    for value_col in value_cols:
+        sub = df[["subject_id", "group", value_col]].dropna()
+        a = sub.loc[sub["group"] == groups[0], value_col].to_numpy(dtype=float)
+        b = sub.loc[sub["group"] == groups[1], value_col].to_numpy(dtype=float)
+        if len(a) < 2 or len(b) < 2:
+            metric_results[value_col] = {"status": "insufficient_data"}
+            continue
+        pooled = permutation_test(a, b, n_permutations=n_permutations, seed=seed)
+        blocked = subject_blocked_permutation_test(sub.rename(columns={value_col: "value"}), "value", "group", "subject_id", n_permutations=n_permutations, seed=seed)
+        metric_results[value_col] = {"window_pooled": pooled.to_dict(), "subject_blocked": blocked.to_dict()}
+
+    return {
+        "status": "computed",
+        "group_col": group_col,
+        "groups": [str(g) for g in groups],
+        "n_permutations": n_permutations,
+        "seed": seed,
+        "metrics": metric_results,
+    }
+
+
 def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: list[dict]) -> dict:
     by_id = {str(r.get("row_id")): r for r in m_rows}
     art = []
@@ -249,8 +437,15 @@ def build_level_t_omega_event(rows: list[LevelTRealTopologyRow], dataset_id: str
 
 
 def write_level_t_topology_outputs(
-    result: LevelTRealTopologyResult, out_dir: str, rows: list[LevelTRealTopologyRow], dataset_id: str
+    result: LevelTRealTopologyResult, out_dir: str, rows: list[LevelTRealTopologyRow], dataset_id: str,
+    null_gate_report: dict | None = None, group_significance_report: dict | None = None,
 ) -> dict[str, str]:
+    """`null_gate_report`/`group_significance_report` are optional (default
+    None, writing nothing extra) so existing callers that don't pass them keep
+    getting exactly the same output files as before. Passing them writes two
+    additional JSON files and adds report.md sections -- see
+    `build_null_gate_report`/`build_group_significance_report`.
+    """
     base = Path(out_dir); base.mkdir(parents=True, exist_ok=True)
     paths = {
         "features_t.csv": base / "features_t.csv",
@@ -260,6 +455,11 @@ def write_level_t_topology_outputs(
         "omega_event.json": base / "omega_event.json",
         "report.md": base / "report.md",
     }
+    if null_gate_report is not None:
+        paths["null_gate_report.json"] = base / "null_gate_report.json"
+    if group_significance_report is not None:
+        paths["group_significance_report.json"] = base / "group_significance_report.json"
+
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
         for r in rows:
@@ -271,7 +471,12 @@ def write_level_t_topology_outputs(
     paths["null_placeholder_report.json"].write_text(json.dumps(result.null_placeholder_report, indent=2), encoding="utf-8")
     paths["artifact_alignment_report.json"].write_text(json.dumps(result.artifact_alignment_report, indent=2), encoding="utf-8")
     paths["omega_event.json"].write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
-    report = "\n".join([
+    if null_gate_report is not None:
+        paths["null_gate_report.json"].write_text(json.dumps(null_gate_report, indent=2), encoding="utf-8")
+    if group_significance_report is not None:
+        paths["group_significance_report.json"].write_text(json.dumps(group_significance_report, indent=2), encoding="utf-8")
+
+    report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
         "## Dataset/stage",
         f"- dataset_id: {dataset_id}",
@@ -284,6 +489,12 @@ def write_level_t_topology_outputs(
         f"- {result.topology_quality_report}",
         "## Null placeholder report",
         f"- {result.null_placeholder_report}",
+    ]
+    if null_gate_report is not None:
+        report_lines += ["## Null gate report (real phase-randomization surrogates)", f"- {null_gate_report}"]
+    if group_significance_report is not None:
+        report_lines += ["## Group significance report (permutation tests)", f"- {group_significance_report}"]
+    report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",
         "## Safe claim",
@@ -292,7 +503,8 @@ def write_level_t_topology_outputs(
         "## Warnings", *[f"- {w}" for w in result.warnings],
         "## Next required step",
         "- Run Issue #54 real/local M+T residual benchmark orchestration after Level M and Level T feature tables are available.",
-    ])
+    ]
+    report = "\n".join(report_lines)
     _validate_safe_text(report)
     paths["report.md"].write_text(report + "\n", encoding="utf-8")
     return {k: str(v) for k, v in paths.items()}

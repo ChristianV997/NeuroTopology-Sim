@@ -22,7 +22,9 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     LevelTRealTopologyResult,
     LevelTRealTopologyRow,
     build_artifact_alignment_report,
+    build_group_significance_report,
     build_level_t_rows_from_m_windows,
+    build_null_gate_report,
     build_null_placeholder_report,
     build_topology_quality_report,
     compute_fixture_topology_for_window,
@@ -41,8 +43,14 @@ def build_level_t_omega_event(rows: list[LevelTRealTopologyRow]) -> dict:
     return _base.build_level_t_omega_event(rows, DATASET_ID)
 
 
-def write_level_t_topology_outputs(result: LevelTRealTopologyResult, out_dir: str) -> dict[str, str]:
-    return _base.write_level_t_topology_outputs(result, out_dir, result_rows_cache, DATASET_ID)
+def write_level_t_topology_outputs(
+    result: LevelTRealTopologyResult, out_dir: str,
+    null_gate_report: dict | None = None, group_significance_report: dict | None = None,
+) -> dict[str, str]:
+    return _base.write_level_t_topology_outputs(
+        result, out_dir, result_rows_cache, DATASET_ID,
+        null_gate_report=null_gate_report, group_significance_report=group_significance_report,
+    )
 
 
 result_rows_cache: list[LevelTRealTopologyRow] = []
