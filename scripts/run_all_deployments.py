@@ -234,10 +234,14 @@ class DeploymentOrchestrator:
 
     def _save_metadata(self):
         """Save comprehensive reproducibility metadata."""
-        import git
         import platform
-        import scipy
         import numpy
+
+        try:
+            import scipy
+            scipy_version = scipy.__version__
+        except ImportError:
+            scipy_version = "not installed"
 
         metadata = {
             "timestamp": self.timestamp,
@@ -257,7 +261,7 @@ class DeploymentOrchestrator:
                 "platform": platform.platform(),
                 "cpu_count": platform.machine(),
                 "numpy_version": numpy.__version__,
-                "scipy_version": scipy.__version__,
+                "scipy_version": scipy_version,
             },
 
             # Execution metadata
@@ -267,6 +271,7 @@ class DeploymentOrchestrator:
 
         # Try to get git info
         try:
+            import git
             repo = git.Repo(Path(__file__).parent.parent)
             metadata["git"]["branch"] = repo.active_branch.name
             metadata["git"]["commit"] = repo.head.commit.hexsha[:16]
@@ -407,7 +412,8 @@ def main():
     )
 
     # Exit with appropriate code
-    exit_code = 0 if results["n_failed"] == 0 else 1
+    n_failed = len(results.get("errors", {}))
+    exit_code = 0 if n_failed == 0 else 1
     sys.exit(exit_code)
 
 
