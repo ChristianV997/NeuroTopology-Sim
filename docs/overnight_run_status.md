@@ -85,3 +85,19 @@ response scores higher than pure noise). NOT wired into an end-to-end DS002094
 run -- no DS002094 real extraction pipeline exists yet in this repo (unlike
 DS005620). Building one (TMS-EEG epoch/event-locked window extraction) is
 follow-up work, not attempted tonight given remaining time budget.
+
+## P5 — DONE
+The P12/P16 label-contract activation packet (sciencer_d/btc_icft/labels/
+ds005620_contract_activation.py + pipelines/prepare_ds005620_contract_activation.py)
+already implements exactly the "draft, not activated" pattern this task called for
+-- contract_activation_allowed is hardcoded False throughout, no code change needed.
+Ran it against the real downloaded participants.tsv (21 subjects: columns are age,
+sex, awakenings, TMS, tms_count, excluded, bad_after_preprocessing -- note there is
+NO subject-level awake/sedated column; that distinction lives in the per-recording
+task label (task-awake/task-sed/task-sed2) already used by the M/T pipelines, not
+in participants.tsv). Output written to
+outputs/btc_icft/ds005620/contract_activation_draft/ (gitignored, local only):
+activation_blockers.json confirms all 8 blockers present, contract_activation_allowed
+=false, human_review_packet.json has the reviewer checklist. Nothing was activated.
+Next step (human, not automated): review report.md there and, if a label mapping is
+approved, run the separate contract-activation PR flow this module points to.
