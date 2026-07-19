@@ -1,0 +1,30 @@
+dataset_id: ds003969
+pipeline_id: ds003969_m_real_windows_v0
+default_task: meditation_vs_thinking
+default_out: outputs/btc_icft/ds003969/m_real
+window_seconds: 10.0
+max_windows_per_file: 2
+required_inputs:
+  - bids_root (real EEG synced from s3://openneuro.org/ds003969)
+required_outputs:
+  - features_m.csv
+  - metrics_m.json
+  - artifact_report.json
+  - leakage_report.json
+  - omega_event.json
+  - report.md
+allowed_tasks:
+  - meditation_vs_thinking
+guardrails:
+  - no_data_download
+  - no_level_t_topology
+  - no_residual_promotion
+  - meditation_not_awakening
+  - thinking_not_ordinary_baseline
+  - behavior_not_report
+  - state_not_experience
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims

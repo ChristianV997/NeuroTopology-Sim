@@ -29,6 +29,7 @@ class BIDSEEGRecord:
     session_id: Optional[str]
     task_label: Optional[str]
     run_id: Optional[str]
+    acq_label: Optional[str]
     extension: str
     is_eeg_candidate: bool
     provenance: str = "real_bids"
@@ -68,6 +69,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                     session_id=(f"ses-{bp.session}" if bp.session else None),
                     task_label=bp.task,
                     run_id=bp.run,
+                    acq_label=getattr(bp, "acquisition", None),
                     extension=fpath.suffix.lower(),
                     provenance="real_bids",
                     is_eeg_candidate=True,
@@ -86,6 +88,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                         session_id=(f"ses-{ents['ses']}" if "ses" in ents else None),
                         task_label=ents.get("task"),
                         run_id=ents.get("run"),
+                        acq_label=ents.get("acq"),
                         extension=fpath.suffix.lower(),
                         provenance="real_bids",
                         is_eeg_candidate=True,
@@ -133,10 +136,14 @@ def read_window_signal(
     pick: str = "mean",
     max_channels: int | None = None,
 ) -> np.ndarray:
-    """Return REAL samples for one window as a 1-D float array.
+    """Return REAL samples for one window.
 
-    pick="mean" averages across EEG channels (channel-agnostic Level-M proxy);
-    pick="first" returns the first EEG channel. Raises if the window is out of range.
+    pick="mean" averages across EEG channels (channel-agnostic Level-M proxy) and
+    returns a 1-D array; pick="first" returns the first EEG channel, also 1-D.
+    pick="all" returns every (up to max_channels) picked channel unreduced, as a 2-D
+    (n_channels, n_samples) array, for consumers that need real per-channel structure
+    (e.g. Level T topology, which needs inter-channel relationships that a channel-mean
+    reduction destroys). Raises if the window is out of range.
     """
     raw = _read_raw(path)
     sfreq = float(raw.info["sfreq"])
@@ -160,6 +167,8 @@ def read_window_signal(
     data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
     if data.ndim == 1:
         data = data[None, :]
+    if pick == "all":
+        return np.asarray(data, dtype=float)
     if pick == "first":
         sig = data[0]
     else:

@@ -7,3 +7,5 @@ __pycache__/
 project_manifest.json
 paper/figures/
 *.sqlite
+.venv/
+data/ds[0-9][0-9][0-9][0-9][0-9][0-9]/

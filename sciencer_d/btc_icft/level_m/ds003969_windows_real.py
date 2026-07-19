@@ -1,18 +1,19 @@
-"""Real Level-M windows from actual EEG samples (replaces the filename-hash proxy path).
+"""Real Level-M windows from actual EEG samples for ds003969 (meditation vs thinking).
 
-The legacy `extract_level_m_window_features` derived features from a hash of the file NAME
-(`_signal_from_seed`), so its numbers were independent of the recording's contents. This module
-reads the REAL samples for each window via `data.bids_ingest.read_window_signal` and feeds them
-to the same `extract_level_m_features`, so features reflect signal, not filename.
+Direct port of `ds005620_windows_real.py`'s real-signal extraction pattern:
+reads REAL samples per window via `data.bids_ingest.read_window_signal` and feeds
+them to `extract_level_m_features`, so features reflect signal, not filename/hash.
+Same two fixes carried over (both apply identically here, same feature formulas):
+  * per-window z-normalization for entropy_proxy/lzc_proxy (raw EEG is ~1e-5 scale,
+    those proxies were written for ~[0,1]-range values and collapse to zero otherwise).
+  * spectral_power_proxy kept on the raw (unnormalized) scale since z-normalizing
+    flattens it to a near-constant.
 
-Two real bugs, only visible under real-signal execution, are fixed here:
-  * `entropy_proxy` / `lzc_proxy` were written for ~[0,1]-range synthetic values and collapse to
-    zero on volt-scale EEG (~1e-5). Fixed with per-window z-normalization.
-  * z-normalizing also flattens `spectral_power_proxy` to a near-constant, so that one is kept on
-    the raw (unnormalized) scale.
-
-Label mapping is deliberately conservative and reuses the dataset contract: task label
-`awake`/`sedated` -> state label; behaviour/report left None unless present in sidecars.
+Task label mapping is dataset-specific and was CONFIRMED via direct S3 listing of
+ds003969 (sub-001/002/009 eeg/ dirs), not assumed: real BIDS task entities are
+`med1breath`, `med2` (meditation blocks), `think1`, `think2` (thinking blocks).
+No `acq` BIDS entity exists in this dataset (unlike ds005620's acq-EC/acq-EO), but
+the row_id path-hash suffix is kept as the same hard uniqueness guarantee regardless.
 """
 from __future__ import annotations
 
@@ -22,9 +23,8 @@ from pathlib import Path
 import numpy as np
 
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features
-from sciencer_d.btc_icft.level_m.ds005620_windows import LevelMWindowRow
+from sciencer_d.btc_icft.level_m.ds003969_windows import LevelMWindowRow
 
-# reuse repo path so `from data...` resolves when run as a module
 import sys
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
@@ -32,7 +32,12 @@ if str(_REPO_ROOT) not in sys.path:
 
 from data.bids_ingest import discover_bids_eeg, read_window_signal  # noqa: E402
 
-_TASK_TO_STATE = {"awake": "awake", "sedated": "sedated"}
+_TASK_TO_STATE = {
+    "med1breath": "meditation",
+    "med2": "meditation",
+    "think1": "thinking",
+    "think2": "thinking",
+}
 
 
 def build_and_extract_real_windows(
@@ -42,14 +47,15 @@ def build_and_extract_real_windows(
     max_channels: int | None = 16,
     subject_filter: str | None = None,
 ) -> list[LevelMWindowRow]:
-    """Discover -> window -> extract REAL features. Every row is marked real-EEG-derived.
+    """Discover -> window -> extract REAL features for ds003969. Every row is
+    marked real-EEG-derived.
 
-    `bids_root` must be the dataset root (containing participants.tsv/sub-*/ dirs), not
-    a single subject's directory -- mne_bids misparses a root whose own path component
-    looks like a `sub-XXXX` entity, producing doubled/broken paths. To process one
-    subject at a time (e.g. for streaming/disk-bounded processing), pass the full
-    dataset root and use `subject_filter` (matches `BIDSEEGRecord.subject_id`, e.g.
-    "sub-1010") instead of pointing bids_root at that subject's own directory.
+    `bids_root` must be the dataset root (containing participants.tsv/sub-*/ dirs),
+    not a single subject's directory -- mne_bids misparses a root whose own path
+    component looks like a `sub-XXXX` entity, producing doubled/broken paths. To
+    process one subject at a time (streaming/disk-bounded processing), pass the
+    full dataset root and use `subject_filter` (matches `BIDSEEGRecord.subject_id`,
+    e.g. "sub-001") instead of pointing bids_root at that subject's own directory.
     """
     records = discover_bids_eeg(bids_root)
     if subject_filter is not None:
@@ -72,17 +78,15 @@ def build_and_extract_real_windows(
                     rec.path, w_start, w_end, pick="mean", max_channels=max_channels
                 )
                 raw_sig = np.asarray(signal, dtype=float)
-                raw_power = float(np.mean(raw_sig ** 2))  # scale-sensitive band power proxy
+                raw_power = float(np.mean(raw_sig ** 2))
                 std = raw_sig.std()
                 norm = (raw_sig - raw_sig.mean()) / std if std > 0 else raw_sig
-                # cast each sample to a native Python float: list(ndarray) keeps
-                # np.float64 elements, which silently taints every downstream
-                # feature (and, worse, artifact_dominance's bool) with numpy
-                # scalar types -- non-JSON-serializable regardless of value,
-                # and only invisible here because this fixture's mean artifact
-                # score happens to stay under the 0.5 dominance threshold.
+                # cast to native Python float (see ds005620_windows_real.py for why:
+                # list(ndarray) keeps np.float64 elements, silently tainting
+                # artifact_dominance with a non-JSON-serializable numpy bool
+                # whenever mean_artifact_score > 0.5)
                 feats = extract_level_m_features([float(v) for v in norm])
-                feats["spectral_power_proxy"] = raw_power  # keep raw-scale power, not normalized
+                feats["spectral_power_proxy"] = raw_power
             except ValueError as exc:
                 warns.append(f"window skipped: {exc}")
                 feats = {
@@ -91,12 +95,6 @@ def build_and_extract_real_windows(
                     "lzc_proxy": None,
                     "artifact_score": None,
                 }
-            # Include every distinguishing BIDS entity (acq was previously dropped, which
-            # collided distinct recordings such as acq-EC/acq-EO for the same
-            # subject+task+run into one row_id and tripped the leakage-detection check
-            # on real DS005620 data). A short hash of the source file's relative path is
-            # appended as a hard uniqueness guarantee against any entity we don't know
-            # to look for yet.
             path_hash = hashlib.sha256(rec.relative_path.encode("utf-8")).hexdigest()[:8]
             row = LevelMWindowRow(
                 row_id=(

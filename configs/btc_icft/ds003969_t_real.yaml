@@ -1,0 +1,51 @@
+dataset_id: ds003969
+pipeline_id: ds003969_t_real_topology_v0
+default_m_windows: outputs/btc_icft/ds003969/m_real
+default_out: outputs/btc_icft/ds003969/t_real
+required_inputs:
+  - features_m.csv
+required_outputs:
+  - features_t.csv
+  - topology_quality_report.json
+  - null_placeholder_report.json
+  - artifact_alignment_report.json
+  - omega_event.json
+  - report.md
+required_columns:
+  - row_id
+  - subject_id
+  - session_id
+  - run_id
+  - window_id
+  - task_label
+  - source_file
+  - window_start_s
+  - window_end_s
+topology_columns:
+  - q_net
+  - q_abs
+  - f_dress
+  - defect_density
+  - n_triangles
+  - n_valid_triangles
+  - topology_quality
+  - null_method
+  - null_seed
+quality_gate:
+  min_topology_quality: 0.25
+  require_valid_triangles: true
+guardrails:
+  - no_data_download
+  - no_residual_promotion
+  - no_m_plus_t_benchmark
+  - no_level_o
+  - no_level_c_q
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims
+  - q_not_self
+  - q_not_soul
+  - q_abs_not_suffering
+  - f_dress_not_karma

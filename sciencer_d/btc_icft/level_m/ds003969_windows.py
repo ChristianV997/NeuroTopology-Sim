@@ -1,3 +1,12 @@
+"""ds003969 (meditation vs thinking EEG) Level M window scaffold.
+
+Mirrors `ds005620_windows.py`'s structure (LevelMWindowRow, evaluate/report
+helpers) for the ds003969 meditation-vs-thinking paradigm. Confirmed real BIDS
+task labels (via direct S3 listing, not assumed): `med1breath`, `med2` (both
+meditation blocks -- the first is a fixed breath-counting meditation for all
+subjects, the second is tradition-specific except for controls), `think1`,
+`think2` (both active-thinking blocks). No `acq` BIDS entity in this dataset.
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -13,6 +22,8 @@ BANNED_REPORT_PHRASES = (
     "soul proven",
     "afterlife proven",
     "liberation detected",
+    "enlightenment proven",
+    "nirvana confirmed",
     "ontology solved",
     "ultimate reality",
     "q equals self",
@@ -20,6 +31,15 @@ BANNED_REPORT_PHRASES = (
     "q_abs equals suffering",
     "f_dress equals karma",
 )
+
+# Confirmed via direct S3 listing of ds003969 (sub-001/002/009 eeg/ dirs):
+# task-med1breath, task-med2, task-think1, task-think2. Not assumed.
+_TASK_TO_STATE = {
+    "med1breath": "meditation",
+    "med2": "meditation",
+    "think1": "thinking",
+    "think2": "thinking",
+}
 
 
 @dataclass
@@ -73,110 +93,9 @@ def _validate_safe_text(text: str) -> None:
             raise ValueError(f"banned phrase detected: {phrase}")
 
 
-def load_bids_inspection_outputs(inspection_dir: str) -> dict:
-    base = Path(inspection_dir)
-    required = ["file_inventory.json", "label_candidates.json", "contract_report.json", "report.md"]
-    missing = [name for name in required if not (base / name).exists()]
-    if missing:
-        raise FileNotFoundError(
-            f"Missing required BIDS inspection outputs in {inspection_dir}: {missing}. "
-            "Run inspect_ds005620_bids first to generate file_inventory.json, label_candidates.json, contract_report.json, and report.md."
-        )
-    return {
-        "file_inventory": json.loads((base / "file_inventory.json").read_text(encoding="utf-8")),
-        "label_candidates": json.loads((base / "label_candidates.json").read_text(encoding="utf-8")),
-        "contract_report": json.loads((base / "contract_report.json").read_text(encoding="utf-8")),
-        "report_md": (base / "report.md").read_text(encoding="utf-8"),
-        "inspection_dir": str(base),
-    }
-
-
-def _pick_label(match: dict | None, key: str, warnings: list[str]) -> str | None:
-    if not match:
-        warnings.append("missing label candidate row; labels left unknown")
-        return None
-    value = match.get(key)
-    if value is None:
-        warnings.append(f"missing {key} in label candidate")
-    return value
-
-
-def build_level_m_windows_from_bids_inventory(inspection: dict, window_seconds: float = 10.0, max_windows_per_file: int = 2) -> list[LevelMWindowRow]:
-    inventory = inspection.get("file_inventory", {})
-    labels = inspection.get("label_candidates", [])
-    by_source = {x.get("source") or x.get("relative_path"): x for x in labels if isinstance(x, dict)}
-    rows: list[LevelMWindowRow] = []
-    eeg_candidates = inventory.get("eeg_candidates", [])
-
-    for rec in eeg_candidates:
-        if not rec.get("is_eeg_candidate", True):
-            continue
-        source_file = rec.get("path") or rec.get("relative_path") or "unknown"
-        rel = rec.get("relative_path")
-        subject = rec.get("subject_id") or "unknown_subject"
-        session = rec.get("session_id")
-        run = rec.get("run_id")
-        task = rec.get("task_label")
-        match = by_source.get(rel)
-
-        for idx in range(max_windows_per_file):
-            warns: list[str] = []
-            state = _pick_label(match, "state_label", warns)
-            behavior = _pick_label(match, "behavior_label", warns)
-            report = _pick_label(match, "report_label", warns)
-            task_label = _pick_label(match, "task_label", warns) or task
-
-            row_id = f"{subject}_{session or 'noses'}_{run or 'norun'}_{task_label or 'unknown'}_win-{idx}"
-            rows.append(LevelMWindowRow(
-                row_id=row_id,
-                subject_id=subject,
-                session_id=session,
-                run_id=run,
-                window_id=f"win-{idx}",
-                task_label=task_label,
-                state_label=state,
-                behavior_label=behavior,
-                report_label=report,
-                y=None,
-                spectral_power_proxy=None,
-                entropy_proxy=None,
-                lzc_proxy=None,
-                artifact_score=None,
-                source_file=source_file,
-                window_start_s=idx * window_seconds,
-                window_end_s=(idx + 1) * window_seconds,
-                warnings=warns,
-            ))
-    return rows
-
-
-def build_mock_level_m_windows_from_inspection() -> list[LevelMWindowRow]:
-    return [
-        LevelMWindowRow("sub-01_ses-01_run-01_awake_win-0", "sub-01", "ses-01", "01", "win-0", "awake", "awake", "responsive", "experience", None, None, None, None, None, "mock/sub-01_task-awake_run-01_eeg.edf", 0.0, 10.0, []),
-        LevelMWindowRow("sub-01_ses-01_run-01_sedated_win-1", "sub-01", "ses-01", "01", "win-1", "sedated", "sedated", "unresponsive", "experience", None, None, None, None, None, "mock/sub-01_task-sedated_run-01_eeg.edf", 10.0, 20.0, []),
-        LevelMWindowRow("sub-02_ses-01_run-01_awake_win-0", "sub-02", "ses-01", "01", "win-0", "awake", "awake", "responsive", "no_experience", None, None, None, None, None, "mock/sub-02_task-awake_run-01_eeg.edf", 0.0, 10.0, []),
-        LevelMWindowRow("sub-02_ses-01_run-01_sedated_win-1", "sub-02", "ses-01", "01", "win-1", "sedated", "sedated", "unresponsive", "no_experience", None, None, None, None, None, "mock/sub-02_task-sedated_run-01_eeg.edf", 10.0, 20.0, []),
-    ]
-
-
-def _signal_from_seed(seed: str) -> list[float]:
-    base = max(1, sum(ord(ch) for ch in seed) % 91)
-    return [((base + i * 7) % 97) / 100.0 for i in range(64)]
-
-
-def extract_level_m_window_features(windows: list[LevelMWindowRow]) -> list[LevelMWindowRow]:
-    out: list[LevelMWindowRow] = []
-    for row in windows:
-        signal = _signal_from_seed(f"{row.source_file}:{row.row_id}")
-        feats = extract_level_m_features(signal)
-        warns = list(row.warnings)
-        warns.append("fixture-derived Level M features; not real EEG signal extraction")
-        out.append(LevelMWindowRow(**{**asdict(row), **feats, "warnings": warns}))
-    return out
-
-
 def _class_balance(y_true: list[int]) -> dict[str, int]:
     return {"0": y_true.count(0), "1": y_true.count(1)}
+
 
 def _binary_auc(y_true: list[int], scores: list[float]) -> float | None:
     pos = [s for s, y in zip(scores, y_true) if y == 1]
@@ -190,10 +109,12 @@ def _binary_auc(y_true: list[int], scores: list[float]) -> float | None:
             wins += 1.0 if ps > ns else 0.5 if ps == ns else 0.0
     return wins / total if total else None
 
+
 def _brier(y_true: list[int], scores: list[float]) -> float | None:
     if not y_true:
         return None
     return sum((y - s) ** 2 for y, s in zip(y_true, scores)) / len(y_true)
+
 
 def _ece(y_true: list[int], scores: list[float], n_bins: int = 5) -> float | None:
     if not y_true:
@@ -208,6 +129,7 @@ def _ece(y_true: list[int], scores: list[float], n_bins: int = 5) -> float | Non
         acc = sum(y_true[j] for j in idx) / len(idx)
         val += (len(idx) / total) * abs(acc - conf)
     return val
+
 
 def _score_m(row: LevelMWindowRow) -> float:
     raw = (2.5 * (row.spectral_power_proxy or 0.0)) - (1.2 * (row.entropy_proxy or 0.0)) - (0.4 * (row.lzc_proxy or 0.0)) - (0.8 * (row.artifact_score or 0.0))
@@ -231,20 +153,16 @@ def build_window_leakage_report(rows: list[LevelMWindowRow]) -> dict:
     return {"n_subjects": len(subject_ids), "subject_split_possible": len(subject_ids) >= 2, "row_ids_unique": unique_ids, "leakage_detected": leakage, "subject_ids": subject_ids}
 
 
-def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str) -> LevelMRealWindowResult:
+def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str = "meditation_vs_thinking") -> LevelMRealWindowResult:
     warnings: list[str] = []
     selected: list[LevelMWindowRow] = []
     for row in rows:
         y = None
-        if task == "awake_vs_sedated":
-            if row.state_label == "awake": y = 0
-            elif row.state_label == "sedated": y = 1
-        elif task == "responsive_vs_unresponsive":
-            if row.behavior_label == "responsive": y = 0
-            elif row.behavior_label == "unresponsive": y = 1
-        elif task == "experience_vs_no_experience":
-            if row.report_label == "experience": y = 0
-            elif row.report_label == "no_experience": y = 1
+        if task == "meditation_vs_thinking":
+            if row.state_label == "meditation":
+                y = 0
+            elif row.state_label == "thinking":
+                y = 1
         else:
             raise ValueError(f"Unknown task: {task}")
         nr = LevelMWindowRow(**{**asdict(row), "y": y})
@@ -264,13 +182,14 @@ def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str) -> LevelMRe
 
     artifact_report = build_window_artifact_report(selected)
     leakage_report = build_window_leakage_report(selected)
-    safe_claim = "Local DS005620-style files were mapped into operational Level M window-feature candidates for future residual testing."
+    safe_claim = "Local DS003969-style files were mapped into operational Level M window-feature candidates for future residual testing."
     forbidden_claims = [
-        "No consciousness proof.", "No self or soul claim.", "No liberation or enlightenment claim.", "No afterlife claim.", "No ontology proof.", "No unsafe label inference.",
+        "No consciousness proof.", "No self or soul claim.", "No liberation or enlightenment claim.",
+        "No afterlife claim.", "No ontology proof.", "No unsafe label inference.",
     ]
-    omega_event = {"dataset_id": "ds005620", "task": task, "status": "operational_level_m", "safe_claim": safe_claim}
+    omega_event = {"dataset_id": "ds003969", "task": task, "status": "operational_level_m", "safe_claim": safe_claim}
     return LevelMRealWindowResult(
-        dataset_id="ds005620", task=task, n_rows=len(selected), n_subjects=len({r.subject_id for r in selected}), n_windows=len(selected),
+        dataset_id="ds003969", task=task, n_rows=len(selected), n_subjects=len({r.subject_id for r in selected}), n_windows=len(selected),
         class_balance=_class_balance(y_true), auc=auc, brier=brier, ece=ece, leakage_detected=bool(leakage_report["leakage_detected"]),
         artifact_dominance=bool(artifact_report["artifact_dominance"]), artifact_report=artifact_report, leakage_report=leakage_report,
         omega_event=omega_event, safe_claim=safe_claim, forbidden_claims=forbidden_claims, warnings=warnings,
@@ -288,10 +207,6 @@ def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -
     omega_path = base / "omega_event.json"
     report_path = base / "report.md"
 
-    # Per-window rows (not just the aggregate summary): this is the contract
-    # `ds005620_real_topology.load_level_m_window_features` requires (REQUIRED_M_COLUMNS)
-    # to compute Level T topology aligned to each Level M window. Previously this file
-    # held only one aggregate row, which silently broke the P9->P10 handoff.
     row_fieldnames = list(LevelMWindowRow.__dataclass_fields__.keys())
     with features_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=row_fieldnames)
@@ -301,7 +216,6 @@ def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -
             out_row["warnings"] = "; ".join(row.get("warnings") or [])
             writer.writerow(out_row)
 
-    # rows are already in features_m.csv; keep metrics_m.json aggregate-only
     metrics_dict = {k: v for k, v in asdict(result).items() if k != "rows"}
     metrics_path.write_text(json.dumps(metrics_dict, indent=2), encoding="utf-8")
     artifact_path.write_text(json.dumps(result.artifact_report, indent=2), encoding="utf-8")
@@ -309,17 +223,16 @@ def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -
     omega_path.write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
 
     report_text = "\n".join([
-        "# DS005620 Real/Local Level M Window Extraction",
+        "# DS003969 Real/Local Level M Window Extraction",
         "## Dataset/task",
         f"- dataset_id: {result.dataset_id}",
         f"- task: {result.task}",
-        "## Input inspection",
-        "- Source: local BIDS inspection outputs or mock fixture mode.",
+        "## Input",
+        "- Source: real BIDS EEG signal (meditation vs thinking blocks).",
         "## Window rows",
         f"- n_rows: {result.n_rows}",
         f"- n_windows: {result.n_windows}",
         "- operational Level M telemetry only.",
-        "- window-feature candidates prepared.",
         "## Metrics",
         f"- auc: {result.auc}",
         f"- brier: {result.brier}",
@@ -336,7 +249,6 @@ def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -
         *[f"- {w}" for w in result.warnings],
         "## Next required step",
         "- Compute Level T topology rows aligned to these Level M windows.",
-        "- This is for future residual testing.",
     ])
     _validate_safe_text(report_text)
     report_path.write_text(report_text + "\n", encoding="utf-8")

@@ -1,3 +1,20 @@
+"""Real signal-derived Level T topology for ds003969 (meditation vs thinking).
+
+Direct port of `ds005620_real_topology.py`. `compute_real_topology_for_window`
+reads the actual per-channel signal for a window and computes topology via
+`eeg_signal_topology.compute_topology_from_channels` (the same real, signal-derived
+computation reused by ds005620 and the generic multi-dataset pipeline) -- not a
+hash of row_id/metadata text. `compute_fixture_topology_for_window` (hash-based) is
+kept only as the explicit, clearly-labeled `--mock-fixture` fallback, exactly as in
+the ds005620 module; `--real` never falls back to it (see
+`build_level_t_rows_from_m_windows`, copied verbatim including the mutual-exclusivity
+contract enforced by the CLI).
+
+BANNED_REPORT_PHRASES is copied verbatim from the ds005620 module (not weakened),
+plus two ds003969-relevant additions (`enlightenment proven`, `nirvana confirmed`)
+matching the guard added to ds003969_windows.py -- overclaiming risk here is
+meditation-tradition-specific, not just consciousness/soul/afterlife generic.
+"""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -9,8 +26,6 @@ from pathlib import Path
 
 from sciencer_d.btc_icft.level_t.eeg_signal_topology import compute_topology_from_channels
 
-# reuse repo path so `from data...` resolves when run as a module (mirrors
-# ds005620_windows_real.py's approach for the same import problem)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -20,6 +35,8 @@ BANNED_REPORT_PHRASES = (
     "soul proven",
     "afterlife proven",
     "liberation detected",
+    "enlightenment proven",
+    "nirvana confirmed",
     "ontology solved",
     "ultimate reality",
     "q equals self",
@@ -86,7 +103,7 @@ def _h(text: str) -> int:
 def load_level_m_window_features(m_windows_dir: str) -> list[dict]:
     p = Path(m_windows_dir) / "features_m.csv"
     if not p.exists():
-        raise FileNotFoundError("Level M window features are required. Run run_ds005620_m_real first or use --mock-fixture.")
+        raise FileNotFoundError("Level M window features are required. Run run_ds003969_m_real first or use --mock-fixture.")
     with p.open("r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     missing = [c for c in REQUIRED_M_COLUMNS if c not in (rows[0].keys() if rows else [])]
@@ -122,15 +139,10 @@ def compute_fixture_topology_for_window(m_row: dict, index: int = 0) -> LevelTRe
 def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16) -> LevelTRealTopologyRow:
     """Compute topology telemetry from the ACTUAL EEG signal for one window.
 
-    Unlike `compute_fixture_topology_for_window` (which derives numbers from a hash of
-    row_id/metadata text, independent of signal content), this reads the real per-channel
-    samples for the window and computes topology from them via
-    `eeg_signal_topology.compute_topology_from_channels` (the same real, signal-derived
-    computation already used by the generic multi-dataset Level T pipeline).
-
-    If the source file can't be read (missing file, out-of-range window, unsupported
-    format), returns a zero/`topology_status`-flagged row with a warning instead of
-    raising, matching the generic pipeline's skip-and-report convention.
+    Identical logic to ds005620's `compute_real_topology_for_window`: reads real
+    per-channel samples and computes topology via `compute_topology_from_channels`.
+    Returns a zero/flagged row (not a raised exception) if the source file can't be
+    read, matching the generic pipeline's skip-and-report convention.
     """
     from data.bids_ingest import read_window_signal
 
@@ -230,9 +242,9 @@ def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: l
 
 
 def build_level_t_omega_event(rows: list[LevelTRealTopologyRow]) -> dict:
-    safe = "Local DS005620-style EEG windows were mapped into operational Level T topology telemetry candidates for future M+T residual testing."
+    safe = "Local DS003969-style EEG windows were mapped into operational Level T topology telemetry candidates for future M+T residual testing."
     _validate_safe_text(safe)
-    return {"dataset_id": "ds005620", "status": "operational_level_t", "n_rows": len(rows), "safe_claim": safe}
+    return {"dataset_id": "ds003969", "status": "operational_level_t", "n_rows": len(rows), "safe_claim": safe}
 
 
 def write_level_t_topology_outputs(result: LevelTRealTopologyResult, out_dir: str) -> dict[str, str]:
@@ -257,9 +269,9 @@ def write_level_t_topology_outputs(result: LevelTRealTopologyResult, out_dir: st
     paths["artifact_alignment_report.json"].write_text(json.dumps(result.artifact_alignment_report, indent=2), encoding="utf-8")
     paths["omega_event.json"].write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
     report = "\n".join([
-        "# DS005620 Real/Local Level T Topology Extraction",
+        "# DS003969 Real/Local Level T Topology Extraction",
         "## Dataset/stage",
-        "- dataset_id: ds005620",
+        "- dataset_id: ds003969",
         "- stage: operational Level T topology telemetry",
         "## Input Level M windows",
         f"- n_rows: {result.n_rows}",

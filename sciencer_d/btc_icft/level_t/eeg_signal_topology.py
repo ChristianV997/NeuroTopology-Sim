@@ -262,6 +262,13 @@ def _compute_topology_from_channels(
     )
 
 
+# Public alias: this is real, signal-derived topology (channel means/correlations),
+# deliberately reused by other Level T implementations (e.g. ds005620_real_topology.py)
+# instead of each dataset reimplementing its own — or worse, fabricating one from a
+# metadata hash, as ds005620_real_topology.py's fixture path used to.
+compute_topology_from_channels = _compute_topology_from_channels
+
+
 # ---------------------------------------------------------------------------
 # Per-window topology extraction
 # ---------------------------------------------------------------------------
