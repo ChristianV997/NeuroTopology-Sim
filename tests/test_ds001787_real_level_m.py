@@ -160,8 +160,13 @@ def test_probe_locked_mode_produces_depth_labeled_windows(monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "discover_bids_eeg", lambda root: [record])
     monkeypatch.setattr(mod, "read_window_signal", lambda *a, **k: np.ones(50))
 
-    behavioral_data = {"001": {"1": [ProbeRating(mw_question_time_s=25.0, depth_of_meditation=2,
-                                                   depth_of_mind_wandering=1, tiredness=0)]}}
+    # behavioral_data subject keys are 2-digit zero-padded (matches the zip's own
+    # filename convention, e.g. sub01_info.txt -> "01") -- NOT the BIDS subject_id's
+    # own width. Regression-relevant: an earlier version of the lookup used "001"
+    # here and silently matched nothing, producing 0 probe_locked rows even for
+    # subjects with perfectly good alignment (found via the real sub-001 pilot run).
+    behavioral_data = {"01": {"1": [ProbeRating(mw_question_time_s=25.0, depth_of_meditation=2,
+                                                  depth_of_mind_wandering=1, tiredness=0)]}}
     rows = mod.build_and_extract_real_windows(
         str(tmp_path), mode="probe_locked", behavioral_data=behavioral_data,
     )
@@ -202,7 +207,7 @@ def test_probe_locked_mode_excludes_unusable_alignment(monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "discover_bids_eeg", lambda root: [record])
     monkeypatch.setattr(mod, "read_window_signal", lambda *a, **k: np.ones((4, 50)))
 
-    behavioral_data = {"013": {"1": [
+    behavioral_data = {"13": {"1": [
         ProbeRating(20.1, 1, 1, 0), ProbeRating(158.8, 1, 1, 0),
         ProbeRating(213.8, 1, 1, 0), ProbeRating(246.3, 1, 1, 0),
     ]}}

@@ -169,10 +169,14 @@ def build_and_extract_real_windows(
                 rows.append(row)
 
         else:  # probe_locked
-            subnum = subject.replace("sub-", "").lstrip("0") or "0"
-            subnum_padded = subject.replace("sub-", "")
+            # behavioral_data's subject keys are the 2-digit zero-padded numeric
+            # strings the zip's own filenames use (e.g. "01" from sub01_info.txt),
+            # NOT the BIDS subject_id's own zero-padding width (which happens to
+            # also be 3 digits here, e.g. "sub-001" -> naive "001" doesn't match).
+            subject_int = int(subject.replace("sub-", ""))
+            subnum_2digit = f"{subject_int:02d}"
             ses_num = (rec.session_id or "ses-01").replace("ses-", "").lstrip("0") or "1"
-            beh_for_sub = behavioral_data.get(subnum_padded) or behavioral_data.get(subnum)
+            beh_for_sub = behavioral_data.get(subnum_2digit)
             if not beh_for_sub or ses_num not in beh_for_sub:
                 continue
             probes = beh_for_sub[ses_num]
