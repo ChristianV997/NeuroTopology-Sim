@@ -9,7 +9,8 @@ from pathlib import Path
 from sciencer_d.btc_icft.level_m.ds005620_baseline import LevelMFeatureRow, build_mock_ds005620_level_m_rows
 
 BANNED_REPORT_PHRASES = (
-    "proves consciousness", "soul proven", "afterlife proven", "liberation detected", "ontology solved", "ultimate reality",
+    "proves consciousness", "soul proven", "afterlife proven", "liberation detected",
+    "enlightenment proven", "nirvana confirmed", "ontology solved", "ultimate reality",
     "q equals self", "q equals soul", "q_abs equals suffering", "f_dress equals karma",
 )
 M_REQUIRED_COLUMNS = ("row_id","subject_id","session_id","run_id","window_id","task_label","state_label","behavior_label","report_label","spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score")

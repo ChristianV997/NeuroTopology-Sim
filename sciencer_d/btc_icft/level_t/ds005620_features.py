@@ -16,6 +16,8 @@ BANNED_REPORT_PHRASES = (
     "soul proven",
     "afterlife proven",
     "liberation detected",
+    "enlightenment proven",
+    "nirvana confirmed",
     "ontology solved",
     "ultimate reality",
     "q equals self",
