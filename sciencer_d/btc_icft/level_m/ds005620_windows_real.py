@@ -16,6 +16,7 @@ Label mapping is deliberately conservative and reuses the dataset contract: task
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -73,8 +74,18 @@ def build_and_extract_real_windows(
                     "lzc_proxy": None,
                     "artifact_score": None,
                 }
+            # Include every distinguishing BIDS entity (acq was previously dropped, which
+            # collided distinct recordings such as acq-EC/acq-EO for the same
+            # subject+task+run into one row_id and tripped the leakage-detection check
+            # on real DS005620 data). A short hash of the source file's relative path is
+            # appended as a hard uniqueness guarantee against any entity we don't know
+            # to look for yet.
+            path_hash = hashlib.sha256(rec.relative_path.encode("utf-8")).hexdigest()[:8]
             row = LevelMWindowRow(
-                row_id=f"{subject}_{rec.run_id or 'norun'}_{task or 'unknown'}_win-{idx}",
+                row_id=(
+                    f"{subject}_{rec.session_id or 'nosess'}_{rec.run_id or 'norun'}_"
+                    f"{rec.acq_label or 'noacq'}_{task or 'unknown'}_win-{idx}_{path_hash}"
+                ),
                 subject_id=subject,
                 session_id=rec.session_id,
                 run_id=rec.run_id,
