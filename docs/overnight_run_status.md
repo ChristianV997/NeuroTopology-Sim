@@ -101,3 +101,28 @@ activation_blockers.json confirms all 8 blockers present, contract_activation_al
 =false, human_review_packet.json has the reviewer checklist. Nothing was activated.
 Next step (human, not automated): review report.md there and, if a label mapping is
 approved, run the separate contract-activation PR flow this module points to.
+
+## P3 — DONE
+Full DS005620 streaming run completed: 21/21 subjects, 0 failures. 1010 total
+Level M windows, 1010 total Level T rows, 636K feature store (vs. 83GB raw --
+streaming download/process/delete worked as designed, disk never exceeded
+~5GB peak). Verified at full scale, not just the 3-subject spot check:
+- 1010/1010 row_ids unique across ALL subjects (P0.2 fix holds at scale)
+- 1010/1010 distinct q_abs values (P0.5 fix holds at scale -- no hash collisions
+  masquerading as distinct-looking values, every window's topology is genuinely
+  signal-derived)
+- artifact_score: mean=0.034, max=0.266, 0/1010 at the old saturated 1.0
+  (P0.1 fix holds at scale)
+Output: outputs/btc_icft/ds005620/stream/ (gitignored, local; manifest.json +
+per-subject features_m.csv/features_t.csv for all 21 subjects).
+
+## Session summary
+All planned work (P0-P5) completed and verified on real data, first at 3-subject
+scale then at full 21-subject scale. P6 (other datasets) intentionally not
+attempted -- no real extraction pipeline exists for DS002094/ds001787/ds003969/
+ds003816/PhysioNet_GABA yet (only DS005620 has one, built/fixed this session);
+building one from scratch for TMS-EEG (DS002094, epoch/event-locked windows
+around TMS pulses, different shape of problem than DS005620's continuous
+windowing) needs its own dedicated pass, not something to rush at the end of
+an unattended run. Real PCIst is implemented and tested but not yet wired to
+real DS002094 data for that reason.
