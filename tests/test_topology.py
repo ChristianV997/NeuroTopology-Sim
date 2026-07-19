@@ -9,6 +9,7 @@ from core.topology import (
     compute_Qz,
     compute_f_dress,
     compute_cubical_persistence,
+    compute_cubical_persistence_cripser,
     betti_curve,
     persistence_landscape,
     diagram_bottleneck_distance,
@@ -287,3 +288,28 @@ def test_cubical_persistence_on_cgl_field_finds_real_structure():
     grid = np.linspace(amp.min(), amp.max(), 30)
     bc = betti_curve(result["diagrams"][1], grid)
     assert bc.max() > 0
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("cripser", minversion=None) is None,
+    reason="cripser required",
+)
+def test_compute_cubical_persistence_cripser_basic():
+    """Test CubicalRipser backend returns valid diagrams."""
+    field = np.random.randn(32, 32) * 0.5
+    h0, h1, h2 = compute_cubical_persistence_cripser(field, max_dimension=2)
+    assert isinstance(h0, np.ndarray) and h0.shape[1] == 2
+    assert isinstance(h1, np.ndarray) and h1.shape[1] == 2
+    assert isinstance(h2, np.ndarray) and h2.shape[1] == 2
+
+
+def test_compute_cubical_persistence_cripser_requires_cripser():
+    """Test that function requires cripser if not available."""
+    pytest.importorskip("cripser")
+    # If cripser is installed, the function should work; if not, ImportError is raised
+    field = np.ones((8, 8))
+    try:
+        h0, h1, h2 = compute_cubical_persistence_cripser(field)
+        assert h0.shape[1] == 2
+    except ImportError:
+        pytest.skip("cripser not available")

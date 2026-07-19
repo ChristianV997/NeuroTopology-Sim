@@ -42,6 +42,7 @@ from validation.analytic_phase import (
 )
 from validation.montage_topology import (
     get_channel_xy,
+    get_channel_xy_templateflow,
     phase_grid_topology_from_band,
     triangulate_xy,
 )
@@ -216,6 +217,7 @@ def run(
     step_seconds: float = 2.0,
     compute_phase_grid_topology: bool = False,
     montage: str | None = "standard_1020",
+    use_templateflow: bool = False,
     amp_quantile: float | None = 0.1,
     compute_nulls: bool = False,
     null_seed: int = 0,
@@ -239,6 +241,9 @@ def run(
         ``phase_grid_topology`` rows using montage-aware sensor geometry.
     montage : MNE montage name used to derive channel XY coordinates for
         ``phase_grid_topology`` rows.
+    use_templateflow : if True, use real cortical surface geometry from TemplateFlow
+        (fsaverage/fsLR) instead of hardcoded 2D projections. Requires TemplateFlow,
+        nibabel, and network access. Default False for backward compatibility.
     amp_quantile : optional quantile threshold used to mask low-amplitude
         triangle windows for ``phase_grid_topology`` rows.
     compute_nulls : if True, emit ``null_channel_shuffle``, ``null_time_reverse``,
@@ -288,7 +293,10 @@ def run(
         topo_tri = None
         if compute_phase_grid_topology:
             try:
-                topo_names, topo_xy = get_channel_xy(raw, montage=montage)
+                if use_templateflow:
+                    topo_names, topo_xy = get_channel_xy_templateflow(raw, montage=montage)
+                else:
+                    topo_names, topo_xy = get_channel_xy(raw, montage=montage)
                 topo_tri = triangulate_xy(topo_xy)
                 raw_names_l = [c.lower() for c in raw.ch_names]
                 topo_idx = [raw_names_l.index(n.lower()) for n in topo_names]

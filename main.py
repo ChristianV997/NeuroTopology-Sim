@@ -15,6 +15,7 @@ from pipelines.run_physics import run_from_npy
 from pipelines.run_cross_domain import run as run_cross_domain
 from pipelines.run_physionet import run as run_physionet
 from pipelines.run_external import run as run_external
+from pipelines.run_neurolib import run as run_neurolib
 from database.database import connect, start_run, finish_run, add_metric, add_artifact
 
 def run_synthetic():
@@ -61,7 +62,7 @@ def run_qzt(checkpoint_dir: str):
 def main():
     ap = argparse.ArgumentParser()
     # NOTE: CLI argument contracts by mode are documented in docs/mode_contracts.md.
-    ap.add_argument("--mode", required=True, choices=["synthetic", "qzt", "eeg", "physionet", "physics", "cross-domain", "external", "db"])
+    ap.add_argument("--mode", required=True, choices=["synthetic", "qzt", "eeg", "physionet", "physics", "cross-domain", "external", "neural_mass", "db"])
     # --input is mode-dependent: directory for qzt/eeg/physionet, but a required .npy file for physics.
     ap.add_argument("--input", default="data/checkpoints")
     # "results/out.csv" is a sentinel default; eeg/physionet reinterpret it to mode-specific output paths.
@@ -99,6 +100,16 @@ def main():
             ap.error(f"--mode physics requires a .npy input file (got: {args.input})")
         df = run_from_npy(args.input, args.output)
         print(df.head())
+    elif args.mode == "neural_mass":
+        record = run_neurolib(
+            output_csv=args.output,
+            n_nodes=getattr(args, "n_nodes", 32),
+            model_type=getattr(args, "neurolib_model", "kuramoto"),
+            t_max=getattr(args, "t_max", 10.0),
+            coupling=getattr(args, "coupling", 0.1),
+            seed=getattr(args, "seed", 0),
+        )
+        print(f"RunRecord: {record.run_id}")
     elif args.mode == "cross-domain":
         df = run_cross_domain(args.results_root, args.output)
         print(df.head())

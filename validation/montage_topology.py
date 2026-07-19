@@ -49,6 +49,110 @@ def get_channel_xy(raw, montage: str | None = "standard_1020") -> tuple[list[str
     return names, np.asarray(xy, dtype=float)
 
 
+def get_channel_xy_templateflow(
+    raw,
+    montage: str | None = "standard_1020",
+    template: str = "fsaverage",
+) -> tuple[list[str], np.ndarray]:
+    """Return EEG channel names and 2D xy coordinates from real cortical surface geometry via TemplateFlow.
+
+    Fetches the specified cortical template (fsaverage, fsLR, etc.) from TemplateFlow,
+    maps each EEG channel to the nearest surface vertex, and returns 2D coordinates
+    sampled from the surface.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        MNE raw data object with EEG channel information.
+    montage : str or None
+        Standard montage name (e.g., 'standard_1020') to use if raw has no montage.
+    template : str
+        TemplateFlow template name ('fsaverage', 'fsLR', etc.). Default 'fsaverage'.
+
+    Returns
+    -------
+    names : list of str
+        Channel names that mapped to the surface.
+    xy : ndarray, shape (n_channels, 2)
+        2D coordinates (azimuth, elevation) from the surface template.
+    """
+    try:
+        import templateflow.api as tflow
+        import mne
+    except Exception as exc:  # pragma: no cover
+        raise ValueError("TemplateFlow and MNE are required for surface-based coordinate extraction") from exc
+
+    try:
+        from scipy.spatial import cKDTree
+    except Exception as exc:  # pragma: no cover
+        raise ValueError("SciPy is required for TemplateFlow integration") from exc
+
+    # Get 3D channel positions from standard montage
+    eeg_chs = [ch for ch in raw.ch_names if ch in raw.copy().pick_types(eeg=True, exclude=[]).ch_names]
+    if not eeg_chs:
+        raise ValueError("No EEG channels found")
+
+    pos3d = {}
+    montage_obj = raw.get_montage()
+    if montage_obj is not None:
+        pos3d.update({k.lower(): np.asarray(v, dtype=float) for k, v in montage_obj.get_positions()["ch_pos"].items()})
+
+    if not pos3d and montage is not None:
+        std = mne.channels.make_standard_montage(montage)
+        std_pos = {k.lower(): np.asarray(v, dtype=float) for k, v in std.get_positions()["ch_pos"].items()}
+        for ch in eeg_chs:
+            key = ch.lower()
+            if key in std_pos:
+                pos3d[key] = std_pos[key]
+
+    # Fetch template surface coordinates
+    try:
+        surf_file = tflow.get(template, desc="sphere", suffix="surf", extension=".gii")
+    except Exception:  # pragma: no cover
+        raise ValueError(f"Could not fetch {template} sphere from TemplateFlow")
+
+    try:
+        import nibabel as nib
+    except Exception as exc:  # pragma: no cover
+        raise ValueError("Nibabel is required to read TemplateFlow surfaces") from exc
+
+    surf = nib.load(surf_file)
+    surf_coords = np.asarray(surf.darrays[0].data, dtype=float)
+
+    if surf_coords.shape[1] != 3:
+        raise ValueError(f"Expected 3D surface coords, got shape {surf_coords.shape}")
+
+    # Normalize channel positions to unit sphere for matching
+    names: list[str] = []
+    xyz_matched = []
+    tree = cKDTree(surf_coords)
+
+    for ch in eeg_chs:
+        key = ch.lower()
+        if key not in pos3d:
+            continue
+        p3d = pos3d[key]
+        if p3d.shape[0] < 3 or not np.all(np.isfinite(p3d)):
+            continue
+        # Normalize to unit sphere to match surface
+        p_norm = p3d / np.linalg.norm(p3d)
+        # Find nearest surface vertex
+        _, idx = tree.query(p_norm)
+        names.append(ch)
+        xyz_matched.append(surf_coords[idx])
+
+    if len(names) < 3:
+        raise ValueError(f"Need at least 3 valid surface-mapped channels, got {len(names)}")
+
+    # Convert 3D coords to 2D azimuth/elevation
+    xyz = np.asarray(xyz_matched, dtype=float)
+    azimuth = np.arctan2(xyz[:, 1], xyz[:, 0])
+    elevation = np.arccos(np.clip(xyz[:, 2], -1.0, 1.0))
+    xy = np.column_stack([azimuth, elevation])
+
+    return names, xy
+
+
 def triangulate_xy(xy: np.ndarray) -> np.ndarray:
     arr = np.asarray(xy, dtype=float)
     if arr.ndim != 2 or arr.shape[1] != 2:

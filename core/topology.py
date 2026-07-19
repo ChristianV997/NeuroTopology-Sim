@@ -185,3 +185,53 @@ def diagram_bottleneck_distance(diagram_a: np.ndarray, diagram_b: np.ndarray) ->
     if not np.isfinite(dist):
         raise ValueError("bottleneck distance is non-finite")
     return dist
+
+
+def compute_cubical_persistence_cripser(
+    field: np.ndarray,
+    max_dimension: int = 2,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Cubical persistence via CubicalRipser (optional faster alternative to GUDHI).
+
+    Computes full persistence diagrams for H0, H1, H2 on a cubical complex derived
+    from the input field (e.g., 2D amplitude field, 3D charge density). Requires
+    the optional 'cripser' dependency (LGPL license; install via pip install cripser).
+
+    Faster than GUDHI's CubicalComplex for 3D/4D volumes; also returns birth/death
+    voxel coordinates (``cripser``'s unique feature) for spatial localization.
+
+    Parameters
+    ----------
+    field : array-like, shape (...,)
+        Scalar field (2D, 3D, or higher) to compute persistence on.
+    max_dimension : int
+        Maximum homology dimension to compute (0, 1, 2, ...).
+
+    Returns
+    -------
+    diagram_h0, diagram_h1, diagram_h2 : array, shape (n_pairs, 2)
+        Persistence diagrams (birth, death) for H0, H1, H2 respectively.
+        Empty array if no pairs exist for that dimension.
+    """
+    try:
+        import cripser
+    except ImportError as exc:
+        raise ImportError(
+            "compute_cubical_persistence_cripser requires the optional 'cripser' dependency "
+            "(pip install cripser; LGPL license)"
+        ) from exc
+
+    field = np.asarray(field, dtype=float)
+    if not np.all(np.isfinite(field)):
+        raise ValueError("field contains non-finite values")
+
+    # Negate so that low values (minima) come first in the persistence pipeline
+    result = cripser.ripser(-field, maxdim=max_dimension)
+    diagrams = result["dgms"]
+
+    # Extract diagrams; pad to expected shape if dimension is missing
+    diagram_h0 = np.asarray(diagrams[0], dtype=float) if len(diagrams) > 0 else np.empty((0, 2))
+    diagram_h1 = np.asarray(diagrams[1], dtype=float) if len(diagrams) > 1 else np.empty((0, 2))
+    diagram_h2 = np.asarray(diagrams[2], dtype=float) if len(diagrams) > 2 else np.empty((0, 2))
+
+    return diagram_h0, diagram_h1, diagram_h2

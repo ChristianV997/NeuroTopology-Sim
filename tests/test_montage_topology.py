@@ -6,6 +6,7 @@ import pytest
 from validation.montage_topology import (
     EPS,
     defect_spatial_clustering,
+    get_channel_xy_templateflow,
     net_charge_by_region,
     phase_grid_topology_from_band,
     sensor_phase_topology_metrics,
@@ -222,3 +223,14 @@ def test_signed_defect_topology_persistence_proxy_short_series():
     out = signed_defect_topology_from_band(phase, xy, tri, names, region_labels=None)
     assert out["mean_cluster_persistence_proxy"] == 0.0
     assert out["n_timepoints"] == 1
+
+
+def test_get_channel_xy_templateflow_requires_mne_raw():
+    """Test that get_channel_xy_templateflow requires a valid raw object."""
+    pytest.importorskip("templateflow")
+    pytest.importorskip("nibabel")
+    with pytest.raises(ValueError, match="No EEG channels"):
+        get_channel_xy_templateflow(
+            type('MockRaw', (), {'ch_names': [], 'get_montage': lambda: None})(),
+            montage="standard_1020",
+        )
