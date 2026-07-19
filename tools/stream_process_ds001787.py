@@ -17,10 +17,6 @@ disk stays at ~1 subject's raw files regardless of the dataset's 6.1 GB total.
 from __future__ import annotations
 
 import argparse
-import csv
-import json
-import shutil
-import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -29,61 +25,28 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from tools.streaming import base_runner
+
 _DATASET_ID = "ds001787"
+_BUCKET = "openneuro.org"
 
 
 def sync_dataset_metadata(dest_root: Path) -> None:
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
-        f"s3://openneuro.org/{_DATASET_ID}", str(dest_root),
-        "--exclude", "*", "--include", "*.json", "--include", "*.tsv",
-        "--include", "CHANGES", "--include", "README*",
-        "--include", "code/MW_Current_TextFileBIDS.zip",
-        "--exclude", "sub-*/*",
-    ]
-    subprocess.run(cmd, check=True)
+    base_runner.sync_s3_dataset_metadata(
+        _BUCKET, _DATASET_ID, dest_root, extra_includes=["code/MW_Current_TextFileBIDS.zip"]
+    )
 
 
 def sync_subject(subject: str, dest_root: Path) -> Path:
-    dest = dest_root / subject
-    dest.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
-        f"s3://openneuro.org/{_DATASET_ID}/{subject}", str(dest),
-    ]
-    subprocess.run(cmd, check=True)
-    return dest
+    return base_runner.sync_s3_subject(_BUCKET, _DATASET_ID, subject, dest_root)
 
 
 def list_s3_subjects() -> list[str]:
-    import boto3
-    from botocore import UNSIGNED
-    from botocore.config import Config
-
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    paginator = s3.get_paginator("list_objects_v2")
-    subjects: set[str] = set()
-    for page in paginator.paginate(Bucket="openneuro.org", Prefix=f"{_DATASET_ID}/", Delimiter="/"):
-        for prefix in page.get("CommonPrefixes", []):
-            name = prefix["Prefix"].rstrip("/").split("/")[-1]
-            if name.startswith("sub-"):
-                subjects.add(name)
-    return sorted(subjects)
+    return base_runner.list_s3_subjects(_BUCKET, f"{_DATASET_ID}/")
 
 
 def _write_rows_csv(path: Path, rows: list[dict]) -> None:
-    if not rows:
-        path.write_text("", encoding="utf-8")  # empty marker, not "file missing"
-        return
-    fieldnames = list(rows[0].keys())
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for row in rows:
-            row = dict(row)
-            if isinstance(row.get("warnings"), list):
-                row["warnings"] = "; ".join(row["warnings"])
-            w.writerow(row)
+    base_runner.write_rows_csv(path, rows, write_empty_marker=True)
 
 
 def process_subject(
@@ -120,13 +83,11 @@ def process_subject(
 
 
 def load_manifest(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {"processed_subjects": {}, "failed_subjects": {}}
+    return base_runner.load_manifest(path)
 
 
 def save_manifest(path: Path, manifest: dict) -> None:
-    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    base_runner.save_manifest(path, manifest)
 
 
 def run(
@@ -135,10 +96,6 @@ def run(
     limit: int | None = None, subjects: list[str] | None = None, keep_raw: bool = False,
 ) -> int:
     out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    manifest_path = out_path / "manifest.json"
-    manifest = load_manifest(manifest_path)
-
     work_path = Path(work_root)
     work_path.mkdir(parents=True, exist_ok=True)
 
@@ -152,30 +109,17 @@ def run(
     print(f"Parsed behavioral data for {len(behavioral_data)} subjects from MW_Current_TextFileBIDS.zip")
 
     all_subjects = subjects if subjects is not None else list_s3_subjects()
-    todo = [s for s in all_subjects if s not in manifest["processed_subjects"]]
-    if limit:
-        todo = todo[:limit]
 
-    print(f"{len(all_subjects)} subjects total, {len(todo)} to process this run.")
+    def _sync(subject: str, work_path: Path) -> Path:
+        return sync_subject(subject, work_path)
 
-    for subject in todo:
-        print(f"--- {subject} ---")
-        try:
-            subject_root = sync_subject(subject, work_path)
-            stats = process_subject(
-                subject_root, subject, out_path, behavioral_data,
-                n_fixed_windows, fixed_window_seconds, max_channels,
-            )
-            manifest["processed_subjects"][subject] = stats
-            print(f"  done: {stats}")
-        except Exception as e:
-            print(f"  FAILED: {e}", file=sys.stderr)
-            manifest["failed_subjects"][subject] = str(e)
-        finally:
-            if not keep_raw:
-                shutil.rmtree(work_path / subject, ignore_errors=True)
-            save_manifest(manifest_path, manifest)
+    def _process(subject_root: Path, subject: str, out_path: Path) -> dict:
+        return process_subject(
+            subject_root, subject, out_path, behavioral_data,
+            n_fixed_windows, fixed_window_seconds, max_channels,
+        )
 
+    base_runner.run_streaming_loop(all_subjects, out_path, work_path, _sync, _process, limit=limit, keep_raw=keep_raw)
     return 0
 
 

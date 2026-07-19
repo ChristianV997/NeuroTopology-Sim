@@ -32,10 +32,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import csv
-import json
-import shutil
-import subprocess
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -44,58 +40,27 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from tools.streaming import base_runner
+
+_BUCKET = "openneuro.org"
+
 
 def list_s3_subjects(openneuro_id: str) -> list[str]:
     """List subject prefixes for a dataset via unsigned S3 listing."""
-    import boto3
-    from botocore import UNSIGNED
-    from botocore.config import Config
-
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    paginator = s3.get_paginator("list_objects_v2")
-    subjects: set[str] = set()
-    for page in paginator.paginate(Bucket="openneuro.org", Prefix=f"{openneuro_id}/", Delimiter="/"):
-        for prefix in page.get("CommonPrefixes", []):
-            name = prefix["Prefix"].rstrip("/").split("/")[-1]
-            if name.startswith("sub-"):
-                subjects.add(name)
-    return sorted(subjects)
+    return base_runner.list_s3_subjects(_BUCKET, f"{openneuro_id}/")
 
 
 def sync_subject(openneuro_id: str, subject: str, dest_root: Path) -> Path:
-    dest = dest_root / subject
-    dest.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
-        f"s3://openneuro.org/{openneuro_id}/{subject}", str(dest),
-    ]
-    subprocess.run(cmd, check=True)
-    return dest
+    return base_runner.sync_s3_subject(_BUCKET, openneuro_id, subject, dest_root)
 
 
 def sync_dataset_metadata(openneuro_id: str, dest_root: Path) -> None:
     """Top-level BIDS files needed for inspection (participants.tsv etc), synced once."""
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
-        f"s3://openneuro.org/{openneuro_id}", str(dest_root),
-        "--exclude", "*", "--include", "*.json", "--include", "*.tsv",
-        "--include", "CHANGES", "--include", "README*", "--exclude", "sub-*/*",
-    ]
-    subprocess.run(cmd, check=True)
+    base_runner.sync_s3_dataset_metadata(_BUCKET, openneuro_id, dest_root)
 
 
 def _write_rows_csv(path: Path, rows: list[dict]) -> None:
-    if not rows:
-        return
-    fieldnames = list(rows[0].keys())
-    with path.open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for row in rows:
-            row = dict(row)
-            if isinstance(row.get("warnings"), list):
-                row["warnings"] = "; ".join(row["warnings"])
-            w.writerow(row)
+    base_runner.write_rows_csv(path, rows)
 
 
 def process_ds005620_subject(
@@ -161,13 +126,11 @@ DATASET_PROCESSORS = {
 
 
 def load_manifest(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {"processed_subjects": {}, "failed_subjects": {}}
+    return base_runner.load_manifest(path)
 
 
 def save_manifest(path: Path, manifest: dict) -> None:
-    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    base_runner.save_manifest(path, manifest)
 
 
 def run(
@@ -190,10 +153,6 @@ def run(
         return 2
 
     out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    manifest_path = out_path / "manifest.json"
-    manifest = load_manifest(manifest_path)
-
     work_path = Path(work_root)
     work_path.mkdir(parents=True, exist_ok=True)
 
@@ -202,30 +161,15 @@ def run(
         sync_dataset_metadata(openneuro_id, work_path)
 
     all_subjects = subjects if subjects is not None else list_s3_subjects(openneuro_id)
-    todo = [s for s in all_subjects if s not in manifest["processed_subjects"]]
-    if limit:
-        todo = todo[:limit]
-
-    print(f"{len(all_subjects)} subjects total, {len(todo)} to process this run.")
-
     processor = DATASET_PROCESSORS[openneuro_id]
-    for subject in todo:
-        print(f"--- {subject} ---")
-        try:
-            subject_root = sync_subject(openneuro_id, subject, work_path)
-            stats = processor(
-                subject_root, subject, out_path, window_seconds, max_windows_per_file, max_channels
-            )
-            manifest["processed_subjects"][subject] = stats
-            print(f"  done: {stats}")
-        except Exception as e:  # keep going: one bad subject shouldn't kill the run
-            print(f"  FAILED: {e}", file=sys.stderr)
-            manifest["failed_subjects"][subject] = str(e)
-        finally:
-            if not keep_raw:
-                shutil.rmtree(work_path / subject, ignore_errors=True)
-            save_manifest(manifest_path, manifest)  # checkpoint after every subject
 
+    def _sync(subject: str, work_path: Path) -> Path:
+        return sync_subject(openneuro_id, subject, work_path)
+
+    def _process(subject_root: Path, subject: str, out_path: Path) -> dict:
+        return processor(subject_root, subject, out_path, window_seconds, max_windows_per_file, max_channels)
+
+    base_runner.run_streaming_loop(all_subjects, out_path, work_path, _sync, _process, limit=limit, keep_raw=keep_raw)
     return 0
 
 
