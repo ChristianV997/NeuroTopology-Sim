@@ -27,3 +27,16 @@ Level T's `REQUIRED_M_COLUMNS`) instead of a single aggregate summary row.
 --real` output is now successfully consumable by
 `ds005620_real_topology.load_level_m_window_features` (previously raised
 ValueError: Missing required columns). Full suite: 1623 passed, 9 skipped.
+
+## P0.4 + P0.5 — DONE (commit d906ed1)
+The most serious bug: DS005620 "real" Level T topology was 100% fabricated (sha256
+hash of row_id/metadata text, zero dependence on actual EEG signal) AND the --real CLI
+flag was wired to unconditionally call the hash-based fixture path regardless of flags
+(`mock_fixture=True` hardcoded). Implemented `compute_real_topology_for_window`: reads
+real per-channel signal (new `pick="all"` mode on `read_window_signal`, previously only
+mean/first-channel reduction existed) and computes topology via
+`eeg_signal_topology.compute_topology_from_channels` (reused from the generic pipeline,
+not reimplemented). CLI now requires exactly one of --real/--mock-fixture.
+Verified end-to-end: 12 real windows -> 12 distinct q_abs values (previously: hash
+noise). Regression test proves output tracks signal, not row_id text.
+Full suite: 1625 passed, 9 skipped.
