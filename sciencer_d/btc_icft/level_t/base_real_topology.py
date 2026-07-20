@@ -649,6 +649,73 @@ def build_group_significance_report(
     }
 
 
+def build_ml_decoding_report(
+    rows: list[LevelTRealTopologyRow], m_rows: list[dict],
+    group_col: str = "state_label",
+    value_cols: tuple[str, ...] = ("q_net", "q_abs", "f_dress", "defect_density", "topology_quality"),
+    extra_feature_reports: list[dict] | None = None,
+    n_permutations: int = 1000, cv_folds: int = 5, seed: int = 0,
+) -> dict:
+    """Complementary validity check to `build_group_significance_report`:
+    can any COMBINATION of real features decode `group_col` above chance,
+    with a proper cross-validated permutation-test null (`analysis.ml_decoding`)?
+    Additive, not a replacement for the per-metric univariate tests above.
+
+    Same 2-group-only, row_id-join convention as `build_group_significance_report`
+    (see its docstring). `value_cols` defaults to this row's own real topology
+    columns (always available, no extra compute); `extra_feature_reports`
+    optionally accepts additional per-window `results` lists from other
+    reports in this pass (e.g. `connectivity_report["results"]`,
+    `phase_based_topology_report["results"]`, `real_level_m_features_report["results"]`
+    keyed by `row_id`) to widen the feature set to the "full real feature set"
+    the repo-hardening plan's Phase 6 describes, without this function
+    re-running any of that (compute-heavy) work itself.
+    """
+    from analysis.ml_decoding import build_decoding_report
+
+    by_id = {str(m.get("row_id")): m for m in m_rows}
+    extra_by_row: dict[str, dict] = {}
+    for report_results in extra_feature_reports or []:
+        for entry in report_results:
+            row_id = str(entry.get("row_id", ""))
+            if not row_id:
+                continue
+            extra_by_row.setdefault(row_id, {}).update(
+                {k: v for k, v in entry.items() if isinstance(v, (int, float)) and k not in ("status",)}
+            )
+
+    feature_dicts: list[dict] = []
+    labels: list = []
+    for r in rows:
+        m = by_id.get(r.row_id)
+        if m is None:
+            continue
+        group_val = m.get(group_col)
+        if group_val in (None, ""):
+            continue
+        feats = {c: getattr(r, c) for c in value_cols}
+        feats.update(extra_by_row.get(r.row_id, {}))
+        feature_dicts.append(feats)
+        labels.append(group_val)
+
+    if not feature_dicts:
+        return {"status": "not_applicable", "reason": f"no rows with a non-null {group_col!r} value", "group_col": group_col}
+
+    groups = sorted({str(g) for g in labels})
+    if len(groups) != 2:
+        return {
+            "status": "not_applicable",
+            "reason": f"{group_col!r} has {len(groups)} distinct values ({groups}), this report only covers 2-group comparisons",
+            "group_col": group_col,
+        }
+
+    report = build_decoding_report(
+        feature_dicts, labels, seed=seed, n_permutations=n_permutations, cv_folds=cv_folds,
+    )
+    report["group_col"] = group_col
+    return report
+
+
 def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: list[dict]) -> dict:
     by_id = {str(r.get("row_id")): r for r in m_rows}
     art = []
@@ -684,11 +751,13 @@ def write_level_t_topology_outputs(
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
     phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
     spatial_topology_report: dict | None = None, microstate_report: dict | None = None,
+    ml_decoding_report: dict | None = None,
 ) -> dict[str, str]:
     """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`/
-    `connectivity_report`/`spatial_topology_report`/`microstate_report` are
-    optional (default None, writing nothing extra) so existing callers that
-    don't pass them keep getting exactly the same output files as before.
+    `connectivity_report`/`spatial_topology_report`/`microstate_report`/
+    `ml_decoding_report` are optional (default None, writing nothing extra)
+    so existing callers that don't pass them keep getting exactly the same
+    output files as before.
     Passing them writes additional JSON files and adds report.md sections --
     see `build_null_gate_report`/`build_group_significance_report`/
     `build_phase_based_topology_report`/`build_connectivity_report`/
@@ -716,6 +785,8 @@ def write_level_t_topology_outputs(
         paths["spatial_topology_report.json"] = base / "spatial_topology_report.json"
     if microstate_report is not None:
         paths["microstate_report.json"] = base / "microstate_report.json"
+    if ml_decoding_report is not None:
+        paths["ml_decoding_report.json"] = base / "ml_decoding_report.json"
 
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
@@ -740,6 +811,8 @@ def write_level_t_topology_outputs(
         paths["spatial_topology_report.json"].write_text(json.dumps(spatial_topology_report, indent=2), encoding="utf-8")
     if microstate_report is not None:
         paths["microstate_report.json"].write_text(json.dumps(microstate_report, indent=2), encoding="utf-8")
+    if ml_decoding_report is not None:
+        paths["ml_decoding_report.json"].write_text(json.dumps(ml_decoding_report, indent=2), encoding="utf-8")
 
     report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
@@ -767,6 +840,8 @@ def write_level_t_topology_outputs(
         report_lines += ["## Spatial topology report (real montage-aware winding number on a genuine 2D phase field)", f"- {spatial_topology_report}"]
     if microstate_report is not None:
         report_lines += ["## Microstate report (real pycrostates modified K-means, per-recording not per-window)", f"- {microstate_report}"]
+    if ml_decoding_report is not None:
+        report_lines += ["## ML decoding report (cross-validated logistic regression + permutation-test null, complementary to per-metric group significance)", f"- {ml_decoding_report}"]
     report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",

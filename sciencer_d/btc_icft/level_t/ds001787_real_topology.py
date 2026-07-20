@@ -25,6 +25,7 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     build_connectivity_report,
     build_group_significance_report,
     build_level_t_rows_from_m_windows,
+    build_ml_decoding_report,
     build_null_gate_report,
     build_null_placeholder_report,
     build_phase_based_topology_report,
@@ -54,12 +55,14 @@ def write_level_t_topology_outputs(
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
     phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
     spatial_topology_report: dict | None = None, microstate_report: dict | None = None,
+    ml_decoding_report: dict | None = None,
 ) -> dict[str, str]:
     return _base.write_level_t_topology_outputs(
         result, out_dir, result_rows_cache, DATASET_ID,
         null_gate_report=null_gate_report, group_significance_report=group_significance_report,
         phase_based_topology_report=phase_based_topology_report, connectivity_report=connectivity_report,
         spatial_topology_report=spatial_topology_report, microstate_report=microstate_report,
+        ml_decoding_report=ml_decoding_report,
     )
 
 

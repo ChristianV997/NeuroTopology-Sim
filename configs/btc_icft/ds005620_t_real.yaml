@@ -18,6 +18,7 @@ optional_outputs:
   - connectivity_report.json
   - spatial_topology_report.json
   - microstate_report.json
+  - ml_decoding_report.json
 statistics:
   group_significance:
     enabled_by_default: true
@@ -54,6 +55,12 @@ statistics:
     sample_size_default: 5 recordings (bounded by default; ModKMeans fitting is the most compute-per-unit-of-data instrument in this pipeline)
     max_duration_s_default: 120.0 (deterministic truncation of each recording before fitting)
     cli_flags: --microstate-n-clusters, --microstate-sample-size, --microstate-max-duration-s
+  ml_decoding:
+    enabled_by_default: true
+    method: cross-validated logistic regression (StandardScaler + LogisticRegression) + sklearn.model_selection.permutation_test_score for a proper null -- complementary to group_significance's per-metric univariate tests, tests whether a COMBINATION of real features decodes state_label; features are this row's own q_net/q_abs/f_dress/defect_density/topology_quality plus real connectivity mean_plv/mean_pli/mean_wpli from the connectivity report (analysis/ml_decoding.py)
+    n_permutations_default: 1000
+    cv_folds_default: 5
+    cli_flags: --ml-decoding-n-permutations, --ml-decoding-cv-folds
 required_columns:
   - row_id
   - subject_id
