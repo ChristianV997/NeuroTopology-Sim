@@ -7,11 +7,8 @@ import math
 from pathlib import Path
 
 from sciencer_d.btc_icft.level_m.ds005620_baseline import LevelMFeatureRow, build_mock_ds005620_level_m_rows
+from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
 
-BANNED_REPORT_PHRASES = (
-    "proves consciousness", "soul proven", "afterlife proven", "liberation detected", "ontology solved", "ultimate reality",
-    "q equals self", "q equals soul", "q_abs equals suffering", "f_dress equals karma",
-)
 M_REQUIRED_COLUMNS = ("row_id","subject_id","session_id","run_id","window_id","task_label","state_label","behavior_label","report_label","spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score")
 T_REQUIRED_COLUMNS = ("row_id","subject_id","session_id","run_id","window_id","task_label","q_net","q_abs","f_dress","defect_density","n_valid_triangles","topology_quality")
 KEY_FIELDS = ("row_id","subject_id","task_label")
@@ -33,9 +30,7 @@ class LevelMTRealJoinedRow(LevelMTFeatureRow):
 
 
 def _validate_safe_text(text: str) -> None:
-    low=text.lower()
-    for p in BANNED_REPORT_PHRASES:
-        if p in low: raise ValueError(f"banned phrase detected: {p}")
+    validate_safe_text(text)
 
 def _missing(header:set[str], req:tuple[str,...])->list[str]: return [c for c in req if c not in header]
 

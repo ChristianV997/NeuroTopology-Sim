@@ -128,9 +128,21 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
 
     try:
         from core.topology import compute_Qz, compute_f_dress
-        Qz = float(compute_Qz(psi[np.newaxis]))
-        Qabs = float(abs(Qz))
-        f_dress = float(compute_f_dress(Qz, Qabs))
+        # compute_Qz returns (Qz_array, Qabs_array), one entry per slice along
+        # `axis` (default axis=2, i.e. shape (nx, ny, nslices) -- see
+        # validation/synthetic.py::single_vortex, which repeats along axis=2).
+        # A prior version of this line did `float(compute_Qz(psi[np.newaxis]))`:
+        # `psi[np.newaxis]` puts the singleton slice axis FIRST (shape
+        # (1, N, N)), mismatched with the default axis=2 convention, AND
+        # `float()` on the returned 2-tuple raises TypeError unconditionally.
+        # The bare `except Exception` silently swallowed that every call,
+        # so Qabs was always exactly 0.0 -- meaning every hypothesis spec's
+        # `Qabs_max` threshold check (see verdict logic below) has always
+        # trivially passed regardless of the spec's actual sim output.
+        qz_arr, qabs_arr = compute_Qz(psi[:, :, np.newaxis])
+        Qz = float(qz_arr[0])
+        Qabs = float(qabs_arr[0])
+        f_dress = float(compute_f_dress(qz_arr, qabs_arr))
     except Exception:
         Qz, Qabs, f_dress = 0.0, 0.0, 0.0
 

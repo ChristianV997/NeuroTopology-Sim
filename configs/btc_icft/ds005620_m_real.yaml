@@ -16,6 +16,20 @@ required_outputs:
   - leakage_report.json
   - omega_event.json
   - report.md
+optional_outputs:
+  - real_level_m_features_report.json
+  - mfdfa_report.json
+statistics:
+  real_level_m_features:
+    enabled_by_default: true
+    method: welch_band_power (delta/theta/alpha/beta/gamma) + antropy complexity (permutation/sample entropy, Higuchi FD) + specparam aperiodic (1/f exponent) + antropy DFA scaling exponent -- real instruments, additive alongside the existing spectral_power_proxy/entropy_proxy/lzc_proxy columns
+    cli_flag: --real-features-sample-size (0 = all windows)
+  mfdfa:
+    enabled_by_default: true
+    method: MFDFA multifractal singularity spectrum width (Delta-alpha) -- real long-range-temporal-correlation/criticality instrument (Hardstone et al. 2012), per-recording not per-window (needs far more samples than a single window provides; see sciencer_d/btc_icft/level_m/real_features.py)
+    sample_size_default: 5 recordings
+    max_duration_s_default: 120.0 (deterministic truncation of each recording before fitting)
+    cli_flags: --mfdfa-sample-size, --mfdfa-max-duration-s
 allowed_tasks:
   - awake_vs_sedated
   - responsive_vs_unresponsive

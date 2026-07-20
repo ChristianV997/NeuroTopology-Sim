@@ -15,7 +15,7 @@ _REQUIRED_KEYS = (
     "schema_version", "run_id", "run_kind", "created_at",
     "elapsed_s", "spec_id", "claim_type", "layer",
     "data_mode", "dataset_id", "verdict",
-    "metrics", "artifacts", "source",
+    "metrics", "artifacts", "source", "steps",
 )
 
 
@@ -93,6 +93,52 @@ def test_from_dict_roundtrip():
     assert r2.spec_id == r.spec_id
     assert r2.verdict == r.verdict
     assert r2.metrics == r.metrics
+
+
+# ── steps (per-step telemetry sub-record, Phase 8) ────────────────────────────
+
+def test_steps_defaults_to_none():
+    r = RunRecordV1.make("x", "hypothesis", _now=_NOW)
+    assert r.steps is None
+
+
+def test_steps_none_serializes_to_null_in_to_dict():
+    r = RunRecordV1.make("x", "hypothesis", _now=_NOW)
+    assert r.to_dict()["steps"] is None
+
+
+def test_steps_none_serializes_to_empty_list_in_to_sim_dict():
+    r = RunRecordV1.make("x", "hypothesis", _now=_NOW)
+    assert r.to_sim_dict()["steps"] == []
+
+
+def test_steps_roundtrips_through_to_dict_from_dict():
+    steps = [
+        {"step": 0, "I": 0.5, "Q": 1.0, "Qabs": 3.0, "f_dress": 2.0, "energy": 10.0},
+        {"step": 1, "I": 0.4, "Q": 1.0, "Qabs": 2.5, "f_dress": 1.5, "energy": 8.0},
+    ]
+    r = RunRecordV1(run_id="x", run_kind="psi", created_at=_NOW.isoformat(), steps=steps)
+    d = r.to_dict()
+    r2 = RunRecordV1.from_dict(d)
+    assert r2.steps == steps
+
+
+def test_steps_roundtrips_through_write_json_read_json(tmp_path):
+    steps = [{"step": 0, "I": 0.1, "Q": 0.0, "Qabs": 1.0, "f_dress": 0.5, "energy": 2.0}]
+    r = RunRecordV1(run_id="x", run_kind="psi", created_at=_NOW.isoformat(), steps=steps)
+    out = tmp_path / "RunRecord.json"
+    r.write_json(out)
+    r2 = read_json(out)
+    assert r2.steps == steps
+
+
+def test_from_dict_backward_compatible_with_missing_steps_key():
+    """A RunRecord.json written before Phase 8 (no "steps" key at all) must
+    still load cleanly, with steps defaulting to None -- not KeyError."""
+    d = RunRecordV1.make("x", "hypothesis", _now=_NOW).to_dict()
+    del d["steps"]
+    r = RunRecordV1.from_dict(d)
+    assert r.steps is None
 
 
 # ── write_json / read_json ────────────────────────────────────────────────────

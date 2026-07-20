@@ -1,0 +1,49 @@
+dataset_id: ds001787
+pipeline_id: ds001787_m_real_windows_v0
+default_task: expert_vs_novice
+default_out: outputs/btc_icft/ds001787/m_real
+modes:
+  fixed:
+    n_fixed_windows: 6
+    window_seconds: 10.0
+  probe_locked:
+    requires: code/MW_Current_TextFileBIDS.zip
+    alignment_match_rate_gate: 0.9
+required_inputs:
+  - bids_root (real EEG synced from s3://openneuro.org/ds001787)
+required_outputs:
+  - features_m.csv
+  - metrics_m.json
+  - artifact_report.json
+  - leakage_report.json
+  - omega_event.json
+  - report.md
+optional_outputs:
+  - real_level_m_features_report.json
+  - mfdfa_report.json
+statistics:
+  real_level_m_features:
+    enabled_by_default: true
+    method: welch_band_power (delta/theta/alpha/beta/gamma) + antropy complexity (permutation/sample entropy, Higuchi FD) + specparam aperiodic (1/f exponent) + antropy DFA scaling exponent -- real instruments, additive alongside the existing spectral_power_proxy/entropy_proxy/lzc_proxy columns
+    cli_flag: --real-features-sample-size (0 = all windows)
+  mfdfa:
+    enabled_by_default: true
+    method: MFDFA multifractal singularity spectrum width (Delta-alpha) -- real long-range-temporal-correlation/criticality instrument (Hardstone et al. 2012), per-recording not per-window (needs far more samples than a single window provides; see sciencer_d/btc_icft/level_m/real_features.py)
+    sample_size_default: 5 recordings
+    max_duration_s_default: 120.0 (deterministic truncation of each recording before fitting)
+    cli_flags: --mfdfa-sample-size, --mfdfa-max-duration-s
+allowed_tasks:
+  - expert_vs_novice
+guardrails:
+  - no_data_download
+  - no_level_t_topology
+  - no_residual_promotion
+  - expert_not_awakened
+  - novice_not_deficient
+  - behavior_not_report
+  - state_not_experience
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims

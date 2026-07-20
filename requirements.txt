@@ -14,3 +14,70 @@ the_well
 ripser
 persim
 h5py
+# Used by analysis/itct/itct_cessation_protocol_v3_full_stack.py and
+# analysis/connectivity_topology.py for PLV-graph Laplacian spectral dimension --
+# previously undeclared despite being a hard import in both, so a fresh clone
+# would ImportError. BSD-licensed.
+networkx
+# Used by analysis/permutation.py::mixedlm_group_effect -- the correct fix for
+# the pseudoreplication bug found in the ds001787 report (window-pooled
+# permutation tests found p<0.001 for effects that were really driven by a
+# handful of subjects; MixedLM properly partitions within/between-subject
+# variance instead of discarding it via per-subject aggregation). BSD-licensed.
+statsmodels
+# Used by tests/test_connectivity_topology.py to cross-validate the
+# hand-rolled wPLI implementation against the maintained MNE-ecosystem
+# reference. BSD-3-licensed.
+mne-connectivity
+# Used by sciencer_d/btc_icft/level_m/real_features.py for real nonlinear
+# complexity/entropy (permutation entropy, sample entropy, Higuchi fractal
+# dimension) and real aperiodic (1/f) vs. oscillatory spectral decomposition
+# -- replacing the entropy_proxy/lzc_proxy heuristics with textbook
+# implementations. Both BSD-3-licensed.
+antropy
+specparam
+# Used by sciencer_d/btc_icft/level_t/microstates.py for real modified
+# K-means EEG microstate segmentation (canonical A/B/C/D-style analysis) --
+# the maintained, published implementation, not a custom reimplementation.
+# BSD-3-licensed.
+pycrostates
+# Used by data/preprocessing.py's opt-in heavier artifact-rejection mode
+# (autoreject: cross-validated per-epoch/per-channel statistical rejection;
+# mne-icalabel: automated ICA component classification for eye/muscle/heart
+# artifacts). Both from the MNE ecosystem, both BSD-3-licensed.
+autoreject
+mne-icalabel
+# Used by sciencer_d/btc_icft/level_m/real_features.py for real multifractal
+# Detrended Fluctuation Analysis (the singularity spectrum width Delta-alpha)
+# -- genuine EEG long-range-temporal-correlation/criticality literature
+# (Hardstone et al. 2012), previously entirely absent from this pipeline's
+# feature set. MIT-licensed. (Plain monofractal DFA uses antropy, already
+# declared above -- no new dependency needed for that part.)
+MFDFA
+# Used by tests/btc_icft/test_dfa_mfdfa_features.py to generate fractional
+# Gaussian noise of known Hurst exponent as synthetic ground truth for the
+# DFA/MFDFA wrappers above. Deliberately NOT `stochastic` (the package
+# antropy's own docstring examples use for this): `stochastic` hard-pins
+# numpy<2.0, which conflicts with this repo's numpy>=2.0 stack (confirmed:
+# installing it forced a numpy downgrade that broke zarr's numpy>=2.0
+# requirement). `fbm` has no numpy version pin and was verified to reproduce
+# antropy's own documented DFA-recovers-H behavior. MIT-licensed.
+fbm
+# Used by sim/speculative/ (segregated theoretical-exploration track, never
+# imported by or fed into the real-EEG pipeline -- see sim/speculative/__init__.py
+# and tests/test_speculative_boundary.py). py-pde: numpy/numba-accelerated PDE
+# solver used as the real spatial-grid/Laplacian-operator engine for the
+# stochastic Langevin-lattice module. MIT-licensed. qutip: cross-validates the
+# hand-rolled non-Hermitian-Hamiltonian/exceptional-point code in
+# analysis/itct/itct_cessation_protocol_v3_full_stack.py against a long-
+# maintained reference implementation. BSD-3-licensed.
+py-pde==0.58.0
+qutip==5.3.0
+# Pinned (unlike the rest of this file): these are used directly by
+# tools/stream_process_openneuro_dataset.py and tools/stream_process_ds001787.py
+# (S3 dataset sync + the `aws` CLI subprocess) but were previously undeclared here,
+# so a fresh clone would ImportError on either streaming tool. Pinned to the
+# versions verified working this session.
+boto3==1.43.51
+botocore==1.43.51
+awscli==1.45.51

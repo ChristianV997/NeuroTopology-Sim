@@ -1,0 +1,101 @@
+dataset_id: ds001787
+pipeline_id: ds001787_t_real_topology_v0
+default_m_windows: outputs/btc_icft/ds001787/m_real
+default_out: outputs/btc_icft/ds001787/t_real
+required_inputs:
+  - features_m.csv
+required_outputs:
+  - features_t.csv
+  - topology_quality_report.json
+  - null_placeholder_report.json
+  - artifact_alignment_report.json
+  - omega_event.json
+  - report.md
+optional_outputs:
+  - null_gate_report.json
+  - group_significance_report.json
+  - phase_based_topology_report.json
+  - connectivity_report.json
+  - spatial_topology_report.json
+  - microstate_report.json
+  - ml_decoding_report.json
+statistics:
+  group_significance:
+    enabled_by_default: true
+    method: subject_blocked_permutation_test (primary), permutation_test (window_pooled, naive, reported side by side)
+    n_permutations: 2000
+    seed: 0
+  null_gate:
+    enabled_by_default: false
+    cli_flag: --compute-nulls
+    method: phase_randomize_time surrogates, compute_null_summary z-score
+    n_surrogates: 50
+    gate_sample_size: 20
+  phase_based_topology:
+    enabled_by_default: true
+    method: bandpass_hilbert_phase + channel_phase_gradient_metrics (real band-specific analytic phase, not the channel-mean/correlation heuristic q_net/q_abs/f_dress above)
+    band: alpha
+    cli_flags: --phase-band, --phase-topology-sample-size
+  connectivity:
+    enabled_by_default: true
+    method: PLV (phase-locking value), PLI (phase lag index, insensitive to zero-lag volume-conduction artifacts), wPLI (weighted/debiased PLI) -- all from analysis/connectivity_topology.py
+    methods_default: [plv, pli, wpli]
+    granger_causality: opt-in only (compute-heavy O(channels^2) OLS tests per window), off by default
+    cli_flags: --connectivity-methods, --connectivity-sample-size, --compute-granger, --granger-maxlag
+  spatial_topology:
+    enabled_by_default: true
+    method: montage-aware real winding-number topology -- circular interpolation (cos/sin, not raw angle) of band-specific Hilbert phase onto a genuine 2D grid built from real (or standard-10-20/BioSemi-matched) electrode positions, then core.topology.plaquette_charge. The closest instrument in this repo to what q_net/q_abs/f_dress have been named as if they meant all along -- see sciencer_d/btc_icft/level_t/spatial_topology.py
+    band: alpha
+    sample_size_default: 20 (bounded by default, unlike phase_based_topology -- griddata interpolation is meaningfully more expensive)
+    cli_flags: --spatial-band, --spatial-sample-size, --spatial-grid-size, --spatial-n-time-samples
+  microstates:
+    enabled_by_default: true
+    method: pycrostates modified K-means (canonical A/B/C/D-style EEG microstate segmentation) -- unlike every other instrument in this pipeline, operates on the FULL RECORDING per unique source_file, not per window (see sciencer_d/btc_icft/level_t/microstates.py)
+    n_clusters_default: 4
+    sample_size_default: 5 recordings (bounded by default; ModKMeans fitting is the most compute-per-unit-of-data instrument in this pipeline)
+    max_duration_s_default: 120.0 (deterministic truncation of each recording before fitting)
+    cli_flags: --microstate-n-clusters, --microstate-sample-size, --microstate-max-duration-s
+  ml_decoding:
+    enabled_by_default: true
+    method: cross-validated logistic regression (StandardScaler + LogisticRegression) + sklearn.model_selection.permutation_test_score for a proper null -- complementary to group_significance's per-metric univariate tests, tests whether a COMBINATION of real features decodes state_label; features are this row's own q_net/q_abs/f_dress/defect_density/topology_quality plus real connectivity mean_plv/mean_pli/mean_wpli from the connectivity report (analysis/ml_decoding.py)
+    n_permutations_default: 1000
+    cv_folds_default: 5
+    cli_flags: --ml-decoding-n-permutations, --ml-decoding-cv-folds
+required_columns:
+  - row_id
+  - subject_id
+  - session_id
+  - run_id
+  - window_id
+  - task_label
+  - source_file
+  - window_start_s
+  - window_end_s
+topology_columns:
+  - q_net
+  - q_abs
+  - f_dress
+  - defect_density
+  - n_triangles
+  - n_valid_triangles
+  - topology_quality
+  - null_method
+  - null_seed
+quality_gate:
+  min_topology_quality: 0.25
+  require_valid_triangles: true
+guardrails:
+  - no_data_download
+  - no_residual_promotion
+  - no_m_plus_t_benchmark
+  - no_level_o
+  - no_level_c_q
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims
+  - q_not_self
+  - q_not_soul
+  - q_abs_not_suffering
+  - f_dress_not_karma

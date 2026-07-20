@@ -161,3 +161,43 @@ def test_hypothesis_run_record_run_id_stable(tmp_path):
     r1 = json.loads((tmp_path / "out1" / "RunRecord.json").read_text())
     r2 = json.loads((tmp_path / "out2" / "RunRecord.json").read_text())
     assert r1["run_id"] == r2["run_id"]
+
+
+def test_hypothesis_qabs_is_real_not_fabricated_zero(tmp_path):
+    """Regression test for a real bug found in Phase 8 (beyond-topology
+    pass): `Qz = float(compute_Qz(psi[np.newaxis]))` raised TypeError on
+    every call (compute_Qz returns a 2-tuple, not a scalar) and put the
+    singleton slice axis in the wrong position for compute_Qz's axis=2
+    default; a bare `except Exception` silently caught both and always fell
+    back to Qz=Qabs=f_dress=0.0 -- meaning every hypothesis spec's
+    `Qabs_max` threshold check has always trivially passed regardless of the
+    spec's actual simulated topology. Checked across several seeds since a
+    single unlucky seed could coincidentally still produce Qabs=0."""
+    import json
+    from pipelines.hypothesis import run
+
+    seen_nonzero = False
+    for seed in range(5):
+        spec = tmp_path / f"spec_{seed}.yaml"
+        spec.write_text(f"spec_id: QABS-{seed}\nsim_params:\n  N: 16\n  n_steps: 5\n  seed: {seed}\n")
+        run(spec, tmp_path / f"out_{seed}")
+        data = json.loads((tmp_path / f"out_{seed}" / "RunRecord.json").read_text())
+        if data["metrics"]["Qabs"] != 0.0:
+            seen_nonzero = True
+    assert seen_nonzero, "Qabs was exactly 0.0 for every seed tested -- bug may have regressed"
+
+
+def test_hypothesis_verdict_actually_uses_real_qabs(tmp_path):
+    """A spec with a Qabs_max threshold tighter than the real simulated
+    Qabs must FAIL -- before the fix, Qabs was always fabricated as 0.0, so
+    this threshold could never fail regardless of how tight it was set."""
+    from pipelines.hypothesis import run
+
+    spec = tmp_path / "spec.yaml"
+    spec.write_text(
+        "spec_id: QABS-STRICT\nthreshold:\n  I_mean_min: 0.0\n  Qabs_max: 0.001\n"
+        "sim_params:\n  N: 16\n  n_steps: 5\n  seed: 0\n"
+    )
+    summary = run(spec, tmp_path / "out")
+    assert summary["verdict"] == "FAIL"
+    assert any("Qabs" in f for f in summary["threshold_failures"])

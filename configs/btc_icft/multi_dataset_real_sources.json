@@ -2,6 +2,7 @@
   "schema_version": "p22.0",
   "description": "Multi-dataset real-execution source manifest. Defines per-dataset source hints, local-root candidates, reader expectations, and per-dataset support flags. No automatic downloads, no label inference.",
   "safe_claim": "P22 generalizes the DS005620 real-execution planning pattern into a registry-driven multi-dataset framework that inspects local readiness, plans artifact preparation, computes next actions, and preserves manual real-data and human-review boundaries.",
+  "dataset_id_casing_note": "dataset_id casing (DS005620/DS002094 uppercase vs ds001787/ds003969/ds003816/PhysioNet_GABA mixed) is intentionally NOT normalized, despite being inconsistent: grepping consumers found 10+ files with hardcoded uppercase 'DS005620'/'DS002094' literals (comparisons, list defaults, path logic), including a legacy-path-preservation special case in sciencer_d/btc_icft/runtime/multi_dataset_paths.py::build_dataset_output_roots that would silently stop matching if this manifest's dataset_id were renamed. A broad rename was judged a real regression risk for a cosmetic issue and was not done.",
   "datasets": [
     {
       "dataset_id": "DS005620",
@@ -108,7 +109,7 @@
       "generic_artifact_operator_supported": true,
       "generic_execution_gate_supported": true,
       "autonomous_iteration_supported": true,
-      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "notes": "Generic planning/gating supported. A real signal-derived Level M/Level T pipeline now exists outside the P22 promotion framework -- sciencer_d/btc_icft/pipelines/run_ds001787_{m,t}_real.py, sciencer_d/btc_icft/level_m/ds001787_windows{,_real}.py, sciencer_d/btc_icft/level_m/ds001787_behavioral.py (probe-rating parsing + cross-clock alignment), sciencer_d/btc_icft/level_t/ds001787_real_topology.py, streaming runner tools/stream_process_ds001787.py -- verified end-to-end on all 24 real subjects, 0 failures (outputs/btc_icft/ds001787/REPORT_ds001787_expertise_and_depth_topology.md). The dataset_specific_executor_available/real_execution_supported flags stay false here deliberately: tools/validate_multi_dataset_real_execution_matrix.py enforces (test_non_ds005620_executor_unavailable) that only DS005620 may claim executor availability in this framework's gate matrix -- that promotion is a separate, human-reviewed process this session did not run, not a simple engineering-readiness fact. Do not flip these flags without going through that process.",
       "guardrails": [
         "no_data_download",
         "no_label_inference",
@@ -146,7 +147,7 @@
       "generic_artifact_operator_supported": true,
       "generic_execution_gate_supported": true,
       "autonomous_iteration_supported": true,
-      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "notes": "Generic planning/gating supported. A real signal-derived Level M/Level T pipeline now exists outside the P22 promotion framework -- sciencer_d/btc_icft/pipelines/run_ds003969_{m,t}_real.py, sciencer_d/btc_icft/level_m/ds003969_windows{,_real}.py, sciencer_d/btc_icft/level_t/ds003969_real_topology.py, streaming runner process_ds003969_subject in tools/stream_process_openneuro_dataset.py -- verified end-to-end on all 98 real subjects, 0 failures (outputs/btc_icft/ds003969/REPORT_ds003969_consciousness_transitions.md). The dataset_specific_executor_available/real_execution_supported flags stay false here deliberately: tools/validate_multi_dataset_real_execution_matrix.py enforces (test_non_ds005620_executor_unavailable) that only DS005620 may claim executor availability in this framework's gate matrix -- that promotion is a separate, human-reviewed process this session did not run, not a simple engineering-readiness fact. Do not flip these flags without going through that process.",
       "guardrails": [
         "no_data_download",
         "no_label_inference",

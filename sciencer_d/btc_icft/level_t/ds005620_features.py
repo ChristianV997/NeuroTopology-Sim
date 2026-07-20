@@ -10,19 +10,7 @@ from sciencer_d.btc_icft.level_m.ds005620_baseline import (
     LevelMFeatureRow,
     build_mock_ds005620_level_m_rows,
 )
-
-BANNED_REPORT_PHRASES = (
-    "proves consciousness",
-    "soul proven",
-    "afterlife proven",
-    "liberation detected",
-    "ontology solved",
-    "ultimate reality",
-    "q equals self",
-    "q equals soul",
-    "q_abs equals suffering",
-    "f_dress equals karma",
-)
+from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
 
 
 @dataclass(frozen=True)
@@ -85,10 +73,7 @@ class LevelMTResidualResult:
 
 
 def _validate_safe_text(text: str) -> None:
-    low = text.lower()
-    for phrase in BANNED_REPORT_PHRASES:
-        if phrase in low:
-            raise ValueError(f"banned phrase detected: {phrase}")
+    validate_safe_text(text)
 
 
 def _minmax(values: list[float]) -> list[float]:

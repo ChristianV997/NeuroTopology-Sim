@@ -129,12 +129,53 @@ def _read_raw(path: str):
     raise ValueError(f"Unsupported EEG extension for {path}: {ext}")
 
 
+def get_sample_rate(path: str) -> float:
+    """Return the sampling rate (Hz) for an EEG recording without loading its data.
+
+    `_read_raw` uses `preload=False`, so this only reads file metadata (header),
+    not signal samples -- cheap enough to call once per window. Needed by any
+    consumer that must know sfreq before filtering (e.g. band-specific
+    Hilbert-phase extraction), which `read_window_signal` computes internally
+    but does not expose.
+    """
+    raw = _read_raw(path)
+    return float(raw.info["sfreq"])
+
+
+def get_channel_names(path: str, max_channels: int | None = None) -> list[str]:
+    """Return real EEG channel names, in the same pick order
+    `read_window_signal(pick="all")` uses -- needed by any consumer that must
+    map channels to real electrode positions (e.g. montage-aware spatial
+    topology), which `read_window_signal` does not expose (it returns bare
+    sample arrays with no channel identity).
+    """
+    import mne
+
+    raw = _read_raw(path)
+    picks = mne.pick_types(raw.info, eeg=True)
+    if max_channels:
+        picks = picks[:max_channels]
+    return [raw.ch_names[i] for i in picks]
+
+
+def get_recording_duration(path: str) -> float:
+    """Return the full recording duration in seconds, without loading signal
+    data (`_read_raw` uses `preload=False`). Needed by any consumer that
+    operates on a full continuous recording rather than a fixed-length
+    window (e.g. microstate segmentation, which needs a long enough stretch
+    of data for modified K-means clustering to produce stable topographies).
+    """
+    raw = _read_raw(path)
+    return float(raw.n_times) / float(raw.info["sfreq"])
+
+
 def read_window_signal(
     path: str,
     window_start_s: float,
     window_end_s: float,
     pick: str = "mean",
     max_channels: int | None = None,
+    preprocess: dict | None = None,
 ) -> np.ndarray:
     """Return REAL samples for one window.
 
@@ -144,8 +185,19 @@ def read_window_signal(
     (n_channels, n_samples) array, for consumers that need real per-channel structure
     (e.g. Level T topology, which needs inter-channel relationships that a channel-mean
     reduction destroys). Raises if the window is out of range.
+
+    `preprocess`, if given, is a dict of kwargs forwarded to
+    `data.preprocessing.preprocess_raw` (bandpass/notch/reference), applied to
+    the FULL recording before this window is sliced out of it -- avoids the
+    filter edge artifacts per-window filtering would introduce. Default
+    `None` preserves this function's exact prior behavior (no filtering at
+    all); every currently-published number was computed with `preprocess=None`.
     """
     raw = _read_raw(path)
+    if preprocess is not None:
+        from data.preprocessing import preprocess_raw
+
+        preprocess_raw(raw, **preprocess)
     sfreq = float(raw.info["sfreq"])
     n_total = raw.n_times
     start = int(round(window_start_s * sfreq))

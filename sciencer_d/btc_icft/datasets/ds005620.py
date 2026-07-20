@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 
+from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
+
 BANNED_TEXT_TERMS = (
     "liberation",
     "enlightenment",
@@ -11,19 +13,6 @@ BANNED_TEXT_TERMS = (
     "afterlife",
     "ultimate reality",
     "ontology solved",
-)
-
-BANNED_REPORT_PHRASES = (
-    "proves consciousness",
-    "soul proven",
-    "afterlife proven",
-    "liberation detected",
-    "ontology solved",
-    "ultimate reality",
-    "q equals self",
-    "q equals soul",
-    "q_abs equals suffering",
-    "f_dress equals karma",
 )
 
 
@@ -90,10 +79,7 @@ class DS005620ContractReport:
 
 
 def _validate_safe_text(text: str) -> None:
-    low = text.lower()
-    for phrase in BANNED_REPORT_PHRASES:
-        if phrase in low:
-            raise ValueError(f"banned phrase detected: {phrase}")
+    validate_safe_text(text)
 
 
 def _count(rows: list[DS005620LabelRow], field_name: str) -> dict[str, int]:

@@ -58,6 +58,7 @@ class RunRecordV1:
     guardrails: Optional[Dict[str, Any]] = None
     h8_falsifiers: Optional[List[Dict[str, str]]] = None
     notes: str = ""
+    steps: Optional[List[Dict[str, Any]]] = None  # per-step telemetry sub-record (Phase 8, "beyond topology")
 
     # ── constructors ──────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ class RunRecordV1:
             "metrics": self.metrics,
             "artifacts": self.artifacts,
             "source": self.source,
+            "steps": self.steps,
         }
 
     def to_sim_dict(self) -> Dict[str, Any]:
@@ -134,6 +136,7 @@ class RunRecordV1:
             "guardrails": self.guardrails or {},
             "h8_falsifiers": self.h8_falsifiers if self.h8_falsifiers is not None else [],
             "notes": self.notes,
+            "steps": self.steps if self.steps is not None else [],
         }
 
     def write_json(self, path: Path) -> Path:
@@ -172,6 +175,7 @@ class RunRecordV1:
             guardrails=d.get("guardrails"),
             h8_falsifiers=d.get("h8_falsifiers"),
             notes=d.get("notes", ""),
+            steps=d.get("steps"),
         )
 
 
