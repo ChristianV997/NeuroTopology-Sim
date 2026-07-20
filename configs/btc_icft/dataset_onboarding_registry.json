@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "description": "Declarative, code-EXECUTED onboarding registry for the real-signal EEG pipeline. Unlike configs/btc_icft/*_real.yaml (which are documentation-only and are not parsed by any code), this file is loaded at runtime by sciencer_d/btc_icft/datasets/onboarding_registry.py and drives the generic streaming processor (tools/stream_process_openneuro_dataset.py) and the generic Level-M/Level-T CLIs. Adding a new OpenNeuro EEG dataset that fits the 'simple task-to-state map, one window per fixed interval' shape requires ONLY a new entry here -- zero new Python files. ds001787 is deliberately NOT here: its dual-mode/behavioral-file shape has its own dedicated modules (see level_m/ds001787_windows_real.py).",
+  "label_policy": "task_to_state maps must be authored by a human from confirmed real BIDS task labels (list them via tools.discover_openneuro_tasks). Semantic state labels are NEVER auto-inferred from task-name strings -- structural discovery is automated, the mapping is not (no_label_inference guardrail).",
+  "datasets": {
+    "ds005620": {
+      "dataset_id": "ds005620",
+      "title": "OpenNeuro propofol sedation EEG DS005620",
+      "task_to_state": {"awake": "awake", "sedated": "sedated"},
+      "contrasts": [
+        {"name": "awake_vs_sedated", "label_field": "state_label", "class0": "awake", "class1": "sedated"},
+        {"name": "responsive_vs_unresponsive", "label_field": "behavior_label", "class0": "responsive", "class1": "unresponsive"},
+        {"name": "experience_vs_no_experience", "label_field": "report_label", "class0": "experience", "class1": "no_experience"}
+      ],
+      "default_task": "awake_vs_sedated",
+      "window_seconds": 10.0,
+      "max_windows_per_file": 2,
+      "max_channels": 16,
+      "report_input_heading": "## Input inspection",
+      "report_input_source": "- Source: local BIDS inspection outputs or mock fixture mode.",
+      "report_extra_window_lines": ["- window-feature candidates prepared."],
+      "report_extra_next_step_lines": ["- This is for future residual testing."],
+      "format_note": "EDF; propofol sedation; awake vs sedated"
+    },
+    "ds003969": {
+      "dataset_id": "ds003969",
+      "title": "OpenNeuro meditation vs thinking EEG ds003969",
+      "task_to_state": {"med1breath": "meditation", "med2": "meditation", "think1": "thinking", "think2": "thinking"},
+      "contrasts": [
+        {"name": "meditation_vs_thinking", "label_field": "state_label", "class0": "meditation", "class1": "thinking"}
+      ],
+      "default_task": "meditation_vs_thinking",
+      "window_seconds": 10.0,
+      "max_windows_per_file": 2,
+      "max_channels": 16,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (meditation vs thinking blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "BioSemi .bdf; 64ch 1024Hz; no acq entity"
+    },
+    "ds003816": {
+      "dataset_id": "ds003816",
+      "title": "OpenNeuro loving-kindness meditation EEG ds003816",
+      "task_to_state": {"lkmself": "meditation", "lkmother": "meditation", "preresting": "resting", "postresting": "resting"},
+      "contrasts": [
+        {"name": "lkm_vs_resting", "label_field": "state_label", "class0": "meditation", "class1": "resting"}
+      ],
+      "default_task": "lkm_vs_resting",
+      "window_seconds": 10.0,
+      "max_windows_per_file": 2,
+      "max_channels": 16,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (loving-kindness meditation vs resting blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "BrainVision .vhdr; 128ch actiCHamp 1000Hz; multiple ses-NN; VisualizeSelf/VisualizeOther intentionally unmapped"
+    }
+  }
+}

@@ -13,15 +13,18 @@ what fits alongside everything else on a constrained disk budget. A
 processed (and which failed, with the error), so an interrupted run resumes
 without re-downloading or re-processing anything already done.
 
-Currently wired for ds005620, ds003969, and ds003816 -- see DATASET_PROCESSORS
-below for the full list. The download/process/delete loop itself is
-dataset-agnostic; DATASET_PROCESSORS is where a real per-subject processor for
-another registered dataset (DS002094, ds001787, ...) gets plugged in once one
-exists -- until then this exits with a clear "not wired yet" error rather than
-silently doing nothing useful for other dataset ids. (ds001787 has its own
-dedicated streaming tool, tools/stream_process_ds001787.py, since its
-dual-mode/behavioral-file processing doesn't fit this module's single-processor
-signature -- see tools/streaming/base_runner.py's docstring.)
+Dataset-agnostic and registry-driven: every dataset listed in
+configs/btc_icft/dataset_onboarding_registry.json is streamable with ZERO
+per-dataset Python code here. A single generic per-subject processor
+(`process_subject_generic`) resolves the dataset's task-to-state map and window
+params from the registry; the topology step is already dataset-agnostic. To
+onboard a new OpenNeuro EEG dataset of the "simple task-to-state map" shape, add
+a registry entry (discover its real task labels with
+`tools/discover_openneuro_tasks.py`) -- no new module needed. An unregistered
+dataset id exits with a clear error listing the registered ids rather than
+silently doing nothing. (ds001787 is intentionally NOT registered here: its
+dual-mode/behavioral-file processing has its own dedicated streaming tool,
+tools/stream_process_ds001787.py -- see tools/streaming/base_runner.py.)
 
 Usage:
     python tools/stream_process_openneuro_dataset.py --dataset-id ds005620 \\
@@ -65,22 +68,33 @@ def _write_rows_csv(path: Path, rows: list[dict]) -> None:
     base_runner.write_rows_csv(path, rows)
 
 
-def process_ds005620_subject(
+def process_subject_generic(
+    dataset_id: str,
     subject_root: Path, subject: str, out_dir: Path,
     window_seconds: float, max_windows_per_file: int, max_channels: int,
 ) -> dict:
-    """Run real Level M + Level T for one subject's files; write per-subject CSVs.
+    """Run real Level M + Level T for one subject of ANY registered dataset;
+    write per-subject CSVs.
+
+    This single generic processor replaced three byte-identical
+    `process_ds{05620,03969,03816}_subject` functions that differed only in which
+    dataset's `_windows_real`/`_real_topology` module they imported -- that
+    coupling is now expressed as a `dataset_id` string resolved through the
+    onboarding registry (`generic_windows_real.build_and_extract_real_windows`),
+    and the topology step (`compute_real_topology_for_window`) was already
+    dataset-agnostic. A newly registered dataset is streamable immediately with
+    no new Python code here.
 
     `subject_root` is `<dataset_root>/<subject>` (where sync_subject placed this
     subject's files); `build_and_extract_real_windows` needs the DATASET root
     (mne_bids misparses a root that looks like a subject directory itself), so we
     pass its parent and filter to this subject via `subject_filter`.
     """
-    from sciencer_d.btc_icft.level_m.ds005620_windows_real import build_and_extract_real_windows
-    from sciencer_d.btc_icft.level_t.ds005620_real_topology import compute_real_topology_for_window
+    from sciencer_d.btc_icft.level_m.generic_windows_real import build_and_extract_real_windows
+    from sciencer_d.btc_icft.level_t.base_real_topology import compute_real_topology_for_window
 
     m_rows = build_and_extract_real_windows(
-        str(subject_root.parent), window_seconds=window_seconds,
+        dataset_id, str(subject_root.parent), window_seconds=window_seconds,
         max_windows_per_file=max_windows_per_file, max_channels=max_channels,
         subject_filter=subject,
     )
@@ -94,65 +108,24 @@ def process_ds005620_subject(
     return {"n_m_rows": len(m_dicts), "n_t_rows": len(t_dicts)}
 
 
-def process_ds003969_subject(
-    subject_root: Path, subject: str, out_dir: Path,
-    window_seconds: float, max_windows_per_file: int, max_channels: int,
-) -> dict:
-    """Run real Level M + Level T for one ds003969 subject; write per-subject CSVs.
+def _make_dataset_processors() -> dict:
+    """Build the {dataset_id: processor} map from the onboarding registry.
 
-    Same subject_root.parent + subject_filter pattern as `process_ds005620_subject`
-    (mne_bids misparses a root that looks like a subject directory itself).
+    Every registered dataset gets the same generic processor with its dataset_id
+    pre-bound. Still a plain mutable dict, so tests can inject a fake processor
+    via `monkeypatch.setitem(DATASET_PROCESSORS, "fake_ds", ...)`.
     """
-    from sciencer_d.btc_icft.level_m.ds003969_windows_real import build_and_extract_real_windows
-    from sciencer_d.btc_icft.level_t.ds003969_real_topology import compute_real_topology_for_window
+    from functools import partial
 
-    m_rows = build_and_extract_real_windows(
-        str(subject_root.parent), window_seconds=window_seconds,
-        max_windows_per_file=max_windows_per_file, max_channels=max_channels,
-        subject_filter=subject,
-    )
-    m_dicts = [asdict(r) for r in m_rows]
-    _write_rows_csv(out_dir / f"{subject}_features_m.csv", m_dicts)
+    from sciencer_d.btc_icft.datasets.onboarding_registry import registered_dataset_ids
 
-    t_rows = [compute_real_topology_for_window(row, max_channels=max_channels) for row in m_dicts]
-    t_dicts = [asdict(r) for r in t_rows]
-    _write_rows_csv(out_dir / f"{subject}_features_t.csv", t_dicts)
-
-    return {"n_m_rows": len(m_dicts), "n_t_rows": len(t_dicts)}
+    return {
+        ds_id: partial(process_subject_generic, ds_id)
+        for ds_id in registered_dataset_ids()
+    }
 
 
-def process_ds003816_subject(
-    subject_root: Path, subject: str, out_dir: Path,
-    window_seconds: float, max_windows_per_file: int, max_channels: int,
-) -> dict:
-    """Run real Level M + Level T for one ds003816 subject; write per-subject CSVs.
-
-    Same subject_root.parent + subject_filter pattern as `process_ds005620_subject`
-    (mne_bids misparses a root that looks like a subject directory itself).
-    """
-    from sciencer_d.btc_icft.level_m.ds003816_windows_real import build_and_extract_real_windows
-    from sciencer_d.btc_icft.level_t.ds003816_real_topology import compute_real_topology_for_window
-
-    m_rows = build_and_extract_real_windows(
-        str(subject_root.parent), window_seconds=window_seconds,
-        max_windows_per_file=max_windows_per_file, max_channels=max_channels,
-        subject_filter=subject,
-    )
-    m_dicts = [asdict(r) for r in m_rows]
-    _write_rows_csv(out_dir / f"{subject}_features_m.csv", m_dicts)
-
-    t_rows = [compute_real_topology_for_window(row, max_channels=max_channels) for row in m_dicts]
-    t_dicts = [asdict(r) for r in t_rows]
-    _write_rows_csv(out_dir / f"{subject}_features_t.csv", t_dicts)
-
-    return {"n_m_rows": len(m_dicts), "n_t_rows": len(t_dicts)}
-
-
-DATASET_PROCESSORS = {
-    "ds005620": process_ds005620_subject,
-    "ds003969": process_ds003969_subject,
-    "ds003816": process_ds003816_subject,
-}
+DATASET_PROCESSORS = _make_dataset_processors()
 
 
 def load_manifest(path: Path) -> dict:
@@ -176,8 +149,10 @@ def run(
 ) -> int:
     if openneuro_id not in DATASET_PROCESSORS:
         print(
-            f"No real-signal processor wired for {openneuro_id!r} yet. "
-            f"Available: {sorted(DATASET_PROCESSORS)}",
+            f"Dataset {openneuro_id!r} is not registered for streaming. "
+            f"Registered: {sorted(DATASET_PROCESSORS)}. Add an entry to "
+            f"configs/btc_icft/dataset_onboarding_registry.json to onboard it "
+            f"(discover its real task labels with tools/discover_openneuro_tasks.py).",
             file=sys.stderr,
         )
         return 2
