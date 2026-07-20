@@ -1,0 +1,58 @@
+name: Docker build
+
+# Builds both container images and runs each environment's test suite
+# inside its own built image -- proving the Dockerfile is a faithful,
+# reproducible stand-in for the documented local setup in CLAUDE.md.
+# Not run in the sandboxed dev environment these Dockerfiles were authored
+# in: that environment's egress policy blocks Docker Hub base-image pulls
+# (production.cloudfront.docker.com), so this workflow is this repo's
+# actual verification point for both images, not a redundant check.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "requirements.txt"
+      - "apps/awareness_studio/Dockerfile"
+      - "apps/awareness_studio/pyproject.toml"
+      - ".github/workflows/docker-build.yml"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "requirements.txt"
+      - "apps/awareness_studio/Dockerfile"
+      - "apps/awareness_studio/pyproject.toml"
+      - ".github/workflows/docker-build.yml"
+  workflow_dispatch:
+
+jobs:
+  root-sim-engine:
+    name: Root sim engine image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t neurotopology-sim:root .
+
+      - name: Run test suite inside container
+        run: docker run --rm neurotopology-sim:root
+
+  awareness-studio:
+    name: Awareness Studio image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t awareness-studio:latest -f apps/awareness_studio/Dockerfile apps/awareness_studio
+
+      - name: Run test suite inside container
+        run: docker run --rm awareness-studio:latest

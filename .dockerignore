@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+results/
+data/
+outputs/
+obsidian/
+project_manifest.json
+paper/figures/
+*.sqlite
+apps/awareness_studio/.venv
+apps/awareness_studio/__pycache__
