@@ -47,6 +47,36 @@ def list_s3_subjects(bucket: str, prefix: str) -> list[str]:
     return sorted(subjects)
 
 
+def list_s3_task_labels(bucket: str, dataset_id: str, max_subjects: int = 3) -> list[str]:
+    """Structurally discover the distinct BIDS `task-<label>` entities in a dataset
+    by scanning object keys under its first few subjects, via unsigned S3 listing.
+
+    This is STRUCTURAL discovery only (which task entities physically exist) --
+    it never assigns semantic state labels. The task->state mapping for the
+    onboarding registry must still be authored by a human (no_label_inference).
+    Scanning a few subjects (default 3) is enough: BIDS task entities are shared
+    across subjects, and this keeps discovery fast without listing the whole bucket.
+    """
+    import re
+
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
+
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    subjects = list_s3_subjects(bucket, f"{dataset_id}/")[:max_subjects]
+    task_re = re.compile(r"task-([A-Za-z0-9]+)")
+    tasks: set[str] = set()
+    paginator = s3.get_paginator("list_objects_v2")
+    for subject in subjects:
+        for page in paginator.paginate(Bucket=bucket, Prefix=f"{dataset_id}/{subject}/"):
+            for obj in page.get("Contents", []):
+                m = task_re.search(obj["Key"])
+                if m:
+                    tasks.add(m.group(1))
+    return sorted(tasks)
+
+
 def sync_s3_subject(bucket: str, dataset_id: str, subject: str, dest_root: Path) -> Path:
     dest = dest_root / subject
     dest.mkdir(parents=True, exist_ok=True)

@@ -55,6 +55,57 @@
       "report_extra_window_lines": [],
       "report_extra_next_step_lines": [],
       "format_note": "BrainVision .vhdr; 128ch actiCHamp 1000Hz; multiple ses-NN; VisualizeSelf/VisualizeOther intentionally unmapped"
+    },
+    "ds004148": {
+      "dataset_id": "ds004148",
+      "title": "OpenNeuro test-retest resting & cognitive-state EEG ds004148",
+      "task_to_state": {"eyesopen": "eyes_open", "eyesclosed": "eyes_closed"},
+      "contrasts": [
+        {"name": "eyes_open_vs_closed", "label_field": "state_label", "class0": "eyes_closed", "class1": "eyes_open"}
+      ],
+      "default_task": "eyes_open_vs_closed",
+      "window_seconds": 4.0,
+      "max_windows_per_file": 5,
+      "max_channels": 8,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (eyes-open vs eyes-closed resting blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "BrainVision .vhdr; CC0; multiple ses-session*; cognitive tasks (mathematic/memory/music) intentionally unmapped -- resting eyes contrast only"
+    },
+    "ds003800": {
+      "dataset_id": "ds003800",
+      "title": "OpenNeuro Auditory Gamma Entrainment EEG ds003800",
+      "task_to_state": {"auditorygammaentrainment": "entrainment", "rest": "rest"},
+      "contrasts": [
+        {"name": "entrainment_vs_rest", "label_field": "state_label", "class0": "rest", "class1": "entrainment"}
+      ],
+      "default_task": "entrainment_vs_rest",
+      "window_seconds": 4.0,
+      "max_windows_per_file": 5,
+      "max_channels": 8,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (auditory gamma entrainment vs rest blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "EEGLAB .set; CC0; small (~16 MB/subject)"
+    },
+    "ds002338": {
+      "dataset_id": "ds002338",
+      "title": "OpenNeuro multi-modal motor-imagery neurofeedback EEG ds002338",
+      "task_to_state": {"mipre": "motor_imagery_pre", "mipost": "motor_imagery_post"},
+      "contrasts": [
+        {"name": "mi_post_vs_pre", "label_field": "state_label", "class0": "motor_imagery_pre", "class1": "motor_imagery_post"}
+      ],
+      "default_task": "mi_post_vs_pre",
+      "window_seconds": 4.0,
+      "max_windows_per_file": 5,
+      "max_channels": 8,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (motor-imagery pre vs post blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "BrainVision .vhdr; CC0; other tasks (1dNF/eegNF/fmriNF/motorloc) intentionally unmapped -- MI pre/post contrast only"
     }
   }
 }
