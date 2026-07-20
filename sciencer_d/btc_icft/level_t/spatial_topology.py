@@ -171,7 +171,12 @@ def compute_spatial_topology_for_window(
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format (e.g. BrainVision
+        # .vhdr/.eeg/.vmrk) can be genuinely missing even though the .vhdr
+        # itself exists -- see level_t/base_real_topology.py's
+        # compute_real_topology_for_window docstring for the real case this
+        # was found on (ds003816).
         return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     if channels.shape[0] != len(ch_names):

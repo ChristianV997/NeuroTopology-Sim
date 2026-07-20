@@ -1,0 +1,52 @@
+dataset_id: ds003816
+pipeline_id: ds003816_m_real_windows_v0
+default_task: lkm_vs_resting
+default_out: outputs/btc_icft/ds003816/m_real
+window_seconds: 10.0
+max_windows_per_file: 2
+required_inputs:
+  - bids_root (real EEG synced from s3://openneuro.org/ds003816)
+required_outputs:
+  - features_m.csv
+  - metrics_m.json
+  - artifact_report.json
+  - leakage_report.json
+  - omega_event.json
+  - report.md
+optional_outputs:
+  - real_level_m_features_report.json
+  - mfdfa_report.json
+statistics:
+  real_level_m_features:
+    enabled_by_default: true
+    method: welch_band_power (delta/theta/alpha/beta/gamma) + antropy complexity (permutation/sample entropy, Higuchi FD) + specparam aperiodic (1/f exponent) + antropy DFA scaling exponent -- real instruments, additive alongside the existing spectral_power_proxy/entropy_proxy/lzc_proxy columns
+    cli_flag: --real-features-sample-size (0 = all windows)
+  mfdfa:
+    enabled_by_default: true
+    method: MFDFA multifractal singularity spectrum width (Delta-alpha) -- real long-range-temporal-correlation/criticality instrument (Hardstone et al. 2012), per-recording not per-window (needs far more samples than a single window provides; see sciencer_d/btc_icft/level_m/real_features.py)
+    sample_size_default: 5 recordings
+    max_duration_s_default: 120.0 (deterministic truncation of each recording before fitting)
+    cli_flags: --mfdfa-sample-size, --mfdfa-max-duration-s
+allowed_tasks:
+  - lkm_vs_resting
+task_definition:
+  lkm_vs_resting: >
+    Confirmed real BIDS task labels (via direct S3 listing, not assumed):
+    LKMSelf/LKMOther (loving-kindness meditation directed at self/other) map to
+    state=meditation; PreResting/PostResting map to state=resting.
+    VisualizeSelf/VisualizeOther (a visualization control condition -- neither
+    meditation nor pure rest) are intentionally left unmapped and excluded
+    from this 2-class contrast rather than guessed into either bucket.
+guardrails:
+  - no_data_download
+  - no_level_t_topology
+  - no_residual_promotion
+  - meditation_not_awakening
+  - resting_not_ordinary_baseline
+  - behavior_not_report
+  - state_not_experience
+  - no_ontology_claims
+  - no_liberation_claims
+  - no_soul_afterlife_claims
+  - no_enlightenment_claims
+  - no_nirvana_claims

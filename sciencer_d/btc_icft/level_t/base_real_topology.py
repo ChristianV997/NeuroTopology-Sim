@@ -199,7 +199,14 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError (e.g. FileNotFoundError): a companion file for a
+        # multi-file format (BrainVision .vhdr/.eeg/.vmrk) can be genuinely
+        # missing from the dataset even though the .vhdr itself (checked
+        # above) exists -- confirmed for real on ds003816 (one task/session
+        # missing its .vmrk on the dataset's own S3 bucket). Same
+        # skip-and-report fix as level_m/base_windows_real.py's identical
+        # bug for this exact failure mode.
         return _zero_row(f"window skipped: {exc}")
 
     channel_data = [list(map(float, ch)) for ch in channels]
@@ -277,7 +284,11 @@ def compute_phase_based_topology_for_window(
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format (e.g. BrainVision
+        # .vhdr/.eeg/.vmrk) can be genuinely missing even though the .vhdr
+        # itself exists -- see compute_real_topology_for_window's docstring
+        # for the real case this was found on (ds003816).
         return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     if channels.shape[0] < 2:
@@ -390,7 +401,9 @@ def compute_connectivity_for_window(
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: see compute_real_topology_for_window's docstring -- a
+        # multi-file format's companion file can be genuinely missing.
         return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     channel_data = np.asarray(channels, dtype=float)
@@ -523,7 +536,9 @@ def compute_surrogate_gate_for_window(
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: see compute_real_topology_for_window's docstring -- a
+        # multi-file format's companion file can be genuinely missing.
         return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     channel_data = [list(map(float, ch)) for ch in channels]

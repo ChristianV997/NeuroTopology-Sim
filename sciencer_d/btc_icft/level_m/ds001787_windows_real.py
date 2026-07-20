@@ -87,7 +87,11 @@ def _feats_for_window(source_file: str, w_start: float, w_end: float, max_channe
         norm = (raw_sig - raw_sig.mean()) / std if std > 0 else raw_sig
         feats = extract_level_m_features([float(v) for v in norm])
         feats["spectral_power_proxy"] = raw_power
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format can be genuinely
+        # missing even though the main file exists -- see
+        # level_m/base_windows_real.py's docstring for the real case this
+        # was found on (ds003816).
         warns.append(f"window skipped: {exc}")
         feats = {"spectral_power_proxy": None, "entropy_proxy": None, "lzc_proxy": None, "artifact_score": None}
     return feats, warns

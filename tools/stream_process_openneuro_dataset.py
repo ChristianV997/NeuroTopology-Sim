@@ -13,13 +13,15 @@ what fits alongside everything else on a constrained disk budget. A
 processed (and which failed, with the error), so an interrupted run resumes
 without re-downloading or re-processing anything already done.
 
-Currently wired for DS005620 only -- the sole dataset in this repo with a
-working real-signal Level M + Level T extraction path as of this commit (see
-docs/overnight_run_status.md for the bug history). The download/process/delete
-loop itself is dataset-agnostic; DATASET_PROCESSORS is where a real per-subject
-processor for another registered dataset (DS002094, ds001787, ...) gets plugged
-in once one exists -- until then this exits with a clear "not wired yet" error
-rather than silently doing nothing useful for other dataset ids.
+Currently wired for ds005620, ds003969, and ds003816 -- see DATASET_PROCESSORS
+below for the full list. The download/process/delete loop itself is
+dataset-agnostic; DATASET_PROCESSORS is where a real per-subject processor for
+another registered dataset (DS002094, ds001787, ...) gets plugged in once one
+exists -- until then this exits with a clear "not wired yet" error rather than
+silently doing nothing useful for other dataset ids. (ds001787 has its own
+dedicated streaming tool, tools/stream_process_ds001787.py, since its
+dual-mode/behavioral-file processing doesn't fit this module's single-processor
+signature -- see tools/streaming/base_runner.py's docstring.)
 
 Usage:
     python tools/stream_process_openneuro_dataset.py --dataset-id ds005620 \\
@@ -119,9 +121,37 @@ def process_ds003969_subject(
     return {"n_m_rows": len(m_dicts), "n_t_rows": len(t_dicts)}
 
 
+def process_ds003816_subject(
+    subject_root: Path, subject: str, out_dir: Path,
+    window_seconds: float, max_windows_per_file: int, max_channels: int,
+) -> dict:
+    """Run real Level M + Level T for one ds003816 subject; write per-subject CSVs.
+
+    Same subject_root.parent + subject_filter pattern as `process_ds005620_subject`
+    (mne_bids misparses a root that looks like a subject directory itself).
+    """
+    from sciencer_d.btc_icft.level_m.ds003816_windows_real import build_and_extract_real_windows
+    from sciencer_d.btc_icft.level_t.ds003816_real_topology import compute_real_topology_for_window
+
+    m_rows = build_and_extract_real_windows(
+        str(subject_root.parent), window_seconds=window_seconds,
+        max_windows_per_file=max_windows_per_file, max_channels=max_channels,
+        subject_filter=subject,
+    )
+    m_dicts = [asdict(r) for r in m_rows]
+    _write_rows_csv(out_dir / f"{subject}_features_m.csv", m_dicts)
+
+    t_rows = [compute_real_topology_for_window(row, max_channels=max_channels) for row in m_dicts]
+    t_dicts = [asdict(r) for r in t_rows]
+    _write_rows_csv(out_dir / f"{subject}_features_t.csv", t_dicts)
+
+    return {"n_m_rows": len(m_dicts), "n_t_rows": len(t_dicts)}
+
+
 DATASET_PROCESSORS = {
     "ds005620": process_ds005620_subject,
     "ds003969": process_ds003969_subject,
+    "ds003816": process_ds003816_subject,
 }
 
 

@@ -114,7 +114,11 @@ def compute_microstates_for_recording(
     window_end = duration if max_duration_s is None else min(duration, max_duration_s)
     try:
         signal = read_window_signal(source_file, 0.0, window_end, pick="all", max_channels=max_channels)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format can be genuinely
+        # missing even though the main file exists -- see
+        # level_t/base_real_topology.py's compute_real_topology_for_window
+        # docstring for the real case this was found on (ds003816).
         return {"source_file": source_file, "status": "skipped", "reason": f"signal read failed: {exc}"}
 
     if signal.shape[0] != len(ch_names):

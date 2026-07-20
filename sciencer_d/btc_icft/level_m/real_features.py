@@ -275,7 +275,11 @@ def compute_real_level_m_features_for_window(m_row: dict, bands: dict | None = N
     try:
         sfreq = get_sample_rate(source_file)
         signal = read_window_signal(source_file, window_start_s, window_end_s, pick="mean")
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format can be genuinely
+        # missing even though the main file exists -- see
+        # level_t/base_real_topology.py's compute_real_topology_for_window
+        # docstring for the real case this was found on (ds003816).
         return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     feats = extract_real_level_m_features(signal, sfreq, bands=bands)
@@ -350,7 +354,11 @@ def compute_mfdfa_for_recording(
     window_end = duration if max_duration_s is None else min(duration, max_duration_s)
     try:
         signal = read_window_signal(source_file, 0.0, window_end, pick="mean", max_channels=max_channels)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
+        # OSError: a companion file for a multi-file format can be genuinely
+        # missing even though the main file exists -- see
+        # level_t/base_real_topology.py's compute_real_topology_for_window
+        # docstring for the real case this was found on (ds003816).
         return {"source_file": source_file, "status": "skipped", "reason": f"signal read failed: {exc}"}
 
     result = compute_mfdfa_features(signal)

@@ -100,7 +100,19 @@ def build_and_extract_real_windows_from_task_map(
                 # 0.5 dominance threshold.
                 feats = extract_level_m_features([float(v) for v in norm])
                 feats["spectral_power_proxy"] = raw_power  # keep raw-scale power, not normalized
-            except ValueError as exc:
+            except (ValueError, OSError) as exc:
+                # ValueError: window out of range for this recording's duration
+                # (data.bids_ingest.read_window_signal's own bounds check).
+                # OSError (e.g. FileNotFoundError): a real, messy-real-data
+                # failure mode found while porting ds003816 -- a BrainVision
+                # .vhdr's companion .eeg/.vmrk file was genuinely absent from
+                # the dataset's own S3 bucket for one task/session (confirmed
+                # via direct listing, not a sync bug), and mne's lazy raw
+                # reader raises FileNotFoundError while parsing the header.
+                # One incomplete recording among many must not crash the
+                # entire per-subject extraction and discard every other
+                # window that WAS readable -- skip-and-report, matching this
+                # function's existing out-of-range handling exactly.
                 warns.append(f"window skipped: {exc}")
                 feats = {
                     "spectral_power_proxy": None,
