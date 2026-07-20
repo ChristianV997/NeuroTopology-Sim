@@ -185,7 +185,7 @@
       "generic_artifact_operator_supported": true,
       "generic_execution_gate_supported": true,
       "autonomous_iteration_supported": true,
-      "notes": "Generic planning/gating supported. Real benchmark execution requires a dataset-specific executor (not yet implemented).",
+      "notes": "Generic planning/gating supported. A real signal-derived Level M/Level T pipeline now exists outside the P22 promotion framework -- sciencer_d/btc_icft/pipelines/run_ds003816_{m,t}_real.py, sciencer_d/btc_icft/level_m/ds003816_windows{,_real}.py, sciencer_d/btc_icft/level_t/ds003816_real_topology.py, streaming runner process_ds003816_subject in tools/stream_process_openneuro_dataset.py -- verified end-to-end on all 48 real subjects, 0 failures (outputs/btc_icft/ds003816/REPORT_ds003816_lkm_meditation_topology.md). Loving-kindness meditation vs resting: topology null, classical Level M spectral/complexity features significant (a real instrument dissociation). The dataset_specific_executor_available/real_execution_supported flags stay false here deliberately, exactly as for ds001787/ds003969: tools/validate_multi_dataset_real_execution_matrix.py enforces (test_non_ds005620_executor_unavailable) that only DS005620 may claim executor availability in this framework gate matrix -- that promotion is a separate, human-reviewed process this session did not run, not a simple engineering-readiness fact. Do not flip these flags without going through that process.",
       "guardrails": [
         "no_data_download",
         "no_label_inference",
