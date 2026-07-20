@@ -142,6 +142,22 @@ def get_sample_rate(path: str) -> float:
     return float(raw.info["sfreq"])
 
 
+def get_channel_names(path: str, max_channels: int | None = None) -> list[str]:
+    """Return real EEG channel names, in the same pick order
+    `read_window_signal(pick="all")` uses -- needed by any consumer that must
+    map channels to real electrode positions (e.g. montage-aware spatial
+    topology), which `read_window_signal` does not expose (it returns bare
+    sample arrays with no channel identity).
+    """
+    import mne
+
+    raw = _read_raw(path)
+    picks = mne.pick_types(raw.info, eeg=True)
+    if max_channels:
+        picks = picks[:max_channels]
+    return [raw.ch_names[i] for i in picks]
+
+
 def read_window_signal(
     path: str,
     window_start_s: float,

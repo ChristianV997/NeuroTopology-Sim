@@ -16,6 +16,7 @@ optional_outputs:
   - group_significance_report.json
   - phase_based_topology_report.json
   - connectivity_report.json
+  - spatial_topology_report.json
 statistics:
   group_significance:
     enabled_by_default: true
@@ -39,6 +40,12 @@ statistics:
     methods_default: [plv, pli, wpli]
     granger_causality: opt-in only (compute-heavy O(channels^2) OLS tests per window), off by default
     cli_flags: --connectivity-methods, --connectivity-sample-size, --compute-granger, --granger-maxlag
+  spatial_topology:
+    enabled_by_default: true
+    method: montage-aware real winding-number topology -- circular interpolation (cos/sin, not raw angle) of band-specific Hilbert phase onto a genuine 2D grid built from real (or standard-10-20/BioSemi-matched) electrode positions, then core.topology.plaquette_charge. The closest instrument in this repo to what q_net/q_abs/f_dress have been named as if they meant all along -- see sciencer_d/btc_icft/level_t/spatial_topology.py
+    band: alpha
+    sample_size_default: 20 (bounded by default, unlike phase_based_topology -- griddata interpolation is meaningfully more expensive)
+    cli_flags: --spatial-band, --spatial-sample-size, --spatial-grid-size, --spatial-n-time-samples
 required_columns:
   - row_id
   - subject_id

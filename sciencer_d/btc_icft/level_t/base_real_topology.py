@@ -683,14 +683,16 @@ def write_level_t_topology_outputs(
     result: LevelTRealTopologyResult, out_dir: str, rows: list[LevelTRealTopologyRow], dataset_id: str,
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
     phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
+    spatial_topology_report: dict | None = None,
 ) -> dict[str, str]:
     """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`/
-    `connectivity_report` are optional (default None, writing nothing extra)
-    so existing callers that don't pass them keep getting exactly the same
-    output files as before. Passing them writes additional JSON files and
-    adds report.md sections -- see `build_null_gate_report`/
-    `build_group_significance_report`/`build_phase_based_topology_report`/
-    `build_connectivity_report`.
+    `connectivity_report`/`spatial_topology_report` are optional (default
+    None, writing nothing extra) so existing callers that don't pass them
+    keep getting exactly the same output files as before. Passing them
+    writes additional JSON files and adds report.md sections -- see
+    `build_null_gate_report`/`build_group_significance_report`/
+    `build_phase_based_topology_report`/`build_connectivity_report`/
+    `spatial_topology.py::build_spatial_topology_report`.
     """
     base = Path(out_dir); base.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -709,6 +711,8 @@ def write_level_t_topology_outputs(
         paths["phase_based_topology_report.json"] = base / "phase_based_topology_report.json"
     if connectivity_report is not None:
         paths["connectivity_report.json"] = base / "connectivity_report.json"
+    if spatial_topology_report is not None:
+        paths["spatial_topology_report.json"] = base / "spatial_topology_report.json"
 
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
@@ -729,6 +733,8 @@ def write_level_t_topology_outputs(
         paths["phase_based_topology_report.json"].write_text(json.dumps(phase_based_topology_report, indent=2), encoding="utf-8")
     if connectivity_report is not None:
         paths["connectivity_report.json"].write_text(json.dumps(connectivity_report, indent=2), encoding="utf-8")
+    if spatial_topology_report is not None:
+        paths["spatial_topology_report.json"].write_text(json.dumps(spatial_topology_report, indent=2), encoding="utf-8")
 
     report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
@@ -752,6 +758,8 @@ def write_level_t_topology_outputs(
         report_lines += ["## Phase-based topology report (real band-specific Hilbert phase)", f"- {phase_based_topology_report}"]
     if connectivity_report is not None:
         report_lines += ["## Connectivity report (real PLV/PLI/wPLI, optional directed Granger causality)", f"- {connectivity_report}"]
+    if spatial_topology_report is not None:
+        report_lines += ["## Spatial topology report (real montage-aware winding number on a genuine 2D phase field)", f"- {spatial_topology_report}"]
     report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",

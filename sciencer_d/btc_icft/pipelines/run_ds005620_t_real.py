@@ -31,6 +31,10 @@ def main() -> int:
     p.add_argument("--connectivity-sample-size", type=int, default=0, help="Bound the number of windows the connectivity report runs on; 0 means all windows.")
     p.add_argument("--compute-granger", action="store_true", help="Also compute directed Granger causality (compute-heavy: O(channels^2) OLS-based tests per window); off by default.")
     p.add_argument("--granger-maxlag", type=int, default=5)
+    p.add_argument("--spatial-band", default="alpha", help="EEG band for the real montage-aware spatial winding-number topology report.")
+    p.add_argument("--spatial-sample-size", type=int, default=20, help="Bound the number of windows the spatial topology report runs on (griddata interpolation is meaningfully more expensive than the other reports); 0 means all windows.")
+    p.add_argument("--spatial-grid-size", type=int, default=24)
+    p.add_argument("--spatial-n-time-samples", type=int, default=10)
     a = p.parse_args()
 
     if a.real and a.mock_fixture:
@@ -85,9 +89,15 @@ def main() -> int:
         sample_size=(a.connectivity_sample_size if a.connectivity_sample_size > 0 else None),
         compute_granger=a.compute_granger, granger_maxlag=a.granger_maxlag,
     )
+    spatial_topology_report = topo.build_spatial_topology_report(
+        rows, m_rows, band=a.spatial_band, seed=a.seed,
+        sample_size=(a.spatial_sample_size if a.spatial_sample_size > 0 else None),
+        grid_size=a.spatial_grid_size, n_time_samples=a.spatial_n_time_samples,
+    )
     paths = topo.write_level_t_topology_outputs(
         res, a.out, null_gate_report=null_gate_report, group_significance_report=group_significance_report,
         phase_based_topology_report=phase_based_topology_report, connectivity_report=connectivity_report,
+        spatial_topology_report=spatial_topology_report,
     )
     for k, v in paths.items():
         print(f"{k}: {v}")

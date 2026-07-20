@@ -29,6 +29,7 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     compute_phase_based_topology_for_window,
     compute_real_topology_for_window,
 )
+from sciencer_d.btc_icft.level_t.spatial_topology import build_spatial_topology_report
 from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES
 
 DATASET_ID = "ds005620"
@@ -46,11 +47,13 @@ def write_level_t_topology_outputs(
     result: LevelTRealTopologyResult, out_dir: str,
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
     phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
+    spatial_topology_report: dict | None = None,
 ) -> dict[str, str]:
     return _base.write_level_t_topology_outputs(
         result, out_dir, result_rows_cache, DATASET_ID,
         null_gate_report=null_gate_report, group_significance_report=group_significance_report,
         phase_based_topology_report=phase_based_topology_report, connectivity_report=connectivity_report,
+        spatial_topology_report=spatial_topology_report,
     )
 
 
