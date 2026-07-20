@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import warnings
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
@@ -122,7 +123,14 @@ def _load_raw(path: Path):
             return mne.io.read_raw_eeglab(path.as_posix(), preload=True, verbose="ERROR")
         if sfx.endswith(".vhdr"):
             return mne.io.read_raw_brainvision(path.as_posix(), preload=True, verbose="ERROR")
-    except Exception:
+    except Exception as exc:
+        # Previously a silent `except Exception: return None` -- the caller's
+        # `if raw is None: continue` then dropped this file from the output
+        # CSV entirely with no trace of which file failed or why. Found
+        # during a repo-wide audit; a dataset with several corrupt/unreadable
+        # files would silently produce a smaller-than-expected, unflagged
+        # output. Warn instead of silently dropping.
+        warnings.warn(f"run_eeg: failed to load {path}: {exc}", RuntimeWarning)
         return None
     return None
 
@@ -131,16 +139,26 @@ def _preprocess(raw):
     if raw is None:
         return None
     raw = raw.copy()
-    try: raw.load_data()
-    except Exception: pass
-    try: raw.pick_types(eeg=True, exclude=[])
-    except Exception: pass
-    try: raw.filter(1, 40, fir_design="firwin", verbose="ERROR")
-    except Exception: pass
-    try: raw.notch_filter([50, 60], verbose="ERROR")
-    except Exception: pass
-    try: raw.set_eeg_reference("average", projection=False, verbose="ERROR")
-    except Exception: pass
+    # Each step is independently best-effort (a later dataset's raw object
+    # may already lack, e.g., a re-referenceable channel set), but a failure
+    # must be visible -- previously each `except Exception: pass` silently
+    # let the row proceed through the rest of the pipeline computed on
+    # unfiltered and/or non-EEG-picked data, with no way for a downstream
+    # consumer to know that file's numbers were computed under different
+    # (degraded) preprocessing than every other file in the same CSV. Found
+    # during a repo-wide audit.
+    for step_name, step in (
+        ("load_data", lambda: raw.load_data()),
+        ("pick_types", lambda: raw.pick_types(eeg=True, exclude=[])),
+        ("filter", lambda: raw.filter(1, 40, fir_design="firwin", verbose="ERROR")),
+        ("notch_filter", lambda: raw.notch_filter([50, 60], verbose="ERROR")),
+        ("set_eeg_reference", lambda: raw.set_eeg_reference("average", projection=False, verbose="ERROR")),
+    ):
+        try:
+            step()
+        except Exception as exc:
+            warnings.warn(f"run_eeg: preprocessing step {step_name!r} failed, "
+                           f"continuing with degraded preprocessing: {exc}", RuntimeWarning)
     return raw
 
 

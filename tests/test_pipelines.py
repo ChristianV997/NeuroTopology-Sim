@@ -81,6 +81,72 @@ def test_run_physionet_empty_dir(tmp_path):
     assert (tmp_path / "out.csv").exists()
 
 
+def test_load_physionet_gaba_folder_matches_expected_filename_patterns(tmp_path):
+    """`data.physionet_loader.load_physionet_gaba_folder` only picks up files
+    whose name contains one of a fixed set of substrings (alphaWave/slowWave/
+    val_spec/t_spec/f_spec/duration_start_end) -- confirms unrelated CSVs in
+    the same folder are correctly ignored, not silently swept in."""
+    from data.physionet_loader import load_physionet_gaba_folder
+
+    (tmp_path / "sub01_val_spec.csv").write_text("\n".join(str(float(i)) for i in range(10)))
+    (tmp_path / "sub01_alphaWave.csv").write_text("\n".join(str(float(i) * 2) for i in range(10)))
+    (tmp_path / "unrelated_notes.csv").write_text("\n".join(str(float(i)) for i in range(10)))
+    (tmp_path / "readme.txt").write_text("not a csv at all")
+
+    meta = load_physionet_gaba_folder(tmp_path)
+    matched_names = {Path(p).name for p in meta["file"]}
+    assert matched_names == {"sub01_val_spec.csv", "sub01_alphaWave.csv"}
+    assert set(meta["n"]) == {10}
+
+
+def test_load_physionet_gaba_folder_skips_too_short_files(tmp_path):
+    from data.physionet_loader import load_physionet_gaba_folder
+
+    (tmp_path / "short_val_spec.csv").write_text("1.0\n2.0")  # only 2 values, min is 4
+    (tmp_path / "long_val_spec.csv").write_text("\n".join(str(float(i)) for i in range(10)))
+
+    meta = load_physionet_gaba_folder(tmp_path)
+    assert len(meta) == 1
+    assert Path(meta["file"].iloc[0]).name == "long_val_spec.csv"
+
+
+def test_run_physionet_populated_folder_computes_real_qproxy_not_degenerate(tmp_path):
+    """Regression-style ground-truth check: Q_proxy/Qabs_proxy must differ
+    for genuinely different spectral content, and must not be trivially zero
+    across the board -- proving the FFT-phase-gradient computation actually
+    runs on real per-file values, not a placeholder constant."""
+    from pipelines.run_physionet import run
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    n = 64
+    smooth = np.sin(np.linspace(0, 4 * np.pi, n))
+    noisy = rng.standard_normal(n)
+
+    (tmp_path / "subA_val_spec.csv").write_text("\n".join(str(float(v)) for v in smooth))
+    (tmp_path / "subB_val_spec.csv").write_text("\n".join(str(float(v)) for v in noisy))
+
+    df = run(tmp_path, tmp_path / "out.csv")
+    assert len(df) == 2
+    assert {"file", "Q_proxy", "Qabs_proxy"}.issubset(df.columns)
+    assert (tmp_path / "out.csv").exists()
+
+    q_values = df["Q_proxy"].tolist()
+    qabs_values = df["Qabs_proxy"].tolist()
+    assert q_values[0] != q_values[1], "Q_proxy identical for genuinely different spectral content"
+    assert any(v != 0.0 for v in qabs_values), "Qabs_proxy is trivially zero for all real inputs"
+
+
+def test_run_physionet_ignores_non_matching_files(tmp_path):
+    from pipelines.run_physionet import run
+
+    (tmp_path / "notes.txt").write_text("this is not a spectral csv")
+    (tmp_path / "other_metric.csv").write_text("1.0\n2.0\n3.0\n4.0\n5.0")
+
+    df = run(tmp_path, tmp_path / "out.csv")
+    assert len(df) == 0
+
+
 # ---------------------------------------------------------------------------
 # run_cross_domain
 # ---------------------------------------------------------------------------

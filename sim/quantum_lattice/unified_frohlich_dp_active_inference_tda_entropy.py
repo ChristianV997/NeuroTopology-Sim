@@ -1,6 +1,7 @@
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
+from scipy.spatial.distance import pdist, squareform
 from typing import Dict
 
 class ActiveInferenceController:
@@ -43,7 +44,7 @@ def run_unified_with_entropy(N=8, steps=1400, dt=0.06, tda_interval=50):
     prev_S = qt.entropy_vn(rho)
     
     for step in range(steps):
-        result = qt.mesolve(H, rho, [0, dt], c_ops, [])
+        result = qt.mesolve(H, rho, [0, dt], c_ops, e_ops=[])
         rho = result.states[-1]
         
         if step % tda_interval == 0 or step == steps-1:

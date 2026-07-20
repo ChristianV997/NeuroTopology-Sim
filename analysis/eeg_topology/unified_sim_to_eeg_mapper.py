@@ -43,7 +43,7 @@ def run_simulator(N=8, steps=1200, dt=0.06):
     
     coherence_series = []
     for step in range(steps):
-        result = qt.mesolve(H, rho, [0, dt], c_ops, [])
+        result = qt.mesolve(H, rho, [0, dt], c_ops, e_ops=[])
         rho = result.states[-1]
         
         if step % 30 == 0 or step == steps-1:

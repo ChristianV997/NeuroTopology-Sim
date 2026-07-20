@@ -207,15 +207,24 @@ def read_window_signal(
             f"window [{window_start_s},{window_end_s}]s out of range for {Path(path).name} "
             f"(duration {n_total / sfreq:.2f}s)"
         )
-    picks = None
-    try:
-        import mne
+    import mne
 
+    try:
         picks = mne.pick_types(raw.info, eeg=True)
-        if max_channels:
-            picks = picks[:max_channels]
-    except Exception:  # pragma: no cover
-        picks = None
+    except Exception as exc:  # pragma: no cover
+        # Previously fell back to `picks = None`, which makes
+        # `raw.get_data(picks=None)` return EVERY channel (EOG/ECG/stim/...),
+        # silently blending non-EEG channels into what this function's
+        # docstring promises are "REAL samples" of EEG signal -- and for
+        # pick="mean" that contamination is invisible in the output. Found
+        # during a repo-wide audit. Fail loudly instead (as a ValueError,
+        # which every caller already handles via skip-and-report) rather
+        # than return contaminated data disguised as clean EEG.
+        raise ValueError(
+            f"could not select EEG channels for {Path(path).name}: {exc}"
+        ) from exc
+    if max_channels:
+        picks = picks[:max_channels]
     data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
     if data.ndim == 1:
         data = data[None, :]
