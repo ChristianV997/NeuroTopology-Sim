@@ -229,19 +229,28 @@ def _compute_topology_from_channels(
     n_valid_triangles = 0
     if n_ch >= 3:
         n_samples = len(channel_data[0]) if channel_data else 0
-        for i in range(n_ch):
-            for j in range(i + 1, n_ch):
-                for k in range(j + 1, n_ch):
-                    if n_samples >= 2:
-                        r_ij = _pearson_proxy(channel_data[i], channel_data[j])
-                        r_ik = _pearson_proxy(channel_data[i], channel_data[k])
-                        r_jk = _pearson_proxy(channel_data[j], channel_data[k])
-                        avg_corr = (abs(r_ij) + abs(r_ik) + abs(r_jk)) / 3.0
+        if n_samples >= 2:
+            # Precompute each ordered pair's absolute correlation exactly once
+            # into a symmetric matrix, then read it in the triangle loop. The
+            # previous triple loop recomputed each pair's `_pearson_proxy`
+            # (an O(n_samples) pure-Python pass) up to (n_ch-2) times -- for
+            # n_ch=8 that is 168 pearson evaluations where only 28 distinct
+            # pairs exist (~6x redundant, and each evaluation walks a full
+            # ~1000s-of-samples window). Caching is byte-identical: the same
+            # `_pearson_proxy` result feeds the same `(|r_ij|+|r_ik|+|r_jk|)/3`
+            # comparison, just computed once per pair.
+            abs_corr = [[0.0] * n_ch for _ in range(n_ch)]
+            for i in range(n_ch):
+                for j in range(i + 1, n_ch):
+                    c = abs(_pearson_proxy(channel_data[i], channel_data[j]))
+                    abs_corr[i][j] = c
+                    abs_corr[j][i] = c
+            for i in range(n_ch):
+                for j in range(i + 1, n_ch):
+                    for k in range(j + 1, n_ch):
+                        avg_corr = (abs_corr[i][j] + abs_corr[i][k] + abs_corr[j][k]) / 3.0
                         if avg_corr > _SIMILARITY_THRESHOLD:
                             n_valid_triangles += 1
-                    else:
-                        # Insufficient samples; no valid triangles
-                        pass
 
     defect_density = q_abs / max(n_valid_triangles, 1)
     topology_quality = n_valid_triangles / max(n_triangles, 1) if n_triangles > 0 else 0.0
