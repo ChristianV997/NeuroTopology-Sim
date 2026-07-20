@@ -14,6 +14,7 @@ required_outputs:
 optional_outputs:
   - null_gate_report.json
   - group_significance_report.json
+  - phase_based_topology_report.json
 statistics:
   group_significance:
     enabled_by_default: true
@@ -26,6 +27,11 @@ statistics:
     method: phase_randomize_time surrogates, compute_null_summary z-score
     n_surrogates: 50
     gate_sample_size: 20
+  phase_based_topology:
+    enabled_by_default: true
+    method: bandpass_hilbert_phase + channel_phase_gradient_metrics (real band-specific analytic phase, not the channel-mean/correlation heuristic q_net/q_abs/f_dress above)
+    band: alpha
+    cli_flags: --phase-band, --phase-topology-sample-size
 required_columns:
   - row_id
   - subject_id

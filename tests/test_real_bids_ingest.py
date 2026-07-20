@@ -38,3 +38,17 @@ def test_read_window_returns_real_samples(bids_root):
     sig = read_window_signal(recs[0].path, 0.0, 10.0)
     assert sig.ndim == 1 and sig.size > 100
     assert sig.std() > 0  # not a constant / not a filename hash
+
+
+def test_get_sample_rate_matches_window_signal_derived_rate(bids_root):
+    """get_sample_rate must agree with the sfreq read_window_signal computes
+    internally (it re-derives sfreq to slice windows but never exposes it)."""
+    from data.bids_ingest import discover_bids_eeg, get_sample_rate, read_window_signal
+
+    recs = discover_bids_eeg(bids_root)
+    sfreq = get_sample_rate(recs[0].path)
+    assert sfreq > 0
+
+    sig = read_window_signal(recs[0].path, 0.0, 2.0)
+    expected_n_samples = round(2.0 * sfreq)
+    assert abs(sig.size - expected_n_samples) <= 1

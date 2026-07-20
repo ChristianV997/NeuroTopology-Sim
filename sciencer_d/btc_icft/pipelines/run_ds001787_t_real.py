@@ -24,6 +24,8 @@ def main() -> int:
     p.add_argument("--gate-sample-size", type=int, default=20, help="Bound the number of windows the null gate runs on; 0 means gate all windows.")
     p.add_argument("--n-permutations", type=int, default=2000, help="Permutations for the group-significance report.")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--phase-band", default="alpha", help="EEG band for the real band-specific Hilbert-phase topology report (delta/theta/alpha/beta/gamma_low).")
+    p.add_argument("--phase-topology-sample-size", type=int, default=0, help="Bound the number of windows the phase-based topology report runs on; 0 means all windows (cheap, unlike the null gate).")
     a = p.parse_args()
 
     if a.real and a.mock_fixture:
@@ -69,8 +71,13 @@ def main() -> int:
             rows, m_rows, n_surrogates=a.n_surrogates, seed=a.seed,
             sample_size=(a.gate_sample_size if a.gate_sample_size > 0 else None),
         )
+    phase_based_topology_report = topo.build_phase_based_topology_report(
+        rows, m_rows, band=a.phase_band, seed=a.seed,
+        sample_size=(a.phase_topology_sample_size if a.phase_topology_sample_size > 0 else None),
+    )
     paths = topo.write_level_t_topology_outputs(
-        res, a.out, null_gate_report=null_gate_report, group_significance_report=group_significance_report
+        res, a.out, null_gate_report=null_gate_report, group_significance_report=group_significance_report,
+        phase_based_topology_report=phase_based_topology_report,
     )
     for k, v in paths.items():
         print(f"{k}: {v}")

@@ -19,8 +19,10 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     build_level_t_rows_from_m_windows,
     build_null_gate_report,
     build_null_placeholder_report,
+    build_phase_based_topology_report,
     build_topology_quality_report,
     compute_fixture_topology_for_window,
+    compute_phase_based_topology_for_window,
     compute_real_topology_for_window,
 )
 from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES
@@ -39,10 +41,12 @@ def build_level_t_omega_event(rows: list[LevelTRealTopologyRow]) -> dict:
 def write_level_t_topology_outputs(
     result: LevelTRealTopologyResult, out_dir: str,
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
+    phase_based_topology_report: dict | None = None,
 ) -> dict[str, str]:
     return _base.write_level_t_topology_outputs(
         result, out_dir, result_rows_cache, DATASET_ID,
         null_gate_report=null_gate_report, group_significance_report=group_significance_report,
+        phase_based_topology_report=phase_based_topology_report,
     )
 
 

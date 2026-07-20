@@ -129,6 +129,19 @@ def _read_raw(path: str):
     raise ValueError(f"Unsupported EEG extension for {path}: {ext}")
 
 
+def get_sample_rate(path: str) -> float:
+    """Return the sampling rate (Hz) for an EEG recording without loading its data.
+
+    `_read_raw` uses `preload=False`, so this only reads file metadata (header),
+    not signal samples -- cheap enough to call once per window. Needed by any
+    consumer that must know sfreq before filtering (e.g. band-specific
+    Hilbert-phase extraction), which `read_window_signal` computes internally
+    but does not expose.
+    """
+    raw = _read_raw(path)
+    return float(raw.info["sfreq"])
+
+
 def read_window_signal(
     path: str,
     window_start_s: float,

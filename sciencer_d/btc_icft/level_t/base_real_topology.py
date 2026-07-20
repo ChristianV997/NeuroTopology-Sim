@@ -230,6 +230,128 @@ def build_level_t_rows_from_m_windows(
     return [compute_fixture_topology_for_window(r, i) for i, r in enumerate(m_rows)]
 
 
+def compute_phase_based_topology_for_window(
+    m_row: dict, band: str = "alpha", max_channels: int | None = 16,
+) -> dict:
+    """Real band-specific Hilbert-phase topology for one window.
+
+    Unlike `compute_real_topology_for_window` (a channel-mean/correlation-
+    threshold heuristic -- see `eeg_signal_topology.py`'s own docstring; it
+    uses no phase or frequency information at all), this bandpass-filters the
+    real per-channel signal to `band` (default alpha, 8-13 Hz -- classically
+    the band most associated with conscious-state EEG differences), extracts
+    the analytic (Hilbert) phase via
+    `validation.analytic_phase.bandpass_hilbert_phase`, and computes
+    Q/Qabs/f_dress from genuine inter-channel phase relationships via
+    `validation.analytic_phase.channel_phase_gradient_metrics` -- a real,
+    already-tested instrument this repo built (for `pipelines/run_eeg.py`) but
+    never wired into the dataset-report pipeline.
+
+    Additive, not a replacement: returns a plain dict (not a
+    `LevelTRealTopologyRow`) so it can be reported alongside the existing
+    channel-mean-based q_net/q_abs/f_dress without silently changing them.
+    Returns `{"status": "skipped", ...}` (not a raised exception) for any
+    unreadable/out-of-range/too-few-channels/band-above-Nyquist case, matching
+    this module's existing skip-and-report convention.
+    """
+    from data.bids_ingest import get_sample_rate, read_window_signal
+    from validation.analytic_phase import (
+        DEFAULT_EEG_BANDS,
+        bandpass_hilbert_phase,
+        channel_phase_gradient_metrics,
+    )
+
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = float(m_row.get("window_start_s") or 0.0)
+    window_end_s = float(m_row.get("window_end_s") or 0.0)
+
+    if band not in DEFAULT_EEG_BANDS:
+        raise ValueError(f"Unknown band {band!r}; choose from {sorted(DEFAULT_EEG_BANDS)}")
+
+    if not source_file or not Path(source_file).exists():
+        return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
+
+    try:
+        sfreq = get_sample_rate(source_file)
+        channels = read_window_signal(
+            source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
+        )
+    except ValueError as exc:
+        return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"window skipped: {exc}"}
+
+    if channels.shape[0] < 2:
+        return {
+            "row_id": row_id, "band": band, "status": "skipped",
+            "reason": f"need >=2 channels for phase-gradient metrics, got {channels.shape[0]}",
+        }
+
+    lo, hi = DEFAULT_EEG_BANDS[band]
+    nyq = sfreq / 2.0
+    if hi >= nyq:
+        return {
+            "row_id": row_id, "band": band, "status": "skipped",
+            "reason": f"band {band} upper edge {hi} Hz >= Nyquist {nyq} Hz at sfreq={sfreq}",
+        }
+
+    try:
+        phase = bandpass_hilbert_phase(channels, sfreq, lo, hi)
+    except ValueError as exc:
+        return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"phase extraction failed: {exc}"}
+
+    metrics = channel_phase_gradient_metrics(phase)
+    return {"row_id": row_id, "band": band, "status": "computed", "sfreq": sfreq, **metrics}
+
+
+def build_phase_based_topology_report(
+    rows: list[LevelTRealTopologyRow], m_rows: list[dict], band: str = "alpha",
+    sample_size: int | None = None, seed: int = 0, max_channels: int | None = 16,
+) -> dict:
+    """Aggregate `compute_phase_based_topology_for_window` over (optionally a
+    bounded sample of) rows.
+
+    Unlike `build_null_gate_report`, `sample_size` defaults to `None` (gate
+    every window): a single bandpass+Hilbert-transform per window is far
+    cheaper than the surrogate gate's N-surrogate recomputation loop, so there
+    is no default need to bound it. `sample_size` is still accepted for callers
+    who want to bound compute on very large datasets.
+    """
+    by_id = {str(m.get("row_id")): m for m in m_rows}
+    candidate_rows = [r for r in rows if r.row_id in by_id]
+
+    if sample_size is not None and len(candidate_rows) > sample_size:
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
+        candidate_rows = [candidate_rows[i] for i in sorted(idx)]
+
+    results = [
+        compute_phase_based_topology_for_window(by_id[r.row_id], band=band, max_channels=max_channels)
+        for r in candidate_rows
+    ]
+    computed = [x for x in results if x["status"] == "computed"]
+    skipped = [x for x in results if x["status"] != "computed"]
+
+    def _mean(key: str) -> float:
+        vals = [x[key] for x in computed if key in x and np.isfinite(x[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    return {
+        "status": "phase_based_topology_computed",
+        "band": band,
+        "method": "bandpass_hilbert_phase + channel_phase_gradient_metrics",
+        "n_windows_computed": len(computed),
+        "n_windows_skipped": len(skipped),
+        "n_windows_total_candidates": len(rows),
+        "mean_Q": _mean("Q"),
+        "mean_Qabs": _mean("Qabs"),
+        "mean_phase_grad": _mean("phase_grad"),
+        "mean_f_dress": _mean("f_dress"),
+        "seed": seed,
+        "sample_size": sample_size,
+        "results": results,
+    }
+
+
 def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
     qs = [r.topology_quality for r in rows]
     return {
@@ -439,12 +561,14 @@ def build_level_t_omega_event(rows: list[LevelTRealTopologyRow], dataset_id: str
 def write_level_t_topology_outputs(
     result: LevelTRealTopologyResult, out_dir: str, rows: list[LevelTRealTopologyRow], dataset_id: str,
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
+    phase_based_topology_report: dict | None = None,
 ) -> dict[str, str]:
-    """`null_gate_report`/`group_significance_report` are optional (default
-    None, writing nothing extra) so existing callers that don't pass them keep
-    getting exactly the same output files as before. Passing them writes two
-    additional JSON files and adds report.md sections -- see
-    `build_null_gate_report`/`build_group_significance_report`.
+    """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`
+    are optional (default None, writing nothing extra) so existing callers that
+    don't pass them keep getting exactly the same output files as before.
+    Passing them writes additional JSON files and adds report.md sections --
+    see `build_null_gate_report`/`build_group_significance_report`/
+    `build_phase_based_topology_report`.
     """
     base = Path(out_dir); base.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -459,6 +583,8 @@ def write_level_t_topology_outputs(
         paths["null_gate_report.json"] = base / "null_gate_report.json"
     if group_significance_report is not None:
         paths["group_significance_report.json"] = base / "group_significance_report.json"
+    if phase_based_topology_report is not None:
+        paths["phase_based_topology_report.json"] = base / "phase_based_topology_report.json"
 
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
@@ -475,6 +601,8 @@ def write_level_t_topology_outputs(
         paths["null_gate_report.json"].write_text(json.dumps(null_gate_report, indent=2), encoding="utf-8")
     if group_significance_report is not None:
         paths["group_significance_report.json"].write_text(json.dumps(group_significance_report, indent=2), encoding="utf-8")
+    if phase_based_topology_report is not None:
+        paths["phase_based_topology_report.json"].write_text(json.dumps(phase_based_topology_report, indent=2), encoding="utf-8")
 
     report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
@@ -494,6 +622,8 @@ def write_level_t_topology_outputs(
         report_lines += ["## Null gate report (real phase-randomization surrogates)", f"- {null_gate_report}"]
     if group_significance_report is not None:
         report_lines += ["## Group significance report (permutation tests)", f"- {group_significance_report}"]
+    if phase_based_topology_report is not None:
+        report_lines += ["## Phase-based topology report (real band-specific Hilbert phase)", f"- {phase_based_topology_report}"]
     report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",
