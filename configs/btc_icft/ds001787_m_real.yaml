@@ -18,6 +18,13 @@ required_outputs:
   - leakage_report.json
   - omega_event.json
   - report.md
+optional_outputs:
+  - real_level_m_features_report.json
+statistics:
+  real_level_m_features:
+    enabled_by_default: true
+    method: welch_band_power (delta/theta/alpha/beta/gamma) + antropy complexity (permutation/sample entropy, Higuchi FD) + specparam aperiodic (1/f exponent) -- real instruments, additive alongside the existing spectral_power_proxy/entropy_proxy/lzc_proxy columns
+    cli_flag: --real-features-sample-size (0 = all windows)
 allowed_tasks:
   - expert_vs_novice
 guardrails:

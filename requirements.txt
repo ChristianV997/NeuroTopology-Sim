@@ -25,6 +25,13 @@ networkx
 # handful of subjects; MixedLM properly partitions within/between-subject
 # variance instead of discarding it via per-subject aggregation). BSD-licensed.
 statsmodels
+# Used by sciencer_d/btc_icft/level_m/real_features.py for real nonlinear
+# complexity/entropy (permutation entropy, sample entropy, Higuchi fractal
+# dimension) and real aperiodic (1/f) vs. oscillatory spectral decomposition
+# -- replacing the entropy_proxy/lzc_proxy heuristics with textbook
+# implementations. Both BSD-3-licensed.
+antropy
+specparam
 # Used by data/preprocessing.py's opt-in heavier artifact-rejection mode
 # (autoreject: cross-validated per-epoch/per-channel statistical rejection;
 # mne-icalabel: automated ICA component classification for eye/muscle/heart

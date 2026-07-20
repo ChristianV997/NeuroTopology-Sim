@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -12,6 +13,18 @@ from sciencer_d.btc_icft.level_m.ds005620_windows import (
     load_bids_inspection_outputs,
     write_level_m_window_outputs,
 )
+from sciencer_d.btc_icft.level_m.real_features import build_real_level_m_features_report
+
+
+def _write_real_features_report(result, out_dir: str, sample_size: int | None) -> str:
+    """Additive real-Level-M-features report (band power, complexity,
+    aperiodic spectral decomposition -- see real_features.py's docstring for
+    why this is a separate, new output rather than a change to the existing
+    features_m.csv's _proxy columns)."""
+    report = build_real_level_m_features_report(result.rows, sample_size=sample_size)
+    path = Path(out_dir) / "real_level_m_features_report.json"
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return str(path)
 
 
 def main() -> int:
@@ -26,6 +39,9 @@ def main() -> int:
     parser.add_argument("--bids-root", default=None,
                         help="Local BIDS root for --real (e.g. eegdash cache or s3-synced ds005620).")
     parser.add_argument("--max-channels", type=int, default=16)
+    parser.add_argument("--real-features-sample-size", type=int, default=0,
+                        help="Bound how many windows the real band-power/complexity/aperiodic "
+                             "features report (real_level_m_features_report.json) runs on; 0 means all windows.")
     args = parser.parse_args()
 
     if args.real:
@@ -46,6 +62,9 @@ def main() -> int:
         # features are already real; go straight to evaluation
         result = evaluate_level_m_windows(windows, task=args.task)
         paths = write_level_m_window_outputs(result, args.out)
+        paths["real_level_m_features_report"] = _write_real_features_report(
+            result, args.out, sample_size=(args.real_features_sample_size or None)
+        )
         for k, v in paths.items():
             print(f"{k}: {v}")
         return 0
