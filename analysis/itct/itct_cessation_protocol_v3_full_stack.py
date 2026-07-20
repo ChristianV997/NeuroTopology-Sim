@@ -20,6 +20,13 @@ custom reimplementation):
 NOT validated here (labelled in output.not_validated_here): hyperscanning collective resilience
 (needs simultaneous multi-subject recordings), SYK scrambling, quantum extremal surfaces.
 
+`_plv_from_windows`, `compute_beta1`, `compute_persistence_diagram`, and
+`compute_spectral_dimension` are thin wrappers over `analysis/connectivity_topology.py`,
+which is the real, independently-tested, reusable home for this module's real PLV +
+persistent-homology core (factored out so other pipelines -- e.g. the BTC/ICFT dataset
+reports, which never used this real connectivity/TDA machinery -- can reuse it without
+depending on this file's more speculative extras below, which stay here unpromoted).
+
 Usage:
   python -m analysis.itct.itct_cessation_protocol_v3_full_stack --bids-root <ds005620> \
       --subject 01 --task sedated --out outputs/itct
@@ -39,18 +46,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-
-def _plv_from_windows(signals: np.ndarray) -> np.ndarray:
-    from scipy.signal import hilbert
-
-    phase = np.angle(hilbert(signals, axis=1))
-    C = phase.shape[0]
-    plv = np.ones((C, C), dtype=float)
-    for i in range(C):
-        for j in range(i + 1, C):
-            v = np.abs(np.mean(np.exp(1j * (phase[i] - phase[j]))))
-            plv[i, j] = plv[j, i] = float(v)
-    return plv
+from analysis.connectivity_topology import compute_plv as _plv_from_windows  # noqa: E402
+from analysis.connectivity_topology import (  # noqa: E402
+    compute_beta1 as _shared_compute_beta1,
+)
+from analysis.connectivity_topology import (  # noqa: E402
+    compute_persistence_diagram as _shared_compute_persistence_diagram,
+)
+from analysis.connectivity_topology import (  # noqa: E402
+    compute_spectral_dimension as _shared_compute_spectral_dimension,
+)
 
 
 def load_plv_from_bids(bids_root, subject, task, n_windows=20, window_seconds=4.0, max_channels=16):
@@ -95,62 +100,28 @@ def synthetic_plv_series(n_windows=20, n_channels=16, seed=42):
 def compute_beta1(plv, threshold=0.5):
     """First Betti number via REAL persistent homology (ripser), not a cyclomatic-number proxy.
 
-    PLV in [0,1] is a similarity; ripser needs a distance matrix, so we use 1-PLV. beta1 at a
-    given `threshold` is the count of H1 (1-dimensional / loop) features whose persistence
-    interval [birth, death) contains the corresponding distance `1-threshold` — i.e. loops that
-    are actually alive at that similarity cutoff, not just "ever born".
+    Thin wrapper over `analysis.connectivity_topology.compute_beta1` (see that
+    module's docstring for the full explanation) -- kept as a same-named,
+    same-signature function here so existing callers/tests of this file don't
+    need to change.
     """
-    import ripser
-
-    D = 1.0 - np.clip(plv, 0.0, 1.0)
-    np.fill_diagonal(D, 0.0)
-    dgms = ripser.ripser(D, distance_matrix=True, maxdim=1)["dgms"]
-    h1 = dgms[1] if len(dgms) > 1 else np.empty((0, 2))
-    d_thresh = 1.0 - threshold
-    alive = h1[(h1[:, 0] <= d_thresh) & (h1[:, 1] > d_thresh)]
-    return int(alive.shape[0])
+    return _shared_compute_beta1(plv, threshold=threshold)
 
 
 def compute_persistence_diagram(plv):
-    """Full H0/H1 persistence diagrams (ripser), for manuscript-grade figures via persim."""
-    import ripser
+    """Full H0/H1 persistence diagrams (ripser), for manuscript-grade figures via persim.
 
-    D = 1.0 - np.clip(plv, 0.0, 1.0)
-    np.fill_diagonal(D, 0.0)
-    return ripser.ripser(D, distance_matrix=True, maxdim=1)["dgms"]
-
-
-def _graph(plv, threshold=0.5):
-    import networkx as nx
-
-    C = plv.shape[0]
-    G = nx.Graph()
-    G.add_nodes_from(range(C))
-    for i in range(C):
-        for j in range(i + 1, C):
-            if plv[i, j] >= threshold:
-                G.add_edge(i, j)
-    return G
+    Thin wrapper over `analysis.connectivity_topology.compute_persistence_diagram`.
+    """
+    return _shared_compute_persistence_diagram(plv)
 
 
 def compute_spectral_dimension(plv, threshold=0.5):
-    import networkx as nx
+    """Spectral dimension from the PLV-graph Laplacian eigenvalue staircase.
 
-    G = _graph(plv, threshold)
-    if G.number_of_edges() == 0:
-        return 0.0
-    L = nx.laplacian_matrix(G).toarray().astype(float)
-    ev = np.sort(np.linalg.eigvalsh(L))
-    ev = ev[ev > 1e-9]
-    if len(ev) < 3:
-        return 0.0
-    k = np.arange(1, len(ev) + 1)
-    with np.errstate(all="ignore"):
-        import warnings as _w
-        with _w.catch_warnings():
-            _w.simplefilter("ignore")
-            slope = np.polyfit(np.log(ev), np.log(k), 1)[0]
-    return float(2.0 * slope)
+    Thin wrapper over `analysis.connectivity_topology.compute_spectral_dimension`.
+    """
+    return _shared_compute_spectral_dimension(plv, threshold=threshold)
 
 
 def build_effective_hamiltonian(plv, nonherm=0.1):

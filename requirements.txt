@@ -14,6 +14,11 @@ the_well
 ripser
 persim
 h5py
+# Used by analysis/itct/itct_cessation_protocol_v3_full_stack.py and
+# analysis/connectivity_topology.py for PLV-graph Laplacian spectral dimension --
+# previously undeclared despite being a hard import in both, so a fresh clone
+# would ImportError. BSD-licensed.
+networkx
 # Used by analysis/permutation.py::mixedlm_group_effect -- the correct fix for
 # the pseudoreplication bug found in the ds001787 report (window-pooled
 # permutation tests found p<0.001 for effects that were really driven by a
