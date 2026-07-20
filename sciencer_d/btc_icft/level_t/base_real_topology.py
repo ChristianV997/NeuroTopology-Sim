@@ -352,6 +352,127 @@ def build_phase_based_topology_report(
     }
 
 
+def compute_connectivity_for_window(
+    m_row: dict, methods: tuple[str, ...] = ("plv", "pli", "wpli"),
+    max_channels: int | None = 16, compute_granger: bool = False, granger_maxlag: int = 5,
+) -> dict:
+    """Real connectivity (PLV/PLI/wPLI, optionally directed Granger
+    causality) for one window, from the actual per-channel signal --
+    `analysis/connectivity_topology.py`'s instruments (Phase 0/3 of the
+    "beyond topology" pass), applied per-dataset-window here for the first
+    time (they previously existed only in the separate ITCT script).
+
+    Additive report function, not wired into `LevelTRealTopologyRow` --
+    keeps the existing q_net/q_abs/f_dress columns and the three published
+    reports untouched. PLI/wPLI matter here specifically because scalp EEG
+    connectivity is prone to zero-lag volume-conduction artifacts that PLV
+    cannot distinguish from genuine coupling; PLI/wPLI are insensitive to
+    exactly that artifact by construction (see their docstrings).
+    """
+    from data.bids_ingest import read_window_signal
+
+    from analysis.connectivity_topology import (
+        compute_granger_causality_matrix,
+        compute_pli,
+        compute_plv,
+        compute_wpli,
+    )
+
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = float(m_row.get("window_start_s") or 0.0)
+    window_end_s = float(m_row.get("window_end_s") or 0.0)
+
+    if not source_file or not Path(source_file).exists():
+        return {"row_id": row_id, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
+
+    try:
+        channels = read_window_signal(
+            source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
+        )
+    except ValueError as exc:
+        return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
+
+    channel_data = np.asarray(channels, dtype=float)
+    if channel_data.shape[0] < 2:
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": f"need >=2 channels for connectivity, got {channel_data.shape[0]}",
+        }
+
+    result: dict = {"row_id": row_id, "status": "computed", "n_channels": int(channel_data.shape[0])}
+    method_fns = {"plv": compute_plv, "pli": compute_pli, "wpli": compute_wpli}
+    for m in methods:
+        fn = method_fns.get(m)
+        if fn is None:
+            continue
+        mat = fn(channel_data)
+        off_diag = mat[~np.eye(mat.shape[0], dtype=bool)]
+        result[f"mean_{m}"] = float(np.mean(off_diag)) if off_diag.size else float("nan")
+        result[f"{m}_matrix"] = mat.tolist()
+
+    if compute_granger:
+        gc = compute_granger_causality_matrix(channel_data, maxlag=granger_maxlag)
+        p_values = list(gc.values())
+        result["granger_causality_p_values"] = gc
+        result["n_significant_granger_pairs"] = sum(
+            1 for p in p_values if np.isfinite(p) and p < 0.05
+        )
+
+    return result
+
+
+def build_connectivity_report(
+    rows: list[LevelTRealTopologyRow], m_rows: list[dict], methods: tuple[str, ...] = ("plv", "pli", "wpli"),
+    sample_size: int | None = None, seed: int = 0, max_channels: int | None = 16,
+    compute_granger: bool = False, granger_maxlag: int = 5,
+) -> dict:
+    """Aggregate `compute_connectivity_for_window` over (optionally a bounded
+    sample of) rows. `compute_granger` is a separate, more expensive opt-in
+    flag (O(n_channels^2) directed OLS-based tests per window) -- keep it off
+    for large datasets unless directed influence is specifically needed;
+    PLV/PLI/wPLI alone are cheap enough to gate every window by default.
+    """
+    by_id = {str(m.get("row_id")): m for m in m_rows}
+    candidate_rows = [r for r in rows if r.row_id in by_id]
+
+    if sample_size is not None and len(candidate_rows) > sample_size:
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
+        candidate_rows = [candidate_rows[i] for i in sorted(idx)]
+
+    results = [
+        compute_connectivity_for_window(
+            by_id[r.row_id], methods=methods, max_channels=max_channels,
+            compute_granger=compute_granger, granger_maxlag=granger_maxlag,
+        )
+        for r in candidate_rows
+    ]
+    computed = [x for x in results if x["status"] == "computed"]
+    skipped = [x for x in results if x["status"] != "computed"]
+
+    def _mean(key: str) -> float:
+        vals = [x[key] for x in computed if key in x and np.isfinite(x[key])]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    summary = {f"mean_{m}": _mean(f"mean_{m}") for m in methods}
+    if compute_granger:
+        summary["mean_n_significant_granger_pairs"] = _mean("n_significant_granger_pairs")
+
+    return {
+        "status": "connectivity_computed",
+        "methods": list(methods),
+        "compute_granger": compute_granger,
+        "n_windows_computed": len(computed),
+        "n_windows_skipped": len(skipped),
+        "n_windows_total_candidates": len(rows),
+        **summary,
+        "seed": seed,
+        "sample_size": sample_size,
+        "results": results,
+    }
+
+
 def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
     qs = [r.topology_quality for r in rows]
     return {
@@ -561,14 +682,15 @@ def build_level_t_omega_event(rows: list[LevelTRealTopologyRow], dataset_id: str
 def write_level_t_topology_outputs(
     result: LevelTRealTopologyResult, out_dir: str, rows: list[LevelTRealTopologyRow], dataset_id: str,
     null_gate_report: dict | None = None, group_significance_report: dict | None = None,
-    phase_based_topology_report: dict | None = None,
+    phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
 ) -> dict[str, str]:
-    """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`
-    are optional (default None, writing nothing extra) so existing callers that
-    don't pass them keep getting exactly the same output files as before.
-    Passing them writes additional JSON files and adds report.md sections --
-    see `build_null_gate_report`/`build_group_significance_report`/
-    `build_phase_based_topology_report`.
+    """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`/
+    `connectivity_report` are optional (default None, writing nothing extra)
+    so existing callers that don't pass them keep getting exactly the same
+    output files as before. Passing them writes additional JSON files and
+    adds report.md sections -- see `build_null_gate_report`/
+    `build_group_significance_report`/`build_phase_based_topology_report`/
+    `build_connectivity_report`.
     """
     base = Path(out_dir); base.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -585,6 +707,8 @@ def write_level_t_topology_outputs(
         paths["group_significance_report.json"] = base / "group_significance_report.json"
     if phase_based_topology_report is not None:
         paths["phase_based_topology_report.json"] = base / "phase_based_topology_report.json"
+    if connectivity_report is not None:
+        paths["connectivity_report.json"] = base / "connectivity_report.json"
 
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
@@ -603,6 +727,8 @@ def write_level_t_topology_outputs(
         paths["group_significance_report.json"].write_text(json.dumps(group_significance_report, indent=2), encoding="utf-8")
     if phase_based_topology_report is not None:
         paths["phase_based_topology_report.json"].write_text(json.dumps(phase_based_topology_report, indent=2), encoding="utf-8")
+    if connectivity_report is not None:
+        paths["connectivity_report.json"].write_text(json.dumps(connectivity_report, indent=2), encoding="utf-8")
 
     report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
@@ -624,6 +750,8 @@ def write_level_t_topology_outputs(
         report_lines += ["## Group significance report (permutation tests)", f"- {group_significance_report}"]
     if phase_based_topology_report is not None:
         report_lines += ["## Phase-based topology report (real band-specific Hilbert phase)", f"- {phase_based_topology_report}"]
+    if connectivity_report is not None:
+        report_lines += ["## Connectivity report (real PLV/PLI/wPLI, optional directed Granger causality)", f"- {connectivity_report}"]
     report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",

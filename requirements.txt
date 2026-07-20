@@ -25,6 +25,10 @@ networkx
 # handful of subjects; MixedLM properly partitions within/between-subject
 # variance instead of discarding it via per-subject aggregation). BSD-licensed.
 statsmodels
+# Used by tests/test_connectivity_topology.py to cross-validate the
+# hand-rolled wPLI implementation against the maintained MNE-ecosystem
+# reference. BSD-3-licensed.
+mne-connectivity
 # Used by sciencer_d/btc_icft/level_m/real_features.py for real nonlinear
 # complexity/entropy (permutation entropy, sample entropy, Higuchi fractal
 # dimension) and real aperiodic (1/f) vs. oscillatory spectral decomposition

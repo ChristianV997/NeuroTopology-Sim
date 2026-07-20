@@ -15,6 +15,7 @@ optional_outputs:
   - null_gate_report.json
   - group_significance_report.json
   - phase_based_topology_report.json
+  - connectivity_report.json
 statistics:
   group_significance:
     enabled_by_default: true
@@ -32,6 +33,12 @@ statistics:
     method: bandpass_hilbert_phase + channel_phase_gradient_metrics (real band-specific analytic phase, not the channel-mean/correlation heuristic q_net/q_abs/f_dress above)
     band: alpha
     cli_flags: --phase-band, --phase-topology-sample-size
+  connectivity:
+    enabled_by_default: true
+    method: PLV (phase-locking value), PLI (phase lag index, insensitive to zero-lag volume-conduction artifacts), wPLI (weighted/debiased PLI) -- all from analysis/connectivity_topology.py
+    methods_default: [plv, pli, wpli]
+    granger_causality: opt-in only (compute-heavy O(channels^2) OLS tests per window), off by default
+    cli_flags: --connectivity-methods, --connectivity-sample-size, --compute-granger, --granger-maxlag
 required_columns:
   - row_id
   - subject_id

@@ -27,6 +27,10 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--phase-band", default="alpha", help="EEG band for the real band-specific Hilbert-phase topology report (delta/theta/alpha/beta/gamma_low).")
     p.add_argument("--phase-topology-sample-size", type=int, default=0, help="Bound the number of windows the phase-based topology report runs on; 0 means all windows (cheap, unlike the null gate).")
+    p.add_argument("--connectivity-methods", nargs="*", default=["plv", "pli", "wpli"], help="Connectivity methods to compute (plv/pli/wpli).")
+    p.add_argument("--connectivity-sample-size", type=int, default=0, help="Bound the number of windows the connectivity report runs on; 0 means all windows.")
+    p.add_argument("--compute-granger", action="store_true", help="Also compute directed Granger causality (compute-heavy: O(channels^2) OLS-based tests per window); off by default.")
+    p.add_argument("--granger-maxlag", type=int, default=5)
     a = p.parse_args()
 
     if a.real and a.mock_fixture:
@@ -76,9 +80,14 @@ def main() -> int:
         rows, m_rows, band=a.phase_band, seed=a.seed,
         sample_size=(a.phase_topology_sample_size if a.phase_topology_sample_size > 0 else None),
     )
+    connectivity_report = topo.build_connectivity_report(
+        rows, m_rows, methods=tuple(a.connectivity_methods), seed=a.seed,
+        sample_size=(a.connectivity_sample_size if a.connectivity_sample_size > 0 else None),
+        compute_granger=a.compute_granger, granger_maxlag=a.granger_maxlag,
+    )
     paths = topo.write_level_t_topology_outputs(
         res, a.out, null_gate_report=null_gate_report, group_significance_report=group_significance_report,
-        phase_based_topology_report=phase_based_topology_report,
+        phase_based_topology_report=phase_based_topology_report, connectivity_report=connectivity_report,
     )
     for k, v in paths.items():
         print(f"{k}: {v}")

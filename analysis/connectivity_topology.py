@@ -52,6 +52,130 @@ def compute_plv(signals: np.ndarray) -> np.ndarray:
     return plv
 
 
+def compute_pli(signals: np.ndarray) -> np.ndarray:
+    """Phase Lag Index (PLI) matrix -- Stam et al. 2007.
+
+    Unlike `compute_plv`, PLI measures the consistency of the SIGN of the
+    instantaneous phase difference (not its magnitude/direction), which
+    makes it insensitive to zero-lag coupling -- a real methodological
+    advantage for scalp EEG, where zero-lag "connectivity" is often actually
+    volume conduction from a shared source, not genuine neural coupling.
+
+    Returns a symmetric matrix in [0, 1], diagonal 1.0 by convention (self-
+    coupling is trivially maximal, matching `compute_plv`'s convention;
+    computed literally it would be 0, since sin(0)=0 for every sample).
+    """
+    from scipy.signal import hilbert
+
+    arr = np.asarray(signals, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"signals must be 2D (channels x samples), got shape {arr.shape}")
+
+    phase = np.angle(hilbert(arr, axis=1))
+    n_ch = phase.shape[0]
+    pli = np.ones((n_ch, n_ch), dtype=float)
+    for i in range(n_ch):
+        for j in range(i + 1, n_ch):
+            diff = phase[i] - phase[j]
+            v = np.abs(np.mean(np.sign(np.sin(diff))))
+            pli[i, j] = pli[j, i] = float(v)
+    return pli
+
+
+def compute_wpli(signals: np.ndarray) -> np.ndarray:
+    """Weighted Phase Lag Index (wPLI) matrix -- Vinck et al. 2011.
+
+    Debiased extension of PLI: weights each sample's contribution by the
+    magnitude of the imaginary part of the analytic cross-spectrum, reducing
+    sensitivity to noise compared to plain PLI while keeping the same
+    zero-lag-insensitivity property. Computed here across TIME SAMPLES
+    within one window (this repo's signals have no trial/epoch structure),
+    the same single-window convention already used by `compute_plv`/
+    `compute_pli` above -- the standard multi-trial formulation (as
+    implemented by e.g. `mne-connectivity`) averages the cross-spectrum
+    across repeated trials/epochs instead; the underlying formula (Vinck et
+    al. 2011, Eq. 8) is the same, applied to whichever axis represents
+    repeated observations for a given use case.
+
+    Returns a symmetric matrix in [0, 1], diagonal 1.0 by convention.
+    """
+    from scipy.signal import hilbert
+
+    arr = np.asarray(signals, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"signals must be 2D (channels x samples), got shape {arr.shape}")
+
+    analytic = hilbert(arr, axis=1)
+    n_ch = arr.shape[0]
+    wpli = np.ones((n_ch, n_ch), dtype=float)
+    for i in range(n_ch):
+        for j in range(i + 1, n_ch):
+            cross_spectrum = analytic[i] * np.conj(analytic[j])
+            imag_part = np.imag(cross_spectrum)
+            numerator = np.abs(np.mean(imag_part))
+            denominator = np.mean(np.abs(imag_part))
+            v = float(numerator / denominator) if denominator > 1e-12 else 0.0
+            wpli[i, j] = wpli[j, i] = v
+    return wpli
+
+
+def compute_granger_causality(x: np.ndarray, y: np.ndarray, maxlag: int = 5) -> dict:
+    """Test whether `y` Granger-causes `x` (past values of `y` improve
+    prediction of `x` beyond `x`'s own past) via `statsmodels` (already a
+    dependency) -- deliberately not IDTxl/JIDT (GPLv3), which this repo's
+    tool-adoption policy excludes for transfer-entropy/directed-connectivity
+    work.
+
+    Returns the per-lag F-test p-values plus the minimum p-value across
+    lags 1..maxlag (the standard "does Granger causality exist at any tested
+    lag" summary statistic).
+    """
+    from statsmodels.tsa.stattools import grangercausalitytests
+
+    data = np.column_stack([np.asarray(x, dtype=float), np.asarray(y, dtype=float)])
+    results = grangercausalitytests(data, maxlag=maxlag)
+    p_values = {lag: float(res[0]["ssr_ftest"][1]) for lag, res in results.items()}
+    min_p_lag = min(p_values, key=p_values.get)
+    return {
+        "p_values_by_lag": p_values,
+        "min_p_value": p_values[min_p_lag],
+        "min_p_lag": min_p_lag,
+        "maxlag": maxlag,
+    }
+
+
+def compute_granger_causality_matrix(signals: np.ndarray, maxlag: int = 5) -> dict:
+    """Pairwise directed Granger causality across all channel pairs.
+
+    Opt-in, compute-bounded addition (this repo's established pattern, e.g.
+    `sciencer_d/btc_icft/level_t/base_real_topology.py`'s `--compute-nulls`):
+    O(n_channels^2) directed Granger tests, each an O(maxlag) set of OLS
+    fits -- meaningfully more expensive than PLV/PLI/wPLI's O(n_channels^2)
+    simple phase comparisons, so callers should bound `n_channels` (via
+    `max_channels` upstream) and/or `maxlag` for larger datasets.
+
+    Returns `{"j->i": min_p_value, ...}` for every ordered pair -- a small
+    p-value means channel j's past significantly improves prediction of
+    channel i beyond i's own past (evidence of directed influence, not
+    proof of causation in the everyday sense -- Granger causality is a
+    predictive-improvement test, a standard caveat of the method itself).
+    """
+    arr = np.asarray(signals, dtype=float)
+    n_ch = arr.shape[0]
+    result: dict[str, float] = {}
+    for i in range(n_ch):
+        for j in range(n_ch):
+            if i == j:
+                continue
+            key = f"{j}->{i}"
+            try:
+                gc = compute_granger_causality(arr[i], arr[j], maxlag=maxlag)
+                result[key] = gc["min_p_value"]
+            except Exception:
+                result[key] = float("nan")
+    return result
+
+
 def compute_beta1(plv: np.ndarray, threshold: float = 0.5) -> int:
     """First Betti number (count of persistent H1 loop features) via REAL
     persistent homology (`ripser`), not a graph-theory cyclomatic-number proxy.
