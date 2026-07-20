@@ -354,6 +354,57 @@ def test_run_psi_os_I_mean_positive(tmp_path):
     assert record.metrics["I_mean"] > 0
 
 
+def test_run_psi_os_topology_metrics_are_real_not_fabricated_zeros(tmp_path):
+    """Regression test for a real bug found in Phase 8 (beyond-topology pass):
+    `Qz = float(compute_Qz(psi[np.newaxis]))` raised TypeError on every call
+    (compute_Qz returns a 2-tuple, not a scalar) and, separately, put the
+    singleton slice axis in the wrong position for compute_Qz's axis=2
+    default -- both silently caught by a bare `except Exception`, so
+    Qz_mean/Qabs_mean/f_dress were ALWAYS exactly 0.0 regardless of the
+    actual simulated field's topology. Checked across several seeds (not
+    just one) since a single unlucky seed could coincidentally produce
+    Qabs=0 even with the fix correctly applied."""
+    for seed in range(5):
+        record, _, _ = run_psi_os(N=16, n_steps=5, seed=seed, out_dir=tmp_path, _now=_NOW)
+        assert record.metrics["Qabs_mean"] != 0.0, f"seed={seed}: Qabs_mean is exactly 0.0 -- bug may have regressed"
+
+
+def test_run_psi_os_steps_telemetry_length_matches_n_steps(tmp_path):
+    record, _, _ = run_psi_os(N=8, n_steps=6, seed=42, out_dir=tmp_path, _now=_NOW)
+    assert len(record.steps) == 6
+
+
+def test_run_psi_os_steps_telemetry_has_expected_keys(tmp_path):
+    record, _, _ = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
+    for i, step in enumerate(record.steps):
+        assert step["step"] == i
+        for key in ("I", "Q", "Qabs", "f_dress", "energy"):
+            assert key in step
+            assert isinstance(step[key], float)
+
+
+def test_run_psi_os_steps_telemetry_energy_is_finite_and_varies(tmp_path):
+    """The Dirichlet/gradient energy is a real physical scalar of the
+    diffusive field (not a placeholder) -- it must be finite at every step
+    and must not be identical across all steps (the field is actively
+    relaxing, so its gradient energy should change step to step)."""
+    record, _, _ = run_psi_os(N=16, n_steps=8, seed=0, out_dir=tmp_path, _now=_NOW)
+    energies = [s["energy"] for s in record.steps]
+    assert all(e == e and e not in (float("inf"), float("-inf")) for e in energies)  # e == e excludes NaN
+    assert len(set(energies)) > 1
+
+
+def test_run_psi_os_final_metrics_match_last_step_topology(tmp_path):
+    """The summary Qz_mean/Qabs_mean/f_dress in `record.metrics` are computed
+    from the same final field the last steps-telemetry entry describes --
+    they should agree exactly (both come from `_step_topology` on the same
+    post-loop `psi`)."""
+    record, _, _ = run_psi_os(N=16, n_steps=5, seed=3, out_dir=tmp_path, _now=_NOW)
+    last_step = record.steps[-1]
+    assert record.metrics["Qz_mean"] == last_step["Q"]
+    assert record.metrics["Qabs_mean"] == last_step["Qabs"]
+
+
 def test_run_psi_os_run_id_stable_across_calls(tmp_path):
     r1, _, _ = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
     r2, _, _ = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
@@ -370,6 +421,69 @@ def test_run_psi_os_json_valid(tmp_path):
     _, _, json_path = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
     data = json.loads(json_path.read_text())
     assert validate_run_record_dict(data) == []
+
+
+# ── run_psi_os: curvature_penalty (4th-order bi-Laplacian regularizer) ───────
+
+def test_run_psi_os_curvature_penalty_defaults_to_zero_and_is_recorded(tmp_path):
+    record, _, _ = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
+    assert record.input["curvature_penalty"] == 0.0
+
+
+def test_run_psi_os_curvature_penalty_omitted_from_notes_when_zero(tmp_path):
+    record, _, _ = run_psi_os(N=8, n_steps=5, seed=42, out_dir=tmp_path, _now=_NOW)
+    assert "curvature_penalty" not in record.notes
+
+
+def test_run_psi_os_curvature_penalty_recorded_in_input_params(tmp_path):
+    record, _, _ = run_psi_os(N=16, n_steps=5, seed=0, out_dir=tmp_path, curvature_penalty=0.01, _now=_NOW)
+    assert record.input["curvature_penalty"] == 0.01
+
+
+def test_run_psi_os_curvature_penalty_appears_in_notes_when_nonzero(tmp_path):
+    record, _, _ = run_psi_os(N=16, n_steps=5, seed=0, out_dir=tmp_path, curvature_penalty=0.01, _now=_NOW)
+    assert "curvature_penalty=0.01" in record.notes
+
+
+def test_run_psi_os_curvature_penalty_reduces_high_frequency_energy(tmp_path):
+    """The bi-Laplacian term is a high-frequency spatial-noise suppressor:
+    enabling it must measurably reduce the Dirichlet (gradient) energy of the
+    final field relative to the same seed/N/n_steps run without it. Checked
+    across several seeds since a single seed's random field could
+    coincidentally show little difference."""
+    for seed in range(3):
+        r_off, _, _ = run_psi_os(N=16, n_steps=20, seed=seed, out_dir=tmp_path / f"off{seed}", curvature_penalty=0.0, _now=_NOW)
+        r_on, _, _ = run_psi_os(N=16, n_steps=20, seed=seed, out_dir=tmp_path / f"on{seed}", curvature_penalty=0.01, _now=_NOW)
+        energy_off = r_off.steps[-1]["energy"]
+        energy_on = r_on.steps[-1]["energy"]
+        assert energy_on < energy_off * 0.5, f"seed={seed}: curvature_penalty did not measurably reduce energy ({energy_on} vs {energy_off})"
+
+
+def test_run_psi_os_curvature_penalty_does_not_collapse_field_to_zero(tmp_path):
+    """A working UV suppressor damps high-frequency noise -- it must not
+    also annihilate the field entirely (that would be over-damping /
+    numerical collapse, not selective smoothing)."""
+    record, _, _ = run_psi_os(N=16, n_steps=20, seed=0, out_dir=tmp_path, curvature_penalty=0.01, _now=_NOW)
+    assert record.metrics["I_final"] > 0.05
+
+
+def test_run_psi_os_curvature_penalty_preserves_nonzero_topology(tmp_path):
+    """Per this repo's Phase 8 design intent -- k^4 damping should relatively
+    preserve low-order winding structure versus high-frequency noise -- the
+    smoothed field must still carry nonzero topological charge, not have its
+    windings destroyed outright."""
+    for seed in range(3):
+        record, _, _ = run_psi_os(N=16, n_steps=20, seed=seed, out_dir=tmp_path / f"topo{seed}", curvature_penalty=0.01, _now=_NOW)
+        assert record.metrics["Qabs_mean"] > 0.0, f"seed={seed}: curvature_penalty destroyed all topological charge"
+
+
+def test_run_psi_os_curvature_penalty_steps_energy_is_monotone_non_increasing_trend(tmp_path):
+    """Sanity check on the telemetry itself: with the UV suppressor enabled,
+    per-step energy should trend downward overall (start > end), confirming
+    the regularizer is actively damping across the run rather than a no-op."""
+    record, _, _ = run_psi_os(N=16, n_steps=20, seed=0, out_dir=tmp_path, curvature_penalty=0.01, _now=_NOW)
+    energies = [s["energy"] for s in record.steps]
+    assert energies[-1] < energies[0]
 
 
 # ── run_meditation_sim ───────────────────────────────────────────────────────
