@@ -194,11 +194,17 @@ def subject_blocked_permutation_test(
     if aggregate not in ("mean", "median"):
         raise ValueError(f"Unknown aggregate: {aggregate!r}")
 
-    # One value per (subject, group) cell.
+    # One value per (subject, group) cell. Drop cells that aggregate to NaN
+    # (a subject/condition whose every window was skipped, e.g. all
+    # out-of-range or missing-companion-file per the OSError skip path) so
+    # they neither poison a subject mean in the between-subjects branch nor
+    # produce a phantom "present in both groups" subject with no real data
+    # in the within-subject branch.
     cell = (
         df.groupby([subject_col, group_col])[value_col]
         .agg(aggregate)
         .reset_index()
+        .dropna(subset=[value_col])
     )
 
     groups = cell[group_col].unique()
@@ -208,13 +214,13 @@ def subject_blocked_permutation_test(
         )
     g_a, g_b = sorted(groups, key=str)
 
-    # Subjects present in BOTH groups => within-subject (paired) design.
+    # Subjects with real data in BOTH groups => within-subject (paired) design.
     counts = cell.groupby(subject_col)[group_col].nunique()
     paired_subjects = counts[counts == 2].index.tolist()
 
     if paired_subjects:
         wide = cell.pivot_table(index=subject_col, columns=group_col, values=value_col)
-        wide = wide.loc[paired_subjects]
+        wide = wide.loc[paired_subjects].dropna()
         # Convention matches the unpaired branch (statistic ~ g_a - g_b).
         diffs = (wide[g_a] - wide[g_b]).to_numpy(dtype=float)
         observed, p = _paired_signflip_test(diffs, n_permutations, seed, alternative)

@@ -197,6 +197,28 @@ def test_subject_blocked_paired_pairs_out_between_subject_variance():
     assert paired.p_value < 0.05, "paired test failed to recover an effect it should pair out baseline variance to see"
 
 
+def test_subject_blocked_paired_handles_all_nan_cell():
+    """Regression test: a subject whose every window in one condition is NaN
+    (e.g. all skipped by the OSError/out-of-range skip path) must not crash
+    the paired test with a phantom 'present in both groups' subject that
+    pivot_table then drops. It should simply be excluded from the paired set."""
+    rows = []
+    for i in range(10):
+        for group, level in (("A", 0.0), ("B", 0.6)):
+            for _w in range(8):
+                rows.append({"subject_id": f"s{i}", "group": group,
+                             "value": level + np.random.default_rng(i).normal(0, 0.2)})
+    # one extra subject whose condition-B windows are ALL NaN
+    for _w in range(8):
+        rows.append({"subject_id": "s_bad", "group": "A", "value": 0.1})
+        rows.append({"subject_id": "s_bad", "group": "B", "value": float("nan")})
+    df = pd.DataFrame(rows)
+    result = subject_blocked_permutation_test(df, "value", "group", "subject_id",
+                                              n_permutations=2000, seed=0)
+    assert result.method == "permutation_test_subject_blocked_paired"
+    assert result.n_a == 10  # s_bad excluded, 10 clean paired subjects remain
+
+
 # ---------------------------------------------------------------------------
 # THE key regression test: pseudoreplication (the exact ds001787 bug class)
 # ---------------------------------------------------------------------------
