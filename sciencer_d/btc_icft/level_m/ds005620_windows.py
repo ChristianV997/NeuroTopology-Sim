@@ -1,62 +1,46 @@
+"""ds005620 (propofol sedation) Level M window scaffold.
+
+The shared Level-M row/result dataclasses, metric helpers, contrast-evaluation,
+and output-writing that this module used to duplicate now live in ONE place
+(`generic_windows.py`) and are driven by this dataset's registry config. Public
+names are preserved and output is byte-identical (proven in
+tests/btc_icft/test_onboarding_registry.py).
+
+The legacy BIDS-inspection / mock-fixture helpers below
+(`load_bids_inspection_outputs`, `build_level_m_windows_from_bids_inventory`,
+`build_mock_level_m_windows_from_inspection`, `extract_level_m_window_features`)
+are ds005620-specific (they predate the real-signal streaming path) and stay
+here -- they are not part of the generic real-signal pipeline.
+"""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
-import csv
+from dataclasses import asdict
 import json
-import math
 from pathlib import Path
 
+from sciencer_d.btc_icft.datasets.onboarding_registry import get_dataset_config
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features
-from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
+from sciencer_d.btc_icft.level_m.generic_windows import (  # noqa: F401  (re-exported public API)
+    LevelMRealWindowResult,
+    LevelMWindowRow,
+    build_window_artifact_report,
+    build_window_leakage_report,
+)
+from sciencer_d.btc_icft.level_m import generic_windows as _G
+
+_CONFIG = get_dataset_config("ds005620")
 
 
-@dataclass
-class LevelMWindowRow:
-    row_id: str
-    subject_id: str
-    session_id: str | None
-    run_id: str | None
-    window_id: str
-    task_label: str | None
-    state_label: str | None
-    behavior_label: str | None
-    report_label: str | None
-    y: int | None
-    spectral_power_proxy: float | None
-    entropy_proxy: float | None
-    lzc_proxy: float | None
-    artifact_score: float | None
-    source_file: str
-    window_start_s: float
-    window_end_s: float
-    warnings: list[str]
+def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str) -> LevelMRealWindowResult:
+    return _G.evaluate_level_m_windows(rows, _CONFIG, task=task)
 
 
-@dataclass
-class LevelMRealWindowResult:
-    dataset_id: str
-    task: str
-    n_rows: int
-    n_subjects: int
-    n_windows: int
-    class_balance: dict[str, int]
-    auc: float | None
-    brier: float | None
-    ece: float | None
-    leakage_detected: bool
-    artifact_dominance: bool
-    artifact_report: dict
-    leakage_report: dict
-    omega_event: dict
-    safe_claim: str
-    forbidden_claims: list[str]
-    warnings: list[str]
-    rows: list[dict] = field(default_factory=list)
+def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -> dict[str, str]:
+    return _G.write_level_m_window_outputs(result, out_dir, _CONFIG)
 
 
-def _validate_safe_text(text: str) -> None:
-    validate_safe_text(text)
-
+# ── Legacy ds005620-specific BIDS-inspection / mock-fixture helpers ───────────
+# (predate the real-signal streaming path; kept for ds005620's own baseline tests)
 
 def load_bids_inspection_outputs(inspection_dir: str) -> dict:
     base = Path(inspection_dir)
@@ -158,172 +142,3 @@ def extract_level_m_window_features(windows: list[LevelMWindowRow]) -> list[Leve
         warns.append("fixture-derived Level M features; not real EEG signal extraction")
         out.append(LevelMWindowRow(**{**asdict(row), **feats, "warnings": warns}))
     return out
-
-
-def _class_balance(y_true: list[int]) -> dict[str, int]:
-    return {"0": y_true.count(0), "1": y_true.count(1)}
-
-def _binary_auc(y_true: list[int], scores: list[float]) -> float | None:
-    pos = [s for s, y in zip(scores, y_true) if y == 1]
-    neg = [s for s, y in zip(scores, y_true) if y == 0]
-    if not pos or not neg:
-        return None
-    wins, total = 0.0, 0
-    for ps in pos:
-        for ns in neg:
-            total += 1
-            wins += 1.0 if ps > ns else 0.5 if ps == ns else 0.0
-    return wins / total if total else None
-
-def _brier(y_true: list[int], scores: list[float]) -> float | None:
-    if not y_true:
-        return None
-    return sum((y - s) ** 2 for y, s in zip(y_true, scores)) / len(y_true)
-
-def _ece(y_true: list[int], scores: list[float], n_bins: int = 5) -> float | None:
-    if not y_true:
-        return None
-    total, val = len(y_true), 0.0
-    for i in range(n_bins):
-        lo, hi = i / n_bins, (i + 1) / n_bins
-        idx = [j for j, s in enumerate(scores) if (lo <= s < hi) or (i == n_bins - 1 and s == 1.0)]
-        if not idx:
-            continue
-        conf = sum(scores[j] for j in idx) / len(idx)
-        acc = sum(y_true[j] for j in idx) / len(idx)
-        val += (len(idx) / total) * abs(acc - conf)
-    return val
-
-def _score_m(row: LevelMWindowRow) -> float:
-    raw = (2.5 * (row.spectral_power_proxy or 0.0)) - (1.2 * (row.entropy_proxy or 0.0)) - (0.4 * (row.lzc_proxy or 0.0)) - (0.8 * (row.artifact_score or 0.0))
-    return 1.0 / (1.0 + math.exp(-raw))
-
-
-def build_window_artifact_report(rows: list[LevelMWindowRow]) -> dict:
-    scores = [r.artifact_score for r in rows if r.artifact_score is not None]
-    if not scores:
-        return {"mean_artifact_score": 0.0, "max_artifact_score": 0.0, "n_artifact_high": 0, "artifact_dominance": False}
-    n_high = sum(1 for s in scores if s > 0.5)
-    mean_score = sum(scores) / len(scores)
-    dominance = mean_score > 0.5 or (n_high > (len(scores) / 2))
-    return {"mean_artifact_score": mean_score, "max_artifact_score": max(scores), "n_artifact_high": n_high, "artifact_dominance": dominance}
-
-
-def build_window_leakage_report(rows: list[LevelMWindowRow]) -> dict:
-    subject_ids = sorted({r.subject_id for r in rows if r.subject_id})
-    unique_ids = len({r.row_id for r in rows}) == len(rows)
-    leakage = (len(subject_ids) < 2) or (not unique_ids)
-    return {"n_subjects": len(subject_ids), "subject_split_possible": len(subject_ids) >= 2, "row_ids_unique": unique_ids, "leakage_detected": leakage, "subject_ids": subject_ids}
-
-
-def evaluate_level_m_windows(rows: list[LevelMWindowRow], task: str) -> LevelMRealWindowResult:
-    warnings: list[str] = []
-    selected: list[LevelMWindowRow] = []
-    for row in rows:
-        y = None
-        if task == "awake_vs_sedated":
-            if row.state_label == "awake": y = 0
-            elif row.state_label == "sedated": y = 1
-        elif task == "responsive_vs_unresponsive":
-            if row.behavior_label == "responsive": y = 0
-            elif row.behavior_label == "unresponsive": y = 1
-        elif task == "experience_vs_no_experience":
-            if row.report_label == "experience": y = 0
-            elif row.report_label == "no_experience": y = 1
-        else:
-            raise ValueError(f"Unknown task: {task}")
-        nr = LevelMWindowRow(**{**asdict(row), "y": y})
-        selected.append(nr)
-        if y is None:
-            warnings.append(f"row {row.row_id}: missing explicit label for {task}")
-
-    metric_rows = [r for r in selected if r.y is not None]
-    y_true = [r.y for r in metric_rows if r.y is not None]
-    scores = [_score_m(r) for r in metric_rows]
-    two_classes = len(set(y_true)) == 2
-    if not two_classes:
-        warnings.append("fewer than two classes available; auc/brier/ece set to None")
-    auc = _binary_auc(y_true, scores) if two_classes else None
-    brier = _brier(y_true, scores) if two_classes else None
-    ece = _ece(y_true, scores) if two_classes else None
-
-    artifact_report = build_window_artifact_report(selected)
-    leakage_report = build_window_leakage_report(selected)
-    safe_claim = "Local DS005620-style files were mapped into operational Level M window-feature candidates for future residual testing."
-    forbidden_claims = [
-        "No consciousness proof.", "No self or soul claim.", "No liberation or enlightenment claim.", "No afterlife claim.", "No ontology proof.", "No unsafe label inference.",
-    ]
-    omega_event = {"dataset_id": "ds005620", "task": task, "status": "operational_level_m", "safe_claim": safe_claim}
-    return LevelMRealWindowResult(
-        dataset_id="ds005620", task=task, n_rows=len(selected), n_subjects=len({r.subject_id for r in selected}), n_windows=len(selected),
-        class_balance=_class_balance(y_true), auc=auc, brier=brier, ece=ece, leakage_detected=bool(leakage_report["leakage_detected"]),
-        artifact_dominance=bool(artifact_report["artifact_dominance"]), artifact_report=artifact_report, leakage_report=leakage_report,
-        omega_event=omega_event, safe_claim=safe_claim, forbidden_claims=forbidden_claims, warnings=warnings,
-        rows=[asdict(r) for r in selected],
-    )
-
-
-def write_level_m_window_outputs(result: LevelMRealWindowResult, out_dir: str) -> dict[str, str]:
-    base = Path(out_dir)
-    base.mkdir(parents=True, exist_ok=True)
-    features_path = base / "features_m.csv"
-    metrics_path = base / "metrics_m.json"
-    artifact_path = base / "artifact_report.json"
-    leakage_path = base / "leakage_report.json"
-    omega_path = base / "omega_event.json"
-    report_path = base / "report.md"
-
-    # Per-window rows (not just the aggregate summary): this is the contract
-    # `ds005620_real_topology.load_level_m_window_features` requires (REQUIRED_M_COLUMNS)
-    # to compute Level T topology aligned to each Level M window. Previously this file
-    # held only one aggregate row, which silently broke the P9->P10 handoff.
-    row_fieldnames = list(LevelMWindowRow.__dataclass_fields__.keys())
-    with features_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=row_fieldnames)
-        writer.writeheader()
-        for row in result.rows:
-            out_row = dict(row)
-            out_row["warnings"] = "; ".join(row.get("warnings") or [])
-            writer.writerow(out_row)
-
-    # rows are already in features_m.csv; keep metrics_m.json aggregate-only
-    metrics_dict = {k: v for k, v in asdict(result).items() if k != "rows"}
-    metrics_path.write_text(json.dumps(metrics_dict, indent=2), encoding="utf-8")
-    artifact_path.write_text(json.dumps(result.artifact_report, indent=2), encoding="utf-8")
-    leakage_path.write_text(json.dumps(result.leakage_report, indent=2), encoding="utf-8")
-    omega_path.write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
-
-    report_text = "\n".join([
-        "# DS005620 Real/Local Level M Window Extraction",
-        "## Dataset/task",
-        f"- dataset_id: {result.dataset_id}",
-        f"- task: {result.task}",
-        "## Input inspection",
-        "- Source: local BIDS inspection outputs or mock fixture mode.",
-        "## Window rows",
-        f"- n_rows: {result.n_rows}",
-        f"- n_windows: {result.n_windows}",
-        "- operational Level M telemetry only.",
-        "- window-feature candidates prepared.",
-        "## Metrics",
-        f"- auc: {result.auc}",
-        f"- brier: {result.brier}",
-        f"- ece: {result.ece}",
-        "## Artifact report",
-        f"- {result.artifact_report}",
-        "## Leakage report",
-        f"- {result.leakage_report}",
-        "## Safe claim",
-        f"- {result.safe_claim}",
-        "## Forbidden claims",
-        *[f"- {x}" for x in result.forbidden_claims],
-        "## Warnings",
-        *[f"- {w}" for w in result.warnings],
-        "## Next required step",
-        "- Compute Level T topology rows aligned to these Level M windows.",
-        "- This is for future residual testing.",
-    ])
-    _validate_safe_text(report_text)
-    report_path.write_text(report_text + "\n", encoding="utf-8")
-
-    return {"features_m.csv": str(features_path), "metrics_m.json": str(metrics_path), "artifact_report.json": str(artifact_path), "leakage_report.json": str(leakage_path), "omega_event.json": str(omega_path), "report.md": str(report_path)}

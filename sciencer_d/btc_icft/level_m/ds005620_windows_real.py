@@ -26,8 +26,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from data.bids_ingest import discover_bids_eeg, read_window_signal  # noqa: E402
+from sciencer_d.btc_icft.datasets.onboarding_registry import get_dataset_config  # noqa: E402
 
-_TASK_TO_STATE = {"awake": "awake", "sedated": "sedated"}
+# Single source of truth: the onboarding registry (was a duplicated literal).
+_TASK_TO_STATE = get_dataset_config("ds005620").task_to_state
 
 
 def build_and_extract_real_windows(
