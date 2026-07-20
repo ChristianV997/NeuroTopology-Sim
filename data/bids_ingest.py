@@ -148,6 +148,7 @@ def read_window_signal(
     window_end_s: float,
     pick: str = "mean",
     max_channels: int | None = None,
+    preprocess: dict | None = None,
 ) -> np.ndarray:
     """Return REAL samples for one window.
 
@@ -157,8 +158,19 @@ def read_window_signal(
     (n_channels, n_samples) array, for consumers that need real per-channel structure
     (e.g. Level T topology, which needs inter-channel relationships that a channel-mean
     reduction destroys). Raises if the window is out of range.
+
+    `preprocess`, if given, is a dict of kwargs forwarded to
+    `data.preprocessing.preprocess_raw` (bandpass/notch/reference), applied to
+    the FULL recording before this window is sliced out of it -- avoids the
+    filter edge artifacts per-window filtering would introduce. Default
+    `None` preserves this function's exact prior behavior (no filtering at
+    all); every currently-published number was computed with `preprocess=None`.
     """
     raw = _read_raw(path)
+    if preprocess is not None:
+        from data.preprocessing import preprocess_raw
+
+        preprocess_raw(raw, **preprocess)
     sfreq = float(raw.info["sfreq"])
     n_total = raw.n_times
     start = int(round(window_start_s * sfreq))
