@@ -250,13 +250,21 @@ def compute_cubical_persistence_cripser(
     if not np.all(np.isfinite(field)):
         raise ValueError("field contains non-finite values")
 
-    # Negate so that low values (minima) come first in the persistence pipeline
-    result = cripser.ripser(-field, maxdim=max_dimension)
-    diagrams = result["dgms"]
+    # The installed cripser API (checked against 0.0.35) has no `ripser()`
+    # function and no ripser-style `{"dgms": [...]}` return -- `computePH`
+    # returns ONE combined (n_pairs, 9) array: columns
+    # [dimension, birth, death, birth_x, birth_y, birth_z, death_x, death_y, death_z].
+    # Negate so that low values (minima) come first in the persistence pipeline.
+    result = cripser.computePH(-field, maxdim=max_dimension)
 
-    # Extract diagrams; pad to expected shape if dimension is missing
-    diagram_h0 = np.asarray(diagrams[0], dtype=float) if len(diagrams) > 0 else np.empty((0, 2))
-    diagram_h1 = np.asarray(diagrams[1], dtype=float) if len(diagrams) > 1 else np.empty((0, 2))
-    diagram_h2 = np.asarray(diagrams[2], dtype=float) if len(diagrams) > 2 else np.empty((0, 2))
+    def _diagram_for_dim(dim: int) -> np.ndarray:
+        rows = result[result[:, 0] == dim]
+        if rows.shape[0] == 0:
+            return np.empty((0, 2))
+        return rows[:, 1:3].astype(float)
+
+    diagram_h0 = _diagram_for_dim(0)
+    diagram_h1 = _diagram_for_dim(1) if max_dimension >= 1 else np.empty((0, 2))
+    diagram_h2 = _diagram_for_dim(2) if max_dimension >= 2 else np.empty((0, 2))
 
     return diagram_h0, diagram_h1, diagram_h2
