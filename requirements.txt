@@ -14,6 +14,31 @@ the_well
 ripser
 persim
 h5py
+# Used by core/topology.py::compute_cubical_persistence (scale-resolved
+# sub-level cubical persistence, MIT-licensed) and dual_engine/'s
+# cross-modal fusion / source-space TDA / spectral TDA pipelines.
+gudhi
+# Used by dual_engine/cross_modal_fusion.py (graph-neural-network fusion
+# of EEG/fMRI topology embeddings) and its training/logging stack.
+torch>=2.0.0
+torch-geometric>=2.3.0
+pytorch-lightning>=2.0.0
+tensorboard>=2.12.0
+wandb>=0.15.0
+# Used by validation/montage_topology.py::get_channel_xy_templateflow for
+# real cortical surface geometry (fsaverage/fsLR) instead of hardcoded 2D
+# sensor projections.
+templateflow>=22.06
+# Used by pipelines/run_neurolib.py for whole-brain neural-mass-model
+# simulation as a comparator/validation reference.
+neurolib>=0.3.0
+# Used by dual_engine/source_space_tda_pipeline.py as an alternative
+# cubical-persistence backend.
+cripser>=0.0.32
+# Used by validation/neuromaps_nulls.py for spatial-autocorrelation-
+# preserving null maps (Burt et al. spin tests) as a spatial null-control
+# family alongside validation/spatial_nulls.py.
+neuromaps>=0.0.4
 # Used by analysis/itct/itct_cessation_protocol_v3_full_stack.py and
 # analysis/connectivity_topology.py for PLV-graph Laplacian spectral dimension --
 # previously undeclared despite being a hard import in both, so a fresh clone

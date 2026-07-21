@@ -8,6 +8,11 @@ from core.topology import (
     compute_Qabs_slice,
     compute_Qz,
     compute_f_dress,
+    compute_cubical_persistence,
+    compute_cubical_persistence_cripser,
+    betti_curve,
+    persistence_landscape,
+    diagram_bottleneck_distance,
 )
 
 
@@ -147,3 +152,164 @@ def test_compute_f_dress_nonnegative():
     Qz = rng.integers(-3, 4, size=20)
     Qabs = np.abs(Qz.astype(float)) + rng.uniform(0, 0.5, size=20)
     assert compute_f_dress(Qz, Qabs) >= 0
+
+
+# ---------------------------------------------------------------------------
+# compute_cubical_persistence / betti_curve / persistence_landscape /
+# diagram_bottleneck_distance
+# ---------------------------------------------------------------------------
+
+def test_compute_cubical_persistence_shape_and_keys():
+    rng = np.random.default_rng(0)
+    field = rng.standard_normal((16, 16))
+    result = compute_cubical_persistence(field, max_dimension=1)
+    assert set(result.keys()) == {"diagrams", "betti_numbers", "metric_kind"}
+    assert result["metric_kind"] == "cubical_persistence"
+    assert set(result["diagrams"].keys()) == {0, 1}
+    for dim, diag in result["diagrams"].items():
+        assert diag.ndim == 2 and diag.shape[1] == 2
+
+
+def test_compute_cubical_persistence_rejects_bad_shape():
+    with pytest.raises(ValueError):
+        compute_cubical_persistence(np.zeros(10))
+
+
+def test_compute_cubical_persistence_rejects_non_finite():
+    field = np.zeros((8, 8))
+    field[0, 0] = np.nan
+    with pytest.raises(ValueError):
+        compute_cubical_persistence(field)
+
+
+def test_compute_cubical_persistence_single_connected_component():
+    """A perfectly flat field has one H0 component (the whole grid, born at
+    the flat value) and, per GUDHI's convention, zero H1 features."""
+    field = np.zeros((8, 8))
+    result = compute_cubical_persistence(field, max_dimension=1)
+    assert result["diagrams"][0].shape[0] == 1
+    assert result["diagrams"][1].shape[0] == 0
+
+
+def test_compute_cubical_persistence_detects_known_amplitude_dip():
+    """Two well-separated deep minima must register as two distinct H0
+    components that merge (one finite-death pair) into the field's single
+    surviving component (one infinite-death pair) once the sub-level
+    threshold rises enough to connect them -- a single minimum (see the
+    flat-field test above) can never yield more than one H0 pair."""
+    field = np.ones((16, 16))
+    field[2, 2] = 0.0
+    field[13, 13] = 0.0
+    result = compute_cubical_persistence(field, max_dimension=0)
+    assert result["diagrams"][0].shape[0] == 2
+    n_infinite = int(np.sum(~np.isfinite(result["diagrams"][0][:, 1])))
+    assert n_infinite == 1
+
+
+def test_betti_curve_matches_manual_count_at_grid_points():
+    diagram = np.array([[0.0, 1.0], [0.5, 2.0]])
+    grid = np.array([0.25, 0.75, 1.5, 2.5])
+    bc = betti_curve(diagram, grid)
+    # at t=0.25: only pair 1 alive (0<=0.25<1) -> 1
+    # at t=0.75: both alive (0<=0.75<1 is False for pair1 since 0.75<1 True; pair2: 0.5<=0.75<2 True) -> pair1 alive(0<=.75<1 True), pair2 alive -> 2
+    # at t=1.5: pair1 dead (1.5>=1), pair2 alive (0.5<=1.5<2) -> 1
+    # at t=2.5: both dead -> 0
+    np.testing.assert_array_equal(bc, [1.0, 2.0, 1.0, 0.0])
+
+
+def test_betti_curve_empty_diagram():
+    grid = np.linspace(0, 1, 10)
+    bc = betti_curve(np.empty((0, 2)), grid)
+    np.testing.assert_array_equal(bc, np.zeros(10))
+
+
+def test_betti_curve_handles_infinite_death():
+    diagram = np.array([[0.0, np.inf]])
+    grid = np.linspace(0, 5, 6)
+    bc = betti_curve(diagram, grid)
+    assert np.all(bc == 1.0)  # alive at every sampled grid point
+
+
+def test_persistence_landscape_shape():
+    diagram = np.array([[0.0, 1.0], [0.2, 0.8], [0.1, 0.5]])
+    grid = np.linspace(0, 1, 20)
+    land = persistence_landscape(diagram, grid, n_layers=5)
+    assert land.shape == (5, 20)
+
+
+def test_persistence_landscape_layers_are_ordered():
+    """Layer k (the k-th largest tent per grid point) must be <= layer k-1
+    everywhere, by construction (descending sort)."""
+    rng = np.random.default_rng(0)
+    b = np.sort(rng.uniform(0, 0.5, size=8))
+    d = b + rng.uniform(0.1, 0.5, size=8)
+    diagram = np.column_stack([b, d])
+    grid = np.linspace(0, 1, 30)
+    land = persistence_landscape(diagram, grid, n_layers=4)
+    for k in range(1, 4):
+        assert np.all(land[k] <= land[k - 1] + 1e-12)
+
+
+def test_persistence_landscape_excludes_infinite_pairs():
+    diagram = np.array([[0.0, np.inf], [0.1, 0.6]])
+    grid = np.linspace(0, 1, 10)
+    land = persistence_landscape(diagram, grid, n_layers=3)
+    assert np.all(np.isfinite(land))
+
+
+def test_persistence_landscape_empty_diagram():
+    grid = np.linspace(0, 1, 10)
+    land = persistence_landscape(np.empty((0, 2)), grid, n_layers=3)
+    np.testing.assert_array_equal(land, np.zeros((3, 10)))
+
+
+def test_diagram_bottleneck_distance_self_is_near_zero():
+    diagram = np.array([[0.0, 1.0], [0.2, 0.9]])
+    d = diagram_bottleneck_distance(diagram, diagram)
+    assert d == pytest.approx(0.0, abs=1e-6)
+
+
+def test_diagram_bottleneck_distance_differs_for_different_diagrams():
+    diagram_a = np.array([[0.0, 1.0]])
+    diagram_b = np.array([[0.0, 5.0]])
+    d = diagram_bottleneck_distance(diagram_a, diagram_b)
+    assert d > 1.0
+
+
+def test_cubical_persistence_on_cgl_field_finds_real_structure():
+    """Integration check: a genuine dynamical field (not hand-written) yields
+    a nontrivial H1 diagram and a betti curve with real structure -- this is
+    the actual enrichment target (see validation/synthetic.cgl_defect_field)."""
+    from validation.synthetic import cgl_defect_field
+    psi = cgl_defect_field(N=32, n_steps=60, seed=0)
+    amp = np.abs(psi)
+    result = compute_cubical_persistence(amp, max_dimension=1)
+    assert result["diagrams"][1].shape[0] > 0
+    grid = np.linspace(amp.min(), amp.max(), 30)
+    bc = betti_curve(result["diagrams"][1], grid)
+    assert bc.max() > 0
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("cripser", minversion=None) is None,
+    reason="cripser required",
+)
+def test_compute_cubical_persistence_cripser_basic():
+    """Test CubicalRipser backend returns valid diagrams."""
+    field = np.random.randn(32, 32) * 0.5
+    h0, h1, h2 = compute_cubical_persistence_cripser(field, max_dimension=2)
+    assert isinstance(h0, np.ndarray) and h0.shape[1] == 2
+    assert isinstance(h1, np.ndarray) and h1.shape[1] == 2
+    assert isinstance(h2, np.ndarray) and h2.shape[1] == 2
+
+
+def test_compute_cubical_persistence_cripser_requires_cripser():
+    """Test that function requires cripser if not available."""
+    pytest.importorskip("cripser")
+    # If cripser is installed, the function should work; if not, ImportError is raised
+    field = np.ones((8, 8))
+    try:
+        h0, h1, h2 = compute_cubical_persistence_cripser(field)
+        assert h0.shape[1] == 2
+    except ImportError:
+        pytest.skip("cripser not available")

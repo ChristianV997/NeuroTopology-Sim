@@ -4,7 +4,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from validation.synthetic import single_vortex, double_vortex, validate_vortex_charges
+from validation.synthetic import (
+    single_vortex, double_vortex, validate_vortex_charges,
+    validate_dynamical_ground_truth,
+)
 from core.topology import compute_Qz
 from pipelines.run_qzt import run as run_qzt_pipeline
 from pipelines.run_eeg import run as run_eeg
@@ -12,10 +15,19 @@ from pipelines.run_physics import run_from_npy
 from pipelines.run_cross_domain import run as run_cross_domain
 from pipelines.run_physionet import run as run_physionet
 from pipelines.run_external import run as run_external
+from pipelines.run_neurolib import run as run_neurolib
+from pipelines.run_fast_tr_validation import run as run_fast_tr_validation
 from database.database import connect, start_run, finish_run, add_metric, add_artifact
 
 def run_synthetic():
-    """Run synthetic validation checks and save summary metrics."""
+    """Run synthetic validation checks and save summary metrics.
+
+    Two families: the original STATIC known-charge fields (single/double
+    vortex, unchanged contract below) and the DYNAMICAL ground-truth
+    generators (Kuramoto lattice + CGL PDE) that give a time-evolving,
+    tunable-defect-density oracle -- see validation/synthetic.py module
+    docstring for why the static fields alone are insufficient.
+    """
     out = Path("results/synthetic")
     out.mkdir(parents=True, exist_ok=True)
     psi = single_vortex()
@@ -37,6 +49,11 @@ def run_synthetic():
     df.to_csv(out / "synthetic_summary.csv", index=False)
     print(df)
 
+    dyn = validate_dynamical_ground_truth()
+    dyn_df = pd.DataFrame([dyn])
+    dyn_df.to_csv(out / "dynamical_ground_truth_summary.csv", index=False)
+    print(dyn_df)
+
 def run_qzt(checkpoint_dir: str):
     """Run QZT pipeline and write outputs into results root."""
     out = Path("results")
@@ -46,7 +63,7 @@ def run_qzt(checkpoint_dir: str):
 def main():
     ap = argparse.ArgumentParser()
     # NOTE: CLI argument contracts by mode are documented in docs/mode_contracts.md.
-    ap.add_argument("--mode", required=True, choices=["synthetic", "qzt", "eeg", "physionet", "physics", "cross-domain", "external", "db"])
+    ap.add_argument("--mode", required=True, choices=["synthetic", "qzt", "eeg", "physionet", "physics", "cross-domain", "external", "neural_mass", "fast_tr_validation", "db"])
     # --input is mode-dependent: directory for qzt/eeg/physionet, but a required .npy file for physics.
     ap.add_argument("--input", default="data/checkpoints")
     # "results/out.csv" is a sentinel default; eeg/physionet reinterpret it to mode-specific output paths.
@@ -84,6 +101,25 @@ def main():
             ap.error(f"--mode physics requires a .npy input file (got: {args.input})")
         df = run_from_npy(args.input, args.output)
         print(df.head())
+    elif args.mode == "neural_mass":
+        record = run_neurolib(
+            output_csv=args.output,
+            n_nodes=getattr(args, "n_nodes", 32),
+            model_type=getattr(args, "neurolib_model", "kuramoto"),
+            t_max=getattr(args, "t_max", 10.0),
+            coupling=getattr(args, "coupling", 0.1),
+            seed=getattr(args, "seed", 0),
+        )
+        print(f"RunRecord: {record.run_id}")
+    elif args.mode == "fast_tr_validation":
+        record = run_fast_tr_validation(
+            output_csv=args.output,
+            n_voxels=getattr(args, "n_voxels", 32),
+            n_timepoints=getattr(args, "n_timepoints", 500),
+            tr=getattr(args, "tr", 0.645),
+            seed=getattr(args, "seed", 0),
+        )
+        print(f"Fast-TR validation: {record.run_id}")
     elif args.mode == "cross-domain":
         df = run_cross_domain(args.results_root, args.output)
         print(df.head())

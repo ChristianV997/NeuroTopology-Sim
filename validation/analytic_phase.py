@@ -191,6 +191,100 @@ def channel_phase_gradient_metrics(phase: np.ndarray) -> Dict[str, float]:
     }
 
 
+def kuramoto_order_metrics(phase: np.ndarray) -> Dict[str, float]:
+    """Kuramoto order parameter R(t) = |mean_channels exp(i*theta(t))| and
+    metastability = std_t(R(t)) on a band's analytic phase.
+
+    Published comparator (Deco/Kringelbach/Cabral whole-brain literature;
+    fabridamicelli/kuramoto formalizes the same order parameter): the tightest
+    *scalar* analogue of this module's own `f_dress` -- both are order/disorder
+    summaries of the identical instantaneous phase field, so a real topological
+    effect should, at minimum, not contradict what this standard synchrony
+    scalar reports on the same window. R in [0, 1]: 0 = fully incoherent
+    (random phases), 1 = fully phase-locked. High metastability means R(t)
+    itself fluctuates over the window (repeated synchronize/desynchronize),
+    not that any single instant is partially synchronized.
+    """
+    arr = np.asarray(phase, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"phase must be 2D (channels x samples), got {arr.shape}")
+    if arr.shape[0] < 2:
+        raise ValueError(f"need at least 2 channels, got {arr.shape[0]}")
+    R = np.abs(np.mean(np.exp(1j * arr), axis=0))  # (n_samples,)
+    r_mean = float(np.mean(R))
+    metastability = float(np.std(R))
+    if not (np.isfinite(r_mean) and np.isfinite(metastability)):
+        raise ValueError("Non-finite Kuramoto order-parameter metrics")
+    return {
+        "R_mean": r_mean,
+        "metastability": metastability,
+        "metric_kind": "kuramoto_metastability",
+    }
+
+
+def leida_state_metrics(phase: np.ndarray, n_states: int = 3, random_state: int = 0) -> Dict[str, object]:
+    """Leading Eigenvector Dynamics Analysis (Cabral et al. 2017) within one
+    window: reduces the instantaneous phase-coherence matrix
+    cos(theta_i(t) - theta_j(t)) to its leading eigenvector V1(t) -- a signed
+    +/-1-ish partition of channels, directly analogous in kind (though not in
+    construction) to this module's own signed winding charge -- then
+    k-means-clusters {V1(t)} into ``n_states`` recurrent phase-locking states
+    and reports fractional occupancy and the transition count.
+
+    Scope, stated plainly: this is a PER-WINDOW LEiDA (states are discovered
+    fresh within each call's samples), not a whole-recording state atlas shared
+    across windows/subjects -- the published method typically clusters
+    eigenvectors pooled across an entire cohort. That full-cohort version is a
+    larger restructuring (state labels would need to be fit once and reused);
+    this per-window form is still a valid, self-contained comparator for the
+    intended use here -- testing whether Qz sign-flips / f_dress excursions
+    coincide with LEiDA-state transitions on the SAME window.
+    """
+    from sklearn.cluster import KMeans
+
+    arr = np.asarray(phase, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"phase must be 2D (channels x samples), got {arr.shape}")
+    n_ch, n_t = arr.shape
+    if n_ch < 3:
+        raise ValueError(f"need at least 3 channels, got {n_ch}")
+    if n_t < n_states * 2:
+        raise ValueError(f"need at least {n_states * 2} samples for {n_states} states, got {n_t}")
+
+    # Instantaneous phase-coherence matrix per sample, leading eigenvector only.
+    # cos(theta_i - theta_j) = cos(theta_i)cos(theta_j) + sin(theta_i)sin(theta_j),
+    # vectorized: cos_t, sin_t are (n_ch, n_t), outer products computed per timepoint
+    cos_t, sin_t = np.cos(arr), np.sin(arr)
+    V1 = np.empty((n_t, n_ch), dtype=float)
+
+    for t in range(n_t):
+        c, s = cos_t[:, t], sin_t[:, t]
+        # Vectorized outer product: einsum is faster than nested outer() calls
+        coh = np.einsum('i,j->ij', c, c) + np.einsum('i,j->ij', s, s)
+        eigvals, eigvecs = np.linalg.eigh(coh)
+        v = eigvecs[:, -1]  # largest eigenvalue's eigenvector
+        if np.sum(v < 0) < np.sum(v > 0):  # LEiDA sign convention: majority negative
+            v = -v
+        V1[t] = v
+
+    labels = KMeans(n_clusters=n_states, n_init=10, random_state=random_state).fit_predict(V1)
+    occupancy = {int(k): float(np.mean(labels == k)) for k in range(n_states)}
+    n_transitions = int(np.sum(labels[1:] != labels[:-1]))
+    dominant_state = int(max(occupancy, key=occupancy.get))
+
+    if not all(np.isfinite(v) for v in occupancy.values()):
+        raise ValueError("Non-finite LEiDA occupancy metrics")
+
+    return {
+        "occupancy": occupancy,
+        "dominant_state": dominant_state,
+        "dominant_occupancy": occupancy[dominant_state],
+        "n_transitions": n_transitions,
+        "n_states": n_states,
+        "metric_kind": "leida_state",
+    }
+
+
 def phase_grid_topology_metrics(theta2d: np.ndarray) -> Dict[str, float]:
     """Compute Q / Qabs / f_dress on a true 2D phase grid.
 

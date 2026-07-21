@@ -1,0 +1,102 @@
+# Cross-Modal Fusion Engine Configuration
+# Default hyperparameters for GNN + attention-based topology fusion
+
+fusion:
+  # Architecture
+  hidden_dim: 64
+  latent_dim: 64
+  num_heads: 4
+  num_gcn_layers: 2
+  dropout: 0.1
+
+  # Training
+  learning_rate: 0.001
+  weight_decay: 0.00001
+  batch_size: 32
+  num_epochs: 50
+
+  # Loss weights
+  contrastive_weight: 1.0
+  recon_weight: 0.5
+  contrastive_temp: 0.1  # Temperature for contrastive loss
+
+  # Validation
+  n_surrogate_gates: 200        # Phase-randomized null samples
+  n_permutation_tests: 5000     # Label shuffles for permutation
+  generalization_train_ratio: 0.7
+  generalization_random_seed: 42
+
+  # Device
+  device: cuda  # or cpu
+  enable_checkpointing: true
+  checkpoint_dir: artifacts/fusion
+
+# Dataset-specific fusion parameters
+datasets:
+  ds005620:
+    name: "Propofol sedation (EEG state change)"
+    n_subjects: 10
+    n_eeg_channels: 20
+    n_bold_parcels: 360
+    condition_labels: [awake, sedated]
+
+  ds006072:
+    name: "Psilocybin persistence (fMRI BOLD)"
+    n_subjects: 7
+    n_bold_parcels: 360
+    timepoints: [baseline, acute, persist]
+    condition_labels: [psilocybin, methylphenidate]
+
+  ds003969:
+    name: "EEG meditation (state control)"
+    n_subjects: 20
+    n_eeg_channels: 64
+    condition_labels: [directed_thinking, meditation]
+
+# Cross-modal fusion specific
+fusion_training:
+  # Which modalities to use
+  use_bold: true
+  use_eeg: true
+  use_synthetic: true
+
+  # Data preprocessing
+  bold_normalize: z-score
+  eeg_normalize: z-score
+  synthetic_normalize: z-score
+
+  # Graph connectivity for GNN
+  bold_graph: glasser360_adjacency  # From hcp_utils
+  eeg_graph: standard_10_20          # Standard electrode montage
+  synthetic_graph: delaunay          # Generated from 2D parcel coordinates
+
+  # Training strategy
+  loss_type: contrastive_recon  # contrastive_recon | mse_only | contrastive_only
+  optimizer: adam
+  scheduler: cosine  # or constant, step, exponential
+
+  # Data augmentation
+  augment_temporal: true
+  augment_noise_std: 0.01
+
+# Validation and benchmarking
+validation:
+  # Surrogate gate parameters
+  surrogate_method: ft  # ft (Fourier) or iaaft (iterative amplitude-adjusted)
+  surrogate_seed_start: 0
+
+  # Permutation test
+  permutation_method: within_subject  # preserves subject structure
+  permutation_seed: 42
+
+  # Cross-dataset evaluation
+  datasets_for_cross_val: [ds005620, ds006072]  # Train on first, test on second
+  bidirectional_eval: true  # Also train on ds006072, test on ds005620
+
+# Output
+output:
+  results_dir: artifacts/fusion
+  save_embeddings: true
+  save_reconstructions: true
+  tensorboard_logs: true
+  wandb_enabled: false  # Set to true + provide project name to enable

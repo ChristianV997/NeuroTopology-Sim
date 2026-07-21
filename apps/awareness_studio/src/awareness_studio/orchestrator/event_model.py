@@ -101,6 +101,7 @@ PIPELINE_STAGES = (
     "propose_hypotheses",
     "plan_experiments",
     "execute",
+    "fable_reasoning",  # NEW: Fable 5-powered metric interpretation + hypothesis discovery
     "validate",
     "digest",
     "draft_report",

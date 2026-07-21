@@ -205,20 +205,29 @@ def run_psi_os(
     curvature_penalty: float = 0.0,
     _now: Optional[datetime] = None,
 ) -> Tuple[RunRecord, Path, Path]:
-    """Run a psi/vortex simulation and emit dual run artifacts.
+    """Run a psi-field vortex simulation and emit dual run artifacts.
+
+    Integrates the complex Ginzburg-Landau equation (CGL),
+    ``dA/dt = A + (1+i*c1)*lap(A) - (1+i*c2)*|A|^2*A`` -- the canonical amplitude
+    equation for oscillatory media -- rather than a plain diffusion step. Unlike
+    diffusion (a heat equation, which only smooths noise to a uniform field and
+    cannot sustain topological structure), CGL spontaneously nucleates spiral-wave
+    phase singularities whose cores go to |A|->0, giving a genuine, non-trivial
+    winding charge to measure (and matching the amplitude-dip convention
+    ``core.defects.detect_defects`` expects).
 
     `curvature_penalty` (default 0.0, disabled): optional 4th-order
     (bi-Laplacian) spatial regularization strength, applied each step
-    alongside the existing 2nd-order diffusion -- a standard curvature-
-    penalized / high-frequency-spatial-noise-suppression numerical
-    technique (a discretized biharmonic damping term), described here in
-    plain signal-processing terms deliberately, not experiential or
-    contemplative language, per this repo's guardrail policy (no
-    "meditative pruning" framing in code or reports). In Fourier space, a
-    bi-Laplacian penalty scales as k^4 versus the existing Laplacian's k^2,
-    so it damps high-spatial-frequency components relatively more than
-    low-order (small-k) structure -- including the low-order winding modes
-    this repo's Q/Qabs topology metrics track.
+    alongside the CGL update above -- a standard curvature-penalized /
+    high-frequency-spatial-noise-suppression numerical technique (a
+    discretized biharmonic damping term), described here in plain
+    signal-processing terms deliberately, not experiential or contemplative
+    language, per this repo's guardrail policy (no "meditative pruning"
+    framing in code or reports). In Fourier space, a bi-Laplacian penalty
+    scales as k^4 versus the Laplacian's k^2, so it damps high-spatial-
+    frequency components relatively more than low-order (small-k) structure
+    -- including the low-order winding modes this repo's Q/Qabs topology
+    metrics track.
 
     This is an explicit (forward-Euler-style) update with no CFL-type step
     limiter, so `curvature_penalty` has a real numerical stability bound:
@@ -228,14 +237,12 @@ def run_psi_os(
     step size is reduced accordingly.
     """
     import numpy as np
+    from core.topology import compute_Qz, compute_f_dress
 
     rng = np.random.default_rng(seed)
 
-    # Build a minimal psi field (|ψ|² = intensity)
-    psi = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
-    psi /= np.abs(psi).mean() + 1e-9
-
-    from core.topology import compute_Qz, compute_f_dress
+    # Small-amplitude seed so the CGL nonlinear term doesn't immediately blow up.
+    psi = 0.1 * (rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N)))
 
     def _step_topology(field: np.ndarray) -> Tuple[float, float, float]:
         """Q/Qabs/f_dress for one 2D field slice.
@@ -252,7 +259,10 @@ def run_psi_os(
         returned tuple raises `TypeError` unconditionally regardless. The
         bare `except Exception` around it silently swallowed both, so every
         run of `run_psi_os` ever produced -- before this fix -- reported
-        fabricated zero topology metrics, never real ones.
+        fabricated zero topology metrics, never real ones. Per-step
+        telemetry below keeps a lenient except (a single divergent step
+        shouldn't kill the whole run's telemetry); the final metrics
+        computed after the loop do not use this helper's except path.
         """
         try:
             field3d = field[:, :, np.newaxis]
@@ -261,21 +271,21 @@ def run_psi_os(
         except Exception:
             return 0.0, 0.0, 0.0
 
+    c1, c2, dt = 0.5, -0.5, 0.05  # standard defect-turbulence regime parameters
     intensities = []
     steps_telemetry: List[Dict[str, Any]] = []
     for step_idx in range(n_steps):
-        # Minimal gradient-descent-like relaxation
         lap = (
             np.roll(psi, 1, 0) + np.roll(psi, -1, 0) +
             np.roll(psi, 1, 1) + np.roll(psi, -1, 1) - 4 * psi
         )
-        psi = psi + 0.01 * lap
+        psi = psi + dt * (psi + (1 + 1j * c1) * lap - (1 + 1j * c2) * np.abs(psi) ** 2 * psi)
 
         if curvature_penalty > 0.0:
             # 4th-order (bi-Laplacian) high-frequency spatial noise
             # suppression -- see this function's docstring for why k^4
             # scaling relatively preserves low-order winding structure
-            # versus the 2nd-order diffusion term above.
+            # versus the CGL Laplacian term above.
             lap2 = (
                 np.roll(psi, 1, 0) + np.roll(psi, -1, 0) +
                 np.roll(psi, 1, 1) + np.roll(psi, -1, 1) - 4 * psi
@@ -293,8 +303,8 @@ def run_psi_os(
 
         # Dirichlet (gradient) energy: sum of squared nearest-neighbor
         # differences over the lattice -- a real, well-defined elastic-energy
-        # scalar for this diffusive field (standard discretization of
-        # \int |grad psi|^2), not a metaphorical "thermodynamic cost" claim.
+        # scalar for this field (standard discretization of \int |grad psi|^2),
+        # not a metaphorical "thermodynamic cost" claim.
         grad_x = psi - np.roll(psi, 1, axis=0)
         grad_y = psi - np.roll(psi, 1, axis=1)
         energy = float(np.sum(np.abs(grad_x) ** 2 + np.abs(grad_y) ** 2))
@@ -308,15 +318,27 @@ def run_psi_os(
             "energy": energy,
         })
 
-    I_series = np.array(intensities)
-    Qz, Qabs, f_dress = _step_topology(psi)
+    if not np.all(np.isfinite(psi)):
+        raise ValueError(
+            f"CGL integration diverged (N={N}, n_steps={n_steps}, seed={seed}); "
+            "reduce dt, n_steps, or curvature_penalty"
+        )
 
-    try:
-        from validation.synthetic import single_vortex
-        ref = single_vortex(N=N)
-        vort_mean = float(np.abs(ref).mean())
-    except Exception:
-        vort_mean = float(np.abs(psi).mean())
+    I_series = np.array(intensities)
+
+    # compute_Qz's default axis=2 treats the LAST axis as the z-slice stack (see
+    # validation/synthetic.py's own psi[:, :, None] convention) -- psi[np.newaxis]
+    # would put the singleton on axis 0 instead, silently yielding all-empty
+    # plaquettes (nx=1) and therefore Qabs=0 on every field, real or not.
+    Qz_arr, Qabs_arr = compute_Qz(psi[:, :, np.newaxis])
+    Qz = float(Qz_arr[0])
+    Qabs = float(Qabs_arr[0])
+    f_dress = float(compute_f_dress(Qz_arr, Qabs_arr))
+    # Fraction of grid points near a defect core (low local amplitude), a genuine
+    # vortex-density diagnostic from the actual simulated field -- replaces a
+    # prior placeholder that reported a fixed reference field's mean amplitude
+    # regardless of what the simulation actually produced.
+    vort_mean = float(np.mean(np.abs(psi) < 0.2 * np.abs(psi).mean()))
 
     metrics: Dict[str, float] = {
         "I_mean": float(I_series.mean()),
@@ -336,8 +358,8 @@ def run_psi_os(
 
     h8_falsifiers = [
         {
-            "prediction": "Vortex intensity I_mean > 0 under relaxation",
-            "discriminator": "I_mean <= 0 would falsify diffusion model",
+            "prediction": "Vortex intensity I_mean > 0 under CGL evolution",
+            "discriminator": "I_mean <= 0 would falsify the CGL amplitude equation",
             "status": "PASS" if metrics["I_mean"] > 0 else "FAIL",
         },
     ]

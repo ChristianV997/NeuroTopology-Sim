@@ -107,44 +107,49 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
 
     t0 = time.monotonic()
 
-    # ── run the sim (numpy only) ──────────────────────────────────────────────
+    # ── run the sim (numpy only): complex Ginzburg-Landau, not plain diffusion —
+    # diffusion is a heat equation and cannot sustain topological structure; CGL
+    # spontaneously nucleates spiral-wave phase singularities (see sim/run_cards.py
+    # run_psi_os for the same fix and full rationale) ────────────────────────────
     import numpy as np
+    from core.topology import compute_Qz, compute_f_dress
 
     rng = np.random.default_rng(seed)
-    psi = rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N))
-    psi /= np.abs(psi).mean() + 1e-9
+    psi = 0.1 * (rng.standard_normal((N, N)) + 1j * rng.standard_normal((N, N)))
 
+    c1, c2, dt = 0.5, -0.5, 0.05
     intensities = []
     for _ in range(n_steps):
         lap = (
             np.roll(psi, 1, 0) + np.roll(psi, -1, 0) +
             np.roll(psi, 1, 1) + np.roll(psi, -1, 1) - 4 * psi
         )
-        psi = psi + 0.01 * lap
+        psi = psi + dt * (psi + (1 + 1j * c1) * lap - (1 + 1j * c2) * np.abs(psi) ** 2 * psi)
         intensities.append(float(np.abs(psi).mean()))
+
+    if not np.all(np.isfinite(psi)):
+        raise ValueError(f"CGL integration diverged (N={N}, n_steps={n_steps}, seed={seed})")
 
     I = np.array(intensities)
     elapsed_s = time.monotonic() - t0
 
-    try:
-        from core.topology import compute_Qz, compute_f_dress
-        # compute_Qz returns (Qz_array, Qabs_array), one entry per slice along
-        # `axis` (default axis=2, i.e. shape (nx, ny, nslices) -- see
-        # validation/synthetic.py::single_vortex, which repeats along axis=2).
-        # A prior version of this line did `float(compute_Qz(psi[np.newaxis]))`:
-        # `psi[np.newaxis]` puts the singleton slice axis FIRST (shape
-        # (1, N, N)), mismatched with the default axis=2 convention, AND
-        # `float()` on the returned 2-tuple raises TypeError unconditionally.
-        # The bare `except Exception` silently swallowed that every call,
-        # so Qabs was always exactly 0.0 -- meaning every hypothesis spec's
-        # `Qabs_max` threshold check (see verdict logic below) has always
-        # trivially passed regardless of the spec's actual sim output.
-        qz_arr, qabs_arr = compute_Qz(psi[:, :, np.newaxis])
-        Qz = float(qz_arr[0])
-        Qabs = float(qabs_arr[0])
-        f_dress = float(compute_f_dress(qz_arr, qabs_arr))
-    except Exception:
-        Qz, Qabs, f_dress = 0.0, 0.0, 0.0
+    # compute_Qz returns (Qz_array, Qabs_array), one entry per slice along
+    # `axis` (default axis=2, i.e. shape (nx, ny, nslices) -- see
+    # validation/synthetic.py::single_vortex, which repeats along axis=2).
+    # A prior version of this line did `float(compute_Qz(psi[np.newaxis]))`:
+    # `psi[np.newaxis]` puts the singleton slice axis FIRST (shape
+    # (1, N, N)), mismatched with the default axis=2 convention, AND
+    # `float()` on the returned 2-tuple raises TypeError unconditionally.
+    # A bare `except Exception` used to silently swallow that on every call,
+    # so Qabs was always exactly 0.0 -- meaning every hypothesis spec's
+    # `Qabs_max` threshold check (see verdict logic below) trivially passed
+    # regardless of the spec's actual sim output. Fixed by using the correct
+    # axis=2 convention and letting a genuine failure raise (the CGL
+    # divergence check above already guards the one expected failure mode).
+    Qz_arr, Qabs_arr = compute_Qz(psi[:, :, np.newaxis])
+    Qz = float(Qz_arr[0])
+    Qabs = float(Qabs_arr[0])
+    f_dress = float(compute_f_dress(Qz_arr, Qabs_arr))
 
     metrics: Dict[str, Any] = {
         "I_mean": round(float(I.mean()), 6),

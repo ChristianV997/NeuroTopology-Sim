@@ -10,6 +10,13 @@ columns. Each row is tagged with a ``metric_kind`` that distinguishes:
 * ``null_channel_shuffle``  — null control: channel order permuted.
 * ``null_time_reverse``     — null control: samples reversed.
 * ``null_phase_randomized`` — null control: spectrum-preserving phase randomization.
+* ``kuramoto_metastability`` — published order-parameter/metastability
+  comparator (opt-in via ``compute_kuramoto=True``); Q slot holds R_mean,
+  Qabs slot holds metastability (see ``validation.analytic_phase.kuramoto_order_metrics``).
+* ``leida_state``            — published LEiDA phase-locking-state comparator
+  (opt-in via ``compute_leida=True``); Q slot holds the dominant state index,
+  Qabs slot holds its occupancy fraction, phase_grad slot holds the
+  transition rate (see ``validation.analytic_phase.leida_state_metrics``).
 
 Null rows are only emitted when ``compute_nulls=True`` (default: False).
 They are controls for artifact sensitivity, not proof of validity.
@@ -30,10 +37,13 @@ from validation.analytic_phase import (
     analytic_phase_amplitude_by_band,
     analytic_phases_by_band,
     channel_phase_gradient_metrics,
+    kuramoto_order_metrics,
+    leida_state_metrics,
     temporal_phase_proxy_metrics,
 )
 from validation.montage_topology import (
     get_channel_xy,
+    get_channel_xy_templateflow,
     phase_grid_topology_from_band,
     triangulate_xy,
 )
@@ -225,9 +235,13 @@ def run(
     step_seconds: float = 2.0,
     compute_phase_grid_topology: bool = False,
     montage: str | None = "standard_1020",
+    use_templateflow: bool = False,
     amp_quantile: float | None = 0.1,
     compute_nulls: bool = False,
     null_seed: int = 0,
+    compute_kuramoto: bool = False,
+    compute_leida: bool = False,
+    leida_n_states: int = 3,
 ):
     """Run EEG analytic-phase feature extraction and save per-window-per-band rows.
 
@@ -245,6 +259,9 @@ def run(
         ``phase_grid_topology`` rows using montage-aware sensor geometry.
     montage : MNE montage name used to derive channel XY coordinates for
         ``phase_grid_topology`` rows.
+    use_templateflow : if True, use real cortical surface geometry from TemplateFlow
+        (fsaverage/fsLR) instead of hardcoded 2D projections. Requires TemplateFlow,
+        nibabel, and network access. Default False for backward compatibility.
     amp_quantile : optional quantile threshold used to mask low-amplitude
         triangle windows for ``phase_grid_topology`` rows.
     compute_nulls : if True, emit ``null_channel_shuffle``, ``null_time_reverse``,
@@ -254,6 +271,15 @@ def run(
         per-window content via hashlib so each window gets a unique but
         reproducible seed. Stored verbatim in the ``null_seed`` column of null
         rows; the derived per-window seed is stored in ``window_null_seed``.
+    compute_kuramoto : if True, emit ``kuramoto_metastability`` rows (published
+        order-parameter/metastability comparator) alongside each band's
+        ``analytic_phase_proxy`` row. Default False; existing callers unaffected.
+    compute_leida : if True, emit ``leida_state`` rows (published
+        Leading-Eigenvector-Dynamics-Analysis phase-locking-state comparator,
+        computed within each window -- see
+        ``validation.analytic_phase.leida_state_metrics`` for the stated
+        per-window scope). Default False; existing callers unaffected.
+    leida_n_states : number of k-means phase-locking states for LEiDA.
 
     Note: ``compute_nulls=True`` increases row count approximately 4× (each
     ``analytic_phase_proxy`` row gets three matched null rows). This runner
@@ -285,7 +311,10 @@ def run(
         topo_tri = None
         if compute_phase_grid_topology:
             try:
-                topo_names, topo_xy = get_channel_xy(raw, montage=montage)
+                if use_templateflow:
+                    topo_names, topo_xy = get_channel_xy_templateflow(raw, montage=montage)
+                else:
+                    topo_names, topo_xy = get_channel_xy(raw, montage=montage)
                 topo_tri = triangulate_xy(topo_xy)
                 raw_names_l = [c.lower() for c in raw.ch_names]
                 topo_idx = [raw_names_l.index(n.lower()) for n in topo_names]
@@ -377,6 +406,57 @@ def run(
                         rows.append(topo_row)
                     except Exception:
                         pass
+
+                if compute_kuramoto:
+                    try:
+                        kur = kuramoto_order_metrics(phase)
+                        kur_row = {
+                            **tmpl,
+                            "band": band_name,
+                            "metric_kind": "kuramoto_metastability",
+                            "Q": kur["R_mean"],
+                            "Qabs": kur["metastability"],
+                            "phase_grad": np.nan,
+                            "f_dress": np.nan,
+                            "spectral_ratio": spectral,
+                            "n_triangles": np.nan,
+                            "n_valid_triangles": np.nan,
+                            "defect_density": np.nan,
+                            "null_method": "",
+                            "null_seed": "",
+                            "window_null_seed": "",
+                        }
+                        if compute_pci:
+                            kur_row["pcist_proxy"] = pci_val
+                        rows.append(kur_row)
+                    except Exception:
+                        pass
+
+                if compute_leida:
+                    try:
+                        leida = leida_state_metrics(phase, n_states=leida_n_states)
+                        leida_row = {
+                            **tmpl,
+                            "band": band_name,
+                            "metric_kind": "leida_state",
+                            "Q": float(leida["dominant_state"]),
+                            "Qabs": leida["dominant_occupancy"],
+                            "phase_grad": float(leida["n_transitions"]) / max(phase.shape[1] - 1, 1),
+                            "f_dress": np.nan,
+                            "spectral_ratio": spectral,
+                            "n_triangles": float(leida["n_states"]),
+                            "n_valid_triangles": np.nan,
+                            "defect_density": np.nan,
+                            "null_method": "",
+                            "null_seed": "",
+                            "window_null_seed": "",
+                        }
+                        if compute_pci:
+                            leida_row["pcist_proxy"] = pci_val
+                        rows.append(leida_row)
+                    except Exception:
+                        pass
+
                 for method, null_band_phases in null_phase_cache.items():
                     if band_name not in null_band_phases:
                         continue
