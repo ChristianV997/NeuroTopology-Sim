@@ -4,7 +4,10 @@ __pycache__
 *.pyc
 .pytest_cache
 results/
-data/
+data/raw/
+data/ds[0-9][0-9][0-9][0-9][0-9][0-9]/
+data/ds[0-9][0-9][0-9][0-9][0-9][0-9]_real/
+data/*.sqlite
 outputs/
 obsidian/
 project_manifest.json
