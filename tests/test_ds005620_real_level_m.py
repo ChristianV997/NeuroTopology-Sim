@@ -14,7 +14,11 @@ def bids_root(tmp_path_factory):
     from tests.fixtures.make_synthetic_bids import build
 
     root = tmp_path_factory.mktemp("bids_synth")
-    return str(build(str(root)))
+    # Use the REAL ds005620 task label `sed` (not the idealized `sedated`):
+    # the dataset's actual BIDS tasks are awake/sed/sed2, and the registry
+    # maps sed->sedated. The fixture must mirror the real labels the registry
+    # is keyed on, or it silently exercises a mapping the real data never hits.
+    return str(build(str(root), states=("awake", "sed")))
 
 
 def test_features_track_signal_not_filename(bids_root):
