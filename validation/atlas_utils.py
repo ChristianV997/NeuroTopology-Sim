@@ -94,17 +94,16 @@ def fetch_yeo_networks(
     if n_networks not in (7, 17):
         raise ValueError(f"n_networks must be in {{7, 17}}, got {n_networks}")
 
+    # nilearn's fetch_atlas_yeo_2011 now takes n_networks/thickness as
+    # SELECTION arguments and returns the already-selected map as `.maps`
+    # directly -- older nilearn returned every variant as separate
+    # attributes (`.anat_7networks`/`.anat_17networks`) for the caller to
+    # pick between post-hoc, which no longer exist on the returned Bunch.
     atlas = datasets.fetch_atlas_yeo_2011(
         data_dir=None,
+        n_networks=n_networks,
     )
-
-    # Select the appropriate network map
-    if n_networks == 7:
-        maps = atlas.anat_7networks
-        labels_key = "networks_7"
-    else:
-        maps = atlas.anat_17networks
-        labels_key = "networks_17"
+    maps = atlas.maps
 
     # Build labels from the networks
     labels = [f"Network_{i+1}" for i in range(n_networks)]
