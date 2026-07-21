@@ -129,6 +129,55 @@ def _read_raw(path: str):
     raise ValueError(f"Unsupported EEG extension for {path}: {ext}")
 
 
+# ── Per-recording read cache (throughput) ─────────────────────────────────────
+# Profiling a real streaming subject showed the recording's file header was
+# re-parsed once PER WINDOW (mne's EEGLAB/BrainVision reader ~0.6s cumulative for
+# a 10-window subject), because every read_window_signal / get_sample_rate /
+# get_channel_names call did a fresh _read_raw. The same recording is read
+# (max_windows_per_file) times on the Level-M pass and again on the Level-T pass
+# -- so a single recording is parsed ~2*max_windows times. This bounded cache
+# parses each recording once and hands the same preload=False raw to all
+# non-mutating readers, keyed by (path, mtime, size) so a changed file is never
+# served stale. It is byte-identical: get_data(picks, start, stop) on a
+# preload=False raw reads the requested region deterministically from disk;
+# nothing here changes the numbers, only how many times the header is parsed.
+#
+# CALLERS MUST NOT MUTATE a cached raw. The only in-place mutation in this module
+# is preprocess_raw() in read_window_signal's `preprocess is not None` branch,
+# which deliberately uses the UNCACHED _read_raw so it never corrupts a shared
+# instance.
+from collections import OrderedDict as _OrderedDict  # noqa: E402
+
+_RAW_CACHE: "_OrderedDict[tuple, object]" = _OrderedDict()
+_RAW_CACHE_MAXSIZE = 4
+
+
+def _read_raw_cached(path: str):
+    try:
+        st = Path(path).stat()
+        key = (str(path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        return _read_raw(path)  # nonexistent/unreadable: let the real reader raise
+    cached = _RAW_CACHE.get(key)
+    if cached is not None:
+        _RAW_CACHE.move_to_end(key)
+        return cached
+    raw = _read_raw(path)
+    _RAW_CACHE[key] = raw
+    _RAW_CACHE.move_to_end(key)
+    while len(_RAW_CACHE) > _RAW_CACHE_MAXSIZE:
+        _RAW_CACHE.popitem(last=False)
+    return raw
+
+
+def clear_raw_cache() -> None:
+    """Drop all cached raws (frees the handful of parsed headers). Optional --
+    the cache is bounded and holds preload=False raws (no signal data), so this
+    is only needed to release file handles deterministically (e.g. right before
+    deleting a subject's raw files in the streaming loop)."""
+    _RAW_CACHE.clear()
+
+
 def get_sample_rate(path: str) -> float:
     """Return the sampling rate (Hz) for an EEG recording without loading its data.
 
@@ -138,7 +187,7 @@ def get_sample_rate(path: str) -> float:
     Hilbert-phase extraction), which `read_window_signal` computes internally
     but does not expose.
     """
-    raw = _read_raw(path)
+    raw = _read_raw_cached(path)
     return float(raw.info["sfreq"])
 
 
@@ -151,7 +200,7 @@ def get_channel_names(path: str, max_channels: int | None = None) -> list[str]:
     """
     import mne
 
-    raw = _read_raw(path)
+    raw = _read_raw_cached(path)
     picks = mne.pick_types(raw.info, eeg=True)
     if max_channels:
         picks = picks[:max_channels]
@@ -165,7 +214,7 @@ def get_recording_duration(path: str) -> float:
     window (e.g. microstate segmentation, which needs a long enough stretch
     of data for modified K-means clustering to produce stable topographies).
     """
-    raw = _read_raw(path)
+    raw = _read_raw_cached(path)
     return float(raw.n_times) / float(raw.info["sfreq"])
 
 
@@ -193,11 +242,17 @@ def read_window_signal(
     `None` preserves this function's exact prior behavior (no filtering at
     all); every currently-published number was computed with `preprocess=None`.
     """
-    raw = _read_raw(path)
     if preprocess is not None:
+        # Mutating path: preprocess_raw filters the raw in place, so it must NOT
+        # share a cached instance -- read a fresh, uncached raw here.
+        raw = _read_raw(path)
         from data.preprocessing import preprocess_raw
 
         preprocess_raw(raw, **preprocess)
+    else:
+        # Non-mutating path: reuse the per-recording cached raw (byte-identical;
+        # only get_data/pick_types/info reads happen below).
+        raw = _read_raw_cached(path)
     sfreq = float(raw.info["sfreq"])
     n_total = raw.n_times
     start = int(round(window_start_s * sfreq))
