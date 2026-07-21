@@ -98,6 +98,9 @@ The PCIst-style complexity column has been renamed `pcist_proxy` to make clear i
 | ds005620 (LOC/ROC) | phase_grid_topology (Qz, Qabs) | ✓ | ✓ | ✓ | Ready for inference |
 | ds006072 (sevoflurane) | analytic_phase_proxy + leida_state | ✓ | ✓ | ✓ | Ready for inference |
 | ds003969 (EEG during sleep) | analytic_phase_proxy (Kuramoto order) | ✓ | ✓ | ✓ | Ready for inference |
+| ds004917 (TMS-EEG, parietal inhibition) | real PCIst (`pcist()`, Comolatti et al. 2019) | ✓ (synthetic) | n/a | n=3, not powered | Capability activated; see `REPORT_ds004917_pcist_tms_topology.md` |
+| ds004572 (sham hypnosis induction) | phase_grid_topology + connectivity + spatial topology | ✓ | ✓ (20/20 windows) | n=1, not powered | Battery verified; see `REPORT_ds004572_hypnosis_topology.md` |
+| ds005555 (BOAS full-night PSG sleep) | phase_grid_topology + connectivity | ✓ | ✓ (10/20 windows) | n=1, not powered | Battery verified; see `REPORT_ds005555_boas_sleep_topology.md` |
 
 **Spatial null (spin test):** the temporal-only-null gap is now closed for sensor-space signed maps. `validation/spatial_nulls.py` implements a hand-rolled Alexander-Bloch/Váša **spin test** — a rigid rotation of the sensor geometry about its centroid with greedy bijective reassignment — that preserves spatial autocorrelation while randomizing a map's alignment to a regional partition. It is strictly more conservative than a naive label shuffle (empirically ~5× wider null on a smooth map, so a shuffle would over-reject). `spin_test_signed_defect_region_contrast()` applies it turnkey to `signed_defect_map` output (per-triangle winding on the triangle-centroid cloud, regions assigned by the same majority vote as `net_charge_by_region`). Verified by a 5-lens adversarial review.
 
