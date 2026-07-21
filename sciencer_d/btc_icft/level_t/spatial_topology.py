@@ -37,6 +37,26 @@ import numpy as np
 
 DEFAULT_CANDIDATE_MONTAGES = ("standard_1020", "standard_1005", "biosemi64", "biosemi128", "biosemi32", "biosemi16")
 
+# Dataset-specific device prefixes that some BIDS EEG files prepend to
+# otherwise-standard 10-20 channel names (e.g. ds005555/BOAS labels its PSG
+# electrodes "PSG_F3", "PSG_C4"). These carry no montage information -- they
+# name the recording device/acquisition, not the electrode position -- so
+# they must be stripped before matching against a standard montage's channel
+# set. Scoped to a known, documented list rather than a blind global regex so
+# an unrelated future dataset whose real channel name legitimately starts
+# with one of these strings is not silently mangled.
+KNOWN_STRIPPABLE_PREFIXES = ("PSG_",)
+
+
+def _normalize_channel_name(ch: str) -> str:
+    """Strip a known device/acquisition prefix (see KNOWN_STRIPPABLE_PREFIXES)
+    so a standard-10-20 electrode label hidden behind it can match a montage.
+    Case-insensitive on the prefix; the electrode part is returned unchanged."""
+    for prefix in KNOWN_STRIPPABLE_PREFIXES:
+        if ch.upper().startswith(prefix.upper()):
+            return ch[len(prefix):]
+    return ch
+
 
 def resolve_montage_positions(
     ch_names: list[str], candidate_montages: tuple[str, ...] = DEFAULT_CANDIDATE_MONTAGES,
@@ -46,17 +66,24 @@ def resolve_montage_positions(
     whose channel set is a superset of `ch_names`, or `(None, None)` if none
     match.
 
+    Channel names are normalized via `_normalize_channel_name` (stripping a
+    known device prefix such as ds005555/BOAS's "PSG_") before matching, but
+    the returned position dict is keyed by the ORIGINAL `ch_names` so callers
+    that index positions by the raw channel name (e.g. `build_montage_phase_grid`)
+    keep working unchanged.
+
     Real BIDS EEG files read via `mne.io.read_raw_edf`/`read_raw_bdf`/etc
     (this repo's `data/bids_ingest.py::_read_raw`, not `mne_bids.read_raw_bids`)
     do not carry embedded 3D electrode coordinates even when a dataset's own
     `_electrodes.tsv` BIDS sidecar has them -- this function's fallback (match
     channel names against known standard layouts) is a deliberate, documented
-    simplification: it assumes standard-compliant channel naming and returns
-    `(None, None)` rather than guessing when that assumption doesn't hold.
+    simplification: it assumes standard-compliant channel naming (after prefix
+    normalization) and returns `(None, None)` rather than guessing when that
+    assumption doesn't hold.
     """
     import mne
 
-    lower_ch = [c.lower() for c in ch_names]
+    norm_ch = [_normalize_channel_name(c).lower() for c in ch_names]
     for name in candidate_montages:
         try:
             montage = mne.channels.make_standard_montage(name)
@@ -64,8 +91,8 @@ def resolve_montage_positions(
             continue
         pos = montage.get_positions()["ch_pos"]
         lower_pos = {k.lower(): v for k, v in pos.items()}
-        if all(c in lower_pos for c in lower_ch):
-            return {ch: lower_pos[ch.lower()] for ch in ch_names}, name
+        if all(c in lower_pos for c in norm_ch):
+            return {ch: lower_pos[norm] for ch, norm in zip(ch_names, norm_ch)}, name
     return None, None
 
 

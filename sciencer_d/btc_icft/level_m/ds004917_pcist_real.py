@@ -146,12 +146,21 @@ def build_evoked_response(
         f"TMS-EEG artifact removal (no SOUND/ICA decay correction)"
     ]
     raw = _read_raw_any(source_file)
+    # Pick the EEG channels we'll actually use BEFORE filtering, not after:
+    # `preprocess_raw` bandpass-filters every channel it's given, so filtering
+    # all ~66 channels then discarding all but `max_channels` wastes ~4x the
+    # filter compute on data that is thrown away. Disclosed side effect: the
+    # average reference inside `preprocess_raw` is then computed over the
+    # `max_channels` picked channels rather than all EEG channels -- acceptable
+    # and consistent with how `max_channels` truncation already narrows the
+    # montage everywhere else in this repo's real-signal path.
+    eeg_picks = mne.pick_types(raw.info, eeg=True)
+    if max_channels:
+        eeg_picks = eeg_picks[:max_channels]
+    raw.pick([raw.ch_names[i] for i in eeg_picks])
     preprocess_raw(raw, **(preprocess if preprocess is not None else _DEFAULT_PREPROCESS))
     sfreq = float(raw.info["sfreq"])
     n_total = raw.n_times
-    picks = mne.pick_types(raw.info, eeg=True)
-    if max_channels:
-        picks = picks[:max_channels]
 
     epochs: list[np.ndarray] = []
     times_ms: np.ndarray | None = None
@@ -162,7 +171,7 @@ def build_evoked_response(
         if start_samp < 0 or stop_samp > n_total or stop_samp <= start_samp:
             warnings.append(f"trial at onset={onset:.3f}s skipped: window out of recording range")
             continue
-        data = raw.get_data(picks=picks, start=start_samp, stop=stop_samp)
+        data = raw.get_data(start=start_samp, stop=stop_samp)
         n_samples = data.shape[1]
         t_ms = (np.arange(n_samples) / n_samples) * (pre_s + post_s) * 1000.0 - pre_s * 1000.0
         data = _interpolate_artifact(t_ms, data, artifact_window_ms)

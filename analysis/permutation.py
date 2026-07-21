@@ -72,6 +72,7 @@ class MixedLMResult:
     n_obs: int
     n_groups: int
     method: str = "mixedlm_random_intercept"
+    convergence_warning: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -266,6 +267,8 @@ def mixedlm_group_effect(
     `converged` MUST be checked before trusting `p_value` -- a non-converged
     fit can return parameters that look like a clean result.
     """
+    import warnings as _warnings
+
     import statsmodels.formula.api as smf
 
     work = df[[value_col, group_col, subject_col]].dropna().copy()
@@ -275,7 +278,15 @@ def mixedlm_group_effect(
     model = smf.mixedlm(
         "_value ~ _group", data=work, groups=work["_subject"], re_formula=re_formula
     )
-    fit = model.fit()
+    # Capture (do NOT suppress) any statsmodels ConvergenceWarning so a
+    # non-converged fit carries the real reason forward, not just a bool.
+    # record=True intercepts the warnings into `caught` instead of printing;
+    # they are re-surfaced as MixedLMResult.convergence_warning below.
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        fit = model.fit()
+    warning_texts = [str(w.message) for w in caught if issubclass(w.category, Warning)]
+    convergence_warning = "; ".join(warning_texts) if warning_texts else None
 
     group_terms = [p for p in fit.params.index if p.startswith("_group")]
     if not group_terms:
@@ -291,4 +302,5 @@ def mixedlm_group_effect(
         converged=bool(fit.converged),
         n_obs=int(fit.nobs),
         n_groups=int(work["_subject"].nunique()),
+        convergence_warning=convergence_warning,
     )
