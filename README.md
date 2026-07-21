@@ -98,9 +98,11 @@ The PCIst-style complexity column has been renamed `pcist_proxy` to make clear i
 | ds005620 (LOC/ROC) | phase_grid_topology (Qz, Qabs) | ✓ | ✓ | ✓ | Ready for inference |
 | ds006072 (sevoflurane) | analytic_phase_proxy + leida_state | ✓ | ✓ | ✓ | Ready for inference |
 | ds003969 (EEG during sleep) | analytic_phase_proxy (Kuramoto order) | ✓ | ✓ | ✓ | Ready for inference |
-| ds004917 (TMS-EEG, parietal inhibition) | real PCIst (`pcist()`, Comolatti et al. 2019) | ✓ (synthetic) | n/a | n=3, not powered | Capability activated; see `REPORT_ds004917_pcist_tms_topology.md` |
-| ds004572 (sham hypnosis induction) | phase_grid_topology + connectivity + spatial topology | ✓ | ✓ (20/20 windows) | n=1, not powered | Battery verified; see `REPORT_ds004572_hypnosis_topology.md` |
-| ds005555 (BOAS full-night PSG sleep) | phase_grid_topology + connectivity | ✓ | ✓ (10/20 windows) | n=1, not powered | Battery verified; see `REPORT_ds005555_boas_sleep_topology.md` |
+| ds004917 (TMS-EEG, parietal inhibition) | real PCIst (`pcist()`, Comolatti et al. 2019) | ✓ (synthetic) | n/a | scaled to full cohort | Real PCIst per subject/site; see `REPORT_ds004917_pcist_tms_topology.md` |
+| ds004572 (sham hypnosis induction) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | **n=52, significant** (baseline vs experience, q_abs d≈0.75, subject-blocked p<0.001) | Scaled; see `REPORT_ds004572_hypnosis_topology.md` |
+| ds005555 (BOAS full-night PSG sleep) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | **n=128, graded** (q_abs separates wake from N2/N3/REM, not N1; small d≈0.15–0.29) | Scaled; see `REPORT_ds005555_boas_sleep_topology.md` |
+| ds005620 (propofol, cheap metric) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | n=21, **null on this metric** (awake vs sedated, d<0.14, ns) | sed/sed2 mapping fixed; see `REPORT_ds005620_scaled_channel_mean_topology.md` |
+| ds004541 (EEG-fNIRS anesthesia) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | 7 subj w/ loc/roc markers | Onboarded (awake vs anesthetized); see `REPORT_ds004541_anesthesia_locroc_topology.md` |
 
 **Spatial null (spin test):** the temporal-only-null gap is now closed for sensor-space signed maps. `validation/spatial_nulls.py` implements a hand-rolled Alexander-Bloch/Váša **spin test** — a rigid rotation of the sensor geometry about its centroid with greedy bijective reassignment — that preserves spatial autocorrelation while randomizing a map's alignment to a regional partition. It is strictly more conservative than a naive label shuffle (empirically ~5× wider null on a smooth map, so a shuffle would over-reject). `spin_test_signed_defect_region_contrast()` applies it turnkey to `signed_defect_map` output (per-triangle winding on the triangle-centroid cloud, regions assigned by the same majority vote as `net_charge_by_region`). Verified by a 5-lens adversarial review.
 
