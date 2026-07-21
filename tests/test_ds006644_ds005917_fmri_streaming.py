@@ -11,6 +11,7 @@ from unittest.mock import patch, MagicMock
 
 import tools.stream_process_ds006644 as ds006644_mod
 import tools.stream_process_ds005917 as ds005917_mod
+from tools.stream_process_ds005917 import process_session
 
 
 _DS006644_PARTICIPANTS_TSV = (
@@ -101,3 +102,21 @@ def test_ds006644_download_deleted_even_on_processing_error(tmp_path, monkeypatc
     except RuntimeError:
         pass
     assert not downloaded_marker.exists()
+
+
+def test_ds005917_missing_bold_file_recorded_not_crashed(tmp_path, monkeypatch):
+    """Regression test: sub-MOA113's real ses-d2 BOLD returned a 404 from S3
+    on the full-cohort run, and download_bold's exception was unhandled,
+    crashing the entire 25-subject run after 9 subjects had already
+    completed. process_session must catch a download failure and return an
+    error-flagged record instead of propagating the exception."""
+
+    def fake_download_404(subject, session, dest_dir):
+        raise Exception("An error occurred (404) when calling the HeadObject operation: Not Found")
+
+    monkeypatch.setattr(ds005917_mod, "download_bold", fake_download_404)
+
+    result = process_session("sub-MOA113", "ses-d2", tmp_path)
+    assert result["error"]
+    assert "404" in result["error"] or "download failed" in result["error"]
+    assert result["betti1"] == 0  # degenerate placeholder, not a fabricated value

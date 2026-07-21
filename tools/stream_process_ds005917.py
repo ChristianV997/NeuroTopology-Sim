@@ -89,7 +89,15 @@ def download_bold(subject: str, session: str, dest_dir: Path) -> Path:
 
 
 def process_session(subject: str, session: str, work_root: Path) -> dict:
-    bold_path = download_bold(subject, session, work_root)
+    try:
+        bold_path = download_bold(subject, session, work_root)
+    except Exception as exc:
+        # Real, observed case: not every subject with complete infusion_1/2
+        # crossover metadata actually has a ses-d2/ses-p2 rest-run file on S3
+        # (e.g. sub-MOA113's ses-d2 is 404). Record and skip, don't crash the run.
+        return {"n_regions": 0, "n_timepoints": 0, "betti0": 0, "betti1": 0,
+                "total_persistence_h1": 0.0, "modularity": 0.0, "global_efficiency": 0.0,
+                "mean_degree": 0.0, "small_worldness": 0.0, "error": f"download failed: {exc}"}
     try:
         ts = parcellate_bold(str(bold_path), atlas_labels_img=None, t_r=_TR, n_synthetic_parcels=100)
         conn = connectivity_matrix(ts, kind="correlation")
