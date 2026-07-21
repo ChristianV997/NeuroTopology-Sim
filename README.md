@@ -154,7 +154,7 @@ The PCIst-style complexity column has been renamed `pcist_proxy` to make clear i
 | ds005620 (LOC/ROC) | phase_grid_topology (Qz, Qabs) | ✓ | ✓ | ✓ | Ready for inference |
 | ds006072 (sevoflurane) | analytic_phase_proxy + leida_state | ✓ | ✓ | ✓ | Ready for inference |
 | ds003969 (EEG during sleep) | analytic_phase_proxy (Kuramoto order) | ✓ | ✓ | ✓ | Ready for inference |
-| ds004917 (TMS-EEG, parietal inhibition) | real PCIst (`pcist()`, Comolatti et al. 2019) | ✓ (synthetic) | n/a | scaled to full cohort | Real PCIst per subject/site; see `REPORT_ds004917_pcist_tms_topology.md` |
+| ds004917 (TMS-EEG, parietal inhibition) | real PCIst (`pcist()`, Comolatti et al. 2019) | ✓ (synthetic) | n/a | **n=24, significant** (parietal ips/ppc > vertex control, p≈0.007–0.012, d≈0.55) | Scaled; see `REPORT_ds004917_pcist_tms_topology.md` |
 | ds004572 (sham hypnosis induction) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | **n=52, significant** (baseline vs experience, q_abs d≈0.75, subject-blocked p<0.001) | Scaled; see `REPORT_ds004572_hypnosis_topology.md` |
 | ds005555 (BOAS full-night PSG sleep) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | **n=128, graded** (q_abs separates wake from N2/N3/REM, not N1; small d≈0.15–0.29) | Scaled; see `REPORT_ds005555_boas_sleep_topology.md` |
 | ds005620 (propofol, cheap metric) | channel-mean topology (q_net/q_abs/f_dress) | ✓ | ✓ | n=21, **null on this metric** (awake vs sedated, d<0.14, ns) | sed/sed2 mapping fixed; see `REPORT_ds005620_scaled_channel_mean_topology.md` |
