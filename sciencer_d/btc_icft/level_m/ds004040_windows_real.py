@@ -1,33 +1,27 @@
-"""Real Level-M windows for ds004040 (Trance channeling EEG study, Cannard/
-Delorme/Wahbeh, CC0) -- rest vs. trance, labeled by real block-onset/-offset
-event markers.
+"""Real Level-M windows for ds004040 (trance channeling EEG study) -- baseline
+vs. trance, labeled by real rest/trance event markers.
 
 ds004040's state does not come from a BIDS task entity (every recording is
-`task-trance`) nor from `trial_type` (every row's `trial_type` is the literal
-string "STATUS" -- a BIDS-EEG marker-channel artifact, not a state label).
-The real state comes from the `value` column, which encodes segment identity
-and boundary directly, e.g. `rest1_start`/`rest1_end`/`trance1_start`/
-`trance1_end`, repeated 3x per session (rest/trance alternate, with some
-rest-trance-rest ordering variation between sessions -- see the events.tsv
-itself, not assumed). This module parses `value` into (state, index,
-boundary) triples and pairs each `<label>_start` with its matching
-`<label>_end` to build the real (state, start_s, end_s) intervals.
+`task-trance`) nor from a per-epoch label column. It comes from discrete
+transition markers in the companion events.tsv: `rest1_start`, `rest1_end`,
+`trance1_start`, `trance1_end` -- the canonical behavioral consciousness-state
+markers of trance-channeling research. This module windows the continuous
+recording into:
 
-Each of the 13 subjects has exactly 2 sessions (`ses-01`, `ses-02`), each
-with 3 rest blocks and 3 trance blocks. Channel names are standard 10-20
-(Fp1, AF7, ... -- Biosemi 64-channel), no device prefix, so montage
-resolution works unchanged.
+  - `baseline`     : from `rest1_start` to `rest1_end`
+  - `trance`       : from `trance1_start` to `trance1_end`
 
-HONEST label handling (no_label_inference): a `<label>_start` with no
-matching `<label>_end` in the same file (not observed in this dataset, but
-not assumed impossible) is dropped, not paired with a fabricated boundary.
-Only the recording's own real markers define state boundaries.
+Only the EEG modality is used. Recordings are EEGLAB .set format.
+Format: EEGLAB .set; 13 subjects, 2 sessions (ses-01/ses-02).
+
+HONEST label handling (no_label_inference): a subject with no rest1/trance1
+markers in its events.tsv yields ZERO windows for that recording, not a
+fabricated state. Only the dataset's own real markers define state boundaries.
 """
 from __future__ import annotations
 
 import csv
 import hashlib
-import re
 import sys
 from pathlib import Path
 
@@ -41,7 +35,10 @@ from data.bids_ingest import discover_bids_eeg, read_window_signal  # noqa: E402
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features  # noqa: E402
 from sciencer_d.btc_icft.level_m.generic_windows import LevelMWindowRow  # noqa: E402
 
-_LABEL_RE = re.compile(r"^(rest|trance)(\d+)_(start|end)$")
+_REST_START = "rest1_start"
+_REST_END = "rest1_end"
+_TRANCE_START = "trance1_start"
+_TRANCE_END = "trance1_end"
 
 
 def _events_tsv_path(source_file: str) -> Path:
@@ -50,44 +47,40 @@ def _events_tsv_path(source_file: str) -> Path:
     return p.parent / f"{stem}_events.tsv"
 
 
-def _state_intervals(events_path: Path) -> list[tuple[str, float, float]]:
-    """(state, start_s, end_s) intervals from the real rest/trance block
-    markers in the `value` column. Only `<label>_start`/`<label>_end` pairs
-    that both exist are emitted, in the order their `_start` appears."""
+def _marker_onset(events_path: Path, marker: str) -> float | None:
+    """Onset (s) of the first row whose value (STATUS column) equals `marker`,
+    or None if the marker is absent."""
     if not events_path.exists():
-        return []
-    starts: dict[str, float] = {}
-    ends: dict[str, float] = {}
-    order: list[str] = []
+        return None
     with events_path.open(encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter="\t")
         for row in reader:
-            value = (row.get("value") or "").strip()
-            m = _LABEL_RE.match(value)
-            if not m:
-                continue
-            state, idx, boundary = m.group(1), m.group(2), m.group(3)
-            label = f"{state}{idx}"
-            try:
-                onset = float(row["onset"])
-            except (KeyError, ValueError):
-                continue
-            if boundary == "start":
-                starts[label] = onset
-                if label not in order:
-                    order.append(label)
-            else:
-                ends[label] = onset
+            if (row.get("value") or "").strip() == marker:
+                try:
+                    return float(row["onset"])
+                except (KeyError, ValueError):
+                    return None
+    return None
+
+
+def _state_intervals(events_path: Path, rec_end_s: float) -> list[tuple[str, float, float]]:
+    """(state, start_s, end_s) intervals from the real rest1/trance1 markers.
+
+    Returns intervals for both baseline (rest1) and trance (trance1) if they exist.
+    No markers -> empty list (no windows fabricated)."""
+    rest_start = _marker_onset(events_path, _REST_START)
+    rest_end = _marker_onset(events_path, _REST_END)
+    trance_start = _marker_onset(events_path, _TRANCE_START)
+    trance_end = _marker_onset(events_path, _TRANCE_END)
 
     intervals: list[tuple[str, float, float]] = []
-    for label in order:
-        if label not in starts or label not in ends:
-            continue  # unpaired marker -- real but incomplete, drop (no_label_inference)
-        start_s, end_s = starts[label], ends[label]
-        if end_s <= start_s:
-            continue
-        state = "rest" if label.startswith("rest") else "trance"
-        intervals.append((state, start_s, end_s))
+
+    if rest_start is not None and rest_end is not None and rest_start < rest_end:
+        intervals.append(("baseline", rest_start, rest_end))
+
+    if trance_start is not None and trance_end is not None and trance_start < trance_end:
+        intervals.append(("trance", trance_start, trance_end))
+
     return intervals
 
 
@@ -114,14 +107,13 @@ def build_and_extract_real_windows(
     max_channels: int | None = 16,
     subject_filter: str | None = None,
 ) -> list[LevelMWindowRow]:
-    """Discover -> rest/trance-block window -> extract REAL features for ds004040.
+    """Discover -> rest1/trance1-interval window -> extract REAL features for ds004040.
 
     Up to `max_windows_per_state` evenly-spaced `window_seconds` windows are
-    taken from each rest/trance block (evenly spaced across all blocks of a
-    given state within a recording, not just the first one, so windows
-    aren't clustered in a single block).
+    taken from each of the baseline and trance intervals.
 
-    `bids_root` must be the dataset root.
+    `bids_root` must be the dataset root. Subjects without rest1/trance1 markers
+    yield no rows.
     """
     records = discover_bids_eeg(bids_root)
     if subject_filter is not None:
@@ -134,35 +126,47 @@ def build_and_extract_real_windows(
         subject = rec.subject_id or "unknown_subject"
         path_hash = hashlib.sha256(rec.relative_path.encode("utf-8")).hexdigest()[:8]
 
-        intervals = _state_intervals(_events_tsv_path(rec.path))
+        try:
+            rec_end_s = _recording_duration_s(rec.path)
+        except (ValueError, OSError):
+            continue
+
+        intervals = _state_intervals(_events_tsv_path(rec.path), rec_end_s)
         if not intervals:
             continue
 
-        # Spread the per-state window budget across that state's blocks within this recording.
-        by_state: dict[str, list[tuple[float, float]]] = {}
         for state, seg_start, seg_end in intervals:
-            by_state.setdefault(state, []).append((seg_start, seg_end))
-
-        for state, segments in by_state.items():
-            n_segments = len(segments)
-            per_segment_budget = max(1, max_windows_per_state // n_segments)
-            win_counter = 0
-            for seg_start, seg_end in segments:
-                starts = _even_window_starts(seg_start, seg_end, window_seconds, per_segment_budget)
-                for w_start in starts:
-                    w_end = w_start + window_seconds
-                    feats, warns = _feats_for_window(rec.path, w_start, w_end, max_channels)
-                    row = LevelMWindowRow(
-                        row_id=f"{subject}_{rec.session_id or 'nosess'}_{rec.run_id or 'norun'}_{state}-{win_counter}_{path_hash}",
-                        subject_id=subject, session_id=rec.session_id, run_id=rec.run_id,
-                        window_id=f"{state}-win-{win_counter}", task_label=rec.task_label, state_label=state,
-                        behavior_label=None, report_label=None, y=None,
-                        source_file=rec.path, window_start_s=w_start, window_end_s=w_end,
-                        warnings=warns, **feats,
-                    )
-                    rows.append(row)
-                    win_counter += 1
+            starts = _even_window_starts(seg_start, seg_end, window_seconds, max_windows_per_state)
+            for idx, w_start in enumerate(starts):
+                w_end = w_start + window_seconds
+                feats, warns = _feats_for_window(rec.path, w_start, w_end, max_channels)
+                row = LevelMWindowRow(
+                    row_id=f"{subject}_{rec.session_id or 'nosess'}_{rec.run_id or 'norun'}_{state}-{idx}_{path_hash}",
+                    subject_id=subject, session_id=rec.session_id, run_id=rec.run_id,
+                    window_id=f"{state}-win-{idx}", task_label=rec.task_label, state_label=state,
+                    behavior_label=None, report_label=None, y=None,
+                    source_file=rec.path, window_start_s=w_start, window_end_s=w_end,
+                    warnings=warns, **feats,
+                )
+                rows.append(row)
     return rows
+
+
+def _recording_duration_s(source_file: str) -> float:
+    """Total recording duration (s) via mne's header, without loading data."""
+    import mne
+
+    p = Path(source_file)
+    ext = p.suffix.lower()
+    reader = {
+        ".edf": mne.io.read_raw_edf, ".bdf": mne.io.read_raw_bdf,
+        ".vhdr": mne.io.read_raw_brainvision, ".set": mne.io.read_raw_eeglab,
+        ".fif": mne.io.read_raw_fif,
+    }.get(ext)
+    if reader is None:
+        raise ValueError(f"Unsupported EEG extension: {ext}")
+    raw = reader(str(p), preload=False, verbose="ERROR")
+    return raw.n_times / float(raw.info["sfreq"])
 
 
 def _even_window_starts(seg_start: float, seg_end: float, window_seconds: float, n_max: int) -> list[float]:
