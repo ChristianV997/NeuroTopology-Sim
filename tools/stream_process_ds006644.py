@@ -40,6 +40,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from dual_engine.fmri_tda_pipeline import run_subject, build_cohort_payload, SubjectResult  # noqa: E402
+from tools.streaming import base_runner  # noqa: E402
 
 _DATASET_ID = "ds006644"
 _BUCKET = "openneuro.org"
@@ -101,44 +102,40 @@ def process_subject(subject: str, group: str, work_root: Path) -> SubjectResult:
     return res
 
 
+def _process_subject_safe(sub: str, group: str, work_path: Path) -> dict:
+    """Always returns a full SubjectResult dict (with `error` set on failure),
+    so the shared manifest loop never records the generic {"error"} shape that
+    build_cohort_payload's SubjectResult.from_dict cannot rebuild."""
+    try:
+        res = process_subject(sub, group, work_path)
+    except Exception as exc:  # never crash the whole cohort run on one bad subject
+        res = SubjectResult(
+            subject_id=sub, group=group, n_regions=0, n_timepoints=0,
+            betti0=0, betti1=0, total_persistence_h1=0.0, modularity=0.0,
+            global_efficiency=0.0, mean_degree=0.0, small_worldness=0.0,
+            provenance="real_fmri", error=str(exc),
+        )
+    return res.to_dict()
+
+
 def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None) -> int:
     out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
     work_path = Path(work_root)
-
-    manifest_path = out_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"processed": {}}
 
     labels = load_group_labels()
     all_subjects = subjects if subjects is not None else sorted(labels.keys())
-    if limit is not None:
-        remaining = [s for s in all_subjects if s not in manifest["processed"]][:limit]
-    else:
-        remaining = [s for s in all_subjects if s not in manifest["processed"]]
+    # only subjects with a real group label are processable (never inferred)
+    items = [(s, labels[s]) for s in all_subjects if labels.get(s) in ("verum", "placebo")]
+    print(f"{sum(1 for v in labels.values() if v=='verum')} verum / "
+          f"{sum(1 for v in labels.values() if v=='placebo')} placebo labeled subjects.")
 
-    print(f"{len(all_subjects)} subjects total ({sum(1 for v in labels.values() if v=='verum')} verum / "
-          f"{sum(1 for v in labels.values() if v=='placebo')} placebo), "
-          f"{len(manifest['processed'])} already done, {len(remaining)} to process this run.")
-
-    for sub in remaining:
-        group = labels.get(sub)
-        if group is None:
-            print(f"--- {sub}: SKIP (no group label in participants.tsv) ---")
-            continue
-        print(f"--- {sub} ({group}) ---")
-        try:
-            res = process_subject(sub, group, work_path)
-        except Exception as exc:  # never crash the whole cohort run on one bad subject
-            res = SubjectResult(
-                subject_id=sub, group=group, n_regions=0, n_timepoints=0,
-                betti0=0, betti1=0, total_persistence_h1=0.0, modularity=0.0,
-                global_efficiency=0.0, mean_degree=0.0, small_worldness=0.0,
-                provenance="real_fmri", error=str(exc),
-            )
-        manifest["processed"][sub] = res.to_dict()
-        manifest_path.write_text(json.dumps(manifest, indent=2))
-        status = "OK" if not res.error else f"ERROR: {res.error[:100]}"
-        print(f"  {status}  betti1={res.betti1} total_pers_h1={res.total_persistence_h1:.3f}")
+    manifest = base_runner.run_manifest_loop(
+        items, out_path,
+        key_fn=lambda t: t[0],
+        process_fn=lambda t: _process_subject_safe(t[0], t[1], work_path),
+        limit=limit,
+        label_fn=lambda t: f"{t[0]} ({t[1]})",
+    )
 
     results = [SubjectResult.from_dict(v) for v in manifest["processed"].values()]
     payload = build_cohort_payload(results, provenance="real_fmri")

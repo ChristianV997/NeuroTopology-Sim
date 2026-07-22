@@ -100,7 +100,7 @@ def build_and_extract_real_windows(
             row_id = f"{subject_id}_{state}-{idx}_{path_hash}"
             warns = ["real-NWB-EEG-derived (provenance=real_dandi_nwb); channel-mean Level M, multichannel Level T"]
             try:
-                block = read_nwb_eeg_window(nwb, w_start, w_end, pick="all", max_channels=max_channels)
+                block = read_nwb_eeg_window(nwb, w_start, w_end, pick="all", max_channels=max_channels, info=info)
             except (ValueError, OSError) as exc:
                 warns.append(f"window skipped: {exc}")
                 block = None

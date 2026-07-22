@@ -16,7 +16,6 @@ State labels come from each recording's own NWB epochs table
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -53,30 +52,19 @@ def process_asset(asset, out_dir: Path, window_seconds: float, max_windows_per_s
 def run(out_dir: str, window_seconds: float, max_windows_per_state: int, max_channels: int,
         limit: int | None, subjects: list[str] | None) -> int:
     out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    manifest_path = out_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"processed": {}}
 
     assets = resolve_asset_blobs(_DANDISET, _VERSION)
     if subjects is not None:
         assets = [a for a in assets if a.subject_id in subjects]
     assets = sorted(assets, key=lambda a: a.content_size)  # smallest first (fastest to smoke-test)
 
-    remaining = [a for a in assets if a.path not in manifest["processed"]]
-    if limit is not None:
-        remaining = remaining[:limit]
-
-    print(f"{len(assets)} NWB assets total, {len(manifest['processed'])} done, {len(remaining)} to process this run.")
-    for a in remaining:
-        print(f"--- {a.path} ({a.content_size/1e6:.0f} MB, lazy-read) ---")
-        try:
-            info = process_asset(a, out_path, window_seconds, max_windows_per_state, max_channels)
-            print(f"  done: {info}")
-            manifest["processed"][a.path] = info
-        except Exception as exc:  # never crash the cohort on one bad blob
-            print(f"  ERROR: {exc}")
-            manifest["processed"][a.path] = {"error": str(exc)}
-        manifest_path.write_text(json.dumps(manifest, indent=2))
+    base_runner.run_manifest_loop(
+        assets, out_path,
+        key_fn=lambda a: a.path,
+        process_fn=lambda a: process_asset(a, out_path, window_seconds, max_windows_per_state, max_channels),
+        limit=limit,
+        label_fn=lambda a: f"{a.path} ({a.content_size/1e6:.0f} MB, lazy-read)",
+    )
     return 0
 
 

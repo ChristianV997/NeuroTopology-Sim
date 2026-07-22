@@ -49,6 +49,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from dual_engine.fmri_tda_pipeline import parcellate_bold, connectivity_matrix, persistent_homology, graph_metrics  # noqa: E402
+from tools.streaming import base_runner  # noqa: E402
 
 _DATASET_ID = "ds005917"
 _BUCKET = "openneuro.org"
@@ -119,36 +120,37 @@ def process_session(subject: str, session: str, work_root: Path) -> dict:
         bold_path.unlink(missing_ok=True)  # disk-bounded
 
 
+def _process_subject_both_arms(sub: str, work_path: Path) -> dict:
+    """Both drug (ses-d2) and placebo (ses-p2) arms for one subject. Each
+    session's own errors are already caught inside process_session, so this
+    always returns a complete {drug, placebo} record for the manifest."""
+    result = {}
+    for cond, ses in _CONDITIONS.items():
+        r = process_session(sub, ses, work_path)
+        result[cond] = r
+        status = "OK" if not r["error"] else f"ERROR: {r['error'][:80]}"
+        print(f"  {cond} ({ses}): {status}  betti1={r['betti1']} total_pers_h1={r['total_persistence_h1']:.3f}")
+    return result
+
+
 def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None) -> int:
     out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
     work_path = Path(work_root)
 
-    manifest_path = out_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"processed": {}}
-
     all_subjects = subjects if subjects is not None else load_mdd_complete_subjects()
-    remaining = [s for s in all_subjects if s not in manifest["processed"]]
-    if limit is not None:
-        remaining = remaining[:limit]
+    print(f"{len(all_subjects)} MDD subjects with complete drug/placebo crossover.")
 
-    print(f"{len(all_subjects)} MDD subjects with complete drug/placebo crossover, "
-          f"{len(manifest['processed'])} already done, {len(remaining)} to process this run.")
-
-    for sub in remaining:
-        print(f"--- {sub} ---")
-        result = {}
-        for cond, ses in _CONDITIONS.items():
-            r = process_session(sub, ses, work_path)
-            result[cond] = r
-            status = "OK" if not r["error"] else f"ERROR: {r['error'][:80]}"
-            print(f"  {cond} ({ses}): {status}  betti1={r['betti1']} total_pers_h1={r['total_persistence_h1']:.3f}")
-        manifest["processed"][sub] = result
-        manifest_path.write_text(json.dumps(manifest, indent=2))
+    manifest = base_runner.run_manifest_loop(
+        all_subjects, out_path,
+        key_fn=lambda s: s,
+        process_fn=lambda s: _process_subject_both_arms(s, work_path),
+        limit=limit,
+    )
 
     (out_path / "cohort_result.json").write_text(json.dumps(manifest["processed"], indent=2))
     n_complete = sum(1 for v in manifest["processed"].values()
-                      if not v["drug"]["error"] and not v["placebo"]["error"])
+                      if "drug" in v and "placebo" in v
+                      and not v["drug"]["error"] and not v["placebo"]["error"])
     print(f"-> {out_path/'cohort_result.json'} "
           f"({len(manifest['processed'])} subjects, {n_complete} with both arms clean)")
     return 0

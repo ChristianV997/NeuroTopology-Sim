@@ -163,6 +163,7 @@ def read_nwb_eeg_window(
     pick: str = "all",
     max_channels: Optional[int] = None,
     eeg_series_name: str = "ElectricalSeriesEEG",
+    info: Optional[dict] = None,
 ) -> np.ndarray:
     """Return REAL EEG samples for one time window as a (n_channels, n_samples)
     array (pick="all") or a 1-D channel-mean (pick="mean").
@@ -170,9 +171,14 @@ def read_nwb_eeg_window(
     Mirrors `data.bids_ingest.read_window_signal`'s contract: raises ValueError
     if the window is out of range. Only the requested sample rows are read from
     the remote HDF5 dataset (partial read), so this is cheap even on 27 GB files.
+
+    `info` is the dict from `nwb_eeg_info`; pass it to avoid re-reading the
+    timestamps header on every window (a real cost over HTTP — one recording is
+    windowed dozens of times). Computed once if omitted.
     """
     es = _eeg_series(nwb, eeg_series_name)
-    info = nwb_eeg_info(nwb, eeg_series_name)
+    if info is None:
+        info = nwb_eeg_info(nwb, eeg_series_name)
     rate = info["rate_hz"]
     t0 = info["t_start_s"]
     n_total = info["n_samples"]
