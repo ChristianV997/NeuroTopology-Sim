@@ -162,6 +162,23 @@
       "report_extra_window_lines": ["- state_label comes from the dataset's own loss-of-consciousness (loc) and recovery-of-consciousness (roc) event markers: awake = start->loc, anesthetized = loc->roc (or ->end); subjects with no loc marker yield no windows (no_label_inference). See sciencer_d/btc_icft/level_m/ds004541_windows_real.py."],
       "report_extra_next_step_lines": [],
       "format_note": "EDF; CC0; 58ch EEG 10-20 (standard names, no prefix) + fNIRS .snirf (fNIRS ignored, EEG-only path); non-contiguous subject IDs (sub-02,03,04,07,08,09,10,11 -- no 01/05/06); state from loc/roc events.tsv markers, NOT task_to_state -- requires the dedicated ds004541_windows_real.py windower; some subjects (e.g. sub-11) lack loc/roc and are skipped"
+    },
+    "ds004040": {
+      "dataset_id": "ds004040",
+      "title": "OpenNeuro trance channeling EEG ds004040",
+      "task_to_state": {},
+      "contrasts": [
+        {"name": "trance_vs_baseline", "label_field": "state_label", "class0": "baseline", "class1": "trance"}
+      ],
+      "default_task": "trance_vs_baseline",
+      "window_seconds": 10.0,
+      "max_windows_per_file": 10,
+      "max_channels": 16,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (task-trance; trance vs baseline intervals bounded by events.tsv rest/trance markers).",
+      "report_extra_window_lines": ["- state_label comes from the dataset's own rest1/trance1 event markers (rest1_start/rest1_end for baseline, trance1_start/trance1_end for trance state). See sciencer_d/btc_icft/level_m/ds004040_windows_real.py (needs implementation)."],
+      "report_extra_next_step_lines": [],
+      "format_note": "EEGLAB .set; CC0; 13 subjects, 2 sessions (ses-01/ses-02); state from events.tsv rest1/trance1 markers, NOT task_to_state -- requires the dedicated ds004040_windows_real.py windower (not yet implemented); consciousness/trance-channeling altered-state study"
     }
   }
 }
