@@ -1,1 +1,61 @@
-falsifiers: []
+falsifiers:
+  - claim_id: O1_STATE_AVAILABILITY
+    falsifier_id: OF-001
+    description: State-availability markers fail held-out prediction after arousal, task, and signal-quality controls.
+    required_test: Preregistered cross-dataset decoding with subject-level splits and matched baselines
+    severity: decisive
+  - claim_id: O2_MINIMAL_AWARENESS
+    falsifier_id: OF-002
+    description: Proposed minimal-awareness measures cannot be distinguished from arousal, report preparation, or memory.
+    required_test: No-report and report paradigms with convergent first-person and behavioral measures
+    severity: high
+  - claim_id: O3_NONDUAL_AWARENESS
+    falsifier_id: OF-003
+    description: Nondual reports show no reliable construct validity or measurement invariance across protocols and traditions.
+    required_test: Preregistered longitudinal and cross-cultural psychometric validation
+    severity: high
+  - claim_id: O4_SELF_BOUNDARY_POLICY
+    falsifier_id: OF-004
+    description: Boundary-model parameters add no explanatory or predictive value beyond attention and demand effects.
+    required_test: Perturbational model comparison with attention, expectancy, and interoception controls
+    severity: decisive
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    falsifier_id: OF-005
+    description: Putative identity evidence is fully explained by memory reconstruction, information leakage, fraud, or cultural expectation.
+    required_test: Prospective blinded protocol with independent verification and adversarial leakage controls
+    severity: decisive
+  - claim_id: O6_SURVIVAL_AFTER_DEATH
+    falsifier_id: OF-006
+    description: Prospective studies yield no independently verified information unavailable through ordinary channels.
+    required_test: Multicenter prospective targets with tamper evidence, complete denominators, and independent adjudication
+    severity: decisive
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    falsifier_id: OF-007
+    description: Field variables provide no causal or incremental prediction after matched neural-current and volume-conduction controls.
+    required_test: Mechanism-specific perturbation and held-out comparison against conventional neural baselines
+    severity: decisive
+  - claim_id: O8_PANPSYCHISM_NEUTRAL_MONISM
+    falsifier_id: OF-008
+    description: Candidate ontology yields no distinctive testable prediction over physicalist and functional alternatives.
+    required_test: Specify a risky discriminating prediction before any empirical status review
+    severity: high
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    falsifier_id: OF-009
+    description: Adaptive behavior disappears under controls for fixed dynamics, selection effects, and experimenter-defined reward.
+    required_test: Blinded perturbation with open-loop, shuffled-feedback, and substrate controls
+    severity: high
+  - claim_id: O10_HOLOGRAPHIC_HOLARCHY
+    falsifier_id: OF-010
+    description: Holographic or QEC mapping offers no domain-specific observable beyond generic hierarchical compression.
+    required_test: Quantitative model comparison with preregistered biological or cognitive observables
+    severity: high
+  - claim_id: O11_COSMIC_NATURAL_SELECTION
+    falsifier_id: OF-011
+    description: Distinctive parameter predictions conflict with improved astrophysical observations or collapse into unconstrained flexibility.
+    required_test: Explicit population-level cosmological predictions compared with standard-model alternatives
+    severity: decisive
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    falsifier_id: OF-012
+    description: Proposed state-space dimensions lack textual fidelity or reproducible phenomenological construct validity.
+    required_test: Independent textual review plus cross-cultural phenomenology with measurement-invariance analysis
+    severity: high

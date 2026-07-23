@@ -59,6 +59,8 @@ def _render_report(registry: OntologyRegistry, scores: list[dict[str, Any]]) -> 
 ## 1. Executive thesis
 Level O is a claim-governed evidence ledger downstream of empirical BTC/ICFT work. Its classifications describe evidence posture and never establish an ontology by themselves.
 
+This report indexes {len(registry.papers)} curated records, {len(registry.claim_links)} bounded claim links, and {len(registry.falsifiers)} explicit falsifiers. Registry content never changes a claim status automatically.
+
 ## 2. Ontology ladder H0-H4
 - **H0:** engineering and fixture behavior
 - **H1:** empirical state-marker associations
@@ -108,12 +110,21 @@ def build_ontology_report(
 
     scores = [score_claim(claim).to_dict() for claim in ledger.claims]
     status_by_id = {row["claim_id"]: row["status"] for row in scores}
+    links_by_claim = {
+        claim.claim_id: [
+            link.paper_id
+            for link in ledger.claim_links
+            if link.claim_id == claim.claim_id
+        ]
+        for claim in ledger.claims
+    }
     events = [
         OntologyEvidenceEvent(
             event_id=f"SEED-{index:03d}",
             claim_id=claim.claim_id,
-            event_type="seed_classification",
-            description="Initial governance classification; not an empirical event",
+            event_type="curated_seed_review",
+            description="Curated references registered without automatic promotion",
+            source_ids=links_by_claim[claim.claim_id],
             resulting_status=status_by_id[claim.claim_id],
         ).to_dict()
         for index, claim in enumerate(ledger.claims, start=1)

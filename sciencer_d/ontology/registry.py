@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -20,6 +21,21 @@ from .schemas import (
 
 
 R = TypeVar("R", bound=Record)
+
+REQUIRED_EVIDENCE_CATEGORIES = {
+    "mainstream_consciousness_theories",
+    "covert_consciousness",
+    "minimal_nondual_awareness",
+    "meditation_cessation_phenomenology",
+    "nde_lucidity",
+    "philosophy_of_mind",
+    "bioelectric_basal_cognition",
+    "em_field_bioelectromagnetism",
+    "quantum_biophysical_candidates",
+    "holography_qec",
+    "cosmological_natural_selection",
+    "theravada_state_space",
+}
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -90,6 +106,10 @@ class OntologyRegistry:
         _assert_unique(claim_ids, "claim IDs")
         _assert_unique(paper_ids, "paper IDs")
         _assert_unique(falsifier_ids, "falsifier IDs")
+        _assert_unique(
+            [f"{link.claim_id}:{link.paper_id}" for link in self.claim_links],
+            "claim-paper links",
+        )
 
         known_claims = set(claim_ids)
         known_papers = set(paper_ids)
@@ -101,6 +121,24 @@ class OntologyRegistry:
         for falsifier in self.falsifiers:
             if falsifier.claim_id not in known_claims:
                 raise ValueError(f"Unknown falsifier claim_id: {falsifier.claim_id}")
+        claims_with_falsifiers = {item.claim_id for item in self.falsifiers}
+        missing_falsifiers = sorted(known_claims - claims_with_falsifiers)
+        if missing_falsifiers:
+            raise ValueError(f"Claims missing falsifiers: {missing_falsifiers}")
+
+        linked_papers = {link.paper_id for link in self.claim_links}
+        unlinked_papers = sorted(known_papers - linked_papers)
+        if unlinked_papers:
+            raise ValueError(f"Papers without claim links: {unlinked_papers}")
+        claims_with_links = {link.claim_id for link in self.claim_links}
+        unlinked_claims = sorted(known_claims - claims_with_links)
+        if unlinked_claims:
+            raise ValueError(f"Claims without paper links: {unlinked_claims}")
+
+        categories = {paper.category for paper in self.papers}
+        missing_categories = sorted(REQUIRED_EVIDENCE_CATEGORIES - categories)
+        if missing_categories:
+            raise ValueError(f"Missing evidence categories: {missing_categories}")
         for mapping_name, rows in self.mappings.items():
             if not isinstance(rows, list):
                 raise ValueError(f"Mapping {mapping_name} must be a list")
@@ -118,6 +156,21 @@ class OntologyRegistry:
                 rejected[claim.claim_id] = result.violations
         if rejected:
             raise ValueError(f"Seed claim statements violate the firewall: {rejected}")
+
+        evidence_text = json.dumps(
+            {
+                "papers": [paper.to_dict() for paper in self.papers],
+                "claim_links": [link.to_dict() for link in self.claim_links],
+                "falsifiers": [item.to_dict() for item in self.falsifiers],
+                "mappings": self.mappings,
+            },
+            ensure_ascii=False,
+        )
+        evidence_scan = scan_text(evidence_text)
+        if not evidence_scan.allowed:
+            raise ValueError(
+                f"Seed evidence violates the firewall: {evidence_scan.violations}"
+            )
 
     def claim_by_id(self, claim_id: str) -> OntologyClaim:
         for claim in self.claims:

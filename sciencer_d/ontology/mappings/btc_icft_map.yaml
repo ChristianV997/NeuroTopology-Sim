@@ -1,3 +1,23 @@
 mapping_name: BTC-ICFT to Level O
 mapping_scope: bridge_hypotheses_only
-mappings: []
+mappings:
+  - claim_id: O1_STATE_AVAILABILITY
+    source_constructs: [M-only baseline, Q, Qabs, fdress, M+T residual]
+    mapping_type: empirical_marker_bridge
+    guardrail: Topology telemetry must add held-out value beyond matched spectral and complexity baselines.
+  - claim_id: O2_MINIMAL_AWARENESS
+    source_constructs: [anesthesia wedge, LOC, ROC, explicit state labels]
+    mapping_type: empirical_state_bridge
+    guardrail: State labels and topology signatures cannot establish phenomenal content by themselves.
+  - claim_id: O4_SELF_BOUNDARY_POLICY
+    source_constructs: [boundary, phase field, defects, fragmentation, coherence]
+    mapping_type: mechanism_candidate
+    guardrail: Mathematical boundary dynamics are not person-level identity statements.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    source_constructs: [field, phase field, causal topology, local-global consistency]
+    mapping_type: adversarial_mechanism_bridge
+    guardrail: Incremental causal evidence is required beyond field correlation.
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    source_constructs: [adaptive boundary regulation, viability, multiscale autonomy]
+    mapping_type: cross_substrate_regulation_bridge
+    guardrail: Adaptive regulation is not sufficient evidence of subjective experience.

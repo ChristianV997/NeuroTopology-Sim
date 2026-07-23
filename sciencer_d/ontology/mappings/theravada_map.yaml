@@ -1,3 +1,15 @@
 mapping_name: Theravada phenomenology to Level O
 mapping_scope: comparative_state_space_only
-mappings: []
+mappings:
+  - claim_id: O3_NONDUAL_AWARENESS
+    source_constructs: [anatta, sati, samadhi, panna, vimutti]
+    mapping_type: comparative_phenomenology
+    guardrail: Translation and first-person reports do not establish a universal metaphysics.
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    source_constructs: [jhana, arupa, cessation, realm taxonomy]
+    mapping_type: textual_state_space
+    guardrail: Realm mappings are phenomenological and comparative, not verified astrophysical planes.
+  - claim_id: O2_MINIMAL_AWARENESS
+    source_constructs: [nirodha samapatti, cessation candidate]
+    mapping_type: hypothesis_generation
+    guardrail: Cessation reports require operational labels and do not imply spiritual attainment.

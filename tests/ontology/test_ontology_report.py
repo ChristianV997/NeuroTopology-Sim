@@ -45,3 +45,15 @@ def test_report_cli_succeeds(tmp_path):
     )
     assert completed.returncode == 0
     assert (tmp_path / "level_o_ontology_report.md").is_file()
+
+
+def test_evidence_events_include_curated_sources_without_status_promotion(tmp_path):
+    paths = build_ontology_report(tmp_path)
+    events = json.loads(paths["events"].read_text(encoding="utf-8"))
+    assert all(event["event_type"] == "curated_seed_review" for event in events)
+    assert all(event["source_ids"] for event in events)
+    assert next(
+        event
+        for event in events
+        if event["claim_id"] == "O6_SURVIVAL_AFTER_DEATH"
+    )["resulting_status"] == "O-C"

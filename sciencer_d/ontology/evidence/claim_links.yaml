@@ -1,1 +1,182 @@
-claim_links: []
+claim_links:
+  - claim_id: O1_STATE_AVAILABILITY
+    paper_id: P001_COGITATE_2025
+    support_direction: mixed
+    strength: 4
+    notes: Theory-specific predictions received mixed support in a direct adversarial test.
+  - claim_id: O1_STATE_AVAILABILITY
+    paper_id: P002_SETH_BAYNE_2022
+    support_direction: background
+    strength: 3
+    notes: Defines competing accounts and their empirical commitments.
+  - claim_id: O1_STATE_AVAILABILITY
+    paper_id: P004_CLAASSEN_2019
+    support_direction: supports
+    strength: 4
+    notes: Command-related EEG activity supports dissociation between overt behavior and measurable cognitive processing.
+  - claim_id: O1_STATE_AVAILABILITY
+    paper_id: P005_OWEN_2006
+    support_direction: supports
+    strength: 3
+    notes: Case-level fMRI command following supports a bounded state-availability hypothesis.
+
+  - claim_id: O2_MINIMAL_AWARENESS
+    paper_id: P002_SETH_BAYNE_2022
+    support_direction: background
+    strength: 3
+    notes: Provides comparative theory context but no single operational definition of minimal awareness.
+  - claim_id: O2_MINIMAL_AWARENESS
+    paper_id: P006_JOSIPOVIC_MISKOVIC_2020
+    support_direction: mixed
+    strength: 2
+    notes: Offers a conceptual bridge requiring stronger operational and empirical convergence.
+
+  - claim_id: O3_NONDUAL_AWARENESS
+    paper_id: P006_JOSIPOVIC_MISKOVIC_2020
+    support_direction: supports
+    strength: 2
+    notes: Supports the tractability of a phenomenological research target, not a metaphysical interpretation.
+  - claim_id: O3_NONDUAL_AWARENESS
+    paper_id: P007_LAUKKONEN_2023
+    support_direction: background
+    strength: 2
+    notes: Provides adjacent contemplative-state concepts and methodological cautions.
+  - claim_id: O3_NONDUAL_AWARENESS
+    paper_id: P008_CHOWDHURY_2023
+    support_direction: background
+    strength: 1
+    notes: A cessation case study is not direct evidence for nondual awareness.
+
+  - claim_id: O4_SELF_BOUNDARY_POLICY
+    paper_id: P003_SETH_FRISTON_2016
+    support_direction: supports
+    strength: 3
+    notes: Active interoceptive inference motivates a testable self-model and boundary-policy bridge.
+  - claim_id: O4_SELF_BOUNDARY_POLICY
+    paper_id: P002_SETH_BAYNE_2022
+    support_direction: background
+    strength: 2
+    notes: Places predictive and higher-order self-model accounts in a broader theory landscape.
+
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    paper_id: P011_SEP_PANPSYCHISM_2022
+    support_direction: background
+    strength: 1
+    notes: Philosophical taxonomy does not supply evidence for person-level persistence.
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    paper_id: P012_SEP_NEUTRAL_MONISM_2023
+    support_direction: background
+    strength: 1
+    notes: Neutral-monist options do not establish an individual identity invariant.
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    paper_id: P010_NAHM_2012
+    support_direction: mixed
+    strength: 1
+    notes: Retrospective lucidity cases are heterogeneous edge observations with major alternative explanations.
+
+  - claim_id: O6_SURVIVAL_AFTER_DEATH
+    paper_id: P009_PARNIA_2023
+    support_direction: mixed
+    strength: 1
+    notes: Cardiac-arrest observations motivate prospective study but do not establish persistence after irreversible death.
+  - claim_id: O6_SURVIVAL_AFTER_DEATH
+    paper_id: P010_NAHM_2012
+    support_direction: mixed
+    strength: 1
+    notes: Case collections are hypothesis-generating and limited by retrospective verification.
+
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P016_MCFADDEN_2020
+    support_direction: supports
+    strength: 1
+    notes: Supplies explicit field-theory predictions but not independent mechanism confirmation.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P003_SETH_FRISTON_2016
+    support_direction: background
+    strength: 2
+    notes: Provides a conventional mechanistic comparator for incremental-value tests.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P017_HAMEROFF_PENROSE_2014
+    support_direction: background
+    strength: 1
+    notes: A distinct biophysical mechanism candidate included for adversarial comparison.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P018_REIMERS_2014
+    support_direction: opposes
+    strength: 2
+    notes: Records published criticism of a quantum-biophysical mechanism proposal.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P019_CHAI_2018
+    support_direction: background
+    strength: 1
+    notes: Ultraweak-photon observations require replication and do not directly support a field-consciousness bridge.
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    paper_id: P020_NAAMAN_WALDECK_2012
+    support_direction: background
+    strength: 1
+    notes: CISS is established in molecular spin transport but has no direct consciousness result.
+
+  - claim_id: O8_PANPSYCHISM_NEUTRAL_MONISM
+    paper_id: P011_SEP_PANPSYCHISM_2022
+    support_direction: background
+    strength: 4
+    notes: Provides arguments and objections for comparative philosophical evaluation.
+  - claim_id: O8_PANPSYCHISM_NEUTRAL_MONISM
+    paper_id: P012_SEP_NEUTRAL_MONISM_2023
+    support_direction: background
+    strength: 4
+    notes: Distinguishes neutral-monist variants and their unresolved empirical status.
+
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    paper_id: P013_LEVIN_2021
+    support_direction: supports
+    strength: 4
+    notes: Strongly supports causal multiscale bioelectric regulation while remaining silent on phenomenology.
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    paper_id: P014_KAGAN_2022
+    support_direction: supports
+    strength: 3
+    notes: Supports adaptive closed-loop behavior in neural cultures under the reported protocol.
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    paper_id: P015_SMIRNOVA_2023
+    support_direction: background
+    strength: 2
+    notes: Defines a research program rather than completed evidence for subjective states.
+
+  - claim_id: O10_HOLOGRAPHIC_HOLARCHY
+    paper_id: P021_PASTAWSKI_2015
+    support_direction: supports
+    strength: 2
+    notes: Supports a precise structural bulk-boundary analogy only.
+  - claim_id: O10_HOLOGRAPHIC_HOLARCHY
+    paper_id: P022_ALMHEIRI_2015
+    support_direction: supports
+    strength: 2
+    notes: Supports QEC-based reconstruction in AdS-CFT, not biological or phenomenological identity.
+
+  - claim_id: O11_COSMIC_NATURAL_SELECTION
+    paper_id: P023_SMOLIN_1992
+    support_direction: supports
+    strength: 2
+    notes: Defines the candidate model and possible constraints; it is not observational confirmation.
+
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    paper_id: P024_MN111
+    support_direction: background
+    strength: 4
+    notes: Primary textual basis for a comparative sequence-of-states mapping.
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    paper_id: P025_DN1
+    support_direction: background
+    strength: 4
+    notes: Primary textual basis for comparative view and realm taxonomy.
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    paper_id: P007_LAUKKONEN_2023
+    support_direction: background
+    strength: 2
+    notes: Offers a modern research framing for one contemplative cessation construct.
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    paper_id: P008_CHOWDHURY_2023
+    support_direction: mixed
+    strength: 1
+    notes: A single-participant result cannot validate a broad textual state-space mapping.
