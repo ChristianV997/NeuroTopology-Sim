@@ -1,0 +1,204 @@
+claims:
+  - claim_id: O1_STATE_AVAILABILITY
+    title: State availability and report
+    statement: Measurable neural dynamics may track whether information is available for report and behavior.
+    status: O-B
+    ladder_level: H1
+    required_evidence:
+      - Replication with explicit state labels, matched baselines, and held-out evaluation
+    guardrails:
+      - State classification does not establish subjective content or ontology
+    score_inputs:
+      empirical_support: 4
+      phenomenological_depth: 3
+      metaphysical_coherence: 2
+      falsifiability: 4
+      btc_icft_relevance: 4
+      risk_of_overclaim: 1
+
+  - claim_id: O2_MINIMAL_AWARENESS
+    title: Minimal awareness
+    statement: Minimal phenomenal awareness can be treated as a bounded phenomenological and empirical research target.
+    status: O-B
+    ladder_level: H2
+    required_evidence:
+      - Convergent first-person and behavioral protocols with explicit alternative explanations
+    guardrails:
+      - Minimal-report conditions require controls for arousal, memory, and task demand
+    score_inputs:
+      empirical_support: 4
+      phenomenological_depth: 4
+      metaphysical_coherence: 3
+      falsifiability: 4
+      btc_icft_relevance: 4
+      risk_of_overclaim: 1
+
+  - claim_id: O3_NONDUAL_AWARENESS
+    title: Nondual awareness
+    statement: Nondual reports may be represented as a phenomenological state-space candidate without metaphysical inference.
+    status: O-C
+    ladder_level: H3
+    required_evidence:
+      - Preregistered phenomenology with longitudinal and cross-tradition measurement invariance
+    guardrails:
+      - A reported state does not establish a universal ontology
+    score_inputs:
+      empirical_support: 2
+      phenomenological_depth: 5
+      metaphysical_coherence: 3
+      falsifiability: 2
+      btc_icft_relevance: 2
+      risk_of_overclaim: 3
+
+  - claim_id: O4_SELF_BOUNDARY_POLICY
+    title: Self-boundary policy
+    statement: Self-boundary dynamics may be modeled as an adaptive policy integrating interoceptive and exteroceptive constraints.
+    status: O-B
+    ladder_level: H2
+    required_evidence:
+      - Perturbational studies separating boundary reports from attention and demand characteristics
+    guardrails:
+      - A self-model mechanism is not a person-level identity equation
+    score_inputs:
+      empirical_support: 4
+      phenomenological_depth: 3
+      metaphysical_coherence: 3
+      falsifiability: 4
+      btc_icft_relevance: 4
+      risk_of_overclaim: 1
+
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    title: Soul or identity invariant
+    statement: Person-level identity persistence is a speculative ontology candidate requiring evidence unavailable in this ledger.
+    status: O-C
+    ladder_level: H4
+    required_evidence:
+      - Independently replicated observations that discriminate persistence from memory, inference, and cultural expectation
+    guardrails:
+      - Remains quarantined regardless of topology-marker coherence alone
+    score_inputs:
+      empirical_support: 0
+      phenomenological_depth: 3
+      metaphysical_coherence: 2
+      falsifiability: 1
+      btc_icft_relevance: 1
+      risk_of_overclaim: 4
+
+  - claim_id: O6_SURVIVAL_AFTER_DEATH
+    title: Survival after death
+    statement: Postmortem persistence remains a speculative candidate and is not inferred from edge-case reports.
+    status: O-C
+    ladder_level: H4
+    required_evidence:
+      - Prospective independently verified evidence with fraud, leakage, memory, and physiological alternatives excluded
+    guardrails:
+      - Near-death and lucidity reports are edge cases rather than ontology promotion events
+    score_inputs:
+      empirical_support: 0
+      phenomenological_depth: 3
+      metaphysical_coherence: 2
+      falsifiability: 1
+      btc_icft_relevance: 0
+      risk_of_overclaim: 4
+
+  - claim_id: O7_FIELD_CONSCIOUSNESS
+    title: Field consciousness bridge
+    statement: Electromagnetic or other field dynamics may be compared with conscious-state data as a falsifiable bridge hypothesis.
+    status: O-B
+    ladder_level: H2
+    required_evidence:
+      - Mechanism-specific perturbation showing incremental prediction beyond neural activity baselines
+    guardrails:
+      - Field correlation does not establish universal mind or metaphysical identity
+    score_inputs:
+      empirical_support: 4
+      phenomenological_depth: 3
+      metaphysical_coherence: 3
+      falsifiability: 4
+      btc_icft_relevance: 4
+      risk_of_overclaim: 2
+
+  - claim_id: O8_PANPSYCHISM_NEUTRAL_MONISM
+    title: Panpsychism and neutral monism
+    statement: Panpsychism and neutral monism remain comparative philosophical ontology candidates.
+    status: O-C
+    ladder_level: H4
+    required_evidence:
+      - Distinct empirical predictions that outperform physicalist and functional alternatives
+    guardrails:
+      - Philosophical coherence cannot independently promote empirical status
+    score_inputs:
+      empirical_support: 0
+      phenomenological_depth: 3
+      metaphysical_coherence: 4
+      falsifiability: 1
+      btc_icft_relevance: 1
+      risk_of_overclaim: 4
+
+  - claim_id: O9_BIOELECTRIC_BASAL_COGNITION
+    title: Bioelectric basal cognition
+    statement: Bioelectric regulation may support adaptive basal cognition without implying subjective experience.
+    status: O-B
+    ladder_level: H2
+    required_evidence:
+      - Substrate-comparative perturbations separating adaptive regulation from fixed response
+    guardrails:
+      - Regulation and problem solving are not sufficient evidence of phenomenology
+    score_inputs:
+      empirical_support: 4
+      phenomenological_depth: 2
+      metaphysical_coherence: 3
+      falsifiability: 4
+      btc_icft_relevance: 3
+      risk_of_overclaim: 1
+
+  - claim_id: O10_HOLOGRAPHIC_HOLARCHY
+    title: Holographic holarchy
+    statement: Boundary reconstruction and holarchy may provide structural analogies for multiscale organization.
+    status: O-C
+    ladder_level: H3
+    required_evidence:
+      - A domain-specific bridge with observables that distinguish it from generic hierarchical models
+    guardrails:
+      - Mathematical analogy does not establish cosmic phenomenology
+    score_inputs:
+      empirical_support: 1
+      phenomenological_depth: 2
+      metaphysical_coherence: 3
+      falsifiability: 2
+      btc_icft_relevance: 2
+      risk_of_overclaim: 4
+
+  - claim_id: O11_COSMIC_NATURAL_SELECTION
+    title: Cosmological natural selection
+    statement: Black-hole reproduction and multiverse selection remain speculative cosmology candidates constrained by observation.
+    status: O-C
+    ladder_level: H4
+    required_evidence:
+      - Quantitative predictions that distinguish selection models from standard cosmology
+    guardrails:
+      - Cosmological selection does not imply consciousness or spiritual teleology
+    score_inputs:
+      empirical_support: 1
+      phenomenological_depth: 0
+      metaphysical_coherence: 3
+      falsifiability: 2
+      btc_icft_relevance: 0
+      risk_of_overclaim: 3
+
+  - claim_id: O12_THERAVADA_REALMS_STATE_SPACE
+    title: Theravada realms as state-space
+    statement: Theravada realm descriptions may be compared with phenomenological state spaces while remaining non-astrophysical mappings.
+    status: O-C
+    ladder_level: H3
+    required_evidence:
+      - Textually careful cross-cultural phenomenology with explicit construct validity
+    guardrails:
+      - Comparative mapping does not verify external planes or spiritual attainment
+    score_inputs:
+      empirical_support: 1
+      phenomenological_depth: 5
+      metaphysical_coherence: 3
+      falsifiability: 1
+      btc_icft_relevance: 1
+      risk_of_overclaim: 4
