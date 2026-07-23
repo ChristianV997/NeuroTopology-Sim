@@ -45,7 +45,7 @@ jobs:
       matrix:
         group: [CTL, ODN, ODP]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Skip if group not requested
         id: gate
@@ -57,7 +57,7 @@ jobs:
             echo "Group ${{ matrix.group }} not in requested set -- skipping."
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.gate.outputs.run == 'true'
         with:
           python-version: "3.12"
@@ -116,9 +116,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
