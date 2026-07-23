@@ -1,1 +1,225 @@
-papers: []
+papers:
+  - paper_id: P001_COGITATE_2025
+    title: Adversarial testing of global neuronal workspace and integrated information theories of consciousness
+    year: 2025
+    field: consciousness neuroscience
+    evidence_type: preregistered_adversarial_experiment
+    url_or_doi: https://doi.org/10.1038/s41586-025-08888-1
+    notes: Directly compares predictions from GNWT and IIT; results constrain both rather than selecting a final theory.
+    category: mainstream_consciousness_theories
+
+  - paper_id: P002_SETH_BAYNE_2022
+    title: Theories of consciousness
+    year: 2022
+    field: consciousness neuroscience
+    evidence_type: comparative_review
+    url_or_doi: https://doi.org/10.1038/s41583-022-00587-4
+    notes: Compares higher-order, global workspace, recurrent or re-entry, predictive-processing, and integrated-information approaches.
+    category: mainstream_consciousness_theories
+
+  - paper_id: P003_SETH_FRISTON_2016
+    title: Active interoceptive inference and the emotional brain
+    year: 2016
+    field: predictive processing
+    evidence_type: theoretical_review
+    url_or_doi: https://doi.org/10.1098/rstb.2016.0007
+    notes: Develops testable interoceptive and active-inference accounts relevant to self-model and boundary hypotheses.
+    category: mainstream_consciousness_theories
+
+  - paper_id: P004_CLAASSEN_2019
+    title: Detection of Brain Activation in Unresponsive Patients with Acute Brain Injury
+    year: 2019
+    field: disorders of consciousness
+    evidence_type: prospective_cohort
+    url_or_doi: https://doi.org/10.1056/NEJMoa1812757
+    notes: EEG command-following dissociation is evidence of covert cognitive processing in a subset of clinically unresponsive patients.
+    category: covert_consciousness
+
+  - paper_id: P005_OWEN_2006
+    title: Detecting awareness in the vegetative state
+    year: 2006
+    field: disorders of consciousness
+    evidence_type: neuroimaging_case_study
+    url_or_doi: https://doi.org/10.1126/science.1130197
+    notes: A single-patient fMRI command-following result; important but not a population-level prevalence estimate.
+    category: covert_consciousness
+
+  - paper_id: P006_JOSIPOVIC_MISKOVIC_2020
+    title: Nondual Awareness and Minimal Phenomenal Experience
+    year: 2020
+    field: contemplative neuroscience
+    evidence_type: theoretical_review
+    url_or_doi: https://doi.org/10.3389/fpsyg.2020.02087
+    notes: Relates nondual-awareness reports to minimal phenomenal experience; primarily a conceptual synthesis.
+    category: minimal_nondual_awareness
+
+  - paper_id: P007_LAUKKONEN_2023
+    title: "Cessations of consciousness in meditation: Advancing a scientific understanding of nirodha samapatti"
+    year: 2023
+    field: contemplative neuroscience
+    evidence_type: hypothesis_review
+    url_or_doi: https://doi.org/10.1016/bs.pbr.2022.12.007
+    notes: Frames meditation cessation as a research target and emphasizes that the empirical literature is at an early stage.
+    category: meditation_cessation_phenomenology
+
+  - paper_id: P008_CHOWDHURY_2023
+    title: Investigation of advanced mindfulness meditation cessation experiences using EEG spectral analysis in an intensively sampled case-study
+    year: 2023
+    field: contemplative neuroscience
+    evidence_type: single_participant_case_study
+    url_or_doi: https://doi.org/10.1016/j.neuropsychologia.2023.108694
+    notes: Exploratory within-person EEG evidence that requires independent replication and operationally explicit event labels.
+    category: meditation_cessation_phenomenology
+
+  - paper_id: P009_PARNIA_2023
+    title: "AWAreness during REsuscitation - II: A multi-center study of consciousness and awareness in cardiac arrest"
+    year: 2023
+    field: resuscitation research
+    evidence_type: prospective_multicenter_observational_study
+    url_or_doi: https://doi.org/10.1016/j.resuscitation.2023.109903
+    notes: Studies recalled experiences and physiological or EEG observations during resuscitation; it does not establish postmortem persistence.
+    category: nde_lucidity
+
+  - paper_id: P010_NAHM_2012
+    title: "Terminal lucidity: a review and a case collection"
+    year: 2012
+    field: gerontology
+    evidence_type: narrative_review_and_case_collection
+    url_or_doi: https://doi.org/10.1016/j.archger.2011.06.031
+    notes: Collects heterogeneous reports with substantial retrospective and verification limits.
+    category: nde_lucidity
+
+  - paper_id: P011_SEP_PANPSYCHISM_2022
+    title: Panpsychism
+    year: 2022
+    field: philosophy of mind
+    evidence_type: scholarly_reference_entry
+    url_or_doi: https://plato.stanford.edu/entries/panpsychism/
+    notes: Surveys arguments, variants, and objections; philosophical coverage is not empirical support.
+    category: philosophy_of_mind
+
+  - paper_id: P012_SEP_NEUTRAL_MONISM_2023
+    title: Neutral Monism
+    year: 2023
+    field: philosophy of mind
+    evidence_type: scholarly_reference_entry
+    url_or_doi: https://plato.stanford.edu/entries/neutral-monism/
+    notes: Surveys neutral-monist positions and their relation to physicalism and panpsychism without resolving them empirically.
+    category: philosophy_of_mind
+
+  - paper_id: P013_LEVIN_2021
+    title: "Bioelectric signaling: Reprogrammable circuits underlying embryogenesis, regeneration, and cancer"
+    year: 2021
+    field: developmental bioelectricity
+    evidence_type: mechanistic_review
+    url_or_doi: https://doi.org/10.1016/j.cell.2021.02.034
+    notes: Supports causal bioelectric regulation and morphogenesis, not subjective-experience inference.
+    category: bioelectric_basal_cognition
+
+  - paper_id: P014_KAGAN_2022
+    title: In vitro neurons learn and exhibit sentience when embodied in a simulated game-world
+    year: 2022
+    field: synthetic biological intelligence
+    evidence_type: in_vitro_closed_loop_experiment
+    url_or_doi: https://doi.org/10.1016/j.neuron.2022.09.001
+    notes: Reports adaptive closed-loop neural-culture behavior; the title's terminology does not by itself establish phenomenology.
+    category: bioelectric_basal_cognition
+
+  - paper_id: P015_SMIRNOVA_2023
+    title: "Organoid intelligence (OI) - The ultimate functionality of a brain microphysiological system"
+    year: 2023
+    field: organoid intelligence
+    evidence_type: research_program_review
+    url_or_doi: https://doi.org/10.14573/altex.2303261
+    notes: Defines an experimental program for learning and memory in brain microphysiological systems.
+    category: bioelectric_basal_cognition
+
+  - paper_id: P016_MCFADDEN_2020
+    title: "Integrating information in the brain's EM field: the cemi field theory of consciousness"
+    year: 2020
+    field: electromagnetic field theory
+    evidence_type: theoretical_proposal
+    url_or_doi: https://doi.org/10.1093/nc/niaa016
+    notes: Provides explicit predictions for a field hypothesis; independent mechanism-specific tests remain necessary.
+    category: em_field_bioelectromagnetism
+
+  - paper_id: P017_HAMEROFF_PENROSE_2014
+    title: "Consciousness in the universe: a review of the Orch OR theory"
+    year: 2014
+    field: quantum consciousness mechanisms
+    evidence_type: theoretical_review
+    url_or_doi: https://doi.org/10.1016/j.plrev.2013.08.002
+    notes: A mechanism proposal involving microtubules and objective reduction, retained only as a falsifiable candidate.
+    category: quantum_biophysical_candidates
+
+  - paper_id: P018_REIMERS_2014
+    title: The revised Penrose-Hameroff orchestrated objective-reduction proposal for human consciousness is not scientifically justified
+    year: 2014
+    field: quantum consciousness mechanisms
+    evidence_type: critical_commentary
+    url_or_doi: https://doi.org/10.1016/j.plrev.2013.11.003
+    notes: Records a published technical challenge to Orch OR and prevents one-sided evidential treatment.
+    category: quantum_biophysical_candidates
+
+  - paper_id: P019_CHAI_2018
+    title: Biophotonic Activity and Transmission Mediated by Mutual Actions of Neurotransmitters are Involved in the Origin and Altered States of Consciousness
+    year: 2018
+    field: ultraweak photon emission
+    evidence_type: ex_vivo_mechanism_study
+    url_or_doi: https://doi.org/10.1007/s12264-018-0215-9
+    notes: A biophotonic mechanism candidate whose interpretation requires independent replication and conventional metabolic controls.
+    category: quantum_biophysical_candidates
+
+  - paper_id: P020_NAAMAN_WALDECK_2012
+    title: Chiral-Induced Spin Selectivity Effect
+    year: 2012
+    field: molecular spin physics
+    evidence_type: physical_chemistry_review
+    url_or_doi: https://doi.org/10.1021/jz300793y
+    notes: Establishes CISS as a molecular spin-transport phenomenon; it supplies no direct neural or consciousness evidence.
+    category: quantum_biophysical_candidates
+
+  - paper_id: P021_PASTAWSKI_2015
+    title: "Holographic quantum error-correcting codes: Toy models for the bulk-boundary correspondence"
+    year: 2015
+    field: quantum gravity
+    evidence_type: mathematical_model
+    url_or_doi: https://doi.org/10.1007/JHEP06(2015)149
+    notes: Demonstrates a bulk-boundary QEC construction in AdS/CFT toy models, not a model of biological selfhood.
+    category: holography_qec
+
+  - paper_id: P022_ALMHEIRI_2015
+    title: Bulk locality and quantum error correction in AdS-CFT
+    year: 2015
+    field: quantum gravity
+    evidence_type: mathematical_theory
+    url_or_doi: https://doi.org/10.1007/JHEP04(2015)163
+    notes: Develops the QEC interpretation of bulk reconstruction; any ontology mapping remains structural analogy.
+    category: holography_qec
+
+  - paper_id: P023_SMOLIN_1992
+    title: Did the Universe evolve?
+    year: 1992
+    field: cosmology
+    evidence_type: speculative_physical_model
+    url_or_doi: https://doi.org/10.1088/0264-9381/9/1/016
+    notes: Proposes cosmological natural selection and must be assessed through distinctive quantitative predictions.
+    category: cosmological_natural_selection
+
+  - paper_id: P024_MN111
+    title: "MN 111: Anupada Sutta"
+    year: 2021
+    field: Theravada textual studies
+    evidence_type: canonical_text_translation
+    url_or_doi: https://suttacentral.net/mn111/en/sujato
+    notes: A modern living translation used for textual state-sequence mapping, not an empirical neuroscience record.
+    category: theravada_state_space
+
+  - paper_id: P025_DN1
+    title: "DN 1: Brahmajala Sutta"
+    year: 2021
+    field: Theravada textual studies
+    evidence_type: canonical_text_translation
+    url_or_doi: https://suttacentral.net/dn1/en/sujato
+    notes: A modern living translation used for comparative cosmology and view classification, not astrophysical evidence.
+    category: theravada_state_space

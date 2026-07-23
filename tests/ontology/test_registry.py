@@ -22,12 +22,12 @@ EXPECTED_CLAIMS = {
 }
 
 
-def test_registry_loads_all_seed_claims_and_empty_p0_evidence():
+def test_registry_loads_all_seed_claims_and_p1_evidence():
     registry = OntologyRegistry.load()
     assert {claim.claim_id for claim in registry.claims} == EXPECTED_CLAIMS
-    assert registry.papers == []
-    assert registry.claim_links == []
-    assert registry.falsifiers == []
+    assert registry.papers
+    assert registry.claim_links
+    assert {item.claim_id for item in registry.falsifiers} == EXPECTED_CLAIMS
 
 
 def test_registry_claim_lookup_is_explicit():

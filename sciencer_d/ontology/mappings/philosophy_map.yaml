@@ -1,3 +1,15 @@
 mapping_name: Philosophy to Level O
 mapping_scope: comparative_ontology_only
-mappings: []
+mappings:
+  - claim_id: O5_SOUL_IDENTITY_INVARIANT
+    source_constructs: [personal identity, persistence, selfhood]
+    mapping_type: quarantined_ontology_candidate
+    guardrail: Conceptual coherence cannot promote person-level persistence.
+  - claim_id: O6_SURVIVAL_AFTER_DEATH
+    source_constructs: [postmortem persistence, continuity, edge-case reports]
+    mapping_type: quarantined_ontology_candidate
+    guardrail: Cardiac-arrest and lucidity reports remain edge cases under ordinary alternative explanations.
+  - claim_id: O8_PANPSYCHISM_NEUTRAL_MONISM
+    source_constructs: [panpsychism, neutral monism, Russellian monism, cosmopsychism, idealism]
+    mapping_type: comparative_philosophy
+    guardrail: Philosophical ontology remains O-C without discriminating empirical predictions.

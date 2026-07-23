@@ -79,6 +79,7 @@ class OntologyPaper(Record):
     evidence_type: str
     url_or_doi: str
     notes: str
+    category: str = ""
 
     required_fields = (
         "paper_id",
@@ -101,6 +102,7 @@ class OntologyPaper(Record):
             evidence_type=str(data["evidence_type"]),
             url_or_doi=str(data["url_or_doi"]),
             notes=str(data["notes"]),
+            category=str(data.get("category", "")),
         )
 
 

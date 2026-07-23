@@ -1,3 +1,11 @@
 mapping_name: Cosmology constraints to Level O
 mapping_scope: speculative_constraints_only
-mappings: []
+mappings:
+  - claim_id: O10_HOLOGRAPHIC_HOLARCHY
+    source_constructs: [bulk-boundary reconstruction, quantum error correction, hierarchy]
+    mapping_type: structural_analogy
+    guardrail: AdS-CFT mathematics is not evidence for biological identity or cosmic phenomenology.
+  - claim_id: O11_COSMIC_NATURAL_SELECTION
+    source_constructs: [black-hole reproduction, parameter selection, cosmological constraints]
+    mapping_type: speculative_physical_model
+    guardrail: The model requires distinctive quantitative predictions and carries no spiritual teleology.
