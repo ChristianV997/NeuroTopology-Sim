@@ -452,17 +452,23 @@ public-repo-harvest-cycle:
 	$(MAKE) public-repo-harvest-rag-pack
 
 toe-literature-bridge:
-	python -m tools.toe_research.literature_bridge.generator --roots outputs/literature_senses outputs/project_corpus_digest outputs/public_repo_harvest outputs/tol_digest outputs/tol_digest/mental_health_bridge --out outputs/toe_research/literature_bridge
+	python -m tools.toe_research.literature_bridge.generator --roots outputs/literature_senses outputs/project_corpus_digest outputs/public_repo_harvest outputs/tol_digest outputs/tol_digest/mental_health_bridge outputs/command_center/mock_payloads --out outputs/toe_research/literature_bridge
+	$(MAKE) toe-literature-bridge-topology
+	$(MAKE) toe-literature-bridge-constraints
+	python -m tools.toe_research.literature_bridge.reporting --root outputs/toe_research/literature_bridge --out outputs/toe_research/literature_bridge/toe_literature_bridge_report.md
+
+toe-literature-bridge-topology:
 	python -m tools.toe_research.literature_bridge.topology_telemetry_digest --out outputs/toe_research/literature_bridge/topology_telemetry_upgrade_digest.md
 	python -m tools.toe_research.literature_bridge.active_inference_digest --out outputs/toe_research/literature_bridge/active_inference_allostasis_digest.md
 	python -m tools.toe_research.literature_bridge.computational_psychiatry_digest --out outputs/toe_research/literature_bridge/computational_psychiatry_digest.md
 	python -m tools.toe_research.literature_bridge.bioelectric_digest --out outputs/toe_research/literature_bridge/bioelectric_basal_cognition_digest.md
+
+toe-literature-bridge-constraints:
 	python -m tools.toe_research.literature_bridge.cosmology_constraints --out outputs/toe_research/literature_bridge/cosmology_constraint_matrix.json
 	python -m tools.toe_research.literature_bridge.gravitational_wave_constraints --out outputs/toe_research/literature_bridge/gravitational_wave_constraint_matrix.json
 	python -m tools.toe_research.literature_bridge.adversarial_consciousness_matrix --out outputs/toe_research/literature_bridge/consciousness_theory_adversarial_matrix.json
 	python -m tools.toe_research.literature_bridge.equation_registry --out outputs/toe_research/literature_bridge/equation_candidate_registry.json
 	python -m tools.toe_research.literature_bridge.falsifier_registry --out outputs/toe_research/literature_bridge/toe_falsifier_watchlist.json
-	python -m tools.toe_research.literature_bridge.reporting --root outputs/toe_research/literature_bridge --out outputs/toe_research/literature_bridge/toe_literature_bridge_report.md
 
 validate-toe-literature-bridge:
 	python -m tools.toe_research.literature_bridge.validator --root outputs/toe_research/literature_bridge --json-out outputs/toe_research/literature_bridge/toe_literature_bridge_validation.json
