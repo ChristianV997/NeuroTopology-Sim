@@ -71,6 +71,9 @@ def main():
     ap.add_argument("--dataset", default="ds002094")
     ap.add_argument("--results-root", default="results")
     ap.add_argument("--compute-pci", action="store_true")
+    ap.add_argument("--compute-phase-grid-topology", action="store_true")
+    ap.add_argument("--compute-kuramoto", action="store_true")
+    ap.add_argument("--compute-leida", action="store_true")
     ap.add_argument("--db", default="data/runs.sqlite")
     ap.add_argument("--config", default="config/defaults.yaml")
     ap.add_argument("--max-records", type=int, default=None)
@@ -85,7 +88,15 @@ def main():
         # When --output is left at the sentinel default, derive a dataset-scoped metrics path.
         default_out = Path("results") / args.dataset / f"metrics_{args.dataset}.csv"
         out_path = args.output if args.output != "results/out.csv" else str(default_out)
-        df = run_eeg(args.input, out_path, dataset=args.dataset, compute_pci=args.compute_pci)
+        df = run_eeg(
+            args.input,
+            out_path,
+            dataset=args.dataset,
+            compute_pci=args.compute_pci,
+            compute_phase_grid_topology=args.compute_phase_grid_topology,
+            compute_kuramoto=args.compute_kuramoto,
+            compute_leida=args.compute_leida,
+        )
         print(df.head())
     elif args.mode == "physionet":
         # Same sentinel behavior as eeg mode: use a mode-specific default metrics output path.

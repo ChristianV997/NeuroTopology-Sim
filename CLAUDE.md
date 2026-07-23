@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-**ScienceR-Dsim** is a dual-system repository:
+**NeuroTopology-Sim** is a dual-system repository:
 
 1. **Core sim engine** (repo root) — 3D topological field simulation, EEG/PCI validation, and multi-mode pipelines using numpy/scipy/sklearn.
 2. **Awareness Studio** (`apps/awareness_studio/`) — an independently installable FastAPI + RAG chatbot app that consumes sim artifacts as knowledge-base inputs.
@@ -98,7 +98,7 @@ awareness-airtable               # Airtable sync CLI
 
 Key facts:
 - `run_kind` (general) maps to `mode` (sim legacy) — both fields exist; `run_kind` is canonical.
-- `run_id = sha256[:16]` of `{spec_id, sim_params}` — deterministic across reruns with same inputs.
+- `run_id = sha256[:16]` of the canonical run inputs — deterministic across reruns with the same inputs.
 - `to_dict()` → general format (`schema_version: "0.1"`); `to_sim_dict()` → legacy format (`schema_version: "1"`) used by Airtable sync validation.
 - `sim/run_record_schema.py` is a **compat shim** that re-exports from `runs.run_record`. Do not add logic there.
 
@@ -131,10 +131,10 @@ src/awareness_studio/
   llm_client.py        — LLM wrapper (Anthropic / OpenAI)
   answer_modes.py      — TEACH / EXPLAIN / MATRIX / CARD / CANONICAL prompt modes
   prompts.py           — system/user prompt templates
-  orchestrator/        — 8-stage deterministic pipeline (dry_run=True by default)
+  orchestrator/        — 9-stage deterministic pipeline (dry_run=True by default)
     event_model.py     — EventEnvelope (stable event_id = sha256[:16] of stage+run_id+payload)
     event_log.py       — append-only JSONL event log
-    orchestrator.py    — Orchestrator.run() → 8 stages, outputs in outputs/orchestrator/<run_id>/
+    orchestrator.py    — Orchestrator.run() → 9 stages, outputs in outputs/orchestrator/<run_id>/
   integrations/
     airtable_client.py — low-level Airtable HTTP client
     airtable_sync.py   — RunCard sync engine (3-layer write gate)
@@ -153,10 +153,10 @@ inputs/
   lit_review/         — PubMed / ClinicalTrials literature (manually added or pipeline-generated)
 ```
 
-### Orchestrator Pipeline (8 stages)
+### Orchestrator Pipeline (9 stages)
 
 `PIPELINE_STAGES` in `event_model.py`:
-`ingest_inputs → propose_hypotheses → plan_experiments → execute → validate → digest → draft_report → ops_update`
+`ingest_inputs → propose_hypotheses → plan_experiments → execute → validate → digest → fable_reasoning → draft_report → ops_update`
 
 Each stage emits `EventEnvelope` records to an append-only JSONL log at `outputs/orchestrator/<run_id>/events.jsonl`. Stage outputs: `EvidenceLogDraft.md`, `Report.md`, `GraphUpdate.json`, `OpsQueueItem.json`.
 

@@ -2,7 +2,7 @@
 
 **A simulator and analysis platform for signed phase-topology (winding charge, vortex defects) in BOLD and EEG brain signals, with persistent homology, cross-modal fusion, and LLM-driven metric interpretation.**
 
-ScienceR-Dsim integrates three scientific layers:
+NeuroTopology-Sim integrates three scientific layers:
 
 1. **Core topology engine** (NumPy/SciPy): Efficient vectorized computation of topological charge (Qz/Qabs), plaquette winding, defect extraction, worldline tracking, and 3D cubical persistent homology (H0/H1/H2 via GUDHI).
 
@@ -26,7 +26,7 @@ ScienceR-Dsim integrates three scientific layers:
 ### Phase 1 (Prior Sprint): Cross-Modal Fusion + Fable 5 Reasoning
 - **Cross-modal GNN**: 64-dimensional latent space learned jointly on BOLD + EEG + synthetic topological fields; enables unified representation across modalities.
 - **LLM-driven metric interpretation**: Fable 5 reasoning agent analyzes computed metrics and proposes mechanistic hypotheses without manual feature engineering.
-- **Multi-stage orchestrator**: Deterministic 8-stage pipeline (ingest → propose → plan → execute → validate → digest → draft → ops_update) with append-only JSONL event log; 36 offline smoke tests, 200+ online integration tests.
+- **Multi-stage orchestrator**: Deterministic 9-stage pipeline (ingest → propose → plan → execute → validate → digest → Fable reasoning → draft → ops_update) with append-only JSONL event log; 36 offline smoke tests, 200+ online integration tests.
 
 ### Phase 2 (This Sprint): Foundation + Vectorization + Persistent Homology
 - **Fixed broken synthetic sim**: Replaced topology-destroying diffusion with Complex Ginzburg-Landau (CGL) equation (`dA/dt = A + (1+ic₁)∇²A - (1+ic₂)|A|²A`); now generates genuine spiral-wave defects with |ψ|→0 cores.
@@ -158,7 +158,7 @@ cd ../.. && python -m apps.awareness_studio.tools.export_sim_artifacts \
 # Launch FastAPI server on :8000
 cd apps/awareness_studio && uvicorn awareness_studio.web.app:app --reload
 
-# Orchestrator 8-stage pipeline (deterministic dry-run by default)
+# Orchestrator 9-stage pipeline (deterministic dry-run by default)
 python -m awareness_studio.tools.orchestrate_dry_run
 
 # Airtable sync (hypothesis cards + results tracking)
@@ -199,9 +199,9 @@ For setup details and isolation recommendations, see [docs/contributing.md](docs
 
 **Core simulator** computes topological metrics (Qz, Qabs, defects, H0/H1/H2 diagrams, bottleneck distance) on BOLD/EEG fields and writes `RunRecord.json` artifacts.
 
-**Awareness Studio** reads those artifacts, chunks them into a BM25-indexed RAG knowledge base, and runs an 8-stage LLM orchestrator that proposes hypotheses, plans experiments, and drafts reports using Fable 5 reasoning.
+**Awareness Studio** reads those artifacts, chunks them into a BM25-indexed RAG knowledge base, and runs a 9-stage LLM orchestrator that proposes hypotheses, plans experiments, interprets metrics with Fable 5 reasoning, and drafts reports.
 
-**Shared contract:** Both systems use `RunRecordV1` (canonical fields: `run_id`, `run_kind`, `sim_params`, `timestamp`, `results`, `artifacts`). See `runs/run_record.py` for schema.
+**Shared contract:** Both systems use `RunRecordV1` (canonical fields include `run_id`, `run_kind`, `created_at`, `metrics`, and `artifacts`). Simulation parameters are stored in the sim-specific `input` field. See `runs/run_record.py` for the schema.
 
 ### Core Simulator File Layout
 
@@ -258,7 +258,7 @@ src/awareness_studio/
   answer_modes.py    — TEACH, EXPLAIN, MATRIX, CARD, CANONICAL prompt templates
   
   orchestrator/
-    orchestrator.py  — 8-stage deterministic pipeline (ingest → propose → plan → execute → validate → digest → draft → ops_update)
+    orchestrator.py  — 9-stage deterministic pipeline (ingest → propose → plan → execute → validate → digest → Fable reasoning → draft → ops_update)
     event_model.py   — EventEnvelope (sha256[:16] stable event_id from stage+run_id+payload)
     event_log.py     — Append-only JSONL event log
   
@@ -323,7 +323,7 @@ Place raw data in `data/raw/<dataset_id>/` (e.g., `data/raw/ds005620/`). See `da
 **Outputs:**
 - `results/` — CSV metric files (one row per window/band combination)
 - `artifacts/` — RunRecord.json, phase maps, defect maps, persistence diagrams, latent projections
-- `outputs/orchestrator/<run_id>/` — Awareness Studio 8-stage pipeline outputs (event log, reports, hypothesis graphs)
+- `outputs/orchestrator/<run_id>/` — Awareness Studio 9-stage pipeline outputs (event log, reports, hypothesis graphs)
 
 ## Key Metrics Explained
 
@@ -371,14 +371,14 @@ See [docs/contributing.md](docs/contributing.md) for full contribution guideline
 
 ## Citation
 
-If you use ScienceR-Dsim in published research, please cite:
+If you use NeuroTopology-Sim in published research, please cite:
 
 ```bibtex
 @software{sciencer_dsim_2026,
-  title={ScienceR-Dsim: Phase topology simulation and analysis for BOLD/EEG},
+  title={NeuroTopology-Sim: Phase topology simulation and analysis for BOLD/EEG},
   author={Villegard, Christian},
   year={2026},
-  url={https://github.com/christianv997/ScienceR-Dsim}
+  url={https://github.com/ChristianV997/NeuroTopology-Sim}
 }
 ```
 

@@ -1,4 +1,4 @@
-# ScienceR-Dsim Agent Operating Rules
+# NeuroTopology-Sim Agent Operating Rules
 
 ## Default Execution Style
 
