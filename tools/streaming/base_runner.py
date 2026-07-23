@@ -22,12 +22,30 @@ silently bypassing the patch.
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Callable
+
+
+def _aws_command() -> list[str]:
+    """Resolve AWS CLI across POSIX shells and Windows subprocesses.
+
+    Windows Python cannot launch a `.cmd` file by its bare command name when
+    `shell=False`; using the resolved path keeps the existing subprocess calls
+    safe while supporting the venv-installed `aws.cmd` launcher. The module
+    fallback also works when AWS CLI is installed without a console script.
+    """
+    for name in ("aws", "aws.cmd"):
+        executable = shutil.which(name)
+        if executable:
+            return [executable]
+    if importlib.util.find_spec("awscli") is not None:
+        return [sys.executable, "-m", "awscli"]
+    return ["aws"]
 
 
 def list_s3_subjects(bucket: str, prefix: str) -> list[str]:
@@ -80,8 +98,8 @@ def list_s3_task_labels(bucket: str, dataset_id: str, max_subjects: int = 3) -> 
 def sync_s3_subject(bucket: str, dataset_id: str, subject: str, dest_root: Path) -> Path:
     dest = dest_root / subject
     dest.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
+    cmd = _aws_command() + [
+        "s3", "sync", "--no-sign-request", "--only-show-errors",
         f"s3://{bucket}/{dataset_id}/{subject}", str(dest),
     ]
     subprocess.run(cmd, check=True)
@@ -96,8 +114,8 @@ def sync_s3_dataset_metadata(
     `extra_includes` lets a caller pull additional dataset-level files (e.g.
     ds001787's behavioral zip) into the same single sync call.
     """
-    cmd = [
-        "aws", "s3", "sync", "--no-sign-request", "--only-show-errors",
+    cmd = _aws_command() + [
+        "s3", "sync", "--no-sign-request", "--only-show-errors",
         f"s3://{bucket}/{dataset_id}", str(dest_root),
         "--exclude", "*", "--include", "*.json", "--include", "*.tsv",
         "--include", "CHANGES", "--include", "README*",
