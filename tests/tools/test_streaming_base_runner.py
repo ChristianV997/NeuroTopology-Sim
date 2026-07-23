@@ -10,6 +10,22 @@ import json
 from pathlib import Path
 
 from tools.streaming import base_runner
+from sciencer_d.btc_icft.datasets.onboarding_registry import get_dataset_config
+
+
+def test_aws_command_uses_resolved_windows_launcher(monkeypatch):
+    launcher = r"C:\Users\HP\.local\bin\aws.cmd"
+    monkeypatch.setattr(base_runner.shutil, "which", lambda name: launcher if name == "aws" else None)
+    assert base_runner._aws_command() == [launcher]
+
+
+def test_propofol_registry_maps_real_bids_tasks():
+    cfg = get_dataset_config("ds005620")
+    assert cfg.task_to_state == {
+        "awake": "awake",
+        "sed": "sedated",
+        "sed2": "sedated",
+    }
 
 
 def test_load_manifest_missing_file_returns_empty_shape(tmp_path):

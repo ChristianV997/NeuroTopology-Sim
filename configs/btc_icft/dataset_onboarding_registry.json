@@ -6,7 +6,7 @@
     "ds005620": {
       "dataset_id": "ds005620",
       "title": "OpenNeuro propofol sedation EEG DS005620",
-      "task_to_state": {"awake": "awake", "sedated": "sedated"},
+      "task_to_state": {"awake": "awake", "sed": "sedated", "sed2": "sedated"},
       "contrasts": [
         {"name": "awake_vs_sedated", "label_field": "state_label", "class0": "awake", "class1": "sedated"},
         {"name": "responsive_vs_unresponsive", "label_field": "behavior_label", "class0": "responsive", "class1": "unresponsive"},
