@@ -34,5 +34,17 @@ Backend-only secret handling.
 ## What the frontend must never do
 Never call OpenAI directly; never store secrets client-side; never infer ontology claims.
 
+## Repository-backed research operations UI
+The Replit entrypoint now serves the Science R&D Command Centre at `/`. The UI
+loads `/research-ops/snapshot` on startup and refresh, so its simulation report,
+output artifact, command payload, and RAG counts come from files present in the
+current repository checkout rather than hand-authored dashboard values.
+
+`/research-ops/file?path=...` provides read-only previews for text artifacts.
+Paths are confined to the repository and executable/binary formats are not
+previewed. The dashboard labels the entire surface as an artifact inventory:
+file presence does not assert completion, validity, clinical utility, or a
+scientific result.
+
 ## P34 mental-health bridge status payload
 The command-center mock payload set now includes `mental_health_bridge_status.json`, a research/wellness-safe status payload for the P34 mental-flexibility systems-medicine bridge. Guardrails keep diagnosis, clinical efficacy, and clinician-replacement claims blocked.

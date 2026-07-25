@@ -1,128 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Awareness Studio — Control Panel</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Science R&D — Research Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <aside class="rail">
+    <a class="brand" href="#"><span class="brand-mark">N</span><span>NeuroTopology<br><small>SCIENCE R&D</small></span></a>
+    <nav aria-label="Primary navigation">
+      <button class="nav-item active" data-view="overview"><span>◫</span>Overview</button>
+      <button class="nav-item" data-view="simulations"><span>⌁</span>Simulations</button>
+      <button class="nav-item" data-view="artifacts"><span>▱</span>Reports & artifacts</button>
+      <button class="nav-item" data-view="payloads"><span>◇</span>Command payloads</button>
+    </nav>
+    <div class="rail-footer"><span class="live-dot"></span><div><b>Repository live</b><small id="rail-status">connecting…</small></div></div>
+  </aside>
 
-<!-- ── Header ── -->
-<header>
-  <h1>Awareness Studio</h1>
-  <span class="badge">Control Panel</span>
-  <div class="status-dot" title="Backend status"></div>
-  <span class="status-label">connecting…</span>
-</header>
+  <div class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">RESEARCH OPERATIONS HUB</p><h1>Science R&D Command Centre</h1></div>
+      <div class="top-actions"><span class="scope-pill">Artifact inventory only</span><button id="refresh" class="refresh">↻ Refresh</button></div>
+    </header>
 
-<!-- ── Sidebar ── -->
-<aside>
-  <div class="sidebar-section">Chat</div>
-  <button class="sidebar-btn active" data-cmd="health">
-    <span class="icon">♥</span><span class="label">Health check</span>
-  </button>
+    <main>
+      <section class="hero">
+        <div><span class="kicker">CURRENT CHECKOUT</span><h2>Research systems,<br><em>made observable.</em></h2><p>A repository-grounded view of simulation reports, generated evidence, command-centre contracts, and retrieval assets. No inferred results.</p></div>
+        <div class="signal"><div class="orb"><span></span><span></span><span></span></div><div><b>Inventory signal</b><small id="generated-at">Awaiting repository scan</small></div></div>
+      </section>
 
-  <div class="sidebar-divider"></div>
-  <div class="sidebar-section">Orchestrator</div>
-  <button class="sidebar-btn" data-cmd="orchestrate-dry-run" id="orch-btn">
-    <span class="icon">▶</span><span class="label">Orchestrate Dry Run</span>
-  </button>
-  <button class="sidebar-btn" data-cmd="runs-recent">
-    <span class="icon">☰</span><span class="label">Recent runs</span>
-  </button>
+      <section id="metrics" class="metrics" aria-label="Repository metrics"></section>
 
-  <div class="sidebar-divider"></div>
-  <div class="sidebar-section">Tools</div>
-  <button class="sidebar-btn" data-cmd="tools-list">
-    <span class="icon">⚙</span><span class="label">List tools</span>
-  </button>
-  <button class="sidebar-btn" data-cmd="lit-search">
-    <span class="icon">🔬</span><span class="label">Literature search</span>
-  </button>
-  <button class="sidebar-btn" data-cmd="lit-card">
-    <span class="icon">📋</span><span class="label">Evidence card draft</span>
-  </button>
-
-  <div class="sidebar-divider"></div>
-  <div class="sidebar-section">Integrations</div>
-  <button class="sidebar-btn" data-cmd="linear-search">
-    <span class="icon">◈</span><span class="label">Linear issues</span>
-  </button>
-  <button class="sidebar-btn" data-cmd="airtable-status">
-    <span class="icon">⊞</span><span class="label">Airtable status</span>
-  </button>
-  <button class="sidebar-btn" data-cmd="airtable-sync">
-    <span class="icon">↑</span><span class="label">Airtable sync runs</span>
-  </button>
-</aside>
-
-<!-- ── Main ── -->
-<main>
-  <!-- Chat history -->
-  <div id="chat-history">
-    <div style="text-align:center;color:var(--muted);font-size:13px;padding:40px 0;">
-      Ask anything about vedanā, taṇhā, upādāna, samsara, or the Awareness Research framework.
-    </div>
+      <section class="grid">
+        <article class="panel wide">
+          <div class="panel-head"><div><p class="eyebrow">REGISTERED WORK</p><h3>Simulation report registry</h3></div><div class="filter"><input id="search" type="search" placeholder="Filter by report, dataset…"><span id="report-count"></span></div></div>
+          <div id="simulations" class="report-list"><div class="loading">Scanning repository…</div></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">OUTPUT SURFACE</p><h3>Artifact distribution</h3></div></div>
+          <div id="distribution" class="distribution"></div>
+        </article>
+        <article class="panel">
+          <div class="panel-head"><div><p class="eyebrow">LATEST FILES</p><h3>Recent developments</h3></div></div>
+          <div id="recent" class="recent-list"></div>
+        </article>
+        <article class="panel wide guardrail-panel">
+          <div><p class="eyebrow">EVIDENCE BOUNDARY</p><h3>Research-safe by design</h3><p>This interface visualizes files present in the repository. Presence is not evidence of scientific validity, completion, or clinical utility.</p></div>
+          <div id="guardrails" class="guardrails"></div>
+        </article>
+      </section>
+    </main>
   </div>
 
-  <!-- Input bar -->
-  <div id="input-bar">
-    <div class="input-controls">
-      <div class="ctrl-group">
-        <label class="ctrl-label" for="mode-select">Mode</label>
-        <select id="mode-select">
-          <option value="EXPLAIN">EXPLAIN</option>
-          <option value="TEACH">TEACH</option>
-          <option value="ELABORATE">ELABORATE</option>
-          <option value="MATRIX">MATRIX</option>
-          <option value="CARD">CARD</option>
-          <option value="CANONICAL">CANONICAL</option>
-        </select>
-      </div>
-      <div class="ctrl-group">
-        <label class="ctrl-label" for="k-input">k</label>
-        <input type="number" id="k-input" value="8" min="1" max="20" style="width:54px;" />
-      </div>
-      <label class="toggle">
-        <input type="checkbox" id="stream-toggle" checked />
-        Stream
-      </label>
-      <label class="toggle">
-        <input type="checkbox" id="tools-toggle" />
-        Tools
-      </label>
-    </div>
-    <div class="input-row">
-      <textarea id="question-input" rows="1"
-        placeholder="Ask: What is vedanā? | find PubMed papers on PCI…"></textarea>
-      <button id="send-btn">Send</button>
-    </div>
-  </div>
-</main>
-
-<!-- ── Orchestrator log panel ── -->
-<div id="orch-panel" class="orch-panel hidden">
-  <div id="orch-header">
-    <span id="orch-title">Orchestrator</span>
-    <span id="orch-run-id" class="mono muted"></span>
-    <button id="orch-close">×</button>
-  </div>
-  <div id="orch-stages"></div>
-  <div id="orch-artifacts"></div>
-</div>
-
-<!-- ── Results slide-over ── -->
-<div id="results-panel">
-  <div id="results-header">
-    <span id="results-title">Results</span>
-    <button id="results-close">×</button>
-  </div>
-  <pre id="results-body"></pre>
-</div>
-
-<script src="/static/app.js"></script>
-</body>
-</html>
+  <dialog id="preview"><div class="dialog-head"><div><p class="eyebrow">ARTIFACT PREVIEW</p><h3 id="preview-title"></h3></div><button id="preview-close" aria-label="Close">×</button></div><pre id="preview-body"></pre></dialog>
+  <script src="/static/app.js"></script>
+</body></html>
