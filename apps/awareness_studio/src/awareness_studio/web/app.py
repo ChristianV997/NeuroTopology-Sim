@@ -43,6 +43,7 @@ from awareness_studio.tool_router import (
     get_tool_router,
     has_tool_trigger,
 )
+from awareness_studio.web.research_ops import build_research_snapshot, resolve_repository_file
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +249,24 @@ async def health() -> HealthResponse:
         ),
         tools_enabled=config.TOOLS_ENABLED,
     )
+
+
+@app.get("/research-ops/snapshot")
+async def research_ops_snapshot() -> Dict[str, Any]:
+    """Live, read-only inventory of committed and generated repository artifacts."""
+    return build_research_snapshot()
+
+
+@app.get("/research-ops/file")
+async def research_ops_file(path: str = Query(..., min_length=1)) -> Dict[str, str]:
+    """Return a repository text artifact for the command-centre preview panel."""
+    try:
+        artifact = resolve_repository_file(path)
+    except (ValueError, FileNotFoundError):
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    if artifact.suffix.lower() not in {".md", ".json", ".yaml", ".yml", ".txt", ".csv"}:
+        raise HTTPException(status_code=415, detail="Artifact is not previewable")
+    return {"path": path, "content": artifact.read_text(encoding="utf-8", errors="replace")[:200_000]}
 
 
 @app.get("/tools/list")

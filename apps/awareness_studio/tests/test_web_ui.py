@@ -43,6 +43,25 @@ def test_root_contains_ui_marker():
     assert b"Awareness Studio" in resp.content
 
 
+def test_root_contains_research_command_centre():
+    resp = client.get("/")
+    assert b"Science R&amp;D Command Centre" in resp.content or b"Science R&D Command Centre" in resp.content
+
+
+def test_research_ops_snapshot_is_repository_backed():
+    resp = client.get("/research-ops/snapshot")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["source"] == "repository_checkout"
+    assert data["counts"]["simulation_reports"] == len(data["simulations"])
+    assert all(item["path"].endswith(".md") for item in data["simulations"])
+
+
+def test_research_ops_file_blocks_traversal():
+    resp = client.get("/research-ops/file", params={"path": "../AGENTS.md"})
+    assert resp.status_code == 404
+
+
 # ── Static files ──────────────────────────────────────────────────────────────
 
 def test_static_css_served():
