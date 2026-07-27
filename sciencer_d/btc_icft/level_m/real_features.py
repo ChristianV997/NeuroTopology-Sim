@@ -52,14 +52,20 @@ def compute_band_power(signal, sfreq: float, bands: dict | None = None) -> dict:
 
     freqs, psd = welch(sig, fs=sfreq, nperseg=nperseg)
     nyq = sfreq / 2.0
-    total_power = float(np.trapezoid(psd, freqs)) if len(freqs) > 1 else 0.0
+    # ``trapezoid`` was introduced after the NumPy version used by several
+    # supported Windows/CI environments.  ``trapz`` is mathematically the
+    # same composite trapezoidal-rule integral and preserves compatibility.
+    # Do not use ``getattr(..., np.trapz)`` here: Python evaluates its
+    # default argument eagerly, while NumPy 2 removed ``np.trapz``.
+    integrate = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+    total_power = float(integrate(psd, freqs)) if len(freqs) > 1 else 0.0
 
     result: dict[str, float] = {}
     for name, (lo, hi) in bands.items():
         if hi >= nyq:
             continue
         mask = (freqs >= lo) & (freqs < hi)
-        band_power = float(np.trapezoid(psd[mask], freqs[mask])) if mask.sum() > 1 else 0.0
+        band_power = float(integrate(psd[mask], freqs[mask])) if mask.sum() > 1 else 0.0
         result[f"{name}_power_abs"] = band_power
         result[f"{name}_power_rel"] = (band_power / total_power) if total_power > 0 else 0.0
     return result

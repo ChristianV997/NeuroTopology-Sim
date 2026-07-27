@@ -60,6 +60,62 @@ NeuroTopology-Sim integrates three scientific layers:
 
 All phase topology metrics emitted by `pipelines/run_eeg.py` and `pipelines/run_physics.py` are **exploratory analytic-phase proxies**, not validated consciousness biomarkers and not clinical observables. The pipeline currently emits the following metric kinds per window/band:
 
+## Exploratory PITNN track
+
+The deterministic PITNN hypothesis layer lives in `sim/pitnn/` and is isolated
+from the empirical EEG/fMRI pipelines. Run it offline with the repository
+virtual environment:
+
+```bash
+.venv/Scripts/python.exe run_pitnn.py --output-dir results/pitnn
+```
+
+An optional `--input signal.csv` or `--input signal.npy` selects an explicit
+user-provided signal. The runner writes `pitnn_results.json`, `RunRecord.json`,
+`signal.csv`, and `verdict.log`. Synthetic outputs are labelled
+`synthetic_demo`; `PASS` is emitted only when the computed Bayes-factor gate is
+actually greater than 100. The models are exploratory surrogates and do not
+establish biological or physical claims.
+
+The opt-in frontier track adds deterministic 3D microtubule geometry, a dense
+tryptophan Lindblad surrogate, Drude-Lorentz colored noise, FitzHugh-Nagumo
+field coupling, and a two-mode exceptional-point scan:
+
+```bash
+.venv/Scripts/python.exe run_pitnn.py --advanced-biophysics --output-dir results/pitnn-advanced
+```
+
+It uses local mock PDB centroids only. Complex density matrices and EP spectra
+are exported as compressed NPZ bundles; summaries and relative artifact paths
+are exported as JSON. These are computational proxies, not validated claims
+about microtubules, consciousness, or quantum biology.
+
+For the full repository suite, use `make test-root-isolated`. It runs test-file
+batches in fresh Python processes so optional native stacks such as Torch and
+MNE cannot accumulate in one collector process. A failing batch stops the run
+and reports the exact files that need attention. On Windows without GNU Make,
+invoke the equivalent command directly:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_tests_isolated.py --batch-size 8 --timeout-s 120
+```
+
+Each worker is hard-limited by a subprocess timeout, so collection/import hangs
+cannot leave a root process alive indefinitely.
+
+Optional performance layers preserve the same falsification gate and can be
+combined with the advanced path:
+
+```bash
+.venv/Scripts/python.exe run_pitnn.py --advanced-biophysics --fast-backend --fast-tda --mcwf-trajectories 64 --fast-ep
+```
+
+`--fast-backend` uses preallocated local LLG buffers; `--fast-tda` adds a
+bounded sparse graph cycle-rank proxy; MCWF streams wavefunction trajectories;
+and `--fast-ep` refines the two-mode EP candidate. None of these flags change
+the meaning of `PASS`: synthetic input remains `NOT_SUPPORTED` unless the
+existing Bayes-factor calculation exceeds 100.
+
 - `metric_kind = "analytic_phase_proxy"` — Hilbert analytic phase per band (delta/theta/alpha/beta/gamma_low); **channel-order proxy** (channel axis is not a true spatial coordinate). Emits: Q, Qabs, phase_grad, f_dress.
 - `metric_kind = "phase_grid_topology"` — **Geometry-aware sensor-space topology** (requires `compute_phase_grid_topology=True`). Delaunay-triangulated sensor coordinates; same Q/Qabs/f_dress metrics but on true 2D spatial grid. Significantly more informative than channel-order proxy.
 - `metric_kind = "temporal_phase_proxy"` — Legacy direct `np.angle` path; retained only as documented baseline for backward comparison.

@@ -5,7 +5,7 @@ from pathlib import Path
 
 def build_openapi():
     paths = {}
-    req = ["/health", "/status", "/artifacts/manifest", "/rag/status", "/rag/query", "/rag/sync-plan", "/local-ops/status", "/tol/status", "/guardrails/status", "/actions/queue"]
+    req = ["/health", "/status", "/results/real", "/visualization/payload", "/artifacts/manifest", "/rag/status", "/rag/query", "/rag/sync-plan", "/local-ops/status", "/tol/status", "/guardrails/status", "/actions/queue"]
     for p in req:
         method = "post" if p in {"/rag/query", "/rag/sync-plan"} else "get"
         op = {

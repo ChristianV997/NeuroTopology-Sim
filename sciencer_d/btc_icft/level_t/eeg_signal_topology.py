@@ -182,6 +182,32 @@ def _pearson_proxy(a: list[float], b: list[float]) -> float:
     return max(-1.0, min(1.0, cov / denom))
 
 
+def _pearson_proxy_from_moments(
+    a: list[float],
+    b: list[float],
+    mean_a: float,
+    mean_b: float,
+    variance_a: float,
+    variance_b: float,
+) -> float:
+    """Same Pearson proxy as :func:`_pearson_proxy`, with reused moments.
+
+    The topology routine already needs every channel mean for its charge
+    proxies.  Recomputing that mean and each channel's variance for every
+    channel pair dominated the real extraction profile.  This helper retains
+    the original covariance arithmetic and threshold semantics while allowing
+    the caller to compute each channel variance once per window.
+    """
+    n = len(a)
+    if n < 2:
+        return 0.0
+    denom = math.sqrt(variance_a * variance_b)
+    if denom < 1e-12:
+        return 0.0
+    cov = sum((a[i] - mean_a) * (b[i] - mean_b) for i in range(n)) / n
+    return max(-1.0, min(1.0, cov / denom))
+
+
 def _compute_topology_from_channels(
     channel_data: list[list[float]],
 ) -> tuple[float, float, float, float, int, int, float]:
@@ -231,18 +257,25 @@ def _compute_topology_from_channels(
         n_samples = len(channel_data[0]) if channel_data else 0
         if n_samples >= 2:
             # Precompute each ordered pair's absolute correlation exactly once
-            # into a symmetric matrix, then read it in the triangle loop. The
-            # previous triple loop recomputed each pair's `_pearson_proxy`
-            # (an O(n_samples) pure-Python pass) up to (n_ch-2) times -- for
-            # n_ch=8 that is 168 pearson evaluations where only 28 distinct
-            # pairs exist (~6x redundant, and each evaluation walks a full
-            # ~1000s-of-samples window). Caching is byte-identical: the same
-            # `_pearson_proxy` result feeds the same `(|r_ij|+|r_ik|+|r_jk|)/3`
-            # comparison, just computed once per pair.
+            # into a symmetric matrix, then read it in the triangle loop. In
+            # addition, reuse the means above and compute each variance once
+            # per channel. The former implementation called `_pearson_proxy`
+            # for every pair, which recomputed both channels' means and
+            # variances per pair. For 8 channels that meant 56 repeated mean
+            # passes and 56 repeated variance passes per window, on top of the
+            # 28 required covariance passes. Reusing moments keeps the same
+            # pairwise covariance calculation but cuts those redundant scans.
+            variances = [
+                _channel_variance(channel_data[i], means[i])
+                for i in range(n_ch)
+            ]
             abs_corr = [[0.0] * n_ch for _ in range(n_ch)]
             for i in range(n_ch):
                 for j in range(i + 1, n_ch):
-                    c = abs(_pearson_proxy(channel_data[i], channel_data[j]))
+                    c = abs(_pearson_proxy_from_moments(
+                        channel_data[i], channel_data[j],
+                        means[i], means[j], variances[i], variances[j],
+                    ))
                     abs_corr[i][j] = c
                     abs_corr[j][i] = c
             for i in range(n_ch):

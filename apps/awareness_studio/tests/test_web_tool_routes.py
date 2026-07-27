@@ -45,6 +45,40 @@ def test_tools_list_has_expected_keys():
     assert isinstance(data["tools"], list)
 
 
+def test_command_center_real_payload_is_available():
+    resp = client.get("/command-center/visualization")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "frames" in data
+    assert "spatial_artifact" in data
+    assert isinstance(data["subject_summaries"], list)
+
+
+def test_command_center_page_and_read_only_registry_are_available():
+    page = client.get("/command-center")
+    registry = client.get("/command-center/registry")
+    assert page.status_code == 200
+    assert "NeuroTopology Command Centre" in page.text
+    assert registry.status_code == 200
+    data = registry.json()
+    assert data["data_mode"] in {"artifact_backed", "unavailable"}
+    assert all(item["execution_allowed"] is False for item in data["command_registry"])
+
+
+def test_command_center_status_exposes_real_quality_contract():
+    response = client.get("/command-center/status")
+    assert response.status_code == 200
+    results = response.json()["real_results"]
+    assert results["status"] in {"available", "not_available"}
+    assert results["data_quality"]["subject_count"] >= 0
+    assert results["data_quality"]["level_t_artifact_count"] >= 0
+
+
+def test_command_center_artifact_rejects_client_paths():
+    response = client.get("/command-center/artifacts/..%2Fmanifest")
+    assert response.status_code == 404
+
+
 # ── /chat — tool_calls field ──────────────────────────────────────────────────
 
 def _mock_llm(text="answer"):

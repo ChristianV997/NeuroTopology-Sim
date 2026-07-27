@@ -1,0 +1,6 @@
+# Optional exact-dynamics environment. Install only for exact solver campaigns.
+-r requirements.txt
+h5py>=3.10
+biopython>=1.83
+oqupy>=0.5,<0.6
+# pyheom and pyttn remain optional, version-qualified benchmark adapters.

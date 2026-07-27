@@ -48,6 +48,7 @@ if str(_REPO_ROOT) not in sys.path:
 from tools.streaming import base_runner
 
 _BUCKET = "openneuro.org"
+_DOWNLOAD_DURATION_SECONDS: float | None = None
 
 
 def list_s3_subjects(openneuro_id: str) -> list[str]:
@@ -56,7 +57,10 @@ def list_s3_subjects(openneuro_id: str) -> list[str]:
 
 
 def sync_subject(openneuro_id: str, subject: str, dest_root: Path) -> Path:
-    return base_runner.sync_s3_subject(_BUCKET, openneuro_id, subject, dest_root)
+    return base_runner.sync_s3_subject(
+        _BUCKET, openneuro_id, subject, dest_root,
+        required_duration_seconds=_DOWNLOAD_DURATION_SECONDS,
+    )
 
 
 def sync_dataset_metadata(openneuro_id: str, dest_root: Path) -> None:
@@ -167,6 +171,8 @@ def run(
 
     all_subjects = subjects if subjects is not None else list_s3_subjects(openneuro_id)
     processor = DATASET_PROCESSORS[openneuro_id]
+    global _DOWNLOAD_DURATION_SECONDS
+    _DOWNLOAD_DURATION_SECONDS = window_seconds * max_windows_per_file
 
     def _sync(subject: str, work_path: Path) -> Path:
         return sync_subject(openneuro_id, subject, work_path)

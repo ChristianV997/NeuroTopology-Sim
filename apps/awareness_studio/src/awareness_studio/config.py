@@ -3,9 +3,33 @@ from pathlib import Path
 
 try:
     from dotenv import load_dotenv
-    load_dotenv()
 except ImportError:
-    pass
+    load_dotenv = None
+
+
+def _load_env_fallback() -> None:
+    """Load key=value pairs from a local .env file without extra dependencies."""
+    env_path = Path.cwd() / ".env"
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except OSError:
+        return
+
+
+if load_dotenv is not None:
+    load_dotenv()
+else:
+    _load_env_fallback()
 
 APP_ROOT: Path = Path(__file__).resolve().parent.parent.parent  # apps/awareness_studio/
 
@@ -35,7 +59,7 @@ OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embeddin
 EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "64"))  # 64 for stub; 1536 for openai ada
 
 # ── LLM (common) ────────────────────────────────────────────────────────────
-LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "anthropic")  # "anthropic" | "openai"
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")  # "anthropic" | "openai"
 LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 

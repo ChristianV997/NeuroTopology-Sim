@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NeuroTopology Cortex Viewer</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background:#11151c; color:#e8edf4; }
+    body { margin:0; min-height:100vh; display:grid; grid-template-rows:auto 1fr; }
+    header { padding:12px 18px; border-bottom:1px solid #2d3542; display:flex; gap:14px; align-items:center; }
+    header strong { font-size:15px; } header span { font-size:12px; color:#aeb8c7; }
+    #layout { min-height:0; display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(300px, .7fr); }
+    #scene { min-height:500px; position:relative; } #plot { min-height:260px; }
+    #side { border-left:1px solid #2d3542; padding:16px; overflow:auto; }
+    .notice { background:#1d2631; border-left:3px solid #e0a843; padding:10px; font-size:13px; line-height:1.4; }
+    dl { display:grid; grid-template-columns:auto 1fr; gap:8px 12px; font-size:13px; } dt { color:#aeb8c7; } dd { margin:0; font-family:ui-monospace, monospace; }
+    input { width:100%; } button { margin-top:12px; background:#50a8e5; border:0; border-radius:4px; padding:8px 12px; color:#07121a; font-weight:700; cursor:pointer; }
+    @media (max-width: 760px) { #layout { grid-template-columns:1fr; } #side { border-left:0; border-top:1px solid #2d3542; } #scene { min-height:400px; } }
+  </style>
+</head>
+<body>
+  <header><strong>NeuroTopology Cortex Viewer</strong><span id="status">Loading empirical telemetry...</span></header>
+  <div id="layout">
+    <div id="scene"></div>
+    <section id="side">
+      <div class="notice" id="notice"></div>
+      <h2 style="font-size:14px;margin-top:18px">Playback</h2>
+      <input id="frame" type="range" min="0" max="0" value="0" aria-label="Telemetry frame">
+      <button id="play" type="button">Play</button>
+      <dl id="metrics"></dl>
+      <div id="plot"></div>
+    </section>
+  </div>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"}}</script>
+  <script type="module">
+    import * as THREE from 'three';
+
+    const sceneHost = document.getElementById('scene');
+    const slider = document.getElementById('frame');
+    const notice = document.getElementById('notice');
+    const metrics = document.getElementById('metrics');
+    const status = document.getElementById('status');
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    sceneHost.appendChild(renderer.domElement);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color('#11151c');
+    const camera = new THREE.PerspectiveCamera(40, 1, .1, 100); camera.position.set(0, 0, 8);
+    scene.add(new THREE.AmbientLight(0xffffff, .8));
+    const lamp = new THREE.DirectionalLight(0xb9dfff, 1.2); lamp.position.set(2, 3, 4); scene.add(lamp);
+    const group = new THREE.Group(); scene.add(group);
+    const material = new THREE.MeshStandardMaterial({ color:0x2d6e9f, roughness:.65, metalness:.05, transparent:true, opacity:.92 });
+    const geometry = new THREE.IcosahedronGeometry(1.55, 3); geometry.scale(.82, 1, .72);
+    const left = new THREE.Mesh(geometry, material.clone()); left.position.x=-.72; group.add(left);
+    const right = new THREE.Mesh(geometry, material.clone()); right.position.x=.72; group.add(right);
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(.13, 18, 12), new THREE.MeshBasicMaterial({color:0xffb44c})); marker.position.set(0, .95, .25); group.add(marker);
+    const marker2 = marker.clone(); marker2.position.set(-.7, -.5, .8); group.add(marker2);
+    const clock = new THREE.Clock(); let payload; let playing=false;
+
+    function resize() { const w=sceneHost.clientWidth, h=sceneHost.clientHeight; renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix(); }
+    window.addEventListener('resize', resize); resize();
+    function render() { requestAnimationFrame(render); const t=clock.getElapsedTime(); group.rotation.y = t*.12; renderer.render(scene,camera); } render();
+    function format(value) { return Number.isFinite(value) ? value.toExponential(3) : 'n/a'; }
+    function update(index) {
+      const frame = payload.frames[index] || {}; const intensity = Math.min(1, Math.max(0, Math.abs(frame.f_dress || 0) * 1000));
+      const color = new THREE.Color().setHSL(.58 - intensity*.52, .62, .36 + intensity*.22); left.material.color.copy(color); right.material.color.copy(color);
+      marker.position.x = ((frame.q_net || 0) * 1000) % 1.2 - .6;
+      metrics.innerHTML = `<dt>subject</dt><dd>${frame.subject_id || 'n/a'}</dd><dt>state</dt><dd>${frame.task_label || 'n/a'}</dd><dt>window</dt><dd>${frame.window_start_s ?? 'n/a'} s</dd><dt>q_net proxy</dt><dd>${format(frame.q_net)}</dd><dt>f_dress proxy</dt><dd>${format(frame.f_dress)}</dd><dt>quality</dt><dd>${format(frame.topology_quality)}</dd>`;
+    }
+    function drawPlot() {
+      const summaries=payload.phase_space || [];
+      Plotly.newPlot('plot', [{x:summaries.map(x=>x.q_net_mean), y:summaries.map(x=>x.f_dress_mean), mode:'lines+markers+text', text:summaries.map(x=>x.task_label), textposition:'top center', marker:{size:10,color:'#50a8e5'}, line:{color:'#50a8e5'}}], {title:{text:'Proxy phase space',font:{size:14,color:'#e8edf4'}}, xaxis:{title:'q_net proxy',color:'#aeb8c7'}, yaxis:{title:'f_dress proxy',color:'#aeb8c7'}, paper_bgcolor:'#11151c',plot_bgcolor:'#11151c',margin:{l:55,r:10,t:40,b:50}}, {displayModeBar:false,responsive:true});
+    }
+    slider.addEventListener('input', () => update(Number(slider.value)));
+    document.getElementById('play').addEventListener('click', (event) => { playing=!playing; event.currentTarget.textContent=playing?'Pause':'Play'; });
+    setInterval(() => { if (playing && payload.frames.length) { slider.value=(Number(slider.value)+1)%payload.frames.length; update(Number(slider.value)); }}, 200);
+    fetch('/command-center/visualization').then(r=>r.json()).then(data => { payload=data; slider.max=Math.max(0,payload.frames.length-1); notice.textContent=payload.spatial_artifact.status === 'available' ? 'Spatial artifact available.' : payload.spatial_artifact.reason + ' The bilateral scaffold visualizes real scalar telemetry only; it is not anatomical localization.'; status.textContent=`${payload.dataset}: ${payload.frames.length} empirical telemetry frames`; update(0); drawPlot(); }).catch(error => { status.textContent='Could not load telemetry'; notice.textContent=error.message; });
+  </script>
+</body>
+</html>

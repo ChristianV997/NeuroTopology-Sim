@@ -30,10 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-# Default: run the full root test suite. CLAUDE.md's documented local
-# command skips test_pci.py/test_stats.py/test_worldlines.py because a bare
-# dev environment may lack scipy -- this image installs the full
-# requirements.txt (scipy included), so those tests run here too, unlike
-# the documented bare-environment command. Override with
-# `docker run <image> <cmd>` for anything else (e.g. `python main.py --mode synthetic`).
-CMD ["pytest", "tests/", "-q"]
+# Native scientific extensions (MNE/Torch/SciPy) can retain large heaps during
+# a monolithic pytest collection.  The bounded runner preserves the same root
+# test discovery but starts fresh Python subprocesses between batches.
+CMD ["python", "scripts/run_tests_isolated.py", "--batch-size", "8", "--timeout-s", "120"]

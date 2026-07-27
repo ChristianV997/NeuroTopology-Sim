@@ -6,7 +6,7 @@
   "dataset_id": "DS005620",
   "eligible_for_controls": false,
   "execution_artifacts_present": [],
-  "execution_root": "outputs/btc_icft/ds005620_real_benchmark_execution",
+  "execution_root": "outputs\\btc_icft\\ds005620_real_benchmark_execution",
   "missing_artifacts": [
     "ds005620_real_benchmark_execution.json",
     "stage_execution_plan.json",

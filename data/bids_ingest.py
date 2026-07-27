@@ -150,6 +150,11 @@ from collections import OrderedDict as _OrderedDict  # noqa: E402
 
 _RAW_CACHE: "_OrderedDict[tuple, object]" = _OrderedDict()
 _RAW_CACHE_MAXSIZE = 4
+_WINDOW_CACHE: "_OrderedDict[tuple, np.ndarray]" = _OrderedDict()
+# The Level M and Level T passes consume the same windows. Keep only a small,
+# bounded sample cache so a subject stays disk-bounded without retaining a
+# whole recording in memory.
+_WINDOW_CACHE_MAXSIZE = 64
 
 
 def _read_raw_cached(path: str):
@@ -176,6 +181,7 @@ def clear_raw_cache() -> None:
     is only needed to release file handles deterministically (e.g. right before
     deleting a subject's raw files in the streaming loop)."""
     _RAW_CACHE.clear()
+    _WINDOW_CACHE.clear()
 
 
 def get_sample_rate(path: str) -> float:
@@ -280,9 +286,35 @@ def read_window_signal(
         ) from exc
     if max_channels:
         picks = picks[:max_channels]
-    data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
-    if data.ndim == 1:
-        data = data[None, :]
+    try:
+        st = Path(path).stat()
+        preprocess_key = (
+            tuple(sorted((str(key), repr(value)) for key, value in preprocess.items()))
+            if preprocess is not None
+            else ()
+        )
+        cache_key = (
+            str(path), st.st_mtime_ns, st.st_size, start, stop,
+            max_channels or 0,
+            preprocess_key,
+        )
+    except OSError:
+        cache_key = None
+
+    data = _WINDOW_CACHE.get(cache_key) if cache_key is not None else None
+    if data is not None:
+        _WINDOW_CACHE.move_to_end(cache_key)
+        data = data.copy()
+    else:
+        data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
+        if data.ndim == 1:
+            data = data[None, :]
+        data = np.asarray(data, dtype=float)
+        if cache_key is not None:
+            _WINDOW_CACHE[cache_key] = data.copy()
+            _WINDOW_CACHE.move_to_end(cache_key)
+            while len(_WINDOW_CACHE) > _WINDOW_CACHE_MAXSIZE:
+                _WINDOW_CACHE.popitem(last=False)
     if pick == "all":
         return np.asarray(data, dtype=float)
     if pick == "first":

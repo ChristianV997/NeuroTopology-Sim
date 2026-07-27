@@ -9,6 +9,7 @@ Environment controls:
 Concrete routers available in Python runtime:
   NullToolRouter      — no-op default; all calls return disabled status
   LiteratureToolRouter— pubmed_search + biorxiv_search via stdlib urllib
+  DatasetSearchToolRouter — candidate-only EEGDash catalogue discovery
   LinearToolRouter    — linear_list_issues via Linear GraphQL API (needs LINEAR_API_KEY)
   GatedToolRouter     — wraps any router; enforces allowlist + per-request cap
 
@@ -398,6 +399,55 @@ class LinearToolRouter(ToolRouter):
         ]
 
 
+# ── EEGDash dataset discovery ────────────────────────────────────────────────
+
+class DatasetSearchToolRouter(ToolRouter):
+    """Read-only, candidate-only public EEG dataset discovery.
+
+    The implementation intentionally imports EEGDash only on execution so
+    Awareness Studio remains usable in environments where it is not installed.
+    """
+
+    _TOOLS = [
+        ToolSpec(
+            name="eegdash_dataset_search",
+            description="Find candidate EEG datasets for consciousness research; never downloads or executes data",
+            provider="eegdash",
+            readonly=True,
+            requires_auth=False,
+        ),
+    ]
+
+    def list_tools(self) -> List[ToolSpec]:
+        return list(self._TOOLS)
+
+    def call_tool(self, name: str, args: dict) -> ToolResult:
+        t0 = time.monotonic()
+        ts = _now()
+        if name != "eegdash_dataset_search":
+            raise ToolNotFoundError(name)
+        try:
+            from awareness_studio.tools.dataset_search import search_dataset_candidates
+
+            data = search_dataset_candidates(
+                str(args.get("query", "")), max_results=int(args.get("max_results", 10))
+            )
+            duration = (time.monotonic() - t0) * 1000
+            record = ToolCallRecord(
+                tool_name=name, args=args, timestamp=ts,
+                result_summary=f"returned {len(data)} candidates to verify",
+                duration_ms=round(duration, 1),
+            )
+            return ToolResult(tool_name=name, success=True, data=data, record=record)
+        except Exception as exc:
+            duration = (time.monotonic() - t0) * 1000
+            record = ToolCallRecord(
+                tool_name=name, args=args, timestamp=ts, result_summary="error",
+                error=str(exc), duration_ms=round(duration, 1),
+            )
+            return ToolResult(tool_name=name, success=False, data=[], record=record)
+
+
 # ── CompositeToolRouter ───────────────────────────────────────────────────────
 
 class CompositeToolRouter(ToolRouter):
@@ -501,7 +551,7 @@ def get_tool_router() -> GatedToolRouter:
       - LiteratureToolRouter (always, no key needed)
       - LinearToolRouter     (only when LINEAR_API_KEY is set)
     """
-    routers: List[ToolRouter] = [LiteratureToolRouter()]
+    routers: List[ToolRouter] = [LiteratureToolRouter(), DatasetSearchToolRouter()]
     if config.LINEAR_API_KEY:
         routers.append(LinearToolRouter())
 
@@ -522,6 +572,13 @@ _TRIGGER_KEYWORDS: frozenset = frozenset({
     "clinical trial", "clinical trials", "systematic review",
     "preprint", "journal", "research evidence", "find evidence",
     "peer-reviewed", "peer reviewed",
+    "eegdash", "openneuro", "nemar", "dataset", "datasets", "anesthesia dataset",
+    "sedation dataset", "propofol dataset", "meditation dataset", "traveling wave dataset",
+})
+
+_DATASET_TRIGGER_KEYWORDS: frozenset = frozenset({
+    "eegdash", "openneuro", "nemar", "dataset", "datasets", "anesthesia dataset",
+    "sedation dataset", "propofol dataset", "meditation dataset", "traveling wave dataset",
 })
 
 
@@ -529,6 +586,14 @@ def has_tool_trigger(question: str) -> bool:
     """Return True if question contains literature-lookup trigger keywords."""
     q = question.lower()
     return any(kw in q for kw in _TRIGGER_KEYWORDS)
+
+
+def tool_names_for_question(question: str) -> set[str]:
+    """Choose read-only tools by intent; dataset discovery takes precedence."""
+    q = question.lower()
+    if any(keyword in q for keyword in _DATASET_TRIGGER_KEYWORDS):
+        return {"eegdash_dataset_search"}
+    return {"pubmed_search", "biorxiv_search"}
 
 
 def format_tool_results(results: List[ToolResult]) -> str:

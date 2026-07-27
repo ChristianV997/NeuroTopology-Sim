@@ -12,11 +12,14 @@ from tools.openai_rag.sync_plan import build_sync_plan
 from tools.openai_rag.status import build_status as build_rag_status
 from tools.command_center.status_adapter import build_status as build_command_center_status
 from tools.command_center.guardrails_status import build_guardrails_status
+from tools.command_center.real_results_adapter import build_real_results, build_visualization_payload
 
 ALLOWED_MODES={"mock","dry_run","live"}
 
 def health(): return {"ok": True}
-def status(): return build_command_center_status()
+def status(mock: bool=False): return build_command_center_status(mock=mock)
+def real_results(): return build_real_results()
+def visualization_payload(): return build_visualization_payload()
 def artifact_manifest():
     p=Path('outputs/openai_rag/artifact_manifest.json')
     return json.loads(p.read_text()) if p.exists() else {"artifacts":[],"status":"not_available"}
@@ -49,7 +52,7 @@ sync_plan_endpoint=rag_sync_plan
 
 app = FastAPI(title='ScienceR-Dsim OpenAI RAG API') if FastAPI else None
 if app:
-    app.get('/health')(health); app.get('/status')(status); app.get('/artifacts/manifest')(artifact_manifest)
+    app.get('/health')(health); app.get('/status')(status); app.get('/results/real')(real_results); app.get('/visualization/payload')(visualization_payload); app.get('/artifacts/manifest')(artifact_manifest)
     app.get('/rag/status')(rag_status); app.post('/rag/query')(lambda payload: rag_query(payload.get('query',''), payload.get('mode','mock'), payload.get('vector_store_id'), payload.get('include_sources',True)))
     app.post('/rag/sync-plan')(lambda payload: rag_sync_plan(payload.get('mode','dry_run'),payload.get('live',False),payload.get('confirm_upload',False)))
     app.get('/local-ops/status')(local_ops_status); app.get('/tol/status')(tol_status); app.get('/guardrails/status')(guardrails_status); app.get('/actions/queue')(action_queue)

@@ -272,6 +272,36 @@
         }
       }
     },
+    "/results/real": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/status": {
       "get": {
         "responses": {
@@ -303,6 +333,36 @@
       }
     },
     "/tol/status": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claim_scope": {
+                      "type": "string"
+                    },
+                    "evidence_state": {
+                      "type": "string"
+                    },
+                    "source_artifacts": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/visualization/payload": {
       "get": {
         "responses": {
           "200": {
