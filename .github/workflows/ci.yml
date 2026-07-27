@@ -53,8 +53,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+      - name: Run tests in isolated batches
+        run: python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120
 
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic

@@ -24,8 +24,11 @@ jobs:
       - name: Install root dependencies
         run: pip install -r requirements.txt
 
-      - name: Run core tests
-        run: pytest -q tests
+      - name: Run core tests in isolated batches
+        # Scientific Python extensions can retain native allocations across a
+        # monolithic collection.  The bounded runner keeps discovery intact
+        # while giving each batch a fresh interpreter and a hard timeout.
+        run: python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120
 
   awareness-tests:
     runs-on: ubuntu-latest
