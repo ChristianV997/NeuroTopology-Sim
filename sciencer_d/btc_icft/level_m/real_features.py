@@ -55,7 +55,9 @@ def compute_band_power(signal, sfreq: float, bands: dict | None = None) -> dict:
     # ``trapezoid`` was introduced after the NumPy version used by several
     # supported Windows/CI environments.  ``trapz`` is mathematically the
     # same composite trapezoidal-rule integral and preserves compatibility.
-    integrate = getattr(np, "trapezoid", np.trapz)
+    # Do not use ``getattr(..., np.trapz)`` here: Python evaluates its
+    # default argument eagerly, while NumPy 2 removed ``np.trapz``.
+    integrate = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     total_power = float(integrate(psd, freqs)) if len(freqs) > 1 else 0.0
 
     result: dict[str, float] = {}
