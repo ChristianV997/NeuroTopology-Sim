@@ -43,6 +43,10 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
         source = np.asarray(q_series, dtype=float).reshape(-1)
         if source.size < 2 or not np.all(np.isfinite(source)): raise ValueError("topological series must contain at least two finite values")
         topology = np.interp(x, np.linspace(0.0, 1.0, source.size), source)
+    # A constant target has no dynamical structure to explain.  It must never
+    # cross the evidence gate merely because two nearly-zero RSS values form an
+    # unstable likelihood ratio.
+    signal_static = bool(np.ptp(y) <= 1e-12)
     topology_static = bool(np.ptp(topology) <= 1e-12)
     topological = np.column_stack([np.ones(y.size), x, np.sin(2*np.pi*x), np.cos(2*np.pi*x), topology])
     classical = np.column_stack([np.ones(y.size), x, np.sin(2*np.pi*x), np.cos(2*np.pi*x)])
@@ -57,8 +61,10 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
     log_k = float(np.clip(log_k, -700.0, 700.0))
     k = float(math.exp(log_k))
     topological_active = bool(not topology_static and abs(beta_q[-1]) > 1e-12)
+    evidence_eligible = bool(not signal_static and topological_active)
     return {"pitnn": {"rss": rss_q, "aicc": aicc_q, "topological_l1_penalty": topological_l1_penalty,
                       "topological_weight": float(beta_q[-1]), "topological_feature_static": topology_static,
                       "topological_feature_active": topological_active, "active_parameters": active_q}, "classical_wilson_cowan": {"rss": rss_c, "aicc": aicc_c},
             "log_bayes_factor": log_k, "bayes_factor": k,
-            "verdict": "PASS" if k > 100.0 else "NOT_SUPPORTED", "threshold": 100.0}
+            "signal_static": signal_static, "evidence_eligible": evidence_eligible,
+            "verdict": "PASS" if evidence_eligible and k > 100.0 else "NOT_SUPPORTED", "threshold": 100.0}

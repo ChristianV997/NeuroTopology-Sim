@@ -288,9 +288,15 @@ def read_window_signal(
         picks = picks[:max_channels]
     try:
         st = Path(path).stat()
+        preprocess_key = (
+            tuple(sorted((str(key), repr(value)) for key, value in preprocess.items()))
+            if preprocess is not None
+            else ()
+        )
         cache_key = (
             str(path), st.st_mtime_ns, st.st_size, start, stop,
             max_channels or 0,
+            preprocess_key,
         )
     except OSError:
         cache_key = None
