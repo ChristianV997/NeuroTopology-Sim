@@ -8,6 +8,8 @@ joblib
 mne
 pytest
 pytest-timeout>=2.3
+fastapi
+httpx
 mne-bids
 edfio
 eegdash

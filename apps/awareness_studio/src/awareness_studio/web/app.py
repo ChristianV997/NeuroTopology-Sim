@@ -430,10 +430,11 @@ async def dataset_search(req: DatasetSearchRequest):
 @app.get("/api/command-center/status", include_in_schema=False)
 async def command_center_status(mock: bool = Query(default=False)):
     from awareness_studio.integrations.neurotopology_results import build_real_results
+    results = {"status": "mock_requested"} if mock else build_real_results()
     return {
         "ok": True,
-        "data_mode": "mock" if mock else "real",
-        "real_results": {"status": "mock_requested"} if mock else build_real_results(),
+        "data_mode": "mock" if mock else ("artifact_backed" if results["status"] == "available" else "unavailable"),
+        "real_results": results,
     }
 
 
