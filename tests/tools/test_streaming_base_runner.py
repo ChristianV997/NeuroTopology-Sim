@@ -13,9 +13,17 @@ from tools.streaming import base_runner
 from sciencer_d.btc_icft.datasets.onboarding_registry import get_dataset_config
 
 
-def test_aws_command_uses_resolved_windows_launcher(monkeypatch):
+def test_aws_command_prefers_installed_module(monkeypatch):
     launcher = r"C:\Users\HP\.local\bin\aws.cmd"
     monkeypatch.setattr(base_runner.shutil, "which", lambda name: launcher if name == "aws" else None)
+    monkeypatch.setattr(base_runner.importlib.util, "find_spec", lambda name: object() if name == "awscli" else None)
+    assert base_runner._aws_command() == [base_runner.sys.executable, "-m", "awscli"]
+
+
+def test_aws_command_falls_back_to_launcher(monkeypatch):
+    launcher = r"C:\Users\HP\.local\bin\aws.cmd"
+    monkeypatch.setattr(base_runner.shutil, "which", lambda name: launcher if name == "aws" else None)
+    monkeypatch.setattr(base_runner.importlib.util, "find_spec", lambda name: None)
     assert base_runner._aws_command() == [launcher]
 
 

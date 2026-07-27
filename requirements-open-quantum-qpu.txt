@@ -1,0 +1,3 @@
+# Optional AWS Braket runner; credentials and an S3 result location are required at execution time.
+-r requirements-exact-cpu.txt
+amazon-braket-sdk>=1.119,<2

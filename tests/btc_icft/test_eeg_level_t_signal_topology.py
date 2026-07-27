@@ -52,6 +52,10 @@ from sciencer_d.btc_icft.level_t.eeg_signal_topology import (
     write_level_t_signal_outputs,
     _validate_safe_text,
     _SAFE_CLAIM,
+    _channel_mean,
+    _channel_variance,
+    _pearson_proxy,
+    _pearson_proxy_from_moments,
 )
 
 
@@ -145,6 +149,23 @@ def _make_full_result(tmp_path: Path) -> EEGLevelTSignalTopologyResult:
     )
     result.omega_event = build_level_t_signal_omega_event(result)
     return result
+
+
+def test_reused_pearson_moments_match_original_proxy_exactly():
+    """The throughput path must preserve the original pairwise proxy values."""
+    pairs = [
+        ([0.0, 1.0, 2.0, 3.0], [3.0, 1.0, -1.0, -3.0]),
+        ([1.5, -0.5, 4.0, 2.25, -3.0], [2.0, 2.0, -1.0, 0.25, 7.0]),
+        ([1.0, 1.0, 1.0], [2.0, 3.0, 4.0]),
+    ]
+    for a, b in pairs:
+        mean_a, mean_b = _channel_mean(a), _channel_mean(b)
+        optimized = _pearson_proxy_from_moments(
+            a, b, mean_a, mean_b,
+            _channel_variance(a, mean_a),
+            _channel_variance(b, mean_b),
+        )
+        assert optimized == _pearson_proxy(a, b)
 
 
 # ---------------------------------------------------------------------------

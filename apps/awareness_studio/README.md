@@ -120,16 +120,16 @@ Edit `tests/golden_questions.json` to add your own questions.
 Set `LLM_PROVIDER` in `.env`:
 
 ```bash
-# Anthropic (default)
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6
-
-# OpenAI (no SDK needed — pure urllib)
+# OpenAI (default; no SDK needed — pure urllib)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 # OPENAI_BASE_URL=https://api.openai.com/v1   # optional override for proxies
+
+# Anthropic (optional alternative)
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-6
 ```
 
 ---

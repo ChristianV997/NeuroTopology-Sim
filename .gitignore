@@ -10,3 +10,10 @@ paper/figures/
 .venv/
 data/ds[0-9][0-9][0-9][0-9][0-9][0-9]/
 data/ds[0-9][0-9][0-9][0-9][0-9][0-9]_real/
+data/ds005620_propofol_*/
+
+# Reproducible execution products and local empirical recordings.
+artifacts/
+data/empirical/
+apps/awareness_studio/inputs/sim_artifacts/
+=2.3

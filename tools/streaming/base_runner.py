@@ -22,8 +22,11 @@ silently bypassing the patch.
 from __future__ import annotations
 
 import csv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import importlib.util
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,17 +37,17 @@ from typing import Callable
 def _aws_command() -> list[str]:
     """Resolve AWS CLI across POSIX shells and Windows subprocesses.
 
-    Windows Python cannot launch a `.cmd` file by its bare command name when
-    `shell=False`; using the resolved path keeps the existing subprocess calls
-    safe while supporting the venv-installed `aws.cmd` launcher. The module
-    fallback also works when AWS CLI is installed without a console script.
+    Prefer the installed Python module: Windows/WSL interop can resolve a
+    `.cmd` console launcher to a path that subprocess cannot reliably wait on
+    with `shell=False`, especially for long S3 transfers. The executable path
+    remains a fallback for environments that only install the standalone CLI.
     """
+    if importlib.util.find_spec("awscli") is not None:
+        return [sys.executable, "-m", "awscli"]
     for name in ("aws", "aws.cmd"):
         executable = shutil.which(name)
         if executable:
             return [executable]
-    if importlib.util.find_spec("awscli") is not None:
-        return [sys.executable, "-m", "awscli"]
     return ["aws"]
 
 
@@ -95,14 +98,129 @@ def list_s3_task_labels(bucket: str, dataset_id: str, max_subjects: int = 3) -> 
     return sorted(tasks)
 
 
-def sync_s3_subject(bucket: str, dataset_id: str, subject: str, dest_root: Path) -> Path:
+def sync_s3_subject(
+    bucket: str,
+    dataset_id: str,
+    subject: str,
+    dest_root: Path,
+    required_duration_seconds: float | None = None,
+) -> Path:
+    """Download one subject with bounded concurrent, atomic object transfers.
+
+    Using boto3 here avoids Windows/WSL console-launcher behavior from the AWS
+    CLI and lets independent EEG objects transfer concurrently. Each object is
+    written to a temporary sibling and atomically renamed only after the full
+    object is present, so a resumed run never mistakes a partial file for raw
+    data. Existing files with the expected size are reused.
+    """
     dest = dest_root / subject
     dest.mkdir(parents=True, exist_ok=True)
-    cmd = _aws_command() + [
-        "s3", "sync", "--no-sign-request", "--only-show-errors",
-        f"s3://{bucket}/{dataset_id}/{subject}", str(dest),
-    ]
-    subprocess.run(cmd, check=True)
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
+    from boto3.s3.transfer import TransferConfig
+
+    client = boto3.client(
+        "s3",
+        config=Config(
+            signature_version=UNSIGNED,
+            max_pool_connections=32,
+            connect_timeout=20,
+            read_timeout=60,
+            retries={"max_attempts": 5, "mode": "adaptive"},
+        ),
+    )
+    prefix = f"{dataset_id}/{subject}/"
+    objects = []
+    for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+        objects.extend(page.get("Contents", []))
+    # BrainVision .eeg byte ranges depend on the accompanying .vhdr header.
+    # Download metadata in a completed phase before scheduling any EEG bytes;
+    # queue ordering alone does not establish that dependency with a pool.
+    metadata_objects = [obj for obj in objects if not obj["Key"].lower().endswith(".eeg")]
+    eeg_objects = [obj for obj in objects if obj["Key"].lower().endswith(".eeg")]
+    transfer_config = TransferConfig(
+        use_threads=True,
+        max_concurrency=4,
+        multipart_threshold=64 * 1024 * 1024,
+        multipart_chunksize=64 * 1024 * 1024,
+    )
+
+    def _required_eeg_bytes(key: str, size: int) -> int | None:
+        if required_duration_seconds is None or not key.lower().endswith(".eeg"):
+            return None
+        header = dest / Path(key[len(prefix):]).with_suffix(".vhdr")
+        if not header.exists():
+            return None
+        try:
+            text = header.read_text(encoding="utf-8", errors="replace")
+            channels = int(re.search(r"^NumberOfChannels=(\d+)", text, re.MULTILINE).group(1))
+            interval_us = float(re.search(r"^SamplingInterval=([0-9.]+)", text, re.MULTILINE).group(1))
+            format_match = re.search(r"^BinaryFormat=(.+)$", text, re.MULTILINE)
+            bytes_per_sample = 4 if "32" in (format_match.group(1) if format_match else "") else 2
+            samples = int(required_duration_seconds * 1_000_000 / interval_us + 0.999999)
+            return min(size, channels * samples * bytes_per_sample)
+        except (AttributeError, ValueError):
+            return None
+
+    def download(obj: dict) -> None:
+        key = obj["Key"]
+        rel = key[len(prefix):]
+        if not rel:
+            return
+        target = dest / Path(rel)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        required_bytes = _required_eeg_bytes(key, obj["Size"])
+        if required_duration_seconds is not None and key.lower().endswith(".eeg") and required_bytes is None:
+            raise ValueError(f"BrainVision header unavailable or invalid for ranged download: {key}")
+        if target.exists() and (
+            target.stat().st_size == obj["Size"]
+            or (required_bytes is not None and target.stat().st_size >= required_bytes)
+        ):
+            return
+        partial = target.with_name(target.name + ".part")
+        if partial.exists():
+            partial.unlink()
+        for stale in target.parent.glob(target.name + ".part*"):
+            stale.unlink(missing_ok=True)
+        last_error = None
+        for _attempt in range(3):
+            try:
+                if required_bytes is not None and required_bytes < obj["Size"]:
+                    response = client.get_object(
+                        Bucket=bucket,
+                        Key=key,
+                        Range=f"bytes=0-{required_bytes - 1}",
+                    )
+                    with partial.open("wb") as out:
+                        while True:
+                            chunk = response["Body"].read(8 * 1024 * 1024)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+                else:
+                    client.download_file(bucket, key, str(partial), Config=transfer_config)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                for stale in target.parent.glob(target.name + ".part*"):
+                    stale.unlink(missing_ok=True)
+        if last_error is not None:
+            raise last_error
+        expected_size = required_bytes if required_bytes is not None else obj["Size"]
+        if partial.stat().st_size != expected_size:
+            raise IOError(f"incomplete S3 object {key}: {partial.stat().st_size} != {expected_size}")
+        os.replace(partial, target)
+
+    def _download_batch(batch: list[dict]) -> None:
+        with ThreadPoolExecutor(max_workers=12, thread_name_prefix="s3-subject") as pool:
+            futures = [pool.submit(download, obj) for obj in batch]
+            for future in as_completed(futures):
+                future.result()
+
+    _download_batch(metadata_objects)
+    _download_batch(eeg_objects)
     return dest
 
 
@@ -155,7 +273,11 @@ def load_manifest(path: Path) -> dict:
 
 
 def save_manifest(path: Path, manifest: dict) -> None:
-    path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    # Replace atomically so an interrupted write cannot leave a valid-looking
+    # but truncated checkpoint and force the whole run to be repeated.
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 def run_streaming_loop(
@@ -199,6 +321,13 @@ def run_streaming_loop(
             print(f"  FAILED: {e}", file=sys.stderr)
             manifest["failed_subjects"][subject] = str(e)
         finally:
+            # Release MNE file handles and bounded window samples before the
+            # subject directory is removed on disk, especially on Windows.
+            try:
+                from data.bids_ingest import clear_raw_cache
+                clear_raw_cache()
+            except ImportError:
+                pass
             if not keep_raw:
                 shutil.rmtree(work_path / subject, ignore_errors=True)
             save_manifest(manifest_path, manifest)  # checkpoint after every subject

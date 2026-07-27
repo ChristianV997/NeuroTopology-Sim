@@ -1,0 +1,22 @@
+﻿# Literature-grounded review priors for PITNN hypothesis simulations.
+# References are provenance pointers for manual peer review; this file does not
+# claim automated literature verification.
+metadata:
+  mode: review_prior
+  offline: true
+  scientific_note: "Bounds are model priors, not validation of quantum-biological mechanisms."
+tryptophan_transition_dipole:
+  nominal_debye: 2.1
+  lower_debye: 1.5
+  upper_debye: 3.0
+  provenance: "Peer-reviewed spectroscopy literature; verify citation set before publication."
+vicinal_water_relative_permittivity:
+  lower: 4.0
+  upper: 10.0
+  nominal: 7.0
+  provenance: "Interfacial/vicinal water dielectric estimates; context dependent."
+ciss_spin_polarization_fraction:
+  lower: 0.30
+  upper: 0.60
+  nominal: 0.45
+  provenance: "Chiral-induced spin selectivity experimental range; system dependent."

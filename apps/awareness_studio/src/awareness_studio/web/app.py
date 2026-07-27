@@ -42,6 +42,7 @@ from awareness_studio.tool_router import (
     format_tool_results,
     get_tool_router,
     has_tool_trigger,
+    tool_names_for_question,
 )
 from awareness_studio.web.research_ops import build_research_snapshot, resolve_repository_file
 
@@ -124,6 +125,11 @@ class LiteratureResult(BaseModel):
     tool_record: Optional[Dict[str, Any]] = None
 
 
+class DatasetSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    max_results: int = Field(10, ge=1, le=25)
+
+
 # ── Auth dependency ───────────────────────────────────────────────────────────
 
 async def _require_auth(x_awareness_key: Optional[str] = Header(default=None)) -> None:
@@ -173,8 +179,9 @@ async def _stream_tokens(
     if use_tools and has_tool_trigger(question):
         router = get_tool_router()
         router.reset_request()
+        tool_names = tool_names_for_question(question)
         for spec in router.list_tools():
-            if spec.provider in ("pubmed", "biorxiv"):
+            if spec.name in tool_names:
                 res = router.call_tool(spec.name, {"query": question, "max_results": 3})
                 tool_records.append(res)
                 if router._calls_this_request >= router._max_calls:
@@ -240,6 +247,7 @@ async def index():
 
 
 @app.get("/health", response_model=HealthResponse)
+@app.get("/api/health", response_model=HealthResponse, include_in_schema=False)
 async def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
@@ -270,6 +278,7 @@ async def research_ops_file(path: str = Query(..., min_length=1)) -> Dict[str, s
 
 
 @app.get("/tools/list")
+@app.get("/api/tools/list", include_in_schema=False)
 async def tools_list():
     router = get_tool_router()
     return {
@@ -284,6 +293,7 @@ async def tools_list():
 
 
 @app.post("/chat")
+@app.post("/api/chat", include_in_schema=False)
 async def chat(req: ChatRequest):
     mode = req.mode.upper()
     if mode not in _VALID_MODES:
@@ -300,26 +310,37 @@ async def chat(req: ChatRequest):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    index = get_or_build_index()
-    chunks = [c for c, _ in index.retrieve(req.question, k=req.k)]
-    system, user = build_chat_prompt(req.question, mode, chunks)
+    try:
+        index = get_or_build_index()
+        chunks = [c for c, _ in index.retrieve(req.question, k=req.k)]
+        system, user = build_chat_prompt(req.question, mode, chunks)
 
-    tool_records = []
-    if req.use_tools and has_tool_trigger(req.question):
-        router = get_tool_router()
-        router.reset_request()
-        for spec in router.list_tools():
-            if spec.provider in ("pubmed", "biorxiv"):
-                res = router.call_tool(spec.name, {"query": req.question, "max_results": 3})
-                tool_records.append(res)
-                if router._calls_this_request >= router._max_calls:
-                    break
-        suffix = format_tool_results(tool_records)
-        if suffix:
-            user = user + suffix
+        tool_records = []
+        if req.use_tools and has_tool_trigger(req.question):
+            router = get_tool_router()
+            router.reset_request()
+            tool_names = tool_names_for_question(req.question)
+            for spec in router.list_tools():
+                if spec.name in tool_names:
+                    res = router.call_tool(spec.name, {"query": req.question, "max_results": 3})
+                    tool_records.append(res)
+                    if router._calls_this_request >= router._max_calls:
+                        break
+            suffix = format_tool_results(tool_records)
+            if suffix:
+                user = user + suffix
 
-    client = get_llm_client()
-    answer = client.complete(system, user)
+        client = get_llm_client()
+        answer = client.complete(system, user)
+    except Exception as exc:
+        # Keep the server traceback in logs, but return a useful, non-secret
+        # diagnostic to the UI/client instead of an opaque 500 response.
+        logger.exception("Chat request failed (request_id=%s)", request_id)
+        detail = str(exc).strip() or exc.__class__.__name__
+        raise HTTPException(
+            status_code=502,
+            detail={"message": "Chat backend failed", "error": detail, "request_id": request_id},
+        ) from exc
 
     return ChatResponse(
         answer=answer,
@@ -381,6 +402,80 @@ async def linear_search(
     if not result.success:
         raise HTTPException(status_code=502, detail=result.record.error)
     return {"issues": result.data, "count": len(result.data), "query": query}
+
+
+@app.post("/datasets/search")
+async def dataset_search(req: DatasetSearchRequest):
+    """Candidate-only EEGDash catalogue search; this endpoint cannot run data."""
+    from awareness_studio.tool_router import DatasetSearchToolRouter
+    result = DatasetSearchToolRouter().call_tool(
+        "eegdash_dataset_search", {"query": req.query, "max_results": req.max_results}
+    )
+    if not result.success:
+        raise HTTPException(status_code=503, detail=result.record.error)
+    return {
+        "query": req.query,
+        "candidates": result.data,
+        "execution_allowed": False,
+        "tool_record": {
+            "tool_name": result.record.tool_name,
+            "success": result.success,
+            "result_summary": result.record.result_summary,
+            "error": result.record.error,
+        },
+    }
+
+
+@app.get("/command-center/status")
+@app.get("/api/command-center/status", include_in_schema=False)
+async def command_center_status(mock: bool = Query(default=False)):
+    from awareness_studio.integrations.neurotopology_results import build_real_results
+    return {
+        "ok": True,
+        "data_mode": "mock" if mock else "real",
+        "real_results": {"status": "mock_requested"} if mock else build_real_results(),
+    }
+
+
+@app.get("/command-center/visualization")
+@app.get("/api/command-center/visualization", include_in_schema=False)
+async def command_center_visualization():
+    from awareness_studio.integrations.neurotopology_results import build_visualization_payload
+    return build_visualization_payload()
+
+
+@app.get("/command-center/registry")
+@app.get("/api/command-center/registry", include_in_schema=False)
+async def command_center_registry():
+    """Read-only inventory for the empirical Command Centre UI."""
+    from awareness_studio.integrations.neurotopology_results import build_command_center_registry
+    return build_command_center_registry()
+
+
+@app.get("/command-center/artifacts/{artifact_id}")
+async def command_center_artifact(artifact_id: str):
+    """Download an allowlisted result artifact; never accept arbitrary paths."""
+    from awareness_studio.integrations.neurotopology_results import get_downloadable_artifact
+    artifact = get_downloadable_artifact(artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="Artifact is not available for download")
+    return FileResponse(str(artifact), filename=artifact.name)
+
+
+@app.get("/command-center", include_in_schema=False)
+async def command_center_page():
+    page = _STATIC_DIR / "command_center.html"
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="Command Centre UI is not available")
+    return FileResponse(str(page), media_type="text/html")
+
+
+@app.get("/cortex", include_in_schema=False)
+async def cortex_viewer():
+    viewer = _STATIC_DIR / "3d_cortex_viewer.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Cortex viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
 
 
 # ── Airtable routes ────────────────────────────────────────────────────────────

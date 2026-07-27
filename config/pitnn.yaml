@@ -1,0 +1,25 @@
+seed: 0
+data_mode: synthetic_demo
+input: null
+output_dir: results/pitnn
+n_samples: 256
+n_spins: 32
+steps: 500
+advanced_biophysics: false
+fast_backend: false
+fast_tda: false
+mcwf_trajectories: 0
+fast_ep: false
+advanced:
+  n_layers: 4
+  lindblad_steps: 12
+  ep_grid_size: 21
+external_solvers:
+  vampire: null
+  spirit: null
+  mumax3: null
+literature_priors_file: config/literature_priors.yaml
+biophysical_priors:
+  tryptophan_transition_dipole_debye: 2.1
+  vicinal_water_relative_permittivity_nominal: 7.0
+  ciss_spin_polarization_fraction_nominal: 0.45

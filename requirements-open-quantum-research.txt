@@ -1,0 +1,5 @@
+# Optional research campaign environment.
+-r requirements-exact-cpu.txt
+MDAnalysis>=2.6,<3
+mne>=1.6,<2
+ripser>=0.6,<1
