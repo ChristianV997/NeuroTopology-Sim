@@ -1,8 +1,6 @@
 from __future__ import annotations
 import numpy as np
 
-from core import persistence_export
-
 def wrap_phase(x: np.ndarray) -> np.ndarray:
     """Wrap phase differences into (-pi, pi]."""
     return (x + np.pi) % (2 * np.pi) - np.pi
@@ -285,6 +283,10 @@ def export_persistence_json(field: np.ndarray, max_dimension: int = 2) -> dict:
     Returns: dict with "diagrams", "statistics", "betti_numbers" keys,
         all JSON-serializable.
     """
+    # Import lazily because persistence_export delegates bottleneck distance
+    # back to this module's canonical implementation.
+    from core import persistence_export
+
     result = compute_cubical_persistence(field, max_dimension=max_dimension)
     return persistence_export.persistence_to_dict(
         result["diagrams"],
