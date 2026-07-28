@@ -7,6 +7,7 @@ import pytest
 
 from tools.command_center.real_results_adapter import (
     build_command_center_registry,
+    build_pitnn_cohort_persistence_artifact,
     build_pitnn_cohort_spatial_artifact,
     build_real_results,
     get_downloadable_artifact,
@@ -156,3 +157,85 @@ def test_registry_reflects_pitnn_cohort_spatial_availability(tmp_path, monkeypat
     assert registry["guardrails"]["pitnn_cohort_spatial_data"]["status"] == "available"
     pilot = next(p for p in registry["proposed_runs"] if p["proposal_id"] == "spatial-topology-pilot")
     assert pilot["status"] == "available"
+
+
+def _write_pitnn_cohort_subject_with_persistence(root, subject_id, *, awake=True, sedated=True, bottleneck=0.19):
+    """Mirror tools/stream_pitnn_cohort_ds005620.py's real record shape for the
+    --export-persistence path: topology_windows.{label}[-1].cubical_persistence.
+    diagrams['1'] is exactly what build_pitnn_cohort_persistence_artifact reads."""
+    (root / "subjects").mkdir(parents=True, exist_ok=True)
+
+    def window(h1):
+        return {
+            "window": 0, "start_s": 0.0, "channels": 3, "beta1": 1,
+            "filtration_beta1_max": 1, "integrated_landscape_area": 0.01,
+            "mean_plv": 0.5, "q_spatial": 0.0,
+            "cubical_persistence": {
+                "betti_numbers": [1, 0, 0],
+                "diagrams": {"0": [[0.0, 1.0]], "1": h1},
+                "statistics": {"0": {}, "1": {}},
+            },
+        }
+
+    record = {
+        "subject": subject_id,
+        "cubical_h1_bottleneck_distance_last_window": bottleneck,
+        "topology_windows": {
+            "awake": [window([[0.1, 0.2]])] if awake else [],
+            "sedated": [window([[0.15, 0.35], [0.2, 0.4]])] if sedated else [],
+        },
+    }
+    (root / "subjects" / f"{subject_id}.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_pitnn_cohort_persistence_artifact_unavailable_when_no_subjects_dir(tmp_path):
+    result = build_pitnn_cohort_persistence_artifact(tmp_path / "does_not_exist")
+    assert result["status"] == "unavailable"
+
+
+def test_pitnn_cohort_persistence_artifact_unavailable_without_export_persistence(tmp_path):
+    """A cohort run without --export-persistence has topology_windows but no
+    cubical_persistence key on each row -- must report unavailable, not an
+    empty-but-'available' payload."""
+    (tmp_path / "subjects").mkdir()
+    record = {
+        "subject": "sub-01",
+        "topology_windows": {"awake": [{"window": 0, "beta1": 1}], "sedated": [{"window": 0, "beta1": 2}]},
+    }
+    (tmp_path / "subjects" / "sub-01.json").write_text(json.dumps(record), encoding="utf-8")
+    result = build_pitnn_cohort_persistence_artifact(tmp_path)
+    assert result["status"] == "unavailable"
+
+
+def test_pitnn_cohort_persistence_artifact_available_with_real_diagrams(tmp_path):
+    _write_pitnn_cohort_subject_with_persistence(tmp_path, "sub-1010", bottleneck=0.194)
+    result = build_pitnn_cohort_persistence_artifact(tmp_path)
+    assert result["status"] == "available"
+    assert result["subject_count"] == 1
+    subject = result["subjects"][0]
+    assert subject["subject_id"] == "sub-1010"
+    assert subject["diagrams_h1"]["awake"] == [[0.1, 0.2]]
+    assert subject["diagrams_h1"]["sedated"] == [[0.15, 0.35], [0.2, 0.4]]
+    assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.194)
+
+
+def test_pitnn_cohort_persistence_artifact_skips_subjects_missing_diagrams(tmp_path):
+    _write_pitnn_cohort_subject_with_persistence(tmp_path, "sub-01", awake=False, sedated=False)
+    _write_pitnn_cohort_subject_with_persistence(tmp_path, "sub-02")
+    result = build_pitnn_cohort_persistence_artifact(tmp_path)
+    assert result["status"] == "available"
+    assert result["subject_count"] == 1
+    assert result["subjects"][0]["subject_id"] == "sub-02"
+
+
+def test_visualization_payload_includes_pitnn_cohort_persistence_artifact(tmp_path, monkeypatch):
+    (tmp_path / "manifest.json").write_text(json.dumps({"processed_subjects": {}, "failed_subjects": {}}), encoding="utf-8")
+    _write_csv(tmp_path / "sub-01_features_t.csv")
+
+    cohort_root = tmp_path / "pitnn_cohort"
+    _write_pitnn_cohort_subject_with_persistence(cohort_root, "sub-1010")
+    monkeypatch.setenv("NEUROTOPOLOGY_PITNN_COHORT_ROOT", str(cohort_root))
+
+    payload = build_visualization_payload(tmp_path)
+    assert payload["pitnn_cohort_persistence_artifact"]["status"] == "available"
+    assert payload["pitnn_cohort_persistence_artifact"]["subject_count"] == 1

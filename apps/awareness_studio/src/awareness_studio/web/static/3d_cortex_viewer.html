@@ -30,6 +30,11 @@
       <button id="play" type="button">Play</button>
       <dl id="metrics"></dl>
       <div id="plot"></div>
+      <h2 style="font-size:14px;margin-top:18px">H1 persistence (real, per-subject)</h2>
+      <div class="notice" id="persistence-notice"></div>
+      <select id="persistence-subject" style="width:100%;margin-top:8px;display:none"></select>
+      <div id="persistence-plot" style="display:none"></div>
+      <dl id="persistence-metrics"></dl>
     </section>
   </div>
   <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"}}</script>
@@ -71,10 +76,62 @@
       const summaries=payload.phase_space || [];
       Plotly.newPlot('plot', [{x:summaries.map(x=>x.q_net_mean), y:summaries.map(x=>x.f_dress_mean), mode:'lines+markers+text', text:summaries.map(x=>x.task_label), textposition:'top center', marker:{size:10,color:'#50a8e5'}, line:{color:'#50a8e5'}}], {title:{text:'Proxy phase space',font:{size:14,color:'#e8edf4'}}, xaxis:{title:'q_net proxy',color:'#aeb8c7'}, yaxis:{title:'f_dress proxy',color:'#aeb8c7'}, paper_bgcolor:'#11151c',plot_bgcolor:'#11151c',margin:{l:55,r:10,t:40,b:50}}, {displayModeBar:false,responsive:true});
     }
+
+    // Real per-subject H1 (loop) persistence diagrams from
+    // tools/command_center/real_results_adapter.build_pitnn_cohort_persistence_artifact
+    // -- last window per condition, the same pair cubical_h1_bottleneck_distance_last_window
+    // was computed from. "unavailable" (no cohort run with --export-persistence) is shown
+    // as an explicit notice, never a silently empty plot.
+    const persistenceSelect = document.getElementById('persistence-subject');
+    const persistencePlot = document.getElementById('persistence-plot');
+    const persistenceNotice = document.getElementById('persistence-notice');
+    const persistenceMetrics = document.getElementById('persistence-metrics');
+    let persistenceArtifact;
+
+    function drawPersistenceDiagram(subjectId) {
+      const subject = (persistenceArtifact.subjects || []).find(s => s.subject_id === subjectId);
+      if (!subject) return;
+      const traces = [];
+      const stateColor = { awake: '#50a8e5', sedated: '#e0685a' };
+      for (const [state, pairs] of Object.entries(subject.diagrams_h1 || {})) {
+        const finite = (pairs || []).filter(p => p[1] !== null && Number.isFinite(p[1]));
+        traces.push({
+          x: finite.map(p => p[0]), y: finite.map(p => p[1]), mode: 'markers', name: state,
+          marker: { size: 8, color: stateColor[state] || '#aeb8c7' },
+        });
+      }
+      const allVals = traces.flatMap(t => [...t.x, ...t.y]);
+      const axisMax = allVals.length ? Math.max(...allVals) * 1.1 : 1;
+      traces.push({ x: [0, axisMax], y: [0, axisMax], mode: 'lines', line: { color: '#3a4451', dash: 'dot' }, showlegend: false, hoverinfo: 'skip' });
+      Plotly.newPlot('persistence-plot', traces, {
+        title: { text: `H1 birth/death -- ${subjectId}`, font: { size: 14, color: '#e8edf4' } },
+        xaxis: { title: 'birth', color: '#aeb8c7' }, yaxis: { title: 'death', color: '#aeb8c7' },
+        paper_bgcolor: '#11151c', plot_bgcolor: '#11151c', margin: { l: 55, r: 10, t: 40, b: 50 },
+        legend: { font: { color: '#e8edf4' } },
+      }, { displayModeBar: false, responsive: true });
+      const distance = subject.bottleneck_distance_h1_last_window;
+      persistenceMetrics.innerHTML = `<dt>awake-sedated H1 bottleneck</dt><dd>${format(distance)}</dd>`;
+    }
+
+    function loadPersistenceArtifact() {
+      persistenceArtifact = payload.pitnn_cohort_persistence_artifact;
+      if (!persistenceArtifact || persistenceArtifact.status !== 'available') {
+        persistenceNotice.textContent = (persistenceArtifact && persistenceArtifact.reason)
+          || 'No PITNN cohort persistence diagrams available.';
+        persistenceSelect.style.display = 'none'; persistencePlot.style.display = 'none';
+        return;
+      }
+      persistenceNotice.textContent = `${persistenceArtifact.subject_count} subject(s) with real H1 diagrams.`;
+      persistenceSelect.innerHTML = persistenceArtifact.subjects.map(s => `<option value="${s.subject_id}">${s.subject_id}</option>`).join('');
+      persistenceSelect.style.display = 'block'; persistencePlot.style.display = 'block';
+      drawPersistenceDiagram(persistenceArtifact.subjects[0].subject_id);
+    }
+    persistenceSelect.addEventListener('change', (event) => drawPersistenceDiagram(event.target.value));
+
     slider.addEventListener('input', () => update(Number(slider.value)));
     document.getElementById('play').addEventListener('click', (event) => { playing=!playing; event.currentTarget.textContent=playing?'Pause':'Play'; });
     setInterval(() => { if (playing && payload.frames.length) { slider.value=(Number(slider.value)+1)%payload.frames.length; update(Number(slider.value)); }}, 200);
-    fetch('/command-center/visualization').then(r=>r.json()).then(data => { payload=data; slider.max=Math.max(0,payload.frames.length-1); notice.textContent=payload.spatial_artifact.status === 'available' ? 'Spatial artifact available.' : payload.spatial_artifact.reason + ' The bilateral scaffold visualizes real scalar telemetry only; it is not anatomical localization.'; status.textContent=`${payload.dataset}: ${payload.frames.length} empirical telemetry frames`; update(0); drawPlot(); }).catch(error => { status.textContent='Could not load telemetry'; notice.textContent=error.message; });
+    fetch('/command-center/visualization').then(r=>r.json()).then(data => { payload=data; slider.max=Math.max(0,payload.frames.length-1); notice.textContent=payload.spatial_artifact.status === 'available' ? 'Spatial artifact available.' : payload.spatial_artifact.reason + ' The bilateral scaffold visualizes real scalar telemetry only; it is not anatomical localization.'; status.textContent=`${payload.dataset}: ${payload.frames.length} empirical telemetry frames`; update(0); drawPlot(); loadPersistenceArtifact(); }).catch(error => { status.textContent='Could not load telemetry'; notice.textContent=error.message; });
   </script>
 </body>
 </html>

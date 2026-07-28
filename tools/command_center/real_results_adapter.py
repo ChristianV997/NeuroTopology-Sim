@@ -259,6 +259,77 @@ def build_pitnn_cohort_spatial_artifact(root: str | Path | None = None) -> dict[
     }
 
 
+def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> dict[str, Any]:
+    """Real cubical-persistence H1 birth/death diagrams from the PITNN cohort run.
+
+    Populated only when the streaming run used `--export-persistence`
+    (`tools/stream_pitnn_cohort_ds005620.py`'s `window_topology` then calls
+    `core.topology.export_persistence_json` on each window's PLV matrix). This
+    reads the LAST window's H1 diagram per condition per subject -- the same
+    window `cubical_h1_bottleneck_distance_last_window` was computed from, so a
+    viewer plotting both is showing the same pair of diagrams the bottleneck
+    number describes, not a different window.
+
+    "Available" always means every subject record it returns actually carries a
+    diagram; a subject whose windows lack `cubical_persistence` (streaming run
+    without `--export-persistence`) is skipped, and a cohort where none carry it
+    is reported "unavailable" -- never backfilled with an empty plot.
+    """
+    result_root = _pitnn_cohort_root(root)
+    subjects_dir = result_root / "subjects"
+    if not subjects_dir.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No PITNN cohort subject records at {subjects_dir}. Run "
+                      "tools/stream_pitnn_cohort_ds005620.py --export-persistence first.",
+        }
+
+    subjects: list[dict[str, Any]] = []
+    for path in sorted(subjects_dir.glob("sub-*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        windows = record.get("topology_windows") or {}
+        diagrams: dict[str, list[list[float | None]]] = {}
+        for label, rows in windows.items():
+            if not rows:
+                continue
+            cp = rows[-1].get("cubical_persistence")
+            if not cp:
+                continue
+            h1 = cp.get("diagrams", {}).get("1")
+            if h1 is None:
+                continue
+            diagrams[label] = h1
+        if not diagrams:
+            continue
+        subjects.append({
+            "subject_id": record.get("subject", path.stem),
+            "diagrams_h1": diagrams,
+            "bottleneck_distance_h1_last_window": record.get("cubical_h1_bottleneck_distance_last_window"),
+        })
+
+    if not subjects:
+        return {
+            "status": "unavailable",
+            "reason": f"{subjects_dir} exists but no subject record includes a cubical "
+                      "persistence diagram. Re-run with --export-persistence.",
+        }
+
+    return {
+        "status": "available",
+        "source": "tools/stream_pitnn_cohort_ds005620.py --export-persistence",
+        "results_root": str(result_root),
+        "subject_count": len(subjects),
+        "subjects": subjects,
+        "scientific_note": "GUDHI sub-level cubical persistence on each window's PLV "
+                            "matrix, last window per condition; a descriptive spatial-"
+                            "network summary, not a validated physical or clinical "
+                            "measurement. Infinite-death H0 features are omitted from H1.",
+    }
+
+
 def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any]:
     results = build_real_results(root)
     return {
@@ -271,6 +342,7 @@ def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any
         "subject_summaries": results["subject_summaries"],
         "spatial_artifact": results["spatial_artifact"],
         "pitnn_cohort_spatial_artifact": build_pitnn_cohort_spatial_artifact(),
+        "pitnn_cohort_persistence_artifact": build_pitnn_cohort_persistence_artifact(),
         "source_artifacts": results["source_artifacts"],
     }
 
