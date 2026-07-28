@@ -265,12 +265,25 @@ def window_topology(
     window_seconds: float,
     plv_threshold: float,
     landscape_layers: int,
-) -> list[dict[str, Any]]:
+    export_cubical_persistence: bool = False,
+) -> tuple[list[dict[str, Any]], np.ndarray]:
     """Per-window PLV persistence + spatial charge for one condition.
 
     `data` is `(samples, channels)`. Band-limited analytic phase matches the discipline
     in `scripts/eeg_topology_ds005620.py` (a broadband Hilbert phase is not a
-    meaningful oscillatory phase).
+    meaningful oscillatory phase). Returns `(rows, phase)` -- the caller needs the
+    band-filtered phase array itself (not just the summaries) to build the spatial
+    defect snapshot from the same last window these rows already describe, rather
+    than recomputing the filter.
+
+    `export_cubical_persistence`, when set, additionally computes GUDHI sub-level
+    cubical persistence on the raw PLV *matrix itself* via
+    `core.topology.export_persistence_json`. This is a genuinely different summary
+    from the ripser Vietoris-Rips diagram `analyze_adjacency` already computes on
+    `1 - PLV`: cubical persistence sweeps every PLV threshold on the matrix as a
+    2D grid, so it captures amplitude structure the graph-distance view discards.
+    `core/persistence_export.py` was built and unit-tested in isolation but never
+    exercised on real data before this call.
     """
     import mne
     from scipy.signal import hilbert
@@ -298,19 +311,22 @@ def window_topology(
                 # Delaunay can also raise QhullError on degenerate sensor layouts;
                 # a missing charge is recorded as null rather than fabricated.
                 charge = None
-        out.append(
-            {
-                "window": index,
-                "start_s": float(start / rate_hz),
-                "channels": int(chunk.shape[0]),
-                "beta1": int(np.max(result.beta_curve)) if result.beta_curve.size else 0,
-                "filtration_beta1_max": int(np.max(result.sweep_beta1)) if result.sweep_beta1 is not None else 0,
-                "integrated_landscape_area": float(result.integrated_landscape_area),
-                "mean_plv": float(plv[np.triu_indices_from(plv, k=1)].mean()),
-                "q_spatial": charge,
-            }
-        )
-    return out
+        row: dict[str, Any] = {
+            "window": index,
+            "start_s": float(start / rate_hz),
+            "channels": int(chunk.shape[0]),
+            "beta1": int(np.max(result.beta_curve)) if result.beta_curve.size else 0,
+            "filtration_beta1_max": int(np.max(result.sweep_beta1)) if result.sweep_beta1 is not None else 0,
+            "integrated_landscape_area": float(result.integrated_landscape_area),
+            "mean_plv": float(plv[np.triu_indices_from(plv, k=1)].mean()),
+            "q_spatial": charge,
+        }
+        if export_cubical_persistence:
+            from core.topology import export_persistence_json
+
+            row["cubical_persistence"] = export_persistence_json(plv, max_dimension=1)
+        out.append(row)
+    return out, phase
 
 
 def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -321,6 +337,66 @@ def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "mean_landscape_area": float(np.mean([r["integrated_landscape_area"] for r in rows])) if rows else None,
         "mean_plv": float(np.mean([r["mean_plv"] for r in rows])) if rows else None,
         "mean_q_spatial": float(np.mean(charges)) if charges else None,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Spatial defect snapshot (closes the command-center `spatial_artifact` gap)
+# --------------------------------------------------------------------------- #
+
+def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1: int | None = None) -> dict[str, Any] | None:
+    """Real channel-coordinate defect map from one condition's final window.
+
+    Reuses `validation.montage_topology.signed_defect_map` unmodified -- the same
+    tested function `dual_engine/anesthesia_signed_winding_pipeline.py` already
+    runs on this dataset for its channel-mean report. `montage` is the `(n, 3)`
+    array `read_condition` already extracted; its first two columns are the same
+    xy plane `validation.montage_topology.get_channel_xy` would return, since both
+    derive from the raw's `standard_1020` fallback montage set in
+    `shared.data_loaders.eeg_bids_loader.read_local_raw`.
+
+    Returns `None` (not a fabricated zero-filled record) when there is no montage,
+    fewer than three finite positions, or fewer than three triangles survive
+    triangulation -- callers must treat absence as absence.
+    """
+    from validation.montage_topology import signed_defect_map, triangulate_xy
+
+    if montage is None:
+        return None
+    xy = np.asarray(montage, float)[:, :2]
+    finite = np.all(np.isfinite(xy), axis=1)
+    if int(np.count_nonzero(finite)) < 3:
+        return None
+    xy = xy[finite]
+    phase_last = np.asarray(phase, float)[finite, -1]
+    amp_last = None  # only the phase snapshot is retained; amplitude masking is skipped, not faked
+
+    try:
+        triangles = triangulate_xy(xy)
+        defects = signed_defect_map(phase_last, xy, triangles, amp_vec=amp_last, amp_quantile=None)
+    except Exception:
+        return None
+
+    return {
+        "channel_coordinates": xy.tolist(),
+        "coordinate_frame": "sensor_2d_projection_of_standard_1020_montage",
+        "phase": phase_last.tolist(),
+        "beta1": beta1,
+        "defects": {
+            "triangle_indices": defects["triangle_indices"].tolist(),
+            "signed_winding": defects["signed_winding"].tolist(),
+            "centroid_xy": defects["centroid_xy"].tolist(),
+            "chirality": defects["chirality"].tolist(),
+            "n_valid_triangles": defects["n_valid_triangles"],
+        },
+        "wave_vectors": None,
+        "wave_vectors_note": "not implemented anywhere in this repo; reported null rather than fabricated",
+        "quality_control": {
+            "n_channels": int(xy.shape[0]),
+            "n_channels_finite_position": int(np.count_nonzero(finite)),
+            "n_valid_triangles": defects["n_valid_triangles"],
+            "all_finite": bool(np.all(np.isfinite(defects["signed_winding"])) and np.all(np.isfinite(defects["centroid_xy"]))),
+        },
     }
 
 
@@ -351,7 +427,7 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             raise ValueError(f"{subject}: condition sample rates differ ({rate_hz} vs {rate})")
         rate_hz = rate
         arrays[state_key] = data
-        rows = window_topology(
+        rows, phase = window_topology(
             data,
             rate,
             montage,
@@ -359,8 +435,16 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             window_seconds=cfg.window_seconds,
             plv_threshold=cfg.plv_threshold,
             landscape_layers=cfg.landscape_layers,
+            export_cubical_persistence=cfg.export_persistence,
         )
-        conditions[label] = {"source_file": vhdr.name, "windows": rows, "summary": _condition_summary(rows)}
+        last_beta1 = rows[-1]["filtration_beta1_max"] if rows else None
+        spatial = spatial_defect_snapshot(phase, montage, beta1=last_beta1) if cfg.export_spatial else None
+        conditions[label] = {
+            "source_file": vhdr.name,
+            "windows": rows,
+            "summary": _condition_summary(rows),
+            "spatial": spatial,
+        }
 
     # PITNN consumes a two-condition NPZ (`state_a` / `state_b`, samples x channels)
     # through `sim.pitnn.ingest_empirical.ingest_conditions`. Both conditions must
@@ -389,6 +473,21 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
         rg_block_size=0,
     )
 
+    bottleneck = None
+    if cfg.export_persistence:
+        try:
+            from core.persistence_export import bottleneck_distance, deserialize_diagram
+
+            awake_h1 = deserialize_diagram(
+                conditions["awake"]["windows"][-1]["cubical_persistence"]["diagrams"]["1"]
+            )
+            sedated_h1 = deserialize_diagram(
+                conditions["sedated"]["windows"][-1]["cubical_persistence"]["diagrams"]["1"]
+            )
+            bottleneck = bottleneck_distance(awake_h1, sedated_h1)
+        except Exception:
+            bottleneck = None  # a missing/degenerate diagram is reported as null, not zero
+
     record = {
         "subject": subject,
         "sample_rate_hz": float(rate_hz),
@@ -400,6 +499,8 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
         "topology": {label: conditions[label]["summary"] for label in conditions},
         "topology_windows": {label: conditions[label]["windows"] for label in conditions},
         "source_files": {label: conditions[label]["source_file"] for label in conditions},
+        "spatial": {label: conditions[label]["spatial"] for label in conditions},
+        "cubical_h1_bottleneck_distance_last_window": bottleneck,
         "pitnn": {
             "bayes_factor": float(report["bayes_factor"]),
             "delta_aicc": float(report["delta_aicc"]),
@@ -443,6 +544,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--limit", type=int, default=None, help="bound subjects processed this invocation")
     p.add_argument("--keep-raw", action="store_true")
+    p.add_argument(
+        "--export-spatial", action="store_true",
+        help="save a real channel-coordinate defect map per condition (closes the "
+             "command-center spatial_artifact gap); adds one Delaunay triangulation "
+             "per condition per subject, negligible cost",
+    )
+    p.add_argument(
+        "--export-persistence", action="store_true",
+        help="save GUDHI cubical persistence (H0/H1) of the last window's PLV matrix "
+             "per condition, plus the awake-vs-sedated H1 bottleneck distance; "
+             "requires the optional gudhi dependency",
+    )
     return p
 
 

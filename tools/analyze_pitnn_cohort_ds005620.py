@@ -133,6 +133,9 @@ def analyze(records: list[dict[str, Any]], n_permutations: int, seed: int) -> di
     pitnn_beta = [(r["pitnn"]["awake"]["mean_beta_1"], r["pitnn"]["sedated"]["mean_beta_1"]) for r in records]
     pitnn_beta_arr = np.asarray(pitnn_beta, float)
 
+    cubical_persistence = _cubical_persistence_summary(records)
+    spatial = _spatial_summary(records)
+
     return {
         "schema": "NeuroTopologySim.DS005620PITNNCohort.v1",
         "dataset_id": "ds005620",
@@ -157,12 +160,96 @@ def analyze(records: list[dict[str, Any]], n_permutations: int, seed: int) -> di
             "mean_beta_1_sedated": float(pitnn_beta_arr[:, 1].mean()),
             "paired_wilcoxon_mean_beta_1": _wilcoxon_pairs(pitnn_beta_arr),
         },
+        "cubical_persistence_h1_bottleneck": cubical_persistence,
+        "spatial_defect_map": spatial,
         "scientific_note": (
             "Persistent-H1 landscape area and PLV are descriptive EEG network measures. "
             "A paired difference between an eyes-closed awake recording and a propofol "
             "sedation recording does not identify a mechanism and is not a measure of "
             "consciousness. PITNN PASS is reserved strictly for Bayes factor K > 100."
         ),
+    }
+
+
+def _cubical_persistence_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Cohort summary of the awake-vs-sedated H1 bottleneck distance.
+
+    Populated only when the streaming run used `--export-persistence`; absence is
+    reported as `available: False`, not backfilled with zeros. The distance is
+    non-negative by construction, so there is no natural paired-difference test --
+    this reports descriptive statistics plus a one-sample Wilcoxon against zero
+    (never exactly satisfied for real recordings, so this mainly documents that
+    every subject's awake and sedated diagrams differ at all).
+    """
+    values = [
+        r["cubical_h1_bottleneck_distance_last_window"]
+        for r in records
+        if r.get("cubical_h1_bottleneck_distance_last_window") is not None
+    ]
+    if not values:
+        return {"available": False, "reason": "streaming run did not use --export-persistence"}
+
+    from scipy.stats import wilcoxon
+
+    arr = np.asarray(values, float)
+    test = wilcoxon(arr, alternative="greater", method="auto") if np.any(arr > 0) else None
+    return {
+        "available": True,
+        "n_subjects": int(arr.size),
+        "mean": float(arr.mean()),
+        "median": float(np.median(arr)),
+        "min": float(arr.min()),
+        "max": float(arr.max()),
+        "wilcoxon_greater_than_zero": (
+            {"statistic": float(test.statistic), "p_value": float(test.pvalue)} if test is not None else None
+        ),
+    }
+
+
+def _spatial_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Cohort summary of the real per-condition signed defect maps.
+
+    Populated only when the streaming run used `--export-spatial`. Reports the
+    unsigned total winding (sum |signed_winding|, the Qabs-equivalent for this
+    snapshot) per condition, paired by subject via the subject-blocked permutation
+    test so the same pseudoreplication discipline applies here as to the other
+    topology metrics.
+    """
+    pairs = []
+    for r in records:
+        spatial = r.get("spatial") or {}
+        awake, sedated = spatial.get("awake"), spatial.get("sedated")
+        if not awake or not sedated:
+            continue
+        pairs.append(
+            {
+                "subject": r["subject"],
+                "awake_qabs": float(np.sum(np.abs(awake["defects"]["signed_winding"]))),
+                "sedated_qabs": float(np.sum(np.abs(sedated["defects"]["signed_winding"]))),
+                "awake_beta1": awake.get("beta1"),
+                "sedated_beta1": sedated.get("beta1"),
+            }
+        )
+    if not pairs:
+        return {"available": False, "reason": "streaming run did not use --export-spatial"}
+
+    from scipy.stats import wilcoxon
+
+    awake_qabs = np.asarray([p["awake_qabs"] for p in pairs], float)
+    sedated_qabs = np.asarray([p["sedated_qabs"] for p in pairs], float)
+    if len(pairs) >= 2 and not np.allclose(awake_qabs, sedated_qabs):
+        test = wilcoxon(awake_qabs, sedated_qabs, zero_method="wilcox", alternative="two-sided", method="auto")
+        wilcoxon_result = {"statistic": float(test.statistic), "p_value": float(test.pvalue)}
+    else:
+        wilcoxon_result = {"statistic": None, "p_value": None, "status": "insufficient_paired_subjects_or_zero_difference"}
+
+    return {
+        "available": True,
+        "n_subjects": len(pairs),
+        "mean_qabs_awake": float(awake_qabs.mean()),
+        "mean_qabs_sedated": float(sedated_qabs.mean()),
+        "paired_wilcoxon_qabs": wilcoxon_result,
+        "per_subject": pairs,
     }
 
 

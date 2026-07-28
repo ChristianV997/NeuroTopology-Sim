@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import json
 
+import pytest
+
 from tools.command_center.real_results_adapter import (
     build_command_center_registry,
+    build_pitnn_cohort_spatial_artifact,
     build_real_results,
     get_downloadable_artifact,
     build_visualization_payload,
@@ -58,3 +61,98 @@ def test_registry_exposes_only_allowlisted_downloads(tmp_path):
     assert registry["command_registry"][0]["execution_allowed"] is False
     assert get_downloadable_artifact("manifest", tmp_path) == tmp_path / "manifest.json"
     assert get_downloadable_artifact("../../manifest", tmp_path) is None
+
+
+def _write_pitnn_cohort_subject(root, subject_id, *, awake=True, sedated=True, bottleneck=0.5):
+    (root / "subjects").mkdir(parents=True, exist_ok=True)
+    def snapshot():
+        return {
+            "beta1": 2,
+            "channel_coordinates": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            "phase": [0.1, 0.2, 0.3],
+            "coordinate_frame": "sensor_2d_projection_of_standard_1020_montage",
+            "defects": {
+                "triangle_indices": [[0, 1, 2]],
+                "signed_winding": [0.1],
+                "centroid_xy": [[0.33, 0.33]],
+                "chirality": [1],
+                "n_valid_triangles": 1,
+            },
+            "wave_vectors": None,
+            "quality_control": {"n_channels": 3, "all_finite": True},
+        }
+    record = {
+        "subject": subject_id,
+        "cubical_h1_bottleneck_distance_last_window": bottleneck,
+        "spatial": {
+            "awake": snapshot() if awake else None,
+            "sedated": snapshot() if sedated else None,
+        },
+    }
+    (root / "subjects" / f"{subject_id}.json").write_text(json.dumps(record), encoding="utf-8")
+
+
+def test_pitnn_cohort_spatial_artifact_unavailable_when_no_subjects_dir(tmp_path):
+    result = build_pitnn_cohort_spatial_artifact(tmp_path / "does_not_exist")
+    assert result["status"] == "unavailable"
+    assert "channel_coordinates" in result["required_fields"]
+
+
+def test_pitnn_cohort_spatial_artifact_unavailable_when_no_run_had_export_spatial(tmp_path):
+    (tmp_path / "subjects").mkdir()
+    (tmp_path / "subjects" / "sub-01.json").write_text(
+        json.dumps({"subject": "sub-01", "spatial": {"awake": None, "sedated": None}}), encoding="utf-8"
+    )
+    result = build_pitnn_cohort_spatial_artifact(tmp_path)
+    assert result["status"] == "unavailable"
+    assert "export-spatial" in result["reason"]
+
+
+def test_pitnn_cohort_spatial_artifact_available_with_real_defect_map(tmp_path):
+    _write_pitnn_cohort_subject(tmp_path, "sub-1010", bottleneck=0.42)
+    result = build_pitnn_cohort_spatial_artifact(tmp_path)
+    assert result["status"] == "available"
+    assert result["subject_count"] == 1
+    subject = result["subjects"][0]
+    assert subject["subject_id"] == "sub-1010"
+    assert set(subject["conditions"]) == {"awake", "sedated"}
+    assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.42)
+    assert subject["conditions"]["awake"]["wave_vectors"] is None
+    assert subject["conditions"]["awake"]["defects"]["n_valid_triangles"] == 1
+
+
+def test_pitnn_cohort_spatial_artifact_skips_subjects_with_no_snapshot(tmp_path):
+    _write_pitnn_cohort_subject(tmp_path, "sub-01", awake=False, sedated=False)
+    _write_pitnn_cohort_subject(tmp_path, "sub-02")
+    result = build_pitnn_cohort_spatial_artifact(tmp_path)
+    assert result["status"] == "available"
+    assert result["subject_count"] == 1
+    assert result["subjects"][0]["subject_id"] == "sub-02"
+
+
+def test_visualization_payload_includes_pitnn_cohort_spatial_artifact(tmp_path, monkeypatch):
+    (tmp_path / "manifest.json").write_text(json.dumps({"processed_subjects": {}, "failed_subjects": {}}), encoding="utf-8")
+    _write_csv(tmp_path / "sub-01_features_t.csv")
+
+    cohort_root = tmp_path / "pitnn_cohort"
+    _write_pitnn_cohort_subject(cohort_root, "sub-1010")
+    monkeypatch.setenv("NEUROTOPOLOGY_PITNN_COHORT_ROOT", str(cohort_root))
+
+    payload = build_visualization_payload(tmp_path)
+    assert payload["spatial_artifact"]["status"] == "unavailable"  # CSV path is untouched
+    assert payload["pitnn_cohort_spatial_artifact"]["status"] == "available"
+    assert payload["pitnn_cohort_spatial_artifact"]["subject_count"] == 1
+
+
+def test_registry_reflects_pitnn_cohort_spatial_availability(tmp_path, monkeypatch):
+    (tmp_path / "manifest.json").write_text(json.dumps({"processed_subjects": {"sub-01": {}}, "failed_subjects": {}}), encoding="utf-8")
+    _write_csv(tmp_path / "sub-01_features_t.csv")
+
+    cohort_root = tmp_path / "pitnn_cohort"
+    _write_pitnn_cohort_subject(cohort_root, "sub-1010")
+    monkeypatch.setenv("NEUROTOPOLOGY_PITNN_COHORT_ROOT", str(cohort_root))
+
+    registry = build_command_center_registry(tmp_path)
+    assert registry["guardrails"]["pitnn_cohort_spatial_data"]["status"] == "available"
+    pilot = next(p for p in registry["proposed_runs"] if p["proposal_id"] == "spatial-topology-pilot")
+    assert pilot["status"] == "available"

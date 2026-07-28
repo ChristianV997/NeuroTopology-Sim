@@ -15,6 +15,7 @@ from tools.stream_pitnn_cohort_ds005620 import (
     _eeg_prefix_bytes,
     _plv_matrix,
     list_recording_keys,
+    spatial_defect_snapshot,
 )
 
 _HEADER = (
@@ -147,3 +148,56 @@ def test_condition_summary_empty_is_null_not_zero() -> None:
     assert summary["windows"] == 0
     assert summary["mean_landscape_area"] is None
     assert summary["mean_q_spatial"] is None
+
+
+def _vortex_montage_and_phase(charge: int = 1):
+    """8 sensors on a circle + a center, phase = charge * polar angle: a genuine
+    integer-winding vortex with a known answer to check the defect map against."""
+    angles = np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False)
+    xy = np.stack([np.cos(angles), np.sin(angles)], axis=1)
+    xy = np.vstack([xy, [0.0, 0.0]])
+    montage = np.hstack([xy, np.zeros((9, 1))])
+    phase_values = np.concatenate([charge * angles, [0.0]])
+    phase = np.tile(phase_values[:, None], (1, 5))  # (channels, samples)
+    return montage, phase
+
+
+def test_spatial_defect_snapshot_recovers_known_vortex_charge() -> None:
+    """Total signed winding over all triangles must equal the field's real charge."""
+    montage, phase = _vortex_montage_and_phase(charge=1)
+    snapshot = spatial_defect_snapshot(phase, montage, beta1=4)
+    assert snapshot is not None
+    assert snapshot["beta1"] == 4
+    assert snapshot["defects"]["n_valid_triangles"] > 0
+    assert sum(snapshot["defects"]["signed_winding"]) == pytest.approx(1.0, abs=1e-6)
+    assert snapshot["coordinate_frame"] == "sensor_2d_projection_of_standard_1020_montage"
+    assert len(snapshot["channel_coordinates"]) == 9
+    assert len(snapshot["phase"]) == 9
+    assert snapshot["wave_vectors"] is None  # not implemented; must not be fabricated
+    assert snapshot["quality_control"]["all_finite"] is True
+
+
+def test_spatial_defect_snapshot_negative_charge_flips_sign() -> None:
+    montage, phase = _vortex_montage_and_phase(charge=-1)
+    snapshot = spatial_defect_snapshot(phase, montage)
+    assert sum(snapshot["defects"]["signed_winding"]) == pytest.approx(-1.0, abs=1e-6)
+
+
+def test_spatial_defect_snapshot_none_montage_returns_none() -> None:
+    _, phase = _vortex_montage_and_phase()
+    assert spatial_defect_snapshot(phase, None) is None
+
+
+def test_spatial_defect_snapshot_too_few_channels_returns_none() -> None:
+    montage, phase = _vortex_montage_and_phase()
+    assert spatial_defect_snapshot(phase[:2], montage[:2]) is None
+
+
+def test_spatial_defect_snapshot_drops_non_finite_positions_not_fabricates() -> None:
+    montage, phase = _vortex_montage_and_phase()
+    montage = montage.copy()
+    montage[3, :2] = np.nan  # one bad sensor position
+    snapshot = spatial_defect_snapshot(phase, montage)
+    assert snapshot is not None
+    assert snapshot["quality_control"]["n_channels_finite_position"] == 8
+    assert len(snapshot["channel_coordinates"]) == 8
