@@ -6,16 +6,27 @@ gated because raw time series were process-and-discarded: **ds000245** (PD fMRI,
 global_efficiency η²=0.41) and **ds005620** (propofol EEG, signed alpha
 anteriorization dz=−1.06). This task re-fetches and gates them.
 
+**Update: both headlines are now completed.** ds005620 was completed in the
+original session below. **ds000245 was completed in a later session** — the
+exact re-fetch + `--save-timeseries` + gate this file originally deferred, now
+run for real on all 45 subjects. See
+`REPORT_ds000245_global_efficiency_gate.md` for the full result:
+η²=0.406 (reproduces the claimed 0.41), 45/45 subjects pass the surrogate gate
+(Q1), and the CTL<ODN<ODP contrast survives a 10,000-permutation label-shuffle
+null at p=0.0001 (Q2). The "DEFERRED" section below is kept verbatim as the
+historical record of what was scoped and why; it is superseded by that report.
+
 **Scope decision (stated, per the task's "do one completely" instruction):
-ds005620 was completed in full; ds000245 is deferred with reasons.** ds005620 is
-the more important headline (the novel signed-winding metric's first evidence of
-carrying information beyond unsigned Qabs), its pipeline is present on this
-branch, and EEG re-fetch is tractable. ds000245's `fmri_tda_pipeline.py` is not on
-this branch (only on `origin/main`), its cached `conn/*.npy` are the later
-Schaefer-200 matrices (200×200) not the original K=100 headline, and no ROI
-timeseries survive — so gating it needs a full 45-subject BOLD re-fetch +
-re-parcellation, which the task itself flags as the heavier path to defer if
-choosing one. See the ds000245 section for exactly what remains.
+ds005620 was completed in full; ds000245 was deferred with reasons at the
+time.** ds005620 is the more important headline (the novel signed-winding
+metric's first evidence of carrying information beyond unsigned Qabs), its
+pipeline is present on this branch, and EEG re-fetch is tractable. ds000245's
+`fmri_tda_pipeline.py` is not on this branch (only on `origin/main`), its cached
+`conn/*.npy` are the later Schaefer-200 matrices (200×200) not the original
+K=100 headline, and no ROI timeseries survive — so gating it needs a full
+45-subject BOLD re-fetch + re-parcellation, which the task itself flags as the
+heavier path to defer if choosing one. See the ds000245 section for exactly
+what remained (now done).
 
 ---
 
@@ -103,7 +114,7 @@ pass.
 
 ---
 
-## ds000245 (Parkinson's fMRI) — DEFERRED (exactly what remains)
+## ds000245 (Parkinson's fMRI) — DEFERRED at the time (now COMPLETED — see `REPORT_ds000245_global_efficiency_gate.md`)
 
 Not gated this session. Precise reasons and what is required:
 

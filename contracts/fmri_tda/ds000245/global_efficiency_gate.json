@@ -1,0 +1,533 @@
+{
+  "dataset_id": "ds000245",
+  "group_means_global_efficiency": {
+    "CTL": 0.3904838981445119,
+    "ODN": 0.43311363369141814,
+    "ODP": 0.45433383036716946
+  },
+  "group_n": {
+    "CTL": 15,
+    "ODN": 15,
+    "ODP": 15
+  },
+  "n_subjects": 45,
+  "question_a_metric_validity": {
+    "fraction_pass": 1.0,
+    "method": "surrogate_test_topology_metric_ft_two_sided",
+    "n_pass_p05": 45,
+    "n_subjects_gated": 45,
+    "per_subject": [
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.339629148629152,
+        "subject_id": "sub-CTL01",
+        "surrogate_mean": 0.5408198821548765,
+        "surrogate_std": 0.004572971471309199,
+        "z_score": -43.9956240243339
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.32422318422318563,
+        "subject_id": "sub-CTL02",
+        "surrogate_mean": 0.5528817340067306,
+        "surrogate_std": 0.00153958702470275,
+        "z_score": -148.5194056033905
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.41754256854258043,
+        "subject_id": "sub-CTL03",
+        "surrogate_mean": 0.5550748316498266,
+        "surrogate_std": 0.0012453392471675731,
+        "z_score": -110.43758832788141
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.35804280904280955,
+        "subject_id": "sub-CTL04",
+        "surrogate_mean": 0.5560494949494913,
+        "surrogate_std": 0.0012307372228767132,
+        "z_score": -160.88461633090355
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.3857681577681658,
+        "subject_id": "sub-CTL05",
+        "surrogate_mean": 0.5458930976430912,
+        "surrogate_std": 0.002285875342296688,
+        "z_score": -70.04972533368468
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4252929292929412,
+        "subject_id": "sub-CTL06",
+        "surrogate_mean": 0.5545776094276053,
+        "surrogate_std": 0.0016518738523781413,
+        "z_score": -78.26546800080267
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.41052910052911423,
+        "subject_id": "sub-CTL07",
+        "surrogate_mean": 0.5513347643097594,
+        "surrogate_std": 0.0017545458130847718,
+        "z_score": -80.25191632533452
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.39347186147186886,
+        "subject_id": "sub-CTL08",
+        "surrogate_mean": 0.5490561111111062,
+        "surrogate_std": 0.003012818982339899,
+        "z_score": -51.6407559004435
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4156031746031865,
+        "subject_id": "sub-CTL09",
+        "surrogate_mean": 0.5490874074074018,
+        "surrogate_std": 0.0020222221664432946,
+        "z_score": -66.00868837225177
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4317486772486869,
+        "subject_id": "sub-CTL10",
+        "surrogate_mean": 0.5514664478114457,
+        "surrogate_std": 0.002300785477020825,
+        "z_score": -52.03343456330207
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.393319865319876,
+        "subject_id": "sub-CTL11",
+        "surrogate_mean": 0.551116161616159,
+        "surrogate_std": 0.002038252160176099,
+        "z_score": -77.41745569039398
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.37757623857624295,
+        "subject_id": "sub-CTL12",
+        "surrogate_mean": 0.5264942592592593,
+        "surrogate_std": 0.0064218196274180225,
+        "z_score": -23.189380786593475
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.3761212121212192,
+        "subject_id": "sub-CTL13",
+        "surrogate_mean": 0.549482929292922,
+        "surrogate_std": 0.002212394561870962,
+        "z_score": -78.35931264678914
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4216315536315638,
+        "subject_id": "sub-CTL14",
+        "surrogate_mean": 0.554118181818176,
+        "surrogate_std": 0.0015404592223239332,
+        "z_score": -86.00463177905037
+      },
+      {
+        "group": "CTL",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.3867579911670868,
+        "subject_id": "sub-CTL15",
+        "surrogate_mean": 0.5529941919191873,
+        "surrogate_std": 0.0014789167063940288,
+        "z_score": -112.40403197379939
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4525339105339171,
+        "subject_id": "sub-ODN01",
+        "surrogate_mean": 0.5484489393939324,
+        "surrogate_std": 0.0021917465784757743,
+        "z_score": -43.76191563475294
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.41531697931698885,
+        "subject_id": "sub-ODN02",
+        "surrogate_mean": 0.552545202020198,
+        "surrogate_std": 0.0016065426341204826,
+        "z_score": -85.41835105318324
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4541649831649899,
+        "subject_id": "sub-ODN03",
+        "surrogate_mean": 0.5558284511784459,
+        "surrogate_std": 0.0012621615532034522,
+        "z_score": -80.54711202019047
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4772929292929342,
+        "subject_id": "sub-ODN04",
+        "surrogate_mean": 0.553958417508413,
+        "surrogate_std": 0.0016023121817225496,
+        "z_score": -47.846786094492735
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4099696969697097,
+        "subject_id": "sub-ODN05",
+        "surrogate_mean": 0.5448040836940785,
+        "surrogate_std": 0.004582467335407803,
+        "z_score": -29.42397116124116
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.38037037037037696,
+        "subject_id": "sub-ODN06",
+        "surrogate_mean": 0.550581565656562,
+        "surrogate_std": 0.0015258210542169832,
+        "z_score": -111.55383838475973
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4865824915824926,
+        "subject_id": "sub-ODN07",
+        "surrogate_mean": 0.5575037037037003,
+        "surrogate_std": 0.0010446305338129378,
+        "z_score": -67.89119198186059
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.35238367805034826,
+        "subject_id": "sub-ODN08",
+        "surrogate_mean": 0.556360185185182,
+        "surrogate_std": 0.0012849875106933741,
+        "z_score": -158.738124252094
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4301380471380577,
+        "subject_id": "sub-ODN09",
+        "surrogate_mean": 0.5553657407407372,
+        "surrogate_std": 0.001416609662352137,
+        "z_score": -88.39957606582435
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4351380471380587,
+        "subject_id": "sub-ODN10",
+        "surrogate_mean": 0.556989898989896,
+        "surrogate_std": 0.0010524188029546354,
+        "z_score": -115.7826632418024
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4364781144781215,
+        "subject_id": "sub-ODN11",
+        "surrogate_mean": 0.5542591750841688,
+        "surrogate_std": 0.0013938121002093525,
+        "z_score": -84.50282544423052
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4256897546897543,
+        "subject_id": "sub-ODN12",
+        "surrogate_mean": 0.5526276094276034,
+        "surrogate_std": 0.0014964588086722975,
+        "z_score": -84.82549202304612
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.3956469456469541,
+        "subject_id": "sub-ODN13",
+        "surrogate_mean": 0.5561100168350116,
+        "surrogate_std": 0.0011294648121097242,
+        "z_score": -142.07000472049145
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4586820586820661,
+        "subject_id": "sub-ODN14",
+        "surrogate_mean": 0.5547156565656516,
+        "surrogate_std": 0.001207388332820965,
+        "z_score": -79.53828546546478
+      },
+      {
+        "group": "ODN",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4863164983165026,
+        "subject_id": "sub-ODN15",
+        "surrogate_mean": 0.5512948653198607,
+        "surrogate_std": 0.001610829112739761,
+        "z_score": -40.338460789822946
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.46329629629630126,
+        "subject_id": "sub-ODP01",
+        "surrogate_mean": 0.5568265151515109,
+        "surrogate_std": 0.0010815336643552294,
+        "z_score": -86.47924880911492
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4665185185185246,
+        "subject_id": "sub-ODP02",
+        "surrogate_mean": 0.5550298821548778,
+        "surrogate_std": 0.001279390524016469,
+        "z_score": -69.18244427704848
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.45505531505531893,
+        "subject_id": "sub-ODP03",
+        "surrogate_mean": 0.536079696969692,
+        "surrogate_std": 0.003958865429699129,
+        "z_score": -20.466566331488288
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4405230880230942,
+        "subject_id": "sub-ODP04",
+        "surrogate_mean": 0.5530793771043738,
+        "surrogate_std": 0.001443562301773709,
+        "z_score": -77.9712028659805
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.49303030303030365,
+        "subject_id": "sub-ODP05",
+        "surrogate_mean": 0.5566840067340036,
+        "surrogate_std": 0.0010978901559026795,
+        "z_score": -57.978207893998515
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4954949494949505,
+        "subject_id": "sub-ODP06",
+        "surrogate_mean": 0.5556546296296265,
+        "surrogate_std": 0.0011717733958772941,
+        "z_score": -51.34071173346203
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4831010101010108,
+        "subject_id": "sub-ODP07",
+        "surrogate_mean": 0.549192525252521,
+        "surrogate_std": 0.003335197862039653,
+        "z_score": -19.81637008818773
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.45066329966330204,
+        "subject_id": "sub-ODP08",
+        "surrogate_mean": 0.5540525252525197,
+        "surrogate_std": 0.0014066964825939347,
+        "z_score": -73.49789159817114
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4576565656565699,
+        "subject_id": "sub-ODP09",
+        "surrogate_mean": 0.5557364478114443,
+        "surrogate_std": 0.0012682620136214222,
+        "z_score": -77.3340848353685
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4437138047138132,
+        "subject_id": "sub-ODP10",
+        "surrogate_mean": 0.5568127946127907,
+        "surrogate_std": 0.0011148371256411718,
+        "z_score": -101.44889087177758
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.38359884559885365,
+        "subject_id": "sub-ODP11",
+        "surrogate_mean": 0.5555021885521829,
+        "surrogate_std": 0.0014188460134149103,
+        "z_score": -121.15715259303471
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4411111111111211,
+        "subject_id": "sub-ODP12",
+        "surrogate_mean": 0.5525952861952836,
+        "surrogate_std": 0.0015189662595677647,
+        "z_score": -73.39476725170073
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.47298989898990546,
+        "subject_id": "sub-ODP13",
+        "surrogate_mean": 0.5578029461279427,
+        "surrogate_std": 0.0010244262184828424,
+        "z_score": -82.79078142264251
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4523771043771157,
+        "subject_id": "sub-ODP14",
+        "surrogate_mean": 0.5536984006733977,
+        "surrogate_std": 0.0015245705062193607,
+        "z_score": -66.45891146585222
+      },
+      {
+        "group": "ODP",
+        "n_surrogates": 200,
+        "p_value": 0.004975124378109453,
+        "passes_gate_p05": true,
+        "real_value": 0.4158773448773549,
+        "subject_id": "sub-ODP15",
+        "surrogate_mean": 0.5572863636363599,
+        "surrogate_std": 0.0010263879209080724,
+        "z_score": -137.7734635009117
+      }
+    ]
+  },
+  "question_b_contrast_reality": {
+    "group_n": {
+      "CTL": 15,
+      "ODN": 15,
+      "ODP": 15
+    },
+    "method": "permutation_anova_label_shuffle",
+    "n_groups": 3,
+    "n_permutations": 10000,
+    "observed_eta_squared": 0.40584802638066786,
+    "observed_f": 14.344492541321465,
+    "p_value": 9.999000099990002e-05,
+    "seed": 0
+  },
+  "schema": "NeuroTopologySim.DS000245GlobalEfficiencyGate.v1",
+  "scientific_note": "global_efficiency is computed on a K=100 coordinate (non-anatomical) parcellation -- the original headline's own choice, not a Schaefer/anatomical atlas -- so a real spatial-normalization or anatomical claim is not being tested here, only whether the numeric group effect and its network structure are statistically real for THIS parcellation. group_means/eta_squared do not by themselves establish a clinical or anatomical Parkinson's mechanism."
+}
