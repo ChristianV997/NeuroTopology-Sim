@@ -1,0 +1,173 @@
+{
+  "schema_version": "0.1",
+  "run_id": "ef432e1788b331d7",
+  "run_kind": "eeg_cohort",
+  "created_at": "2026-07-27T23:43:30.480885+00:00",
+  "elapsed_s": null,
+  "spec_id": null,
+  "claim_type": "C",
+  "layer": "biophysical",
+  "data_mode": "empirical_local",
+  "dataset_id": "ds005620",
+  "verdict": {
+    "NOT_SUPPORTED": 20
+  },
+  "metrics": {
+    "schema": "NeuroTopologySim.DS005620PITNNCohort.v1",
+    "dataset_id": "ds005620",
+    "n_paired_subjects": 20,
+    "subjects": [
+      "sub-1010",
+      "sub-1016",
+      "sub-1017",
+      "sub-1022",
+      "sub-1024",
+      "sub-1033",
+      "sub-1036",
+      "sub-1045",
+      "sub-1046",
+      "sub-1054",
+      "sub-1055",
+      "sub-1057",
+      "sub-1060",
+      "sub-1061",
+      "sub-1062",
+      "sub-1064",
+      "sub-1067",
+      "sub-1068",
+      "sub-1071",
+      "sub-1074"
+    ],
+    "acquisition": {
+      "sample_rate_hz": 500.0,
+      "n_channels": 65,
+      "n_samples_per_condition": 15000,
+      "band_hz": [
+        30.0,
+        80.0
+      ],
+      "windows_per_condition": 3
+    },
+    "topology_tests": {
+      "integrated_landscape_area": {
+        "subject_blocked_permutation": {
+          "observed_stat": -0.0060088886740431195,
+          "p_value": 0.0746,
+          "n_permutations": 10000,
+          "n_a": 20,
+          "n_b": 20,
+          "method": "permutation_test_subject_blocked_paired",
+          "seed": 0,
+          "alternative": "two-sided",
+          "effect_size_d": -0.42160926190566744
+        },
+        "mixedlm": {
+          "coef": 0.006008888674043119,
+          "se": 0.0014688150875399612,
+          "p_value": 4.295598193146754e-05,
+          "converged": true,
+          "n_obs": 120,
+          "n_groups": 20,
+          "method": "mixedlm_random_intercept",
+          "convergence_warning": "The MLE may be on the boundary of the parameter space."
+        },
+        "paired_wilcoxon_subject_means": {
+          "n_pairs": 20,
+          "statistic": 50.0,
+          "p_value": 0.039989471435546875,
+          "median_awake": 0.003641324777404467,
+          "median_sedated": 0.009032540894175569,
+          "status": "computed"
+        }
+      },
+      "beta1": {
+        "subject_blocked_permutation": {
+          "observed_stat": 0.4500000000000002,
+          "p_value": 0.4396,
+          "n_permutations": 10000,
+          "n_a": 20,
+          "n_b": 20,
+          "method": "permutation_test_subject_blocked_paired",
+          "seed": 0,
+          "alternative": "two-sided",
+          "effect_size_d": 0.17673921667357093
+        },
+        "mixedlm": {
+          "coef": -0.4499999999999996,
+          "se": 0.2944081097162385,
+          "p_value": 0.12639079945608234,
+          "converged": true,
+          "n_obs": 120,
+          "n_groups": 20,
+          "method": "mixedlm_random_intercept",
+          "convergence_warning": null
+        },
+        "paired_wilcoxon_subject_means": {
+          "n_pairs": 20,
+          "statistic": 78.0,
+          "p_value": 0.49381376689627676,
+          "median_awake": 1.6666666666666667,
+          "median_sedated": 2.5,
+          "status": "computed"
+        }
+      },
+      "mean_plv": {
+        "subject_blocked_permutation": {
+          "observed_stat": 0.04263231626727199,
+          "p_value": 0.27,
+          "n_permutations": 10000,
+          "n_a": 20,
+          "n_b": 20,
+          "method": "permutation_test_subject_blocked_paired",
+          "seed": 0,
+          "alternative": "two-sided",
+          "effect_size_d": 0.2544304890643517
+        },
+        "mixedlm": {
+          "coef": -0.04263231626727201,
+          "se": 0.01676088927726819,
+          "p_value": 0.010972942080937534,
+          "converged": true,
+          "n_obs": 120,
+          "n_groups": 20,
+          "method": "mixedlm_random_intercept",
+          "convergence_warning": null
+        },
+        "paired_wilcoxon_subject_means": {
+          "n_pairs": 20,
+          "statistic": 68.0,
+          "p_value": 0.17685317993164062,
+          "median_awake": 0.6001429540208278,
+          "median_sedated": 0.513223623719913,
+          "status": "computed"
+        }
+      }
+    },
+    "pitnn": {
+      "verdict_counts": {
+        "NOT_SUPPORTED": 20
+      },
+      "bayes_factor_min": 0.9999992542734644,
+      "bayes_factor_max": 0.9999998762190222,
+      "bayes_factor_median": 0.9999995269951434,
+      "pass_threshold": 100.0,
+      "n_above_pass_threshold": 0,
+      "mean_beta_1_awake": 5.165923333333334,
+      "mean_beta_1_sedated": 9.533246666666667,
+      "paired_wilcoxon_mean_beta_1": {
+        "n_pairs": 20,
+        "statistic": 10.0,
+        "p_value": 8.20159912109375e-05,
+        "status": "computed"
+      }
+    },
+    "scientific_note": "Persistent-H1 landscape area and PLV are descriptive EEG network measures. A paired difference between an eyes-closed awake recording and a propofol sedation recording does not identify a mechanism and is not a measure of consciousness. PITNN PASS is reserved strictly for Bayes factor K > 100."
+  },
+  "artifacts": {
+    "cohort_summary": "cohort_summary.json",
+    "per_subject_csv": "cohort_per_subject.csv",
+    "pairing": "pairing.json"
+  },
+  "source": "tools/analyze_pitnn_cohort_ds005620.py",
+  "steps": null
+}

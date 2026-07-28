@@ -1,0 +1,82 @@
+{
+  "sub-1010": {
+    "awake": "ds005620/sub-1010/eeg/sub-1010_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1010/eeg/sub-1010_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1016": {
+    "awake": "ds005620/sub-1016/eeg/sub-1016_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1016/eeg/sub-1016_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1017": {
+    "awake": "ds005620/sub-1017/eeg/sub-1017_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1017/eeg/sub-1017_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1022": {
+    "awake": "ds005620/sub-1022/eeg/sub-1022_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1022/eeg/sub-1022_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1024": {
+    "awake": "ds005620/sub-1024/eeg/sub-1024_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1024/eeg/sub-1024_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1033": {
+    "awake": "ds005620/sub-1033/eeg/sub-1033_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1033/eeg/sub-1033_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1036": {
+    "awake": "ds005620/sub-1036/eeg/sub-1036_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1036/eeg/sub-1036_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1045": {
+    "awake": "ds005620/sub-1045/eeg/sub-1045_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1045/eeg/sub-1045_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1046": {
+    "awake": "ds005620/sub-1046/eeg/sub-1046_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1046/eeg/sub-1046_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1054": {
+    "awake": "ds005620/sub-1054/eeg/sub-1054_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1054/eeg/sub-1054_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1055": {
+    "awake": "ds005620/sub-1055/eeg/sub-1055_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1055/eeg/sub-1055_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1057": {
+    "awake": "ds005620/sub-1057/eeg/sub-1057_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1057/eeg/sub-1057_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1060": {
+    "awake": "ds005620/sub-1060/eeg/sub-1060_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1060/eeg/sub-1060_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1061": {
+    "awake": "ds005620/sub-1061/eeg/sub-1061_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1061/eeg/sub-1061_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1062": {
+    "awake": "ds005620/sub-1062/eeg/sub-1062_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1062/eeg/sub-1062_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1064": {
+    "awake": "ds005620/sub-1064/eeg/sub-1064_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1064/eeg/sub-1064_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1067": {
+    "awake": "ds005620/sub-1067/eeg/sub-1067_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1067/eeg/sub-1067_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1068": {
+    "awake": "ds005620/sub-1068/eeg/sub-1068_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1068/eeg/sub-1068_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1071": {
+    "awake": "ds005620/sub-1071/eeg/sub-1071_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1071/eeg/sub-1071_task-sed_acq-rest_run-1_eeg.vhdr"
+  },
+  "sub-1074": {
+    "awake": "ds005620/sub-1074/eeg/sub-1074_task-awake_acq-EC_eeg.vhdr",
+    "sedated": "ds005620/sub-1074/eeg/sub-1074_task-sed_acq-rest_run-1_eeg.vhdr"
+  }
+}

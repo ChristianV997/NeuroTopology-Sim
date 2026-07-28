@@ -10,7 +10,7 @@ Exhaustive record of all datasets considered for onboarding into NeuroTopology-S
 
 | Dataset ID | Modality | Status | Notes | Date Onboarded |
 |---|---|---|---|---|
-| ds005620 | EEG | **Onboarded** | Propofol sedation; task→state: awake/sed/sed2; 182 recordings | 2026-06 |
+| ds005620 | EEG | **Onboarded** | Propofol sedation; task→state: awake/sed/sed2; 202 recordings (65 ch @ 5000 Hz, 83 GB). Re-run 2026-07 at full paired-cohort scale (n=20) via ranged S3 download — see `REPORT_ds005620_pitnn_cohort_topology.md` | 2026-06 |
 | ds003969 | EEG | **Onboarded** | Meditation vs thinking; BioSemi 64ch 1024Hz | 2026-06 |
 | ds003816 | EEG | **Onboarded** | Loving-kindness meditation; BrainVision 128ch | 2026-06 |
 | ds004541 | EEG | **Onboarded** | General anesthesia (awake vs anesthetized); loc/roc event markers | 2026-06 |
