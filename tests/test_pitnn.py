@@ -48,6 +48,21 @@ def test_runner_fast_options_keep_synthetic_guardrail(tmp_path):
     assert "advanced_biophysics" in result["metrics"]
 
 
+def test_runner_accepts_labeled_ds005620_csv(tmp_path):
+    labeled_csv = tmp_path / "sub-1010_pitnn_input.csv"
+    labeled_csv.write_text(
+        "subject_id,state,window_id,duration_s,q_net,q_abs,f_dress,defect_density\n"
+        "sub-1010,awake,0,10,1.5,2.0,0.25,0.1\n"
+        "sub-1010,sedated,1,10,-0.5,1.0,0.75,0.2\n",
+        encoding="utf-8",
+    )
+    result = run_pipeline(output_dir=tmp_path / "labeled", input_path=labeled_csv, empirical=True,
+                          sample_rate_hz=100.0, n_spins=6, steps=8)
+    assert result["data_mode"] == "empirical_labeled"
+    assert result["input"]["n_samples"] == 8
+    assert (tmp_path / "labeled" / "RunRecord.json").exists()
+
+
 def test_long_horizon_spinor_norm_stability():
     """Audit 100,000 explicit steps for finite state and bounded norm drift."""
     np.random.seed(42)

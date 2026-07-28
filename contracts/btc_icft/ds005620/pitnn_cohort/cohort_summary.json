@@ -1,0 +1,315 @@
+{
+  "acquisition": {
+    "band_hz": [
+      30.0,
+      80.0
+    ],
+    "n_channels": 65,
+    "n_samples_per_condition": 15000,
+    "sample_rate_hz": 500.0,
+    "windows_per_condition": 3
+  },
+  "cubical_persistence_h1_bottleneck": {
+    "available": true,
+    "max": 0.3548402182067281,
+    "mean": 0.19359660058101064,
+    "median": 0.17972973603365203,
+    "min": 0.07700955435944912,
+    "n_subjects": 20,
+    "wilcoxon_greater_than_zero": {
+      "p_value": 9.5367431640625e-07,
+      "statistic": 210.0
+    }
+  },
+  "dataset_id": "ds005620",
+  "n_paired_subjects": 20,
+  "pitnn": {
+    "bayes_factor_max": 0.9999998762190222,
+    "bayes_factor_median": 0.9999995269951434,
+    "bayes_factor_min": 0.9999992542734644,
+    "mean_beta_1_awake": 5.165923333333334,
+    "mean_beta_1_sedated": 9.533246666666667,
+    "n_above_pass_threshold": 0,
+    "paired_wilcoxon_mean_beta_1": {
+      "n_pairs": 20,
+      "p_value": 8.20159912109375e-05,
+      "statistic": 10.0,
+      "status": "computed"
+    },
+    "pass_threshold": 100.0,
+    "verdict_counts": {
+      "NOT_SUPPORTED": 20
+    }
+  },
+  "schema": "NeuroTopologySim.DS005620PITNNCohort.v1",
+  "scientific_note": "Persistent-H1 landscape area and PLV are descriptive EEG network measures. A paired difference between an eyes-closed awake recording and a propofol sedation recording does not identify a mechanism and is not a measure of consciousness. PITNN PASS is reserved strictly for Bayes factor K > 100.",
+  "spatial_defect_map": {
+    "available": true,
+    "mean_qabs_awake": 3.3000000000000007,
+    "mean_qabs_sedated": 5.95,
+    "n_subjects": 20,
+    "paired_wilcoxon_qabs": {
+      "p_value": 0.05439995743909016,
+      "statistic": 53.5
+    },
+    "per_subject": [
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 1.7317495102045797e-15,
+        "sedated_beta1": 3,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1010"
+      },
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 4.0,
+        "sedated_beta1": 4,
+        "sedated_qabs": 7.730481148409251e-21,
+        "subject": "sub-1016"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 2.0000000000000018,
+        "sedated_beta1": 4,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1017"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 7.0,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000013,
+        "subject": "sub-1022"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 2.0,
+        "sedated_beta1": 4,
+        "sedated_qabs": 5.000000000000001,
+        "subject": "sub-1024"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 4.000000000000001,
+        "sedated_beta1": 5,
+        "sedated_qabs": 15.0,
+        "subject": "sub-1033"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 3.0,
+        "sedated_beta1": 6,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1036"
+      },
+      {
+        "awake_beta1": 5,
+        "awake_qabs": 3.000000000000001,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000018,
+        "subject": "sub-1045"
+      },
+      {
+        "awake_beta1": 6,
+        "awake_qabs": 2.0,
+        "sedated_beta1": 1,
+        "sedated_qabs": 4.000000000000001,
+        "subject": "sub-1046"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 7.067986412767933e-16,
+        "sedated_beta1": 7,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1054"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 11.0,
+        "sedated_beta1": 1,
+        "sedated_qabs": 1.000000000000002,
+        "subject": "sub-1055"
+      },
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 2.000000000000001,
+        "sedated_beta1": 2,
+        "sedated_qabs": 7.000000000000001,
+        "subject": "sub-1057"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 1.061777836345334e-16,
+        "sedated_beta1": 0,
+        "sedated_qabs": 2.000000000000001,
+        "subject": "sub-1060"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 1.4136459824784234e-15,
+        "sedated_beta1": 5,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1061"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 1.0780040109559384e-18,
+        "sedated_beta1": 0,
+        "sedated_qabs": 4.000000000000002,
+        "subject": "sub-1062"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 8.0,
+        "sedated_beta1": 0,
+        "sedated_qabs": 4.595276376191728e-16,
+        "subject": "sub-1064"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 9.0,
+        "sedated_beta1": 2,
+        "sedated_qabs": 7.000000000000001,
+        "subject": "sub-1067"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 3.0000000000000018,
+        "sedated_beta1": 3,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1068"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 6.000000000000002,
+        "sedated_beta1": 3,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1071"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 1.6256236450712301e-15,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000004,
+        "subject": "sub-1074"
+      }
+    ]
+  },
+  "subjects": [
+    "sub-1010",
+    "sub-1016",
+    "sub-1017",
+    "sub-1022",
+    "sub-1024",
+    "sub-1033",
+    "sub-1036",
+    "sub-1045",
+    "sub-1046",
+    "sub-1054",
+    "sub-1055",
+    "sub-1057",
+    "sub-1060",
+    "sub-1061",
+    "sub-1062",
+    "sub-1064",
+    "sub-1067",
+    "sub-1068",
+    "sub-1071",
+    "sub-1074"
+  ],
+  "topology_tests": {
+    "beta1": {
+      "mixedlm": {
+        "coef": -0.4499999999999996,
+        "converged": true,
+        "convergence_warning": null,
+        "method": "mixedlm_random_intercept",
+        "n_groups": 20,
+        "n_obs": 120,
+        "p_value": 0.12639079945608234,
+        "se": 0.2944081097162385
+      },
+      "paired_wilcoxon_subject_means": {
+        "median_awake": 1.6666666666666667,
+        "median_sedated": 2.5,
+        "n_pairs": 20,
+        "p_value": 0.49381376689627676,
+        "statistic": 78.0,
+        "status": "computed"
+      },
+      "subject_blocked_permutation": {
+        "alternative": "two-sided",
+        "effect_size_d": 0.17673921667357093,
+        "method": "permutation_test_subject_blocked_paired",
+        "n_a": 20,
+        "n_b": 20,
+        "n_permutations": 10000,
+        "observed_stat": 0.4500000000000002,
+        "p_value": 0.4396,
+        "seed": 0
+      }
+    },
+    "integrated_landscape_area": {
+      "mixedlm": {
+        "coef": 0.006008888674043119,
+        "converged": true,
+        "convergence_warning": "The MLE may be on the boundary of the parameter space.",
+        "method": "mixedlm_random_intercept",
+        "n_groups": 20,
+        "n_obs": 120,
+        "p_value": 4.295598193146754e-05,
+        "se": 0.0014688150875399612
+      },
+      "paired_wilcoxon_subject_means": {
+        "median_awake": 0.003641324777404467,
+        "median_sedated": 0.009032540894175569,
+        "n_pairs": 20,
+        "p_value": 0.039989471435546875,
+        "statistic": 50.0,
+        "status": "computed"
+      },
+      "subject_blocked_permutation": {
+        "alternative": "two-sided",
+        "effect_size_d": -0.42160926190566744,
+        "method": "permutation_test_subject_blocked_paired",
+        "n_a": 20,
+        "n_b": 20,
+        "n_permutations": 10000,
+        "observed_stat": -0.0060088886740431195,
+        "p_value": 0.0746,
+        "seed": 0
+      }
+    },
+    "mean_plv": {
+      "mixedlm": {
+        "coef": -0.04263231626727201,
+        "converged": true,
+        "convergence_warning": null,
+        "method": "mixedlm_random_intercept",
+        "n_groups": 20,
+        "n_obs": 120,
+        "p_value": 0.010972942080937534,
+        "se": 0.01676088927726819
+      },
+      "paired_wilcoxon_subject_means": {
+        "median_awake": 0.6001429540208278,
+        "median_sedated": 0.513223623719913,
+        "n_pairs": 20,
+        "p_value": 0.17685317993164062,
+        "statistic": 68.0,
+        "status": "computed"
+      },
+      "subject_blocked_permutation": {
+        "alternative": "two-sided",
+        "effect_size_d": 0.2544304890643517,
+        "method": "permutation_test_subject_blocked_paired",
+        "n_a": 20,
+        "n_b": 20,
+        "n_permutations": 10000,
+        "observed_stat": 0.04263231626727199,
+        "p_value": 0.27,
+        "seed": 0
+      }
+    }
+  }
+}

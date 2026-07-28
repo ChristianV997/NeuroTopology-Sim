@@ -280,6 +280,57 @@ def save_manifest(path: Path, manifest: dict) -> None:
     tmp.replace(path)
 
 
+def run_manifest_loop(
+    items: list,
+    out_path: Path,
+    key_fn: Callable[[object], str],
+    process_fn: Callable[[object], dict],
+    limit: int | None = None,
+    label_fn: Callable[[object], str] | None = None,
+) -> dict:
+    """Resume/checkpoint loop for streamers that do NOT sync a per-subject
+    directory to disk — either they download a single file per item (the fMRI
+    streamers) or read remotely with no download at all (the DANDI/NWB
+    streamer). Shared shape: a flat `{"processed": {key: result_dict}}`
+    manifest in `out_path`, one entry per item, written after every item so an
+    interrupted run resumes cleanly.
+
+    `key_fn(item) -> stable str` identifies an item in the manifest (subject id,
+    asset path, ...). `process_fn(item) -> result dict` does the real work and
+    may raise; a raise is caught and recorded as `{"error": ...}` so one bad
+    item never aborts the cohort. `label_fn(item)` is an optional pretty label
+    for the progress line (defaults to the key). Returns the manifest.
+
+    This is the download/lazy-read counterpart to `run_streaming_loop` (which
+    owns the sync-to-disk-then-delete discipline for the OpenNeuro S3 EEG
+    streamers); both keep the resume/checkpoint contract in one place instead
+    of re-implemented per dataset.
+    """
+    out_path.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"processed": {}}
+    manifest.setdefault("processed", {})
+
+    todo = [it for it in items if key_fn(it) not in manifest["processed"]]
+    if limit is not None:
+        todo = todo[:limit]
+
+    print(f"{len(items)} items total, {len(manifest['processed'])} done, {len(todo)} to process this run.")
+    for item in todo:
+        key = key_fn(item)
+        print(f"--- {label_fn(item) if label_fn else key} ---")
+        try:
+            result = process_fn(item)
+            print(f"  done: {result}")
+        except Exception as exc:  # keep going: one bad item shouldn't kill the run
+            result = {"error": str(exc)}
+            print(f"  ERROR: {exc}", file=sys.stderr)
+        manifest["processed"][key] = result
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    return manifest
+
+
 def run_streaming_loop(
     all_subjects: list[str],
     out_path: Path,

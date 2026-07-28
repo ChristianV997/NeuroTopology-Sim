@@ -279,6 +279,29 @@ def graph_metrics(conn: np.ndarray, density: float = 0.15) -> dict:
 # --------------------------------------------------------------------------- per subject
 
 
+def save_roi_timeseries(ts: np.ndarray, subject_id: str, group: str, t_r: Optional[float], ts_dir: Path) -> str:
+    """Durable capability, mirroring `dual_engine/anesthesia_signed_winding_pipeline.save_timeseries`
+    for the EEG pipeline: persist the parcellated ROI time series (n_timepoints, n_regions) -- the
+    exact array `connectivity_matrix`/the surrogate gate operate on -- to a `.npz`.
+
+    This is the raw material `validation/surrogate_testing.py` needs and which prior fMRI runs on
+    this dataset discarded after collapsing to a connectivity matrix (see
+    REPORT_gate_ds000245_ds005620.md's "process-and-discard" gap). Reusable for any future run via
+    `--save-timeseries`; independent of downstream metric computation.
+    """
+    ts_dir.mkdir(parents=True, exist_ok=True)
+    path = ts_dir / f"{subject_id}_roi_timeseries.npz"
+    np.savez_compressed(
+        path,
+        timeseries=np.asarray(ts, dtype=np.float32),
+        subject_id=subject_id,
+        group=group,
+        t_r=float(t_r) if t_r is not None else np.nan,
+        provenance="real_fmri",
+    )
+    return str(path)
+
+
 def run_subject(
     subject_id: str,
     group: str,
@@ -288,10 +311,13 @@ def run_subject(
     confounds: Optional[str] = None,
     connectivity_kind: str = "correlation",
     provenance: str = "real_fmri",
+    save_timeseries_dir: Optional[str] = None,
 ) -> SubjectResult:
     """Full per-subject pipeline. Returns a SubjectResult (with error set on failure)."""
     try:
         ts = parcellate_bold(bold_path, atlas_labels_img=atlas_labels_img, t_r=t_r, confounds=confounds)
+        if save_timeseries_dir is not None:
+            save_roi_timeseries(ts, subject_id, group, t_r, Path(save_timeseries_dir))
         conn = connectivity_matrix(ts, kind=connectivity_kind)
         ph = persistent_homology(conn)
         gm = graph_metrics(conn)
@@ -503,6 +529,7 @@ def main(argv=None) -> int:
     ap.add_argument("--group", default=None, help="Process only subjects in this group (CTL/ODN/ODP) -- used by the CI fan-out")
     ap.add_argument("--emit-subjects", default=None, help="Write per-subject results (list) to this JSON path instead of a full cohort")
     ap.add_argument("--aggregate", nargs="+", default=None, help="Merge these subjects_*.json files into a cohort_result.json (+ stats)")
+    ap.add_argument("--save-timeseries", default=None, help="directory to persist parcellated ROI timeseries (.npz) for later surrogate gating")
     ap.add_argument("--out", default="outputs/fmri_tda")
     args = ap.parse_args(argv)
 
@@ -544,7 +571,7 @@ def main(argv=None) -> int:
             continue
         res = run_subject(sub.name, group, str(func[0]),
                           atlas_labels_img=args.atlas, t_r=args.t_r,
-                          provenance="real_fmri")
+                          provenance="real_fmri", save_timeseries_dir=args.save_timeseries)
         res.covariates = covariates.get(sub.name, {})
         results.append(res)
         print(f"  {sub.name} ({group}): b1={res.betti1} err={res.error[:40]}")

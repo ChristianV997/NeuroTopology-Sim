@@ -27,6 +27,15 @@ class EmpiricalSignal:
         return np.mean(np.sin(self.phase), axis=1)
 
 
+@dataclass(frozen=True)
+class LabeledFeatureTable:
+    """Numeric PITNN features with the window-level state labels retained."""
+    data: np.ndarray
+    states: tuple[str, ...]
+    subjects: tuple[str, ...]
+    feature_names: tuple[str, ...]
+
+
 def _normalize(data: np.ndarray) -> np.ndarray:
     values = np.asarray(data, dtype=float)
     if values.ndim == 1:
@@ -61,6 +70,53 @@ def _read_tabular(path: Path) -> np.ndarray:
     if any(len(row) != width for row in parsed):
         raise ValueError("CSV rows have inconsistent column counts")
     return np.asarray(parsed, dtype=float)
+
+
+def ingest_labeled_features(path: str | Path,
+                            feature_names: tuple[str, ...] = (
+                                "q_net", "q_abs", "f_dress", "defect_density",
+                            )) -> LabeledFeatureTable:
+    """Read the ds005620 PITNN window CSV without treating metadata as signal.
+
+    The tier-1 converter emits ``subject_id`` and ``state`` string columns next
+    to numeric topology features.  The generic empirical reader intentionally
+    rejects such mixed CSVs; this explicit adapter keeps that contract strict
+    while making the labeled handoff usable by downstream analyses.
+    """
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    if source.suffix.lower() != ".csv":
+        raise ValueError("labeled PITNN features must be a CSV")
+    with source.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError("labeled PITNN CSV requires a header")
+        required = {"subject_id", "state", *feature_names}
+        missing = sorted(required.difference(reader.fieldnames))
+        if missing:
+            raise ValueError(f"labeled PITNN CSV missing columns: {', '.join(missing)}")
+        rows = list(reader)
+    if not rows:
+        raise ValueError("labeled PITNN CSV contains no rows")
+    values: list[list[float]] = []
+    states: list[str] = []
+    subjects: list[str] = []
+    for row in rows:
+        try:
+            values.append([float(row[name]) for name in feature_names])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("labeled PITNN feature values must be numeric") from exc
+        state = (row["state"] or "").strip().lower()
+        subject = (row["subject_id"] or "").strip()
+        if not state or not subject:
+            raise ValueError("labeled PITNN rows require non-empty state and subject_id")
+        states.append(state)
+        subjects.append(subject)
+    data = np.asarray(values, dtype=float)
+    if not np.all(np.isfinite(data)):
+        raise ValueError("labeled PITNN feature values must be finite")
+    return LabeledFeatureTable(data, tuple(states), tuple(subjects), feature_names)
 
 
 def ingest_empirical(path: str | Path, sample_rate_hz: float | None = None,

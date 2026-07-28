@@ -5,7 +5,7 @@ biological microtubule sustains quantum coherence on any particular scale.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import numpy as np
 
 from .lindblad_lattice import DEBYE, LatticeConfig, LindbladLattice
@@ -50,16 +50,10 @@ def coupled_lattice(
             for offset in range(0, coupling_config.lattice_count * sites_per_lattice, sites_per_lattice)
             for site in lattice_config.bath.pump_sites
         )
-        bath = lattice_config.bath.__class__(
-            lattice_config.bath.temperature_K,
-            lattice_config.bath.radiative_rate_s,
-            lattice_config.bath.thermal_relaxation_s,
-            lattice_config.bath.thermal_excitation_s,
-            lattice_config.bath.dephasing_rate_s,
-            lattice_config.bath.ciss_dephasing_rate_s,
-            lattice_config.bath.metabolic_pump_rate_s,
-            pump_sites,
-        )
+        # Preserve every bath parameter when remapping a local pump onto each
+        # lattice.  In particular, collective-bath settings must survive a
+        # pumped multi-lattice construction.
+        bath = replace(lattice_config.bath, pump_sites=pump_sites)
         lattice_config = LatticeConfig(
             n_protofilaments=lattice_config.n_protofilaments,
             n_layers=lattice_config.n_layers,

@@ -268,3 +268,27 @@ def compute_cubical_persistence_cripser(
     diagram_h2 = _diagram_for_dim(2) if max_dimension >= 2 else np.empty((0, 2))
 
     return diagram_h0, diagram_h1, diagram_h2
+
+
+def export_persistence_json(field: np.ndarray, max_dimension: int = 2) -> dict:
+    """Compute and export persistence diagrams as JSON-serializable dict.
+
+    Convenience wrapper around compute_cubical_persistence that converts
+    numpy arrays to JSON-safe format via persistence_export module.
+
+    Args:
+        field: 2D or 3D real-valued array
+        max_dimension: maximum homology dimension to compute (default 2)
+
+    Returns: dict with "diagrams", "statistics", "betti_numbers" keys,
+        all JSON-serializable.
+    """
+    # Import lazily because persistence_export delegates bottleneck distance
+    # back to this module's canonical implementation.
+    from core import persistence_export
+
+    result = compute_cubical_persistence(field, max_dimension=max_dimension)
+    return persistence_export.persistence_to_dict(
+        result["diagrams"],
+        result["betti_numbers"],
+    )

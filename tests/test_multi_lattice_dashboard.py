@@ -18,6 +18,19 @@ def test_coupled_lattice_trace_is_preserved() -> None:
     assert model.trace_residual(rho) < 1e-5
 
 
+def test_coupled_lattice_preserves_collective_bath_when_pumped() -> None:
+    bath = ThermalBathConfig(
+        radiative_rate_s=1e6,
+        dephasing_rate_s=1e6,
+        metabolic_pump_rate_s=1e6,
+        collective_radiative_rate_s=2e6,
+        collective_correlation_length_m=8e-9,
+    )
+    model = coupled_lattice(LatticeConfig(n_layers=1, interaction_cutoff_m=30e-9, bath=bath))
+    assert model.config.bath.collective_radiative_rate_s == 2e6
+    assert model.config.bath.collective_correlation_length_m == 8e-9
+
+
 def test_artifact_routes_read_static_files_only(tmp_path: Path) -> None:
     science, neuro = tmp_path / "science", tmp_path / "neuro"
     target = science / "artifacts" / "open_quantum" / "pdb_disorder_benchmark"; target.mkdir(parents=True)
