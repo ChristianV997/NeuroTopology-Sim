@@ -9,6 +9,18 @@
     "sample_rate_hz": 500.0,
     "windows_per_condition": 3
   },
+  "cubical_persistence_h1_bottleneck": {
+    "available": true,
+    "max": 0.3548402182067281,
+    "mean": 0.19359660058101064,
+    "median": 0.17972973603365203,
+    "min": 0.07700955435944912,
+    "n_subjects": 20,
+    "wilcoxon_greater_than_zero": {
+      "p_value": 9.5367431640625e-07,
+      "statistic": 210.0
+    }
+  },
   "dataset_id": "ds005620",
   "n_paired_subjects": 20,
   "pitnn": {
@@ -31,6 +43,158 @@
   },
   "schema": "NeuroTopologySim.DS005620PITNNCohort.v1",
   "scientific_note": "Persistent-H1 landscape area and PLV are descriptive EEG network measures. A paired difference between an eyes-closed awake recording and a propofol sedation recording does not identify a mechanism and is not a measure of consciousness. PITNN PASS is reserved strictly for Bayes factor K > 100.",
+  "spatial_defect_map": {
+    "available": true,
+    "mean_qabs_awake": 3.3000000000000007,
+    "mean_qabs_sedated": 5.95,
+    "n_subjects": 20,
+    "paired_wilcoxon_qabs": {
+      "p_value": 0.05439995743909016,
+      "statistic": 53.5
+    },
+    "per_subject": [
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 1.7317495102045797e-15,
+        "sedated_beta1": 3,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1010"
+      },
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 4.0,
+        "sedated_beta1": 4,
+        "sedated_qabs": 7.730481148409251e-21,
+        "subject": "sub-1016"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 2.0000000000000018,
+        "sedated_beta1": 4,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1017"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 7.0,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000013,
+        "subject": "sub-1022"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 2.0,
+        "sedated_beta1": 4,
+        "sedated_qabs": 5.000000000000001,
+        "subject": "sub-1024"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 4.000000000000001,
+        "sedated_beta1": 5,
+        "sedated_qabs": 15.0,
+        "subject": "sub-1033"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 3.0,
+        "sedated_beta1": 6,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1036"
+      },
+      {
+        "awake_beta1": 5,
+        "awake_qabs": 3.000000000000001,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000018,
+        "subject": "sub-1045"
+      },
+      {
+        "awake_beta1": 6,
+        "awake_qabs": 2.0,
+        "sedated_beta1": 1,
+        "sedated_qabs": 4.000000000000001,
+        "subject": "sub-1046"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 7.067986412767933e-16,
+        "sedated_beta1": 7,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1054"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 11.0,
+        "sedated_beta1": 1,
+        "sedated_qabs": 1.000000000000002,
+        "subject": "sub-1055"
+      },
+      {
+        "awake_beta1": 2,
+        "awake_qabs": 2.000000000000001,
+        "sedated_beta1": 2,
+        "sedated_qabs": 7.000000000000001,
+        "subject": "sub-1057"
+      },
+      {
+        "awake_beta1": 3,
+        "awake_qabs": 1.061777836345334e-16,
+        "sedated_beta1": 0,
+        "sedated_qabs": 2.000000000000001,
+        "subject": "sub-1060"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 1.4136459824784234e-15,
+        "sedated_beta1": 5,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1061"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 1.0780040109559384e-18,
+        "sedated_beta1": 0,
+        "sedated_qabs": 4.000000000000002,
+        "subject": "sub-1062"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 8.0,
+        "sedated_beta1": 0,
+        "sedated_qabs": 4.595276376191728e-16,
+        "subject": "sub-1064"
+      },
+      {
+        "awake_beta1": 0,
+        "awake_qabs": 9.0,
+        "sedated_beta1": 2,
+        "sedated_qabs": 7.000000000000001,
+        "subject": "sub-1067"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 3.0000000000000018,
+        "sedated_beta1": 3,
+        "sedated_qabs": 8.0,
+        "subject": "sub-1068"
+      },
+      {
+        "awake_beta1": 4,
+        "awake_qabs": 6.000000000000002,
+        "sedated_beta1": 3,
+        "sedated_qabs": 11.0,
+        "subject": "sub-1071"
+      },
+      {
+        "awake_beta1": 1,
+        "awake_qabs": 1.6256236450712301e-15,
+        "sedated_beta1": 3,
+        "sedated_qabs": 2.0000000000000004,
+        "subject": "sub-1074"
+      }
+    ]
+  },
   "subjects": [
     "sub-1010",
     "sub-1016",

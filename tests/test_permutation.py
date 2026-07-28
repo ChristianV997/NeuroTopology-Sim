@@ -11,6 +11,7 @@ import pytest
 
 from analysis.permutation import (
     mixedlm_group_effect,
+    permutation_anova,
     permutation_test,
     subject_blocked_permutation_test,
 )

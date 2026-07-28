@@ -2,7 +2,7 @@
   "schema_version": "0.1",
   "run_id": "ef432e1788b331d7",
   "run_kind": "eeg_cohort",
-  "created_at": "2026-07-27T23:43:30.480885+00:00",
+  "created_at": "2026-07-28T00:47:44.323151+00:00",
   "elapsed_s": null,
   "spec_id": null,
   "claim_type": "C",
@@ -160,6 +160,170 @@
         "p_value": 8.20159912109375e-05,
         "status": "computed"
       }
+    },
+    "cubical_persistence_h1_bottleneck": {
+      "available": true,
+      "n_subjects": 20,
+      "mean": 0.19359660058101064,
+      "median": 0.17972973603365203,
+      "min": 0.07700955435944912,
+      "max": 0.3548402182067281,
+      "wilcoxon_greater_than_zero": {
+        "statistic": 210.0,
+        "p_value": 9.5367431640625e-07
+      }
+    },
+    "spatial_defect_map": {
+      "available": true,
+      "n_subjects": 20,
+      "mean_qabs_awake": 3.3000000000000007,
+      "mean_qabs_sedated": 5.95,
+      "paired_wilcoxon_qabs": {
+        "statistic": 53.5,
+        "p_value": 0.05439995743909016
+      },
+      "per_subject": [
+        {
+          "subject": "sub-1010",
+          "awake_qabs": 1.7317495102045797e-15,
+          "sedated_qabs": 8.0,
+          "awake_beta1": 2,
+          "sedated_beta1": 3
+        },
+        {
+          "subject": "sub-1016",
+          "awake_qabs": 4.0,
+          "sedated_qabs": 7.730481148409251e-21,
+          "awake_beta1": 2,
+          "sedated_beta1": 4
+        },
+        {
+          "subject": "sub-1017",
+          "awake_qabs": 2.0000000000000018,
+          "sedated_qabs": 11.0,
+          "awake_beta1": 4,
+          "sedated_beta1": 4
+        },
+        {
+          "subject": "sub-1022",
+          "awake_qabs": 7.0,
+          "sedated_qabs": 2.0000000000000013,
+          "awake_beta1": 3,
+          "sedated_beta1": 3
+        },
+        {
+          "subject": "sub-1024",
+          "awake_qabs": 2.0,
+          "sedated_qabs": 5.000000000000001,
+          "awake_beta1": 3,
+          "sedated_beta1": 4
+        },
+        {
+          "subject": "sub-1033",
+          "awake_qabs": 4.000000000000001,
+          "sedated_qabs": 15.0,
+          "awake_beta1": 1,
+          "sedated_beta1": 5
+        },
+        {
+          "subject": "sub-1036",
+          "awake_qabs": 3.0,
+          "sedated_qabs": 11.0,
+          "awake_beta1": 1,
+          "sedated_beta1": 6
+        },
+        {
+          "subject": "sub-1045",
+          "awake_qabs": 3.000000000000001,
+          "sedated_qabs": 2.0000000000000018,
+          "awake_beta1": 5,
+          "sedated_beta1": 3
+        },
+        {
+          "subject": "sub-1046",
+          "awake_qabs": 2.0,
+          "sedated_qabs": 4.000000000000001,
+          "awake_beta1": 6,
+          "sedated_beta1": 1
+        },
+        {
+          "subject": "sub-1054",
+          "awake_qabs": 7.067986412767933e-16,
+          "sedated_qabs": 8.0,
+          "awake_beta1": 1,
+          "sedated_beta1": 7
+        },
+        {
+          "subject": "sub-1055",
+          "awake_qabs": 11.0,
+          "sedated_qabs": 1.000000000000002,
+          "awake_beta1": 1,
+          "sedated_beta1": 1
+        },
+        {
+          "subject": "sub-1057",
+          "awake_qabs": 2.000000000000001,
+          "sedated_qabs": 7.000000000000001,
+          "awake_beta1": 2,
+          "sedated_beta1": 2
+        },
+        {
+          "subject": "sub-1060",
+          "awake_qabs": 1.061777836345334e-16,
+          "sedated_qabs": 2.000000000000001,
+          "awake_beta1": 3,
+          "sedated_beta1": 0
+        },
+        {
+          "subject": "sub-1061",
+          "awake_qabs": 1.4136459824784234e-15,
+          "sedated_qabs": 11.0,
+          "awake_beta1": 1,
+          "sedated_beta1": 5
+        },
+        {
+          "subject": "sub-1062",
+          "awake_qabs": 1.0780040109559384e-18,
+          "sedated_qabs": 4.000000000000002,
+          "awake_beta1": 0,
+          "sedated_beta1": 0
+        },
+        {
+          "subject": "sub-1064",
+          "awake_qabs": 8.0,
+          "sedated_qabs": 4.595276376191728e-16,
+          "awake_beta1": 0,
+          "sedated_beta1": 0
+        },
+        {
+          "subject": "sub-1067",
+          "awake_qabs": 9.0,
+          "sedated_qabs": 7.000000000000001,
+          "awake_beta1": 0,
+          "sedated_beta1": 2
+        },
+        {
+          "subject": "sub-1068",
+          "awake_qabs": 3.0000000000000018,
+          "sedated_qabs": 8.0,
+          "awake_beta1": 4,
+          "sedated_beta1": 3
+        },
+        {
+          "subject": "sub-1071",
+          "awake_qabs": 6.000000000000002,
+          "sedated_qabs": 11.0,
+          "awake_beta1": 4,
+          "sedated_beta1": 3
+        },
+        {
+          "subject": "sub-1074",
+          "awake_qabs": 1.6256236450712301e-15,
+          "sedated_qabs": 2.0000000000000004,
+          "awake_beta1": 1,
+          "sedated_beta1": 3
+        }
+      ]
     },
     "scientific_note": "Persistent-H1 landscape area and PLV are descriptive EEG network measures. A paired difference between an eyes-closed awake recording and a propofol sedation recording does not identify a mechanism and is not a measure of consciousness. PITNN PASS is reserved strictly for Bayes factor K > 100."
   },

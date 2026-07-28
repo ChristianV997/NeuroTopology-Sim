@@ -175,6 +175,57 @@ descriptor that discriminates conditions is not evidence for the model that moti
 
 ---
 
+## Q3 — Real channel-coordinate defect maps and cubical persistence (added via `--export-spatial --export-persistence`)
+
+The command-center adapter's `spatial_artifact` has reported `"unavailable"` since it was
+written: the Level-T channel-mean CSVs it reads never carried channel coordinates, phase, or
+defect locations. This run adds a second source that does, computed from data this pipeline
+already downloads, and closes that gap (`tools/command_center/real_results_adapter.build_pitnn_cohort_spatial_artifact`).
+
+**Real per-condition defect maps.** For each subject and condition, the last window's montage
+positions (65 or 64 channels — see the montage-size note below) and band-filtered phase are
+passed through `validation.montage_topology.signed_defect_map` — the same tested function
+`dual_engine/anesthesia_signed_winding_pipeline.py` already runs on this dataset for its
+channel-mean report — to produce per-triangle signed winding, chirality and centroids.
+`wave_vectors` is reported `null`: no wave-vector estimator exists anywhere in this repo, so it
+is not fabricated.
+
+| Quantity | Awake | Sedated |
+|---|---|---|
+| Mean total unsigned winding (Qabs-equivalent) | 3.30 | **5.95** |
+
+Paired Wilcoxon on per-subject Qabs: p = 0.054 (20 pairs) — suggestive, not significant, in the
+same direction as the landscape-area finding above (more spatial defect structure under
+sedation).
+
+**Cubical persistence on the raw PLV matrix.** `core.topology.export_persistence_json` (built
+and unit-tested in isolation in an earlier session, never previously run on real data) computes
+GUDHI sub-level cubical persistence directly on each window's PLV matrix — a genuinely different
+summary from the ripser Vietoris-Rips diagram already used for Q1's `beta1`/landscape-area
+figures: cubical persistence sweeps the PLV matrix itself as a 2D grid across every threshold,
+where the graph-distance view only sees `1 - PLV` as an abstract point cloud.
+
+The awake-vs-sedated H1 bottleneck distance (`core.persistence_export.bottleneck_distance`,
+last window per subject):
+
+| Quantity | Value |
+|---|---|
+| Mean | 0.194 |
+| Median | 0.180 |
+| Range | 0.077 – 0.355 |
+| One-sample Wilcoxon (distance > 0) | p = 9.5 × 10⁻⁷ |
+
+Every subject's awake and sedated diagrams differ by a non-trivial margin — expected for any two
+independent windows, so this establishes magnitude, not by itself a state effect; it is reported
+descriptively alongside the Qabs contrast, not as a second independent significance claim.
+
+**Montage size varies between subjects but never within one.** 11 subjects have 65 EEG channels
+and 9 have 64; `channels.tsv` types every channel as `EEG` and the zero-variance filter dropped
+none, so this is a property of the recordings, not data loss. Both conditions of every subject
+share that subject's montage, so neither the defect-map nor the persistence contrast is affected.
+
+---
+
 ## Confound checks
 
 - **Pairing is constant.** All 20 subjects contributed `task-awake_acq-EC` and
@@ -208,12 +259,14 @@ descriptor that discriminates conditions is not evidence for the model that moti
   `experience_vs_no_experience` contrasts that remain untested here.
 - **Gamma band only** (30–80 Hz). Propofol's most prominent signatures include frontal alpha
   and slow-wave changes that this band does not address.
-- **Net spatial charge was uninformative.** `sensor_spatial_charge` returned 0.0 for every
-  window in every subject: it rounds a signed sum of triangle windings to the nearest integer,
-  and the montage-wide net cancels. This is a real null for that estimator as configured, not a
-  failure — a localized (unsigned or regional) variant would be needed to say anything.
-- **No multiple-comparison correction** across the four metrics. Applying even Bonferroni
-  (α = 0.0125) leaves only the phase-discontinuity proxy standing.
+- **The rounded net spatial charge (Q1's `q_spatial`) was uninformative**: `sensor_spatial_charge`
+  returned 0.0 for every window in every subject — it rounds a signed sum of triangle windings to
+  the nearest integer, and the montage-wide net cancels. This is a real null for that estimator as
+  configured. The unsigned total winding used in Q3 (`signed_defect_map`'s Qabs) does not round or
+  net-cancel and is the one that separates the conditions (suggestively, p = 0.054).
+- **No multiple-comparison correction** across the five topology metrics reported (Q1's beta1/
+  landscape/PLV, Q3's Qabs and bottleneck distance). Applying even Bonferroni (α = 0.01) leaves
+  only the phase-discontinuity proxy standing.
 - **Single dataset.** No replication cohort was run.
 
 ---
@@ -229,7 +282,11 @@ descriptor that discriminates conditions is not evidence for the model that moti
    p = 8.2 × 10⁻⁵ — but it is an explicitly labelled proxy, not persistent homology, and it
    reports gamma phase disorganisation under propofol.
 4. **Persistent-homology descriptors are suggestive at best** (landscape area, 15/20,
-   permutation p = 0.075) or null (graph β₁, PLV).
+   permutation p = 0.075; unsigned defect-map Qabs, 20/20, p = 0.054) or null (graph β₁, PLV,
+   rounded net spatial charge).
+5. **The command-center `spatial_artifact` gap is closed for this pipeline.** Real per-condition
+   channel coordinates, phase, and defect maps are now produced and exposed via
+   `tools/command_center/real_results_adapter.build_pitnn_cohort_spatial_artifact` — see Q3.
 
 These are descriptive EEG network measures. A paired difference between an eyes-closed awake
 recording and a propofol sedation recording does not identify a mechanism, and none of these
@@ -240,14 +297,18 @@ metrics is a measure of awareness, dreaming, or consciousness.
 ## Reproduce
 
 ```bash
-pip install mne ripser matplotlib pandas statsmodels
+pip install mne ripser matplotlib pandas statsmodels gudhi
 
 python tools/stream_pitnn_cohort_ds005620.py \
-    --out outputs/pitnn_cohort/ds005620 --work-root data/ds005620_stream
+    --out outputs/pitnn_cohort/ds005620 --work-root data/ds005620_stream \
+    --export-spatial --export-persistence
 
 python tools/analyze_pitnn_cohort_ds005620.py \
     --cohort-dir outputs/pitnn_cohort/ds005620
 ```
+
+`--export-spatial`/`--export-persistence` are opt-in (Q3); omit them to reproduce only Q1/Q2 without
+`gudhi`.
 
 Both are resumable: re-running skips subjects already in `manifest.json`. Offline tests for the
 pairing rule, byte-range arithmetic and PLV identity: `pytest tests/test_pitnn_cohort_ds005620.py`.
