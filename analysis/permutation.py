@@ -64,6 +64,99 @@ class PermutationResult:
 
 
 @dataclass
+class AnovaPermutationResult:
+    observed_f: float
+    observed_eta_squared: float
+    p_value: float
+    n_permutations: int
+    n_groups: int
+    group_n: dict
+    seed: int
+    method: str = "permutation_anova_label_shuffle"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def _eta_squared_f(arrays: list[np.ndarray]) -> tuple[float, float]:
+    """One-way F statistic and eta-squared for `arrays`, one per group.
+
+    Same eta-squared definition `dual_engine/fmri_tda_pipeline.group_compare` uses
+    (ss_between / ss_total over the pooled sample), kept here as the single source
+    of truth so `permutation_anova`'s null distribution and any caller's observed
+    statistic are computed identically.
+    """
+    from scipy import stats
+
+    f_stat, _ = stats.f_oneway(*arrays)
+    grand = np.concatenate(arrays)
+    ss_between = sum(len(a) * (a.mean() - grand.mean()) ** 2 for a in arrays)
+    ss_total = np.sum((grand - grand.mean()) ** 2)
+    eta_sq = float(ss_between / ss_total) if ss_total > 0 else 0.0
+    return float(f_stat), eta_sq
+
+
+def permutation_anova(
+    values,
+    groups,
+    n_permutations: int = 10000,
+    seed: int = 0,
+) -> AnovaPermutationResult:
+    """Label-shuffle permutation null for a >=2-group one-way ANOVA effect size.
+
+    `values`/`groups` are one row per SUBJECT (not per window) -- this function does
+    not aggregate repeated measures itself; callers with window-level data must
+    collapse to one value per subject first (as `subject_blocked_permutation_test`
+    does for the two-group case), or pseudoreplication inflates the null exactly
+    as documented in this module's top-level docstring.
+
+    Parametric ANOVA p-values assume normal, equal-variance groups -- assumptions
+    a real, small (n<=15/group), possibly skewed clinical cohort need not satisfy.
+    This reports the same eta-squared effect size but tests it against an
+    assumption-free null built by shuffling group labels `n_permutations` times and
+    recomputing eta-squared on each shuffle, exactly mirroring `permutation_test`'s
+    two-group label-shuffle logic generalized to k>=2 groups.
+    """
+    values_arr = np.asarray(values, dtype=float)
+    groups_arr = np.asarray(groups)
+    if values_arr.ndim != 1 or groups_arr.ndim != 1 or values_arr.shape[0] != groups_arr.shape[0]:
+        raise ValueError("values and groups must be 1D arrays of the same length")
+    if not np.all(np.isfinite(values_arr)):
+        raise ValueError("values must be finite")
+
+    labels = sorted(set(groups_arr.tolist()), key=str)
+    if len(labels) < 2:
+        raise ValueError(f"permutation_anova requires >=2 groups, got {labels}")
+    group_n = {str(label): int(np.sum(groups_arr == label)) for label in labels}
+    if any(n < 2 for n in group_n.values()):
+        raise ValueError(f"every group needs >=2 subjects for a variance-based statistic, got {group_n}")
+
+    observed_arrays = [values_arr[groups_arr == label] for label in labels]
+    observed_f, observed_eta = _eta_squared_f(observed_arrays)
+
+    rng = np.random.default_rng(seed)
+    shuffled = groups_arr.copy()
+    as_extreme = 0
+    for _ in range(n_permutations):
+        rng.shuffle(shuffled)
+        perm_arrays = [values_arr[shuffled == label] for label in labels]
+        _, perm_eta = _eta_squared_f(perm_arrays)
+        if perm_eta >= observed_eta:
+            as_extreme += 1
+    p_value = float((as_extreme + 1) / (n_permutations + 1))
+
+    return AnovaPermutationResult(
+        observed_f=observed_f,
+        observed_eta_squared=observed_eta,
+        p_value=p_value,
+        n_permutations=n_permutations,
+        n_groups=len(labels),
+        group_n=group_n,
+        seed=seed,
+    )
+
+
+@dataclass
 class MixedLMResult:
     coef: float
     se: float
@@ -72,6 +165,7 @@ class MixedLMResult:
     n_obs: int
     n_groups: int
     method: str = "mixedlm_random_intercept"
+    convergence_warning: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -266,6 +360,8 @@ def mixedlm_group_effect(
     `converged` MUST be checked before trusting `p_value` -- a non-converged
     fit can return parameters that look like a clean result.
     """
+    import warnings as _warnings
+
     import statsmodels.formula.api as smf
 
     work = df[[value_col, group_col, subject_col]].dropna().copy()
@@ -275,7 +371,15 @@ def mixedlm_group_effect(
     model = smf.mixedlm(
         "_value ~ _group", data=work, groups=work["_subject"], re_formula=re_formula
     )
-    fit = model.fit()
+    # Capture (do NOT suppress) any statsmodels ConvergenceWarning so a
+    # non-converged fit carries the real reason forward, not just a bool.
+    # record=True intercepts the warnings into `caught` instead of printing;
+    # they are re-surfaced as MixedLMResult.convergence_warning below.
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        fit = model.fit()
+    warning_texts = [str(w.message) for w in caught if issubclass(w.category, Warning)]
+    convergence_warning = "; ".join(warning_texts) if warning_texts else None
 
     group_terms = [p for p in fit.params.index if p.startswith("_group")]
     if not group_terms:
@@ -291,4 +395,5 @@ def mixedlm_group_effect(
         converged=bool(fit.converged),
         n_obs=int(fit.nobs),
         n_groups=int(work["_subject"].nunique()),
+        convergence_warning=convergence_warning,
     )

@@ -106,6 +106,45 @@
       "report_extra_window_lines": [],
       "report_extra_next_step_lines": [],
       "format_note": "BrainVision .vhdr; CC0; other tasks (1dNF/eegNF/fmriNF/motorloc) intentionally unmapped -- MI pre/post contrast only"
+    },
+    "ds004572": {
+      "dataset_id": "ds004572",
+      "title": "OpenNeuro sham hypnosis EEG ds004572",
+      "task_to_state": {
+        "baseline1": "baseline", "baseline2": "baseline",
+        "experience1": "experience", "experience2": "experience",
+        "experience3": "experience", "experience4": "experience"
+      },
+      "contrasts": [
+        {"name": "baseline_vs_experience", "label_field": "state_label", "class0": "baseline", "class1": "experience"}
+      ],
+      "default_task": "baseline_vs_experience",
+      "window_seconds": 10.0,
+      "max_windows_per_file": 2,
+      "max_channels": 16,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (pre/post-hypnosis-protocol baseline vs the four induced-experience blocks).",
+      "report_extra_window_lines": [],
+      "report_extra_next_step_lines": [],
+      "format_note": "BrainVision .vhdr; CC0; 64ch EasyCap standard_1020; induction1-4 (the induction period itself, a transition not a stable state) intentionally unmapped; the 2x2 real-vs-sham x hypnosis-vs-relaxation-label design that experience1-4 counterbalance across is not encoded in the task name and would need per-subject condition-order metadata to split further -- out of scope for the structural task_to_state map (no_label_inference)"
+    },
+    "ds005555": {
+      "dataset_id": "ds005555",
+      "title": "OpenNeuro Bitbrain Open Access Sleep (BOAS) full-night PSG EEG ds005555",
+      "task_to_state": {},
+      "contrasts": [
+        {"name": "wake_vs_rem", "label_field": "state_label", "class0": "wake", "class1": "rem"},
+        {"name": "wake_vs_n3", "label_field": "state_label", "class0": "wake", "class1": "n3"}
+      ],
+      "default_task": "wake_vs_rem",
+      "window_seconds": 30.0,
+      "max_windows_per_file": 40,
+      "max_channels": 6,
+      "report_input_heading": "## Input",
+      "report_input_source": "- Source: real BIDS EEG signal (PSG acq, human-expert-consensus AASM sleep-stage-scored 30s epochs).",
+      "report_extra_window_lines": ["- state_label is the dataset's own stage_hum consensus label (wake/n1/n2/n3/rem), read per-epoch from events.tsv -- not derived from a task-entity map (task_to_state is unused for this dataset; see sciencer_d/btc_icft/level_m/ds005555_windows_real.py)."],
+      "report_extra_next_step_lines": [],
+      "format_note": "EDF; CC0; 6ch PSG 10-20 (F3/F4/C3/C4/O1/O2) + EOG/EMG/respiratory (excluded); acq-psg only (acq-headband, 2ch forehead, intentionally excluded); state comes from per-epoch events.tsv stage_hum (0=wake,1=n1,2=n2,3=n3,4=rem; 8=disconnection and -2=artifact excluded), NOT task_to_state -- requires the dedicated ds005555_windows_real.py windower, not the generic fixed-interval streaming path"
     }
   }
 }

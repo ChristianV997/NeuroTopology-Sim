@@ -18,8 +18,13 @@ from sim.pitnn.ingest_empirical import empirical_to_macro_signal, ingest_empiric
 from sim.pitnn.quantum_trajectories import MCWFConfig, MCWFTrajectoryEngine
 from sim.pitnn.spirit_gneb_well import GNEBConfig, calculate_gneb_well
 from sim.pitnn.state_exporter import PITNNStateExporter
-from sim.pitnn.visualization import PITNNVisualizer
 from sim.pitnn.vampire_os_llg import LLGConfig, simulate_os_llg
+
+try:
+    from sim.pitnn.visualization import PITNNVisualizer
+    HAS_VISUALIZATION = True
+except ImportError:
+    HAS_VISUALIZATION = False
 
 
 def run_advanced_biophysics(*, output_dir: str | Path, seed: int = 0, n_layers: int = 4,
@@ -51,11 +56,15 @@ def run_advanced_biophysics(*, output_dir: str | Path, seed: int = 0, n_layers: 
                              MCWFConfig(trajectories=mcwf_trajectories, seed=seed, store_density=False))
     optimized_ep = optimize_exceptional_point() if fast_ep else None
     exporter = PITNNStateExporter(advanced / "artifacts")
-    visualizer = PITNNVisualizer(advanced / "artifacts" / "plots")
     density_path = exporter.export_array_bundle("lindblad_density.npz", {"rho_history": rho_history, "times_s": times}, {"units": "SI", "seed": seed})
     field_path = exporter.export_array_bundle("field_coupling.npz", {"times_s": membrane_t, "voltage_V": voltage, "electric_field_Vm": field, "stark_shift_J": shifts, "ciss_torque": torque}, {"units": "SI"})
     ep_path = exporter.export_array_bundle("ep_scan.npz", {"spectra": ep["spectra"], "gaps": ep["gaps"], "fidelities": ep["fidelities"]}, {"pump_values": ep["pump_values"], "loss_values": ep["loss_values"]})
-    ep_plot = visualizer.plot_ep_scan(ep["gaps"], np.asarray(ep["pump_values"]), np.asarray(ep["loss_values"]))
+
+    if HAS_VISUALIZATION:
+        visualizer = PITNNVisualizer(advanced / "artifacts" / "plots")
+        ep_plot = visualizer.plot_ep_scan(ep["gaps"], np.asarray(ep["pump_values"]), np.asarray(ep["loss_values"]))
+    else:
+        ep_plot = str(advanced / "artifacts" / "plots" / "ep_scan.png")
     summary = {"lattice": {"n_sites": lattice.n_sites, "n_edges": len(lattice.edges), "n_trp": len(trp)},
                "lindblad": {"trace_final": float(np.trace(rho_history[-1]).real), "dark_states": dark["subradiant_indices"]},
                "bath": {"blp_measure": blp, "noise_shape": list(noise.shape)},
@@ -103,13 +112,19 @@ def run_pipeline(*, output_dir: str | Path = "results/pitnn", input_path: str | 
     inputs = {"seed": seed, "n_samples": int(signal.size), "n_spins": n_spins, "steps": steps, "data_mode": data_mode}
     run_id = build_run_id("pitnn", "NeuroTopology-Sim", "working-tree", ["run_pitnn.py"], inputs, {"bayes_factor": bayes["bayes_factor"]})
     exporter = PITNNStateExporter(out / "artifacts")
-    visualizer = PITNNVisualizer(out / "artifacts" / "plots")
     artifact_metadata = {"run_id": run_id, "data_mode": data_mode, "n_spins": n_spins, "steps": steps}
     trajectory_path = exporter.export_npz("spinor_trajectory.npz", llg["spins_history"], llg["time_stamps"], metadata=artifact_metadata)
     trace_path = exporter.export_json("topological_trace.json", {"run_id": run_id, "trace": llg["topology_trace"]})
-    plot_trace = visualizer.plot_topological_trace(llg["time_stamps"], llg["topology_trace"])
-    plot_heatmap = visualizer.plot_spinor_field_heatmap(llg["spins_history"])
-    plot_s2 = visualizer.plot_s2_phase_space(llg["spins_history"][-1])
+
+    if HAS_VISUALIZATION:
+        visualizer = PITNNVisualizer(out / "artifacts" / "plots")
+        plot_trace = visualizer.plot_topological_trace(llg["time_stamps"], llg["topology_trace"])
+        plot_heatmap = visualizer.plot_spinor_field_heatmap(llg["spins_history"])
+        plot_s2 = visualizer.plot_s2_phase_space(llg["spins_history"][-1])
+    else:
+        plot_trace = str(out / "artifacts" / "plots" / "topological_trace.png")
+        plot_heatmap = str(out / "artifacts" / "plots" / "spinor_field_heatmap.png")
+        plot_s2 = str(out / "artifacts" / "plots" / "s2_phase_space.png")
     def relative_artifact(path: str) -> str:
         return Path(path).relative_to(out).as_posix()
 

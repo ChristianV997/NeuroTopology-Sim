@@ -68,6 +68,34 @@ def test_group_compare_reports_effect_size(tmp_path):
     assert set(stats["group_n"].keys()) == {"CTL", "ODN", "ODP"}
 
 
+def test_save_timeseries_writes_roi_array(tmp_path):
+    """--save-timeseries persists the exact (T, R) array connectivity_matrix/the
+    surrogate gate consume, closing the process-and-discard gap documented in
+    REPORT_gate_ds000245_ds005620.md."""
+    from dual_engine.fmri_tda_pipeline import synthetic_bold_fixture, run_subject
+    p = synthetic_bold_fixture(str(tmp_path / "s.nii.gz"), group="CTL", n_t=32, dim=12, seed=2)
+    ts_dir = tmp_path / "roi_ts"
+    res = run_subject("sub-CTL01", "CTL", p, t_r=2.5, provenance="synthetic_proxy",
+                       save_timeseries_dir=str(ts_dir))
+    assert res.error == ""
+    saved = list(ts_dir.glob("*.npz"))
+    assert len(saved) == 1
+    with np.load(saved[0], allow_pickle=True) as npz:
+        assert npz["timeseries"].shape == (32, res.n_regions)
+        assert str(npz["subject_id"]) == "sub-CTL01"
+        assert str(npz["group"]) == "CTL"
+        assert float(npz["t_r"]) == 2.5
+        assert str(npz["provenance"]) == "real_fmri"  # save format is dataset-agnostic
+
+
+def test_no_save_timeseries_dir_writes_nothing(tmp_path):
+    from dual_engine.fmri_tda_pipeline import synthetic_bold_fixture, run_subject
+    p = synthetic_bold_fixture(str(tmp_path / "s.nii.gz"), group="CTL", n_t=32, dim=12, seed=3)
+    res = run_subject("sub-CTL02", "CTL", p, t_r=2.5, provenance="synthetic_proxy")
+    assert res.error == ""
+    assert list(tmp_path.glob("**/*.npz")) == []
+
+
 def test_failure_is_recorded_not_fabricated():
     from dual_engine.fmri_tda_pipeline import run_subject
     # nonexistent file -> error recorded, zeros returned, provenance preserved, no fake result

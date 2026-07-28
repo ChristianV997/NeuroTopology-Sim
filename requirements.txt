@@ -119,3 +119,15 @@ amazon-braket-sdk
 # and Docker build (found during a repo-wide audit). Both BSD-licensed.
 nibabel
 nilearn
+# DANDI/NWB ingestion (data/dandi_nwb_ingest.py) -- lazy HTTP reads of NWB
+# (HDF5) EEG from DANDI's public S3 for dandiset 000458 (mouse awake vs.
+# isoflurane anesthesia). h5py+remfile do the partial reads; pynwb is the
+# full NWB object model. Licenses: pynwb/hdmf BSD-3-Clause, h5py BSD-3-Clause,
+# remfile Apache-2.0.
+pynwb
+remfile
+# Real discrete-POMDP active-inference controller, SPECULATIVE track only
+# (sim/speculative/pymdp_controller.py) -- computes real variational free
+# energy via pymdp. Pinned to the classic numpy API (0.0.7.1); the 1.0.x line
+# is a JAX rewrite with a different interface. MIT-licensed.
+inferactively-pymdp==0.0.7.1

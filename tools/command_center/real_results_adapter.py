@@ -11,6 +11,7 @@ from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESULTS_ROOT = REPOSITORY_ROOT / "outputs/btc_icft/ds005620/full_21_optimized"
+DEFAULT_PITNN_COHORT_ROOT = REPOSITORY_ROOT / "outputs/pitnn_cohort/ds005620"
 SCHEMA_VERSION = "command-center-real-results/v1"
 PROXY_METRICS = {
     "q_net": "channel-mean topology proxy; not a demonstrated conserved physical charge",
@@ -189,6 +190,146 @@ def build_real_results(root: str | Path | None = None) -> dict[str, Any]:
     }
 
 
+def _pitnn_cohort_root(root: str | Path | None = None) -> Path:
+    return Path(root or os.getenv("NEUROTOPOLOGY_PITNN_COHORT_ROOT", DEFAULT_PITNN_COHORT_ROOT))
+
+
+def build_pitnn_cohort_spatial_artifact(root: str | Path | None = None) -> dict[str, Any]:
+    """Real channel-coordinate defect maps from `tools/stream_pitnn_cohort_ds005620.py`.
+
+    This is a SEPARATE, additive source from `build_real_results`'s `spatial_artifact`
+    (which stays tied to the Level-T channel-mean CSVs and correctly reports
+    "unavailable" there -- those CSVs never carried coordinates or phase). The PITNN
+    cohort pipeline's `--export-spatial` flag calls
+    `validation.montage_topology.signed_defect_map` on each condition's real montage
+    and last-window phase, which is exactly the set of fields the CSV path was always
+    missing: `channel_coordinates`, `phase`, `defects`, `beta1`, `coordinate_frame`,
+    `quality_control`. `wave_vectors` stays `None` -- no wave-vector estimator exists
+    anywhere in this repo, so it is reported absent rather than fabricated.
+
+    Absence (no cohort run yet, or run without `--export-spatial`) is reported as
+    `"unavailable"` with the same required_fields contract as the CSV path, never as
+    an empty-but-"available" bundle.
+    """
+    result_root = _pitnn_cohort_root(root)
+    subjects_dir = result_root / "subjects"
+    required_fields = ["channel_coordinates", "phase", "defects", "wave_vectors", "beta1", "coordinate_frame", "quality_control"]
+    if not subjects_dir.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No PITNN cohort subject records at {subjects_dir}. Run "
+                      "tools/stream_pitnn_cohort_ds005620.py --export-spatial first.",
+            "required_fields": required_fields,
+        }
+
+    subjects: list[dict[str, Any]] = []
+    for path in sorted(subjects_dir.glob("sub-*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        spatial = record.get("spatial") or {}
+        conditions = {label: snap for label, snap in spatial.items() if snap}
+        if not conditions:
+            continue
+        subjects.append({
+            "subject_id": record.get("subject", path.stem),
+            "conditions": conditions,
+            "bottleneck_distance_h1_last_window": record.get("cubical_h1_bottleneck_distance_last_window"),
+        })
+
+    if not subjects:
+        return {
+            "status": "unavailable",
+            "reason": f"{subjects_dir} exists but no subject record includes a spatial "
+                      "snapshot. Re-run with --export-spatial.",
+            "required_fields": required_fields,
+        }
+
+    return {
+        "status": "available",
+        "source": "tools/stream_pitnn_cohort_ds005620.py --export-spatial",
+        "results_root": str(result_root),
+        "coordinate_frame": "sensor_2d_projection_of_standard_1020_montage",
+        "subject_count": len(subjects),
+        "subjects": subjects,
+        "scientific_note": "Per-subject last-window signed defect maps and betti1; "
+                            "descriptive spatial topology, not a validated physical or "
+                            "clinical measurement.",
+    }
+
+
+def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> dict[str, Any]:
+    """Real cubical-persistence H1 birth/death diagrams from the PITNN cohort run.
+
+    Populated only when the streaming run used `--export-persistence`
+    (`tools/stream_pitnn_cohort_ds005620.py`'s `window_topology` then calls
+    `core.topology.export_persistence_json` on each window's PLV matrix). This
+    reads the LAST window's H1 diagram per condition per subject -- the same
+    window `cubical_h1_bottleneck_distance_last_window` was computed from, so a
+    viewer plotting both is showing the same pair of diagrams the bottleneck
+    number describes, not a different window.
+
+    "Available" always means every subject record it returns actually carries a
+    diagram; a subject whose windows lack `cubical_persistence` (streaming run
+    without `--export-persistence`) is skipped, and a cohort where none carry it
+    is reported "unavailable" -- never backfilled with an empty plot.
+    """
+    result_root = _pitnn_cohort_root(root)
+    subjects_dir = result_root / "subjects"
+    if not subjects_dir.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No PITNN cohort subject records at {subjects_dir}. Run "
+                      "tools/stream_pitnn_cohort_ds005620.py --export-persistence first.",
+        }
+
+    subjects: list[dict[str, Any]] = []
+    for path in sorted(subjects_dir.glob("sub-*.json")):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        windows = record.get("topology_windows") or {}
+        diagrams: dict[str, list[list[float | None]]] = {}
+        for label, rows in windows.items():
+            if not rows:
+                continue
+            cp = rows[-1].get("cubical_persistence")
+            if not cp:
+                continue
+            h1 = cp.get("diagrams", {}).get("1")
+            if h1 is None:
+                continue
+            diagrams[label] = h1
+        if not diagrams:
+            continue
+        subjects.append({
+            "subject_id": record.get("subject", path.stem),
+            "diagrams_h1": diagrams,
+            "bottleneck_distance_h1_last_window": record.get("cubical_h1_bottleneck_distance_last_window"),
+        })
+
+    if not subjects:
+        return {
+            "status": "unavailable",
+            "reason": f"{subjects_dir} exists but no subject record includes a cubical "
+                      "persistence diagram. Re-run with --export-persistence.",
+        }
+
+    return {
+        "status": "available",
+        "source": "tools/stream_pitnn_cohort_ds005620.py --export-persistence",
+        "results_root": str(result_root),
+        "subject_count": len(subjects),
+        "subjects": subjects,
+        "scientific_note": "GUDHI sub-level cubical persistence on each window's PLV "
+                            "matrix, last window per condition; a descriptive spatial-"
+                            "network summary, not a validated physical or clinical "
+                            "measurement. Infinite-death H0 features are omitted from H1.",
+    }
+
+
 def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any]:
     results = build_real_results(root)
     return {
@@ -200,6 +341,8 @@ def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any
         "phase_space": results["state_summaries"],
         "subject_summaries": results["subject_summaries"],
         "spatial_artifact": results["spatial_artifact"],
+        "pitnn_cohort_spatial_artifact": build_pitnn_cohort_spatial_artifact(),
+        "pitnn_cohort_persistence_artifact": build_pitnn_cohort_persistence_artifact(),
         "source_artifacts": results["source_artifacts"],
     }
 
@@ -218,6 +361,7 @@ def build_command_center_registry(root: str | Path | None = None) -> dict[str, A
     report_files = [Path(path) for path in results["reports"]]
     pdf_reports = sorted(result_root.glob("*.pdf")) if result_root.exists() else []
     failed_subjects = results["manifest"].get("failed_subjects", {})
+    pitnn_cohort_spatial = build_pitnn_cohort_spatial_artifact()
 
     artifacts = [{
         "id": "manifest",
@@ -285,9 +429,15 @@ def build_command_center_registry(root: str | Path | None = None) -> dict[str, A
                 "proposal_id": "spatial-topology-pilot",
                 "label": "Spatial topology pilot",
                 "dataset": results["dataset"],
-                "status": "blocked_pending_inputs",
+                "status": "available" if pitnn_cohort_spatial["status"] == "available" else "blocked_pending_inputs",
                 "scope": "Export channel coordinates, phase/wave-vector fields, defect locations, and registered coordinate frame.",
                 "acceptance": ["coordinate frame declared", "QC mask emitted", "defect localization validated on synthetic control", "no anatomical claim without registration"],
+                "note": (
+                    f"{pitnn_cohort_spatial['subject_count']} subject(s) with real defect maps "
+                    "via tools/stream_pitnn_cohort_ds005620.py --export-spatial."
+                    if pitnn_cohort_spatial["status"] == "available"
+                    else "Run tools/stream_pitnn_cohort_ds005620.py --export-spatial to populate this."
+                ),
             },
             {
                 "proposal_id": "cross-dataset-replication",
@@ -333,6 +483,7 @@ def build_command_center_registry(root: str | Path | None = None) -> dict[str, A
             "dataset_discovery": "candidates_to_verify_only",
             "metric_interpretation": results["claim_scope"],
             "spatial_data": results["spatial_artifact"],
+            "pitnn_cohort_spatial_data": {"status": pitnn_cohort_spatial["status"]},
         },
     }
 

@@ -10,6 +10,8 @@ paper/figures/
 .venv/
 data/ds[0-9][0-9][0-9][0-9][0-9][0-9]/
 data/ds[0-9][0-9][0-9][0-9][0-9][0-9]_real/
+data/ds[0-9][0-9][0-9][0-9][0-9][0-9]_stream/
+data/ds[0-9][0-9][0-9][0-9][0-9][0-9]_pitnn_input/
 data/ds005620_propofol_*/
 
 # Reproducible execution products and local empirical recordings.
