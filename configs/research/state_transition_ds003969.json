@@ -1,0 +1,33 @@
+{
+  "schema": "NeuroTopologySim.StateTransitionProtocol.v1",
+  "protocol_id": "ST-DS003969-20260729-001",
+  "hypothesis_id": "HYP-20260729-001",
+  "dataset_id": "ds003969",
+  "external_dataset_id": "ds003816",
+  "split_seed": 20260729,
+  "development_fraction": 0.7,
+  "feature_names": [
+    "q_net",
+    "q_abs",
+    "f_dress",
+    "defect_density",
+    "mean_plv",
+    "phase_discontinuity_proxy",
+    "beta_spectral_topology_mass"
+  ],
+  "n_states": 4,
+  "surrogate_draws": 200,
+  "permutation_draws": 5000,
+  "phenomenology_status": "state_proxy_only",
+  "cloud_enabled": false,
+  "braket_enabled": false,
+  "thresholds": {
+    "minimum_valid_fraction": 0.9,
+    "confirmatory_abs_dz": 0.3,
+    "confirmatory_p": 0.05,
+    "confirmatory_tsnr_lower": 1.0,
+    "external_abs_dz": 0.2,
+    "external_p": 0.1,
+    "external_tsnr": 1.0
+  }
+}
