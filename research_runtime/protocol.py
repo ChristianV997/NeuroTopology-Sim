@@ -25,6 +25,11 @@ class ProtocolSpec:
         "beta_spectral_topology_mass",
     )
     n_states: int = 4
+    window_seconds: float = 10.0
+    max_windows_per_file: int = 10
+    max_channels: int = 16
+    spectral_frequency_bins: int = 16
+    spectral_max_frequencies: int = 16
     surrogate_draws: int = 200
     permutation_draws: int = 5000
     phenomenology_status: str = "state_proxy_only"
@@ -56,6 +61,10 @@ class ProtocolSpec:
             raise ValueError("development_fraction must be between zero and one")
         if self.n_states < 2 or self.surrogate_draws < 1 or self.permutation_draws < 1:
             raise ValueError("state and draw counts must be positive")
+        if self.window_seconds <= 0 or self.max_windows_per_file < 2 or self.max_channels < 2:
+            raise ValueError("window and channel settings are invalid")
+        if self.spectral_frequency_bins < 1 or self.spectral_max_frequencies < 1:
+            raise ValueError("spectral resolution settings must be positive")
         if not self.feature_names or len(set(self.feature_names)) != len(self.feature_names):
             raise ValueError("feature_names must be non-empty and unique")
         if self.cloud_enabled or self.braket_enabled:

@@ -16,6 +16,11 @@
     "beta_spectral_topology_mass"
   ],
   "n_states": 4,
+  "window_seconds": 10.0,
+  "max_windows_per_file": 10,
+  "max_channels": 16,
+  "spectral_frequency_bins": 16,
+  "spectral_max_frequencies": 16,
   "surrogate_draws": 200,
   "permutation_draws": 5000,
   "phenomenology_status": "state_proxy_only",
