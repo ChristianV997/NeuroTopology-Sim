@@ -2,11 +2,17 @@ import numpy as np
 import pytest
 
 from research_runtime.transitions import (
+    condition_transition_operator,
     fit_feature_state_model,
     jensen_shannon_distance,
     operator_metrics,
     transition_operator,
 )
+
+
+def test_condition_operator_does_not_cross_sequence_boundaries():
+    operator = condition_transition_operator([0, 1, 1, 0], ["a", "a", "b", "b"], 2)
+    assert operator.tolist() == [[0.0, 1.0], [1.0, 0.0]]
 
 
 def test_frozen_state_model_is_deterministic_and_reusable():

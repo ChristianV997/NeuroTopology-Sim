@@ -111,6 +111,26 @@ def transition_operator(state_ids: Sequence[int], sequence_ids: Sequence[str]) -
     }
 
 
+def condition_transition_operator(
+    state_ids: Sequence[int], sequence_ids: Sequence[str], n_states: int
+) -> np.ndarray:
+    """Aggregate within-sequence transitions into a fixed-size operator."""
+    states = np.asarray(state_ids, dtype=int)
+    sequences = np.asarray(sequence_ids, dtype=str)
+    if states.ndim != 1 or sequences.shape != states.shape:
+        raise ValueError("state_ids and sequence_ids must be aligned one-dimensional arrays")
+    if n_states < 2 or len(states) < 2 or np.any(states < 0) or np.any(states >= n_states):
+        raise ValueError("state IDs do not match the requested state count")
+    counts = np.zeros((n_states, n_states), dtype=float)
+    for sequence in dict.fromkeys(sequences.tolist()):
+        indices = np.flatnonzero(sequences == sequence)
+        if len(indices) < 2:
+            continue
+        np.add.at(counts, (states[indices[:-1]], states[indices[1:]]), 1.0)
+    row_sums = counts.sum(axis=1, keepdims=True)
+    return np.divide(counts, row_sums, out=np.zeros_like(counts), where=row_sums > 0)
+
+
 def operator_metrics(operator: Sequence[Sequence[float]]) -> dict[str, float]:
     """Compute interpretable metrics for a row-normalized transition operator."""
     matrix = np.asarray(operator, dtype=float)
