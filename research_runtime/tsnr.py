@@ -7,6 +7,34 @@ from typing import Sequence
 import numpy as np
 
 
+def phase_randomize_timeseries(timeseries: Sequence[Sequence[float]], *, seed: int) -> np.ndarray:
+    """Preserve each channel's power spectrum while randomizing Fourier phase."""
+    values = np.asarray(timeseries, dtype=float)
+    if values.ndim != 2 or values.shape[1] < 4 or not np.all(np.isfinite(values)):
+        raise ValueError("timeseries must be a finite channels-by-time matrix")
+    spectrum = np.fft.rfft(values, axis=1)
+    rng = np.random.default_rng(seed)
+    if spectrum.shape[1] > 2:
+        phases = rng.uniform(0.0, 2.0 * np.pi, size=(values.shape[0], spectrum.shape[1] - 2))
+        spectrum[:, 1:-1] *= np.exp(1j * phases)
+    return np.fft.irfft(spectrum, n=values.shape[1], axis=1)
+
+
+def phase_randomized_effects(timeseries_windows: Sequence[Sequence[Sequence[float]]], effect_fn, *, draws: int, seed: int) -> np.ndarray:
+    """Evaluate a fixed effect function on paired phase-randomized windows."""
+    if draws < 1:
+        raise ValueError("draws must be positive")
+    rng = np.random.default_rng(seed)
+    effects = []
+    for _ in range(draws):
+        randomized = [phase_randomize_timeseries(window, seed=int(rng.integers(2**32))) for window in timeseries_windows]
+        value = float(effect_fn(randomized))
+        if not np.isfinite(value):
+            raise ValueError("effect function returned a non-finite value")
+        effects.append(value)
+    return np.asarray(effects, dtype=float)
+
+
 def paired_effect(first: Sequence[float], second: Sequence[float], *, seed: int = 0, permutations: int = 5000) -> dict[str, float | int]:
     """Return a paired standardized effect and reproducible sign-flip p-value."""
     a = np.asarray(first, dtype=float)

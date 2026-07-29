@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from research_runtime.tsnr import bootstrap_mean, compute_tsnr, paired_effect
+from research_runtime.tsnr import bootstrap_mean, compute_tsnr, paired_effect, phase_randomize_timeseries
+
+
+def test_phase_randomization_preserves_power_spectrum():
+    t = np.linspace(0, 2 * np.pi, 128, endpoint=False)
+    values = np.vstack([np.sin(3 * t) + 0.2 * np.sin(9 * t), np.cos(5 * t)])
+    randomized = phase_randomize_timeseries(values, seed=7)
+    assert np.allclose(np.abs(np.fft.rfft(values, axis=1)), np.abs(np.fft.rfft(randomized, axis=1)))
 
 
 def test_paired_effect_is_reproducible():

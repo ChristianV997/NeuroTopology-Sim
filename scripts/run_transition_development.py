@@ -7,6 +7,7 @@ import csv
 import json
 import shutil
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -28,17 +29,35 @@ def _write_rows(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+def _checkpoint(path: Path, payload: dict) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def _event(path: Path, event: dict) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
 def run(subjects: list[str], output_dir: Path, work_root: Path, *, window_seconds: float = 10.0, max_windows_per_file: int = 10, max_channels: int = 16, spectral_frequency_bins: int = 16, spectral_max_frequencies: int = 16) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     work_root.mkdir(parents=True, exist_ok=True)
     if not any(work_root.glob("*.tsv")):
         sync_dataset_metadata("ds003969", work_root)
     manifest_path = output_dir / "manifest.json"
+    events_path = output_dir / "events.jsonl"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"processed_subjects": {}, "failed_subjects": {}}
+    manifest.setdefault("processed_subjects", {})
+    manifest.setdefault("failed_subjects", {})
+    _checkpoint(manifest_path, manifest)
     for subject in subjects:
         if subject in manifest["processed_subjects"]:
+            _event(events_path, {"event": "skip_processed", "subject_id": subject, "time": time.time()})
             continue
         subject_root = None
+        started = time.time()
+        _event(events_path, {"event": "subject_started", "subject_id": subject, "time": started})
         try:
             subject_root = sync_subject("ds003969", subject, work_root)
             m_rows = build_and_extract_real_windows("ds003969", str(subject_root.parent), window_seconds=window_seconds, max_windows_per_file=max_windows_per_file, max_channels=max_channels, subject_filter=subject)
@@ -47,13 +66,18 @@ def run(subjects: list[str], output_dir: Path, work_root: Path, *, window_second
             t_by_id = {row["row_id"]: row for row in t_dicts}
             features = [enrich_transition_window(m_row, t_by_id[m_row["row_id"]], max_channels=max_channels, spectral_frequency_bins=spectral_frequency_bins, spectral_max_frequencies=spectral_max_frequencies) for m_row in m_dicts]
             _write_rows(output_dir / f"{subject}_transition_features.csv", features)
-            manifest["processed_subjects"][subject] = {"n_windows": len(features), "feature_names": sorted(features[0]) if features else []}
+            manifest["processed_subjects"][subject] = {"n_windows": len(features), "feature_names": sorted(features[0]) if features else [], "seconds": time.time() - started}
+            manifest["failed_subjects"].pop(subject, None)
+            _event(events_path, {"event": "subject_completed", "subject_id": subject, "n_windows": len(features), "seconds": time.time() - started, "time": time.time()})
         except Exception as exc:
             manifest["failed_subjects"][subject] = f"{type(exc).__name__}: {exc}"
+            _event(events_path, {"event": "subject_failed", "subject_id": subject, "error": manifest["failed_subjects"][subject], "seconds": time.time() - started, "time": time.time()})
         finally:
             if subject_root is not None and subject_root.exists():
                 shutil.rmtree(subject_root)
-            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            _checkpoint(manifest_path, manifest)
+    manifest["finished_at"] = time.time()
+    _checkpoint(manifest_path, manifest)
     return manifest
 
 
