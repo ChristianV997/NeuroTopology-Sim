@@ -17,6 +17,12 @@ def test_protocol_and_subject_split_are_deterministic():
     assert sha256_text(canonical_json(spec.to_dict())) == sha256_text(canonical_json(spec.to_dict()))
 
 
+def test_protocol_loader_accepts_versioned_config():
+    spec = ProtocolSpec.from_dict({"schema": "v1", "protocol_id": "p", "hypothesis_id": "h", "dataset_id": "a", "external_dataset_id": "b"})
+    spec.validate()
+    assert spec.protocol_id == "p"
+
+
 def test_protocol_rejects_cloud_execution():
     with pytest.raises(ValueError, match="cloud"):
         ProtocolSpec("p", "h", "a", "b", cloud_enabled=True).validate()

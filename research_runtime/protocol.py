@@ -40,6 +40,15 @@ class ProtocolSpec:
         "external_tsnr": 1.0,
     })
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ProtocolSpec":
+        """Load the versioned JSON shape while ignoring its metadata field."""
+        data = dict(payload)
+        data.pop("schema", None)
+        if "feature_names" in data:
+            data["feature_names"] = tuple(data["feature_names"])
+        return cls(**data)
+
     def validate(self) -> None:
         if not self.protocol_id or not self.hypothesis_id or not self.dataset_id or not self.external_dataset_id:
             raise ValueError("protocol and dataset identifiers are required")
