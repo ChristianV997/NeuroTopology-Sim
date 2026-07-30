@@ -1,0 +1,10 @@
+# Dependencies for the autonomous orchestration system (agents/, memory/,
+# orchestrator/, dashboard/tui.py). httpx, pyyaml, and boto3 are already
+# pinned in requirements.txt; only the two genuinely new packages are listed
+# here to avoid a second, conflicting pin on the shared ones.
+#
+# Install with:
+#   pip install -r requirements.txt -r requirements-orchestrator.txt
+
+jinja2>=3.1.0
+textual>=0.60.0

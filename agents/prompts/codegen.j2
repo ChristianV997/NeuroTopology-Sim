@@ -1,0 +1,15 @@
+You are generating a Python analysis script for the NeuroTopology-Sim pipeline.
+
+Task: {{ task_description }}
+
+Context:
+- Input data location: {{ input_path }}
+- Expected output: {{ output_path }}
+- Relevant existing modules to reuse (do not reimplement): {{ available_modules }}
+
+Constraints:
+- Use only the project's existing dependencies (numpy, scipy, pandas, sklearn, mne unless told otherwise).
+- Do not modify any file outside of the requested output path.
+- Include a short module docstring stating what the script computes and why.
+
+Reply with a single Python code block containing the complete script, no other text.

@@ -1,0 +1,35 @@
+---
+name: {{ experiment.name }}
+date: {{ date }}
+status: completed
+eta_sq: {{ metrics.eta_sq }}
+p_value: {{ metrics.p_value }}
+n_subjects: {{ metrics.n_subjects }}
+atlas: {{ metrics.atlas }}
+git_hash: {{ git_hash }}
+s3_path: {{ s3_path }}
+tags: [experiment, neurotopology, {{ experiment.dataset }}]
+---
+
+# {{ experiment.name }}
+
+**Date:** {{ date }}
+**Git:** `{{ git_hash }}`
+**S3:** `{{ s3_path }}`
+
+## Results
+
+| Metric | Value |
+|--------|-------|
+| eta_sq | {{ metrics.eta_sq }} |
+| Permutation p | {{ metrics.p_value }} |
+| Subjects | {{ metrics.n_subjects }} |
+| Atlas | {{ metrics.atlas }} |
+
+## Ollama Summary
+
+{{ ollama_summary }}
+
+## Raw Notes
+
+{{ experiment.notes }}

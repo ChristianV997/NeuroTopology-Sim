@@ -1,0 +1,29 @@
+# NeuroTopology Research Dashboard
+
+Last refreshed: {{ date }}
+
+## Running Now
+```dataview
+TABLE date, eta_sq, p_value FROM "Experiments/Running"
+SORT date DESC
+```
+
+## Last 5 Completed
+```dataview
+TABLE date, eta_sq, p_value, atlas FROM "Experiments/Completed"
+SORT date DESC
+LIMIT 5
+```
+
+## Pending Queue
+```dataview
+TABLE description, estimated_hours FROM "Experiments/Pending"
+SORT priority ASC
+```
+
+## Effect Size History
+```dataview
+TABLE date, eta_sq, p_value FROM "Experiments/Completed"
+WHERE eta_sq != null
+SORT date ASC
+```
