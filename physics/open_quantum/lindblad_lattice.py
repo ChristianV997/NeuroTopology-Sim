@@ -9,7 +9,9 @@ class ThermalBathConfig:
     temperature_K:float=310.; radiative_rate_s:float=.1e9; thermal_relaxation_s:float=0.; thermal_excitation_s:float=0.; dephasing_rate_s:float=10e12; ciss_dephasing_rate_s:float=0.; metabolic_pump_rate_s:float=0.; pump_sites:tuple[int,...]=(0,); collective_radiative_rate_s:float=0.; collective_correlation_length_m:float=1e-9
     @classmethod
     def from_temperature(cls,temperature_K:float,transition_energy_eV:float,*,thermal_relaxation_s:float,dephasing_rate_s:float,radiative_rate_s:float,ciss_dephasing_rate_s:float=0.,metabolic_pump_rate_s:float=0.,pump_sites:tuple[int,...]=(0,))->"ThermalBathConfig":
-        if temperature_K<=0 or transition_energy_eV<0: raise ValueError("temperature must be positive and transition energy non-negative")
+        if (not np.isfinite(temperature_K) or temperature_K<=0
+                or not np.isfinite(transition_energy_eV) or transition_energy_eV<0):
+            raise ValueError("temperature must be finite and positive and transition energy finite and non-negative")
         rates=(thermal_relaxation_s,dephasing_rate_s,radiative_rate_s,ciss_dephasing_rate_s,metabolic_pump_rate_s)
         if any(x<0 or not np.isfinite(x) for x in rates): raise ValueError("rates must be finite and non-negative")
         excitation=thermal_relaxation_s*float(np.exp(-transition_energy_eV*EV/(KB*temperature_K)))
@@ -25,7 +27,14 @@ class LindbladLattice:
         self.positions=np.asarray(positions_m,float); self.dipoles=np.asarray(dipoles_Cm,float); self.config=config
         if self.positions.ndim!=2 or self.positions.shape[1]!=3 or self.dipoles.shape!=self.positions.shape: raise ValueError("positions and dipoles must have shape (N,3)")
         if len(self.positions)==0 or not np.all(np.isfinite(self.positions)) or not np.all(np.isfinite(self.dipoles)): raise ValueError("finite non-empty coordinates required")
-        if config.dielectric_constant<=0 or config.interaction_cutoff_m<=0 or config.bath.temperature_K<=0: raise ValueError("invalid dielectric, cutoff, or temperature")
+        config_values=(config.radius_m,config.axial_spacing_m,config.dielectric_constant,config.transition_energy_eV,config.dipole_debye,config.interaction_cutoff_m,config.bath.temperature_K)
+        if (config.n_protofilaments<1 or config.n_layers<1
+                or any(not isinstance(value,(int,np.integer)) or isinstance(value,bool) for value in (config.n_protofilaments,config.n_layers))
+                or any(not np.isfinite(value) for value in config_values)
+                or config.radius_m<=0 or config.axial_spacing_m<=0 or config.dielectric_constant<=0
+                or config.transition_energy_eV<0 or config.dipole_debye<0 or config.interaction_cutoff_m<=0
+                or config.bath.temperature_K<=0):
+            raise ValueError("invalid lattice geometry, energy, dielectric, cutoff, or temperature")
         rates=(config.bath.radiative_rate_s,config.bath.thermal_relaxation_s,config.bath.thermal_excitation_s,config.bath.dephasing_rate_s,config.bath.ciss_dephasing_rate_s,config.bath.metabolic_pump_rate_s,config.bath.collective_radiative_rate_s)
         if any(x<0 or not np.isfinite(x) for x in rates): raise ValueError("rates must be finite and non-negative")
         if config.bath.collective_correlation_length_m <= 0 or not np.isfinite(config.bath.collective_correlation_length_m): raise ValueError("collective correlation length must be finite and positive")

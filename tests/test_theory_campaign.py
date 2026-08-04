@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from theory_campaign.core import CampaignConfig, dimensionless_groups, evaluate_lattice_point, exact_sign_flip_pvalue
-from theory_campaign.memory import MemoryConfig, simulate_memory_mode
+from theory_campaign.memory import MemoryConfig, matched_short_memory_config, simulate_markov_reference, simulate_memory_mode
 
 
 def test_dimensionless_groups_are_reproducible():
@@ -13,6 +13,11 @@ def test_dimensionless_groups_are_reproducible():
     assert groups["rho_spacing_to_correlation"] == pytest.approx(0.5)
     assert groups["delta_disorder_to_spacing"] == pytest.approx(0.05)
     assert all(np.isfinite(list(groups.values())))
+
+
+def test_dimensionless_groups_reject_nonfinite_coherent_coupling():
+    with pytest.raises(ValueError):
+        dimensionless_groups(CampaignConfig(), coherent_coupling_s=float("nan"))
 
 
 def test_exact_sign_flip_is_deterministic_and_two_sided():
@@ -38,10 +43,54 @@ def test_memory_output_is_finite_and_bounded():
 
 
 def test_short_memory_approaches_matched_markov_reference():
+    config = MemoryConfig(
+        decay_rate_s=1e7,
+        memory_time_s=1e-11,
+        memory_strength_s2=1e18,
+        duration_s=1e-7,
+        steps=3000,
+    )
+    short = simulate_memory_mode(config)
+    markov = simulate_markov_reference(config)
+    assert short["observables"]["final_population"] == pytest.approx(
+        markov["observables"]["final_population"], rel=2e-3, abs=1e-6
+    )
+
+
+def test_memory_mode_is_resolution_stable():
     short = simulate_memory_mode(MemoryConfig(memory_time_s=1e-13, duration_s=1e-9, steps=3000))
     finer = simulate_memory_mode(MemoryConfig(memory_time_s=1e-13, duration_s=1e-9, steps=6000))
     assert short["observables"]["final_population"] == pytest.approx(
         finer["observables"]["final_population"], rel=2e-2, abs=1e-8
+    )
+
+
+def test_short_memory_control_preserves_integrated_kernel_strength():
+    config = MemoryConfig(memory_time_s=2e-8, memory_strength_s2=3e16)
+    control = matched_short_memory_config(config, control_memory_time_s=1e-12)
+    assert control.memory_strength_s2 * control.memory_time_s == pytest.approx(
+        config.memory_strength_s2 * config.memory_time_s
+    )
+    assert control.decay_rate_s == config.decay_rate_s
+
+
+def test_short_memory_control_rejects_invalid_time():
+    with pytest.raises(ValueError):
+        matched_short_memory_config(MemoryConfig(), control_memory_time_s=0.0)
+
+
+def test_memory_config_rejects_nonfinite_duration_and_noninteger_steps():
+    with pytest.raises(ValueError):
+        simulate_memory_mode(MemoryConfig(duration_s=float("inf")))
+    with pytest.raises(ValueError):
+        simulate_memory_mode(MemoryConfig(steps=2.5))
+
+
+def test_markov_reference_is_resolution_stable():
+    coarse = simulate_markov_reference(MemoryConfig(steps=200))
+    fine = simulate_markov_reference(MemoryConfig(steps=4000))
+    assert coarse["observables"]["integrated_population_s"] == pytest.approx(
+        fine["observables"]["integrated_population_s"], rel=1e-3
     )
 
 

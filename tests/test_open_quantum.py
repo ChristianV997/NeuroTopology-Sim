@@ -1,4 +1,5 @@
 ﻿import numpy as np
+import pytest
 from physics.open_quantum import LatticeConfig,ThermalBathConfig,LindbladLattice,calculate_lattice_currents,dense_gap,matrix_free_gap
 
 def model(): return LindbladLattice.from_pbc(LatticeConfig(n_layers=1,interaction_cutoff_m=20e-9,bath=ThermalBathConfig(radiative_rate_s=1e6,dephasing_rate_s=1e6)))
@@ -28,3 +29,10 @@ def test_collective_bath_adds_completely_positive_channels():
     rho=np.eye(correlated.dimension,dtype=complex)/correlated.dimension
     assert len(correlated.collapse_operators)>len(independent.collapse_operators)
     assert correlated.trace_residual(rho)<1e-8
+
+
+def test_thermal_config_rejects_nonfinite_temperature_and_energy():
+    with pytest.raises(ValueError):
+        ThermalBathConfig.from_temperature(float("nan"), 4.43, thermal_relaxation_s=1e6, dephasing_rate_s=1e6, radiative_rate_s=1e6)
+    with pytest.raises(ValueError):
+        ThermalBathConfig.from_temperature(310.0, float("inf"), thermal_relaxation_s=1e6, dephasing_rate_s=1e6, radiative_rate_s=1e6)

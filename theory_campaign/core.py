@@ -55,13 +55,17 @@ class CampaignConfig:
             raise ValueError("positive campaign parameters must be finite")
         if any(not np.isfinite(value) or value < 0 for value in (self.disorder_sigma_nm, self.collective_rate_s, self.dephasing_rate_s, self.thermal_relaxation_s)):
             raise ValueError("rates and disorder must be finite and non-negative")
-        if self.n_layers < 1 or self.dense_max_dimension < 2 or self.krylov_k < 2 or self.maxiter < 1:
+        if (any(not isinstance(value, (int, np.integer)) or isinstance(value, bool)
+                for value in (self.n_layers, self.dense_max_dimension, self.krylov_k, self.maxiter))
+                or self.n_layers < 1 or self.dense_max_dimension < 2 or self.krylov_k < 2 or self.maxiter < 1):
             raise ValueError("solver dimensions must be positive")
 
 
 def dimensionless_groups(config: CampaignConfig, coherent_coupling_s: float = 0.0) -> dict[str, float]:
     """Return the ratios used to compare regimes across dimensional scales."""
     config.validate()
+    if not np.isfinite(coherent_coupling_s) or coherent_coupling_s < 0:
+        raise ValueError("coherent coupling must be finite and non-negative")
     gamma = config.local_radiative_rate_s + config.dephasing_rate_s + config.thermal_relaxation_s
     return {
         "kappa_collective_to_local": config.collective_rate_s / config.local_radiative_rate_s,
@@ -99,7 +103,9 @@ def _model(config: CampaignConfig, collective_rate_s: float | None = None, corre
 
 
 def _record(config: CampaignConfig, model: LindbladLattice, result: Any, null_name: str) -> dict[str, Any]:
-    coherent = float(np.max(np.abs(model.hamiltonian[1:, 1:]))) / 1.054571817e-34
+    interaction = np.array(model.hamiltonian[1:, 1:], copy=True)
+    np.fill_diagonal(interaction, 0.0)
+    coherent = float(np.max(np.abs(interaction))) / 1.054571817e-34
     groups = dimensionless_groups(config, coherent)
     return {
         "null": null_name,
@@ -150,6 +156,8 @@ def exact_sign_flip_pvalue(values: np.ndarray) -> float:
     values = np.asarray(values, dtype=float)
     if values.ndim != 1 or values.size < 2 or not np.all(np.isfinite(values)):
         raise ValueError("values must be a finite one-dimensional vector with at least two entries")
+    if values.size > 20:
+        raise ValueError("exact sign-flip testing is limited to 20 paired samples")
     observed = abs(float(np.mean(values)))
     null = [abs(float(np.mean(values * signs))) for signs in itertools.product((-1.0, 1.0), repeat=values.size) for signs in [np.asarray(signs)]]
     return float(np.mean(np.asarray(null) >= observed - 1e-15))
