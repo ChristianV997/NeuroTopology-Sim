@@ -125,6 +125,14 @@ def test_volumetric_bold_serves_real_subject_when_available():
     assert resp.headers["content-type"] == "application/gzip"
 
 
+def test_unified_atlas_page_links_to_all_four_visualizations():
+    resp = client.get("/atlas")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    for path in ("/vortex-field", "/mapper-graph", "/fmri-connectome", "/volumetric"):
+        assert path in resp.text
+
+
 def test_fmri_connectome_viewer_and_data_are_available():
     page = client.get("/fmri-connectome")
     assert page.status_code == 200

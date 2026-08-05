@@ -574,6 +574,18 @@ async def fmri_connectome_data(dataset: str = Query(default="ds005917")):
     return build_fmri_connectome_payload(dataset=dataset)
 
 
+@app.get("/atlas", include_in_schema=False)
+async def unified_atlas():
+    """Single tabbed dashboard combining all four real visualizations
+    (vortex-field, mapper-graph, fmri-connectome, volumetric) plus a live
+    cross-dataset stat strip -- each panel reuses its standalone page as-is
+    via same-origin iframe, lazy-mounted on first visit."""
+    viewer = _STATIC_DIR / "unified_atlas.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Unified atlas is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")

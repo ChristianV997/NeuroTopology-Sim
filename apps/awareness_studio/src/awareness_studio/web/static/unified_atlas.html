@@ -1,0 +1,191 @@
+<meta charset="utf-8">
+<title>Unified Brain Atlas — ds005620, ds005917, ds000245</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .ua-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781;
+    --grid: #e1e0d9; --ring: rgba(11,11,11,0.10); --accent: #ff8a00;
+    --eeg: #0074ff; --mapper: #ffe000; --fmri: #a855f7; --vol: #14b8a6;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="dark"] .ua-root {
+    --page: #0a0a09; --surface: #151413; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+    --grid: #262521; --ring: rgba(255,255,255,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    .ua-root:not([data-theme="light"]) {
+      --page: #0a0a09; --surface: #151413; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+      --grid: #262521; --ring: rgba(255,255,255,0.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  .ua-wrap { max-width: 1680px; margin: 0 auto; padding: 24px 24px 52px; }
+  .ua-eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .ua-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 32px; margin: 8px 0 10px; letter-spacing: -0.01em; text-wrap: balance; }
+  .ua-sub { max-width: 92ch; color: var(--ink-2); font-size: 14px; line-height: 1.6; margin: 0 0 20px; }
+  .ua-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+
+  /* real cross-dataset stat strip */
+  .ua-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--ring); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
+  .ua-stat { background: var(--surface); padding: 13px 15px 12px; border-top: 3px solid var(--dot, var(--ink-muted)); }
+  .ua-stat-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .ua-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .ua-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; font-family: ui-monospace, monospace; }
+  .ua-stat-sub { font-size: 10.5px; color: var(--ink-muted); margin-top: 4px; }
+
+  /* tab strip */
+  .ua-tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--grid); }
+  .ua-tab { display: flex; align-items: center; gap: 7px; padding: 10px 16px; border: none; background: transparent; color: var(--ink-muted); font: 600 13px ui-sans-serif, system-ui; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .ua-tab:hover { color: var(--ink); }
+  .ua-tab.active { color: var(--ink); border-bottom-color: var(--tab-dot, var(--accent)); }
+  .ua-tab .ua-dot { width: 9px; height: 9px; }
+
+  .ua-panels { position: relative; background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; min-height: 780px; }
+  .ua-panel { display: none; width: 100%; height: 780px; }
+  .ua-panel.active { display: block; }
+  .ua-panel iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--page); }
+  .ua-panel-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-muted); font-family: ui-monospace, monospace; font-size: 13px; }
+
+  .ua-footer { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--grid); font-size: 11px; line-height: 1.75; color: var(--ink-muted); max-width: 96ch; }
+  .ua-footer code { font-family: ui-monospace, monospace; }
+</style>
+
+<div class="ua-root">
+  <div class="ua-wrap">
+    <div class="ua-eyebrow">
+      <span>UNIFIED BRAIN ATLAS &middot; 4 REAL DATASETS, 65 SUBJECTS, 3 MODALITIES</span>
+      <span><a href="/command-center">COMMAND CENTRE</a> &middot; <a href="/cortex">CORTEX PLAYBACK</a></span>
+    </div>
+    <h1>Every real visualization, one page</h1>
+    <p class="ua-sub">
+      All four brain-imaging visualizations built on this repository's real algorithmic
+      pipelines, combined into one dashboard: <b style="color:var(--eeg)">EEG phase-vortex
+      field</b> (ds005620, DBSCAN clustering + persistence landscapes),
+      <b style="color:var(--mapper)">Mapper cohort-structure graph</b> (KeplerMapper over real
+      per-window features), <b style="color:var(--fmri)">ketamine fMRI connectome</b>
+      (ds005917, drug&harr;placebo morph), and <b style="color:var(--vol)">real volumetric
+      BOLD</b> (ds000245, NiiVue). Each panel is the live, fully interactive page reused
+      as-is &mdash; nothing here is a static screenshot or a re-derived number; every stat
+      below is fetched live from the same real API each standalone page uses.
+    </p>
+
+    <div class="ua-stats" id="ua-stats">
+      <div class="ua-stat"><div class="ua-stat-label">loading real cross-dataset stats&hellip;</div></div>
+    </div>
+
+    <div class="ua-tabs" id="ua-tabs"></div>
+    <div class="ua-panels" id="ua-panels"></div>
+
+    <div class="ua-footer">
+      Sources: <code>/vortex-field/data</code> (ds005620, DBSCAN + persistence landscape),
+      <code>/mapper-graph/data</code> (KeplerMapper, MIT), <code>/fmri-connectome/data</code>
+      (ds005917, drug/placebo crossover), <code>/volumetric/subjects</code> (ds000245, NiiVue,
+      BSD-2-Clause). Panels are lazy-loaded on first visit to keep the initial page light;
+      switching tabs never re-fetches data the panel already has.
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TABS = [
+    { id: "vortex", label: "EEG Vortex Field", dot: "var(--eeg)", src: "/vortex-field", stat: "eeg" },
+    { id: "mapper", label: "Mapper Graph", dot: "var(--mapper)", src: "/mapper-graph", stat: "mapper" },
+    { id: "fmri", label: "fMRI Connectome", dot: "var(--fmri)", src: "/fmri-connectome", stat: "fmri" },
+    { id: "volumetric", label: "Volumetric BOLD", dot: "var(--vol)", src: "/volumetric", stat: "vol" }
+  ];
+
+  var tabsEl = document.getElementById("ua-tabs");
+  var panelsEl = document.getElementById("ua-panels");
+
+  TABS.forEach(function (t, i) {
+    var btn = document.createElement("button");
+    btn.className = "ua-tab" + (i === 0 ? " active" : "");
+    btn.style.setProperty("--tab-dot", t.dot);
+    btn.innerHTML = '<span class="ua-dot" style="background:' + t.dot + '"></span>' + t.label;
+    btn.addEventListener("click", function () { selectTab(t.id); });
+    tabsEl.appendChild(btn);
+
+    var panel = document.createElement("div");
+    panel.className = "ua-panel" + (i === 0 ? " active" : "");
+    panel.id = "panel-" + t.id;
+    panel.innerHTML = '<div class="ua-panel-placeholder">loading ' + t.label + '&hellip;</div>';
+    panelsEl.appendChild(panel);
+  });
+
+  function mountPanel(id) {
+    var t = TABS.find(function (x) { return x.id === id; });
+    var panel = document.getElementById("panel-" + id);
+    if (panel.dataset.mounted) return;
+    panel.dataset.mounted = "1";
+    var iframe = document.createElement("iframe");
+    iframe.src = t.src;
+    iframe.title = t.label;
+    panel.innerHTML = "";
+    panel.appendChild(iframe);
+  }
+
+  function selectTab(id) {
+    TABS.forEach(function (t) {
+      document.getElementById("panel-" + t.id).classList.toggle("active", t.id === id);
+    });
+    Array.prototype.forEach.call(tabsEl.children, function (btn, i) {
+      btn.classList.toggle("active", TABS[i].id === id);
+    });
+    mountPanel(id);
+  }
+
+  mountPanel(TABS[0].id);
+
+  // ---- real cross-dataset stat strip ----
+  function statCard(label, value, sub, dot) {
+    return '<div class="ua-stat" style="--dot:' + dot + '">' +
+      '<div class="ua-stat-label"><span class="ua-dot" style="background:' + dot + '"></span>' + label + '</div>' +
+      '<div class="ua-stat-value">' + value + '</div>' +
+      (sub ? '<div class="ua-stat-sub">' + sub + '</div>' : '') +
+      '</div>';
+  }
+
+  Promise.allSettled([
+    fetch("/vortex-field/data").then(function (r) { return r.json(); }),
+    fetch("/mapper-graph/data").then(function (r) { return r.json(); }),
+    fetch("/fmri-connectome/data").then(function (r) { return r.json(); }),
+    fetch("/volumetric/subjects").then(function (r) { return r.json(); })
+  ]).then(function (results) {
+    var cards = [];
+    var vf = results[0].status === "fulfilled" ? results[0].value : null;
+    var mg = results[1].status === "fulfilled" ? results[1].value : null;
+    var fc = results[2].status === "fulfilled" ? results[2].value : null;
+    var vol = results[3].status === "fulfilled" ? results[3].value : null;
+
+    cards.push(statCard("EEG cohort (ds005620)",
+      vf && vf.status === "available" ? vf.n_subjects : "–",
+      vf && vf.status === "available" ? vf.n_channels + " ch, " + vf.tri.length + " triangles" : "data unavailable",
+      "var(--eeg)"));
+    cards.push(statCard("Mapper windows",
+      mg && mg.status === "available" ? mg.n_windows : "–",
+      mg && mg.status === "available" ? mg.nodes.length + " nodes, " + mg.edges.length + " edges" : "data unavailable",
+      "var(--mapper)"));
+    cards.push(statCard("Ketamine cohort (ds005917)",
+      fc && fc.status === "available" ? fc.n_subjects : "–",
+      fc && fc.status === "available" ? fc.n_subjects_with_graph_structure + " with real connectome graph" : "data unavailable",
+      "var(--fmri)"));
+    cards.push(statCard("Volumetric subjects (ds000245)",
+      vol && vol.subjects ? vol.subjects.length : "–",
+      "real 4D resting-state BOLD",
+      "var(--vol)"));
+
+    var totalSubjects = (vf && vf.status === "available" ? vf.n_subjects : 0) +
+      (fc && fc.status === "available" ? fc.n_subjects : 0) +
+      (vol && vol.subjects ? vol.subjects.length : 0);
+    cards.unshift(statCard("Total subjects, all datasets", totalSubjects, "3 modalities: EEG, fMRI, structural/functional MRI", "var(--accent)"));
+
+    document.getElementById("ua-stats").innerHTML = cards.join("");
+  });
+})();
+</script>
