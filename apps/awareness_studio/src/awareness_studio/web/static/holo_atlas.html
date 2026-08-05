@@ -99,7 +99,7 @@
       <div class="ha-callout-layer" id="ha-callouts"></div>
       <div class="ha-legend-layer">
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#1f8fd6"></span>EEG vortex core (sign = CW/CCW)</div>
-        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring &mdash; color=|charge|, orbiting dot=real turn direction (CW/CCW)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 vortex &mdash; color=|charge|, big arrow=real turn direction (CW/CCW)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#9b30ff"></span>fMRI connectome node/edge (violet)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#b06bff"></span>Mapper satellite node</div>
         <div>inactive &rarr; most energetic</div>
@@ -232,8 +232,8 @@ function run(VF, FC, MG, BRAIN_RAW) {
     var idx = Math.min(s.length - 1, Math.max(0, Math.round(p * (s.length - 1))));
     return s[idx];
   }
-  var eegPeak = Math.max(0.005, percentile(eegAwake.smooth.concat(eegSedated.smooth).map(Math.abs), 0.92));
-  var eegTriPeak = Math.max(0.02, percentile(eegAwake.wind.concat(eegSedated.wind).map(Math.abs), 0.9));
+  var eegPeak = Math.max(0.005, percentile(eegAwake.smooth.concat(eegSedated.smooth).map(Math.abs), 0.85));
+  var eegTriPeak = Math.max(0.02, percentile(eegAwake.wind.concat(eegSedated.wind).map(Math.abs), 0.85));
 
   // overall world size -- large enough to comfortably host the cortex heatmap, the
   // interior fMRI connectome, and the interior Mapper cluster without them crowding
@@ -471,7 +471,7 @@ function run(VF, FC, MG, BRAIN_RAW) {
   // shading (applied in updateEEG below) already supplies gyrus/sulcus depth cues, so the
   // heatmap stays legible without depending on scene lighting at all.
   var brainMat = new THREE.MeshBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.58, side: THREE.DoubleSide, depthWrite: false
+    vertexColors: true, transparent: true, opacity: 0.66, side: THREE.DoubleSide, depthWrite: false
   });
   var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
   scene.add(brainMesh);
@@ -535,20 +535,31 @@ function run(VF, FC, MG, BRAIN_RAW) {
     scene.add(sprite);
     vortices.push({ sprite: sprite, tri: a });
 
-    var ringGeo = new THREE.TorusGeometry(1, 0.06, 8, 40);
+    var ringGeo = new THREE.TorusGeometry(1, 0.05, 8, 40);
     var ringMat = new THREE.MeshBasicMaterial({ color: 0xffe23f, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     var ring = new THREE.Mesh(ringGeo, ringMat);
     ring.position.copy(a.centroid);
     ring.lookAt(a.centroid.clone().add(a.n));
     scene.add(ring);
-    // a bright marker orbits the ring's circumference in the loop's own tangent plane;
+    // two smaller, fainter rings stacked and drawn slightly into the surface along the
+    // loop's own normal turn a flat ring into a tapering vortex funnel silhouette
+    var funnel = [0, 1].map(function (fi) {
+      var fMat = new THREE.MeshBasicMaterial({ color: 0xffe23f, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      var fMesh = new THREE.Mesh(ringGeo, fMat);
+      fMesh.position.copy(a.centroid);
+      fMesh.lookAt(a.centroid.clone().add(a.n));
+      scene.add(fMesh);
+      return fMesh;
+    });
+    // one large arrow orbits the ring's circumference, tangent to the real direction of
+    // travel -- a much more legible chirality (CW/CCW) indicator than a small dot, and
     // its angular velocity sign follows the real signed winding number for this
-    // triangle, so the marker's direction of travel IS the real chirality (CW/CCW) --
-    // not a fabricated "drag" quantity
-    var markerMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
-    var marker = new THREE.Sprite(markerMat);
-    scene.add(marker);
-    rings.push({ mesh: ring, tri: a, marker: marker });
+    // triangle, not a fabricated "drag" quantity
+    var dirArrow = new THREE.ArrowHelper(a.e1.clone(), a.centroid, 1, 0xffe23f, 1, 1);
+    dirArrow.line.material.transparent = true;
+    dirArrow.cone.material.transparent = true;
+    scene.add(dirArrow);
+    rings.push({ mesh: ring, tri: a, funnel: funnel, dirArrow: dirArrow });
 
     var rnd = mulberry32(hashStr('tri#' + a.index));
     for (var k = 0; k < 3; k++) {
@@ -563,19 +574,19 @@ function run(VF, FC, MG, BRAIN_RAW) {
   // real phase arrows, one per real electrode -- opacity/color driven by real local
   // activity intensity in updateEEG below (hot red->yellow->white sub-range)
   var arrows = GEOM.positions.map(function (p) {
-    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.11, 0xffffff, GEOM.R * 0.04, GEOM.R * 0.025);
+    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.13, 0xffffff, GEOM.R * 0.05, GEOM.R * 0.03);
     ah.line.material.transparent = true;
     ah.cone.material.transparent = true;
     scene.add(ah);
     return ah;
   });
 
-  // densely resampled phase arrows: many more arrows per active triangle than there are
-  // real electrodes, so the field's dynamics read clearly at a glance. Each one's
-  // direction/intensity is a barycentric interpolation of the same three real per-vertex
-  // phase/activity values at that triangle's corners -- real data resampled more densely,
-  // not fabricated.
-  var EXTRA_ARROWS_PER_TRI = 5;
+  // densely resampled phase-vortex ("skyrmion texture") arrows: many more arrows per
+  // active triangle than there are real electrodes, so the field's precise local
+  // dynamics read clearly at a glance. Each one's direction/intensity is a barycentric
+  // interpolation of the same three real per-vertex phase/activity values at that
+  // triangle's corners -- real data resampled more densely and precisely, not fabricated.
+  var EXTRA_ARROWS_PER_TRI = 9;
   var denseArrows = [];
   GEOM.activeTri.forEach(function (a) {
     var rndA = mulberry32(hashStr('arrow-dense#' + a.index));
@@ -584,7 +595,7 @@ function run(VF, FC, MG, BRAIN_RAW) {
       var pos = GEOM.positions[a.tri[0]].clone().multiplyScalar(w)
         .add(GEOM.positions[a.tri[1]].clone().multiplyScalar(u))
         .add(GEOM.positions[a.tri[2]].clone().multiplyScalar(v));
-      var ah2 = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), pos, GEOM.R * 0.07, 0xffffff, GEOM.R * 0.026, GEOM.R * 0.015);
+      var ah2 = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), pos, GEOM.R * 0.085, 0xffffff, GEOM.R * 0.032, GEOM.R * 0.019);
       ah2.line.material.transparent = true;
       ah2.cone.material.transparent = true;
       scene.add(ah2);
@@ -682,14 +693,14 @@ function run(VF, FC, MG, BRAIN_RAW) {
   var mapperLayer = new THREE.Group();
   scene.add(mapperLayer);
   var mapperNodeMeshes = [];
+  function mapperNodeScale(n) { return 0.62 + 0.26 * Math.sqrt(n.size); }
   (function buildMapperLayer() {
-    var nodeGeo = new THREE.SphereGeometry(0.6, 10, 8);
+    var nodeGeo = new THREE.SphereGeometry(0.6, 12, 10);
     mapperNodes.forEach(function (n, i) {
-      var mat = new THREE.MeshStandardMaterial({ color: 0xb06bff, emissive: 0x3a0a66, emissiveIntensity: 0.7, roughness: 0.35 });
+      var mat = new THREE.MeshStandardMaterial({ color: 0xcf9bff, emissive: 0x7a2fff, emissiveIntensity: 1.0, roughness: 0.25 });
       var mesh = new THREE.Mesh(nodeGeo, mat);
       mesh.position.copy(mapperLayout.pos[i]);
-      var scale = 0.4 + 0.16 * Math.sqrt(n.size);
-      mesh.scale.setScalar(scale);
+      mesh.scale.setScalar(mapperNodeScale(n));
       mapperLayer.add(mesh);
       mapperNodeMeshes.push(mesh);
     });
@@ -701,19 +712,24 @@ function run(VF, FC, MG, BRAIN_RAW) {
     });
     var edgeGeo = new THREE.BufferGeometry();
     edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
-    var edgeMat = new THREE.LineBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.4 });
+    var edgeMat = new THREE.LineBasicMaterial({ color: 0xcf9bff, transparent: true, opacity: 0.65 });
     mapperLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
   })();
 
   function updateMapperGlow(clock) {
     mapperNodes.forEach(function (n, i) {
-      var energy = clamp01((n.feature_mean && n.feature_mean.mean_plv != null) ? n.feature_mean.mean_plv : n.awake_fraction);
-      var rgb = spectrumColor(energy);
+      var rawEnergy = clamp01((n.feature_mean && n.feature_mean.mean_plv != null) ? n.feature_mean.mean_plv : n.awake_fraction);
+      // a brightness floor keeps every real Mapper node clearly visible at a glance --
+      // this is a graph overview layer (18 nodes), not the dense EEG heatmap, so it
+      // doesn't need the same low-end dynamic range; real per-node energy still drives
+      // where each node sits between "bright violet" and "hot white"
+      var energy = 0.42 + rawEnergy * 0.58;
+      var rgb = spectrumColor(0.55 + energy * 0.45);
       var mesh = mapperNodeMeshes[i];
-      var pulse = 1 + 0.06 * Math.sin(clock * 1.4 + i);
+      var pulse = 1 + 0.08 * Math.sin(clock * 1.4 + i);
       mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
-      mesh.material.emissive.setRGB(rgb[0] * 0.55, rgb[1] * 0.55, rgb[2] * 0.55);
-      mesh.scale.setScalar((0.4 + 0.16 * Math.sqrt(n.size)) * pulse);
+      mesh.material.emissive.setRGB(rgb[0] * 0.85, rgb[1] * 0.85, rgb[2] * 0.85);
+      mesh.scale.setScalar(mapperNodeScale(n) * pulse);
     });
     mapperLayer.rotation.y += 0.0015;
   }
@@ -769,11 +785,14 @@ function run(VF, FC, MG, BRAIN_RAW) {
         acc += wgt * lerp(eegAwake.smooth[eIdx], eegSedated.smooth[eIdx], t);
       }
       var intensity = Math.min(1, Math.abs(acc) / eegPeak);
-      var rgb = spectrumColor(intensity);
+      // a mild <1 gamma pushes real mid-activity values further up the spectrum so the
+      // full blue->green->yellow->red->white range is legible across the anatomically
+      // real electrode-covered area, rather than most of it compressing into blue
+      var rgb = spectrumColor(Math.pow(intensity, 0.72));
       // real FreeSurfer sulcal-depth curvature drives per-vertex shading contrast, the
       // same signal anatomical surface renderers use to make gyri (light) and sulci
       // (dark) visually legible -- stronger than a flat energy fill alone
-      var curvShade = Math.max(0.45, 1 + BRAIN.curv[bv] * 0.42);
+      var curvShade = Math.max(0.58, 1 + BRAIN.curv[bv] * 0.42);
       brainCol.setXYZ(bv, Math.min(1, rgb[0] * curvShade), Math.min(1, rgb[1] * curvShade), Math.min(1, rgb[2] * curvShade));
     }
     brainCol.needsUpdate = true;
@@ -793,12 +812,12 @@ function run(VF, FC, MG, BRAIN_RAW) {
       var dir = tf.e1.clone().multiplyScalar(Math.cos(ph)).add(tf.e2.clone().multiplyScalar(Math.sin(ph))).normalize();
       var vAmp = Math.min(1, Math.abs(lerp(eegAwake.smooth[j], eegSedated.smooth[j], t)) / eegPeak);
       vertexIntensity[j] = vAmp;
-      var rgbA = spectrumColor(0.55 + vAmp * 0.45);
+      var rgbA = spectrumColor(0.38 + vAmp * 0.62);
       arrows[j].setDirection(dir);
       arrows[j].setColor(new THREE.Color(rgbA[0], rgbA[1], rgbA[2]));
-      arrows[j].line.material.opacity = 0.55 + 0.4 * vAmp;
-      arrows[j].cone.material.opacity = 0.55 + 0.4 * vAmp;
-      arrows[j].setLength(GEOM.R * (0.07 + 0.09 * vAmp), GEOM.R * (0.025 + 0.02 * vAmp), GEOM.R * (0.015 + 0.012 * vAmp));
+      arrows[j].line.material.opacity = 0.6 + 0.4 * vAmp;
+      arrows[j].cone.material.opacity = 0.6 + 0.4 * vAmp;
+      arrows[j].setLength(GEOM.R * (0.08 + 0.1 * vAmp), GEOM.R * (0.03 + 0.024 * vAmp), GEOM.R * (0.018 + 0.014 * vAmp));
     }
 
     denseArrows.forEach(function (da) {
@@ -811,12 +830,12 @@ function run(VF, FC, MG, BRAIN_RAW) {
       var ph2 = Math.atan2(cy, cx);
       var dir2 = da.tri.e1.clone().multiplyScalar(Math.cos(ph2)).add(da.tri.e2.clone().multiplyScalar(Math.sin(ph2))).normalize();
       var amp = bw[0] * vertexIntensity[t3[0]] + bw[1] * vertexIntensity[t3[1]] + bw[2] * vertexIntensity[t3[2]];
-      var rgbD = spectrumColor(0.55 + amp * 0.45);
+      var rgbD = spectrumColor(0.38 + amp * 0.62);
       da.ah.setDirection(dir2);
       da.ah.setColor(new THREE.Color(rgbD[0], rgbD[1], rgbD[2]));
-      da.ah.line.material.opacity = 0.5 + 0.45 * amp;
-      da.ah.cone.material.opacity = 0.5 + 0.45 * amp;
-      da.ah.setLength(GEOM.R * (0.045 + 0.07 * amp), GEOM.R * (0.02 + 0.015 * amp), GEOM.R * (0.012 + 0.009 * amp));
+      da.ah.line.material.opacity = 0.58 + 0.42 * amp;
+      da.ah.cone.material.opacity = 0.58 + 0.42 * amp;
+      da.ah.setLength(GEOM.R * (0.055 + 0.085 * amp), GEOM.R * (0.024 + 0.018 * amp), GEOM.R * (0.014 + 0.011 * amp));
     });
 
     var triScale = eegTriPeak;
@@ -839,23 +858,42 @@ function run(VF, FC, MG, BRAIN_RAW) {
       var chargeVis = Math.min(1, Math.abs(blended) / triScale);
       var ringRgb = spectrumColor(0.3 + chargeVis * 0.68);
       rg.mesh.material.color.setRGB(ringRgb[0], ringRgb[1], ringRgb[2]);
-      rg.mesh.material.opacity = visible ? 0.95 * Math.min(1, vis * 1.6) : 0;
-      rg.marker.material.opacity = 0;
+      // toned down from the first pass -- the ring is a chirality/charge readout, not
+      // meant to outshine the arrow that marks its actual turn direction
+      var ringOpacity = visible ? 0.55 * Math.min(1, vis * 1.6) : 0;
+      rg.mesh.material.opacity = ringOpacity;
+      rg.funnel[0].material.opacity = 0; rg.funnel[1].material.opacity = 0;
+      rg.dirArrow.line.material.opacity = 0; rg.dirArrow.cone.material.opacity = 0;
       if (visible) {
         var ringR = rg.tri.edgeLen * (0.62 + 0.22 * Math.sin(clock * 1.6 + i));
         rg.mesh.scale.set(ringR, ringR, ringR);
-        // real signed winding sets the marker's orbital direction: +1 = CCW, -1 = CW,
-        // matching the sign convention already used for the vortex core coloring above
+        // two smaller rings drawn slightly recessed into the surface along the loop's
+        // own normal taper the flat ring into a funnel/vortex silhouette
+        rg.funnel.forEach(function (fMesh, fi) {
+          var fScale = ringR * (0.72 - fi * 0.22);
+          fMesh.scale.set(fScale, fScale, fScale);
+          fMesh.position.copy(rg.tri.centroid).addScaledVector(rg.tri.n, -(fi + 1) * ringR * 0.16);
+          fMesh.material.color.setRGB(ringRgb[0], ringRgb[1], ringRgb[2]);
+          fMesh.material.opacity = ringOpacity * (0.55 - fi * 0.18);
+        });
+        // real signed winding sets the arrow's orbital direction: +1 = CCW, -1 = CW,
+        // matching the sign convention already used for the vortex core coloring above.
+        // The arrow's own heading is the true instantaneous tangent of that motion, so
+        // its direction of travel IS the real chirality -- not a fabricated quantity.
         var sign = blended >= 0 ? 1 : -1;
-        var ang = clock * (1.1 + 1.4 * chargeVis) * sign + i;
-        var mpos = rg.tri.centroid.clone()
+        var spinSpeed = 1.1 + 1.4 * chargeVis;
+        var ang = clock * spinSpeed * sign + i;
+        var apos = rg.tri.centroid.clone()
           .add(rg.tri.e1.clone().multiplyScalar(Math.cos(ang) * ringR))
           .add(rg.tri.e2.clone().multiplyScalar(Math.sin(ang) * ringR));
-        rg.marker.position.copy(mpos);
-        rg.marker.material.color.setRGB(ringRgb[0], ringRgb[1], ringRgb[2]);
-        rg.marker.material.opacity = 0.95 * Math.min(1, vis * 1.6);
-        var ms = GEOM.R * (0.018 + 0.02 * vis);
-        rg.marker.scale.set(ms, ms, ms);
+        var tangent = rg.tri.e1.clone().multiplyScalar(-Math.sin(ang)).add(rg.tri.e2.clone().multiplyScalar(Math.cos(ang))).multiplyScalar(sign).normalize();
+        rg.dirArrow.position.copy(apos);
+        rg.dirArrow.setDirection(tangent);
+        rg.dirArrow.setLength(ringR * 1.15, ringR * 0.5, ringR * 0.3);
+        rg.dirArrow.setColor(new THREE.Color(ringRgb[0], ringRgb[1], ringRgb[2]));
+        var arrowOp = 0.95 * Math.min(1, vis * 1.6);
+        rg.dirArrow.line.material.opacity = arrowOp;
+        rg.dirArrow.cone.material.opacity = arrowOp;
       }
     });
     particles.forEach(function (p) {
