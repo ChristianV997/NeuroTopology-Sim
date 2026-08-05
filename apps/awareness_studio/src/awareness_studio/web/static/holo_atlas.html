@@ -43,7 +43,7 @@
   .ha-legend-row { display: flex; align-items: center; gap: 7px; }
   .ha-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
   .ha-spectrum-bar { width: 140px; height: 8px; border-radius: 4px; margin-top: 2px;
-    background: linear-gradient(90deg, #0b1f6b, #00c2ff 25%, #35e08a 50%, #ffe23f 72%, #ff6a1a 86%, #ff2d55 100%); }
+    background: linear-gradient(90deg, #040a2e, #0b2f9e 18%, #1f8fd6 36%, #2ecc71 52%, #e4322c 68%, #ffd23f 85%, #ffffff 100%); }
   .ha-callout-layer { position: absolute; inset: 0; pointer-events: none; font: 11px ui-monospace, monospace; }
   .ha-callout-label { position: absolute; transform: translate(-50%, -100%); padding: 3px 7px; border-radius: 5px; background: rgba(5,7,12,0.7); color: #fff; white-space: nowrap; border: 1px solid rgba(255,255,255,0.15); }
   .ha-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); background: var(--surface); }
@@ -98,11 +98,11 @@
       <canvas id="ha-scene"></canvas>
       <div class="ha-callout-layer" id="ha-callouts"></div>
       <div class="ha-legend-layer">
-        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#00c2ff"></span>EEG vortex core (sign = CW/CCW)</div>
-        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffe23f"></span>Betti-1 loop ring (real spatial cluster)</div>
-        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ff6a1a"></span>fMRI connectome node/edge</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#1f8fd6"></span>EEG vortex core (sign = CW/CCW)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring (real spatial cluster)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#9b30ff"></span>fMRI connectome node/edge (violet)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#b06bff"></span>Mapper satellite node</div>
-        <div>low &rarr; high energy</div>
+        <div>inactive &rarr; most energetic</div>
         <div class="ha-spectrum-bar"></div>
       </div>
     </div>
@@ -176,10 +176,12 @@ function run(VF, FC, MG, BRAIN_RAW) {
     return h >>> 0;
   }
 
-  // full-spectrum "cool -> hot" energy colormap: deep blue -> cyan -> green -> yellow -> orange -> red
+  // EEG activity colormap: inactive = near-black deep blue, lightening through blue as
+  // activity rises, green at modest activity, then hot red -> yellow -> white at the
+  // most energetic areas -- a classic "thermal" ramp anchored in blue instead of black.
   var SPECTRUM_STOPS = [
-    [0.00, 0x0b1f6b], [0.22, 0x00c2ff], [0.46, 0x35e08a],
-    [0.68, 0xffe23f], [0.85, 0xff6a1a], [1.00, 0xff2d55]
+    [0.00, 0x040a2e], [0.18, 0x0b2f9e], [0.36, 0x1f8fd6],
+    [0.52, 0x2ecc71], [0.68, 0xe4322c], [0.85, 0xffd23f], [1.00, 0xffffff]
   ];
   var SPECTRUM_RGB = SPECTRUM_STOPS.map(function (s) {
     var c = new THREE.Color(s[1]); return [s[0], c.r, c.g, c.b];
@@ -566,6 +568,16 @@ function run(VF, FC, MG, BRAIN_RAW) {
     };
   }
 
+  // bright violet, fixed hue for the fMRI connectome -- real degree/weight still drives
+  // brightness and node/edge size, so structure stays legible, but the hue itself marks
+  // this layer as "interior connectome" at a glance, distinct from the EEG heat spectrum
+  var VIOLET = new THREE.Color(0x9b30ff);
+  var VIOLET_DIM = new THREE.Color(0x2a0a4a);
+  function violetShade(x) {
+    var c = VIOLET_DIM.clone().lerp(VIOLET, clamp01(0.35 + x * 0.65));
+    return [c.r, c.g, c.b];
+  }
+
   function updateConnectome(t) {
     if (!connState) return;
     var cs = connState;
@@ -573,9 +585,9 @@ function run(VF, FC, MG, BRAIN_RAW) {
       var p = cs.drugPos[i].clone().lerp(cs.placeboPos[i], t);
       cs.nodeMeshes[i].position.copy(p);
       var deg01 = cs.degree[i] / cs.maxDeg;
-      var rgb = spectrumColor(0.25 + deg01 * 0.75);
+      var rgb = violetShade(deg01);
       cs.nodeMeshes[i].material.color.setRGB(rgb[0], rgb[1], rgb[2]);
-      cs.nodeMeshes[i].material.emissive.setRGB(rgb[0] * 0.5, rgb[1] * 0.5, rgb[2] * 0.5);
+      cs.nodeMeshes[i].material.emissive.setRGB(rgb[0] * 0.7, rgb[1] * 0.5, rgb[2] * 0.9);
       var s = 0.45 + 0.65 * deg01;
       cs.nodeMeshes[i].scale.setScalar(s);
     }
@@ -585,7 +597,7 @@ function run(VF, FC, MG, BRAIN_RAW) {
       posAttr.array[i * 6] = pa.x; posAttr.array[i * 6 + 1] = pa.y; posAttr.array[i * 6 + 2] = pa.z;
       posAttr.array[i * 6 + 3] = pb.x; posAttr.array[i * 6 + 4] = pb.y; posAttr.array[i * 6 + 5] = pb.z;
       var w = Math.abs(lerp(e.wd, e.wp, t));
-      var rgb = spectrumColor(0.15 + Math.min(1, w) * 0.85);
+      var rgb = violetShade(Math.min(1, w));
       for (var k = 0; k < 2; k++) {
         colAttr.array[i * 6 + k * 3] = rgb[0]; colAttr.array[i * 6 + k * 3 + 1] = rgb[1]; colAttr.array[i * 6 + k * 3 + 2] = rgb[2];
       }
@@ -693,8 +705,11 @@ function run(VF, FC, MG, BRAIN_RAW) {
       }
       var intensity = Math.min(1, Math.abs(acc) / eegPeak);
       var rgb = spectrumColor(intensity);
-      var curvShade = 1 + BRAIN.curv[bv] * 0.15;
-      brainCol.setXYZ(bv, rgb[0] * curvShade, rgb[1] * curvShade, rgb[2] * curvShade);
+      // real FreeSurfer sulcal-depth curvature drives per-vertex shading contrast, the
+      // same signal anatomical surface renderers use to make gyri (light) and sulci
+      // (dark) visually legible -- stronger than a flat energy fill alone
+      var curvShade = Math.max(0.45, 1 + BRAIN.curv[bv] * 0.42);
+      brainCol.setXYZ(bv, Math.min(1, rgb[0] * curvShade), Math.min(1, rgb[1] * curvShade), Math.min(1, rgb[2] * curvShade));
     }
     brainCol.needsUpdate = true;
 
