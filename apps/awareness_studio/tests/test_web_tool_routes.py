@@ -79,6 +79,23 @@ def test_cortex_viewer_links_to_vortex_field():
     assert "/vortex-field" in resp.text
 
 
+def test_mapper_graph_viewer_and_data_are_available():
+    page = client.get("/mapper-graph")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "Mapper graph" in page.text or "mapper graph" in page.text.lower()
+
+    resp = client.get("/mapper-graph/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert isinstance(data["nodes"], list) and len(data["nodes"]) > 0
+        assert isinstance(data["edges"], list)
+        node = data["nodes"][0]
+        assert "size" in node and "awake_fraction" in node and "members" in node
+
+
 def test_vortex_field_data_is_available():
     resp = client.get("/vortex-field/data")
     assert resp.status_code == 200

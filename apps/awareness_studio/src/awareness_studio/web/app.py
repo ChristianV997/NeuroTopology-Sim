@@ -509,6 +509,23 @@ async def vortex_field_data():
     return build_vortex_field_payload()
 
 
+@app.get("/mapper-graph", include_in_schema=False)
+async def mapper_graph_viewer():
+    """KeplerMapper topological network graph over the ds005620 PITNN cohort's
+    real per-window feature vectors (mean PLV, landscape area, beta1, etc.)."""
+    viewer = _STATIC_DIR / "mapper_graph.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Mapper graph viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/mapper-graph/data")
+@app.get("/api/mapper-graph/data", include_in_schema=False)
+async def mapper_graph_data():
+    from awareness_studio.integrations.neurotopology_results import build_mapper_graph_payload
+    return build_mapper_graph_payload()
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")

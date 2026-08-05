@@ -427,6 +427,33 @@ def build_vortex_field_payload(root: str | Path | None = None) -> dict[str, Any]
     return payload
 
 
+def build_mapper_graph_payload(root: str | Path | None = None) -> dict[str, Any]:
+    """Real KeplerMapper topological network graph over the ds005620 cohort's
+    per-window feature vectors, for `/mapper-graph`.
+
+    Precomputed by `tools/export_mapper_graph_for_vortex_field.py` (needs
+    numpy/scikit-learn/kmapper, available in the root environment, not this
+    process -- see `build_vortex_field_payload`'s docstring for the same
+    two-environment constraint). Read here as plain JSON.
+    """
+    result_root = _pitnn_cohort_root(root)
+    graph_path = result_root / "mapper_graph.json"
+    if not graph_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No precomputed Mapper graph at {graph_path}. Run "
+                      "tools/export_mapper_graph_for_vortex_field.py first.",
+        }
+    try:
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {graph_path}: {exc}"}
+
+    graph["status"] = "available"
+    graph["source"] = "tools/export_mapper_graph_for_vortex_field.py (kmapper.KeplerMapper, MIT-licensed)"
+    return graph
+
+
 def build_command_center_registry(root: str | Path | None = None) -> dict[str, Any]:
     """Return a UI-safe, read-only inventory of empirical run artifacts.
 

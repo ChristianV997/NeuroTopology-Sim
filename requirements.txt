@@ -131,3 +131,9 @@ remfile
 # energy via pymdp. Pinned to the classic numpy API (0.0.7.1); the 1.0.x line
 # is a JAX rewrite with a different interface. MIT-licensed.
 inferactively-pymdp==0.0.7.1
+# Used by tools/export_mapper_graph_for_vortex_field.py to build a real
+# Mapper-algorithm topological network graph over the ds005620 PITNN cohort's
+# per-window feature vectors, for the /mapper-graph 3D viewer. MIT-licensed
+# (deliberately not giotto-tda, which is AGPLv3 -- see README.md's license
+# policy).
+kmapper

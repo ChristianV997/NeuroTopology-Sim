@@ -94,3 +94,13 @@ def build_vortex_field_payload() -> dict[str, Any]:
         "status": "unavailable",
         "reason": "No repository empirical artifact adapter is available in this deployment.",
     }
+
+
+def build_mapper_graph_payload() -> dict[str, Any]:
+    adapter = _adapter()
+    if adapter is not None:
+        return adapter.build_mapper_graph_payload()
+    return {
+        "status": "unavailable",
+        "reason": "No repository empirical artifact adapter is available in this deployment.",
+    }
