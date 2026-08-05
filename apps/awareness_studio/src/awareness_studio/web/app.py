@@ -479,6 +479,21 @@ async def cortex_viewer():
     return FileResponse(str(viewer), media_type="text/html")
 
 
+@app.get("/vortex-field", include_in_schema=False)
+async def vortex_field_viewer():
+    """Real per-triangle winding-number defect field for the ds005620 PITNN cohort.
+
+    Static, self-contained page: the electrode geometry, triangulation, winding
+    numbers, phase values, and H1 persistence diagrams for all 20 subjects are
+    embedded at build time from `outputs/pitnn_cohort/ds005620/subjects/*.json`
+    (see REPORT_ds005620_pitnn_cohort_topology.md). No API call, no live compute.
+    """
+    viewer = _STATIC_DIR / "vortex_field.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Vortex field viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")

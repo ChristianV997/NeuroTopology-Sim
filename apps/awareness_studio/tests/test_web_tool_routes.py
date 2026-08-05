@@ -65,6 +65,20 @@ def test_command_center_page_and_read_only_registry_are_available():
     assert all(item["execution_allowed"] is False for item in data["command_registry"])
 
 
+def test_vortex_field_viewer_is_available():
+    resp = client.get("/vortex-field")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Real Phase-Vortex Defects" in resp.text
+    assert "ds005620" in resp.text
+
+
+def test_cortex_viewer_links_to_vortex_field():
+    resp = client.get("/cortex")
+    assert resp.status_code == 200
+    assert "/vortex-field" in resp.text
+
+
 def test_command_center_status_exposes_real_quality_contract():
     response = client.get("/command-center/status")
     assert response.status_code == 200
