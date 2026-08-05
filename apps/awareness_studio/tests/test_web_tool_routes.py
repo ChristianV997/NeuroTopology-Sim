@@ -79,6 +79,22 @@ def test_cortex_viewer_links_to_vortex_field():
     assert "/vortex-field" in resp.text
 
 
+def test_vortex_field_data_is_available():
+    resp = client.get("/vortex-field/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert "coords" in data and "tri" in data
+        assert isinstance(data["subjects"], list) and len(data["subjects"]) > 0
+        ca = data["cohort_average"]
+        assert "clustering_and_landscape" in ca
+        for cond in ("awake", "sedated"):
+            cl = ca["clustering_and_landscape"][cond]
+            assert "clustering" in cl and "landscape" in cl
+            assert len(cl["clustering"]["triangle_cluster_label"]) == len(data["tri"])
+
+
 def test_command_center_status_exposes_real_quality_contract():
     response = client.get("/command-center/status")
     assert response.status_code == 200

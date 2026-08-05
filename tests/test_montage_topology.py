@@ -180,6 +180,8 @@ def test_defect_spatial_clustering_insufficient_data():
     res = defect_spatial_clustering(dm)
     assert res["n_clusters"] == 0
     assert "note" in res and "insufficient" in res["note"]
+    # every triangle unclustered when clustering wasn't even attempted
+    assert res["triangle_cluster_label"].tolist() == [-1, -1, -1]
 
 
 def test_defect_spatial_clustering_finds_cluster():
@@ -191,6 +193,13 @@ def test_defect_spatial_clustering_finds_cluster():
     res = defect_spatial_clustering(_defect_map(cents, winds))
     assert res["n_clusters"] >= 1
     assert res["cluster_sizes"].sum() + res["n_noise"] == 7
+    # triangle_cluster_label is per-triangle (length 7, aligned to input); cluster ids
+    # are DBSCAN's own 0..n_clusters-1 labels, so cluster_sizes[cid] must equal the
+    # count of triangles carrying that id in triangle_cluster_label
+    labels = res["triangle_cluster_label"]
+    assert labels.shape == (7,)
+    for cid in range(res["n_clusters"]):
+        assert (labels == cid).sum() == res["cluster_sizes"][cid]
 
 
 def test_signed_defect_topology_from_band_no_region_labels():

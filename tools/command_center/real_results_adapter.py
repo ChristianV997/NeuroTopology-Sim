@@ -347,6 +347,86 @@ def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any
     }
 
 
+def build_vortex_field_payload(root: str | Path | None = None) -> dict[str, Any]:
+    """Real per-subject + grand-average ds005620 vortex-field data for `/vortex-field`.
+
+    Reuses `tools/export_cohort_vortex_field_data.py`'s `build_payload()` -- the
+    same reproducible extraction already verified byte-identical against the
+    page's previously-shipped inline payload -- and enriches it with two real,
+    precomputed additions that used to be duplicated/approximated client-side:
+
+    - `clustering`: `validation.montage_topology.defect_spatial_clustering()`, the
+      real, tested DBSCAN implementation, replacing the page's prior live-JS BFS
+      connected-components reimplementation.
+    - `landscape`: `core.topology.persistence_landscape()` layer-0 curve alongside
+      the existing H1 birth/death diagrams.
+
+    Both are computed offline by `tools/export_vortex_field_clustering_landscape.py`
+    (which needs numpy/scikit-learn, available in the root environment) and read
+    here as plain JSON -- this module is loaded inside the Awareness Studio
+    process, which intentionally has neither dependency (see CLAUDE.md's
+    two-environment split), so no numpy/sklearn import happens at request time.
+
+    "unavailable" (no cohort run yet) mirrors the other `pitnn_cohort_*` builders
+    in this module.
+    """
+    result_root = _pitnn_cohort_root(root)
+    subjects_dir = result_root / "subjects"
+    if not subjects_dir.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No PITNN cohort subject records at {subjects_dir}. Run "
+                      "tools/stream_pitnn_cohort_ds005620.py --export-spatial "
+                      "--export-persistence first.",
+        }
+
+    # Load by file path, not `from tools.export_cohort_vortex_field_data import ...`:
+    # a same-named `tools` package lives inside apps/awareness_studio's own tree, and
+    # whichever one is imported first wins the `sys.modules["tools"]` cache for the
+    # whole process, silently shadowing this repository's `tools` package otherwise.
+    import importlib.util
+
+    _export_path = REPOSITORY_ROOT / "tools" / "export_cohort_vortex_field_data.py"
+    _export_spec = importlib.util.spec_from_file_location(
+        "neurotopology_export_cohort_vortex_field_data", _export_path
+    )
+    _export_module = importlib.util.module_from_spec(_export_spec)
+    _export_spec.loader.exec_module(_export_module)
+    _build_cohort_payload = _export_module.build_payload
+
+    try:
+        payload = _build_cohort_payload(result_root)
+    except (FileNotFoundError, ValueError) as exc:
+        return {"status": "unavailable", "reason": str(exc)}
+
+    enriched_path = result_root / "vortex_field_clustering_landscape.json"
+    if not enriched_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No precomputed clustering/landscape data at {enriched_path}. Run "
+                      "tools/export_vortex_field_clustering_landscape.py first.",
+        }
+    try:
+        enriched = json.loads(enriched_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {enriched_path}: {exc}"}
+
+    payload["cohort_average"]["clustering_and_landscape"] = enriched["cohort_average"]
+    for subject in payload["subjects"]:
+        subject_enriched = enriched["subjects"].get(subject["id"])
+        if subject_enriched is not None:
+            subject["clustering_and_landscape"] = subject_enriched
+
+    payload["status"] = "available"
+    payload["source"] = (
+        "tools/export_cohort_vortex_field_data.py "
+        "+ tools/export_vortex_field_clustering_landscape.py "
+        "(validation.montage_topology.defect_spatial_clustering "
+        "+ core.topology.persistence_landscape)"
+    )
+    return payload
+
+
 def build_command_center_registry(root: str | Path | None = None) -> dict[str, Any]:
     """Return a UI-safe, read-only inventory of empirical run artifacts.
 

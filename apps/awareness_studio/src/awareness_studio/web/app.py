@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -55,6 +56,7 @@ app = FastAPI(
     description="Monk+Scientist RAG chatbot for the Awareness Research knowledge base.",
     version="0.3.0",
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # ── CORS (optional, controlled by env) ───────────────────────────────────────
 
@@ -492,6 +494,19 @@ async def vortex_field_viewer():
     if not viewer.exists():
         raise HTTPException(status_code=404, detail="Vortex field viewer is not available")
     return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/vortex-field/data")
+@app.get("/api/vortex-field/data", include_in_schema=False)
+async def vortex_field_data():
+    """Real per-subject + grand-average ds005620 vortex-field payload, server-computed.
+
+    Includes DBSCAN clustering (validation.montage_topology.defect_spatial_clustering)
+    and persistence-landscape curves (core.topology.persistence_landscape), replacing
+    the client-side JS clustering the static page used to do itself.
+    """
+    from awareness_studio.integrations.neurotopology_results import build_vortex_field_payload
+    return build_vortex_field_payload()
 
 
 # ── Airtable routes ────────────────────────────────────────────────────────────

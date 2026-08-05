@@ -84,3 +84,13 @@ def build_command_center_registry() -> dict[str, Any]:
 def get_downloadable_artifact(artifact_id: str):
     adapter = _adapter()
     return adapter.get_downloadable_artifact(artifact_id) if adapter is not None else None
+
+
+def build_vortex_field_payload() -> dict[str, Any]:
+    adapter = _adapter()
+    if adapter is not None:
+        return adapter.build_vortex_field_payload()
+    return {
+        "status": "unavailable",
+        "reason": "No repository empirical artifact adapter is available in this deployment.",
+    }
