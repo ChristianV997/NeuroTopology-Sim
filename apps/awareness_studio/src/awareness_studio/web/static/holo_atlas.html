@@ -99,7 +99,7 @@
       <div class="ha-callout-layer" id="ha-callouts"></div>
       <div class="ha-legend-layer">
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#1f8fd6"></span>EEG vortex core (sign = CW/CCW)</div>
-        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring (real spatial cluster)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring &mdash; color=|charge|, orbiting dot=real turn direction (CW/CCW)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#9b30ff"></span>fMRI connectome node/edge (violet)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#b06bff"></span>Mapper satellite node</div>
         <div>inactive &rarr; most energetic</div>
@@ -221,10 +221,24 @@ function run(VF, FC, MG, BRAIN_RAW) {
   }
   eegAwake.smooth = smoothWinding(eegAwake.wind);
   eegSedated.smooth = smoothWinding(eegSedated.wind);
-  var eegPeak = 0.02;
-  eegAwake.smooth.concat(eegSedated.smooth).forEach(function (v) { eegPeak = Math.max(eegPeak, Math.abs(v)); });
-  var eegTriPeak = 0.15;
-  eegAwake.wind.concat(eegSedated.wind).forEach(function (v) { eegTriPeak = Math.max(eegTriPeak, Math.abs(v)); });
+  // percentile-based color normalization (standard practice for activity heatmaps, e.g.
+  // nilearn's default clipping) rather than the single raw maximum: a hard max lets one
+  // outlier vertex compress every other real active area into a flat mid-range color,
+  // which is exactly what made the heatmap read as "not present." Clipping at a high
+  // percentile stretches genuine contrast across the real active areas; it changes how
+  // the same real numbers are colored, not the numbers themselves.
+  function percentile(values, p) {
+    var s = values.slice().sort(function (a, b) { return a - b; });
+    var idx = Math.min(s.length - 1, Math.max(0, Math.round(p * (s.length - 1))));
+    return s[idx];
+  }
+  var eegPeak = Math.max(0.005, percentile(eegAwake.smooth.concat(eegSedated.smooth).map(Math.abs), 0.92));
+  var eegTriPeak = Math.max(0.02, percentile(eegAwake.wind.concat(eegSedated.wind).map(Math.abs), 0.9));
+
+  // overall world size -- large enough to comfortably host the cortex heatmap, the
+  // interior fMRI connectome, and the interior Mapper cluster without them crowding
+  // or clipping into each other
+  var WORLD_SCALE = 38;
 
   var GEOM = (function () {
     var maxR = 0;
@@ -233,7 +247,7 @@ function run(VF, FC, MG, BRAIN_RAW) {
     var positions = COORDS.map(function (c) {
       var r2 = c[0] * c[0] + c[1] * c[1];
       var z = Math.sqrt(Math.max(R * R - r2, 0));
-      return new THREE.Vector3(c[0] * 26 / R, z * 26 / R, -c[1] * 26 / R);
+      return new THREE.Vector3(c[0] * WORLD_SCALE / R, z * WORLD_SCALE / R, -c[1] * WORLD_SCALE / R);
     });
     var tangents = positions.map(function (p) {
       var n = p.clone().normalize();
@@ -266,7 +280,7 @@ function run(VF, FC, MG, BRAIN_RAW) {
     var centroid = new THREE.Vector3();
     positions.forEach(function (p) { centroid.add(p); });
     centroid.multiplyScalar(1 / positions.length);
-    return { positions: positions, tangents: tangents, edges: edges, activeTri: activeTri, centroid: centroid, R: 26 };
+    return { positions: positions, tangents: tangents, edges: edges, activeTri: activeTri, centroid: centroid, R: WORLD_SCALE };
   })();
 
   // ================= real fsaverage5 cortex mesh =================
@@ -289,8 +303,8 @@ function run(VF, FC, MG, BRAIN_RAW) {
       world[v * 3] = fx; world[v * 3 + 1] = fz; world[v * 3 + 2] = -fy;
       if (fz > maxSuperior) maxSuperior = fz;
     }
-    var NEST_FRACTION = 0.86;
-    var scale = (26 * NEST_FRACTION) / maxSuperior;
+    var NEST_FRACTION = 0.93;
+    var scale = (WORLD_SCALE * NEST_FRACTION) / maxSuperior;
     var positions = new Float32Array(n * 3);
     var dirs = [];
     for (var w = 0; w < n; w++) {
@@ -304,6 +318,16 @@ function run(VF, FC, MG, BRAIN_RAW) {
     geometry.setIndex(new THREE.BufferAttribute(faces, 1));
     geometry.computeVertexNormals();
     return { n: n, curv: curv, dirs: dirs, geometry: geometry, positions: positions };
+  })();
+
+  // true bounding volume of the real anatomical mesh (post-transform) -- every interior
+  // layer (fMRI connectome, Mapper cluster) is sized/placed against this, not against the
+  // flat EEG scalp sphere, so nothing clips through the actual brain surface
+  var BRAIN_BOUNDS = (function () {
+    var box = new THREE.Box3().setFromBufferAttribute(BRAIN.geometry.getAttribute('position'));
+    var center = box.getCenter(new THREE.Vector3());
+    var size = box.getSize(new THREE.Vector3());
+    return { box: box, center: center, size: size, minHalfExtent: Math.min(size.x, size.y, size.z) / 2 };
   })();
 
   // nearest-5 electrodes onto each brain vertex (angular interpolation weights)
@@ -339,7 +363,13 @@ function run(VF, FC, MG, BRAIN_RAW) {
   var fmriSubjects = (FC.status === 'available' ? FC.subjects : []).filter(function (s) {
     return s.conditions.drug.graph && s.conditions.placebo.graph;
   });
-  var INTERIOR_R = GEOM.R * 0.6;
+  // interior placement is derived from the real anatomical BRAIN_BOUNDS (not the flat EEG
+  // scalp sphere) and capped well under the brain's own smallest half-extent, so the fitted
+  // connectome sits fully inside the cortical volume at every rotation, never poking through
+  // the surface
+  var CONNECTOME_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(-1, -0.15, 0.3).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.30);
+  var INTERIOR_R = BRAIN_BOUNDS.minHalfExtent * 0.42;
 
   function fitCentroidsToSphere(centroids) {
     var n = centroids.length;
@@ -354,14 +384,18 @@ function run(VF, FC, MG, BRAIN_RAW) {
     var scale = INTERIOR_R / maxR;
     return centroids.map(function (p) {
       return new THREE.Vector3((p[0] - c[0]) * scale, (p[2] - c[2]) * scale, -(p[1] - c[1]) * scale)
-        .add(GEOM.centroid);
+        .add(CONNECTOME_CENTER);
     });
   }
 
   // ================= real Mapper satellite graph (force-directed layout, illustrative) =================
   var mapperNodes = (MG.status === 'available' ? MG.nodes : []);
   var mapperEdges = (MG.status === 'available' ? MG.edges : []);
-  var SATELLITE_CENTER = new THREE.Vector3(GEOM.R * 1.75, GEOM.R * 0.15, 0).add(GEOM.centroid);
+  // interior placement, offset from the connectome so the two structural layers don't
+  // fully overlap, but both stay genuinely inside the real anatomical brain volume
+  var MAPPER_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(1, 0.2, -0.35).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.34);
+  var MAPPER_R = BRAIN_BOUNDS.minHalfExtent * 0.34;
   var mapperLayout = (function () {
     var idOf = {}, pos = [];
     mapperNodes.forEach(function (n, i) { idOf[n.id] = i; });
@@ -397,11 +431,16 @@ function run(VF, FC, MG, BRAIN_RAW) {
         pos[k].add(force[k].multiplyScalar(DAMP));
       }
     }
-    // recenter + translate to satellite position
+    // recenter, rescale to fit inside the brain's real interior volume, then translate
+    // to the interior Mapper cluster position
     var center = new THREE.Vector3();
     pos.forEach(function (p) { center.add(p); });
     center.multiplyScalar(1 / Math.max(pos.length, 1));
-    pos.forEach(function (p) { p.sub(center).add(SATELLITE_CENTER); });
+    pos.forEach(function (p) { p.sub(center); });
+    var maxDist = 1e-6;
+    pos.forEach(function (p) { maxDist = Math.max(maxDist, p.length()); });
+    var mapperScale = MAPPER_R / maxDist;
+    pos.forEach(function (p) { p.multiplyScalar(mapperScale).add(MAPPER_CENTER); });
     return { idOf: idOf, pos: pos, edgePairs: edgePairs };
   })();
 
@@ -426,9 +465,13 @@ function run(VF, FC, MG, BRAIN_RAW) {
   var fillGlow = new THREE.PointLight(0x7ad7ff, 0.6, 200); fillGlow.position.copy(GEOM.centroid); scene.add(fillGlow);
 
   // -- hyperrealistic semi-transparent brain: inner colored shell + fresnel-rim glow shell --
-  var brainMat = new THREE.MeshPhysicalMaterial({
-    vertexColors: true, roughness: 0.35, metalness: 0.0, clearcoat: 0.35, clearcoatRoughness: 0.5,
-    transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false
+  // unlit (vertex-color-only) on purpose: a physically-lit clearcoat material dims and
+  // glazes the EEG heatmap under directional lighting, making exactly the areas the user
+  // needs to read -- the active regions -- the hardest to see. Real per-vertex curvature
+  // shading (applied in updateEEG below) already supplies gyrus/sulcus depth cues, so the
+  // heatmap stays legible without depending on scene lighting at all.
+  var brainMat = new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.58, side: THREE.DoubleSide, depthWrite: false
   });
   var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
   scene.add(brainMesh);
@@ -498,7 +541,14 @@ function run(VF, FC, MG, BRAIN_RAW) {
     ring.position.copy(a.centroid);
     ring.lookAt(a.centroid.clone().add(a.n));
     scene.add(ring);
-    rings.push({ mesh: ring, tri: a });
+    // a bright marker orbits the ring's circumference in the loop's own tangent plane;
+    // its angular velocity sign follows the real signed winding number for this
+    // triangle, so the marker's direction of travel IS the real chirality (CW/CCW) --
+    // not a fabricated "drag" quantity
+    var markerMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+    var marker = new THREE.Sprite(markerMat);
+    scene.add(marker);
+    rings.push({ mesh: ring, tri: a, marker: marker });
 
     var rnd = mulberry32(hashStr('tri#' + a.index));
     for (var k = 0; k < 3; k++) {
@@ -510,13 +560,36 @@ function run(VF, FC, MG, BRAIN_RAW) {
     }
   });
 
-  // real phase arrows, faint
+  // real phase arrows, one per real electrode -- opacity/color driven by real local
+  // activity intensity in updateEEG below (hot red->yellow->white sub-range)
   var arrows = GEOM.positions.map(function (p) {
-    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.11, 0xbfe6ff, GEOM.R * 0.04, GEOM.R * 0.025);
-    ah.line.material.transparent = true; ah.line.material.opacity = 0.35;
-    ah.cone.material.transparent = true; ah.cone.material.opacity = 0.35;
+    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.11, 0xffffff, GEOM.R * 0.04, GEOM.R * 0.025);
+    ah.line.material.transparent = true;
+    ah.cone.material.transparent = true;
     scene.add(ah);
     return ah;
+  });
+
+  // densely resampled phase arrows: many more arrows per active triangle than there are
+  // real electrodes, so the field's dynamics read clearly at a glance. Each one's
+  // direction/intensity is a barycentric interpolation of the same three real per-vertex
+  // phase/activity values at that triangle's corners -- real data resampled more densely,
+  // not fabricated.
+  var EXTRA_ARROWS_PER_TRI = 5;
+  var denseArrows = [];
+  GEOM.activeTri.forEach(function (a) {
+    var rndA = mulberry32(hashStr('arrow-dense#' + a.index));
+    for (var m = 0; m < EXTRA_ARROWS_PER_TRI; m++) {
+      var u = rndA(), v = rndA() * (1 - u), w = 1 - u - v;
+      var pos = GEOM.positions[a.tri[0]].clone().multiplyScalar(w)
+        .add(GEOM.positions[a.tri[1]].clone().multiplyScalar(u))
+        .add(GEOM.positions[a.tri[2]].clone().multiplyScalar(v));
+      var ah2 = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), pos, GEOM.R * 0.07, 0xffffff, GEOM.R * 0.026, GEOM.R * 0.015);
+      ah2.line.material.transparent = true;
+      ah2.cone.material.transparent = true;
+      scene.add(ah2);
+      denseArrows.push({ ah: ah2, tri: a, bary: [w, u, v] });
+    }
   });
 
   // interior real fMRI connectome (built once per selected subject)
@@ -630,13 +703,6 @@ function run(VF, FC, MG, BRAIN_RAW) {
     edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
     var edgeMat = new THREE.LineBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.4 });
     mapperLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
-
-    // leader line + label from brain to satellite cluster
-    var leaderGeo = new THREE.BufferGeometry().setFromPoints([GEOM.centroid.clone().setX(GEOM.R * 0.9), SATELLITE_CENTER.clone().setX(SATELLITE_CENTER.x - 8)]);
-    var leaderMat = new THREE.LineDashedMaterial({ color: 0x8899bb, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.4 });
-    var leader = new THREE.Line(leaderGeo, leaderMat);
-    leader.computeLineDistances();
-    scene.add(leader);
   })();
 
   function updateMapperGlow(clock) {
@@ -690,7 +756,6 @@ function run(VF, FC, MG, BRAIN_RAW) {
   }
 
   function updateEEG(t, clock) {
-    var arrowCol = new THREE.Color(0xbfe6ff);
     var blendedWind = TRI.map(function (_, i) { return lerp(eegAwake.wind[i], eegSedated.wind[i], t); });
     var activityByTri = blendedWind.map(function (w) { return Math.abs(w); });
     var clusters = clusterActive(activityByTri);
@@ -721,13 +786,38 @@ function run(VF, FC, MG, BRAIN_RAW) {
     }
     colAttr.needsUpdate = true;
 
+    var vertexIntensity = new Array(GEOM.positions.length);
     for (var j = 0; j < GEOM.positions.length; j++) {
       var ph = angleLerp(eegAwake.phase[j], eegSedated.phase[j], t);
       var tf = GEOM.tangents[j];
       var dir = tf.e1.clone().multiplyScalar(Math.cos(ph)).add(tf.e2.clone().multiplyScalar(Math.sin(ph))).normalize();
+      var vAmp = Math.min(1, Math.abs(lerp(eegAwake.smooth[j], eegSedated.smooth[j], t)) / eegPeak);
+      vertexIntensity[j] = vAmp;
+      var rgbA = spectrumColor(0.55 + vAmp * 0.45);
       arrows[j].setDirection(dir);
-      arrows[j].setColor(arrowCol);
+      arrows[j].setColor(new THREE.Color(rgbA[0], rgbA[1], rgbA[2]));
+      arrows[j].line.material.opacity = 0.55 + 0.4 * vAmp;
+      arrows[j].cone.material.opacity = 0.55 + 0.4 * vAmp;
+      arrows[j].setLength(GEOM.R * (0.07 + 0.09 * vAmp), GEOM.R * (0.025 + 0.02 * vAmp), GEOM.R * (0.015 + 0.012 * vAmp));
     }
+
+    denseArrows.forEach(function (da) {
+      var t3 = da.tri.tri, bw = da.bary;
+      var p0 = angleLerp(eegAwake.phase[t3[0]], eegSedated.phase[t3[0]], t);
+      var p1 = angleLerp(eegAwake.phase[t3[1]], eegSedated.phase[t3[1]], t);
+      var p2 = angleLerp(eegAwake.phase[t3[2]], eegSedated.phase[t3[2]], t);
+      var cx = bw[0] * Math.cos(p0) + bw[1] * Math.cos(p1) + bw[2] * Math.cos(p2);
+      var cy = bw[0] * Math.sin(p0) + bw[1] * Math.sin(p1) + bw[2] * Math.sin(p2);
+      var ph2 = Math.atan2(cy, cx);
+      var dir2 = da.tri.e1.clone().multiplyScalar(Math.cos(ph2)).add(da.tri.e2.clone().multiplyScalar(Math.sin(ph2))).normalize();
+      var amp = bw[0] * vertexIntensity[t3[0]] + bw[1] * vertexIntensity[t3[1]] + bw[2] * vertexIntensity[t3[2]];
+      var rgbD = spectrumColor(0.55 + amp * 0.45);
+      da.ah.setDirection(dir2);
+      da.ah.setColor(new THREE.Color(rgbD[0], rgbD[1], rgbD[2]));
+      da.ah.line.material.opacity = 0.5 + 0.45 * amp;
+      da.ah.cone.material.opacity = 0.5 + 0.45 * amp;
+      da.ah.setLength(GEOM.R * (0.045 + 0.07 * amp), GEOM.R * (0.02 + 0.015 * amp), GEOM.R * (0.012 + 0.009 * amp));
+    });
 
     var triScale = eegTriPeak;
     var activeCount = 0, totalPersist = 0;
@@ -742,12 +832,30 @@ function run(VF, FC, MG, BRAIN_RAW) {
       vx.sprite.scale.set(s, s, s);
     });
     rings.forEach(function (rg) {
-      var i = rg.tri.index, activity = activityByTri[i], vis = Math.min(1, activity / triScale);
+      var i = rg.tri.index, blended = blendedWind[i], activity = activityByTri[i], vis = Math.min(1, activity / triScale);
       var visible = activity > 0.06;
+      // real |winding| magnitude ("charge") drives ring color along the same energy
+      // spectrum as everything else, instead of a flat fixed yellow
+      var chargeVis = Math.min(1, Math.abs(blended) / triScale);
+      var ringRgb = spectrumColor(0.3 + chargeVis * 0.68);
+      rg.mesh.material.color.setRGB(ringRgb[0], ringRgb[1], ringRgb[2]);
       rg.mesh.material.opacity = visible ? 0.95 * Math.min(1, vis * 1.6) : 0;
+      rg.marker.material.opacity = 0;
       if (visible) {
         var ringR = rg.tri.edgeLen * (0.62 + 0.22 * Math.sin(clock * 1.6 + i));
         rg.mesh.scale.set(ringR, ringR, ringR);
+        // real signed winding sets the marker's orbital direction: +1 = CCW, -1 = CW,
+        // matching the sign convention already used for the vortex core coloring above
+        var sign = blended >= 0 ? 1 : -1;
+        var ang = clock * (1.1 + 1.4 * chargeVis) * sign + i;
+        var mpos = rg.tri.centroid.clone()
+          .add(rg.tri.e1.clone().multiplyScalar(Math.cos(ang) * ringR))
+          .add(rg.tri.e2.clone().multiplyScalar(Math.sin(ang) * ringR));
+        rg.marker.position.copy(mpos);
+        rg.marker.material.color.setRGB(ringRgb[0], ringRgb[1], ringRgb[2]);
+        rg.marker.material.opacity = 0.95 * Math.min(1, vis * 1.6);
+        var ms = GEOM.R * (0.018 + 0.02 * vis);
+        rg.marker.scale.set(ms, ms, ms);
       }
     });
     particles.forEach(function (p) {
