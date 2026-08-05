@@ -5,6 +5,7 @@ import csv
 import json
 import math
 import os
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESULTS_ROOT = REPOSITORY_ROOT / "outputs/btc_icft/ds005620/full_21_optimized"
 DEFAULT_PITNN_COHORT_ROOT = REPOSITORY_ROOT / "outputs/pitnn_cohort/ds005620"
+DEFAULT_DS000245_ROOT = REPOSITORY_ROOT / "data" / "ds000245"
 SCHEMA_VERSION = "command-center-real-results/v1"
 PROXY_METRICS = {
     "q_net": "channel-mean topology proxy; not a demonstrated conserved physical charge",
@@ -602,3 +604,37 @@ def get_downloadable_artifact(artifact_id: str, root: str | Path | None = None) 
             path = Path(artifact["path"])
             return path if path.is_file() else None
     return None
+
+
+_SUBJECT_ID_RE = re.compile(r"^sub-[A-Za-z0-9]+$")
+
+
+def list_ds000245_subjects(root: str | Path | None = None) -> list[str]:
+    """Real subject ids with a rest-BOLD NIfTI on disk for ds000245, sorted."""
+    dataset_root = Path(root) if root is not None else DEFAULT_DS000245_ROOT
+    if not dataset_root.is_dir():
+        return []
+    return sorted(
+        p.parent.parent.name
+        for p in dataset_root.glob("sub-*/func/*_task-rest_bold.nii.gz")
+        if _SUBJECT_ID_RE.match(p.parent.parent.name)
+    )
+
+
+def get_ds000245_bold_path(subject_id: str, root: str | Path | None = None) -> Path | None:
+    """Resolve a client-supplied ds000245 subject id to its real BOLD NIfTI path.
+
+    Never opens an arbitrary client-supplied path: `subject_id` must match the
+    strict `sub-<alnum>` pattern and the resolved path must land inside
+    `dataset_root` (no `..`, no symlink escape) and actually exist on disk.
+    """
+    if not _SUBJECT_ID_RE.match(subject_id):
+        return None
+    dataset_root = Path(root) if root is not None else DEFAULT_DS000245_ROOT
+    dataset_root = dataset_root.resolve()
+    candidate = (dataset_root / subject_id / "func" / f"{subject_id}_task-rest_bold.nii.gz").resolve()
+    try:
+        candidate.relative_to(dataset_root)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None

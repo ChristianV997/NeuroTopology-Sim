@@ -526,6 +526,38 @@ async def mapper_graph_data():
     return build_mapper_graph_payload()
 
 
+@app.get("/volumetric", include_in_schema=False)
+async def volumetric_viewer():
+    """NiiVue volumetric viewer for real ds000245 resting-state BOLD."""
+    viewer = _STATIC_DIR / "volume_viewer.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Volumetric viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/volumetric/subjects")
+@app.get("/api/volumetric/subjects", include_in_schema=False)
+async def volumetric_subjects():
+    from awareness_studio.integrations.neurotopology_results import list_ds000245_subjects
+    return {"dataset": "ds000245", "subjects": list_ds000245_subjects()}
+
+
+@app.get("/volumetric/{subject_id}")
+async def volumetric_bold(subject_id: str):
+    """Serve a real ds000245 subject's rest-BOLD NIfTI, allowlist-resolved.
+
+    `subject_id` is never used to build a filesystem path directly -- it is
+    resolved through `get_ds000245_bold_path`, which validates the id pattern
+    and confirms the resolved path stays inside the dataset root (mirrors the
+    /command-center/artifacts/{id} allowlist pattern).
+    """
+    from awareness_studio.integrations.neurotopology_results import get_ds000245_bold_path
+    path = get_ds000245_bold_path(subject_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Subject BOLD volume is not available")
+    return FileResponse(str(path), media_type="application/gzip", filename=path.name)
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")

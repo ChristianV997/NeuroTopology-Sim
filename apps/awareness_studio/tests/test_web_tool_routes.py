@@ -96,6 +96,35 @@ def test_mapper_graph_viewer_and_data_are_available():
         assert "size" in node and "awake_fraction" in node and "members" in node
 
 
+def test_volumetric_viewer_and_subjects_are_available():
+    page = client.get("/volumetric")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "ds000245" in page.text
+
+    resp = client.get("/volumetric/subjects")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dataset"] == "ds000245"
+    assert isinstance(data["subjects"], list)
+
+
+def test_volumetric_bold_rejects_path_traversal():
+    resp = client.get("/volumetric/..%2F..%2Fetc%2Fpasswd")
+    assert resp.status_code in (404, 422)
+    resp2 = client.get("/volumetric/not-a-real-subject")
+    assert resp2.status_code == 404
+
+
+def test_volumetric_bold_serves_real_subject_when_available():
+    subjects = client.get("/volumetric/subjects").json()["subjects"]
+    if not subjects:
+        pytest.skip("no local ds000245 subject volumes in this environment")
+    resp = client.get("/volumetric/" + subjects[0])
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/gzip"
+
+
 def test_vortex_field_data_is_available():
     resp = client.get("/vortex-field/data")
     assert resp.status_code == 200

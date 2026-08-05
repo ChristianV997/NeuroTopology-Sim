@@ -1,0 +1,139 @@
+<meta charset="utf-8">
+<title>Volumetric Viewer — ds000245 Resting-State BOLD</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .vv-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781;
+    --grid: #e1e0d9; --ring: rgba(11,11,11,0.10); --accent: #00b3a4;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="dark"] .vv-root {
+    --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+    --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    .vv-root:not([data-theme="light"]) {
+      --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+      --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+    }
+  }
+  .vv-wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 60px; }
+  .vv-eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; }
+  .vv-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 30px; margin: 8px 0 12px; letter-spacing: -0.01em; text-wrap: balance; }
+  .vv-sub { max-width: 80ch; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; margin: 0 0 20px; }
+  .vv-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+  .vv-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .vv-select { font: 13px ui-monospace, monospace; padding: 7px 10px; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .vv-btn { font: 600 12.5px ui-sans-serif, system-ui; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .vv-btn:hover { background: var(--ring); }
+  .vv-timeslider { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-muted); font-family: ui-monospace, monospace; }
+  .vv-timeslider input { width: 260px; }
+  .vv-stage-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; }
+  #vv-canvas { width: 100%; height: 640px; display: block; }
+  .vv-status { padding: 10px 16px; font-size: 12px; color: var(--ink-muted); font-family: ui-monospace, monospace; border-top: 1px solid var(--ring); }
+  .vv-error { padding: 40px 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); }
+  .vv-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 11.5px; line-height: 1.75; color: var(--ink-muted); max-width: 90ch; }
+</style>
+
+<div class="vv-root">
+  <div class="vv-wrap">
+    <div class="vv-eyebrow">OPENNEURO DS000245 &middot; RESTING-STATE fMRI &middot; NIIVUE &middot; <a href="/command-center">COMMAND CENTRE</a> &middot; <a href="/vortex-field">VORTEX FIELD</a> &middot; <a href="/mapper-graph">MAPPER GRAPH</a></div>
+    <h1>Real volumetric BOLD, subject by subject</h1>
+    <p class="vv-sub">
+      A real 4D resting-state BOLD NIfTI, decoded and rendered directly in the browser by
+      <code>NiiVue</code> (BSD-2-Clause, WebGL2) &mdash; no server-side rendering, no
+      screenshot pipeline. Scrub the real acquired time dimension with the slider below the
+      volume. This is genuine 3D volumetric imaging, distinct from every sensor-mesh or
+      surface view elsewhere in this app.
+    </p>
+
+    <div class="vv-controls">
+      <select id="vv-subject" class="vv-select"></select>
+      <button id="vv-load" class="vv-btn" type="button">Load volume</button>
+      <div class="vv-timeslider">
+        <span>frame</span>
+        <input id="vv-frame" type="range" min="0" max="0" step="1" value="0" disabled>
+        <span id="vv-frame-label">0 / 0</span>
+      </div>
+    </div>
+
+    <div class="vv-stage-card">
+      <canvas id="vv-canvas"></canvas>
+      <div class="vv-status" id="vv-status">Select a subject and press Load volume.</div>
+    </div>
+
+    <div class="vv-footer">
+      Source: real ds000245 subject NIfTI files under <code>data/ds000245/sub-*/func/</code>,
+      served allowlist-safe by <code>GET /volumetric/{subject_id}</code> (id validated against
+      a strict <code>sub-&lt;alnum&gt;</code> pattern and confirmed to resolve inside the
+      dataset root before any file is opened). Rendered with
+      <code>NiiVue</code> (github.com/niivue/niivue, BSD-2-Clause).
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { Niivue } from "https://cdn.jsdelivr.net/npm/@niivue/niivue@0.44.2/dist/index.min.js";
+
+(async function () {
+  "use strict";
+  var statusEl = document.getElementById('vv-status');
+  var select = document.getElementById('vv-subject');
+  var loadBtn = document.getElementById('vv-load');
+  var frameSlider = document.getElementById('vv-frame');
+  var frameLabel = document.getElementById('vv-frame-label');
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  var subjects = [];
+  try {
+    var resp = await fetch('/volumetric/subjects');
+    var data = await resp.json();
+    subjects = data.subjects || [];
+  } catch (err) {
+    setStatus('Failed to load subject list: ' + err);
+  }
+
+  if (!subjects.length) {
+    document.getElementById('vv-canvas').outerHTML = '<div class="vv-error">No ds000245 subject volumes are available in this deployment.</div>';
+  } else {
+    subjects.forEach(function (s) {
+      var opt = document.createElement('option'); opt.value = s; opt.textContent = s; select.appendChild(opt);
+    });
+
+    var nv = new Niivue({ show3Dcrosshair: true });
+    nv.attachToCanvas(document.getElementById('vv-canvas'));
+
+    async function loadSubject(subjectId) {
+      setStatus('Loading ' + subjectId + ' — real resting-state BOLD, this can take a few seconds...');
+      loadBtn.disabled = true;
+      try {
+        await nv.loadVolumes([{ url: '/volumetric/' + subjectId, name: subjectId + '_bold.nii.gz' }]);
+        var vol = nv.volumes[0];
+        var nFrames = (vol && vol.hdr && vol.hdr.dims && vol.hdr.dims[4]) ? vol.hdr.dims[4] : 1;
+        frameSlider.max = Math.max(0, nFrames - 1);
+        frameSlider.value = 0;
+        frameSlider.disabled = nFrames <= 1;
+        frameLabel.textContent = '0 / ' + (nFrames - 1);
+        setStatus(subjectId + ' loaded — real 4D volume, ' + nFrames + ' real acquired timepoints.');
+      } catch (err) {
+        setStatus('Failed to load ' + subjectId + ': ' + err);
+      } finally {
+        loadBtn.disabled = false;
+      }
+    }
+
+    loadBtn.addEventListener('click', function () { loadSubject(select.value); });
+    frameSlider.addEventListener('input', function () {
+      var frame = parseInt(frameSlider.value, 10);
+      frameLabel.textContent = frame + ' / ' + frameSlider.max;
+      if (nv.volumes[0]) { nv.setFrame4D(nv.volumes[0].id, frame); }
+    });
+
+    loadSubject(subjects[0]);
+  }
+})();
+</script>

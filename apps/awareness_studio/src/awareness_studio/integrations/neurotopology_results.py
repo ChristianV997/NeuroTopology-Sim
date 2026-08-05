@@ -104,3 +104,13 @@ def build_mapper_graph_payload() -> dict[str, Any]:
         "status": "unavailable",
         "reason": "No repository empirical artifact adapter is available in this deployment.",
     }
+
+
+def list_ds000245_subjects() -> list[str]:
+    adapter = _adapter()
+    return adapter.list_ds000245_subjects() if adapter is not None else []
+
+
+def get_ds000245_bold_path(subject_id: str):
+    adapter = _adapter()
+    return adapter.get_ds000245_bold_path(subject_id) if adapter is not None else None
