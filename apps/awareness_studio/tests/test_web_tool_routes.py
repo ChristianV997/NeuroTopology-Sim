@@ -69,7 +69,7 @@ def test_vortex_field_viewer_is_available():
     resp = client.get("/vortex-field")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert "Real Phase-Vortex Defects" in resp.text
+    assert "Real Phase-Vortex Field" in resp.text
     assert "ds005620" in resp.text
 
 
