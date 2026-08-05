@@ -52,25 +52,26 @@ async function boot() {
       fetch('/vortex-field/data').then(function (r) { return r.json(); }),
       fetch('/fmri-connectome/data').then(function (r) { return r.json(); }),
       fetch('/mapper-graph/data').then(function (r) { return r.json(); }),
-      fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); })
+      fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); }),
+      fetch('/command-center/visualization').then(function (r) { return r.json(); })
     ]);
   } catch (err) {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load combined data: ' + err + '</div>');
     return;
   }
-  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3];
+  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4];
   if (vf.status !== 'available') {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
     return;
   }
-  run(vf, fc, mg, brainRaw);
+  run(vf, fc, mg, brainRaw, ccViz);
 }
 
-function run(VF, FC, MG, BRAIN_RAW) {"""
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {"""
 
 NEW_MODULE_HEAD = """async function boot() {
   var stage = document.getElementById('ha-scene');
-  var THREE, OrbitControls, vf, fc, mg, brainRaw;
+  var THREE, OrbitControls, vf, fc, mg, brainRaw, ccViz;
   try {
     var threeSrc = document.getElementById('three-src').textContent;
     var threeUrl = URL.createObjectURL(new Blob([threeSrc], { type: 'text/javascript' }));
@@ -85,6 +86,7 @@ NEW_MODULE_HEAD = """async function boot() {
     fc = JSON.parse(document.getElementById('fc-json').textContent);
     mg = JSON.parse(document.getElementById('mg-json').textContent);
     brainRaw = JSON.parse(document.getElementById('brain-json').textContent);
+    ccViz = JSON.parse(document.getElementById('cc-viz-json').textContent);
   } catch (err) {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load embedded data: ' + err + '</div>');
     return;
@@ -93,10 +95,10 @@ NEW_MODULE_HEAD = """async function boot() {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
     return;
   }
-  run(vf, fc, mg, brainRaw, THREE, OrbitControls);
+  run(vf, fc, mg, brainRaw, ccViz, THREE, OrbitControls);
 }
 
-function run(VF, FC, MG, BRAIN_RAW, THREE, OrbitControls) {"""
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, THREE, OrbitControls) {"""
 
 OLD_EYEBROW = (
     '<span><a href="/atlas">TABBED ATLAS</a> &middot; '
@@ -106,17 +108,19 @@ NEW_EYEBROW = "<span>STANDALONE BUILD &middot; DATA FROZEN AT GENERATION TIME</s
 
 OLD_FOOTER = (
     "      Sources: <code>/vortex-field/data</code>, <code>/fmri-connectome/data</code>,\n"
-    "      <code>/mapper-graph/data</code> &mdash; the same three real endpoints the standalone\n"
+    "      <code>/mapper-graph/data</code> &mdash; the same real endpoints the standalone\n"
     "      <a href=\"/vortex-field\">vortex field</a>, <a href=\"/fmri-connectome\">fMRI connectome</a>, and\n"
-    "      <a href=\"/mapper-graph\">Mapper graph</a> pages use. This page adds no new computation; it is a\n"
-    "      single combined rendering of already-real, already-tested data."
+    "      <a href=\"/mapper-graph\">Mapper graph</a> pages use &mdash; plus <code>/command-center/visualization</code>\n"
+    "      for the real per-subject H1 persistence diagrams and per-subject EEG spatial swap. This page adds\n"
+    "      no new computation; it is a single combined rendering of already-real, already-tested data."
 )
 NEW_FOOTER = (
     "      Sources: the same real ds005620 (propofol anesthesia EEG), ds005917 (ketamine fMRI), and\n"
     "      KeplerMapper cohort-structure computations as the live NeuroTopology-Sim Command Centre --\n"
-    "      exported once and embedded directly in this file so it renders with no backend, no server,\n"
-    "      and no network calls at all. Three.js is embedded the same way (as inlined source, loaded via\n"
-    "      a local Blob URL) so this page never fetches anything from the internet."
+    "      exported once and embedded directly in this file, including the real per-subject H1 persistence\n"
+    "      diagrams and per-subject EEG spatial swap data, so it renders with no backend, no server, and no\n"
+    "      network calls at all. Three.js is embedded the same way (as inlined source, loaded via a local\n"
+    "      Blob URL) so this page never fetches anything from the internet."
 )
 
 
@@ -125,11 +129,13 @@ def build_standalone_html(three_dir: Path) -> str:
         build_fmri_connectome_payload,
         build_mapper_graph_payload,
         build_vortex_field_payload,
+        build_visualization_payload,
     )
 
     vf = build_vortex_field_payload()
     fc = build_fmri_connectome_payload()
     mg = build_mapper_graph_payload()
+    cc_viz = build_visualization_payload()
     if vf.get("status") != "available":
         raise RuntimeError(f"vortex-field payload unavailable: {vf.get('reason')}")
 
@@ -163,6 +169,7 @@ def build_standalone_html(three_dir: Path) -> str:
         '<script type="application/json" id="fc-json">' + json.dumps(fc, separators=(",", ":")) + "</script>\n"
         '<script type="application/json" id="mg-json">' + json.dumps(mg, separators=(",", ":")) + "</script>\n"
         '<script type="application/json" id="brain-json">' + brain_json + "</script>\n"
+        '<script type="application/json" id="cc-viz-json">' + json.dumps(cc_viz, separators=(",", ":")) + "</script>\n"
         '<script type="application/octet-stream" id="three-src">' + three_src + "</script>\n"
         '<script type="application/octet-stream" id="controls-src">' + controls_src + "</script>\n"
     )

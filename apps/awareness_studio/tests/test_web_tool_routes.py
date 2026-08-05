@@ -133,11 +133,14 @@ def test_unified_atlas_page_links_to_all_four_visualizations():
         assert path in resp.text
 
 
-def test_holo_atlas_page_fetches_all_three_real_endpoints():
+def test_holo_atlas_page_fetches_all_real_endpoints():
     resp = client.get("/holo-atlas")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    for path in ("/vortex-field/data", "/fmri-connectome/data", "/mapper-graph/data", "/static/data/fsaverage5_pial.json"):
+    for path in (
+        "/vortex-field/data", "/fmri-connectome/data", "/mapper-graph/data",
+        "/static/data/fsaverage5_pial.json", "/command-center/visualization",
+    ):
         assert path in resp.text
 
 
