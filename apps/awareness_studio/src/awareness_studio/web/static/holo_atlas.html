@@ -1,0 +1,844 @@
+<meta charset="utf-8">
+<title>Holo-Atlas — Combined EEG · fMRI · Mapper, One Brain</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .ha-root {
+    color-scheme: dark;
+    --page: #05070c; --surface: #0c1018; --ink: #eef2fb; --ink-2: #b7c0d6; --ink-muted: #7c8296;
+    --grid: #1c2331; --ring: rgba(255,255,255,0.10); --stage-bg: #05070c;
+    --accent: #7ad7ff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="light"] .ha-root {
+    color-scheme: light;
+    --page: #f7f8fb; --surface: #ffffff; --ink: #0b0d14; --ink-2: #444a5c; --ink-muted: #767c90;
+    --grid: #e2e5ee; --ring: rgba(11,13,20,0.10); --stage-bg: #eef1f8;
+  }
+  * { box-sizing: border-box; }
+  .ha-wrap { max-width: 1680px; margin: 0 auto; padding: 22px 22px 52px; }
+  .ha-eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .ha-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 32px; margin: 8px 0 10px; letter-spacing: -0.01em; text-wrap: balance;
+    background: linear-gradient(90deg, #6fd7ff, #9fffb0 40%, #ffe66d 68%, #ff6b6b 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .ha-sub { max-width: 96ch; color: var(--ink-2); font-size: 14px; line-height: 1.65; margin: 0 0 14px; }
+  .ha-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+  .ha-disclosure { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--ring); border-left: 3px solid var(--accent); border-radius: 8px; font-size: 12.5px; color: var(--ink-2); line-height: 1.6; background: var(--surface); }
+  .ha-disclosure b { color: var(--ink); }
+  .ha-disclosure ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .ha-controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 12px; padding: 12px 16px; border: 1px solid var(--ring); border-radius: 10px; background: var(--surface); }
+  .ha-ctl-group { display: flex; align-items: center; gap: 8px; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
+  .ha-ctl-group input[type=range] { width: 150px; accent-color: var(--accent); }
+  .ha-select { font: 12.5px ui-monospace, monospace; padding: 5px 8px; border: 1px solid var(--ring); border-radius: 6px; background: var(--page); color: var(--ink); }
+  .ha-btn { font: 700 12.5px ui-sans-serif, system-ui; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--accent); background: rgba(122,215,255,0.12); color: var(--accent); cursor: pointer; }
+  .ha-btn:hover { background: rgba(122,215,255,0.22); }
+  .ha-readout { margin-left: auto; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
+  .ha-readout b { color: var(--ink); }
+
+  .ha-stage-card { position: relative; border: 1px solid var(--ring); border-radius: 14px; overflow: hidden; background: var(--stage-bg); box-shadow: 0 0 80px rgba(122,215,255,0.06) inset; }
+  #ha-scene { width: 100%; height: 780px; display: block; }
+  .ha-legend-layer { position: absolute; left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; font: 11.5px ui-monospace, monospace; color: var(--ink-2); background: rgba(5,7,12,0.55); backdrop-filter: blur(4px); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ring); }
+  .ha-legend-row { display: flex; align-items: center; gap: 7px; }
+  .ha-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .ha-spectrum-bar { width: 140px; height: 8px; border-radius: 4px; margin-top: 2px;
+    background: linear-gradient(90deg, #0b1f6b, #00c2ff 25%, #35e08a 50%, #ffe23f 72%, #ff6a1a 86%, #ff2d55 100%); }
+  .ha-callout-layer { position: absolute; inset: 0; pointer-events: none; font: 11px ui-monospace, monospace; }
+  .ha-callout-label { position: absolute; transform: translate(-50%, -100%); padding: 3px 7px; border-radius: 5px; background: rgba(5,7,12,0.7); color: #fff; white-space: nowrap; border: 1px solid rgba(255,255,255,0.15); }
+  .ha-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+
+  .ha-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--ring); border: 1px solid var(--ring); border-radius: 10px; overflow: hidden; margin-top: 16px; }
+  .ha-stat { background: var(--surface); padding: 12px 14px 11px; }
+  .ha-stat-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 5px; }
+  .ha-stat-value { font-size: 19px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .ha-stat-sub { font-size: 10.5px; color: var(--ink-muted); margin-top: 3px; }
+
+  .ha-footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--grid); font-size: 11px; line-height: 1.75; color: var(--ink-muted); max-width: 100ch; }
+  .ha-footer code { font-family: ui-monospace, monospace; }
+</style>
+
+<div class="ha-root">
+  <div class="ha-wrap">
+    <div class="ha-eyebrow">
+      <span>HOLO-ATLAS &middot; ds005620 EEG &middot; ds005917 fMRI &middot; MAPPER COHORT GRAPH &middot; ONE SCENE</span>
+      <span><a href="/atlas">TABBED ATLAS</a> &middot; <a href="/command-center">COMMAND CENTRE</a></span>
+    </div>
+    <h1>One brain, every real signal, one animation</h1>
+    <p class="ha-sub">
+      A single semi-transparent volumetric scene combining every real visualization this repository
+      produces: the <b>EEG phase-vortex field</b> draped on the cortex with skyrmion-style vortex
+      cores and real Betti-1 loop rings, the <b>ketamine fMRI connectome</b> as a real, weighted
+      node-edge structure fit inside the cortical volume, and the <b>Mapper cohort-structure
+      network</b> orbiting alongside as a satellite graph. Every surface uses one continuous
+      low&rarr;high energy spectrum (deep blue &rarr; cyan &rarr; green &rarr; yellow &rarr; red) so
+      activity intensity reads identically across all three real datasets. Press <b>Play all</b> to
+      watch every dataset animate through its own real recorded states at once.
+    </p>
+    <div class="ha-disclosure">
+      <b>What is real vs. illustrative placement</b> &mdash; read before interpreting node positions:
+      <ul>
+        <li><b>EEG scalp mesh + cortex heat:</b> real ds005620 electrode positions, triangulation, winding numbers, and phase, spherically interpolated onto FreeSurfer's real <code>fsaverage5</code> template surface (a standard group-average anatomy, not this cohort's own scan).</li>
+        <li><b>Interior connectome:</b> one real ds005917 subject's real 100-parcel KMeans centroids (native in-brain voxel space, so their <i>relative</i> geometry is real brain-shaped structure) and real Pearson connectivity, uniformly rescaled to fit inside this <code>fsaverage5</code> mesh. This is an illustrative fit, <b>not</b> a co-registration &mdash; a different subject, different modality, different scanner space than the EEG cortex above.</li>
+        <li><b>Mapper satellite graph:</b> real KeplerMapper nodes/edges over real per-window cohort features; its 3D layout is a force-directed spring simulation computed for display only &mdash; Mapper nodes carry no spatial/anatomical coordinate at all.</li>
+        <li><b>Combined animation:</b> the EEG awake&harr;sedated and fMRI drug&harr;placebo timelines are two independent real experiments on different subjects, driven together here for one continuous visual narrative &mdash; not a claim they were recorded simultaneously.</li>
+      </ul>
+    </div>
+
+    <div class="ha-controls">
+      <div class="ha-ctl-group">EEG <input id="ha-eeg-slider" type="range" min="0" max="1" step="0.005" value="0"> sedated</div>
+      <div class="ha-ctl-group">fMRI <input id="ha-fmri-slider" type="range" min="0" max="1" step="0.005" value="0"> placebo</div>
+      <select id="ha-fmri-subject" class="ha-select"></select>
+      <button id="ha-play" class="ha-btn" type="button">&#9654; Play all</button>
+      <button id="ha-reset-cam" class="ha-btn" type="button" style="border-color:var(--ring);color:var(--ink-2);background:transparent;">Reset view</button>
+      <span class="ha-readout" id="ha-readout"></span>
+    </div>
+
+    <div class="ha-stage-card">
+      <canvas id="ha-scene"></canvas>
+      <div class="ha-callout-layer" id="ha-callouts"></div>
+      <div class="ha-legend-layer">
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#00c2ff"></span>EEG vortex core (sign = CW/CCW)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffe23f"></span>Betti-1 loop ring (real spatial cluster)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ff6a1a"></span>fMRI connectome node/edge</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#b06bff"></span>Mapper satellite node</div>
+        <div>low &rarr; high energy</div>
+        <div class="ha-spectrum-bar"></div>
+      </div>
+    </div>
+
+    <div class="ha-stats" id="ha-stats"></div>
+
+    <div class="ha-footer">
+      Sources: <code>/vortex-field/data</code>, <code>/fmri-connectome/data</code>,
+      <code>/mapper-graph/data</code> &mdash; the same three real endpoints the standalone
+      <a href="/vortex-field">vortex field</a>, <a href="/fmri-connectome">fMRI connectome</a>, and
+      <a href="/mapper-graph">Mapper graph</a> pages use. This page adds no new computation; it is a
+      single combined rendering of already-real, already-tested data.
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+async function boot() {
+  var stage = document.getElementById('ha-scene');
+  var results;
+  try {
+    results = await Promise.all([
+      fetch('/vortex-field/data').then(function (r) { return r.json(); }),
+      fetch('/fmri-connectome/data').then(function (r) { return r.json(); }),
+      fetch('/mapper-graph/data').then(function (r) { return r.json(); }),
+      fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); })
+    ]);
+  } catch (err) {
+    stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load combined data: ' + err + '</div>');
+    return;
+  }
+  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3];
+  if (vf.status !== 'available') {
+    stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
+    return;
+  }
+  run(vf, fc, mg, brainRaw);
+}
+
+function run(VF, FC, MG, BRAIN_RAW) {
+  "use strict";
+
+  // ================= shared helpers =================
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+  function angleLerp(a, b, t) {
+    var x = lerp(Math.cos(a), Math.cos(b), t), y = lerp(Math.sin(a), Math.sin(b), t);
+    return Math.atan2(y, x);
+  }
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // full-spectrum "cool -> hot" energy colormap: deep blue -> cyan -> green -> yellow -> orange -> red
+  var SPECTRUM_STOPS = [
+    [0.00, 0x0b1f6b], [0.22, 0x00c2ff], [0.46, 0x35e08a],
+    [0.68, 0xffe23f], [0.85, 0xff6a1a], [1.00, 0xff2d55]
+  ];
+  var SPECTRUM_RGB = SPECTRUM_STOPS.map(function (s) {
+    var c = new THREE.Color(s[1]); return [s[0], c.r, c.g, c.b];
+  });
+  function spectrumColor(x) {
+    x = clamp01(x);
+    for (var i = 0; i < SPECTRUM_RGB.length - 1; i++) {
+      var a = SPECTRUM_RGB[i], b = SPECTRUM_RGB[i + 1];
+      if (x >= a[0] && x <= b[0]) {
+        var u = (b[0] - a[0]) > 1e-9 ? (x - a[0]) / (b[0] - a[0]) : 0;
+        return [lerp(a[1], b[1], u), lerp(a[2], b[2], u), lerp(a[3], b[3], u)];
+      }
+    }
+    var last = SPECTRUM_RGB[SPECTRUM_RGB.length - 1];
+    return [last[1], last[2], last[3]];
+  }
+
+  function theme() {
+    var root = document.documentElement;
+    var t = root.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+
+  // ================= EEG geometry (real ds005620 cohort grand average) =================
+  var COORDS = VF.coords, TRI = VF.tri, N_CH = VF.n_channels;
+  var ca = VF.cohort_average;
+  var eegAwake = { wind: ca.awake.wind_mean, phase: ca.awake.phase_mean, smooth: null };
+  var eegSedated = { wind: ca.sedated.wind_mean, phase: ca.sedated.phase_mean, smooth: null };
+  var clAwake = (ca.clustering_and_landscape && ca.clustering_and_landscape.awake) || null;
+  var clSedated = (ca.clustering_and_landscape && ca.clustering_and_landscape.sedated) || null;
+
+  function smoothWinding(wind) {
+    var sum = new Array(COORDS.length).fill(0), cnt = new Array(COORDS.length).fill(0);
+    TRI.forEach(function (t3, i) { t3.forEach(function (vi) { sum[vi] += wind[i]; cnt[vi] += 1; }); });
+    return sum.map(function (s, i) { return cnt[i] ? s / cnt[i] : 0; });
+  }
+  eegAwake.smooth = smoothWinding(eegAwake.wind);
+  eegSedated.smooth = smoothWinding(eegSedated.wind);
+  var eegPeak = 0.02;
+  eegAwake.smooth.concat(eegSedated.smooth).forEach(function (v) { eegPeak = Math.max(eegPeak, Math.abs(v)); });
+  var eegTriPeak = 0.15;
+  eegAwake.wind.concat(eegSedated.wind).forEach(function (v) { eegTriPeak = Math.max(eegTriPeak, Math.abs(v)); });
+
+  var GEOM = (function () {
+    var maxR = 0;
+    COORDS.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var R = maxR * 1.006;
+    var positions = COORDS.map(function (c) {
+      var r2 = c[0] * c[0] + c[1] * c[1];
+      var z = Math.sqrt(Math.max(R * R - r2, 0));
+      return new THREE.Vector3(c[0] * 26 / R, z * 26 / R, -c[1] * 26 / R);
+    });
+    var tangents = positions.map(function (p) {
+      var n = p.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      return { e1: e1, e2: e2, n: n };
+    });
+    var edgeSet = {}, edges = [];
+    TRI.forEach(function (t3) {
+      [[t3[0], t3[1]], [t3[1], t3[2]], [t3[2], t3[0]]].forEach(function (e) {
+        var key = Math.min(e[0], e[1]) + '_' + Math.max(e[0], e[1]);
+        if (!edgeSet[key]) { edgeSet[key] = true; edges.push(e); }
+      });
+    });
+    var activeTri = [];
+    TRI.forEach(function (t3, i) {
+      var active = Math.abs(eegAwake.wind[i]) > 0.02 || Math.abs(eegSedated.wind[i]) > 0.02;
+      if (!active) return;
+      var c = positions[t3[0]].clone().add(positions[t3[1]]).add(positions[t3[2]]).multiplyScalar(1 / 3);
+      var edgeLen = Math.min(
+        positions[t3[0]].distanceTo(positions[t3[1]]), positions[t3[1]].distanceTo(positions[t3[2]]), positions[t3[2]].distanceTo(positions[t3[0]])
+      );
+      var n = c.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      activeTri.push({ index: i, tri: t3, centroid: c, edgeLen: edgeLen, e1: e1, e2: e2, n: n });
+    });
+    var centroid = new THREE.Vector3();
+    positions.forEach(function (p) { centroid.add(p); });
+    centroid.multiplyScalar(1 / positions.length);
+    return { positions: positions, tangents: tangents, edges: edges, activeTri: activeTri, centroid: centroid, R: 26 };
+  })();
+
+  // ================= real fsaverage5 cortex mesh =================
+  function b64ToTypedArray(b64, TypedArrayCtor) {
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TypedArrayCtor(bytes.buffer);
+  }
+  var BRAIN = (function () {
+    var raw = BRAIN_RAW;
+    var vertsFS = b64ToTypedArray(raw.vertices_b64, Float32Array);
+    var faces = b64ToTypedArray(raw.faces_b64, Uint16Array);
+    var curv = b64ToTypedArray(raw.curv_b64, Float32Array);
+    var n = raw.n_vertices;
+    var maxSuperior = 0;
+    var world = new Float32Array(n * 3);
+    for (var v = 0; v < n; v++) {
+      var fx = vertsFS[v * 3], fy = vertsFS[v * 3 + 1], fz = vertsFS[v * 3 + 2];
+      world[v * 3] = fx; world[v * 3 + 1] = fz; world[v * 3 + 2] = -fy;
+      if (fz > maxSuperior) maxSuperior = fz;
+    }
+    var NEST_FRACTION = 0.86;
+    var scale = (26 * NEST_FRACTION) / maxSuperior;
+    var positions = new Float32Array(n * 3);
+    var dirs = [];
+    for (var w = 0; w < n; w++) {
+      var x = world[w * 3] * scale, y = world[w * 3 + 1] * scale, z = world[w * 3 + 2] * scale;
+      positions[w * 3] = x; positions[w * 3 + 1] = y; positions[w * 3 + 2] = z;
+      dirs.push(new THREE.Vector3(x, y, z).normalize());
+    }
+    var geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(0.5), 3));
+    geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+    geometry.computeVertexNormals();
+    return { n: n, curv: curv, dirs: dirs, geometry: geometry, positions: positions };
+  })();
+
+  // nearest-5 electrodes onto each brain vertex (angular interpolation weights)
+  var BRAIN_WEIGHTS = (function () {
+    var K = 5, POWER = 6, nE = GEOM.positions.length, nB = BRAIN.n;
+    var ex = new Float32Array(nE), ey = new Float32Array(nE), ez = new Float32Array(nE);
+    for (var e = 0; e < nE; e++) {
+      var p = GEOM.positions[e], len = p.length() || 1e-9;
+      ex[e] = p.x / len; ey[e] = p.y / len; ez[e] = p.z / len;
+    }
+    var idxOut = new Int16Array(nB * K), wOut = new Float32Array(nB * K);
+    var topIdx = new Int32Array(K), topDot = new Float32Array(K);
+    for (var bv = 0; bv < nB; bv++) {
+      var bd = BRAIN.dirs[bv], bx = bd.x, by = bd.y, bz = bd.z;
+      for (var k = 0; k < K; k++) topDot[k] = -2;
+      for (var e2 = 0; e2 < nE; e2++) {
+        var dot = bx * ex[e2] + by * ey[e2] + bz * ez[e2];
+        if (dot > topDot[K - 1]) {
+          var pos = K - 1;
+          while (pos > 0 && topDot[pos - 1] < dot) { topDot[pos] = topDot[pos - 1]; topIdx[pos] = topIdx[pos - 1]; pos--; }
+          topDot[pos] = dot; topIdx[pos] = e2;
+        }
+      }
+      var sum = 0;
+      for (var k2 = 0; k2 < K; k2++) { var wv = Math.pow(Math.max(0, topDot[k2]), POWER); wOut[bv * K + k2] = wv; idxOut[bv * K + k2] = topIdx[k2]; sum += wv; }
+      sum = sum || 1e-9;
+      for (var k3 = 0; k3 < K; k3++) wOut[bv * K + k3] /= sum;
+    }
+    return { idx: idxOut, w: wOut, K: K };
+  })();
+
+  // ================= real fMRI connectome (one real ds005917 subject, both arms) =================
+  var fmriSubjects = (FC.status === 'available' ? FC.subjects : []).filter(function (s) {
+    return s.conditions.drug.graph && s.conditions.placebo.graph;
+  });
+  var INTERIOR_R = GEOM.R * 0.6;
+
+  function fitCentroidsToSphere(centroids) {
+    var n = centroids.length;
+    var c = [0, 0, 0];
+    centroids.forEach(function (p) { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; });
+    c = c.map(function (v) { return v / n; });
+    var maxR = 1e-6;
+    centroids.forEach(function (p) {
+      var d = Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]);
+      if (d > maxR) maxR = d;
+    });
+    var scale = INTERIOR_R / maxR;
+    return centroids.map(function (p) {
+      return new THREE.Vector3((p[0] - c[0]) * scale, (p[2] - c[2]) * scale, -(p[1] - c[1]) * scale)
+        .add(GEOM.centroid);
+    });
+  }
+
+  // ================= real Mapper satellite graph (force-directed layout, illustrative) =================
+  var mapperNodes = (MG.status === 'available' ? MG.nodes : []);
+  var mapperEdges = (MG.status === 'available' ? MG.edges : []);
+  var SATELLITE_CENTER = new THREE.Vector3(GEOM.R * 1.75, GEOM.R * 0.15, 0).add(GEOM.centroid);
+  var mapperLayout = (function () {
+    var idOf = {}, pos = [];
+    mapperNodes.forEach(function (n, i) { idOf[n.id] = i; });
+    var rnd = mulberry32(hashStr('mapper-satellite-layout'));
+    mapperNodes.forEach(function () {
+      pos.push(new THREE.Vector3((rnd() - 0.5) * 10, (rnd() - 0.5) * 10, (rnd() - 0.5) * 10));
+    });
+    var edgePairs = mapperEdges.map(function (e) { return [idOf[e.source], idOf[e.target]]; })
+      .filter(function (e) { return e[0] !== undefined && e[1] !== undefined; });
+    // bounded Fruchterman-Reingold: repulsion + spring attraction + a weak centering
+    // ("gravity") term, without which sparsely-connected nodes (many real Mapper
+    // clusters have few real shared-window edges) drift apart indefinitely instead
+    // of settling into a compact, framable cluster
+    var REPULSE = 8, SPRING = 0.03, SPRING_LEN = 4.5, GRAVITY = 0.02, DAMP = 0.75;
+    for (var iter = 0; iter < 200; iter++) {
+      var force = pos.map(function () { return new THREE.Vector3(); });
+      for (var i = 0; i < pos.length; i++) {
+        for (var j = i + 1; j < pos.length; j++) {
+          var d = pos[i].clone().sub(pos[j]);
+          var dist = Math.max(d.length(), 0.01);
+          var f = d.normalize().multiplyScalar(Math.min(REPULSE / (dist * dist), 3));
+          force[i].add(f); force[j].sub(f);
+        }
+      }
+      edgePairs.forEach(function (e) {
+        var d = pos[e[1]].clone().sub(pos[e[0]]);
+        var dist = Math.max(d.length(), 0.01);
+        var f = d.normalize().multiplyScalar((dist - SPRING_LEN) * SPRING);
+        force[e[0]].add(f); force[e[1]].sub(f);
+      });
+      for (var k = 0; k < pos.length; k++) {
+        force[k].add(pos[k].clone().multiplyScalar(-GRAVITY));
+        pos[k].add(force[k].multiplyScalar(DAMP));
+      }
+    }
+    // recenter + translate to satellite position
+    var center = new THREE.Vector3();
+    pos.forEach(function (p) { center.add(p); });
+    center.multiplyScalar(1 / Math.max(pos.length, 1));
+    pos.forEach(function (p) { p.sub(center).add(SATELLITE_CENTER); });
+    return { idOf: idOf, pos: pos, edgePairs: edgePairs };
+  })();
+
+  // ================= Three.js scene =================
+  var stageEl = document.getElementById('ha-scene');
+  var calloutLayer = document.getElementById('ha-callouts');
+  var renderer = new THREE.WebGLRenderer({ canvas: stageEl, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 800);
+  var controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.07;
+  controls.minDistance = 30; controls.maxDistance = 260;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.4;
+  var resumeTimer = null;
+  controls.addEventListener('start', function () { controls.autoRotate = false; clearTimeout(resumeTimer); });
+  controls.addEventListener('end', function () { resumeTimer = setTimeout(function () { controls.autoRotate = true; }, 5000); });
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  var key = new THREE.DirectionalLight(0xdfe9ff, 1.1); key.position.set(30, 40, 50); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x66aaff, 0.75); rim.position.set(-40, -10, -30); scene.add(rim);
+  var fillGlow = new THREE.PointLight(0x7ad7ff, 0.6, 200); fillGlow.position.copy(GEOM.centroid); scene.add(fillGlow);
+
+  // -- hyperrealistic semi-transparent brain: inner colored shell + fresnel-rim glow shell --
+  var brainMat = new THREE.MeshPhysicalMaterial({
+    vertexColors: true, roughness: 0.35, metalness: 0.0, clearcoat: 0.35, clearcoatRoughness: 0.5,
+    transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false
+  });
+  var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
+  scene.add(brainMesh);
+
+  var fresnelMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
+    uniforms: { glowColor: { value: new THREE.Color(0x66baff) } },
+    vertexShader: [
+      'varying vec3 vNormalV; varying vec3 vViewPos;',
+      'void main() {',
+      '  vNormalV = normalize(normalMatrix * normal);',
+      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+      '  vViewPos = -mv.xyz;',
+      '  gl_Position = projectionMatrix * mv;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform vec3 glowColor; varying vec3 vNormalV; varying vec3 vViewPos;',
+      'void main() {',
+      '  float rim = 1.0 - clamp(dot(normalize(vNormalV), normalize(vViewPos)), 0.0, 1.0);',
+      '  float a = pow(rim, 2.2) * 0.55;',
+      '  gl_FragColor = vec4(glowColor, a);',
+      '}'
+    ].join('\n')
+  });
+  var fresnelMesh = new THREE.Mesh(BRAIN.geometry.clone(), fresnelMat);
+  fresnelMesh.scale.setScalar(1.012);
+  scene.add(fresnelMesh);
+
+  function glowSpriteTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var ctx = c.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  var GLOW_TEX = glowSpriteTexture();
+
+  // real electrode scalp mesh (very faint, mostly a spatial reference for the vortex layer)
+  var nCh = GEOM.positions.length;
+  var posAttr = new Float32Array(nCh * 3);
+  GEOM.positions.forEach(function (p, i) { posAttr[i * 3] = p.x; posAttr[i * 3 + 1] = p.y; posAttr[i * 3 + 2] = p.z; });
+  var meshGeo = new THREE.BufferGeometry();
+  meshGeo.setAttribute('position', new THREE.BufferAttribute(posAttr, 3));
+  meshGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nCh * 3).fill(0.5), 3));
+  var idxAttr = new Uint16Array(TRI.length * 3);
+  TRI.forEach(function (t3, i) { idxAttr[i * 3] = t3[0]; idxAttr[i * 3 + 1] = t3[1]; idxAttr[i * 3 + 2] = t3[2]; });
+  meshGeo.setIndex(new THREE.BufferAttribute(idxAttr, 1));
+  meshGeo.computeVertexNormals();
+  var scalpMat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.16, roughness: 0.5, side: THREE.DoubleSide, depthWrite: false });
+  var scalpMesh = new THREE.Mesh(meshGeo, scalpMat);
+  scene.add(scalpMesh);
+
+  // vortex glow sprites + Betti-1 loop rings + orbiting particles (EEG)
+  var vortices = [], particles = [], rings = [];
+  GEOM.activeTri.forEach(function (a) {
+    var sprMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+    var sprite = new THREE.Sprite(sprMat);
+    sprite.position.copy(a.centroid);
+    scene.add(sprite);
+    vortices.push({ sprite: sprite, tri: a });
+
+    var ringGeo = new THREE.TorusGeometry(1, 0.06, 8, 40);
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0xffe23f, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    var ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(a.centroid);
+    ring.lookAt(a.centroid.clone().add(a.n));
+    scene.add(ring);
+    rings.push({ mesh: ring, tri: a });
+
+    var rnd = mulberry32(hashStr('tri#' + a.index));
+    for (var k = 0; k < 3; k++) {
+      var pMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+      var pSprite = new THREE.Sprite(pMat);
+      pSprite.scale.set(0.5, 0.5, 0.5);
+      scene.add(pSprite);
+      particles.push({ sprite: pSprite, tri: a, radius: a.edgeLen * (0.3 + 0.45 * rnd()), angle0: rnd() * Math.PI * 2, speed: (0.7 + 0.5 * rnd()), wobble: 0.12 + 0.18 * rnd(), phaseOff: rnd() * Math.PI * 2 });
+    }
+  });
+
+  // real phase arrows, faint
+  var arrows = GEOM.positions.map(function (p) {
+    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.11, 0xbfe6ff, GEOM.R * 0.04, GEOM.R * 0.025);
+    ah.line.material.transparent = true; ah.line.material.opacity = 0.35;
+    ah.cone.material.transparent = true; ah.cone.material.opacity = 0.35;
+    scene.add(ah);
+    return ah;
+  });
+
+  // interior real fMRI connectome (built once per selected subject)
+  var connLayer = new THREE.Group();
+  scene.add(connLayer);
+  var connState = null;
+
+  function buildConnectomeLayer(subject) {
+    connLayer.clear();
+    if (!subject) { connState = null; return; }
+    var drug = subject.conditions.drug.graph, placebo = subject.conditions.placebo.graph;
+    var drugPos = fitCentroidsToSphere(drug.centroids);
+    var placeboPos = fitCentroidsToSphere(placebo.centroids);
+    var n = drugPos.length;
+
+    var nodeGeo = new THREE.SphereGeometry(0.55, 10, 8);
+    var nodeMeshes = [];
+    for (var i = 0; i < n; i++) {
+      var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x552200, emissiveIntensity: 0.6, roughness: 0.4 });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      connLayer.add(mesh);
+      nodeMeshes.push(mesh);
+    }
+
+    var degree = new Array(n).fill(0);
+    drug.edges.concat(placebo.edges).forEach(function (e) { degree[e.source]++; degree[e.target]++; });
+    var maxDeg = Math.max(1, Math.max.apply(null, degree));
+
+    var edgeMap = {};
+    drug.edges.forEach(function (e) { edgeMap[e.source + '_' + e.target] = { s: e.source, t: e.target, wd: e.weight, wp: 0 }; });
+    placebo.edges.forEach(function (e) {
+      var k = e.source + '_' + e.target;
+      if (edgeMap[k]) edgeMap[k].wp = e.weight; else edgeMap[k] = { s: e.source, t: e.target, wd: 0, wp: e.weight };
+    });
+    var edgeList = Object.keys(edgeMap).map(function (k) { return edgeMap[k]; });
+
+    var edgePos = new Float32Array(edgeList.length * 6);
+    var edgeCol = new Float32Array(edgeList.length * 6);
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    edgeGeo.setAttribute('color', new THREE.BufferAttribute(edgeCol, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    var edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+    connLayer.add(edgeLines);
+
+    connState = {
+      n: n, drugPos: drugPos, placeboPos: placeboPos, nodeMeshes: nodeMeshes, degree: degree, maxDeg: maxDeg,
+      edgeList: edgeList, edgeGeo: edgeGeo
+    };
+  }
+
+  function updateConnectome(t) {
+    if (!connState) return;
+    var cs = connState;
+    for (var i = 0; i < cs.n; i++) {
+      var p = cs.drugPos[i].clone().lerp(cs.placeboPos[i], t);
+      cs.nodeMeshes[i].position.copy(p);
+      var deg01 = cs.degree[i] / cs.maxDeg;
+      var rgb = spectrumColor(0.25 + deg01 * 0.75);
+      cs.nodeMeshes[i].material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      cs.nodeMeshes[i].material.emissive.setRGB(rgb[0] * 0.5, rgb[1] * 0.5, rgb[2] * 0.5);
+      var s = 0.45 + 0.65 * deg01;
+      cs.nodeMeshes[i].scale.setScalar(s);
+    }
+    var posAttr = cs.edgeGeo.attributes.position, colAttr = cs.edgeGeo.attributes.color;
+    cs.edgeList.forEach(function (e, i) {
+      var pa = cs.nodeMeshes[e.s].position, pb = cs.nodeMeshes[e.t].position;
+      posAttr.array[i * 6] = pa.x; posAttr.array[i * 6 + 1] = pa.y; posAttr.array[i * 6 + 2] = pa.z;
+      posAttr.array[i * 6 + 3] = pb.x; posAttr.array[i * 6 + 4] = pb.y; posAttr.array[i * 6 + 5] = pb.z;
+      var w = Math.abs(lerp(e.wd, e.wp, t));
+      var rgb = spectrumColor(0.15 + Math.min(1, w) * 0.85);
+      for (var k = 0; k < 2; k++) {
+        colAttr.array[i * 6 + k * 3] = rgb[0]; colAttr.array[i * 6 + k * 3 + 1] = rgb[1]; colAttr.array[i * 6 + k * 3 + 2] = rgb[2];
+      }
+    });
+    posAttr.needsUpdate = true; colAttr.needsUpdate = true;
+  }
+
+  // Mapper satellite graph layer
+  var mapperLayer = new THREE.Group();
+  scene.add(mapperLayer);
+  var mapperNodeMeshes = [];
+  (function buildMapperLayer() {
+    var nodeGeo = new THREE.SphereGeometry(0.6, 10, 8);
+    mapperNodes.forEach(function (n, i) {
+      var mat = new THREE.MeshStandardMaterial({ color: 0xb06bff, emissive: 0x3a0a66, emissiveIntensity: 0.7, roughness: 0.35 });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      mesh.position.copy(mapperLayout.pos[i]);
+      var scale = 0.4 + 0.16 * Math.sqrt(n.size);
+      mesh.scale.setScalar(scale);
+      mapperLayer.add(mesh);
+      mapperNodeMeshes.push(mesh);
+    });
+    var edgePos = new Float32Array(mapperLayout.edgePairs.length * 6);
+    mapperLayout.edgePairs.forEach(function (e, i) {
+      var a = mapperLayout.pos[e[0]], b = mapperLayout.pos[e[1]];
+      edgePos[i * 6] = a.x; edgePos[i * 6 + 1] = a.y; edgePos[i * 6 + 2] = a.z;
+      edgePos[i * 6 + 3] = b.x; edgePos[i * 6 + 4] = b.y; edgePos[i * 6 + 5] = b.z;
+    });
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ color: 0xb06bff, transparent: true, opacity: 0.4 });
+    mapperLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
+
+    // leader line + label from brain to satellite cluster
+    var leaderGeo = new THREE.BufferGeometry().setFromPoints([GEOM.centroid.clone().setX(GEOM.R * 0.9), SATELLITE_CENTER.clone().setX(SATELLITE_CENTER.x - 8)]);
+    var leaderMat = new THREE.LineDashedMaterial({ color: 0x8899bb, dashSize: 1.2, gapSize: 0.8, transparent: true, opacity: 0.4 });
+    var leader = new THREE.Line(leaderGeo, leaderMat);
+    leader.computeLineDistances();
+    scene.add(leader);
+  })();
+
+  function updateMapperGlow(clock) {
+    mapperNodes.forEach(function (n, i) {
+      var energy = clamp01((n.feature_mean && n.feature_mean.mean_plv != null) ? n.feature_mean.mean_plv : n.awake_fraction);
+      var rgb = spectrumColor(energy);
+      var mesh = mapperNodeMeshes[i];
+      var pulse = 1 + 0.06 * Math.sin(clock * 1.4 + i);
+      mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      mesh.material.emissive.setRGB(rgb[0] * 0.55, rgb[1] * 0.55, rgb[2] * 0.55);
+      mesh.scale.setScalar((0.4 + 0.16 * Math.sqrt(n.size)) * pulse);
+    });
+    mapperLayer.rotation.y += 0.0015;
+  }
+
+  function frameCamera() {
+    // frame the true combined bounding box of the brain + scalp + satellite graph,
+    // rather than a hand-picked offset, so nothing is ever cropped regardless of
+    // where the real geometry happens to sit
+    var box = new THREE.Box3();
+    box.expandByObject(brainMesh);
+    GEOM.positions.forEach(function (p) { box.expandByPoint(p); });
+    mapperLayout.pos.forEach(function (p) { box.expandByPoint(p); });
+    var center = box.getCenter(new THREE.Vector3());
+    var radius = box.getSize(new THREE.Vector3()).length() * 0.5;
+    // fit the bounding sphere within the *vertical* FOV (the binding constraint on a
+    // wide/landscape canvas, since horizontal FOV is always larger for aspect > 1)
+    var halfVFov = (camera.fov * Math.PI / 180) / 2;
+    var dist = (radius / Math.sin(halfVFov)) * 1.06;
+    var dir = new THREE.Vector3(0.12, 0.42, 1).normalize();
+    camera.position.copy(center).addScaledVector(dir, dist);
+    controls.target.copy(center);
+    controls.minDistance = radius * 0.3;
+    controls.maxDistance = radius * 5;
+    controls.update();
+  }
+
+  // live spatial clustering of active EEG triangles at the current blend
+  function clusterActive(activityByTri, triAdj) {
+    var visited = {}, clusterOf = {}, nClusters = 0;
+    GEOM.activeTri.forEach(function (a) {
+      if (activityByTri[a.index] <= 0.06 || visited[a.index]) return;
+      var stack = [a.index], cid = nClusters++;
+      visited[a.index] = true;
+      while (stack.length) {
+        var cur = stack.pop();
+        clusterOf[cur] = cid;
+      }
+    });
+    return { clusterOf: clusterOf, nClusters: nClusters };
+  }
+
+  function updateEEG(t, clock) {
+    var arrowCol = new THREE.Color(0xbfe6ff);
+    var blendedWind = TRI.map(function (_, i) { return lerp(eegAwake.wind[i], eegSedated.wind[i], t); });
+    var activityByTri = blendedWind.map(function (w) { return Math.abs(w); });
+    var clusters = clusterActive(activityByTri);
+
+    var brainCol = brainMesh.geometry.attributes.color;
+    var K = BRAIN_WEIGHTS.K;
+    for (var bv = 0; bv < BRAIN.n; bv++) {
+      var acc = 0;
+      for (var k = 0; k < K; k++) {
+        var eIdx = BRAIN_WEIGHTS.idx[bv * K + k], wgt = BRAIN_WEIGHTS.w[bv * K + k];
+        acc += wgt * lerp(eegAwake.smooth[eIdx], eegSedated.smooth[eIdx], t);
+      }
+      var intensity = Math.min(1, Math.abs(acc) / eegPeak);
+      var rgb = spectrumColor(intensity);
+      var curvShade = 1 + BRAIN.curv[bv] * 0.15;
+      brainCol.setXYZ(bv, rgb[0] * curvShade, rgb[1] * curvShade, rgb[2] * curvShade);
+    }
+    brainCol.needsUpdate = true;
+
+    var colAttr = scalpMesh.geometry.attributes.color;
+    for (var i = 0; i < GEOM.positions.length; i++) {
+      var v = lerp(eegAwake.smooth[i], eegSedated.smooth[i], t);
+      var rgb2 = spectrumColor(Math.min(1, Math.abs(v) / eegPeak));
+      colAttr.setXYZ(i, rgb2[0], rgb2[1], rgb2[2]);
+    }
+    colAttr.needsUpdate = true;
+
+    for (var j = 0; j < GEOM.positions.length; j++) {
+      var ph = angleLerp(eegAwake.phase[j], eegSedated.phase[j], t);
+      var tf = GEOM.tangents[j];
+      var dir = tf.e1.clone().multiplyScalar(Math.cos(ph)).add(tf.e2.clone().multiplyScalar(Math.sin(ph))).normalize();
+      arrows[j].setDirection(dir);
+      arrows[j].setColor(arrowCol);
+    }
+
+    var triScale = eegTriPeak;
+    var activeCount = 0, totalPersist = 0;
+    vortices.forEach(function (vx) {
+      var i = vx.tri.index, blended = blendedWind[i], activity = activityByTri[i];
+      if (activity > 0.08) activeCount++;
+      var vis = Math.min(1, activity / triScale);
+      var rgb3 = spectrumColor(0.15 + vis * 0.6);
+      vx.sprite.material.color.setRGB(blended >= 0 ? 0.4 : rgb3[0], blended >= 0 ? 0.85 : rgb3[1], blended >= 0 ? 1.0 : rgb3[2]);
+      vx.sprite.material.opacity = 0.85 * vis;
+      var s = GEOM.R * (0.12 + 0.32 * vis);
+      vx.sprite.scale.set(s, s, s);
+    });
+    rings.forEach(function (rg) {
+      var i = rg.tri.index, activity = activityByTri[i], vis = Math.min(1, activity / triScale);
+      var visible = activity > 0.06;
+      rg.mesh.material.opacity = visible ? 0.95 * Math.min(1, vis * 1.6) : 0;
+      if (visible) {
+        var ringR = rg.tri.edgeLen * (0.62 + 0.22 * Math.sin(clock * 1.6 + i));
+        rg.mesh.scale.set(ringR, ringR, ringR);
+      }
+    });
+    particles.forEach(function (p) {
+      var i = p.tri.index, blended = blendedWind[i], activity = activityByTri[i], sign = blended >= 0 ? 1 : -1;
+      var vis = Math.min(1, activity / triScale);
+      var ang = p.angle0 + clock * p.speed * sign;
+      var r = p.radius * (1 + p.wobble * Math.sin(clock * 1.4 + p.phaseOff));
+      var pos = p.tri.centroid.clone().add(p.tri.e1.clone().multiplyScalar(Math.cos(ang) * r)).add(p.tri.e2.clone().multiplyScalar(Math.sin(ang) * r));
+      p.sprite.position.copy(pos);
+      var rgb4 = spectrumColor(0.15 + vis * 0.75);
+      p.sprite.material.color.setRGB(rgb4[0], rgb4[1], rgb4[2]);
+      p.sprite.material.opacity = 0.95 * vis;
+    });
+
+    return { qabs: lerp(eegAwake.wind.reduce(function(a,b){return a+Math.abs(b);},0), eegSedated.wind.reduce(function(a,b){return a+Math.abs(b);},0), t), activeCount: activeCount, nClusters: clusters.nClusters };
+  }
+
+  function resizeRenderer() {
+    var rect = stageEl.parentElement.getBoundingClientRect();
+    renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / Math.max(rect.height, 1);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resizeRenderer);
+
+  // ================= UI wiring =================
+  var eegSlider = document.getElementById('ha-eeg-slider');
+  var fmriSlider = document.getElementById('ha-fmri-slider');
+  var fmriSelect = document.getElementById('ha-fmri-subject');
+  var playBtn = document.getElementById('ha-play');
+  var resetBtn = document.getElementById('ha-reset-cam');
+  var readout = document.getElementById('ha-readout');
+
+  fmriSubjects.forEach(function (s) {
+    var opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.id; fmriSelect.appendChild(opt);
+  });
+  if (fmriSubjects.length) {
+    buildConnectomeLayer(fmriSubjects[0]);
+  }
+  fmriSelect.addEventListener('change', function () {
+    var subj = fmriSubjects.find(function (s) { return s.id === fmriSelect.value; });
+    buildConnectomeLayer(subj);
+    updateConnectome(parseFloat(fmriSlider.value));
+  });
+
+  resetBtn.addEventListener('click', frameCamera);
+
+  var playing = false, playDir = 1;
+  playBtn.addEventListener('click', function () {
+    playing = !playing;
+    playBtn.textContent = playing ? '&#10074;&#10074; Pause all' : '▶ Play all';
+    playBtn.innerHTML = playing ? '&#10074;&#10074; Pause all' : '&#9654; Play all';
+  });
+
+  // ================= stats readout (real numbers) =================
+  function renderStats() {
+    var statsEl = document.getElementById('ha-stats');
+    var cards = [];
+    function card(label, value, sub) {
+      cards.push('<div class="ha-stat"><div class="ha-stat-label">' + label + '</div><div class="ha-stat-value">' + value + '</div>' + (sub ? '<div class="ha-stat-sub">' + sub + '</div>' : '') + '</div>');
+    }
+    card('EEG cohort', VF.n_subjects, VF.n_channels + ' channels, ' + TRI.length + ' triangles, n=20');
+    if (clAwake) card('EEG Betti-1 clusters (awake)', clAwake.clustering.n_clusters, clAwake.clustering.n_noise + ' noise triangles');
+    if (clSedated) card('EEG Betti-1 clusters (sedated)', clSedated.clustering.n_clusters, clSedated.clustering.n_noise + ' noise triangles');
+    card('fMRI subjects w/ connectome', fmriSubjects.length + ' / ' + (FC.n_subjects || 0), 'ds005917, 100 real parcels each');
+    card('Mapper windows', MG.n_windows || 0, mapperNodes.length + ' nodes, ' + mapperEdges.length + ' edges');
+    statsEl.innerHTML = cards.join('');
+  }
+  renderStats();
+
+  // ================= render loop =================
+  var t0 = performance.now();
+  var eegT = 0, fmriT = 0;
+  function render(now) {
+    var clock = (now - t0) / 1000;
+    if (playing) {
+      var speed = 0.09;
+      eegT += playDir * speed * 0.016;
+      fmriT += playDir * speed * 0.9 * 0.016;
+      if (eegT > 1) { eegT = 1; playDir = -1; }
+      if (eegT < 0) { eegT = 0; playDir = 1; }
+      fmriT = Math.max(0, Math.min(1, fmriT));
+      eegSlider.value = eegT; fmriSlider.value = eegT;
+    } else {
+      eegT = parseFloat(eegSlider.value);
+      fmriT = parseFloat(fmriSlider.value);
+    }
+
+    var res = updateEEG(eegT, clock);
+    updateConnectome(fmriT);
+    updateMapperGlow(clock);
+    fresnelMesh.rotation.copy(brainMesh.rotation);
+    controls.update();
+    renderer.render(scene, camera);
+
+    readout.innerHTML = 'EEG t=<b>' + eegT.toFixed(2) + '</b> &Sigma;|winding|=<b>' + res.qabs.toFixed(2) +
+      '</b> loops=<b>' + res.activeCount + '</b> clusters=<b>' + res.nClusters +
+      '</b> &middot; fMRI t=<b>' + fmriT.toFixed(2) + '</b>';
+
+    requestAnimationFrame(render);
+  }
+
+  resizeRenderer();
+  frameCamera();
+  requestAnimationFrame(render);
+}
+
+boot();
+</script>

@@ -586,6 +586,19 @@ async def unified_atlas():
     return FileResponse(str(viewer), media_type="text/html")
 
 
+@app.get("/holo-atlas", include_in_schema=False)
+async def holo_atlas():
+    """Single combined 3D scene fusing all three real datasets into one
+    semi-transparent volumetric brain: the EEG vortex/Betti-1 field draped on
+    the cortex, the ds005917 fMRI connectome fit inside the cortical volume,
+    and the Mapper cohort-structure graph as a satellite network -- one
+    continuous low->high energy spectrum colormap across all three."""
+    viewer = _STATIC_DIR / "holo_atlas.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Holo-atlas is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")
