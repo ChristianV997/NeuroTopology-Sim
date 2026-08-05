@@ -456,6 +456,42 @@ def build_mapper_graph_payload(root: str | Path | None = None) -> dict[str, Any]
     return graph
 
 
+DEFAULT_DS005917_ROOT = REPOSITORY_ROOT / "outputs" / "dual_engine" / "ds005917"
+
+
+def build_fmri_connectome_payload(dataset: str = "ds005917", root: str | Path | None = None) -> dict[str, Any]:
+    """Real ds005917 ketamine fMRI connectome graph for `/fmri-connectome`.
+
+    Precomputed by `tools/export_fmri_connectome_for_command_center.py` (needs numpy,
+    available in the root environment, not this process). Read here as plain JSON --
+    same two-environment constraint as `build_vortex_field_payload` and
+    `build_mapper_graph_payload`. `dataset` is accepted (not yet used) so a future
+    dataset sharing this payload shape (e.g. ds006644) can reuse the same route.
+    """
+    if dataset != "ds005917":
+        return {"status": "unavailable", "reason": f"No connectome payload builder for dataset={dataset!r} yet."}
+    cohort_dir = Path(root) if root is not None else DEFAULT_DS005917_ROOT
+    payload_path = cohort_dir / "fmri_connectome.json"
+    if not payload_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No precomputed fMRI connectome payload at {payload_path}. Run "
+                      "tools/stream_process_ds005917.py --save-graph-structure ... then "
+                      "tools/export_fmri_connectome_for_command_center.py first.",
+        }
+    try:
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {payload_path}: {exc}"}
+
+    payload["status"] = "available"
+    payload["source"] = (
+        "tools/stream_process_ds005917.py --save-graph-structure "
+        "+ tools/export_fmri_connectome_for_command_center.py"
+    )
+    return payload
+
+
 def build_command_center_registry(root: str | Path | None = None) -> dict[str, Any]:
     """Return a UI-safe, read-only inventory of empirical run artifacts.
 

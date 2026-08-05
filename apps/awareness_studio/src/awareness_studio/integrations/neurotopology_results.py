@@ -114,3 +114,13 @@ def list_ds000245_subjects() -> list[str]:
 def get_ds000245_bold_path(subject_id: str):
     adapter = _adapter()
     return adapter.get_ds000245_bold_path(subject_id) if adapter is not None else None
+
+
+def build_fmri_connectome_payload(dataset: str = "ds005917") -> dict[str, Any]:
+    adapter = _adapter()
+    if adapter is not None:
+        return adapter.build_fmri_connectome_payload(dataset=dataset)
+    return {
+        "status": "unavailable",
+        "reason": "No repository empirical artifact adapter is available in this deployment.",
+    }

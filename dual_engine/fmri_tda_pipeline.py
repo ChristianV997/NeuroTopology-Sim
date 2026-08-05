@@ -120,7 +120,8 @@ def parcellate_bold(
     low_pass: float = 0.1,
     high_pass: float = 0.01,
     n_synthetic_parcels: int = 100,
-) -> np.ndarray:
+    return_centroids: bool = False,
+):
     """Return a (n_timepoints, n_regions) parcellated time series.
 
     If `atlas_labels_img` is given, use nilearn's NiftiLabelsMasker with standardization,
@@ -128,6 +129,12 @@ def parcellate_bold(
     recipe). If no atlas is given (offline self-test), fall back to a deterministic
     coordinate-based parcellation via KMeans on in-brain voxel coordinates -- labelled
     synthetic, never presented as an anatomical atlas.
+
+    If `return_centroids` is True, also returns each parcel's real voxel-index centroid
+    (n_regions, 3) -- the same KMeans cluster centers already computed for the coordinate
+    parcellation, just not previously surfaced to the caller. With `atlas_labels_img` set,
+    centroids come from `NiftiLabelsMasker`'s own atlas coordinates via
+    `nilearn.plotting.find_parcellation_cut_coords`.
     """
     import nibabel as nib
 
@@ -148,7 +155,13 @@ def parcellate_bold(
             verbose=0,
         )
         ts = masker.fit_transform(bold_path, confounds=confounds)
-        return np.asarray(ts, dtype=float)
+        ts = np.asarray(ts, dtype=float)
+        if not return_centroids:
+            return ts
+        from nilearn.plotting import find_parcellation_cut_coords
+
+        centroids = np.asarray(find_parcellation_cut_coords(atlas_labels_img), dtype=float)
+        return ts, centroids
 
     # ---- offline fallback: deterministic coordinate parcellation (synthetic) ----
     from sklearn.cluster import KMeans
@@ -181,7 +194,9 @@ def parcellate_bold(
         if 0 < lo < hi < 1:
             b, a = butter(2, [lo, hi], btype="band")
             series = filtfilt(b, a, series, axis=0)
-    return series
+    if not return_centroids:
+        return series
+    return series, np.asarray(km.cluster_centers_, dtype=float)
 
 
 # --------------------------------------------------------------------------- connectivity
@@ -302,6 +317,30 @@ def save_roi_timeseries(ts: np.ndarray, subject_id: str, group: str, t_r: Option
     return str(path)
 
 
+def save_graph_structure(
+    centroids: np.ndarray, connectivity: np.ndarray, subject_id: str, condition: str, out_dir: Path
+) -> str:
+    """Persist real parcel centroids + the real connectivity matrix for a subject/condition.
+
+    `parcellate_bold`'s KMeans step already computes these centroids and
+    `connectivity_matrix` already computes this matrix -- both were previously discarded
+    after being collapsed into scalar topology/graph metrics. This is the durable capability
+    the /fmri-connectome 3D viewer needs (real node positions + real edge weights), following
+    the same on-disk-npz precedent as `save_roi_timeseries`.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{subject_id}_{condition}_graph_structure.npz"
+    np.savez_compressed(
+        path,
+        centroids=np.asarray(centroids, dtype=np.float32),
+        connectivity=np.asarray(connectivity, dtype=np.float32),
+        subject_id=subject_id,
+        condition=condition,
+        provenance="real_fmri",
+    )
+    return str(path)
+
+
 def run_subject(
     subject_id: str,
     group: str,
@@ -312,13 +351,23 @@ def run_subject(
     connectivity_kind: str = "correlation",
     provenance: str = "real_fmri",
     save_timeseries_dir: Optional[str] = None,
+    save_graph_structure_dir: Optional[str] = None,
 ) -> SubjectResult:
     """Full per-subject pipeline. Returns a SubjectResult (with error set on failure)."""
     try:
-        ts = parcellate_bold(bold_path, atlas_labels_img=atlas_labels_img, t_r=t_r, confounds=confounds)
+        centroids = None
+        if save_graph_structure_dir is not None:
+            ts, centroids = parcellate_bold(
+                bold_path, atlas_labels_img=atlas_labels_img, t_r=t_r, confounds=confounds,
+                return_centroids=True,
+            )
+        else:
+            ts = parcellate_bold(bold_path, atlas_labels_img=atlas_labels_img, t_r=t_r, confounds=confounds)
         if save_timeseries_dir is not None:
             save_roi_timeseries(ts, subject_id, group, t_r, Path(save_timeseries_dir))
         conn = connectivity_matrix(ts, kind=connectivity_kind)
+        if save_graph_structure_dir is not None:
+            save_graph_structure(centroids, conn, subject_id, group, Path(save_graph_structure_dir))
         ph = persistent_homology(conn)
         gm = graph_metrics(conn)
         return SubjectResult(
@@ -530,6 +579,7 @@ def main(argv=None) -> int:
     ap.add_argument("--emit-subjects", default=None, help="Write per-subject results (list) to this JSON path instead of a full cohort")
     ap.add_argument("--aggregate", nargs="+", default=None, help="Merge these subjects_*.json files into a cohort_result.json (+ stats)")
     ap.add_argument("--save-timeseries", default=None, help="directory to persist parcellated ROI timeseries (.npz) for later surrogate gating")
+    ap.add_argument("--save-graph-structure", default=None, help="directory to persist real parcel centroids + connectivity matrix (.npz) for the /fmri-connectome 3D viewer")
     ap.add_argument("--out", default="outputs/fmri_tda")
     args = ap.parse_args(argv)
 
@@ -571,7 +621,8 @@ def main(argv=None) -> int:
             continue
         res = run_subject(sub.name, group, str(func[0]),
                           atlas_labels_img=args.atlas, t_r=args.t_r,
-                          provenance="real_fmri", save_timeseries_dir=args.save_timeseries)
+                          provenance="real_fmri", save_timeseries_dir=args.save_timeseries,
+                          save_graph_structure_dir=args.save_graph_structure)
         res.covariates = covariates.get(sub.name, {})
         results.append(res)
         print(f"  {sub.name} ({group}): b1={res.betti1} err={res.error[:40]}")

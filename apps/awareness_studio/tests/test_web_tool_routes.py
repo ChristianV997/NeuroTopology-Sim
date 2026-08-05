@@ -125,6 +125,30 @@ def test_volumetric_bold_serves_real_subject_when_available():
     assert resp.headers["content-type"] == "application/gzip"
 
 
+def test_fmri_connectome_viewer_and_data_are_available():
+    page = client.get("/fmri-connectome")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "ds005917" in page.text or "ketamine" in page.text.lower()
+
+    resp = client.get("/fmri-connectome/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert data["dataset"] == "ds005917"
+        assert isinstance(data["subjects"], list) and len(data["subjects"]) > 0
+        subject = data["subjects"][0]
+        assert "conditions" in subject
+        assert "drug" in subject["conditions"] and "placebo" in subject["conditions"]
+
+
+def test_fmri_connectome_data_unknown_dataset_is_unavailable():
+    resp = client.get("/fmri-connectome/data?dataset=not-a-real-dataset")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "unavailable"
+
+
 def test_vortex_field_data_is_available():
     resp = client.get("/vortex-field/data")
     assert resp.status_code == 200

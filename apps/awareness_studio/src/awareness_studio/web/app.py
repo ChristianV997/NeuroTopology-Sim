@@ -558,6 +558,22 @@ async def volumetric_bold(subject_id: str):
     return FileResponse(str(path), media_type="application/gzip", filename=path.name)
 
 
+@app.get("/fmri-connectome", include_in_schema=False)
+async def fmri_connectome_viewer():
+    """Real ds005917 ketamine drug-vs-placebo fMRI functional-connectome graph."""
+    viewer = _STATIC_DIR / "fmri_connectome.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="fMRI connectome viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/fmri-connectome/data")
+@app.get("/api/fmri-connectome/data", include_in_schema=False)
+async def fmri_connectome_data(dataset: str = Query(default="ds005917")):
+    from awareness_studio.integrations.neurotopology_results import build_fmri_connectome_payload
+    return build_fmri_connectome_payload(dataset=dataset)
+
+
 # ── Airtable routes ────────────────────────────────────────────────────────────
 
 @app.get("/airtable/status")
