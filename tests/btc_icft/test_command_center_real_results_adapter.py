@@ -80,6 +80,7 @@ def _write_pitnn_cohort_subject(root, subject_id, *, awake=True, sedated=True, b
                 "n_valid_triangles": 1,
             },
             "wave_vectors": None,
+            "h1_cycles": [{"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}],
             "quality_control": {"n_channels": 3, "all_finite": True},
         }
     record = {
@@ -120,6 +121,9 @@ def test_pitnn_cohort_spatial_artifact_available_with_real_defect_map(tmp_path):
     assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.42)
     assert subject["conditions"]["awake"]["wave_vectors"] is None
     assert subject["conditions"]["awake"]["defects"]["n_valid_triangles"] == 1
+    assert subject["conditions"]["awake"]["h1_cycles"] == [
+        {"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}
+    ]
 
 
 def test_pitnn_cohort_spatial_artifact_skips_subjects_with_no_snapshot(tmp_path):

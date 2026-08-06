@@ -36,6 +36,9 @@
   .ha-btn:hover { background: rgba(122,215,255,0.22); }
   .ha-readout { margin-left: auto; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
   .ha-readout b { color: var(--ink); }
+  .ha-layer-toggles-label { font: 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); }
+  .ha-layer-toggle { display: flex; align-items: center; gap: 5px; font: 12.5px ui-sans-serif, system-ui; color: var(--ink-2); cursor: pointer; user-select: none; }
+  .ha-layer-toggle input { accent-color: var(--accent); cursor: pointer; }
 
   .ha-stage-card { position: relative; border: 1px solid var(--ring); border-radius: 14px; overflow: hidden; background: var(--stage-bg); box-shadow: 0 0 80px rgba(122,215,255,0.06) inset; }
   #ha-scene { width: 100%; height: 780px; display: block; }
@@ -92,6 +95,7 @@
         <li><b>Mapper satellite graph:</b> real KeplerMapper nodes/edges over real per-window cohort features; its 3D layout is a force-directed spring simulation computed for display only &mdash; Mapper nodes carry no spatial/anatomical coordinate at all.</li>
         <li><b>Combined animation:</b> the EEG awake&harr;sedated and fMRI drug&harr;placebo timelines are two independent real experiments on different subjects, driven together here for one continuous visual narrative &mdash; not a claim they were recorded simultaneously.</li>
         <li><b>Per-subject EEG swap:</b> the EEG selector's real subjects are one individual's own real signed-winding/phase snapshot (same channel order and triangulation as the cohort average, verified). Color/size normalization stays fixed from the cohort so subjects stay visually comparable; no per-subject spatial clustering was computed, so the "clusters=" readout still reflects the real cohort-level value.</li>
+        <li><b>H1 loops:</b> real GUDHI cubical persistence on the selected subject's real last-window PLV matrix. Each line connects the two real electrode positions of one persistent H1 feature's <i>birth cell</i> (the exact channel pair GUDHI's <code>cofaces_of_persistence_pairs</code> reports) &mdash; this is the real location where that feature is born in the PLV filtration, not a full traced topological cycle (no cycle-representative extraction exists in this repo's GUDHI usage), and not shown for the cohort-average view, which has no per-subject PLV matrix to compute from.</li>
       </ul>
     </div>
 
@@ -105,6 +109,16 @@
       <span class="ha-readout" id="ha-readout"></span>
     </div>
 
+    <div class="ha-controls" id="ha-layer-toggles">
+      <span class="ha-layer-toggles-label">Layers</span>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-heatmap" checked> EEG heatmap</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-betti1" checked> Betti-1 loops</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-h1loops" checked> H1 loops</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-skyrmions" checked> Skyrmions</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-mapper" checked> Mapper</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-connectome" checked> Connectome</label>
+    </div>
+
     <div class="ha-stage-card">
       <canvas id="ha-scene"></canvas>
       <div class="ha-callout-layer" id="ha-callouts"></div>
@@ -113,6 +127,7 @@
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring &mdash; size=|charge|, marker speed=|charge|, marker spin=real turn (CW/CCW)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#3a12c0,#9b30ff,#ff53d0)"></span>fMRI connectome &mdash; indigo&rarr;violet&rarr;magenta = real degree/weight</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#ff3b30,#ffd23f,#ffffff)"></span>Mapper node &mdash; red&rarr;yellow&rarr;white = real per-node energy</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#3dff7a"></span>H1 loop (green) &mdash; real GUDHI persistent-loop channel pair, brighter/thicker = more persistent; pick an EEG subject above</div>
         <div>inactive &rarr; most energetic</div>
         <div class="ha-spectrum-bar"></div>
       </div>
@@ -318,20 +333,73 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     eegSedated = fromSnapshot(rec.conditions.sedated) || EEG_COHORT_SEDATED;
   }
 
+  // real H1 persistent-loop channel locations for one subject/condition, via
+  // tools.stream_pitnn_cohort_ds005620.h1_cycle_channel_locations (GUDHI cubical
+  // persistence on the last window's real PLV matrix, restricted to real channel
+  // positions). birth_cell/death_cell each name a real channel PAIR (the PLV matrix
+  // cell (i, j) where that persistent feature is born/dies) -- drawn here as a real
+  // line between those two real electrode positions, in green, brighter/thicker for
+  // more persistent (real death - birth) features. Capped to the top 24 most
+  // persistent per condition so the scene stays legible, not because more real data
+  // isn't there -- it's ranked, not fabricated or truncated arbitrarily.
+  var H1_LOOP_TOP_N = 24;
+  var h1LoopState = { subjectId: null, condition: null };
+  function buildH1LoopLayer(subjectId, condition) {
+    h1LoopState.subjectId = subjectId; h1LoopState.condition = condition;
+    while (h1LoopLayer.children.length) h1LoopLayer.remove(h1LoopLayer.children[0]);
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var cycles = snap && snap.h1_cycles;
+    if (!snap || !cycles || !cycles.length) return;
+    var coords = snap.channel_coordinates;
+    var maxR = 0;
+    coords.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var domeR = maxR * 1.006 || 1;
+    function chPos(idx) { return projectSensorXYToDome(coords[idx], domeR, GEOM.R).multiplyScalar(1.01); }
+
+    var top = cycles.slice()
+      .sort(function (a, b) { return (b.death - b.birth) - (a.death - a.birth); })
+      .slice(0, H1_LOOP_TOP_N);
+    var maxPersist = Math.max.apply(null, top.map(function (c) { return c.death - c.birth; }).concat([1e-6]));
+
+    top.forEach(function (cyc) {
+      var persist = cyc.death - cyc.birth;
+      var frac = Math.min(1, persist / maxPersist);
+      var a = chPos(cyc.birth_cell[0]), b = chPos(cyc.birth_cell[1]);
+      var lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+      var lineMat = new THREE.LineBasicMaterial({ color: 0x3dff7a, transparent: true, opacity: 0.35 + 0.55 * frac });
+      h1LoopLayer.add(new THREE.Line(lineGeo, lineMat));
+      [a, b].forEach(function (p) {
+        var dotGeo = new THREE.SphereGeometry(GEOM.R * (0.010 + 0.010 * frac), 8, 6);
+        var dotMat = new THREE.MeshBasicMaterial({ color: 0x8dffb0, transparent: true, opacity: Math.min(1, 0.55 + 0.45 * frac) });
+        var dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.copy(p);
+        h1LoopLayer.add(dot);
+      });
+    });
+  }
+
   // overall world size -- large enough to comfortably host the cortex heatmap, the
   // interior fMRI connectome, and the interior Mapper cluster without them crowding
   // or clipping into each other
   var WORLD_SCALE = 38;
 
+  // Shared 2D sensor-projection -> 3D dome-surface mapping. Reused for the scalp/
+  // vortex mesh below (COORDS, cohort-average grand mean) and for real per-subject
+  // H1 loop channel positions (a DIFFERENT real subject's own channel_coordinates,
+  // same 2D montage-projection coordinate frame -- verified identical convention,
+  // see setEegSubject above) -- one honest projection, not two different fits.
+  function projectSensorXYToDome(c, domeR, sphereR) {
+    var r2 = c[0] * c[0] + c[1] * c[1];
+    var z = Math.sqrt(Math.max(domeR * domeR - r2, 0));
+    return new THREE.Vector3(c[0] * sphereR / domeR, z * sphereR / domeR, -c[1] * sphereR / domeR);
+  }
+
   var GEOM = (function () {
     var maxR = 0;
     COORDS.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
     var R = maxR * 1.006;
-    var positions = COORDS.map(function (c) {
-      var r2 = c[0] * c[0] + c[1] * c[1];
-      var z = Math.sqrt(Math.max(R * R - r2, 0));
-      return new THREE.Vector3(c[0] * WORLD_SCALE / R, z * WORLD_SCALE / R, -c[1] * WORLD_SCALE / R);
-    });
+    var positions = COORDS.map(function (c) { return projectSensorXYToDome(c, R, WORLD_SCALE); });
     var tangents = positions.map(function (p) {
       var n = p.clone().normalize();
       var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
@@ -566,6 +634,11 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   var brainMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
     vertexColors: true,
+    // solidMode: 0 = normal semi-transparent heatmap; 1 = fully opaque surface
+    // (toggled when both interior layers -- Mapper, Connectome -- are hidden, so
+    // there is nothing left to see through the brain FOR, and full opacity makes
+    // the same real per-vertex heatmap colors read more clearly).
+    uniforms: { solidMode: { value: 0.0 } },
     vertexShader: [
       'attribute float activity;',
       'varying vec3 vColor; varying float vActivity;',
@@ -576,16 +649,32 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       '}'
     ].join('\n'),
     fragmentShader: [
+      'uniform float solidMode;',
       'varying vec3 vColor; varying float vActivity;',
       'void main() {',
-      '  float dim = mix(0.22, 1.0, vActivity);',
-      '  float alpha = mix(0.30, 0.97, vActivity);',
+      // wider dim/alpha range than a plain [0,1] mix: inactive cortex reads
+      // noticeably darker AND more see-through, active cortex reads brighter
+      // than full color (the >1.0 top of the dim range clips at the GPU's
+      // natural [0,1] output, giving peak-activity regions a slight hot
+      // overbright glow) and nearly fully opaque -- the same real vActivity
+      // value, just mapped with more perceptual contrast so "active" is
+      // unmistakable at a glance, not a subtle shade shift.
+      '  float dim = mix(0.14, 1.15, vActivity);',
+      // solid mode's whole point is showing the heatmap MORE clearly with nothing
+      // to see through it to -- an opaque-but-still-near-black inactive region
+      // would defeat that, so the dim floor also rises here (0.14 -> 0.5),
+      // independent of and on top of the real per-vertex activity value.
+      '  dim = mix(dim, mix(0.5, 1.2, vActivity), solidMode);',
+      '  float alpha = mix(0.20, 0.99, vActivity);',
+      '  alpha = mix(alpha, 1.0, solidMode);',
       '  gl_FragColor = vec4(vColor * dim, alpha);',
       '}'
     ].join('\n')
   });
   var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
-  scene.add(brainMesh);
+  var eegHeatmapLayer = new THREE.Group();
+  scene.add(eegHeatmapLayer);
+  eegHeatmapLayer.add(brainMesh);
 
   var fresnelMat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
@@ -610,7 +699,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   });
   var fresnelMesh = new THREE.Mesh(BRAIN.geometry.clone(), fresnelMat);
   fresnelMesh.scale.setScalar(1.012);
-  scene.add(fresnelMesh);
+  eegHeatmapLayer.add(fresnelMesh);
 
   function glowSpriteTexture() {
     var c = document.createElement('canvas'); c.width = c.height = 128;
@@ -638,12 +727,14 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   scene.add(scalpMesh);
 
   // vortex glow sprites + Betti-1 loop rings + orbiting particles (EEG)
+  var betti1Layer = new THREE.Group();
+  scene.add(betti1Layer);
   var vortices = [], particles = [], rings = [];
   GEOM.activeTri.forEach(function (a) {
     var sprMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
     var sprite = new THREE.Sprite(sprMat);
     sprite.position.copy(a.centroid);
-    scene.add(sprite);
+    betti1Layer.add(sprite);
     vortices.push({ sprite: sprite, tri: a });
 
     // a plain circle -- no glow/additive blending, one fixed calm color. Real |charge|
@@ -655,14 +746,14 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     var ring = new THREE.Mesh(ringGeo, ringMat);
     ring.position.copy(a.centroid);
     ring.lookAt(a.centroid.clone().add(a.n));
-    scene.add(ring);
+    betti1Layer.add(ring);
     // a small, plain, non-glowing marker orbits the ring's circumference in the loop's
     // own tangent plane; its angular velocity sign follows the real signed winding
     // number for this triangle (its visible spin direction IS the real chirality, not a
     // fabricated "drag" quantity) and its angular SPEED scales with real |charge|
     var markerMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0 });
     var marker = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), markerMat);
-    scene.add(marker);
+    betti1Layer.add(marker);
     rings.push({ mesh: ring, tri: a, marker: marker });
 
     var rnd = mulberry32(hashStr('tri#' + a.index));
@@ -670,10 +761,23 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       var pMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
       var pSprite = new THREE.Sprite(pMat);
       pSprite.scale.set(0.5, 0.5, 0.5);
-      scene.add(pSprite);
+      betti1Layer.add(pSprite);
       particles.push({ sprite: pSprite, tri: a, radius: a.edgeLen * (0.3 + 0.45 * rnd()), angle0: rnd() * Math.PI * 2, speed: (0.7 + 0.5 * rnd()), wobble: 0.12 + 0.18 * rnd(), phaseOff: rnd() * Math.PI * 2 });
     }
   });
+
+  // skyrmion-texture phase-vortex field: real per-electrode phase arrows plus a dense
+  // barycentric resampling of the same real per-vertex values, so the field's local
+  // dynamics read clearly at a glance
+  // real GUDHI H1 persistent-loop channel locations (populated below, once the
+  // PITNN cohort spatial artifact's h1_cycles field is available for the
+  // selected subject); the group exists from the start so the layer-toggle
+  // wiring below can reference it regardless of data availability.
+  var h1LoopLayer = new THREE.Group();
+  scene.add(h1LoopLayer);
+
+  var skyrmionLayer = new THREE.Group();
+  scene.add(skyrmionLayer);
 
   // real phase arrows, one per real electrode -- opacity/color driven by real local
   // activity intensity in updateEEG below (hot red->yellow->white sub-range)
@@ -681,7 +785,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.13, 0xffffff, GEOM.R * 0.05, GEOM.R * 0.03);
     ah.line.material.transparent = true;
     ah.cone.material.transparent = true;
-    scene.add(ah);
+    skyrmionLayer.add(ah);
     return ah;
   });
 
@@ -702,7 +806,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       var ah2 = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), pos, GEOM.R * 0.085, 0xffffff, GEOM.R * 0.032, GEOM.R * 0.019);
       ah2.line.material.transparent = true;
       ah2.cone.material.transparent = true;
-      scene.add(ah2);
+      skyrmionLayer.add(ah2);
       denseArrows.push({ ah: ah2, tri: a, bary: [w, u, v] });
     }
   });
@@ -875,7 +979,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       // same real value now drives three channels: hue (below), and -- in the brain
       // shader -- per-vertex brightness and opacity, so active cortex reads as visibly
       // brighter AND more solid than inactive cortex, not just a different color.
-      var intensity = Math.pow(Math.min(1, Math.abs(acc) / eegPeak), 0.72);
+      var intensity = Math.pow(Math.min(1, Math.abs(acc) / eegPeak), 0.6);
       var rgb = spectrumColor(intensity);
       // real FreeSurfer sulcal-depth curvature drives per-vertex shading contrast, the
       // same signal anatomical surface renderers use to make gyri (light) and sulci
@@ -1022,10 +1126,49 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   eegSelect.addEventListener('change', function () {
     setEegSubject(eegSelect.value || null);
     drawPersistenceDiagram(eegSelect.value || null);
+    buildH1LoopLayer(eegSelect.value || null, parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated');
     renderStats();
   });
 
   resetBtn.addEventListener('click', frameCamera);
+
+  // ================= per-layer visibility toggles =================
+  // Each artifact (EEG heatmap, Betti-1 loops, H1 loops, skyrmion field, Mapper,
+  // Connectome) is an independent THREE.Group; a checkbox just flips .visible.
+  // Turning off BOTH interior layers (Mapper, Connectome) additionally makes the
+  // brain solid (opaque) via brainMat's solidMode uniform, since there is then
+  // nothing left inside it to see through to -- full opacity reads the real
+  // per-vertex heatmap colors more clearly than a see-through surface does.
+  var toggleHeatmap = document.getElementById('ha-toggle-heatmap');
+  var toggleBetti1 = document.getElementById('ha-toggle-betti1');
+  var toggleH1Loops = document.getElementById('ha-toggle-h1loops');
+  var toggleSkyrmions = document.getElementById('ha-toggle-skyrmions');
+  var toggleMapper = document.getElementById('ha-toggle-mapper');
+  var toggleConnectome = document.getElementById('ha-toggle-connectome');
+
+  function updateBrainSolidity() {
+    var interiorHidden = !toggleMapper.checked && !toggleConnectome.checked;
+    brainMat.uniforms.solidMode.value = interiorHidden ? 1.0 : 0.0;
+    // transparent+depthWrite:false (the correct settings for a see-through surface,
+    // so objects behind it still blend and sort correctly) put the brain in Three.js's
+    // sorted transparent render queue, where a fully-opaque alpha=1 mesh can still end
+    // up visually buried behind other transparent/additive layers (arrows, sprites)
+    // instead of properly occluding them. Solid mode needs the normal opaque queue:
+    // depthWrite back on and transparent off, with needsUpdate so the renderer
+    // reprocesses the material's pipeline state.
+    brainMat.depthWrite = interiorHidden;
+    brainMat.transparent = !interiorHidden;
+    brainMat.needsUpdate = true;
+    fresnelMesh.visible = !interiorHidden; // the rim-glow only reads correctly on a see-through surface
+  }
+
+  toggleHeatmap.addEventListener('change', function () { eegHeatmapLayer.visible = toggleHeatmap.checked; });
+  toggleBetti1.addEventListener('change', function () { betti1Layer.visible = toggleBetti1.checked; });
+  toggleH1Loops.addEventListener('change', function () { h1LoopLayer.visible = toggleH1Loops.checked; });
+  toggleSkyrmions.addEventListener('change', function () { skyrmionLayer.visible = toggleSkyrmions.checked; });
+  toggleMapper.addEventListener('change', function () { mapperLayer.visible = toggleMapper.checked; updateBrainSolidity(); });
+  toggleConnectome.addEventListener('change', function () { connLayer.visible = toggleConnectome.checked; updateBrainSolidity(); });
+  updateBrainSolidity();
 
   var playing = false, playDir = 1;
   playBtn.addEventListener('click', function () {
@@ -1223,6 +1366,10 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     }
 
     var res = updateEEG(eegT, clock);
+    var currentCondition = eegT < 0.5 ? 'awake' : 'sedated';
+    if (currentCondition !== h1LoopState.condition && h1LoopState.subjectId === (eegSelect.value || null)) {
+      buildH1LoopLayer(eegSelect.value || null, currentCondition);
+    }
     updateConnectome(fmriT);
     updateMapperGlow(clock);
     fresnelMesh.rotation.copy(brainMesh.rotation);

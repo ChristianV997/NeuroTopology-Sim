@@ -14,6 +14,7 @@ from tools.stream_pitnn_cohort_ds005620 import (
     _condition_summary,
     _eeg_prefix_bytes,
     _plv_matrix,
+    h1_cycle_channel_locations,
     list_recording_keys,
     spatial_defect_snapshot,
 )
@@ -201,3 +202,89 @@ def test_spatial_defect_snapshot_drops_non_finite_positions_not_fabricates() -> 
     assert snapshot is not None
     assert snapshot["quality_control"]["n_channels_finite_position"] == 8
     assert len(snapshot["channel_coordinates"]) == 8
+
+
+def test_spatial_defect_snapshot_h1_cycles_none_without_last_plv() -> None:
+    """No last_plv passed -> h1_cycles must be null, never a fabricated empty list."""
+    montage, phase = _vortex_montage_and_phase()
+    snapshot = spatial_defect_snapshot(phase, montage)
+    assert snapshot["h1_cycles"] is None
+
+
+def test_spatial_defect_snapshot_h1_cycles_indices_valid_in_finite_channel_space() -> None:
+    """When last_plv is given, h1_cycles' channel indices must be valid indices into
+    the SAME channel_coordinates array this snapshot returns -- the whole point of
+    computing them from a submatrix restricted to the identical finite mask."""
+    montage, phase = _vortex_montage_and_phase()
+    rng = np.random.default_rng(0)
+    # a real-shaped PLV matrix (symmetric, unit diagonal, off-diagonal in [0,1])
+    raw = rng.random((9, 9))
+    plv = np.clip((raw + raw.T) / 2.0, 0.0, 1.0)
+    np.fill_diagonal(plv, 1.0)
+    snapshot = spatial_defect_snapshot(phase, montage, last_plv=plv)
+    assert snapshot is not None
+    assert snapshot["h1_cycles"] is not None
+    n_finite = len(snapshot["channel_coordinates"])
+    for cycle in snapshot["h1_cycles"]:
+        for r, c in (cycle["birth_cell"], cycle["death_cell"]):
+            assert 0 <= r < n_finite and 0 <= c < n_finite
+
+
+def test_spatial_defect_snapshot_h1_cycles_restricted_to_finite_submatrix() -> None:
+    """A channel with a non-finite position must never appear in h1_cycles --
+    last_plv is the FULL (unfiltered) matrix, so this checks the function actually
+    restricts to the finite submatrix rather than indexing the raw one."""
+    montage, phase = _vortex_montage_and_phase()
+    montage = montage.copy()
+    montage[3, :2] = np.nan
+    rng = np.random.default_rng(1)
+    raw = rng.random((9, 9))
+    plv = np.clip((raw + raw.T) / 2.0, 0.0, 1.0)
+    np.fill_diagonal(plv, 1.0)
+    snapshot = spatial_defect_snapshot(phase, montage, last_plv=plv)
+    assert snapshot is not None
+    n_finite = len(snapshot["channel_coordinates"])
+    assert n_finite == 8
+    for cycle in (snapshot["h1_cycles"] or []):
+        for r, c in (cycle["birth_cell"], cycle["death_cell"]):
+            assert 0 <= r < n_finite and 0 <= c < n_finite
+
+
+def test_h1_cycle_channel_locations_too_few_channels_returns_empty() -> None:
+    plv = np.eye(2)
+    mask = np.array([True, True])
+    assert h1_cycle_channel_locations(plv, mask) == []
+
+
+def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> None:
+    """A real symmetric PLV matrix must not report the mirror-image (c, r) cell
+    as a second, distinct feature from (r, c) -- exercises the actual bug found
+    when this was first run on real data (368 raw features collapsing to far
+    fewer real distinct channel-pair features)."""
+    rng = np.random.default_rng(3)
+    raw = rng.random((7, 7))
+    plv = np.clip((raw + raw.T) / 2.0, 0.0, 1.0)
+    np.fill_diagonal(plv, 1.0)
+    mask = np.ones(7, dtype=bool)
+    cycles = h1_cycle_channel_locations(plv, mask)
+    keys = set()
+    for cycle in cycles:
+        br, bc = cycle["birth_cell"]
+        dr, dc = cycle["death_cell"]
+        key = (tuple(sorted((br, bc))), tuple(sorted((dr, dc))))
+        assert key not in keys  # no duplicate (up to channel-pair symmetry) survives
+        keys.add(key)
+
+
+def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
+    """Directly verify the submatrix restriction: a 5x5 PLV with only 3 channels
+    finite must only ever return indices in [0, 3)."""
+    rng = np.random.default_rng(2)
+    raw = rng.random((5, 5))
+    plv = np.clip((raw + raw.T) / 2.0, 0.0, 1.0)
+    np.fill_diagonal(plv, 1.0)
+    mask = np.array([True, True, True, False, False])
+    cycles = h1_cycle_channel_locations(plv, mask)
+    for cycle in cycles:
+        for r, c in (cycle["birth_cell"], cycle["death_cell"]):
+            assert 0 <= r < 3 and 0 <= c < 3

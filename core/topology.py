@@ -144,6 +144,60 @@ def compute_cubical_persistence(field: np.ndarray, max_dimension: int = 2) -> di
     }
 
 
+def extract_h1_cycle_locations(field: np.ndarray, dimension: int = 1) -> list[dict]:
+    """Real grid-cell locations of each persistent feature's birth/death, for a
+    2D field, via GUDHI's `cofaces_of_persistence_pairs`.
+
+    A cubical complex built from `top_dimensional_cells=field` indexes its
+    top-dimensional cells in the same flat (row-major) order as `field` itself,
+    so `np.unravel_index(cell_index, field.shape)` recovers the exact `(row, col)`
+    grid position GUDHI attributes to that cell -- e.g. for a PLV matrix this is
+    the exact `(channel_i, channel_j)` pair the birth/death cell corresponds to.
+    This is NOT a full cycle representative (GUDHI's cubical-complex Python API
+    does not expose the traversal of cells forming the loop, only its birth and
+    death cells) -- it is the real location of where each persistent feature is
+    born and where it dies in the input grid, which is what is returned here.
+
+    Only regular (finite-death) pairs are returned; essential (infinite-death)
+    pairs have no death cell and are dropped, matching `compute_cubical_persistence`'s
+    own diagram convention.
+    """
+    try:
+        import gudhi
+    except ImportError as exc:
+        raise ImportError(
+            "extract_h1_cycle_locations requires the optional 'gudhi' dependency "
+            "(pip install gudhi; MIT license)"
+        ) from exc
+
+    arr = np.asarray(field, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"field must be 2D, got shape {arr.shape}")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("field contains non-finite values")
+
+    cc = gudhi.CubicalComplex(top_dimensional_cells=arr)
+    cc.persistence()
+    regular_pairs, _essential_pairs = cc.cofaces_of_persistence_pairs()
+
+    if dimension >= len(regular_pairs) or regular_pairs[dimension].shape[0] == 0:
+        return []
+
+    flat = arr.reshape(-1)
+    locations = []
+    for birth_idx, death_idx in regular_pairs[dimension]:
+        birth_idx, death_idx = int(birth_idx), int(death_idx)
+        birth_row, birth_col = np.unravel_index(birth_idx, arr.shape)
+        death_row, death_col = np.unravel_index(death_idx, arr.shape)
+        locations.append({
+            "birth_cell": [int(birth_row), int(birth_col)],
+            "death_cell": [int(death_row), int(death_col)],
+            "birth": float(flat[birth_idx]),
+            "death": float(flat[death_idx]),
+        })
+    return locations
+
+
 def betti_curve(diagram: np.ndarray, grid: np.ndarray) -> np.ndarray:
     """Betti curve: count of persistence pairs alive at each value in `grid`.
 

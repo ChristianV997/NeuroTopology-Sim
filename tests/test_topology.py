@@ -10,6 +10,7 @@ from core.topology import (
     compute_f_dress,
     compute_cubical_persistence,
     compute_cubical_persistence_cripser,
+    extract_h1_cycle_locations,
     betti_curve,
     persistence_landscape,
     diagram_bottleneck_distance,
@@ -204,6 +205,50 @@ def test_compute_cubical_persistence_detects_known_amplitude_dip():
     assert result["diagrams"][0].shape[0] == 2
     n_infinite = int(np.sum(~np.isfinite(result["diagrams"][0][:, 1])))
     assert n_infinite == 1
+
+
+def test_extract_h1_cycle_locations_flat_field_has_no_features():
+    field = np.zeros((8, 8))
+    assert extract_h1_cycle_locations(field) == []
+
+
+def test_extract_h1_cycle_locations_rejects_bad_shape():
+    with pytest.raises(ValueError):
+        extract_h1_cycle_locations(np.zeros(10))
+
+
+def test_extract_h1_cycle_locations_rejects_non_finite():
+    field = np.zeros((8, 8))
+    field[0, 0] = np.nan
+    with pytest.raises(ValueError):
+        extract_h1_cycle_locations(field)
+
+
+def test_extract_h1_cycle_locations_matches_diagram_count_and_values():
+    """A ring-shaped sublevel set (|r - 4| from center) has exactly one real H1
+    loop -- cross-check extract_h1_cycle_locations' count and birth/death values
+    against compute_cubical_persistence's own diagram for the same field, and
+    confirm the returned cell indices are real positions in the field whose
+    values match the reported birth/death exactly (not fabricated)."""
+    n = 12
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.sqrt((xx - n / 2) ** 2 + (yy - n / 2) ** 2)
+    field = np.abs(r - 4.0)
+
+    diagram_result = compute_cubical_persistence(field, max_dimension=1)
+    locations = extract_h1_cycle_locations(field)
+
+    assert len(locations) == diagram_result["diagrams"][1].shape[0]
+    assert len(locations) >= 1
+    for loc, (birth, death) in zip(locations, diagram_result["diagrams"][1]):
+        br, bc = loc["birth_cell"]
+        dr, dc = loc["death_cell"]
+        assert 0 <= br < n and 0 <= bc < n
+        assert 0 <= dr < n and 0 <= dc < n
+        assert field[br, bc] == pytest.approx(loc["birth"])
+        assert field[dr, dc] == pytest.approx(loc["death"])
+        assert loc["birth"] == pytest.approx(birth)
+        assert loc["death"] == pytest.approx(death)
 
 
 def test_betti_curve_matches_manual_count_at_grid_points():

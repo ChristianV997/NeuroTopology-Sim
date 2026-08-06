@@ -266,7 +266,8 @@ def window_topology(
     plv_threshold: float,
     landscape_layers: int,
     export_cubical_persistence: bool = False,
-) -> tuple[list[dict[str, Any]], np.ndarray]:
+    keep_last_plv: bool = False,
+) -> tuple[list[dict[str, Any]], np.ndarray, np.ndarray | None]:
     """Per-window PLV persistence + spatial charge for one condition.
 
     `data` is `(samples, channels)`. Band-limited analytic phase matches the discipline
@@ -284,6 +285,12 @@ def window_topology(
     2D grid, so it captures amplitude structure the graph-distance view discards.
     `core/persistence_export.py` was built and unit-tested in isolation but never
     exercised on real data before this call.
+
+    `keep_last_plv`, when set, returns the LAST window's raw (unfiltered-channel)
+    PLV matrix as the third element (`None` otherwise) -- the caller needs it,
+    restricted to the same finite-position channel subset `spatial_defect_snapshot`
+    uses, to locate real H1 persistent-loop channel pairs consistently with
+    `channel_coordinates`.
     """
     import mne
     from scipy.signal import hilbert
@@ -299,9 +306,12 @@ def window_topology(
 
     span = int(round(window_seconds * rate_hz))
     out: list[dict[str, Any]] = []
+    last_plv: np.ndarray | None = None
     for index, start in enumerate(range(0, phase.shape[1] - span + 1, span)):
         chunk = phase[:, start : start + span]
         plv = _plv_matrix(chunk)
+        if keep_last_plv:
+            last_plv = plv
         result = analyze_adjacency(plv, threshold=plv_threshold, n_layers=landscape_layers)
         charge = None
         if montage is not None:
@@ -326,7 +336,7 @@ def window_topology(
 
             row["cubical_persistence"] = export_persistence_json(plv, max_dimension=1)
         out.append(row)
-    return out, phase
+    return out, phase, last_plv
 
 
 def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -341,10 +351,60 @@ def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Real H1 persistent-loop channel locations (birth/death cell of each real H1
+# feature, restricted to the same finite-position channel subset channel_coordinates
+# uses -- so a viewer can draw them at real electrode positions, not fabricated ones)
+# --------------------------------------------------------------------------- #
+
+def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list[dict[str, Any]]:
+    """Real H1 birth/death channel-pair locations for one window's PLV matrix,
+    restricted to channels with a finite montage position.
+
+    `plv[finite][:, finite]` submatrix indices are, by construction, in the exact
+    same order as `xy[finite]` in `spatial_defect_snapshot` -- so the `birth_cell`/
+    `death_cell` indices this returns index directly into that same
+    `channel_coordinates` array, with no separate remapping step to get wrong.
+
+    A PLV matrix is symmetric (`plv[i,j] == plv[j,i]`), but `extract_h1_cycle_locations`
+    treats it as a plain, orientation-aware grid and does not know that -- so it
+    reports the mirror-image cell (c, r) as a structurally distinct feature from
+    (r, c) even when their birth/death values are identical. This is real, correct
+    output of the general function on a symmetric input, not a bug in it; the
+    de-duplication belongs here, where the symmetry assumption actually holds
+    (PLV specifically, not persistence on an arbitrary field), keeping one
+    representative per real, distinct channel-PAIR feature.
+    """
+    from core.topology import extract_h1_cycle_locations
+
+    finite_mask = np.asarray(finite_mask, dtype=bool)
+    restricted = np.asarray(plv, dtype=float)[finite_mask][:, finite_mask]
+    if restricted.shape[0] < 3:
+        return []
+    raw = extract_h1_cycle_locations(restricted)
+
+    seen: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+    deduped: list[dict[str, Any]] = []
+    for loc in raw:
+        br, bc = loc["birth_cell"]
+        dr, dc = loc["death_cell"]
+        key = (tuple(sorted((br, bc))), tuple(sorted((dr, dc))))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(loc)
+    return deduped
+
+
+# --------------------------------------------------------------------------- #
 # Spatial defect snapshot (closes the command-center `spatial_artifact` gap)
 # --------------------------------------------------------------------------- #
 
-def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1: int | None = None) -> dict[str, Any] | None:
+def spatial_defect_snapshot(
+    phase: np.ndarray,
+    montage: np.ndarray | None,
+    beta1: int | None = None,
+    last_plv: np.ndarray | None = None,
+) -> dict[str, Any] | None:
     """Real channel-coordinate defect map from one condition's final window.
 
     Reuses `validation.montage_topology.signed_defect_map` unmodified -- the same
@@ -358,6 +418,12 @@ def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1
     Returns `None` (not a fabricated zero-filled record) when there is no montage,
     fewer than three finite positions, or fewer than three triangles survive
     triangulation -- callers must treat absence as absence.
+
+    `last_plv`, when given, additionally computes `h1_cycles`: real H1
+    birth/death channel-pair locations via `h1_cycle_channel_locations`, using
+    the SAME `finite` mask this function already computes -- so the returned
+    channel indices index directly into `channel_coordinates` below, guaranteed
+    consistent by construction (one mask, used once, for both).
     """
     from validation.montage_topology import signed_defect_map, triangulate_xy
 
@@ -377,11 +443,19 @@ def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1
     except Exception:
         return None
 
+    h1_cycles = None
+    if last_plv is not None:
+        try:
+            h1_cycles = h1_cycle_channel_locations(last_plv, finite)
+        except Exception:
+            h1_cycles = None  # a degenerate/too-small submatrix is reported as null, not fabricated
+
     return {
         "channel_coordinates": xy.tolist(),
         "coordinate_frame": "sensor_2d_projection_of_standard_1020_montage",
         "phase": phase_last.tolist(),
         "beta1": beta1,
+        "h1_cycles": h1_cycles,
         "defects": {
             "triangle_indices": defects["triangle_indices"].tolist(),
             "signed_winding": defects["signed_winding"].tolist(),
@@ -427,7 +501,7 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             raise ValueError(f"{subject}: condition sample rates differ ({rate_hz} vs {rate})")
         rate_hz = rate
         arrays[state_key] = data
-        rows, phase = window_topology(
+        rows, phase, last_plv = window_topology(
             data,
             rate,
             montage,
@@ -436,9 +510,13 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             plv_threshold=cfg.plv_threshold,
             landscape_layers=cfg.landscape_layers,
             export_cubical_persistence=cfg.export_persistence,
+            keep_last_plv=cfg.export_h1_cycles,
         )
         last_beta1 = rows[-1]["filtration_beta1_max"] if rows else None
-        spatial = spatial_defect_snapshot(phase, montage, beta1=last_beta1) if cfg.export_spatial else None
+        spatial = (
+            spatial_defect_snapshot(phase, montage, beta1=last_beta1, last_plv=last_plv if cfg.export_h1_cycles else None)
+            if cfg.export_spatial else None
+        )
         conditions[label] = {
             "source_file": vhdr.name,
             "windows": rows,
@@ -555,6 +633,14 @@ def parser() -> argparse.ArgumentParser:
         help="save GUDHI cubical persistence (H0/H1) of the last window's PLV matrix "
              "per condition, plus the awake-vs-sedated H1 bottleneck distance; "
              "requires the optional gudhi dependency",
+    )
+    p.add_argument(
+        "--export-h1-cycles", action="store_true",
+        help="save real H1 birth/death channel-pair locations (via "
+             "core.topology.extract_h1_cycle_locations) for the last window's PLV "
+             "matrix per condition, restricted to channels with a finite montage "
+             "position -- requires --export-spatial (the channel_coordinates these "
+             "index into) and the optional gudhi dependency",
     )
     return p
 
