@@ -17,6 +17,7 @@ from tools.stream_pitnn_cohort_ds005620 import (
     h1_cycle_channel_locations,
     list_recording_keys,
     spatial_defect_snapshot,
+    zone_band_power,
 )
 
 _HEADER = (
@@ -288,3 +289,49 @@ def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
     for cycle in cycles:
         for r, c in (cycle["birth_cell"], cycle["death_cell"]):
             assert 0 <= r < 3 and 0 <= c < 3
+
+
+def test_zone_band_power_recovers_known_dominant_band_per_zone() -> None:
+    """A pure 10 Hz (alpha) channel named Fz (frontal) and a pure 40 Hz
+    (gamma_low) channel named Pz (parietal) must each show their own real
+    band dominating that zone's relative power -- a ground-truth check, not
+    just a shape check."""
+    sfreq = 250.0
+    t = np.arange(int(sfreq * 4)) / sfreq
+    fz = np.sin(2 * np.pi * 10.0 * t)
+    pz = np.sin(2 * np.pi * 40.0 * t)
+    unknown = np.sin(2 * np.pi * 5.0 * t)  # channel name maps to no known zone
+    data = np.stack([fz, pz, unknown], axis=1)
+    montage = np.array([[1.0, 2.0, 0.0], [3.0, -4.0, 0.0], [0.0, 0.0, 0.0]])
+    out = zone_band_power(data, sfreq, ["Fz", "Pz", "EOG1"], montage=montage)
+    assert out is not None
+    assert set(out.keys()) == {"frontal", "parietal"}
+    frontal_bands = out["frontal"]["bands_power_rel"]
+    parietal_bands = out["parietal"]["bands_power_rel"]
+    assert frontal_bands["alpha"] == max(frontal_bands.values())
+    assert parietal_bands["gamma_low"] == max(parietal_bands.values())
+    assert out["frontal"]["n_channels"] == 1
+    assert out["parietal"]["n_channels"] == 1
+    assert out["frontal"]["centroid_xy"] == [1.0, 2.0]
+    assert out["parietal"]["centroid_xy"] == [3.0, -4.0]
+
+
+def test_zone_band_power_without_montage_has_null_centroid() -> None:
+    sfreq = 250.0
+    t = np.arange(int(sfreq * 4)) / sfreq
+    fz = np.sin(2 * np.pi * 10.0 * t)
+    out = zone_band_power(fz[:, None], sfreq, ["Fz"])
+    assert out is not None
+    assert out["frontal"]["centroid_xy"] is None
+
+
+def test_zone_band_power_no_known_zone_returns_none() -> None:
+    sfreq = 250.0
+    data = np.random.default_rng(0).standard_normal((1000, 2))
+    assert zone_band_power(data, sfreq, ["EOG1", "EMG1"]) is None
+
+
+def test_zone_band_power_too_short_signal_returns_none() -> None:
+    sfreq = 250.0
+    data = np.random.default_rng(0).standard_normal((3, 1))
+    assert zone_band_power(data, sfreq, ["Fz"]) is None

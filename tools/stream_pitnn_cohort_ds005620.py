@@ -189,8 +189,8 @@ def fetch_recording(client, vhdr_key: str, dest_dir: Path, duration_seconds: flo
 
 def read_condition(
     vhdr_path: Path, *, skip_seconds: float, analyze_seconds: float, target_rate_hz: float
-) -> tuple[np.ndarray, float, np.ndarray | None]:
-    """Return `(samples, channels)` decimated EEG plus rate and montage coordinates.
+) -> tuple[np.ndarray, float, np.ndarray | None, list[str]]:
+    """Return `(samples, channels)` decimated EEG plus rate, montage coordinates, and channel names.
 
     Decimation is anti-aliased (`scipy.signal.decimate`, zero-phase FIR). 5000 Hz is far
     above what a <=80 Hz analysis needs; decimating to `target_rate_hz` cuts the
@@ -207,6 +207,7 @@ def read_condition(
     picks = [i for i, kind in enumerate(raw.get_channel_types()) if kind == "eeg"]
     if len(picks) < 8:
         raise ValueError(f"{vhdr_path.name}: only {len(picks)} EEG channels")
+    ch_names = [raw.ch_names[i] for i in picks]
 
     start = int(round(skip_seconds * rate))
     stop = min(int(raw.n_times), start + int(round(analyze_seconds * rate)))
@@ -233,10 +234,11 @@ def read_condition(
     data = data[keep]
     if montage is not None:
         montage = montage[keep]
+    ch_names = [c for c, k in zip(ch_names, keep) if k]
     if data.shape[0] < 8:
         raise ValueError(f"{vhdr_path.name}: fewer than 8 non-degenerate channels")
 
-    return data.T, float(rate), montage
+    return data.T, float(rate), montage, ch_names
 
 
 # --------------------------------------------------------------------------- #
@@ -396,6 +398,69 @@ def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list
 
 
 # --------------------------------------------------------------------------- #
+# Real per-zone EEG band power (delta/theta/alpha/beta/gamma_low), Welch PSD
+# --------------------------------------------------------------------------- #
+
+def zone_band_power(
+    data: np.ndarray, rate_hz: float, ch_names: list[str], montage: np.ndarray | None = None
+) -> dict[str, Any] | None:
+    """Real per-zone relative band power for one condition's recording.
+
+    `data` is `(samples, channels)`, the same array `read_condition` returns
+    before `window_topology`'s internal 30-80Hz band-limiting -- this computes
+    the classic delta/theta/alpha/beta/gamma_low decomposition
+    (`sciencer_d.btc_icft.level_m.real_features.compute_band_power`, real
+    `scipy.signal.welch` PSD) per channel, then averages each band's real
+    relative power across the channels in a coarse scalp zone
+    (`dual_engine.anesthesia_signed_winding_pipeline.zone_of`'s 10-20-naming
+    zone map -- explicitly a naming convention, not an anatomical atlas).
+    Returns `None` (not a fabricated empty dict) when no channel name maps to
+    a known zone.
+
+    `montage`, when given, is the same `(n, 3)` array `read_condition` already
+    returns (its xy plane is the real sensor 2D projection): this additionally
+    computes each zone's real centroid xy position -- the mean position of
+    exactly the same real channels this zone's band power was averaged from --
+    so a viewer can place a real, honest "which zone is this" marker rather
+    than an approximated one.
+    """
+    from dual_engine.anesthesia_signed_winding_pipeline import build_region_labels
+    from sciencer_d.btc_icft.level_m.real_features import DEFAULT_BANDS, compute_band_power
+
+    labels = build_region_labels(ch_names)
+    if not labels:
+        return None
+    zone_bands: dict[str, dict[str, list[float]]] = {}
+    zone_xy: dict[str, list[list[float]]] = {}
+    for i, ch in enumerate(ch_names):
+        zone = labels.get(ch)
+        if zone is None:
+            continue
+        bp = compute_band_power(data[:, i], rate_hz, bands=DEFAULT_BANDS)
+        if not bp:
+            continue
+        bucket = zone_bands.setdefault(zone, {b: [] for b in DEFAULT_BANDS})
+        for band in DEFAULT_BANDS:
+            rel = bp.get(f"{band}_power_rel")
+            if rel is not None and np.isfinite(rel):
+                bucket[band].append(rel)
+        if montage is not None and i < len(montage) and np.all(np.isfinite(montage[i][:2])):
+            zone_xy.setdefault(zone, []).append([float(montage[i][0]), float(montage[i][1])])
+    if not zone_bands:
+        return None
+    out: dict[str, Any] = {}
+    for zone, bands in zone_bands.items():
+        entry: dict[str, Any] = {
+            "bands_power_rel": {b: (float(np.mean(v)) if v else None) for b, v in bands.items()},
+            "n_channels": max((len(v) for v in bands.values()), default=0),
+        }
+        xy = zone_xy.get(zone)
+        entry["centroid_xy"] = [float(np.mean([p[0] for p in xy])), float(np.mean([p[1] for p in xy]))] if xy else None
+        out[zone] = entry
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Spatial defect snapshot (closes the command-center `spatial_artifact` gap)
 # --------------------------------------------------------------------------- #
 
@@ -488,7 +553,7 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
         vhdr = next(iter(sorted((subject_root / label).glob("*.vhdr"))), None)
         if vhdr is None:
             raise FileNotFoundError(f"{subject}: no {label} header fetched")
-        data, rate, montage = read_condition(
+        data, rate, montage, ch_names = read_condition(
             vhdr,
             skip_seconds=cfg.skip_seconds,
             analyze_seconds=cfg.analyze_seconds,
@@ -517,6 +582,8 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             spatial_defect_snapshot(phase, montage, beta1=last_beta1, last_plv=last_plv if cfg.export_h1_cycles else None)
             if cfg.export_spatial else None
         )
+        if spatial is not None and cfg.export_band_power:
+            spatial["zone_band_power"] = zone_band_power(data, rate, ch_names, montage=montage)
         conditions[label] = {
             "source_file": vhdr.name,
             "windows": rows,
@@ -641,6 +708,14 @@ def parser() -> argparse.ArgumentParser:
              "matrix per condition, restricted to channels with a finite montage "
              "position -- requires --export-spatial (the channel_coordinates these "
              "index into) and the optional gudhi dependency",
+    )
+    p.add_argument(
+        "--export-band-power", action="store_true",
+        help="save real per-zone delta/theta/alpha/beta/gamma_low relative band "
+             "power (Welch PSD, sciencer_d.btc_icft.level_m.real_features) per "
+             "condition, averaged across each 10-20-naming-convention scalp zone "
+             "(dual_engine.anesthesia_signed_winding_pipeline.zone_of) -- requires "
+             "--export-spatial",
     )
     return p
 

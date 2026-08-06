@@ -68,6 +68,39 @@
   .ha-panel-note { font-size: 10.5px; color: var(--ink-muted); margin-top: 6px; }
 
   .ha-section-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); margin: 20px 0 6px; }
+
+  .ha-zone-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .ha-zone-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 11px 13px; }
+  .ha-zone-card-title { font: 700 12.5px ui-sans-serif, system-ui; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+  .ha-zone-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .ha-zone-card canvas { width: 100%; height: 74px; display: block; margin: 6px 0 4px; }
+  .ha-zone-card-desc { font-size: 10.5px; color: var(--ink-muted); line-height: 1.5; }
+  .ha-zone-card-dominant { font-size: 10.5px; color: var(--accent); margin-top: 2px; font-family: ui-monospace, monospace; }
+  .ha-zone-empty { font-size: 11.5px; color: var(--ink-muted); padding: 10px 2px; }
+
+  /* zone "pointer" key: real leader lines from each 3D zone marker (projected to
+     stage screen-space every frame) to this key's rows, both scoped inside the
+     stage card so they stay co-visible regardless of page scroll */
+  .ha-zone-key { position: absolute; right: 14px; top: 14px; display: flex; flex-direction: column; gap: 3px; font: 11px ui-monospace, monospace; color: var(--ink-2); background: rgba(5,7,12,0.55); backdrop-filter: blur(4px); padding: 9px 11px; border-radius: 8px; border: 1px solid var(--ring); min-width: 150px; }
+  .ha-zone-key-title { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 2px; }
+  .ha-zone-key-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #ha-pointer-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5; }
+  #ha-pointer-svg line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.55; }
+  #ha-pointer-svg circle { opacity: 0.9; }
+
+  .ha-interp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .ha-interp-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 11px 13px; }
+  .ha-interp-card-title { font: 700 12.5px ui-sans-serif, system-ui; color: var(--ink); margin-bottom: 4px; }
+  .ha-interp-card-live { font-size: 11px; font-family: ui-monospace, monospace; color: var(--accent); margin: 3px 0; }
+  .ha-interp-card-desc { font-size: 10.5px; color: var(--ink-muted); line-height: 1.55; }
+
+  .ha-theory-toggle { font: 700 12px ui-sans-serif, system-ui; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink-2); cursor: pointer; margin: 6px 0 10px; }
+  .ha-theory-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .ha-theory-panel { display: none; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; }
+  .ha-theory-panel.ha-open { display: block; }
+  .ha-theory-panel h3 { font-size: 12.5px; margin: 12px 0 4px; color: var(--ink); }
+  .ha-theory-panel h3:first-child { margin-top: 0; }
+  .ha-theory-panel p { font-size: 11.5px; color: var(--ink-2); line-height: 1.6; margin: 0 0 2px; }
 </style>
 
 <div class="ha-root">
@@ -122,6 +155,10 @@
     <div class="ha-stage-card">
       <canvas id="ha-scene"></canvas>
       <div class="ha-callout-layer" id="ha-callouts"></div>
+      <svg id="ha-pointer-svg"></svg>
+      <div class="ha-zone-key" id="ha-zone-key" style="display:none;">
+        <div class="ha-zone-key-title">EEG zones (real 10-20 map)</div>
+      </div>
       <div class="ha-legend-layer">
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#1f8fd6"></span>EEG vortex core (sign = CW/CCW)</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring &mdash; size=|charge|, marker speed=|charge|, marker spin=real turn (CW/CCW)</div>
@@ -152,6 +189,15 @@
 
     <div class="ha-section-label">Real ds005917 drug vs. placebo paired statistics (n=24, per-subject paired t-test + Wilcoxon)</div>
     <div class="ha-stats" id="ha-fmri-stats"></div>
+
+    <div class="ha-section-label">EEG zone frequency bands (real per-subject Welch PSD, delta&ndash;gamma) &mdash; pick an EEG subject above</div>
+    <div class="ha-zone-grid" id="ha-zone-grid"><div class="ha-zone-empty">Pick an EEG subject above to see their real per-zone band power.</div></div>
+
+    <button class="ha-theory-toggle" type="button" id="ha-theory-toggle">&#9432; Explain this visualization &mdash; theory &amp; interpretation</button>
+    <div class="ha-theory-panel" id="ha-theory-panel"></div>
+
+    <div class="ha-section-label">What each layer shows, and how to read it</div>
+    <div class="ha-interp-grid" id="ha-interp-grid"></div>
 
     <div class="ha-footer">
       Sources: <code>/vortex-field/data</code>, <code>/fmri-connectome/data</code>,
@@ -263,6 +309,52 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   var connectomeColor = makeRamp([
     [0.00, 0x3a12c0], [0.50, 0x9b30ff], [1.00, 0xff53d0]
   ]);
+
+  // ================= real per-zone EEG band-power reference data =================
+  // Zone descriptions are established, general EEG/neuroanatomy background (which
+  // cortex a 10-20 electrode group overlies, and what activity there is classically
+  // associated with in the literature) -- NOT a claim about what this specific
+  // subject's brain is doing, and not a consciousness/clinical diagnosis. Band
+  // descriptions are likewise general background, framed as "classically
+  // associated with," never as a verdict on the real numbers shown alongside them.
+  var ZONE_INFO = {
+    frontal: {
+      label: 'Frontal (F)', hex: 0xff6b6b,
+      desc: 'Overlies prefrontal/frontal cortex -- classically associated with executive function, working memory, and motor planning.'
+    },
+    central: {
+      label: 'Central (C)', hex: 0xffd23f,
+      desc: 'Overlies primary motor and somatosensory cortex -- the central "mu" rhythm (~8-13Hz) is classically linked to sensorimotor idling.'
+    },
+    parietal: {
+      label: 'Parietal (P)', hex: 0x2ecc71,
+      desc: 'Overlies parietal cortex -- classically associated with sensory integration and spatial attention.'
+    },
+    occipital: {
+      label: 'Occipital (O)', hex: 0x7ad7ff,
+      desc: 'Overlies primary visual cortex -- site of the classic posterior alpha rhythm, strongest eyes-closed and suppressed by visual attention.'
+    },
+    temporal_L: {
+      label: 'Temporal L (TL)', hex: 0xcf9bff,
+      desc: 'Overlies left temporal lobe cortex -- classically associated with auditory processing and (left-lateralized in most people) language.'
+    },
+    temporal_R: {
+      label: 'Temporal R (TR)', hex: 0xff9dcf,
+      desc: 'Overlies right temporal lobe cortex -- classically associated with auditory processing and aspects of spatial/prosodic processing.'
+    },
+    temporal_M: {
+      label: 'Temporal mid (TM)', hex: 0xb0b0b0,
+      desc: 'Midline temporal-adjacent site -- classically associated with auditory processing.'
+    }
+  };
+  var BAND_INFO = {
+    delta: { label: 'delta 1-4Hz', hex: 0x0b2f9e, desc: 'Slow-wave activity. Elevated delta is a well-documented EEG signature of deep sleep and propofol-type anesthesia.' },
+    theta: { label: 'theta 4-8Hz', hex: 0x1f8fd6, desc: 'Classically linked to drowsiness and memory processes; frontal-midline theta also tracks sustained attention when awake.' },
+    alpha: { label: 'alpha 8-13Hz', hex: 0x2ecc71, desc: 'The classic posterior "idling" rhythm, strongest eyes-closed; alpha power is a standard arousal/vigilance marker.' },
+    beta: { label: 'beta 13-30Hz', hex: 0xffd23f, desc: 'Associated with active, alert cognitive/motor processing; beta is classically suppressed during movement or focused attention.' },
+    gamma_low: { label: 'gamma 30-45Hz', hex: 0xff6b6b, desc: 'Higher-frequency activity linked to local cortical processing; some anesthesia literature reports disrupted gamma coherence under propofol.' }
+  };
+  var BAND_ORDER = ['delta', 'theta', 'alpha', 'beta', 'gamma_low'];
 
   function theme() {
     var root = document.documentElement;
@@ -377,6 +469,119 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
         h1LoopLayer.add(dot);
       });
     });
+  }
+
+  // real per-zone EEG marker + panel builder: reads the SAME subject/condition
+  // snapshot buildH1LoopLayer reads (`zone_band_power`, computed server-side from
+  // the real montage's zone centroid position in the same coordinate frame as
+  // `channel_coordinates`/`h1_cycles`), places one small colored marker per real
+  // zone at its real centroid position, and (re)builds the zone-key overlay + the
+  // zone-grid bar-chart panel below the scene from the same real numbers.
+  function buildZoneLayer(subjectId, condition) {
+    while (zoneLabelLayer.children.length) zoneLabelLayer.remove(zoneLabelLayer.children[0]);
+    zoneMarkers.length = 0;
+    var keyEl = document.getElementById('ha-zone-key');
+    var gridEl = document.getElementById('ha-zone-grid');
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var zbp = snap && snap.zone_band_power;
+    if (!snap || !zbp) {
+      keyEl.style.display = 'none';
+      gridEl.innerHTML = '<div class="ha-zone-empty">' +
+        (subjectId ? 'No real per-zone band power for this subject/condition.' : 'Pick an EEG subject above to see their real per-zone band power.') +
+        '</div>';
+      return;
+    }
+    var coords = snap.channel_coordinates;
+    var maxR = 0;
+    coords.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var domeR = maxR * 1.006 || 1;
+
+    var zoneKeys = Object.keys(zbp).filter(function (z) { return zbp[z].centroid_xy; });
+    var globalMaxRel = 1e-6;
+    zoneKeys.forEach(function (z) {
+      BAND_ORDER.forEach(function (b) {
+        var v = zbp[z].bands_power_rel[b];
+        if (v != null) globalMaxRel = Math.max(globalMaxRel, v);
+      });
+    });
+
+    keyEl.style.display = zoneKeys.length ? 'flex' : 'none';
+    var keyRows = ['<div class="ha-zone-key-title">EEG zones (real 10-20 map)</div>'];
+
+    zoneKeys.forEach(function (z) {
+      var info = ZONE_INFO[z] || { label: z, hex: 0xaaaaaa };
+      var p = projectSensorXYToDome(zbp[z].centroid_xy, domeR, GEOM.R).multiplyScalar(1.015);
+      var markerGeo = new THREE.SphereGeometry(GEOM.R * 0.018, 10, 8);
+      var markerMat = new THREE.MeshBasicMaterial({ color: info.hex });
+      var marker = new THREE.Mesh(markerGeo, markerMat);
+      marker.position.copy(p);
+      zoneLabelLayer.add(marker);
+      zoneMarkers.push({ zone: z, mesh: marker, colorHex: info.hex });
+      keyRows.push('<div class="ha-zone-key-row" id="ha-zone-key-row-' + z + '"><span class="ha-legend-dot" style="background:#' +
+        info.hex.toString(16).padStart(6, '0') + '"></span>' + info.label + '</div>');
+    });
+    keyEl.innerHTML = keyRows.join('');
+
+    var cards = zoneKeys.map(function (z) {
+      var info = ZONE_INFO[z] || { label: z, hex: 0xaaaaaa, desc: '' };
+      var bands = zbp[z].bands_power_rel;
+      var dominant = BAND_ORDER.reduce(function (best, b) {
+        return (bands[b] != null && (best == null || bands[b] > bands[best])) ? b : best;
+      }, null);
+      var hexStr = '#' + info.hex.toString(16).padStart(6, '0');
+      return '<div class="ha-zone-card"><div class="ha-zone-card-title"><span class="ha-zone-dot" style="background:' + hexStr + '"></span>' +
+        info.label + ' <span style="color:var(--ink-muted);font-weight:400;">(n=' + zbp[z].n_channels + ' ch)</span></div>' +
+        '<canvas id="ha-zone-canvas-' + z + '" width="200" height="74"></canvas>' +
+        (dominant ? '<div class="ha-zone-card-dominant">dominant: ' + BAND_INFO[dominant].label + '</div>' : '') +
+        '<div class="ha-zone-card-desc">' + info.desc + '</div></div>';
+    });
+    gridEl.innerHTML = cards.length ? cards.join('') : '<div class="ha-zone-empty">No real zone assignment for this montage.</div>';
+
+    zoneKeys.forEach(function (z) {
+      var canvas = document.getElementById('ha-zone-canvas-' + z);
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      var W = canvas.width, H = canvas.height, pad = 4;
+      ctx.clearRect(0, 0, W, H);
+      var bands = zbp[z].bands_power_rel;
+      var bw = (W - pad * 2) / BAND_ORDER.length;
+      BAND_ORDER.forEach(function (b, i) {
+        var v = bands[b];
+        var h = v != null ? (v / globalMaxRel) * (H - pad * 2) : 0;
+        ctx.fillStyle = '#' + BAND_INFO[b].hex.toString(16).padStart(6, '0');
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(pad + i * bw + 1.5, H - pad - h, bw - 3, h);
+        ctx.globalAlpha = 1;
+      });
+    });
+  }
+
+  // real screen-space "pointer" leader lines: each real zone marker's 3D world
+  // position is projected to the stage's own screen space every frame and drawn
+  // as an SVG line to that zone's row in the zone-key overlay -- both elements
+  // live inside the same bounded stage card, so this stays correct at any camera
+  // angle without depending on page scroll position.
+  function updateZonePointers() {
+    var svg = document.getElementById('ha-pointer-svg');
+    if (!zoneMarkers.length || !eegHeatmapLayer.visible) { svg.innerHTML = ''; return; }
+    var stageRect = stageEl.getBoundingClientRect();
+    var lines = [];
+    zoneMarkers.forEach(function (zm) {
+      var row = document.getElementById('ha-zone-key-row-' + zm.zone);
+      if (!row) return;
+      var v = zm.mesh.position.clone().project(camera);
+      if (v.z > 1) return; // behind camera
+      var sx = (v.x * 0.5 + 0.5) * stageRect.width;
+      var sy = (1 - (v.y * 0.5 + 0.5)) * stageRect.height;
+      var rowRect = row.getBoundingClientRect();
+      var tx = rowRect.left - stageRect.left + 5;
+      var ty = rowRect.top - stageRect.top + rowRect.height / 2;
+      var hexStr = '#' + zm.colorHex.toString(16).padStart(6, '0');
+      lines.push('<line x1="' + sx.toFixed(1) + '" y1="' + sy.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y2="' + ty.toFixed(1) + '" stroke="' + hexStr + '"/>');
+      lines.push('<circle cx="' + sx.toFixed(1) + '" cy="' + sy.toFixed(1) + '" r="2.5" fill="' + hexStr + '"/>');
+    });
+    svg.innerHTML = lines.join('');
   }
 
   // overall world size -- large enough to comfortably host the cortex heatmap, the
@@ -794,6 +999,13 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   var h1LoopLayer = new THREE.Group();
   scene.add(h1LoopLayer);
 
+  // real per-zone EEG marker layer (populated by buildZoneLayer below, once a
+  // subject with real zone_band_power is selected); tied to the EEG heatmap
+  // toggle since it is an EEG-specific overlay.
+  var zoneLabelLayer = new THREE.Group();
+  eegHeatmapLayer.add(zoneLabelLayer);
+  var zoneMarkers = []; // [{zone, mesh}], updated per selection for pointer-line projection
+
   var skyrmionLayer = new THREE.Group();
   scene.add(skyrmionLayer);
 
@@ -1156,8 +1368,11 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   eegSelect.addEventListener('change', function () {
     setEegSubject(eegSelect.value || null);
     drawPersistenceDiagram(eegSelect.value || null);
-    buildH1LoopLayer(eegSelect.value || null, parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated');
+    var cond0 = parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated';
+    buildH1LoopLayer(eegSelect.value || null, cond0);
+    buildZoneLayer(eegSelect.value || null, cond0);
     renderStats();
+    renderInterpretation();
   });
 
   resetBtn.addEventListener('click', frameCamera);
@@ -1192,7 +1407,11 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     fresnelMesh.visible = !interiorHidden; // the rim-glow only reads correctly on a see-through surface
   }
 
-  toggleHeatmap.addEventListener('change', function () { eegHeatmapLayer.visible = toggleHeatmap.checked; });
+  toggleHeatmap.addEventListener('change', function () {
+    eegHeatmapLayer.visible = toggleHeatmap.checked;
+    if (!toggleHeatmap.checked) document.getElementById('ha-zone-key').style.display = 'none';
+    else if (zoneMarkers.length) document.getElementById('ha-zone-key').style.display = 'flex';
+  });
   toggleBetti1.addEventListener('change', function () { betti1Layer.visible = toggleBetti1.checked; });
   toggleH1Loops.addEventListener('change', function () { h1LoopLayer.visible = toggleH1Loops.checked; });
   toggleSkyrmions.addEventListener('change', function () { skyrmionLayer.visible = toggleSkyrmions.checked; });
@@ -1369,7 +1588,77 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     card('Mapper windows', MG.n_windows || 0, mapperNodes.length + ' nodes, ' + mapperEdges.length + ' edges');
     statsEl.innerHTML = cards.join('');
   }
+
+  // ================= per-layer interpretation cards (real numbers + descriptive framing) =================
+  // Interpretation text is deliberately descriptive/marker-level (what a rise or
+  // fall in this real quantity classically indicates in the topology/EEG
+  // literature), never a claim about this specific recording's consciousness
+  // state, clinical status, or a proof of any theory -- matching this repo's
+  // governance guardrails (tools/validate_ontology_claim_language.py and
+  // sciencer_d/btc_icft/report_guardrails.py).
+  function renderInterpretation() {
+    var el = document.getElementById('ha-interp-grid');
+    if (!el) return;
+    var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
+    var currentCl = parseFloat(eegSlider.value) < 0.5 ? clAwake : clSedated;
+    var h1Count = h1LoopState.subjectId ? (h1LoopLayer.children.length / 3) : 0;
+    var cards = [
+      {
+        title: 'Betti-1 loops (yellow rings)',
+        live: (currentCl ? currentCl.clustering.n_clusters + ' real spatial clusters, ' + currentCl.clustering.n_noise + ' noise triangles' : 'no clustering for this cohort run'),
+        desc: 'Each ring marks one triangle of the montage whose local phase-defect (signed winding) exceeds threshold; DBSCAN groups active triangles into spatial clusters. More/smaller clusters read as a more spatially fragmented defect pattern; fewer/larger clusters read as a more spatially coherent one -- a description of pattern shape, not a measurement of consciousness.'
+      },
+      {
+        title: 'H1 loops (green lines)',
+        live: (selSubj ? Math.round(h1Count) + ' of the top-' + H1_LOOP_TOP_N + ' most-persistent real H1 features shown' : 'pick an EEG subject above'),
+        desc: 'Real GUDHI persistent-homology H1 features from the selected subject\'s last-window phase-locking-value (PLV) matrix, ranked by persistence (death − birth) and capped to the most persistent per condition. Higher persistence means that channel pair\'s shared phase-locking structure survives across a wider range of the PLV filtration -- a more statistically robust functional relationship in this analysis, not a specific anatomical circuit.'
+      },
+      {
+        title: 'Skyrmion-style phase-vortex field (arrows)',
+        live: GEOM.activeTri.length + ' real triangles carry a local phase-vortex arrow field',
+        desc: 'Every real electrode\'s local phase gradient, drawn as a dense arrow field styled after skyrmion-texture visualizations from condensed-matter physics. Convergent or divergent arrow patterns mark the same real phase singularities driving the Betti-1 rings above -- a visual, not a claim that this EEG data contains literal magnetic skyrmions.'
+      },
+      {
+        title: 'Mapper cohort-structure graph',
+        live: mapperNodes.length + ' real nodes, ' + mapperEdges.length + ' real edges over ' + (MG.n_windows || 0) + ' real cohort windows',
+        desc: 'Each node is a KeplerMapper cluster of real per-window feature vectors (mean PLV, persistence-landscape area, beta1, spatial charge); edges connect clusters that share real windows. Node color/size track real per-node mean PLV or awake-fraction. This summarizes how the cohort\'s real recorded windows group by similarity -- a topological summary of the data, not an anatomical map (Mapper nodes carry no spatial coordinate).'
+      },
+      {
+        title: 'fMRI connectome (violet)',
+        live: fmriSubjects.length + ' real ds005917 subjects available, one shown at a time (selectable above)',
+        desc: 'Real 100-parcel KMeans centroids and Pearson functional connectivity for one real ketamine-study subject. Node color/size track real degree (how many other parcels a parcel\'s BOLD timecourse correlates with above threshold) -- a measure of functional integration in this dataset, not anatomical connection strength or clinical significance.'
+      }
+    ];
+    el.innerHTML = cards.map(function (c) {
+      return '<div class="ha-interp-card"><div class="ha-interp-card-title">' + c.title + '</div>' +
+        '<div class="ha-interp-card-live">' + c.live + '</div>' +
+        '<div class="ha-interp-card-desc">' + c.desc + '</div></div>';
+    }).join('');
+  }
+
+  // ================= theory / "explain this visualization" panel =================
+  (function () {
+    var toggleBtn = document.getElementById('ha-theory-toggle');
+    var panel = document.getElementById('ha-theory-panel');
+    panel.innerHTML =
+      '<h3>Topological charge: Q<sub>z</sub>, Q<sub>abs</sub>, f<sub>dress</sub></h3>' +
+      '<p>Each mesh triangle carries a real signed winding number of the phase field around its three corners -- a discrete topological charge. Q<sub>z</sub> sums these signed values (net charge; positive and negative windings can cancel); Q<sub>abs</sub> sums their absolute values (total unsigned winding, no cancellation). f<sub>dress</sub> = (Q<sub>abs</sub> − |Q<sub>z</sub>|) / Q<sub>abs</sub> is near zero when local winding mostly cancels into a coherent net charge, and rises when local winding is disordered relative to the net. These are descriptive geometric quantities of the phase field, not a measurement or proof of consciousness.</p>' +
+      '<h3>Persistent homology, Betti numbers, H1</h3>' +
+      '<p>Persistent homology tracks how topological features (connected components = Betti-0, loops = Betti-1) appear and disappear as a threshold sweeps across a real structure -- here, either the montage\'s phase-defect field or a channel-pair PLV matrix. A feature\'s "persistence" (death − birth) is how long it survives across that sweep; more persistent features are considered more robust, less likely to be threshold-dependent noise. This repo computes real GUDHI/ripser persistence on real data -- it does not compute a full traced cycle representative, only birth/death values and (for H1 loops) the real channel pair where a feature is born.</p>' +
+      '<h3>Phase-locking value (PLV)</h3>' +
+      '<p>PLV measures how consistently the instantaneous phase difference between two channels stays constant across a time window, from 0 (no consistent phase relationship) to 1 (perfectly locked). It is a standard EEG functional-connectivity measure; a real, symmetric matrix of PLV values across all channel pairs is the input to the Mapper mean_plv feature, the H1 loops, and (thresholded) the graph-based Betti-1 estimate in the Mapper cohort graph.</p>' +
+      '<h3>Connectome degree &amp; edge weight</h3>' +
+      '<p>In the fMRI connectome, an edge exists between two parcels when their real BOLD timecourses correlate above a threshold; a node\'s degree is how many such edges it has. High-degree nodes are functionally well-connected within this dataset\'s correlation structure -- a descriptive network property, not a claim about anatomical white-matter connectivity or about any parcel\'s importance to cognition.</p>' +
+      '<h3>What this page does NOT claim</h3>' +
+      '<p>None of these real, computed quantities are presented as proof of consciousness, a measurement of subjective experience, or a validated clinical marker. Where a real effect (e.g. a topology metric differing between awake and sedated) is statistically significant in this repo\'s own permutation testing, that is stated plainly in the underlying reports; where it is not significant, this page does not imply otherwise. See the disclosure box above this scene for what is real data versus illustrative placement.</p>';
+    toggleBtn.addEventListener('click', function () {
+      var open = panel.classList.toggle('ha-open');
+      toggleBtn.innerHTML = (open ? '&#9432; Hide theory &amp; interpretation' : '&#9432; Explain this visualization — theory &amp; interpretation');
+    });
+  })();
+
   renderStats();
+  renderInterpretation();
   renderFmriStats();
   drawLandscapeChart();
   drawPersistenceDiagram(null);
@@ -1380,8 +1669,11 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   // ================= render loop =================
   var t0 = performance.now();
   var eegT = 0, fmriT = 0;
+  var interpFrameCounter = 0;
   function render(now) {
     var clock = (now - t0) / 1000;
+    interpFrameCounter++;
+    if (interpFrameCounter % 20 === 0) renderInterpretation(); // throttled: live numbers track the slider without a per-frame DOM churn cost
     if (playing) {
       var speed = 0.09;
       eegT += playDir * speed * 0.016;
@@ -1399,12 +1691,14 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     var currentCondition = eegT < 0.5 ? 'awake' : 'sedated';
     if (currentCondition !== h1LoopState.condition && h1LoopState.subjectId === (eegSelect.value || null)) {
       buildH1LoopLayer(eegSelect.value || null, currentCondition);
+      buildZoneLayer(eegSelect.value || null, currentCondition);
     }
     updateConnectome(fmriT);
     updateMapperGlow(clock);
     fresnelMesh.rotation.copy(brainMesh.rotation);
     controls.update();
     renderer.render(scene, camera);
+    updateZonePointers();
 
     readout.innerHTML = 'EEG t=<b>' + eegT.toFixed(2) + '</b> &Sigma;|winding|=<b>' + res.qabs.toFixed(2) +
       '</b> loops=<b>' + res.activeCount + '</b> clusters=<b>' + res.nClusters +

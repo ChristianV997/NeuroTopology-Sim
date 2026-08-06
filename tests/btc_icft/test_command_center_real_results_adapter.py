@@ -81,6 +81,13 @@ def _write_pitnn_cohort_subject(root, subject_id, *, awake=True, sedated=True, b
             },
             "wave_vectors": None,
             "h1_cycles": [{"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}],
+            "zone_band_power": {
+                "frontal": {
+                    "bands_power_rel": {"delta": 0.3, "theta": 0.1, "alpha": 0.05, "beta": 0.02, "gamma_low": 0.01},
+                    "n_channels": 5,
+                    "centroid_xy": [0.1, 0.9],
+                },
+            },
             "quality_control": {"n_channels": 3, "all_finite": True},
         }
     record = {
@@ -124,6 +131,9 @@ def test_pitnn_cohort_spatial_artifact_available_with_real_defect_map(tmp_path):
     assert subject["conditions"]["awake"]["h1_cycles"] == [
         {"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}
     ]
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["bands_power_rel"]["delta"] == 0.3
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["n_channels"] == 5
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["centroid_xy"] == [0.1, 0.9]
 
 
 def test_pitnn_cohort_spatial_artifact_skips_subjects_with_no_snapshot(tmp_path):
