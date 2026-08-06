@@ -266,11 +266,15 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
 
     Populated only when the streaming run used `--export-persistence`
     (`tools/stream_pitnn_cohort_ds005620.py`'s `window_topology` then calls
-    `core.topology.export_persistence_json` on each window's PLV matrix). This
-    reads the LAST window's H1 diagram per condition per subject -- the same
-    window `cubical_h1_bottleneck_distance_last_window` was computed from, so a
-    viewer plotting both is showing the same pair of diagrams the bottleneck
-    number describes, not a different window.
+    `core.topology.export_persistence_json` on each window's PLV matrix).
+    `diagrams_h1` reads the LAST window's H1 diagram per condition per subject
+    -- the same window `cubical_h1_bottleneck_distance_last_window` was
+    computed from, so a viewer plotting both is showing the same pair of
+    diagrams the bottleneck number describes, not a different window.
+    `diagrams_h1_by_window` carries every window's H1 diagram per condition
+    (real data already stored per-window in `topology_windows`, not newly
+    computed here) so a viewer can render a vineyard -- the diagram's real
+    trajectory across the recording, rather than a single static snapshot.
 
     "Available" always means every subject record it returns actually carries a
     diagram; a subject whose windows lack `cubical_persistence` (streaming run
@@ -294,21 +298,27 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
             continue
         windows = record.get("topology_windows") or {}
         diagrams: dict[str, list[list[float | None]]] = {}
+        diagrams_by_window: dict[str, list[list[list[float | None]]]] = {}
         for label, rows in windows.items():
             if not rows:
                 continue
-            cp = rows[-1].get("cubical_persistence")
-            if not cp:
+            per_window_h1: list[list[list[float | None]]] = []
+            for row in rows:
+                cp = row.get("cubical_persistence")
+                h1 = cp.get("diagrams", {}).get("1") if cp else None
+                per_window_h1.append(h1 if h1 is not None else [])
+            if any(per_window_h1):
+                diagrams_by_window[label] = per_window_h1
+            last_h1 = rows[-1].get("cubical_persistence", {}).get("diagrams", {}).get("1")
+            if last_h1 is None:
                 continue
-            h1 = cp.get("diagrams", {}).get("1")
-            if h1 is None:
-                continue
-            diagrams[label] = h1
+            diagrams[label] = last_h1
         if not diagrams:
             continue
         subjects.append({
             "subject_id": record.get("subject", path.stem),
             "diagrams_h1": diagrams,
+            "diagrams_h1_by_window": diagrams_by_window,
             "bottleneck_distance_h1_last_window": record.get("cubical_h1_bottleneck_distance_last_window"),
         })
 
@@ -326,7 +336,10 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
         "subject_count": len(subjects),
         "subjects": subjects,
         "scientific_note": "GUDHI sub-level cubical persistence on each window's PLV "
-                            "matrix, last window per condition; a descriptive spatial-"
+                            "matrix. diagrams_h1 is the last window per condition; "
+                            "diagrams_h1_by_window carries every real window (a "
+                            "vineyard -- the diagram's trajectory across the "
+                            "recording, not interpolated). Descriptive spatial-"
                             "network summary, not a validated physical or clinical "
                             "measurement. Infinite-death H0 features are omitted from H1.",
     }

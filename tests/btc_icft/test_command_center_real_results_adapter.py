@@ -159,15 +159,21 @@ def test_registry_reflects_pitnn_cohort_spatial_availability(tmp_path, monkeypat
     assert pilot["status"] == "available"
 
 
-def _write_pitnn_cohort_subject_with_persistence(root, subject_id, *, awake=True, sedated=True, bottleneck=0.19):
+def _write_pitnn_cohort_subject_with_persistence(
+    root, subject_id, *, awake=True, sedated=True, bottleneck=0.19,
+    awake_windows_h1=None, sedated_windows_h1=None,
+):
     """Mirror tools/stream_pitnn_cohort_ds005620.py's real record shape for the
     --export-persistence path: topology_windows.{label}[-1].cubical_persistence.
-    diagrams['1'] is exactly what build_pitnn_cohort_persistence_artifact reads."""
+    diagrams['1'] is exactly what build_pitnn_cohort_persistence_artifact reads.
+    `*_windows_h1`, when given, is a list of per-window H1 diagrams (real windows,
+    mirroring topology_windows.{label} having multiple rows), so multi-window
+    (vineyard) behavior can be exercised; otherwise a single window is written."""
     (root / "subjects").mkdir(parents=True, exist_ok=True)
 
-    def window(h1):
+    def window(h1, idx=0):
         return {
-            "window": 0, "start_s": 0.0, "channels": 3, "beta1": 1,
+            "window": idx, "start_s": float(idx * 10), "channels": 3, "beta1": 1,
             "filtration_beta1_max": 1, "integrated_landscape_area": 0.01,
             "mean_plv": 0.5, "q_spatial": 0.0,
             "cubical_persistence": {
@@ -177,13 +183,18 @@ def _write_pitnn_cohort_subject_with_persistence(root, subject_id, *, awake=True
             },
         }
 
+    awake_rows = (
+        [window(h1, i) for i, h1 in enumerate(awake_windows_h1)] if awake_windows_h1 is not None
+        else ([window([[0.1, 0.2]])] if awake else [])
+    )
+    sedated_rows = (
+        [window(h1, i) for i, h1 in enumerate(sedated_windows_h1)] if sedated_windows_h1 is not None
+        else ([window([[0.15, 0.35], [0.2, 0.4]])] if sedated else [])
+    )
     record = {
         "subject": subject_id,
         "cubical_h1_bottleneck_distance_last_window": bottleneck,
-        "topology_windows": {
-            "awake": [window([[0.1, 0.2]])] if awake else [],
-            "sedated": [window([[0.15, 0.35], [0.2, 0.4]])] if sedated else [],
-        },
+        "topology_windows": {"awake": awake_rows, "sedated": sedated_rows},
     }
     (root / "subjects" / f"{subject_id}.json").write_text(json.dumps(record), encoding="utf-8")
 
@@ -217,6 +228,30 @@ def test_pitnn_cohort_persistence_artifact_available_with_real_diagrams(tmp_path
     assert subject["diagrams_h1"]["awake"] == [[0.1, 0.2]]
     assert subject["diagrams_h1"]["sedated"] == [[0.15, 0.35], [0.2, 0.4]]
     assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.194)
+    # Single real window per condition -> the vineyard field has exactly one
+    # entry, matching diagrams_h1 (no fabricated extra points).
+    assert subject["diagrams_h1_by_window"]["awake"] == [[[0.1, 0.2]]]
+    assert subject["diagrams_h1_by_window"]["sedated"] == [[[0.15, 0.35], [0.2, 0.4]]]
+
+
+def test_pitnn_cohort_persistence_artifact_vineyard_carries_every_real_window(tmp_path):
+    """A cohort run with 3 real windows per condition (this repo's actual
+    streaming cadence) must expose all 3 in diagrams_h1_by_window, not just
+    the last one that diagrams_h1 reports -- the whole point of the field."""
+    awake_windows = [[[0.1, 0.2]], [[0.12, 0.25]], [[0.11, 0.3]]]
+    sedated_windows = [[[0.2, 0.5]], [[0.25, 0.6]], [[0.3, 0.7]]]
+    _write_pitnn_cohort_subject_with_persistence(
+        tmp_path, "sub-1010",
+        awake_windows_h1=awake_windows, sedated_windows_h1=sedated_windows,
+    )
+    result = build_pitnn_cohort_persistence_artifact(tmp_path)
+    subject = result["subjects"][0]
+    assert subject["diagrams_h1_by_window"]["awake"] == awake_windows
+    assert subject["diagrams_h1_by_window"]["sedated"] == sedated_windows
+    # diagrams_h1 (last-window, existing consumer) must still match the last
+    # entry of the vineyard -- both describe the same window.
+    assert subject["diagrams_h1"]["awake"] == awake_windows[-1]
+    assert subject["diagrams_h1"]["sedated"] == sedated_windows[-1]
 
 
 def test_pitnn_cohort_persistence_artifact_skips_subjects_missing_diagrams(tmp_path):

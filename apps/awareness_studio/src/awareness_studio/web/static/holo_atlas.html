@@ -128,6 +128,10 @@
       <div class="ha-chart-card">
         <div class="ha-panel-title" id="ha-diagram-title">Real H1 birth&ndash;death diagram &mdash; pick an EEG subject above to view theirs</div>
         <canvas id="ha-diagram-chart" width="360" height="200"></canvas>
+        <div id="ha-diagram-window-ctl" style="display:none;font:11px ui-monospace,monospace;color:var(--ink-muted);margin-top:6px;">
+          window <input id="ha-diagram-window" type="range" min="0" max="0" step="1" value="0" style="width:140px;vertical-align:middle;">
+          <span id="ha-diagram-window-label"></span>
+        </div>
       </div>
     </div>
 
@@ -1094,10 +1098,17 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   }
 
   // ================= real per-subject H1 birth-death diagram =================
-  function drawPersistenceDiagram(subjectId) {
+  // windowIndex: null defaults to the last real window (unchanged historical behavior,
+  // matching bottleneck_distance_h1_last_window). diagrams_h1_by_window carries every
+  // real window this subject/condition actually recorded (no interpolation) --
+  // tools/command_center/real_results_adapter.build_pitnn_cohort_persistence_artifact.
+  function drawPersistenceDiagram(subjectId, windowIndex) {
     var canvas = document.getElementById('ha-diagram-chart');
     var ctx = canvas.getContext('2d');
     var titleEl = document.getElementById('ha-diagram-title');
+    var windowCtl = document.getElementById('ha-diagram-window-ctl');
+    var windowSlider = document.getElementById('ha-diagram-window');
+    var windowLabel = document.getElementById('ha-diagram-window-label');
     var W = canvas.width, H = canvas.height, pad = 24;
     ctx.clearRect(0, 0, W, H);
     var rec = subjectId ? findPersistenceSubject(subjectId) : null;
@@ -1105,10 +1116,29 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       titleEl.innerHTML = 'Real H1 birth&ndash;death diagram &mdash; pick an EEG subject above to view theirs';
       ctx.fillStyle = '#7c8296'; ctx.font = '11px ui-monospace, monospace';
       ctx.fillText('No subject selected.', pad, H / 2);
+      windowCtl.style.display = 'none';
       return;
     }
-    titleEl.innerHTML = 'Real H1 birth&ndash;death diagram &mdash; <b>' + subjectId + '</b> (real bottleneck=' + rec.bottleneck_distance_h1_last_window.toFixed(3) + ')';
-    var awake = rec.diagrams_h1.awake || [], sedated = rec.diagrams_h1.sedated || [];
+    var byWindow = rec.diagrams_h1_by_window || {};
+    var nWindows = Math.min(
+      (byWindow.awake || [rec.diagrams_h1.awake]).length,
+      (byWindow.sedated || [rec.diagrams_h1.sedated]).length
+    );
+    var lastIdx = Math.max(0, nWindows - 1);
+    var idx = (windowIndex == null) ? lastIdx : Math.min(windowIndex, lastIdx);
+    if (nWindows > 1) {
+      windowCtl.style.display = '';
+      windowSlider.max = lastIdx;
+      windowSlider.value = idx;
+      windowLabel.textContent = idx + ' / ' + lastIdx + (idx === lastIdx ? ' (most recent, = bottleneck pair)' : '');
+    } else {
+      windowCtl.style.display = 'none';
+    }
+    var isVineyardFrame = idx !== lastIdx;
+    titleEl.innerHTML = 'Real H1 birth&ndash;death diagram &mdash; <b>' + subjectId + '</b>' +
+      (isVineyardFrame ? ' (window ' + idx + ' of ' + lastIdx + ')' : ' (real bottleneck=' + rec.bottleneck_distance_h1_last_window.toFixed(3) + ')');
+    var awake = (byWindow.awake ? byWindow.awake[idx] : rec.diagrams_h1.awake) || [];
+    var sedated = (byWindow.sedated ? byWindow.sedated[idx] : rec.diagrams_h1.sedated) || [];
     var allVals = awake.concat(sedated).reduce(function (acc, p) { return acc.concat(p); }, []);
     var maxV = Math.max.apply(null, allVals.concat([1e-6]));
     function toXY(b, d) { return [pad + (b / maxV) * (W - pad * 1.5), H - pad - (d / maxV) * (H - pad * 1.5)]; }
@@ -1170,6 +1200,9 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   renderFmriStats();
   drawLandscapeChart();
   drawPersistenceDiagram(null);
+  document.getElementById('ha-diagram-window').addEventListener('input', function (event) {
+    drawPersistenceDiagram(eegSelect.value || null, parseInt(event.target.value, 10));
+  });
 
   // ================= render loop =================
   var t0 = performance.now();
