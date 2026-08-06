@@ -484,15 +484,32 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     return { box: box, center: center, size: size, minHalfExtent: Math.min(size.x, size.y, size.z) / 2 };
   })();
 
-  // nearest-5 electrodes onto each brain vertex (angular interpolation weights)
+  // Real electrode -> cortex-vertex interpolation weights (spherical inverse-distance
+  // weighting, angular form). The previous K=5/POWER=6 setting was near-winner-take-all:
+  // with only ~62 real electrodes, that produces hard Voronoi-cell boundaries between
+  // "which electrode dominates this patch" that cut straight across gyri and sulci --
+  // reading as flat wedges/stripes with no relationship to the real cortical folding.
+  // A real 62-channel montage cannot resolve sub-gyral structure -- no EEG topomap can --
+  // but it CAN be rendered as the smooth, continuous field that volume-conducted scalp
+  // potentials actually are, rather than an artificially blocky one. K=14/POWER=2 blends
+  // more real neighbors with much softer falloff (the standard IDW exponent), removing
+  // the hard edges while still weighting nearby real electrodes far more than distant ones.
   var BRAIN_WEIGHTS = (function () {
-    var K = 5, POWER = 6, nE = GEOM.positions.length, nB = BRAIN.n;
+    var K = 14, POWER = 2, nE = GEOM.positions.length, nB = BRAIN.n;
     var ex = new Float32Array(nE), ey = new Float32Array(nE), ez = new Float32Array(nE);
     for (var e = 0; e < nE; e++) {
       var p = GEOM.positions[e], len = p.length() || 1e-9;
       ex[e] = p.x / len; ey[e] = p.y / len; ez[e] = p.z / len;
     }
     var idxOut = new Int16Array(nB * K), wOut = new Float32Array(nB * K);
+    // real montage-coverage factor per brain vertex: the best single real-electrode
+    // angular alignment (cosine similarity). The real 62-channel dome only covers the
+    // upper/superior scalp -- inferior/ventral cortex (temporal poles, orbitofrontal
+    // undersurface, etc.) has no real nearby electrode at all. Rather than silently
+    // extrapolating a "real-looking" color there from whatever electrode is least-far
+    // away, this factor lets updateEEG fade those honestly-uncovered vertices toward a
+    // neutral shade instead of implying real measurement where none exists.
+    var coverageOut = new Float32Array(nB);
     var topIdx = new Int32Array(K), topDot = new Float32Array(K);
     for (var bv = 0; bv < nB; bv++) {
       var bd = BRAIN.dirs[bv], bx = bd.x, by = bd.y, bz = bd.z;
@@ -505,12 +522,13 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
           topDot[pos] = dot; topIdx[pos] = e2;
         }
       }
+      coverageOut[bv] = topDot[0];
       var sum = 0;
       for (var k2 = 0; k2 < K; k2++) { var wv = Math.pow(Math.max(0, topDot[k2]), POWER); wOut[bv * K + k2] = wv; idxOut[bv * K + k2] = topIdx[k2]; sum += wv; }
       sum = sum || 1e-9;
       for (var k3 = 0; k3 < K; k3++) wOut[bv * K + k3] /= sum;
     }
-    return { idx: idxOut, w: wOut, K: K };
+    return { idx: idxOut, w: wOut, K: K, coverage: coverageOut };
   })();
 
   // ================= real fMRI connectome (one real ds005917 subject, both arms) =================
@@ -981,6 +999,18 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       // brighter AND more solid than inactive cortex, not just a different color.
       var intensity = Math.pow(Math.min(1, Math.abs(acc) / eegPeak), 0.6);
       var rgb = spectrumColor(intensity);
+      // real montage-coverage fade: the real 62-channel dome only covers the upper/
+      // superior scalp, so a vertex whose single nearest real electrode (coverage,
+      // computed in BRAIN_WEIGHTS above) is more than ~60 degrees of arc away sits on
+      // cortex the montage never actually measured (temporal poles, orbitofrontal
+      // undersurface, etc.). Fading those vertices toward a neutral, muted shade --
+      // instead of painting a "real-looking" heat color extrapolated from a far-away
+      // channel -- keeps the heatmap honest about where real EEG data does and doesn't
+      // reach, rather than implying uniform coverage across the whole cortical surface.
+      var covFade = clamp01((BRAIN_WEIGHTS.coverage[bv] - 0.1) / 0.4);
+      var NEUTRAL = [0.30, 0.32, 0.37];
+      rgb = [lerp(NEUTRAL[0], rgb[0], covFade), lerp(NEUTRAL[1], rgb[1], covFade), lerp(NEUTRAL[2], rgb[2], covFade)];
+      intensity *= covFade;
       // real FreeSurfer sulcal-depth curvature drives per-vertex shading contrast, the
       // same signal anatomical surface renderers use to make gyri (light) and sulci
       // (dark) visually legible -- stronger than a flat energy fill alone
