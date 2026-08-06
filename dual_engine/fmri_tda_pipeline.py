@@ -318,7 +318,8 @@ def save_roi_timeseries(ts: np.ndarray, subject_id: str, group: str, t_r: Option
 
 
 def save_graph_structure(
-    centroids: np.ndarray, connectivity: np.ndarray, subject_id: str, condition: str, out_dir: Path
+    centroids: np.ndarray, connectivity: np.ndarray, subject_id: str, condition: str, out_dir: Path,
+    labels: list | None = None,
 ) -> str:
     """Persist real parcel centroids + the real connectivity matrix for a subject/condition.
 
@@ -327,6 +328,12 @@ def save_graph_structure(
     after being collapsed into scalar topology/graph metrics. This is the durable capability
     the /fmri-connectome 3D viewer needs (real node positions + real edge weights), following
     the same on-disk-npz precedent as `save_roi_timeseries`.
+
+    `labels`, when given, are the real atlas region names for each parcel (e.g. Schaefer-2018
+    `"7Networks_LH_Vis_1"`), in the same order as `centroids`/`connectivity` rows -- only
+    meaningful when `atlas_labels_img` was used (a shared, spatially-normalized atlas); the
+    KMeans coordinate-parcellation fallback has no real anatomical correspondence to label,
+    so callers on that path must leave this `None` rather than fabricate names.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{subject_id}_{condition}_graph_structure.npz"
@@ -337,6 +344,7 @@ def save_graph_structure(
         subject_id=subject_id,
         condition=condition,
         provenance="real_fmri",
+        labels=np.asarray(labels, dtype=object) if labels is not None else np.asarray([], dtype=object),
     )
     return str(path)
 
@@ -352,8 +360,15 @@ def run_subject(
     provenance: str = "real_fmri",
     save_timeseries_dir: Optional[str] = None,
     save_graph_structure_dir: Optional[str] = None,
+    region_labels: Optional[list] = None,
 ) -> SubjectResult:
-    """Full per-subject pipeline. Returns a SubjectResult (with error set on failure)."""
+    """Full per-subject pipeline. Returns a SubjectResult (with error set on failure).
+
+    `region_labels`, when given, are the real atlas region names threaded through to
+    `save_graph_structure` -- only meaningful (and only ever passed by a caller) when
+    `atlas_labels_img` points at a real, spatially-normalized atlas; see
+    `save_graph_structure`'s docstring for why the KMeans fallback must never receive one.
+    """
     try:
         centroids = None
         if save_graph_structure_dir is not None:
@@ -367,7 +382,7 @@ def run_subject(
             save_roi_timeseries(ts, subject_id, group, t_r, Path(save_timeseries_dir))
         conn = connectivity_matrix(ts, kind=connectivity_kind)
         if save_graph_structure_dir is not None:
-            save_graph_structure(centroids, conn, subject_id, group, Path(save_graph_structure_dir))
+            save_graph_structure(centroids, conn, subject_id, group, Path(save_graph_structure_dir), labels=region_labels)
         ph = persistent_homology(conn)
         gm = graph_metrics(conn)
         return SubjectResult(

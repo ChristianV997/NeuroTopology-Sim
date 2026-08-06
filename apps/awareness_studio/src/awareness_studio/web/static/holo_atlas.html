@@ -129,6 +129,7 @@
         <li><b>Combined animation:</b> the EEG awake&harr;sedated and fMRI drug&harr;placebo timelines are two independent real experiments on different subjects, driven together here for one continuous visual narrative &mdash; not a claim they were recorded simultaneously.</li>
         <li><b>Per-subject EEG swap:</b> the EEG selector's real subjects are one individual's own real signed-winding/phase snapshot (same channel order and triangulation as the cohort average, verified). Color/size normalization stays fixed from the cohort so subjects stay visually comparable; no per-subject spatial clustering was computed, so the "clusters=" readout still reflects the real cohort-level value.</li>
         <li><b>H1 loops:</b> real GUDHI cubical persistence on the selected subject's real last-window PLV matrix. Each line connects the two real electrode positions of one persistent H1 feature's <i>birth cell</i> (the exact channel pair GUDHI's <code>cofaces_of_persistence_pairs</code> reports) &mdash; this is the real location where that feature is born in the PLV filtration, not a full traced topological cycle (no cycle-representative extraction exists in this repo's GUDHI usage), and not shown for the cohort-average view, which has no per-subject PLV matrix to compute from.</li>
+        <li><b>Labeled connectome (teal):</b> real ds006644 subjects, real Schaefer-2018 atlas parcel centroids and connectivity, with real anatomical region names (hover a node) &mdash; unlike the violet ds005917 connectome above, this correspondence <i>is</i> scientifically valid: ds006644 uses fMRIPrep's spatially-normalized, AROMA-denoised BOLD in the same MNI template family as the atlas, whereas ds005917 ships raw, unregistered BOLD (no FSL/ANTs available in this environment to normalize it), so its parcels stay honestly anonymous rather than mislabeled. One real session per subject here, not a two-condition morph.</li>
       </ul>
     </div>
 
@@ -137,6 +138,7 @@
       <select id="ha-eeg-subject" class="ha-select" title="Real per-subject EEG spatial swap (ds005620)"></select>
       <div class="ha-ctl-group">fMRI <input id="ha-fmri-slider" type="range" min="0" max="1" step="0.005" value="0"> placebo</div>
       <select id="ha-fmri-subject" class="ha-select"></select>
+      <select id="ha-labeled-conn-subject" class="ha-select" title="Real ds006644 subject with real Schaefer atlas region names"></select>
       <button id="ha-play" class="ha-btn" type="button">&#9654; Play all</button>
       <button id="ha-reset-cam" class="ha-btn" type="button" style="border-color:var(--ring);color:var(--ink-2);background:transparent;">Reset view</button>
       <span class="ha-readout" id="ha-readout"></span>
@@ -150,6 +152,7 @@
       <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-skyrmions" checked> Skyrmions</label>
       <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-mapper" checked> Mapper</label>
       <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-connectome" checked> Connectome</label>
+      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-labeled-connectome" checked> Labeled connectome (real region names)</label>
     </div>
 
     <div class="ha-stage-card">
@@ -165,6 +168,7 @@
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#3a12c0,#9b30ff,#ff53d0)"></span>fMRI connectome &mdash; indigo&rarr;violet&rarr;magenta = real degree/weight</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#ff3b30,#ffd23f,#ffffff)"></span>Mapper node &mdash; red&rarr;yellow&rarr;white = real per-node energy</div>
         <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#3dff7a"></span>H1 loop (green) &mdash; real GUDHI persistent-loop channel pair, brighter/thicker = more persistent; pick an EEG subject above</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#0a3a3a,#1de9b6,#d7fff5)"></span>Labeled connectome (teal) &mdash; real Schaefer-2018 region names on hover, real degree by color</div>
         <div>inactive &rarr; most energetic</div>
         <div class="ha-spectrum-bar"></div>
       </div>
@@ -229,21 +233,22 @@ async function boot() {
       fetch('/fmri-connectome/data').then(function (r) { return r.json(); }),
       fetch('/mapper-graph/data').then(function (r) { return r.json(); }),
       fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); }),
-      fetch('/command-center/visualization').then(function (r) { return r.json(); })
+      fetch('/command-center/visualization').then(function (r) { return r.json(); }),
+      fetch('/fmri-connectome/data?dataset=ds006644').then(function (r) { return r.json(); })
     ]);
   } catch (err) {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load combined data: ' + err + '</div>');
     return;
   }
-  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4];
+  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4], fcLabeled = results[5];
   if (vf.status !== 'available') {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
     return;
   }
-  run(vf, fc, mg, brainRaw, ccViz);
+  run(vf, fc, mg, brainRaw, ccViz, fcLabeled);
 }
 
-function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
   "use strict";
 
   // ================= shared helpers =================
@@ -748,7 +753,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     .addScaledVector(new THREE.Vector3(-1, -0.15, 0.3).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.30);
   var INTERIOR_R = BRAIN_BOUNDS.minHalfExtent * 0.42;
 
-  function fitCentroidsToSphere(centroids) {
+  function fitCentroidsToSphereAt(centroids, center, radius) {
     var n = centroids.length;
     var c = [0, 0, 0];
     centroids.forEach(function (p) { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; });
@@ -758,12 +763,13 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
       var d = Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]);
       if (d > maxR) maxR = d;
     });
-    var scale = INTERIOR_R / maxR;
+    var scale = radius / maxR;
     return centroids.map(function (p) {
       return new THREE.Vector3((p[0] - c[0]) * scale, (p[2] - c[2]) * scale, -(p[1] - c[1]) * scale)
-        .add(CONNECTOME_CENTER);
+        .add(center);
     });
   }
+  function fitCentroidsToSphere(centroids) { return fitCentroidsToSphereAt(centroids, CONNECTOME_CENTER, INTERIOR_R); }
 
   // ================= real Mapper satellite graph (force-directed layout, illustrative) =================
   var mapperNodes = (MG.status === 'available' ? MG.nodes : []);
@@ -1117,6 +1123,73 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     posAttr.needsUpdate = true; colAttr.needsUpdate = true;
   }
 
+  // ================= real LABELED fMRI connectome (ds006644, real Schaefer region
+  // names, one real session per subject -- no drug/placebo morph pair) =================
+  // A teal/cyan ramp keeps this visually distinct from the ds005917 connectome's
+  // indigo/violet/magenta at a glance when both are toggled on together.
+  var labeledConnColor = makeRamp([
+    [0.00, 0x0a3a3a], [0.50, 0x1de9b6], [1.00, 0xd7fff5]
+  ]);
+  var labeledConnSubjects = (FC_LABELED.status === 'available' ? FC_LABELED.subjects : []);
+  var LABELED_CONNECTOME_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(0.1, 0.95, -0.05).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.30);
+  var LABELED_CONNECTOME_R = BRAIN_BOUNDS.minHalfExtent * 0.30;
+
+  var labeledConnLayer = new THREE.Group();
+  scene.add(labeledConnLayer);
+  var labeledConnNodeMeshes = [];
+  var labeledConnLabels = [];
+
+  function buildLabeledConnectomeLayer(subject) {
+    labeledConnLayer.clear();
+    labeledConnNodeMeshes = [];
+    labeledConnLabels = [];
+    if (!subject || !subject.graph) return;
+    var graph = subject.graph;
+    var pos = fitCentroidsToSphereAt(graph.centroids, LABELED_CONNECTOME_CENTER, LABELED_CONNECTOME_R);
+    var n = pos.length;
+    var degree = new Array(n).fill(0);
+    graph.edges.forEach(function (e) { degree[e.source]++; degree[e.target]++; });
+    var maxDeg = Math.max(1, Math.max.apply(null, degree));
+
+    var nodeGeo = new THREE.SphereGeometry(0.5, 10, 8);
+    for (var i = 0; i < n; i++) {
+      var deg01 = degree[i] / maxDeg;
+      var rgb = labeledConnColor(deg01);
+      var mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(rgb[0], rgb[1], rgb[2]),
+        emissive: new THREE.Color(rgb[0] * 0.6, rgb[1] * 0.6, rgb[2] * 0.5), emissiveIntensity: 0.6, roughness: 0.4
+      });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      mesh.position.copy(pos[i]);
+      mesh.scale.setScalar(0.45 + 0.65 * deg01);
+      labeledConnLayer.add(mesh);
+      labeledConnNodeMeshes.push(mesh);
+      labeledConnLabels.push((graph.labels && graph.labels[i]) || ('Parcel ' + (i + 1)));
+    }
+
+    var edgePos = new Float32Array(graph.edges.length * 6);
+    graph.edges.forEach(function (e, i) {
+      var a = pos[e.source], b = pos[e.target];
+      edgePos[i * 6] = a.x; edgePos[i * 6 + 1] = a.y; edgePos[i * 6 + 2] = a.z;
+      edgePos[i * 6 + 3] = b.x; edgePos[i * 6 + 4] = b.y; edgePos[i * 6 + 5] = b.z;
+    });
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ color: 0x1de9b6, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+    labeledConnLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
+  }
+
+  // real Schaefer-2018 label -> a short, readable form: "7Networks_LH_Vis_1" ->
+  // "L Vis 1" (hemisphere + Yeo-7 network + index, dropping the atlas-version
+  // prefix a viewer doesn't need to read at a glance; the full real name still
+  // appears in the tooltip's parenthetical).
+  function formatSchaeferLabel(raw) {
+    var m = /^7Networks_(LH|RH)_([A-Za-z]+)_(.+)$/.exec(raw);
+    if (!m) return raw;
+    return (m[1] === 'LH' ? 'L ' : 'R ') + m[2] + ' ' + m[3];
+  }
+
   // Mapper satellite graph layer
   var mapperLayer = new THREE.Group();
   scene.add(mapperLayer);
@@ -1359,6 +1432,16 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     updateConnectome(parseFloat(fmriSlider.value));
   });
 
+  var labeledConnSelect = document.getElementById('ha-labeled-conn-subject');
+  labeledConnSubjects.forEach(function (s) {
+    var opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.id + ' (' + s.group + ')'; labeledConnSelect.appendChild(opt);
+  });
+  if (labeledConnSubjects.length) buildLabeledConnectomeLayer(labeledConnSubjects[0]);
+  labeledConnSelect.addEventListener('change', function () {
+    var subj = labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; });
+    buildLabeledConnectomeLayer(subj);
+  });
+
   (function () {
     var opt0 = document.createElement('option'); opt0.value = ''; opt0.textContent = 'EEG: cohort average (n=' + VF.n_subjects + ')'; eegSelect.appendChild(opt0);
     eegSpatialSubjects.forEach(function (s) {
@@ -1390,9 +1473,10 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   var toggleSkyrmions = document.getElementById('ha-toggle-skyrmions');
   var toggleMapper = document.getElementById('ha-toggle-mapper');
   var toggleConnectome = document.getElementById('ha-toggle-connectome');
+  var toggleLabeledConnectome = document.getElementById('ha-toggle-labeled-connectome');
 
   function updateBrainSolidity() {
-    var interiorHidden = !toggleMapper.checked && !toggleConnectome.checked;
+    var interiorHidden = !toggleMapper.checked && !toggleConnectome.checked && !toggleLabeledConnectome.checked;
     brainMat.uniforms.solidMode.value = interiorHidden ? 1.0 : 0.0;
     // transparent+depthWrite:false (the correct settings for a see-through surface,
     // so objects behind it still blend and sort correctly) put the brain in Three.js's
@@ -1417,6 +1501,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
   toggleSkyrmions.addEventListener('change', function () { skyrmionLayer.visible = toggleSkyrmions.checked; });
   toggleMapper.addEventListener('change', function () { mapperLayer.visible = toggleMapper.checked; updateBrainSolidity(); });
   toggleConnectome.addEventListener('change', function () { connLayer.visible = toggleConnectome.checked; updateBrainSolidity(); });
+  toggleLabeledConnectome.addEventListener('change', function () { labeledConnLayer.visible = toggleLabeledConnectome.checked; updateBrainSolidity(); });
   updateBrainSolidity();
 
   var playing = false, playDir = 1;
@@ -1426,17 +1511,33 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     playBtn.innerHTML = playing ? '&#10074;&#10074; Pause all' : '&#9654; Play all';
   });
 
-  // ================= Mapper node tooltip (real feature_mean + real membership) =================
+  // ================= node tooltips (real Mapper feature_mean + real labeled-connectome
+  // region names) =================
   // wires up the previously-unused .ha-callout-layer/#ha-callouts DOM hook to show, on
   // hover, real per-node data this page fetches but was never displaying: all 5 real
-  // Mapper features and the real subject/condition composition of that node's members
+  // Mapper features and the real subject/condition composition of that node's members,
+  // plus (for the ds006644 labeled connectome) the real Schaefer-2018 region name and
+  // real degree of whichever parcel is under the pointer.
   var raycaster = new THREE.Raycaster();
   var pointerNdc = new THREE.Vector2();
+  function fmt(v, d) { return v == null ? '&mdash;' : v.toFixed(d == null ? 3 : d); }
   stageEl.addEventListener('pointermove', function (ev) {
     var rect = stageEl.getBoundingClientRect();
     pointerNdc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
     pointerNdc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(pointerNdc, camera);
+    var left = (ev.clientX - rect.left), top = (ev.clientY - rect.top);
+
+    var connHits = labeledConnLayer.visible ? raycaster.intersectObjects(labeledConnNodeMeshes) : [];
+    if (connHits.length) {
+      var cidx = labeledConnNodeMeshes.indexOf(connHits[0].object);
+      var rawLabel = labeledConnLabels[cidx];
+      calloutLayer.innerHTML = '<div class="ha-callout-label" style="left:' + left + 'px; top:' + top + 'px;">' +
+        '<b>' + formatSchaeferLabel(rawLabel) + '</b> &mdash; real Schaefer-2018 region<br>' +
+        '(' + rawLabel + ')</div>';
+      return;
+    }
+
     var hits = raycaster.intersectObjects(mapperNodeMeshes);
     if (!hits.length) { calloutLayer.innerHTML = ''; return; }
     var idx = mapperNodeMeshes.indexOf(hits[0].object);
@@ -1445,8 +1546,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
     var subjCounts = {};
     (n.members || []).forEach(function (m) { subjCounts[m.subject] = (subjCounts[m.subject] || 0) + 1; });
     var subjSummary = Object.keys(subjCounts).map(function (s) { return s + ' &times;' + subjCounts[s]; }).join(', ');
-    function fmt(v, d) { return v == null ? '&mdash;' : v.toFixed(d == null ? 3 : d); }
-    calloutLayer.innerHTML = '<div class="ha-callout-label" style="left:' + (ev.clientX - rect.left) + 'px; top:' + (ev.clientY - rect.top) + 'px;">' +
+    calloutLayer.innerHTML = '<div class="ha-callout-label" style="left:' + left + 'px; top:' + top + 'px;">' +
       '<b>' + n.id + '</b> &mdash; ' + n.size + ' real windows<br>' +
       'mean_plv=' + fmt(fm.mean_plv) + ' beta1=' + fmt(fm.beta1, 0) + ' q_spatial=' + fmt(fm.q_spatial, 0) + '<br>' +
       'landscape_area=' + fmt(fm.integrated_landscape_area) + ' filtration_beta1_max=' + fmt(fm.filtration_beta1_max, 0) + '<br>' +
@@ -1627,6 +1727,11 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {
         title: 'fMRI connectome (violet)',
         live: fmriSubjects.length + ' real ds005917 subjects available, one shown at a time (selectable above)',
         desc: 'Real 100-parcel KMeans centroids and Pearson functional connectivity for one real ketamine-study subject. Node color/size track real degree (how many other parcels a parcel\'s BOLD timecourse correlates with above threshold) -- a measure of functional integration in this dataset, not anatomical connection strength or clinical significance.'
+      },
+      {
+        title: 'Labeled connectome (teal)',
+        live: labeledConnSubjects.length + ' real ds006644 subjects with real Schaefer-2018 region names, one shown at a time (selectable above)',
+        desc: 'Real Schaefer-100 atlas parcels and Pearson functional connectivity for one real DMT/harmine-meditation-study subject; hover a node for its real anatomical region name (e.g. "L Vis 1" = left-hemisphere visual network, parcel 1). Unlike the violet ds005917 connectome, this atlas correspondence is scientifically valid here because ds006644\'s BOLD is already spatially normalized to the same MNI template family the atlas uses.'
       }
     ];
     el.innerHTML = cards.map(function (c) {

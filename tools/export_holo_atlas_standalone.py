@@ -53,25 +53,26 @@ async function boot() {
       fetch('/fmri-connectome/data').then(function (r) { return r.json(); }),
       fetch('/mapper-graph/data').then(function (r) { return r.json(); }),
       fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); }),
-      fetch('/command-center/visualization').then(function (r) { return r.json(); })
+      fetch('/command-center/visualization').then(function (r) { return r.json(); }),
+      fetch('/fmri-connectome/data?dataset=ds006644').then(function (r) { return r.json(); })
     ]);
   } catch (err) {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load combined data: ' + err + '</div>');
     return;
   }
-  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4];
+  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4], fcLabeled = results[5];
   if (vf.status !== 'available') {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
     return;
   }
-  run(vf, fc, mg, brainRaw, ccViz);
+  run(vf, fc, mg, brainRaw, ccViz, fcLabeled);
 }
 
-function run(VF, FC, MG, BRAIN_RAW, CC_VIZ) {"""
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {"""
 
 NEW_MODULE_HEAD = """async function boot() {
   var stage = document.getElementById('ha-scene');
-  var THREE, OrbitControls, vf, fc, mg, brainRaw, ccViz;
+  var THREE, OrbitControls, vf, fc, mg, brainRaw, ccViz, fcLabeled;
   try {
     var threeSrc = document.getElementById('three-src').textContent;
     var threeUrl = URL.createObjectURL(new Blob([threeSrc], { type: 'text/javascript' }));
@@ -87,6 +88,7 @@ NEW_MODULE_HEAD = """async function boot() {
     mg = JSON.parse(document.getElementById('mg-json').textContent);
     brainRaw = JSON.parse(document.getElementById('brain-json').textContent);
     ccViz = JSON.parse(document.getElementById('cc-viz-json').textContent);
+    fcLabeled = JSON.parse(document.getElementById('fc-labeled-json').textContent);
   } catch (err) {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load embedded data: ' + err + '</div>');
     return;
@@ -95,10 +97,10 @@ NEW_MODULE_HEAD = """async function boot() {
     stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
     return;
   }
-  run(vf, fc, mg, brainRaw, ccViz, THREE, OrbitControls);
+  run(vf, fc, mg, brainRaw, ccViz, fcLabeled, THREE, OrbitControls);
 }
 
-function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, THREE, OrbitControls) {"""
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED, THREE, OrbitControls) {"""
 
 OLD_EYEBROW = (
     '<span><a href="/atlas">TABBED ATLAS</a> &middot; '
@@ -136,6 +138,7 @@ def build_standalone_html(three_dir: Path) -> str:
     fc = build_fmri_connectome_payload()
     mg = build_mapper_graph_payload()
     cc_viz = build_visualization_payload()
+    fc_labeled = build_fmri_connectome_payload(dataset="ds006644")
     if vf.get("status") != "available":
         raise RuntimeError(f"vortex-field payload unavailable: {vf.get('reason')}")
 
@@ -170,6 +173,7 @@ def build_standalone_html(three_dir: Path) -> str:
         '<script type="application/json" id="mg-json">' + json.dumps(mg, separators=(",", ":")) + "</script>\n"
         '<script type="application/json" id="brain-json">' + brain_json + "</script>\n"
         '<script type="application/json" id="cc-viz-json">' + json.dumps(cc_viz, separators=(",", ":")) + "</script>\n"
+        '<script type="application/json" id="fc-labeled-json">' + json.dumps(fc_labeled, separators=(",", ":")) + "</script>\n"
         '<script type="application/octet-stream" id="three-src">' + three_src + "</script>\n"
         '<script type="application/octet-stream" id="controls-src">' + controls_src + "</script>\n"
     )

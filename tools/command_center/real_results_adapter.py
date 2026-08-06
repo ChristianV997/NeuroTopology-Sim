@@ -470,38 +470,65 @@ def build_mapper_graph_payload(root: str | Path | None = None) -> dict[str, Any]
 
 
 DEFAULT_DS005917_ROOT = REPOSITORY_ROOT / "outputs" / "dual_engine" / "ds005917"
+DEFAULT_DS006644_LABELED_ROOT = REPOSITORY_ROOT / "outputs" / "dual_engine" / "ds006644_labeled"
 
 
 def build_fmri_connectome_payload(dataset: str = "ds005917", root: str | Path | None = None) -> dict[str, Any]:
-    """Real ds005917 ketamine fMRI connectome graph for `/fmri-connectome`.
+    """Real fMRI connectome graph for `/fmri-connectome`.
 
-    Precomputed by `tools/export_fmri_connectome_for_command_center.py` (needs numpy,
-    available in the root environment, not this process). Read here as plain JSON --
-    same two-environment constraint as `build_vortex_field_payload` and
-    `build_mapper_graph_payload`. `dataset` is accepted (not yet used) so a future
-    dataset sharing this payload shape (e.g. ds006644) can reuse the same route.
+    `dataset="ds005917"` (default): real ketamine drug-vs-placebo connectome, real
+    Pearson connectivity, but anonymous synthetic (KMeans-coordinate) parcels --
+    ds005917 ships raw BOLD with no spatial normalization, so no real anatomical
+    atlas can be validly attached (see `tools/stream_process_ds005917.py`'s
+    docstring). Precomputed by `tools/export_fmri_connectome_for_command_center.py`.
+
+    `dataset="ds006644"`: real DMT/harmine-vs-placebo connectome with REAL Schaefer-
+    2018 atlas region names -- valid here because ds006644 uses fMRIPrep's
+    spatially-normalized, AROMA-denoised BOLD (same template family as the atlas).
+    One real session per subject (no drug/placebo morph pair; ds006644's group is
+    between-subject). Precomputed by
+    `tools/export_ds006644_connectome_for_command_center.py`.
+
+    Both are read here as plain JSON -- same two-environment constraint as
+    `build_vortex_field_payload` and `build_mapper_graph_payload` (this process
+    has no numpy of its own).
     """
-    if dataset != "ds005917":
+    if dataset == "ds005917":
+        cohort_dir = Path(root) if root is not None else DEFAULT_DS005917_ROOT
+        payload_path = cohort_dir / "fmri_connectome.json"
+        missing_reason = (
+            f"No precomputed fMRI connectome payload at {payload_path}. Run "
+            "tools/stream_process_ds005917.py --save-graph-structure ... then "
+            "tools/export_fmri_connectome_for_command_center.py first."
+        )
+        source = (
+            "tools/stream_process_ds005917.py --save-graph-structure "
+            "+ tools/export_fmri_connectome_for_command_center.py"
+        )
+    elif dataset == "ds006644":
+        cohort_dir = Path(root) if root is not None else DEFAULT_DS006644_LABELED_ROOT
+        payload_path = cohort_dir / "fmri_connectome_labeled.json"
+        missing_reason = (
+            f"No precomputed labeled fMRI connectome payload at {payload_path}. Run "
+            "tools/stream_process_ds006644.py --save-graph-structure ... then "
+            "tools/export_ds006644_connectome_for_command_center.py first."
+        )
+        source = (
+            "tools/stream_process_ds006644.py --save-graph-structure "
+            "+ tools/export_ds006644_connectome_for_command_center.py"
+        )
+    else:
         return {"status": "unavailable", "reason": f"No connectome payload builder for dataset={dataset!r} yet."}
-    cohort_dir = Path(root) if root is not None else DEFAULT_DS005917_ROOT
-    payload_path = cohort_dir / "fmri_connectome.json"
+
     if not payload_path.exists():
-        return {
-            "status": "unavailable",
-            "reason": f"No precomputed fMRI connectome payload at {payload_path}. Run "
-                      "tools/stream_process_ds005917.py --save-graph-structure ... then "
-                      "tools/export_fmri_connectome_for_command_center.py first.",
-        }
+        return {"status": "unavailable", "reason": missing_reason}
     try:
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {"status": "unavailable", "reason": f"Could not read {payload_path}: {exc}"}
 
     payload["status"] = "available"
-    payload["source"] = (
-        "tools/stream_process_ds005917.py --save-graph-structure "
-        "+ tools/export_fmri_connectome_for_command_center.py"
-    )
+    payload["source"] = source
     return payload
 
 
