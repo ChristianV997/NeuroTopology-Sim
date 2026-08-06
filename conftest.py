@@ -11,7 +11,12 @@ from pathlib import Path
 # when pytest is invoked from any working directory.
 sys.path.insert(0, str(Path(__file__).parent))
 _repo_root = Path(__file__).parent
-os.environ["PATH"] = str(_repo_root) + os.pathsep + os.environ.get("PATH", "")
+if os.name == "nt":
+    # Lets `tools.make_compat` be found as `make` on Windows (see
+    # _rewrite_windows_make below). Unnecessary elsewhere, and prepending the
+    # repo root to PATH on every platform risks a repo-root file silently
+    # shadowing a same-named system executable in subprocess calls.
+    os.environ["PATH"] = str(_repo_root) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _rewrite_windows_make(args):
