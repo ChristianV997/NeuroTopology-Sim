@@ -14,6 +14,7 @@ from tools.stream_pitnn_cohort_ds005620 import (
     _condition_summary,
     _eeg_prefix_bytes,
     _plv_matrix,
+    extract_waveform_snippet,
     h1_cycle_channel_locations,
     list_recording_keys,
     spatial_defect_snapshot,
@@ -335,3 +336,44 @@ def test_zone_band_power_too_short_signal_returns_none() -> None:
     sfreq = 250.0
     data = np.random.default_rng(0).standard_normal((3, 1))
     assert zone_band_power(data, sfreq, ["Fz"]) is None
+
+
+def test_extract_waveform_snippet_prefers_fz_cz_pz_oz() -> None:
+    sfreq = 500.0
+    data = np.random.default_rng(0).standard_normal((15000, 6))
+    ch_names = ["Fp1", "Fz", "Cz", "Pz", "Oz", "T7"]
+    out = extract_waveform_snippet(data, sfreq, ch_names)
+    assert out is not None
+    assert out["channels"] == ["Fz", "Cz", "Pz", "Oz"]
+    assert len(out["samples"]) == 4
+    assert out["sfreq"] == pytest.approx(125.0)
+    # ~4s at 125Hz
+    assert 490 <= len(out["samples"][0]) <= 510
+
+
+def test_extract_waveform_snippet_falls_back_to_zone_when_no_midline_names() -> None:
+    sfreq = 500.0
+    data = np.random.default_rng(0).standard_normal((15000, 4))
+    ch_names = ["F3", "C3", "P3", "O1"]  # real 10-20 names, none of the preferred midline set
+    out = extract_waveform_snippet(data, sfreq, ch_names)
+    assert out is not None
+    assert set(out["channels"]) == {"F3", "C3", "P3", "O1"}
+
+
+def test_extract_waveform_snippet_no_known_zone_returns_none() -> None:
+    sfreq = 500.0
+    data = np.random.default_rng(0).standard_normal((15000, 2))
+    assert extract_waveform_snippet(data, sfreq, ["EOG1", "EMG1"]) is None
+
+
+def test_extract_waveform_snippet_takes_middle_segment_real_values() -> None:
+    """The snippet must be a real slice of the input, not fabricated -- verify by
+    planting a distinctive marker value only in the middle third of one channel."""
+    sfreq = 500.0
+    n = 15000
+    data = np.zeros((n, 1))
+    marker_start, marker_end = n // 3, 2 * n // 3
+    data[marker_start:marker_end, 0] = 7.0
+    out = extract_waveform_snippet(data, sfreq, ["Fz"], duration_s=1.0, target_rate_hz=500.0)
+    assert out is not None
+    assert all(v == pytest.approx(7.0) for v in out["samples"][0])

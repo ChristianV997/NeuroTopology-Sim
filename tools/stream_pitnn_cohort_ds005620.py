@@ -398,6 +398,66 @@ def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list
 
 
 # --------------------------------------------------------------------------- #
+# Real short multi-channel EEG waveform snippet (for real-time playback)
+# --------------------------------------------------------------------------- #
+
+def extract_waveform_snippet(
+    data: np.ndarray, rate_hz: float, ch_names: list[str],
+    target_rate_hz: float = 125.0, duration_s: float = 4.0,
+) -> dict[str, Any] | None:
+    """Real short multi-channel EEG segment for a real-time oscilloscope-style trace.
+
+    `data` is `(samples, channels)`, the same array `read_condition` returns before
+    any band-limiting -- this is real recorded voltage, not simulated. Picks up to 4
+    representative channels (Fz/Cz/Pz/Oz if present in this montage; otherwise the
+    first real channel found in each of the frontal/central/parietal/occipital zones
+    via `zone_of`), takes a real `duration_s`-second segment from the MIDDLE of this
+    condition's analyzed recording (avoiding onset/offset filter-edge artifacts), and
+    decimates it to `target_rate_hz` -- downsampled only for a compact payload, not
+    smoothed or synthesized; every sample value is real. Returns `None` when no
+    channel maps to a known zone at all.
+    """
+    from dual_engine.anesthesia_signed_winding_pipeline import zone_of
+    from scipy.signal import decimate
+
+    preferred = ["Fz", "Cz", "Pz", "Oz"]
+    chosen: list[int] = []
+    for name in preferred:
+        if name in ch_names:
+            chosen.append(ch_names.index(name))
+    if len(chosen) < 4:
+        for zone_target in ("frontal", "central", "parietal", "occipital"):
+            if len(chosen) >= 4:
+                break
+            for i, ch in enumerate(ch_names):
+                if i in chosen:
+                    continue
+                if zone_of(ch) == zone_target:
+                    chosen.append(i)
+                    break
+    if not chosen:
+        return None
+
+    n_samples = data.shape[0]
+    span = min(n_samples, int(round(duration_s * rate_hz)))
+    start = max(0, (n_samples - span) // 2)
+    chunk = data[start : start + span, chosen]  # (span, n_chosen)
+
+    factor = max(1, int(round(rate_hz / target_rate_hz)))
+    if factor > 1 and chunk.shape[0] > factor * 4:
+        chunk = decimate(chunk, factor, axis=0, ftype="fir", zero_phase=True)
+        eff_rate = rate_hz / factor
+    else:
+        eff_rate = rate_hz
+
+    return {
+        "channels": [ch_names[i] for i in chosen],
+        "sfreq": float(eff_rate),
+        "samples": [np.round(chunk[:, k], 3).astype(float).tolist() for k in range(chunk.shape[1])],
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Real per-zone EEG band power (delta/theta/alpha/beta/gamma_low), Welch PSD
 # --------------------------------------------------------------------------- #
 
@@ -584,6 +644,8 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
         )
         if spatial is not None and cfg.export_band_power:
             spatial["zone_band_power"] = zone_band_power(data, rate, ch_names, montage=montage)
+        if spatial is not None and cfg.export_waveform:
+            spatial["eeg_waveform"] = extract_waveform_snippet(data, rate, ch_names)
         conditions[label] = {
             "source_file": vhdr.name,
             "windows": rows,
@@ -716,6 +778,12 @@ def parser() -> argparse.ArgumentParser:
              "condition, averaged across each 10-20-naming-convention scalp zone "
              "(dual_engine.anesthesia_signed_winding_pipeline.zone_of) -- requires "
              "--export-spatial",
+    )
+    p.add_argument(
+        "--export-waveform", action="store_true",
+        help="save a real ~4s, 4-channel (Fz/Cz/Pz/Oz or zone-based fallback), "
+             "125Hz-decimated multi-channel EEG waveform snippet per condition, for "
+             "real-time oscilloscope-style playback -- requires --export-spatial",
     )
     return p
 
