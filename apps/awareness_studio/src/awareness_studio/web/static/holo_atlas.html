@@ -1668,6 +1668,25 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
   datasetSelect.addEventListener('change', function () { switchDataset(datasetSelect.value); });
   switchDataset('ds005620');
 
+  window.__ha_debug = {
+    getState: function () {
+      return {
+        currentDataset: currentDataset,
+        heatmapChecked: toggleHeatmap.checked,
+        connChecked: toggleConnectome.checked,
+        labeledConnChecked: toggleLabeledConnectome.checked,
+        skyrmionsChecked: toggleSkyrmions.checked,
+        mapperChecked: toggleMapper.checked,
+        betti1Checked: toggleBetti1.checked,
+        h1LoopsChecked: toggleH1Loops.checked,
+        waveformState: waveformState,
+        mapperHighlightSubject: mapperHighlightSubject,
+        statsHtmlLen: document.getElementById('ha-stats').innerHTML.length,
+      };
+    },
+    switchDataset: switchDataset,
+  };
+
   var playing = false, playDir = 1;
   playBtn.addEventListener('click', function () {
     playing = !playing;
