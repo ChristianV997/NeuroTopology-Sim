@@ -106,19 +106,19 @@
 <div class="ha-root">
   <div class="ha-wrap">
     <div class="ha-eyebrow">
-      <span>HOLO-ATLAS &middot; ds005620 EEG &middot; ds005917 fMRI &middot; MAPPER COHORT GRAPH &middot; ONE SCENE</span>
+      <span>HOLO-ATLAS &middot; ONE DATASET, ONE SUBJECT AT A TIME</span>
       <span><a href="/atlas">TABBED ATLAS</a> &middot; <a href="/command-center">COMMAND CENTRE</a></span>
     </div>
-    <h1>One brain, every real signal, one animation</h1>
+    <h1>One dataset, one subject, their own real change</h1>
     <p class="ha-sub">
-      A single semi-transparent volumetric scene combining every real visualization this repository
-      produces: the <b>EEG phase-vortex field</b> draped on the cortex with skyrmion-style vortex
-      cores and real Betti-1 loop rings, the <b>ketamine fMRI connectome</b> as a real, weighted
-      node-edge structure fit inside the cortical volume, and the <b>Mapper cohort-structure
-      network</b> orbiting alongside as a satellite graph. Every surface uses one continuous
-      low&rarr;high energy spectrum (deep blue &rarr; cyan &rarr; green &rarr; yellow &rarr; red) so
-      activity intensity reads identically across all three real datasets. Press <b>Play all</b> to
-      watch every dataset animate through its own real recorded states at once.
+      Pick a real dataset above, then a real subject within it. Only that dataset's own real
+      layers are shown -- EEG datasets (ds005620) show the cortex heatmap, Betti-1 loops, H1
+      loops, skyrmion-style phase-vortex field, this subject's real EEG waveform, and their real
+      windows highlighted within the Mapper cohort structure; fMRI datasets (ds005917, ds006644)
+      show that subject's real functional connectome instead. Where the dataset records a real
+      two-condition change for this subject (e.g. awake&harr;sedated, drug&harr;placebo), press
+      <b>Play</b> to watch that subject's own real recorded transition; single-session datasets
+      have no transition to animate and show that subject's one real session instead.
     </p>
     <div class="ha-disclosure">
       <b>What is real vs. illustrative placement</b> &mdash; read before interpreting node positions:
@@ -126,7 +126,7 @@
         <li><b>EEG scalp mesh + cortex heat:</b> real ds005620 electrode positions, triangulation, winding numbers, and phase, spherically interpolated onto FreeSurfer's real <code>fsaverage5</code> template surface (a standard group-average anatomy, not this cohort's own scan).</li>
         <li><b>Interior connectome:</b> one real ds005917 subject's real 100-parcel KMeans centroids (native in-brain voxel space, so their <i>relative</i> geometry is real brain-shaped structure) and real Pearson connectivity, uniformly rescaled to fit inside this <code>fsaverage5</code> mesh. This is an illustrative fit, <b>not</b> a co-registration &mdash; a different subject, different modality, different scanner space than the EEG cortex above.</li>
         <li><b>Mapper satellite graph:</b> real KeplerMapper nodes/edges over real per-window cohort features; its 3D layout is a force-directed spring simulation computed for display only &mdash; Mapper nodes carry no spatial/anatomical coordinate at all.</li>
-        <li><b>Combined animation:</b> the EEG awake&harr;sedated and fMRI drug&harr;placebo timelines are two independent real experiments on different subjects, driven together here for one continuous visual narrative &mdash; not a claim they were recorded simultaneously.</li>
+        <li><b>One dataset at a time:</b> the EEG awake&harr;sedated (ds005620) and fMRI drug&harr;placebo (ds005917) transitions are two independent real experiments on different subjects; the dataset selector above shows only one at a time so neither is ever implied to be simultaneous with, or otherwise related to, the other.</li>
         <li><b>Per-subject EEG swap:</b> the EEG selector's real subjects are one individual's own real signed-winding/phase snapshot (same channel order and triangulation as the cohort average, verified). Color/size normalization stays fixed from the cohort so subjects stay visually comparable; no per-subject spatial clustering was computed, so the "clusters=" readout still reflects the real cohort-level value.</li>
         <li><b>H1 loops:</b> real GUDHI cubical persistence on the selected subject's real last-window PLV matrix. Each line connects the two real electrode positions of one persistent H1 feature's <i>birth cell</i> (the exact channel pair GUDHI's <code>cofaces_of_persistence_pairs</code> reports) &mdash; this is the real location where that feature is born in the PLV filtration, not a full traced topological cycle (no cycle-representative extraction exists in this repo's GUDHI usage), and not shown for the cohort-average view, which has no per-subject PLV matrix to compute from.</li>
         <li><b>Labeled connectome (teal):</b> real ds006644 subjects, real Schaefer-2018 atlas parcel centroids and connectivity, with real anatomical region names (hover a node) &mdash; unlike the violet ds005917 connectome above, this correspondence <i>is</i> scientifically valid: ds006644 uses fMRIPrep's spatially-normalized, AROMA-denoised BOLD in the same MNI template family as the atlas, whereas ds005917 ships raw, unregistered BOLD (no FSL/ANTs available in this environment to normalize it), so its parcels stay honestly anonymous rather than mislabeled. One real session per subject here, not a two-condition morph.</li>
@@ -134,25 +134,35 @@
     </div>
 
     <div class="ha-controls">
-      <div class="ha-ctl-group">EEG <input id="ha-eeg-slider" type="range" min="0" max="1" step="0.005" value="0"> sedated</div>
-      <select id="ha-eeg-subject" class="ha-select" title="Real per-subject EEG spatial swap (ds005620)"></select>
-      <div class="ha-ctl-group">fMRI <input id="ha-fmri-slider" type="range" min="0" max="1" step="0.005" value="0"> placebo</div>
-      <select id="ha-fmri-subject" class="ha-select"></select>
-      <select id="ha-labeled-conn-subject" class="ha-select" title="Real ds006644 subject with real Schaefer atlas region names"></select>
-      <button id="ha-play" class="ha-btn" type="button">&#9654; Play all</button>
+      <div class="ha-ctl-group"><b style="color:var(--ink);">Dataset</b>
+        <select id="ha-dataset-select" class="ha-select">
+          <option value="ds005620">ds005620 &mdash; Propofol EEG (awake &harr; sedated)</option>
+          <option value="ds005917">ds005917 &mdash; Ketamine fMRI connectome (drug &harr; placebo)</option>
+          <option value="ds006644">ds006644 &mdash; DMT/harmine fMRI connectome, real region names (single session)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ha-controls">
+      <div class="ha-ctl-group" data-ds="ds005620">EEG <input id="ha-eeg-slider" type="range" min="0" max="1" step="0.005" value="0"> sedated</div>
+      <select id="ha-eeg-subject" class="ha-select" data-ds="ds005620" title="Real per-subject EEG spatial swap (ds005620)"></select>
+      <div class="ha-ctl-group" data-ds="ds005917">fMRI <input id="ha-fmri-slider" type="range" min="0" max="1" step="0.005" value="0"> placebo</div>
+      <select id="ha-fmri-subject" class="ha-select" data-ds="ds005917"></select>
+      <select id="ha-labeled-conn-subject" class="ha-select" data-ds="ds006644" title="Real ds006644 subject with real Schaefer atlas region names"></select>
+      <button id="ha-play" class="ha-btn" type="button" data-ds="ds005620,ds005917">&#9654; Play</button>
       <button id="ha-reset-cam" class="ha-btn" type="button" style="border-color:var(--ring);color:var(--ink-2);background:transparent;">Reset view</button>
       <span class="ha-readout" id="ha-readout"></span>
     </div>
 
     <div class="ha-controls" id="ha-layer-toggles">
       <span class="ha-layer-toggles-label">Layers</span>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-heatmap" checked> EEG heatmap</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-betti1" checked> Betti-1 loops</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-h1loops" checked> H1 loops</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-skyrmions" checked> Skyrmions</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-mapper" checked> Mapper</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-connectome" checked> Connectome</label>
-      <label class="ha-layer-toggle"><input type="checkbox" id="ha-toggle-labeled-connectome" checked> Labeled connectome (real region names)</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-heatmap" checked> EEG heatmap</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-betti1" checked> Betti-1 loops</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-h1loops" checked> H1 loops</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-skyrmions" checked> Skyrmions</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-mapper" checked> Mapper (this subject's real windows highlighted)</label>
+      <label class="ha-layer-toggle" data-ds="ds005917"><input type="checkbox" id="ha-toggle-connectome" checked> Connectome</label>
+      <label class="ha-layer-toggle" data-ds="ds006644"><input type="checkbox" id="ha-toggle-labeled-connectome" checked> Labeled connectome (real region names)</label>
     </div>
 
     <div class="ha-stage-card">
@@ -176,7 +186,13 @@
 
     <div class="ha-stats" id="ha-stats"></div>
 
-    <div class="ha-panel-row">
+    <div class="ha-section-label" data-ds="ds005620">Real EEG oscillations, this subject, current condition (raw voltage, 4 channels)</div>
+    <div class="ha-chart-card" data-ds="ds005620">
+      <div class="ha-panel-title" id="ha-waveform-title">Pick an EEG subject above to see their real recorded waveform.</div>
+      <canvas id="ha-waveform-chart" width="1280" height="220"></canvas>
+    </div>
+
+    <div class="ha-panel-row" data-ds="ds005620">
       <div class="ha-chart-card">
         <div class="ha-panel-title">Persistence landscape (real H1, layer 0, GUDHI) &mdash; <b>awake</b> vs <b>sedated</b>, cohort average</div>
         <canvas id="ha-landscape-chart" width="640" height="200"></canvas>
@@ -191,11 +207,11 @@
       </div>
     </div>
 
-    <div class="ha-section-label">Real ds005917 drug vs. placebo paired statistics (n=24, per-subject paired t-test + Wilcoxon)</div>
-    <div class="ha-stats" id="ha-fmri-stats"></div>
+    <div class="ha-section-label" data-ds="ds005917">Real ds005917 drug vs. placebo paired statistics (n=24, per-subject paired t-test + Wilcoxon)</div>
+    <div class="ha-stats" id="ha-fmri-stats" data-ds="ds005917"></div>
 
-    <div class="ha-section-label">EEG zone frequency bands (real per-subject Welch PSD, delta&ndash;gamma) &mdash; pick an EEG subject above</div>
-    <div class="ha-zone-grid" id="ha-zone-grid"><div class="ha-zone-empty">Pick an EEG subject above to see their real per-zone band power.</div></div>
+    <div class="ha-section-label" data-ds="ds005620">EEG zone frequency bands (real per-subject Welch PSD, delta&ndash;gamma) &mdash; pick an EEG subject above</div>
+    <div class="ha-zone-grid" id="ha-zone-grid" data-ds="ds005620"><div class="ha-zone-empty">Pick an EEG subject above to see their real per-zone band power.</div></div>
 
     <button class="ha-theory-toggle" type="button" id="ha-theory-toggle">&#9432; Explain this visualization &mdash; theory &amp; interpretation</button>
     <div class="ha-theory-panel" id="ha-theory-panel"></div>
@@ -587,6 +603,84 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
       lines.push('<circle cx="' + sx.toFixed(1) + '" cy="' + sy.toFixed(1) + '" r="2.5" fill="' + hexStr + '"/>');
     });
     svg.innerHTML = lines.join('');
+  }
+
+  // ================= real-time EEG waveform trace (real recorded voltage) =================
+  // Reads the SAME per-subject snapshot buildZoneLayer/buildH1LoopLayer read
+  // (`eeg_waveform`, a real ~4s/4-channel/125Hz segment from the middle of this
+  // condition's real analyzed recording -- see
+  // tools.stream_pitnn_cohort_ds005620.extract_waveform_snippet). Drawn as a
+  // scrolling multi-channel oscilloscope trace, looping the real segment and
+  // switching to the other condition's real segment when the EEG slider crosses
+  // the awake/sedated midpoint -- never interpolated/blended between conditions,
+  // since a blended "half-real" waveform would not be a real recorded signal.
+  var WAVEFORM_COLORS = ['#ff6b6b', '#ffd23f', '#2ecc71', '#7ad7ff'];
+  var waveformState = { subjectId: null, condition: null, snap: null };
+  function buildWaveform(subjectId, condition) {
+    waveformState.subjectId = subjectId;
+    waveformState.condition = condition;
+    var titleEl = document.getElementById('ha-waveform-title');
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var wf = snap && snap.eeg_waveform;
+    waveformState.snap = wf || null;
+    if (!wf) {
+      titleEl.textContent = subjectId
+        ? 'No real waveform snippet for this subject/condition.'
+        : 'Pick an EEG subject above to see their real recorded waveform.';
+      var ctx0 = document.getElementById('ha-waveform-chart').getContext('2d');
+      ctx0.clearRect(0, 0, 1280, 220);
+      return;
+    }
+    titleEl.innerHTML = 'Real EEG voltage &mdash; <b>' + subjectId + '</b>, <b>' + condition +
+      '</b> &mdash; channels ' + wf.channels.join(', ') + ' at ' + wf.sfreq + 'Hz (real ~4s segment, looped)';
+  }
+  function drawWaveformTrace(clock) {
+    var canvas = document.getElementById('ha-waveform-chart');
+    if (!canvas.offsetParent) return; // dataset panel hidden -- skip the draw cost
+    var wf = waveformState.snap;
+    if (!wf) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width, H = canvas.height, pad = 8;
+    var nCh = wf.channels.length;
+    var rowH = (H - pad * 2) / nCh;
+    ctx.clearRect(0, 0, W, H);
+
+    var duration = wf.samples[0].length / wf.sfreq;
+    var scrollPx = (clock % duration) / duration * W; // real elapsed-time-driven scroll position
+
+    wf.channels.forEach(function (ch, ci) {
+      var samples = wf.samples[ci];
+      var n = samples.length;
+      var maxAbs = 1e-6;
+      samples.forEach(function (v) { maxAbs = Math.max(maxAbs, Math.abs(v)); });
+      var rowMid = pad + rowH * (ci + 0.5);
+      var rowAmp = rowH * 0.42 / maxAbs;
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.moveTo(0, rowMid); ctx.lineTo(W, rowMid); ctx.stroke();
+
+      ctx.strokeStyle = WAVEFORM_COLORS[ci % WAVEFORM_COLORS.length];
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (var x = 0; x < W; x++) {
+        // real sample index for this pixel, wrapping continuously with real elapsed time
+        var tSec = ((x - scrollPx + W) % W) / W * duration;
+        var idx = Math.min(n - 1, Math.floor(tSec * wf.sfreq));
+        var y = rowMid - samples[idx] * rowAmp;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = WAVEFORM_COLORS[ci % WAVEFORM_COLORS.length];
+      ctx.fillText(ch, 6, pad + rowH * ci + 12);
+    });
+
+    // real-time playhead: a fixed vertical line at the current scroll position
+    var headX = W - 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.moveTo(headX, 0); ctx.lineTo(headX, H); ctx.stroke();
   }
 
   // overall world size -- large enough to comfortably host the cortex heatmap, the
@@ -1198,7 +1292,7 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
   (function buildMapperLayer() {
     var nodeGeo = new THREE.SphereGeometry(0.6, 12, 10);
     mapperNodes.forEach(function (n, i) {
-      var mat = new THREE.MeshStandardMaterial({ color: 0xcf9bff, emissive: 0x7a2fff, emissiveIntensity: 1.0, roughness: 0.25 });
+      var mat = new THREE.MeshStandardMaterial({ color: 0xcf9bff, emissive: 0x7a2fff, emissiveIntensity: 1.0, roughness: 0.25, transparent: true, opacity: 1.0 });
       var mesh = new THREE.Mesh(nodeGeo, mat);
       mesh.position.copy(mapperLayout.pos[i]);
       mesh.scale.setScalar(mapperNodeScale(n));
@@ -1217,6 +1311,13 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     mapperLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
   })();
 
+  // real per-node membership: which real cohort windows (subject/condition/window)
+  // fed into each Mapper node, already carried in the payload (n.members). Used to
+  // highlight only the currently-selected subject's own real windows within the
+  // (necessarily cohort-fit) Mapper structure, rather than showing the whole
+  // cohort with no way to tell which nodes are "this subject."
+  var mapperHighlightSubject = null;
+  function setMapperHighlightSubject(subjectId) { mapperHighlightSubject = subjectId || null; }
   function updateMapperGlow(clock) {
     mapperNodes.forEach(function (n, i) {
       var rawEnergy = clamp01((n.feature_mean && n.feature_mean.mean_plv != null) ? n.feature_mean.mean_plv : n.awake_fraction);
@@ -1225,9 +1326,12 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
       var rgb = mapperColor(rawEnergy);
       var mesh = mapperNodeMeshes[i];
       var pulse = 1 + 0.08 * Math.sin(clock * 1.4 + i);
+      var hasSubject = !mapperHighlightSubject ||
+        (n.members || []).some(function (m) { return m.subject === mapperHighlightSubject; });
       mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
       mesh.material.emissive.setRGB(rgb[0] * 0.85, rgb[1] * 0.85, rgb[2] * 0.85);
-      mesh.scale.setScalar(mapperNodeScale(n) * pulse);
+      mesh.material.opacity = hasSubject ? 1.0 : 0.12;
+      mesh.scale.setScalar(mapperNodeScale(n) * pulse * (hasSubject ? 1.0 : 0.7));
     });
     mapperLayer.rotation.y += 0.0015;
   }
@@ -1430,6 +1534,8 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     var subj = fmriSubjects.find(function (s) { return s.id === fmriSelect.value; });
     buildConnectomeLayer(subj);
     updateConnectome(parseFloat(fmriSlider.value));
+    renderStats();
+    renderInterpretation();
   });
 
   var labeledConnSelect = document.getElementById('ha-labeled-conn-subject');
@@ -1440,6 +1546,8 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
   labeledConnSelect.addEventListener('change', function () {
     var subj = labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; });
     buildLabeledConnectomeLayer(subj);
+    renderStats();
+    renderInterpretation();
   });
 
   (function () {
@@ -1447,6 +1555,18 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     eegSpatialSubjects.forEach(function (s) {
       var opt = document.createElement('option'); opt.value = s.subject_id; opt.textContent = 'EEG: ' + s.subject_id; eegSelect.appendChild(opt);
     });
+    // default to one real subject (not the cohort average) so every per-subject
+    // real panel -- waveform, zone bands, H1 loops, Mapper highlight -- shows real
+    // data immediately, matching "always show this one real subject's own data"
+    if (eegSpatialSubjects.length) {
+      eegSelect.value = eegSpatialSubjects[0].subject_id;
+      setEegSubject(eegSelect.value);
+      var initCond = parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated';
+      buildH1LoopLayer(eegSelect.value, initCond);
+      buildZoneLayer(eegSelect.value, initCond);
+      buildWaveform(eegSelect.value, initCond);
+      setMapperHighlightSubject(eegSelect.value);
+    }
   })();
   eegSelect.addEventListener('change', function () {
     setEegSubject(eegSelect.value || null);
@@ -1454,6 +1574,8 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     var cond0 = parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated';
     buildH1LoopLayer(eegSelect.value || null, cond0);
     buildZoneLayer(eegSelect.value || null, cond0);
+    buildWaveform(eegSelect.value || null, cond0);
+    setMapperHighlightSubject(eegSelect.value || null);
     renderStats();
     renderInterpretation();
   });
@@ -1503,6 +1625,48 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
   toggleConnectome.addEventListener('change', function () { connLayer.visible = toggleConnectome.checked; updateBrainSolidity(); });
   toggleLabeledConnectome.addEventListener('change', function () { labeledConnLayer.visible = toggleLabeledConnectome.checked; updateBrainSolidity(); });
   updateBrainSolidity();
+
+  // ================= single-dataset mode =================
+  // The user picks ONE real dataset at a time; every control, layer toggle, and
+  // panel scoped to a different dataset (via data-ds) hides, and only that
+  // dataset's own real layers switch on. This reuses the exact same per-layer
+  // THREE.Group/toggle machinery above -- switching datasets just drives those
+  // same checkboxes programmatically, so nothing about how a layer renders
+  // changes, only which layers are eligible to be visible.
+  var ALL_TOGGLES = [toggleHeatmap, toggleBetti1, toggleH1Loops, toggleSkyrmions, toggleMapper, toggleConnectome, toggleLabeledConnectome];
+  var DATASET_TOGGLES = {
+    ds005620: [toggleHeatmap, toggleBetti1, toggleH1Loops, toggleSkyrmions, toggleMapper],
+    ds005917: [toggleConnectome],
+    ds006644: [toggleLabeledConnectome]
+  };
+  var currentDataset = 'ds005620';
+
+  function applyDatasetDomVisibility() {
+    document.querySelectorAll('[data-ds]').forEach(function (el) {
+      var list = el.getAttribute('data-ds').split(',');
+      el.style.display = list.indexOf(currentDataset) !== -1 ? '' : 'none';
+    });
+  }
+
+  function switchDataset(ds) {
+    currentDataset = ds;
+    var activeToggles = DATASET_TOGGLES[ds] || [];
+    ALL_TOGGLES.forEach(function (t) {
+      var shouldBeOn = activeToggles.indexOf(t) !== -1;
+      if (t.checked !== shouldBeOn) {
+        t.checked = shouldBeOn;
+        t.dispatchEvent(new Event('change'));
+      }
+    });
+    applyDatasetDomVisibility();
+    renderStats();
+    renderInterpretation();
+    frameCamera();
+  }
+
+  var datasetSelect = document.getElementById('ha-dataset-select');
+  datasetSelect.addEventListener('change', function () { switchDataset(datasetSelect.value); });
+  switchDataset('ds005620');
 
   var playing = false, playDir = 1;
   playBtn.addEventListener('click', function () {
@@ -1675,17 +1839,26 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     function card(label, value, sub) {
       cards.push('<div class="ha-stat"><div class="ha-stat-label">' + label + '</div><div class="ha-stat-value">' + value + '</div>' + (sub ? '<div class="ha-stat-sub">' + sub + '</div>' : '') + '</div>');
     }
-    card('EEG cohort', VF.n_subjects, VF.n_channels + ' channels, ' + TRI.length + ' triangles, n=20');
-    if (clAwake) card('EEG Betti-1 clusters (awake)', clAwake.clustering.n_clusters, clAwake.clustering.n_noise + ' noise triangles');
-    if (clSedated) card('EEG Betti-1 clusters (sedated)', clSedated.clustering.n_clusters, clSedated.clustering.n_noise + ' noise triangles');
-    var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
-    if (selSubj) {
-      card('Selected EEG subject', selSubj.subject_id,
-        'real β1 awake=' + (selSubj.conditions.awake ? selSubj.conditions.awake.beta1 : '—') +
-        ', sedated=' + (selSubj.conditions.sedated ? selSubj.conditions.sedated.beta1 : '—'));
+    if (currentDataset === 'ds005620') {
+      card('EEG cohort', VF.n_subjects, VF.n_channels + ' channels, ' + TRI.length + ' triangles, n=20');
+      if (clAwake) card('EEG Betti-1 clusters (awake)', clAwake.clustering.n_clusters, clAwake.clustering.n_noise + ' noise triangles');
+      if (clSedated) card('EEG Betti-1 clusters (sedated)', clSedated.clustering.n_clusters, clSedated.clustering.n_noise + ' noise triangles');
+      var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
+      if (selSubj) {
+        card('Selected EEG subject', selSubj.subject_id,
+          'real β1 awake=' + (selSubj.conditions.awake ? selSubj.conditions.awake.beta1 : '—') +
+          ', sedated=' + (selSubj.conditions.sedated ? selSubj.conditions.sedated.beta1 : '—'));
+      }
+      card('Mapper windows', MG.n_windows || 0, mapperNodes.length + ' nodes, ' + mapperEdges.length + ' edges');
+    } else if (currentDataset === 'ds005917') {
+      card('fMRI subjects w/ connectome', fmriSubjects.length + ' / ' + (FC.n_subjects || 0), 'ds005917, 100 real parcels each');
+      var fmriSubj = fmriSelect.value ? fmriSubjects.find(function (s) { return s.id === fmriSelect.value; }) : null;
+      if (fmriSubj) card('Selected fMRI subject', fmriSubj.id, 'drug/placebo real graph structure loaded');
+    } else if (currentDataset === 'ds006644') {
+      card('Labeled fMRI subjects', labeledConnSubjects.length, 'ds006644, real Schaefer-100 region names');
+      var labSubj = labeledConnSelect.value ? labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; }) : null;
+      if (labSubj) card('Selected subject', labSubj.id, labSubj.group + ' group, single real session');
     }
-    card('fMRI subjects w/ connectome', fmriSubjects.length + ' / ' + (FC.n_subjects || 0), 'ds005917, 100 real parcels each');
-    card('Mapper windows', MG.n_windows || 0, mapperNodes.length + ' nodes, ' + mapperEdges.length + ' edges');
     statsEl.innerHTML = cards.join('');
   }
 
@@ -1702,39 +1875,51 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
     var currentCl = parseFloat(eegSlider.value) < 0.5 ? clAwake : clSedated;
     var h1Count = h1LoopState.subjectId ? (h1LoopLayer.children.length / 3) : 0;
+    var subjBetaLine = '';
+    if (selSubj) {
+      var awB = selSubj.conditions.awake ? selSubj.conditions.awake.beta1 : null;
+      var sdB = selSubj.conditions.sedated ? selSubj.conditions.sedated.beta1 : null;
+      if (awB != null && sdB != null) {
+        subjBetaLine = ' Real beta1 for ' + selSubj.subject_id + ': awake=' + awB + ', sedated=' + sdB +
+          (awB !== sdB ? ' (a real ' + (sdB > awB ? 'increase' : 'decrease') + ' in this subject\'s own recording).' : ' (no change in this subject\'s own recording).');
+      }
+    }
+    var fmriSubj = fmriSelect.value ? fmriSubjects.find(function (s) { return s.id === fmriSelect.value; }) : null;
+    var labeledSubj = labeledConnSelect.value ? labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; }) : null;
     var cards = [
       {
-        title: 'Betti-1 loops (yellow rings)',
-        live: (currentCl ? currentCl.clustering.n_clusters + ' real spatial clusters, ' + currentCl.clustering.n_noise + ' noise triangles' : 'no clustering for this cohort run'),
+        ds: 'ds005620', title: 'Betti-1 loops (yellow rings)',
+        live: (currentCl ? currentCl.clustering.n_clusters + ' real spatial clusters, ' + currentCl.clustering.n_noise + ' noise triangles (cohort-level clustering)' + subjBetaLine : 'no clustering for this cohort run'),
         desc: 'Each ring marks one triangle of the montage whose local phase-defect (signed winding) exceeds threshold; DBSCAN groups active triangles into spatial clusters. More/smaller clusters read as a more spatially fragmented defect pattern; fewer/larger clusters read as a more spatially coherent one -- a description of pattern shape, not a measurement of consciousness.'
       },
       {
-        title: 'H1 loops (green lines)',
-        live: (selSubj ? Math.round(h1Count) + ' of the top-' + H1_LOOP_TOP_N + ' most-persistent real H1 features shown' : 'pick an EEG subject above'),
+        ds: 'ds005620', title: 'H1 loops (green lines)',
+        live: (selSubj ? Math.round(h1Count) + ' of the top-' + H1_LOOP_TOP_N + ' most-persistent real H1 features shown for ' + selSubj.subject_id : 'pick an EEG subject above'),
         desc: 'Real GUDHI persistent-homology H1 features from the selected subject\'s last-window phase-locking-value (PLV) matrix, ranked by persistence (death − birth) and capped to the most persistent per condition. Higher persistence means that channel pair\'s shared phase-locking structure survives across a wider range of the PLV filtration -- a more statistically robust functional relationship in this analysis, not a specific anatomical circuit.'
       },
       {
-        title: 'Skyrmion-style phase-vortex field (arrows)',
-        live: GEOM.activeTri.length + ' real triangles carry a local phase-vortex arrow field',
+        ds: 'ds005620', title: 'Skyrmion-style phase-vortex field (arrows)',
+        live: GEOM.activeTri.length + ' real triangles carry a local phase-vortex arrow field' + (selSubj ? ' for ' + selSubj.subject_id : ''),
         desc: 'Every real electrode\'s local phase gradient, drawn as a dense arrow field styled after skyrmion-texture visualizations from condensed-matter physics. Convergent or divergent arrow patterns mark the same real phase singularities driving the Betti-1 rings above -- a visual, not a claim that this EEG data contains literal magnetic skyrmions.'
       },
       {
-        title: 'Mapper cohort-structure graph',
-        live: mapperNodes.length + ' real nodes, ' + mapperEdges.length + ' real edges over ' + (MG.n_windows || 0) + ' real cohort windows',
-        desc: 'Each node is a KeplerMapper cluster of real per-window feature vectors (mean PLV, persistence-landscape area, beta1, spatial charge); edges connect clusters that share real windows. Node color/size track real per-node mean PLV or awake-fraction. This summarizes how the cohort\'s real recorded windows group by similarity -- a topological summary of the data, not an anatomical map (Mapper nodes carry no spatial coordinate).'
+        ds: 'ds005620', title: 'Mapper cohort-structure graph',
+        live: mapperNodes.length + ' real nodes, ' + mapperEdges.length + ' real edges over ' + (MG.n_windows || 0) + ' real cohort windows' +
+          (selSubj ? ' -- ' + selSubj.subject_id + '\'s own real windows are highlighted (dimmed nodes belong to other subjects)' : ''),
+        desc: 'Each node is a KeplerMapper cluster of real per-window feature vectors (mean PLV, persistence-landscape area, beta1, spatial charge); edges connect clusters that share real windows. Node color/size track real per-node mean PLV or awake-fraction. This is necessarily a cohort-fit structure (the clustering itself is computed across all subjects), but the selected subject\'s own real window memberships are highlighted -- Mapper nodes carry no spatial/anatomical coordinate.'
       },
       {
-        title: 'fMRI connectome (violet)',
-        live: fmriSubjects.length + ' real ds005917 subjects available, one shown at a time (selectable above)',
+        ds: 'ds005917', title: 'fMRI connectome (violet)',
+        live: fmriSubj ? 'Showing ' + fmriSubj.id + ' -- ' + fmriSubjects.length + ' real ds005917 subjects available' : fmriSubjects.length + ' real ds005917 subjects available, one shown at a time',
         desc: 'Real 100-parcel KMeans centroids and Pearson functional connectivity for one real ketamine-study subject. Node color/size track real degree (how many other parcels a parcel\'s BOLD timecourse correlates with above threshold) -- a measure of functional integration in this dataset, not anatomical connection strength or clinical significance.'
       },
       {
-        title: 'Labeled connectome (teal)',
-        live: labeledConnSubjects.length + ' real ds006644 subjects with real Schaefer-2018 region names, one shown at a time (selectable above)',
+        ds: 'ds006644', title: 'Labeled connectome (teal)',
+        live: labeledSubj ? 'Showing ' + labeledSubj.id + ' (' + labeledSubj.group + ' group) -- ' + labeledConnSubjects.length + ' real ds006644 subjects available' : labeledConnSubjects.length + ' real ds006644 subjects with real Schaefer-2018 region names',
         desc: 'Real Schaefer-100 atlas parcels and Pearson functional connectivity for one real DMT/harmine-meditation-study subject; hover a node for its real anatomical region name (e.g. "L Vis 1" = left-hemisphere visual network, parcel 1). Unlike the violet ds005917 connectome, this atlas correspondence is scientifically valid here because ds006644\'s BOLD is already spatially normalized to the same MNI template family the atlas uses.'
       }
     ];
-    el.innerHTML = cards.map(function (c) {
+    el.innerHTML = cards.filter(function (c) { return c.ds === currentDataset; }).map(function (c) {
       return '<div class="ha-interp-card"><div class="ha-interp-card-title">' + c.title + '</div>' +
         '<div class="ha-interp-card-live">' + c.live + '</div>' +
         '<div class="ha-interp-card-desc">' + c.desc + '</div></div>';
@@ -1797,7 +1982,9 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     if (currentCondition !== h1LoopState.condition && h1LoopState.subjectId === (eegSelect.value || null)) {
       buildH1LoopLayer(eegSelect.value || null, currentCondition);
       buildZoneLayer(eegSelect.value || null, currentCondition);
+      buildWaveform(eegSelect.value || null, currentCondition);
     }
+    drawWaveformTrace(clock);
     updateConnectome(fmriT);
     updateMapperGlow(clock);
     fresnelMesh.rotation.copy(brainMesh.rotation);
@@ -1805,9 +1992,14 @@ function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
     renderer.render(scene, camera);
     updateZonePointers();
 
-    readout.innerHTML = 'EEG t=<b>' + eegT.toFixed(2) + '</b> &Sigma;|winding|=<b>' + res.qabs.toFixed(2) +
-      '</b> loops=<b>' + res.activeCount + '</b> clusters=<b>' + res.nClusters +
-      '</b> &middot; fMRI t=<b>' + fmriT.toFixed(2) + '</b>';
+    if (currentDataset === 'ds005620') {
+      readout.innerHTML = 'condition=<b>' + currentCondition + '</b> (t=' + eegT.toFixed(2) + ') &Sigma;|winding|=<b>' + res.qabs.toFixed(2) +
+        '</b> loops=<b>' + res.activeCount + '</b> clusters=<b>' + res.nClusters + '</b>';
+    } else if (currentDataset === 'ds005917') {
+      readout.innerHTML = 'condition=<b>' + (fmriT < 0.5 ? 'drug' : 'placebo') + '</b> (t=' + fmriT.toFixed(2) + ')';
+    } else {
+      readout.innerHTML = 'single real session &mdash; no condition transition for this dataset';
+    }
 
     requestAnimationFrame(render);
   }
