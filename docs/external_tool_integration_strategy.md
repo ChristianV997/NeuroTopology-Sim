@@ -77,7 +77,7 @@ declared dependencies** of this repository (confirmed against
 | `ripser-py` / `persim` | Yes | `analysis/itct/`, PLV-graph persistence code |
 | `networkx` | Yes | `analysis/connectivity_topology.py` |
 | `keplermapper` | Yes | `tools/export_mapper_graph_for_vortex_field.py` |
-| `eegdash` | Yes (eegdash 0.8.4) | declared, but **entirely unused** by any pipeline today |
+| `eegdash` | Yes (eegdash 0.8.4) | `dataset_importers.eegdash_importer` (metadata-only best-effort path; see `docs/dataset_candidate_importers.md`) |
 
 The rest of the P0 tier (`pybids`, `bids-validator`, `fmriprep`, `moabb`)
 are not yet declared dependencies but are permissive-licensed and would
@@ -281,6 +281,26 @@ registered under `tool_id="nilearn"`, mirroring how the first adapter chose
 explicit Nilearn-derived feature tables/connectivity summaries -- never raw
 BOLD, never a full Nilearn model fit.
 
+## Third package: dataset candidate scouting (not an adapter)
+
+`dataset_importers/` (see `docs/dataset_candidate_importers.md`) is
+deliberately **not a third adapter**. Both `moabb`/`eegdash` registry
+entries already carried `integration_mode="metadata_import"` and a
+`planned_adapter` string pointing at exactly this milestone before it was
+built. Where the two adapters above convert already-derived feature
+artifacts into `TransitionRecordV1`/`EvidenceBundleV1`/`EvidenceReportV1`
+output, this package sits one layer upstream: it scores public MOABB/
+EEGDash catalog metadata into `DatasetCandidateRecordV1` scouting records,
+never anything evidence-shaped, and its `AdapterContractV1` entries'
+`output_targets` say so structurally (`external_metadata_only`,
+`DatasetRecordV1`, `ArtifactRecordV1` only -- no `TransitionRecordV1` and
+above). `eegdash` (already declared in `requirements.txt`, verified
+importable this session as `eegdash==0.8.4`) was chosen for a real,
+network-free installed-package introspection path; `moabb` (not currently
+declared as a dependency) uses a fixture-only path by default, with
+best-effort installed-package introspection when the package happens to be
+available.
+
 ## How this supports productized reports, SaaS, SDK/API, and clinical-research analytics
 
 The chain this registry prepares, without building any of it yet:
@@ -312,7 +332,12 @@ deadline pressure, whether each tool's license is safe to depend on.
 - Two adapters are implemented as of this writing (`adapters.mne_bids`,
   `adapters.fmri_derivatives`); `AdapterContractV1` remains a schema that
   any future adapter must also satisfy, and most registered tools still
-  have no adapter code against them.
+  have no adapter code against them. A third package,
+  `dataset_importers` (MOABB/EEGDash dataset candidate scouting, see
+  `docs/dataset_candidate_importers.md`), also registers two
+  `AdapterContractV1` entries but is not itself an adapter in the same
+  sense -- it never produces `TransitionRecordV1` or anything downstream
+  of it.
 - License data was gathered via each project's own public package-index
   metadata and/or repository license file/badge this session -- treated as
   a strong signal, not a substitute for a dedicated legal review before any
