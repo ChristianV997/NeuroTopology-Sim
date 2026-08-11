@@ -714,11 +714,23 @@ dataset/feature-family records a discovery-vs-confirmation *role* and a
 *contamination status*, and `benchmarks.split_policy` refuses confirmatory
 uses (`final_claim_confirmation`, `cross_dataset_replication_claim`,
 `prospective_prediction_claim`) of a dataset already used for exploration
-or development. `tools/export_ds000245_fmri_transitions.py` has an optional
+or development. `tools/export_ds000245_fmri_transitions.py` and
+`tools/export_ds005620_pitnn_transitions.py` both have an optional
 `--registry`/`registry_path=` argument that, when given, fails closed
 before exporting if the requested use is not permitted; omitting it (the
-default) is byte-identical to this exporter's behavior before that
+default) is byte-identical to each exporter's behavior before that
 milestone. See `docs/benchmark_dataset_registry.md` for the full design.
+
+## Governed evidence bundles (consumer of this schema)
+
+`evidence/` (see `docs/governed_evidence_bundles.md`) orchestrates this
+package's exporters, the registry's use decisions, and (optionally)
+`phase_space/`'s exporter into one `EvidenceBundleV1` manifest per source
+artifact -- linking `transition_record_ids`/`transition_record_paths` to
+the registry decision that authorized them, without duplicating or
+modifying any exporter logic in this package. `evidence.builder.DISPATCH`
+currently covers both real ds005620 feature families (`cohort_summary`,
+`spatial_defect_map`) and both ds000245 parcellation variants.
 
 ## Future consumers
 
