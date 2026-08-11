@@ -202,11 +202,13 @@ substrate is for; none of these descriptions is a commitment to a design:
 - **OpenNeuro/datalad external-CLI planning** -- shelling out to an
   already-installed `datalad`/OpenNeuro CLI as a subprocess, still gated
   by the same disk/license checks.
-- **Derived feature extraction recipes** -- turning a locally acquired
-  BIDS root into the feature tables `adapters.mne_bids`/
-  `adapters.fmri_derivatives` consume; explicitly out of scope for this
-  milestone (mission: "It should not yet run preprocessing or feature
-  extraction").
+- **Derived feature extraction recipes.** Since this milestone,
+  `adapters.mne_bids_feature_recipe` (see `docs/mne_bids_feature_recipe.md`)
+  fills this gap for EEG: a bounded, explicit recipe that turns a local
+  BIDS-like root (or an already-verified `dataset_acquisition` manifest's
+  target_root) into the `derived_features.csv`/`mapping.json` pair
+  `adapters.mne_bids` consumes. An equivalent recipe for
+  `adapters.fmri_derivatives` remains open.
 - **Benchmark-pack generator** -- bundling several acquired/verified
   manifests plus their eventual real transition records into a single
   documented, shippable pack.
