@@ -1,0 +1,75 @@
+{
+  "schema": "RepoDev.Repository.v1",
+  "name": "NeuroTopology-Sim",
+  "root": ".",
+  "source_paths": [
+    "core",
+    "dual_engine",
+    "validation",
+    "sciencer_d",
+    "apps",
+    "scripts",
+    "tools",
+    "unified_pipeline",
+    "research_runtime",
+    "theory_campaign",
+    "tests",
+    "docs"
+  ],
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "tests",
+    "-q"
+  ],
+  "lint_command": [
+    "python",
+    "-m",
+    "governance.validate"
+  ],
+  "security_command": [
+    "python",
+    "tests/test_speculative_boundary.py"
+  ],
+  "allowed_paths": [
+    "core",
+    "dual_engine",
+    "validation",
+    "sciencer_d",
+    "apps",
+    "scripts",
+    "tools",
+    "unified_pipeline",
+    "research_runtime",
+    "theory_campaign",
+    "tests",
+    "docs",
+    "configs",
+    "config",
+    "contracts",
+    "governance"
+  ],
+  "forbidden_paths": [
+    ".env",
+    ".git",
+    "data",
+    "outputs",
+    "artifacts",
+    "runs",
+    "results",
+    "credentials",
+    "secrets",
+    "aws",
+    "deploy"
+  ],
+  "agent_roles": [
+    "planner",
+    "implementer",
+    "tester",
+    "reviewer",
+    "integrator"
+  ],
+  "network_access": false,
+  "pull_request_creation": false
+}

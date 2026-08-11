@@ -37,6 +37,85 @@ class DrudeLorentzBath:
         return noise
 
 
+@dataclass(frozen=True)
+class MultiExponentialMemoryBath:
+    """Finite sum of causal exponential memory channels."""
+
+    amplitudes_s2: tuple[float, ...]
+    memory_times_s: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.amplitudes_s2) != len(self.memory_times_s) or not self.amplitudes_s2:
+            raise ValueError("amplitudes_s2 and memory_times_s must be non-empty and same length")
+        if any((not np.isfinite(a)) or a < 0 for a in self.amplitudes_s2):
+            raise ValueError("amplitudes_s2 must be finite and non-negative")
+        if any((not np.isfinite(t)) or t <= 0 for t in self.memory_times_s):
+            raise ValueError("memory_times_s must be finite and positive")
+
+    def memory_kernel(self, lag_s: np.ndarray | float) -> np.ndarray:
+        lag = np.asarray(lag_s, dtype=float)
+        if not np.all(np.isfinite(lag)):
+            raise ValueError("lag must be finite")
+        kernel = np.zeros_like(lag, dtype=float)
+        for amplitude, memory_time in zip(self.amplitudes_s2, self.memory_times_s):
+            kernel = kernel + amplitude * np.exp(-np.abs(lag) / memory_time)
+        return kernel
+
+
+@dataclass(frozen=True)
+class OscillatoryMemoryBath:
+    """Exponentially damped oscillatory memory kernel."""
+
+    amplitude_s2: float
+    memory_time_s: float
+    angular_frequency_s: float
+
+    def __post_init__(self) -> None:
+        if any((not np.isfinite(value)) for value in (self.amplitude_s2, self.memory_time_s, self.angular_frequency_s)):
+            raise ValueError("bath parameters must be finite")
+        if self.amplitude_s2 < 0 or self.memory_time_s <= 0:
+            raise ValueError("amplitude_s2 must be non-negative and memory_time_s positive")
+
+    def memory_kernel(self, lag_s: np.ndarray | float) -> np.ndarray:
+        lag = np.asarray(lag_s, dtype=float)
+        if not np.all(np.isfinite(lag)):
+            raise ValueError("lag must be finite")
+        return self.amplitude_s2 * np.exp(-np.abs(lag) / self.memory_time_s) * np.cos(self.angular_frequency_s * lag)
+
+
+def integrated_kernel_strength(kernel: np.ndarray, times_s: np.ndarray) -> float:
+    """Return the causal kernel area using trapezoidal integration."""
+    k = np.asarray(kernel, dtype=float)
+    t = np.asarray(times_s, dtype=float)
+    if k.ndim != 1 or t.shape != k.shape or len(k) < 2 or np.any(np.diff(t) <= 0):
+        raise ValueError("kernel and strictly increasing times must align")
+    return float(np.trapezoid(k, t))
+
+
+def integrate_stable_observables(times_s: np.ndarray, decay_rate_s: float, memory_kernel_s2: np.ndarray,
+                                 dephasing_rate_s: float = 0.0) -> dict[str, float]:
+    """Integrate a stable two-observable surrogate: population and coherence retention."""
+    t = np.asarray(times_s, dtype=float)
+    kernel = np.asarray(memory_kernel_s2, dtype=float)
+    if t.ndim != 1 or kernel.shape != t.shape or len(t) < 2 or np.any(np.diff(t) <= 0):
+        raise ValueError("times_s and kernel must align on a strictly increasing grid")
+    if decay_rate_s <= 0 or dephasing_rate_s < 0:
+        raise ValueError("rates must be positive/finite")
+    cumulative = np.zeros_like(t)
+    dt = np.diff(t)
+    cumulative[1:] = np.cumsum(0.5 * (kernel[1:] + kernel[:-1]) * dt)
+    loss_population = decay_rate_s * t - cumulative
+    loss_coherence = (0.5 * decay_rate_s + dephasing_rate_s) * t - 0.5 * cumulative
+    integrated_population = float(np.trapezoid(np.exp(-np.clip(loss_population, 0.0, 700.0)), t))
+    integrated_coherence = float(np.trapezoid(np.exp(-np.clip(loss_coherence, 0.0, 700.0)), t))
+    return {
+        "integrated_population": integrated_population,
+        "integrated_coherence": integrated_coherence,
+        "final_population": float(np.exp(-np.clip(loss_population[-1], 0.0, 700.0))),
+        "final_coherence": float(np.exp(-np.clip(loss_coherence[-1], 0.0, 700.0))),
+    }
+
+
 def trace_distance(rho_a: np.ndarray, rho_b: np.ndarray) -> float:
     """Return quantum trace distance ``0.5*||rho_a-rho_b||_1``."""
     a, b = np.asarray(rho_a, dtype=complex), np.asarray(rho_b, dtype=complex)

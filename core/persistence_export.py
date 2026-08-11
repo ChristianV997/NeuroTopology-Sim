@@ -1,4 +1,4 @@
-"""JSON-serializable persistence diagram export and analysis."""
+"""JSON-safe persistence diagram export backed by the canonical topology code."""
 from __future__ import annotations
 
 import json
@@ -7,93 +7,44 @@ from typing import Any
 
 import numpy as np
 
+from .topology import diagram_bottleneck_distance
 
-def serialize_diagram(diagram: np.ndarray) -> list[list[float]]:
-    """Convert persistence diagram (n, 2) array to JSON-safe list.
 
-    Infinite death values are converted to None, which JSON-encodes as null
-    and can be reconstructed later.
-    """
-    if diagram.size == 0:
+def serialize_diagram(diagram: np.ndarray) -> list[list[float | None]]:
+    """Convert an ``(n, 2)`` persistence diagram to JSON-safe pairs."""
+    values = np.asarray(diagram, dtype=float)
+    if values.size == 0:
         return []
-    result = []
-    for birth, death in diagram:
-        death_val = death if math.isfinite(death) else None
-        result.append([float(birth), death_val])
-    return result
+    if values.ndim != 2 or values.shape[1] != 2:
+        raise ValueError("diagram must have shape (n, 2)")
+    return [
+        [float(birth), None if not math.isfinite(death) else float(death)]
+        for birth, death in values
+    ]
 
 
 def deserialize_diagram(data: list) -> np.ndarray:
-    """Reconstruct persistence diagram from JSON-serialized format."""
+    """Reconstruct an ``(n, 2)`` diagram from serialized pairs."""
     if not data:
         return np.empty((0, 2), dtype=float)
-    pairs = []
-    for birth, death in data:
-        death_val = np.inf if death is None else float(death)
-        pairs.append([float(birth), death_val])
-    return np.array(pairs, dtype=float)
+    values = np.asarray(
+        [[float(birth), np.inf if death is None else float(death)] for birth, death in data],
+        dtype=float,
+    )
+    if values.ndim != 2 or values.shape[1] != 2:
+        raise ValueError("serialized diagram must contain pairs")
+    return values
 
 
 def bottleneck_distance(dgm1: np.ndarray, dgm2: np.ndarray) -> float:
-    """Bottleneck distance between two persistence diagrams.
-
-    The bottleneck distance is the supremum of the minimum distances between
-    matched points, plus contributions from unmatched points (each unmatched
-    point contributes its distance to the diagonal).
-
-    For unmatched points in diagram dgm1, distance to diagonal is
-    |birth - death| / 2 (projection onto y=x line).
-    """
-    if dgm1.size == 0 and dgm2.size == 0:
-        return 0.0
-    if dgm1.size == 0:
-        deaths = np.where(np.isfinite(dgm2[:, 1]), dgm2[:, 1], np.inf)
-        diag_dists = np.abs(dgm2[:, 0] - deaths) / 2.0
-        return float(np.max(diag_dists)) if diag_dists.size > 0 else 0.0
-    if dgm2.size == 0:
-        deaths = np.where(np.isfinite(dgm1[:, 1]), dgm1[:, 1], np.inf)
-        diag_dists = np.abs(dgm1[:, 0] - deaths) / 2.0
-        return float(np.max(diag_dists)) if diag_dists.size > 0 else 0.0
-
-    max_dist = 0.0
-
-    for birth1, death1 in dgm1:
-        if not math.isfinite(death1):
-            continue
-        min_match_dist = float("inf")
-        for birth2, death2 in dgm2:
-            if not math.isfinite(death2):
-                continue
-            dist = max(abs(birth1 - birth2), abs(death1 - death2))
-            min_match_dist = min(min_match_dist, dist)
-
-        diag_dist = abs(birth1 - death1) / 2.0
-        point_contrib = min(min_match_dist, diag_dist)
-        max_dist = max(max_dist, point_contrib)
-
-    for birth2, death2 in dgm2:
-        if not math.isfinite(death2):
-            continue
-        min_match_dist = float("inf")
-        for birth1, death1 in dgm1:
-            if not math.isfinite(death1):
-                continue
-            dist = max(abs(birth1 - birth2), abs(death1 - death2))
-            min_match_dist = min(min_match_dist, dist)
-
-        diag_dist = abs(birth2 - death2) / 2.0
-        point_contrib = min(min_match_dist, diag_dist)
-        max_dist = max(max_dist, point_contrib)
-
-    return float(max_dist)
+    """Delegate to the repository's canonical GUDHI-backed implementation."""
+    return diagram_bottleneck_distance(dgm1, dgm2)
 
 
 def persistence_statistics(diagram: np.ndarray) -> dict[str, Any]:
-    """Compute summary statistics for a persistence diagram.
-
-    Returns: lifetimes, finite_pairs, max_lifetime, mean_lifetime, count.
-    """
-    if diagram.size == 0:
+    """Compute finite lifetime summaries without treating infinity as a value."""
+    values = np.asarray(diagram, dtype=float)
+    if values.size == 0:
         return {
             "count": 0,
             "finite_pairs": 0,
@@ -102,21 +53,17 @@ def persistence_statistics(diagram: np.ndarray) -> dict[str, Any]:
             "median_lifetime": None,
             "total_persistence": 0.0,
         }
-
-    births = diagram[:, 0]
-    deaths = diagram[:, 1]
-    lifetimes = deaths - births
-
-    finite_mask = np.isfinite(lifetimes)
-    finite_lifetimes = lifetimes[finite_mask]
-
+    if values.ndim != 2 or values.shape[1] != 2:
+        raise ValueError("diagram must have shape (n, 2)")
+    lifetimes = values[:, 1] - values[:, 0]
+    finite = lifetimes[np.isfinite(lifetimes)]
     return {
-        "count": int(len(diagram)),
-        "finite_pairs": int(np.sum(finite_mask)),
-        "max_lifetime": float(np.max(finite_lifetimes)) if finite_lifetimes.size > 0 else None,
-        "mean_lifetime": float(np.mean(finite_lifetimes)) if finite_lifetimes.size > 0 else None,
-        "median_lifetime": float(np.median(finite_lifetimes)) if finite_lifetimes.size > 0 else None,
-        "total_persistence": float(np.sum(finite_lifetimes)),
+        "count": int(len(values)),
+        "finite_pairs": int(finite.size),
+        "max_lifetime": float(np.max(finite)) if finite.size else None,
+        "mean_lifetime": float(np.mean(finite)) if finite.size else None,
+        "median_lifetime": float(np.median(finite)) if finite.size else None,
+        "total_persistence": float(np.sum(finite)),
     }
 
 
@@ -124,47 +71,27 @@ def persistence_to_dict(
     diagrams: dict[int, np.ndarray],
     betti_numbers: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Convert GUDHI persistence output to JSON-serializable dict.
-
-    Args:
-        diagrams: {dimension: (n, 2) ndarray of (birth, death)}
-        betti_numbers: [b0, b1, ...] (optional)
-
-    Returns: dict with "diagrams", "statistics", "betti_numbers" keys.
-    """
-    result: dict[str, Any] = {
-        "diagrams": {},
-        "statistics": {},
-    }
-
-    for dim, dgm in diagrams.items():
-        result["diagrams"][str(dim)] = serialize_diagram(dgm)
-        result["statistics"][str(dim)] = persistence_statistics(dgm)
-
+    """Convert GUDHI persistence output to a JSON-serializable mapping."""
+    result: dict[str, Any] = {"diagrams": {}, "statistics": {}}
+    for dimension, diagram in diagrams.items():
+        key = str(dimension)
+        result["diagrams"][key] = serialize_diagram(diagram)
+        result["statistics"][key] = persistence_statistics(diagram)
     if betti_numbers is not None:
-        result["betti_numbers"] = betti_numbers
-
+        result["betti_numbers"] = list(betti_numbers)
     return result
 
 
 def dict_to_persistence(data: dict[str, Any]) -> tuple[dict[int, np.ndarray], list[int]]:
-    """Reconstruct persistence diagrams from JSON-serialized dict.
-
-    Returns: (diagrams, betti_numbers)
-    """
-    diagrams = {}
-    for dim_str, dgm_data in data.get("diagrams", {}).items():
-        dim = int(dim_str)
-        diagrams[dim] = deserialize_diagram(dgm_data)
-
-    betti_numbers = data.get("betti_numbers", [])
-
-    return diagrams, betti_numbers
+    """Reconstruct diagrams and Betti numbers from a serialized mapping."""
+    diagrams = {
+        int(dimension): deserialize_diagram(diagram)
+        for dimension, diagram in data.get("diagrams", {}).items()
+    }
+    return diagrams, list(data.get("betti_numbers", []))
 
 
 def persistence_json_roundtrip(data: dict[str, Any]) -> dict[str, Any]:
-    """Verify JSON serialization/deserialization roundtrip."""
-    json_str = json.dumps(data)
-    deserialized = json.loads(json_str)
-    diagrams, betti = dict_to_persistence(deserialized)
-    return persistence_to_dict(diagrams, betti)
+    """Round-trip a persistence payload through the JSON encoder."""
+    diagrams, betti_numbers = dict_to_persistence(json.loads(json.dumps(data)))
+    return persistence_to_dict(diagrams, betti_numbers)

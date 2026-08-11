@@ -14,7 +14,7 @@ from sim.pitnn.non_markovian_bath import DrudeLorentzBath, blp_measure
 from sim.pitnn.hodgkin_huxley_ciss import FHNConfig, ciss_torque, cytosolic_field, simulate_fhn, stark_shift
 from sim.pitnn.exceptional_points import EPScanConfig, scan_exceptional_points
 from sim.pitnn.exceptional_points_fast import optimize_exceptional_point
-from sim.pitnn.ingest_empirical import empirical_to_macro_signal, ingest_empirical
+from sim.pitnn.ingest_empirical import empirical_to_macro_signal, ingest_empirical, ingest_labeled_features
 from sim.pitnn.quantum_trajectories import MCWFConfig, MCWFTrajectoryEngine
 from sim.pitnn.spirit_gneb_well import GNEBConfig, calculate_gneb_well
 from sim.pitnn.state_exporter import PITNNStateExporter
@@ -88,8 +88,15 @@ def run_pipeline(*, output_dir: str | Path = "results/pitnn", input_path: str | 
     if input_path is None:
         signal = synthetic_signal(n_samples, seed); data_mode = "synthetic_demo"
     elif empirical:
-        empirical_signal = ingest_empirical(input_path, sample_rate_hz=sample_rate_hz)
-        signal = empirical_to_macro_signal(empirical_signal); data_mode = "empirical_local"
+        input_path = Path(input_path)
+        if input_path.suffix.lower() == ".csv":
+            labeled = ingest_labeled_features(input_path)
+            signal = np.asarray(labeled.data, dtype=float).reshape(-1)
+            data_mode = "empirical_labeled"
+        else:
+            empirical_signal = ingest_empirical(input_path, sample_rate_hz=sample_rate_hz)
+            signal = empirical_to_macro_signal(empirical_signal)
+            data_mode = "empirical_local"
     else:
         signal, data_mode = load_signal(input_path)
     if fast_tda:
