@@ -241,6 +241,23 @@ against the repository's shared banned-phrase list
 (`sciencer_d.btc_icft.report_guardrails.BANNED_REPORT_PHRASES` plus the
 transition layer's addendum), and validation fails closed on a hit.
 
+## Evidence report generator (first downstream consumer)
+
+`reports/` (see `docs/evidence_report_generator.md`) is the first module to
+actually consume an `EvidenceBundleV1` end to end: it turns one bundle into
+a deterministic, template-based `EvidenceReportV1` (Markdown + JSON) --
+executive summary, registry authorization, contamination status,
+transition/phase-space counts, null-control status, claim/evidence
+ceilings, explicit blocked interpretations, and reproducibility commands.
+No LLM call is made; every value is copied or counted from the bundle and
+its referenced artifacts, never recomputed or promoted.
+`evidence.export_bundle`'s optional `--include-report`/`--report-out` flags
+(added by that milestone, default off, backward-compatible) build both in
+one invocation, recording `{"report_id", "generated_files"}` under
+`bundle.metadata["report"]` when used. `EvidenceBundleV1`'s own schema and
+`--include-phase-space`/`--mark-seen`/registry-check behavior were
+otherwise unchanged.
+
 ## Limitations and future work
 
 **Not implemented by this milestone** (listed only to show what this

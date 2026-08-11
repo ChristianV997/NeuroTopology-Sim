@@ -296,6 +296,12 @@ build). This layer still performs no scientific claim promotion; the
 registry check is a discovery-vs-confirmation usage gate, orthogonal to
 this module's existing `output_claim_scope` capping.
 
+`reports/` (see `docs/evidence_report_generator.md`) is the first module to
+summarize a bundle's `PhaseSpaceCoordinateV1` population for a human reader
+-- status/confidence counts across all axes, axes estimated vs.
+insufficient-data -- deterministically, from the already-written coordinate
+files, with no LLM call and no re-estimation of any axis.
+
 ## Future consumers
 
 The following are **not implemented** by this milestone. They are listed
