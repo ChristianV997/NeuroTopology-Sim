@@ -200,6 +200,10 @@ the only difference is the bundle upstream of it was built via
 `docs/governed_evidence_bundles.md`) rather than a `DISPATCH`-registered
 exporter.
 
+`adapters.fmri_derivatives` (see `docs/fmri_derivatives_adapter.md`) is a
+second adapter producing `EvidenceReport.md`/`EvidenceReport.json` the same
+way, via its own `--include-evidence-bundle --include-report` CLI flags.
+
 ## Limitations
 
 - No downstream consumer of `EvidenceReportV1` exists yet beyond a human

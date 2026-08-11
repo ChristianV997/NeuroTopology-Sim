@@ -268,6 +268,12 @@ directly rather than calling a dataset-specific exporter, so a lab's own
 `build_evidence_bundle`'s own signature, `DISPATCH`, and behavior are
 unchanged by this addition.
 
+`adapters.fmri_derivatives` (see `docs/fmri_derivatives_adapter.md`) is a
+second producer using the same `build_generic_evidence_bundle()` path --
+including for its own `record_level="cohort"` transition records, which
+this function accepts unchanged since it only requires already-valid
+`TransitionRecordV1` artifacts, not a specific record level.
+
 ## Limitations and future work
 
 **Not implemented by this milestone** (listed only to show what this
