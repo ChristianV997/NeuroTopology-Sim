@@ -233,6 +233,15 @@ automatically. Every candidate-converted record lands at
 `current_role="exploration"`, the same conservative floor every other
 entry in this file starts from.
 
+Between scouting and registry entry sits `dataset_acquisition/` (see
+`docs/dataset_acquisition_planner.md`): a dry-run-first, disk-bounded
+acquisition planner that turns a selected candidate into a local
+scan/verify, optionally handing a verified local BIDS root to
+`adapters.mne_bids` for its own conservative `DatasetRecordV1`/
+`ArtifactRecordV1` output -- also never writing to
+`benchmarks/registry_seed.json` directly, and also never producing
+anything above `current_role="exploration"`.
+
 ## Dataset/artifact role policy
 
 Roles (`benchmarks.split_policy.DATASET_ROLES`): `exploration`,
