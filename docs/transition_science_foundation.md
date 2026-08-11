@@ -455,6 +455,167 @@ need a dedicated `topology.spatial_defect_*` sub-namespace decision beyond
 this milestone's scope. `outputs/pitnn_cohort/ds005620/subjects/*.json`'s
 per-window vectors remain unexported (gitignored, would need fixtures).
 
+## Second modality integration: fMRI graph/connectivity transitions
+
+The ds005620 integration above proves the transition layer on a real EEG
+artifact. This section documents a second, independent real-output
+integration — `tools/export_ds000245_fmri_transitions.py` — that exercises a
+genuinely different modality (fMRI rather than EEG), a different feature
+family (graph/connectivity metrics on thresholded correlation graphs rather
+than phase-based topology), and a different transition semantics
+(cross-sectional group contrast rather than within-subject state change).
+
+**Dataset selected and why**: a repository audit of committed
+fMRI/connectivity/graph-metric candidates (ds005917, ds006644, ds000245, and
+the existing Holo-Atlas/command-center adapters) found that ds005917 and
+ds006644 have no committed *structured* fMRI artifact — only prose
+`REPORT_*.md` files and tools reading from gitignored `outputs/`.
+`contracts/fmri_tda/ds000245/` was the only candidate with real, committed,
+structured per-subject graph/topology metrics
+(`cohort_result_schaefer100_motcorr.json`, `global_efficiency_gate_schaefer100_motcorr.json`,
+plus a non-anatomical `kmeans100` variant of both), so it was selected. No
+raw BOLD was fetched or reprocessed for this integration.
+
+**Why these are group contrasts, not transitions**: ds000245 scans 45
+subjects once each into one of three fixed groups (CTL / ODN / ODP) — no
+subject moves between groups, so there is no real within-subject
+source_state → target_state trajectory anywhere in this dataset. Rather than
+fabricate a per-subject "transition" that never happened, or decline to use
+the schema, the exporter emits **cohort-level group-contrast records only**
+(`record_level="cohort"`, no per-subject records ever). The non-transition
+nature is stated as the *first* limitation on every record, and
+`transition_class="cross_sectional_group_contrast_not_within_subject_transition"`
+encodes it in a machine-readable field as well, so nothing downstream can
+mistake `source_state`/`target_state` here for a real per-subject state
+change the way they would for the ds005620 awake→sedated records.
+
+**Feature mapping table** (source `cohort_result*.json` field → canonical
+feature name):
+
+| Source field | Canonical feature | Notes |
+|---|---|---|
+| `global_efficiency` | `connectivity.global_efficiency` | Graph metric on a density-thresholded (top 15%) Pearson-correlation graph — **not** a phase-locking measure |
+| `mean_degree` | `connectivity.degree` | Same graph |
+| `modularity` | `connectivity.modularity` | Same graph; higher = more segregated by convention |
+| `small_worldness` | `connectivity.small_worldness` | Same graph |
+| `betti0` | `topology.fmri_graph_betti0` | Betti-0 of the thresholded correlation graph |
+| `betti1` | `topology.fmri_graph_betti1` | Betti-1 of the thresholded correlation graph |
+| `total_persistence_h1` | `topology.fmri_graph_h1_total_persistence` | Total H1 persistence of the graph filtration |
+
+**Why `topology.fmri_graph_*` and not `topology.betti1`**: these are
+Pearson-correlation graph invariants, a different measurement from this
+repository's EEG windowed persistent-homology `topology.betti1` and from
+ds005620's single-snapshot spatial `topology.spatial_defect_betti1` — the
+same anti-conflation discipline established in the ds005620
+`spatial_defect_map` integration above is reused here rather than
+reinvented. `mean_plv`-style naming is deliberately never used: these are
+correlation-graph metrics, not phase-locking values, and calling them PLV
+would misrepresent the measurement. Every record carries
+`metadata.feature_set_id` (`ds000245_fmri_graph_schaefer100_motcorr` or
+`ds000245_fmri_graph_kmeans100`, one per parcellation variant) and
+`metadata.feature_definitions` (source-specific prose per feature actually
+present on that record, including explicit cross-references to the EEG/
+ds005620 features it must not be conflated with).
+
+**Two parcellation variants, honestly distinguished**: the source artifact
+ships in two forms — `kmeans100` (anonymous, native-space K=100
+coordinate-clustering parcels; `--variant kmeans100`) and
+`schaefer100_motcorr` (Schaefer2018 100-parcel/7-network atlas in FSL MNI152
+space, with per-volume motion regression and framewise-displacement
+scrubbing; `--variant schaefer100_motcorr`, the default). Each variant's
+records carry a variant-specific limitation stating exactly this — parcel
+identities are never presented as validated anatomical labels for the
+`kmeans100` variant, and the atlas labels for `schaefer100_motcorr` are
+stated as inherited from the source artifact's own preprocessing context,
+not independently reverified.
+
+**Claim scope / evidence level / null-control policy**: every record uses
+`claim_scope="exploratory_metric"` and
+`evidence_level="L4_cross_subject_dataset_specific"` (cohort-level only,
+`metadata.subject_count` from real per-group `n` — never fabricated).
+`null_control_summary` is built from the artifact's own
+`global_efficiency_gate*.json`: both of its real controls (a per-subject
+surrogate test and an omnibus 3-group permutation ANOVA) are scoped to
+`global_efficiency` **only**, so `null_control_summary` is a structured dict
+with explicit `covered_features`/`uncovered_features`/`scope_note` fields
+rather than a single top-level status that would misleadingly imply blanket
+coverage of all seven exported features. `"passed"` requires the real
+permutation p-value below α = 0.05; the source artifact's own parametric
+ANOVA F/p-values for betti1/global_efficiency/modularity/total_persistence_h1
+are preserved, unrelabeled, in `metadata.additional_statistics` — a plain
+parametric p-value is never treated as a null-control pass, matching the
+policy already established for ds005620's `spatial_defect_map` Wilcoxon
+result. If no gate artifact is present, status is honestly `not_provided`.
+
+**Group-mean provenance, tracked per feature**: `global_efficiency`,
+`betti1`, `modularity`, and `total_persistence_h1` have precomputed group
+means in the source artifact's own `group_stats`; `mean_degree`,
+`small_worldness`, and `betti0` do not, and are aggregated by the exporter
+from real committed per-subject values instead. `metadata.group_mean_provenance`
+records which of the two applies per feature, so a downstream reader always
+knows whether a number is a verbatim artifact statistic or an
+exporter-computed aggregate of real (never fabricated) per-subject data.
+
+**How to run it**:
+
+```bash
+python tools/export_ds000245_fmri_transitions.py \
+    --input contracts/fmri_tda/ds000245 \
+    --out outputs/transitions/ds000245_fmri \
+    --variant schaefer100_motcorr
+
+# restrict to one group contrast, and also run the phase-space smoke exporter
+python tools/export_ds000245_fmri_transitions.py \
+    --input contracts/fmri_tda/ds000245 \
+    --out outputs/transitions/ds000245_fmri \
+    --contrast CTL:ODP \
+    --write-phase-space-smoke outputs/phase_space/ds000245_fmri
+```
+
+Fails closed with a clear message if `--input` doesn't exist, if
+`cohort_result*.json` is missing, has no subject entries, or is accompanied
+by a `global_efficiency_gate*.json` with an unrecognized schema tag. Each
+group-pair contrast is attempted independently — a bad or nonexistent group
+in an explicit `--contrast` is skipped with a reason rather than aborting
+the whole run, but the export still fails if *zero* contrasts succeed.
+Re-running is deterministic: the same input always produces the same
+`transition_id`s. On the real committed artifact, this exports 3 records
+(CTL→ODN, CTL→ODP, ODN→ODP) with zero skips.
+
+**Phase-space smoke behavior on real records** (see
+[Second modality smoke](phase_space_coordinates.md#second-modality-smoke-ds000245-fmri-graphconnectivity)
+in the phase-space doc for the full walkthrough): the `integration` axis
+estimates (confidence `moderate`) from `connectivity.global_efficiency` /
+`connectivity.degree` / `connectivity.modularity`, all present on every
+record. `differentiation` and `topological_organization` correctly report
+`insufficient_data` — not a bug, but the intended consequence of minting
+`topology.fmri_graph_*` as distinct names: `phase_space/axes.py` maps those
+two axes to the canonical `topology.betti1` /
+`topology.spatial_defect_betti1` / `topology.persistence_landscape_area`
+family, and the fMRI graph-Betti features were deliberately not aliased
+into that family, so they do not silently blend into an axis defined around
+a different measurement method. No `phase_space/` code was changed for this
+integration.
+
+**Tests**: `tests/test_export_ds000245_fmri_transitions.py` (33 tests) using
+a small synthetic fixture (2 subjects per group) modeled on the real
+artifact's shape, covering source parsing, cohort-only export (explicitly
+asserting no per-subject record is ever emitted), fail-closed behavior,
+governance (no blocked claim scope, no banned phrase, honest null-control
+status under passing/failing/absent gate artifacts), phase-space smoke (via
+direct library calls, per this milestone's allowance), and
+`TransitionStore` read-back compatibility. No new empirical result is
+produced or implied by these fixtures; the real 45-subject export was
+verified manually during this integration (3 records, 0 skips, all pass
+`record.validate()`).
+
+**What remains future work**: ds005917 and ds006644 integration is blocked
+until either dataset gains a committed structured artifact (currently only
+prose reports exist) or a decision is made to re-run their pipelines with
+`--save-graph-structure`-style output persistence; per-subject fMRI records
+are not applicable to ds000245's cross-sectional design and would need a
+different, longitudinal fMRI dataset to ever exist for this repository.
+
 ## Extension guidelines
 
 - **Adding a feature**: if it fits an existing namespace, just use it —

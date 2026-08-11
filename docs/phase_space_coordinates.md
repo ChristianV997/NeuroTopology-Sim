@@ -211,6 +211,45 @@ in its own limitations when its members span multiple datasets.
 - Only one estimator (`delta_share_v1`) exists; it reads `delta_summary` and
   ignores the trajectory CSV's full time course even when one is present.
 
+## Second modality smoke: ds000245 fMRI graph/connectivity
+
+The examples above use ds005620 EEG records. This section documents running
+the same, unmodified `phase_space.export_from_transitions.export()` over
+`tools/export_ds000245_fmri_transitions.py`'s real, non-EEG output — a smoke
+test for whether this layer generalizes beyond the modality it was built
+against. See
+[the transition-layer doc's fMRI integration section](transition_science_foundation.md#second-modality-integration-fmri-graphconnectivity-transitions)
+for how those records are produced; this section covers only what
+phase-space estimation does with them.
+
+```bash
+python tools/export_ds000245_fmri_transitions.py \
+    --input contracts/fmri_tda/ds000245 \
+    --out outputs/transitions/ds000245_fmri \
+    --write-phase-space-smoke outputs/phase_space/ds000245_fmri
+```
+
+On the real committed artifact this produces 3 cohort-level group-contrast
+records (CTL→ODN, CTL→ODP, ODN→ODP) and, from them, 27 coordinates (9 axes ×
+3 records):
+
+| Axis | Status on these records | Why |
+|---|---|---|
+| `integration` | `estimated`, confidence `moderate` | `connectivity.global_efficiency` / `connectivity.degree` / `connectivity.modularity` are all present; each contrast's null-control status is `passed` (real permutation p < 0.05) and ≥2 features contribute, which is exactly `assign_confidence`'s condition for `moderate` |
+| `differentiation`, `topological_organization` | `insufficient_data` | mapped to the canonical `topology.betti1` / `topology.spatial_defect_betti1` / `topology.persistence_landscape_area` family in `phase_space/axes.py`; the exported `topology.fmri_graph_betti0/betti1/h1_total_persistence` names are deliberately distinct (see the transition-layer doc) and are not in that list |
+| `metastability`, `accessibility_proxy`, `precision_stability_proxy`, `temporal_continuity`, `generative_depth_proxy`, `self_model_proxy` | `insufficient_data` | none of their mapped source features (`dynamics.*`, `phenomenology.*`, etc.) exist in this feature family |
+
+This is the intended behavior, not a gap discovered and left unfixed: per
+this milestone's brief, no new phase-space formula or axis-membership change
+was made to make more axes "light up" for this dataset — an axis either has
+a genuine source feature or it honestly reports `insufficient_data`.
+`output_claim_scope` never exceeds the source records' `exploratory_metric`
+input scope, `confidence` never exceeds `moderate`, and 0 of the 27
+coordinates fail validation. `tests/test_export_ds000245_fmri_transitions.py`
+asserts this behavior (the `integration` estimate, the two topology axes'
+`insufficient_data` status, and the claim-scope non-promotion) directly
+against a small fixture, not just the real artifact.
+
 ## Prohibited interpretations
 
 Per this repository's governance conventions (`AGENTS.md`,
