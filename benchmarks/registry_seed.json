@@ -1,0 +1,591 @@
+{
+  "schema": "NeuroTopologySim.BenchmarkRegistry.v1",
+  "datasets": [
+    {
+      "schema_version": "1",
+      "dataset_id": "ds000245",
+      "display_name": "OpenNeuro ds000245 -- fMRI graph/connectivity group contrast (CTL/ODN/ODP)",
+      "modalities": [
+        "fMRI"
+      ],
+      "transition_classes": [
+        "cross_sectional_group_contrast_not_within_subject_transition"
+      ],
+      "source_states": [
+        "CTL",
+        "ODN"
+      ],
+      "target_states": [
+        "ODN",
+        "ODP"
+      ],
+      "artifact_paths": [
+        "contracts/fmri_tda/ds000245/cohort_result_schaefer100_motcorr.json",
+        "contracts/fmri_tda/ds000245/global_efficiency_gate_schaefer100_motcorr.json",
+        "contracts/fmri_tda/ds000245/cohort_result.json",
+        "contracts/fmri_tda/ds000245/global_efficiency_gate.json"
+      ],
+      "artifact_kinds": [
+        "fmri_graph_cohort_result_schaefer100_motcorr",
+        "fmri_graph_cohort_result_kmeans100"
+      ],
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/export_ds000245_fmri_transitions.py",
+        "documentation:REPORT_ds000245_schaefer100_motcorr_gate.md",
+        "documentation:REPORT_gate_ds000245_ds005620.md"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "label_quality": "fixed_group_membership_real_cohort_labels_cross_sectional",
+      "provenance": "Real 45-subject CTL/ODN/ODP cohort, graph/topology metrics computed by tools/run_ds000245_schaefer100_motcorr.py (and the earlier kmeans100 variant), gated by tools/gate_ds000245_global_efficiency.py, committed under contracts/fmri_tda/ds000245/.",
+      "limitations": [
+        "Cross-sectional between-subject design: each of 45 subjects is scanned once into one fixed group, so there is no real within-subject source_state to target_state transition anywhere in this dataset -- transition_classes above name a group contrast, not a per-subject state change.",
+        "This dataset has already been used by the exploratory ds000245 transition exporter and its docs; it is registered as development-stage, not locked_internal_validation or locked_external_validation.",
+        "Null-control coverage in the source gate artifact is scoped to connectivity.global_efficiency only; the other exported features carry no null/surrogate control.",
+        "Not a clinical, diagnostic, or psychiatric-state measure; does not validate treatment response, mechanistic causality, or spiritual/meditative attainment."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "dataset_id": "ds005620",
+      "display_name": "OpenNeuro ds005620 -- propofol sedation EEG",
+      "modalities": [
+        "EEG"
+      ],
+      "transition_classes": [
+        "propofol_awake_to_sedated"
+      ],
+      "source_states": [
+        "awake"
+      ],
+      "target_states": [
+        "sedated"
+      ],
+      "artifact_paths": [
+        "contracts/btc_icft/ds005620/pitnn_cohort/cohort_summary.json",
+        "contracts/btc_icft/ds005620/pitnn_cohort/cohort_per_subject.csv"
+      ],
+      "artifact_kinds": [
+        "pitnn_cohort_summary",
+        "spatial_defect_map"
+      ],
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/analyze_pitnn_cohort_ds005620.py",
+        "exploration:tools/export_ds005620_pitnn_transitions.py",
+        "documentation:REPORT_ds005620_pitnn_cohort_topology.md"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "label_quality": "task_label_real_bids_awake_sed_sed2",
+      "provenance": "Real 20-subject propofol sedation cohort processed by tools/stream_pitnn_cohort_ds005620.py and summarized by tools/analyze_pitnn_cohort_ds005620.py into contracts/btc_icft/ds005620/pitnn_cohort/.",
+      "limitations": [
+        "This dataset has already been analyzed repeatedly by exploratory pipelines, reports, and the ds005620 transition/phase-space exporters -- it is registered as development-stage, not locked_internal_validation or locked_external_validation, and must not be treated as independent confirmatory evidence for any claim already explored on it.",
+        "PITNN Bayes-factor results on this cohort were NOT_SUPPORTED for all 20 subjects; this dataset does not currently support a stronger claim_scope than exploratory_metric.",
+        "Not a clinical, diagnostic, or psychiatric-state measure; does not validate treatment response, mechanistic causality, or spiritual/meditative attainment.",
+        "See docs/transition_science_foundation.md for the full feature mapping, null-control policy, and per-feature-family provenance."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "dataset_id": "ds005917",
+      "display_name": "OpenNeuro ds005917 -- ketamine crossover fMRI (candidate, no committed structured artifact)",
+      "modalities": [
+        "fMRI"
+      ],
+      "transition_classes": [],
+      "source_states": [],
+      "target_states": [],
+      "artifact_paths": [
+        "REPORT_ds005917_ketamine_fmri_topology.md"
+      ],
+      "artifact_kinds": [
+        "prose_report_only"
+      ],
+      "current_role": "exploration",
+      "allowed_uses": [
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "external_validation",
+        "feature_design",
+        "final_claim_confirmation",
+        "internal_validation",
+        "mechanistic_causal_claim",
+        "model_selection",
+        "phase_space_export",
+        "prospective_prediction",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "theory_generation",
+        "transition_export",
+        "treatment_claim",
+        "visualization"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/stream_process_ds005917.py",
+        "exploration:tools/analyze_ds005917_paired_stats.py",
+        "documentation:REPORT_ds005917_ketamine_fmri_topology.md"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "label_quality": "unstructured_no_committed_machine_readable_artifact",
+      "provenance": "Processed by tools/stream_process_ds005917.py and tools/analyze_ds005917_paired_stats.py; only a prose REPORT_ds005917_ketamine_fmri_topology.md is committed. Numeric outputs live under the gitignored outputs/ directory and are not part of this repository's committed artifact set.",
+      "limitations": [
+        "NO COMMITTED STRUCTURED ARTIFACT EXISTS for this dataset -- only a prose report is committed. This record must not be read as implying a JSON/CSV artifact equivalent to ds005620's cohort_summary.json or ds000245's cohort_result*.json exists; it does not.",
+        "allowed_uses is restricted to 'documentation' only until a committed, structured, parseable artifact exists for this dataset.",
+        "Any exporter or downstream module encountering this dataset_id should treat it as unavailable for transition_export or phase_space_export, not as an oversight to work around."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "dataset_id": "ds006644",
+      "display_name": "OpenNeuro ds006644 -- DMT+harmine fMRI (candidate, no committed structured artifact)",
+      "modalities": [
+        "fMRI"
+      ],
+      "transition_classes": [],
+      "source_states": [],
+      "target_states": [],
+      "artifact_paths": [
+        "REPORT_ds006644_dmt_meditation_fmri_topology.md"
+      ],
+      "artifact_kinds": [
+        "prose_report_only"
+      ],
+      "current_role": "exploration",
+      "allowed_uses": [
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "external_validation",
+        "feature_design",
+        "final_claim_confirmation",
+        "internal_validation",
+        "mechanistic_causal_claim",
+        "model_selection",
+        "phase_space_export",
+        "prospective_prediction",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "theory_generation",
+        "transition_export",
+        "treatment_claim",
+        "visualization"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/stream_process_ds006644.py",
+        "exploration:tools/export_ds006644_connectome_for_command_center.py",
+        "documentation:REPORT_ds006644_dmt_meditation_fmri_topology.md"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "label_quality": "unstructured_no_committed_machine_readable_artifact",
+      "provenance": "Processed by tools/stream_process_ds006644.py; only a prose REPORT_ds006644_dmt_meditation_fmri_topology.md is committed. Numeric outputs live under the gitignored outputs/ directory.",
+      "limitations": [
+        "NO COMMITTED STRUCTURED ARTIFACT EXISTS for this dataset -- only a prose report is committed.",
+        "allowed_uses is restricted to 'documentation' only until a committed, structured, parseable artifact exists for this dataset."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    }
+  ],
+  "artifacts": [
+    {
+      "schema_version": "1",
+      "artifact_id": "3f2b1f926e51f8ea",
+      "dataset_id": "ds000245",
+      "path": "contracts/fmri_tda/ds000245/cohort_result_schaefer100_motcorr.json",
+      "artifact_kind": "fmri_graph_cohort_result_schaefer100_motcorr",
+      "record_kind": "committed_artifact",
+      "external": false,
+      "modality": "fMRI",
+      "feature_families": [
+        "connectivity.global_efficiency",
+        "connectivity.degree",
+        "connectivity.modularity",
+        "connectivity.small_worldness",
+        "topology.fmri_graph_betti0",
+        "topology.fmri_graph_betti1",
+        "topology.fmri_graph_h1_total_persistence"
+      ],
+      "source_state": null,
+      "target_state": null,
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/export_ds000245_fmri_transitions.py --variant schaefer100_motcorr"
+      ],
+      "produced_by": "tools/run_ds000245_schaefer100_motcorr.py",
+      "consumed_by": [
+        "tools/export_ds000245_fmri_transitions.py"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "limitations": [
+        "Schaefer2018 100-parcel/7-network atlas in FSL MNI152 space with per-volume motion regression and framewise-displacement scrubbing; atlas labels are inherited from the source artifact's own preprocessing context, not independently reverified here.",
+        "Pearson-correlation-derived fMRI graph metrics; never mapped to connectivity.mean_plv, and topology.fmri_graph_* names are deliberately distinct from this repository's EEG persistent-homology topology.betti1 and ds005620's topology.spatial_defect_betti1.",
+        "Not a clinical, diagnostic, or psychiatric-state measure."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "artifact_id": "6d3ea98cf0074ab9",
+      "dataset_id": "ds000245",
+      "path": "contracts/fmri_tda/ds000245/cohort_result.json",
+      "artifact_kind": "fmri_graph_cohort_result_kmeans100",
+      "record_kind": "committed_artifact",
+      "external": false,
+      "modality": "fMRI",
+      "feature_families": [
+        "connectivity.global_efficiency",
+        "connectivity.degree",
+        "connectivity.modularity",
+        "connectivity.small_worldness",
+        "topology.fmri_graph_betti0",
+        "topology.fmri_graph_betti1",
+        "topology.fmri_graph_h1_total_persistence"
+      ],
+      "source_state": null,
+      "target_state": null,
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/export_ds000245_fmri_transitions.py --variant kmeans100"
+      ],
+      "produced_by": "tools/fetch_ds000245.py + fMRI TDA pipeline (kmeans100 parcellation)",
+      "consumed_by": [
+        "tools/export_ds000245_fmri_transitions.py"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "limitations": [
+        "Parcel identities are anonymous/native-space K=100 coordinate-clustering features, not validated anatomical labels.",
+        "Pearson-correlation-derived fMRI graph metrics; never mapped to connectivity.mean_plv.",
+        "Not a clinical, diagnostic, or psychiatric-state measure."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "artifact_id": "b67d51f4940f9bcb",
+      "dataset_id": "ds005917",
+      "path": "REPORT_ds005917_ketamine_fmri_topology.md",
+      "artifact_kind": "prose_report_only",
+      "record_kind": "candidate_unstructured",
+      "external": false,
+      "modality": "fMRI",
+      "feature_families": [],
+      "source_state": null,
+      "target_state": null,
+      "current_role": "exploration",
+      "allowed_uses": [
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "external_validation",
+        "feature_design",
+        "final_claim_confirmation",
+        "internal_validation",
+        "mechanistic_causal_claim",
+        "model_selection",
+        "phase_space_export",
+        "prospective_prediction",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "theory_generation",
+        "transition_export",
+        "treatment_claim",
+        "visualization"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/stream_process_ds005917.py"
+      ],
+      "produced_by": "",
+      "consumed_by": [],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "limitations": [
+        "Candidate/unstructured record: this is a prose Markdown report, not a structured, machine-parseable artifact. No exporter should attempt to read this path as a JSON/CSV source.",
+        "Committed structured artifact is absent for this dataset."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "artifact_id": "c5035802cbd3cf24",
+      "dataset_id": "ds005620",
+      "path": "contracts/btc_icft/ds005620/pitnn_cohort/cohort_summary.json",
+      "artifact_kind": "spatial_defect_map",
+      "record_kind": "committed_artifact",
+      "external": false,
+      "modality": "EEG",
+      "feature_families": [
+        "topology.q_abs",
+        "topology.spatial_defect_betti1"
+      ],
+      "source_state": "awake",
+      "target_state": "sedated",
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/export_ds005620_pitnn_transitions.py --feature-set spatial_defect_map"
+      ],
+      "produced_by": "tools/analyze_pitnn_cohort_ds005620.py",
+      "consumed_by": [
+        "tools/export_ds005620_pitnn_transitions.py"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "limitations": [
+        "Single-snapshot spatial defect/vortex count feature family; distinct from this dataset's own pitnn_cohort_summary feature family of the same nominal 'beta1' name -- do not conflate topology.spatial_defect_betti1 with topology.betti1.",
+        "Cohort-level record carries topology.q_abs only; no fabricated cohort aggregate exists for topology.spatial_defect_betti1 (the source artifact reports no cohort-level aggregate for it).",
+        "Not a clinical, diagnostic, or psychiatric-state measure."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "artifact_id": "cbc45797473d2442",
+      "dataset_id": "ds005620",
+      "path": "contracts/btc_icft/ds005620/pitnn_cohort/cohort_summary.json",
+      "artifact_kind": "pitnn_cohort_summary",
+      "record_kind": "committed_artifact",
+      "external": false,
+      "modality": "EEG",
+      "feature_families": [
+        "topology.persistence_landscape_area",
+        "topology.betti1",
+        "connectivity.mean_plv"
+      ],
+      "source_state": "awake",
+      "target_state": "sedated",
+      "current_role": "development",
+      "allowed_uses": [
+        "transition_export",
+        "phase_space_export",
+        "feature_design",
+        "visualization",
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "final_claim_confirmation",
+        "mechanistic_causal_claim",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "treatment_claim"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/export_ds005620_pitnn_transitions.py --feature-set cohort_summary"
+      ],
+      "produced_by": "tools/analyze_pitnn_cohort_ds005620.py",
+      "consumed_by": [
+        "tools/export_ds005620_pitnn_transitions.py"
+      ],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "limitations": [
+        "Windowed persistent cubical homology feature family (mean across windows_per_condition); distinct from this dataset's own spatial_defect_map feature family of the same nominal 'beta1' name -- see topology.betti1 vs topology.spatial_defect_betti1 in docs/transition_science_foundation.md.",
+        "Already used by tools/export_ds005620_pitnn_transitions.py's exploratory cohort_summary export; not independent evidence for any claim already drawn from that export.",
+        "Not a clinical, diagnostic, or psychiatric-state measure."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "artifact_id": "f0ad58097139ee8c",
+      "dataset_id": "ds006644",
+      "path": "REPORT_ds006644_dmt_meditation_fmri_topology.md",
+      "artifact_kind": "prose_report_only",
+      "record_kind": "candidate_unstructured",
+      "external": false,
+      "modality": "fMRI",
+      "feature_families": [],
+      "source_state": null,
+      "target_state": null,
+      "current_role": "exploration",
+      "allowed_uses": [
+        "documentation"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "consciousness_biomarker_claim",
+        "cross_dataset_replication_claim",
+        "diagnostic_claim",
+        "external_validation",
+        "feature_design",
+        "final_claim_confirmation",
+        "internal_validation",
+        "mechanistic_causal_claim",
+        "model_selection",
+        "phase_space_export",
+        "prospective_prediction",
+        "prospective_prediction_claim",
+        "spiritual_attainment_claim",
+        "theory_generation",
+        "transition_export",
+        "treatment_claim",
+        "visualization"
+      ],
+      "contamination_status": "seen_by_exploration",
+      "seen_by": [
+        "exploration:tools/stream_process_ds006644.py"
+      ],
+      "produced_by": "",
+      "consumed_by": [],
+      "claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "limitations": [
+        "Candidate/unstructured record: this is a prose Markdown report, not a structured, machine-parseable artifact.",
+        "Committed structured artifact is absent for this dataset."
+      ],
+      "validation_lock": null,
+      "prospective_protocol_id": null,
+      "created_at": "2026-08-11T00:00:00+00:00",
+      "metadata": {}
+    }
+  ]
+}
