@@ -6,6 +6,11 @@ should not be read as promising, any of the capabilities listed in
 [Future work](#future-work) -- those are explicitly out of scope for this
 milestone.
 
+A second, sibling adapter for derived fMRI features
+(`adapters.fmri_derivatives`) followed this same design shape --
+metadata-scan-only vs. explicit-mapping-driven export, deterministic IDs,
+fail-closed validation -- see `docs/fmri_derivatives_adapter.md`.
+
 ## What it does
 
 `adapters.mne_bids` is the bridge from a lab's own MNE/BIDS-organized

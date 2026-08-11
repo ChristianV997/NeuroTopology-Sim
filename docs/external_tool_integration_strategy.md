@@ -266,6 +266,21 @@ v2 direct-object ingestion adapter would add on top of this. `mne-python`,
 `gudhi`, and `networkx` remain the next-ranked P0 candidates for a
 follow-on adapter.
 
+## Second adapter: fMRIPrep/Nilearn derived fMRI features
+
+A second adapter, `adapters.fmri_derivatives` (see
+`docs/fmri_derivatives_adapter.md`), followed the same "already-ready-for-
+adapter, consume derived artifacts only" reasoning applied to the fMRI
+modality: `nilearn` is already a real, `pip`-installed dependency of this
+repository (`dual_engine/fmri_tda_pipeline.py`) with `current_status:
+"ready_for_adapter"`, whereas `fmriprep` itself remains `external_cli`/
+`planned` (heavyweight, not `pip`-installable, FreeSurfer sub-license not
+independently verified -- see Limitations above). The adapter is therefore
+registered under `tool_id="nilearn"`, mirroring how the first adapter chose
+`mne-bids` over `mne-python`. It consumes fMRIPrep-derivatives metadata and
+explicit Nilearn-derived feature tables/connectivity summaries -- never raw
+BOLD, never a full Nilearn model fit.
+
 ## How this supports productized reports, SaaS, SDK/API, and clinical-research analytics
 
 The chain this registry prepares, without building any of it yet:
@@ -294,8 +309,10 @@ deadline pressure, whether each tool's license is safe to depend on.
 
 ## Limitations
 
-- No adapter is implemented. `AdapterContractV1` is a schema only; no code
-  in this repository currently satisfies it for any tool.
+- Two adapters are implemented as of this writing (`adapters.mne_bids`,
+  `adapters.fmri_derivatives`); `AdapterContractV1` remains a schema that
+  any future adapter must also satisfy, and most registered tools still
+  have no adapter code against them.
 - License data was gathered via each project's own public package-index
   metadata and/or repository license file/badge this session -- treated as
   a strong signal, not a substitute for a dedicated legal review before any

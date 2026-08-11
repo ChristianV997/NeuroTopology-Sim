@@ -748,6 +748,13 @@ downstream consumer (`phase_space/`, `evidence/`, `reports/`) treats an
 `adapters.mne_bids`-produced record exactly like one from this package's
 own exporters.
 
+`adapters.fmri_derivatives` (see `docs/fmri_derivatives_adapter.md`) is a
+second such external producer, for derived fMRI (fMRIPrep/Nilearn) features
+rather than EEG/BIDS -- it additionally introduces `record_level="cohort"`
+records (subject_id=None) for already-computed cross-subject statistics,
+which `transitions.record.TransitionRecordV1` accepted without any schema
+change.
+
 ## Future consumers
 
 The remaining systems below are **not implemented**. They are listed here
