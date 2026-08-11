@@ -15,6 +15,7 @@ constraint is itself tested explicitly below (category 2/3).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -447,3 +448,54 @@ def test_cli_end_to_end(tmp_path):
     payload = json.loads(result.stdout)
     assert payload["records_written"] == 3
     assert payload["skipped"] == []
+
+
+# ── Optional benchmarks registry hook (backward-compatible, fail-closed) ────
+
+_REPO_ROOT_FOR_REGISTRY = Path(__file__).resolve().parents[1]
+_SEED_REGISTRY = _REPO_ROOT_FOR_REGISTRY / "benchmarks" / "registry_seed.json"
+
+
+def test_export_without_registry_argument_is_unaffected(tmp_path):
+    # Default behavior (registry_path=None) must be identical to before this
+    # hook existed -- no registry file is read, no use-policy check runs.
+    input_dir = _write_fixture_dir(tmp_path)
+    result = export(input_dir, tmp_path / "out")
+    assert len(result["records"]) == 3
+
+
+def test_export_succeeds_with_registry_allowed_use(tmp_path):
+    input_dir = _write_fixture_dir(tmp_path)
+    result = export(
+        input_dir, tmp_path / "out",
+        registry_path=_SEED_REGISTRY, requested_use="transition_export",
+    )
+    assert len(result["records"]) == 3
+
+
+def test_export_fails_closed_with_registry_forbidden_use(tmp_path):
+    input_dir = _write_fixture_dir(tmp_path)
+    out_dir = tmp_path / "out"
+    with pytest.raises(ExportError, match="benchmark registry denied"):
+        export(
+            input_dir, out_dir,
+            registry_path=_SEED_REGISTRY, requested_use="final_claim_confirmation",
+        )
+    assert not out_dir.exists()
+
+
+def test_cli_export_fails_closed_with_forbidden_registry_use(tmp_path):
+    import subprocess
+    import sys
+
+    input_dir = _write_fixture_dir(tmp_path)
+    out_dir = tmp_path / "out"
+    result = subprocess.run(
+        [sys.executable, "tools/export_ds000245_fmri_transitions.py",
+         "--input", str(input_dir), "--out", str(out_dir),
+         "--registry", str(_SEED_REGISTRY), "--requested-use", "clinical_claim"],
+        capture_output=True, text=True, cwd=str(_REPO_ROOT_FOR_REGISTRY),
+    )
+    assert result.returncode == 1
+    assert "FAILED" in result.stdout
+    assert not out_dir.exists()

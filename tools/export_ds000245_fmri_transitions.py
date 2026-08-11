@@ -498,7 +498,34 @@ def export(
     *,
     variant: str = "schaefer100_motcorr",
     contrasts: Optional[list[tuple[str, str]]] = None,
+    registry_path: Optional[Path] = None,
+    requested_use: str = "transition_export",
+    claim_family: Optional[str] = None,
 ) -> dict[str, Any]:
+    """Export TransitionRecordV1 group-contrast records.
+
+    `registry_path` is optional and off by default (None), so existing
+    callers and the default CLI invocation are unaffected. When provided,
+    this exporter consults `benchmarks.export_registry.BenchmarkRegistry`
+    for dataset_id "ds000245" and fails closed (raises ExportError) before
+    reading any artifact if `requested_use` is not permitted -- see
+    docs/benchmark_dataset_registry.md. This is a discovery-vs-confirmation
+    usage check, not a scientific validity check.
+    """
+    if registry_path is not None:
+        from benchmarks.export_registry import BenchmarkRegistry, RegistryError
+
+        try:
+            registry = BenchmarkRegistry.load(registry_path)
+            allowed, reason = registry.check_use("ds000245", requested_use, claim_family=claim_family)
+        except RegistryError as exc:
+            raise ExportError(f"benchmark registry error: {exc}") from exc
+        if not allowed:
+            raise ExportError(
+                f"benchmark registry denied requested_use={requested_use!r} for "
+                f"dataset_id='ds000245': {reason}"
+            )
+
     artifact = _load_artifact(input_dir, variant)
     repo_commit = _git_commit(_REPO_ROOT)
 
@@ -568,6 +595,22 @@ def main() -> int:
         "--write-phase-space-smoke", type=Path, default=None,
         help="also run the phase_space exporter over the emitted records into this directory",
     )
+    parser.add_argument(
+        "--registry", type=Path, default=None,
+        help="optional benchmarks.export_registry.BenchmarkRegistry JSON path; if given, "
+             "fails closed before exporting if --requested-use is not permitted for ds000245 "
+             "(default: no registry check, unchanged from prior behavior)",
+    )
+    parser.add_argument(
+        "--requested-use", default="transition_export",
+        help="use to check against --registry (default: transition_export; ignored if "
+             "--registry is not given)",
+    )
+    parser.add_argument(
+        "--claim-family", default=None,
+        help="claim family for --registry validation-use checks (only relevant for "
+             "internal_validation/external_validation/confirmatory requested uses)",
+    )
     args = parser.parse_args()
 
     contrasts = None
@@ -581,7 +624,11 @@ def main() -> int:
             contrasts.append((src.strip(), tgt.strip()))
 
     try:
-        result = export(args.input, args.out, variant=args.variant, contrasts=contrasts)
+        result = export(
+            args.input, args.out, variant=args.variant, contrasts=contrasts,
+            registry_path=args.registry, requested_use=args.requested_use,
+            claim_family=args.claim_family,
+        )
     except (ExportError, TransitionValidationError) as exc:
         print(f"[export_ds000245_fmri_transitions] FAILED: {exc}")
         return 1

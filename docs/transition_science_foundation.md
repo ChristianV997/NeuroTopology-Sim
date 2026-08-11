@@ -704,6 +704,22 @@ Two properties of that layer matter to this one:
 A phase-space coordinate is an operational summary, not a consciousness
 measure — the same discipline this document applies to transition records.
 
+## Benchmark dataset registry (optional, split/holdout governance)
+
+Neither `TransitionRecordV1` nor its exporters track how many times a
+dataset has already been explored. `benchmarks/` (see
+`docs/benchmark_dataset_registry.md`) adds that layer alongside this one,
+without modifying this schema: a `DatasetRecordV1`/`ArtifactRecordV1` per
+dataset/feature-family records a discovery-vs-confirmation *role* and a
+*contamination status*, and `benchmarks.split_policy` refuses confirmatory
+uses (`final_claim_confirmation`, `cross_dataset_replication_claim`,
+`prospective_prediction_claim`) of a dataset already used for exploration
+or development. `tools/export_ds000245_fmri_transitions.py` has an optional
+`--registry`/`registry_path=` argument that, when given, fails closed
+before exporting if the requested use is not permitted; omitting it (the
+default) is byte-identical to this exporter's behavior before that
+milestone. See `docs/benchmark_dataset_registry.md` for the full design.
+
 ## Future consumers
 
 The remaining systems below are **not implemented**. They are listed here

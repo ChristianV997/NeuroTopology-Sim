@@ -267,6 +267,18 @@ against the repository's single source of truth for banned overclaim
 language (`report_guardrails.BANNED_REPORT_PHRASES` plus the transition
 layer's addendum), and validation fails closed on a hit.
 
+## Benchmark dataset registry (optional, upstream of this layer)
+
+This layer trusts whatever `TransitionRecordV1` it is given; it has no
+notion of whether the *dataset* behind that record has already been
+explored elsewhere. `benchmarks/` (see `docs/benchmark_dataset_registry.md`)
+adds that upstream check, entirely outside this package: a future
+consumer of `PhaseSpaceCoordinateV1` that needs to know whether a
+coordinate's source dataset is discovery-stage or locked for confirmatory
+validation should consult `benchmarks.split_policy.can_use_dataset`/
+`can_use_artifact` before treating a coordinate as independent evidence.
+No `phase_space/` code was changed by that milestone.
+
 ## Future consumers
 
 The following are **not implemented** by this milestone. They are listed
