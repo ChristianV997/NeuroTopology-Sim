@@ -339,10 +339,15 @@ substrate is for; none of these descriptions is a commitment to a design:
   once a real need to filter on them arises; this milestone reads them
   only if a fixture explicitly supplies them and does not yet fold them
   into scoring.
-- **Direct integration with the MNE/BIDS adapter** -- e.g. a single CLI
-  invocation that takes a scored candidate straight into
-  `adapters.mne_bids`'s metadata-scan path. Today the two packages are
-  connected only by documentation and by a human's own next step.
+- **Direct integration with the MNE/BIDS adapter.** Since this milestone,
+  `dataset_acquisition/` (see `docs/dataset_acquisition_planner.md`) now
+  fills this gap: it turns a scored candidate into a dry-run-first
+  acquisition plan, then (only after a real local scan/verify) hands the
+  verified local root to `adapters.mne_bids`'s metadata-scan path via
+  `dataset_acquisition.executor.run_bids_handoff`. What remains open is
+  the *remote fetch* step itself -- `dataset_acquisition` v1 has no
+  implemented download path for either catalog; see that document's own
+  Future work section.
 
 This milestone does not imply that any imported candidate is analyzed
 evidence, does not imply clinical validity for any dataset it surfaces,

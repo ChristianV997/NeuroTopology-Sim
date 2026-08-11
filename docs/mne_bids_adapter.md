@@ -11,6 +11,14 @@ A second, sibling adapter for derived fMRI features
 metadata-scan-only vs. explicit-mapping-driven export, deterministic IDs,
 fail-closed validation -- see `docs/fmri_derivatives_adapter.md`.
 
+`dataset_acquisition.executor.run_bids_handoff` (see
+`docs/dataset_acquisition_planner.md`) calls this adapter's own
+`scan_bids_metadata`/`make_dataset_record_from_bids`/
+`make_artifact_records_from_bids` functions directly, unmodified, once a
+local BIDS root has been scanned/verified -- this adapter's own metadata-
+scan-only behavior and `mapping_provided=False` conservatism are unchanged
+by that caller.
+
 ## What it does
 
 `adapters.mne_bids` is the bridge from a lab's own MNE/BIDS-organized
