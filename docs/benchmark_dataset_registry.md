@@ -272,11 +272,22 @@ gained the analogous hook plus an optional `--mark-seen` that calls this
 package's own `mark_seen` after a successful phase-space export. No changes
 were made to this registry's own schema or policy for that milestone.
 
+`reports/` (see `docs/evidence_report_generator.md`) is the first module to
+turn this registry's authorization decisions and contamination updates,
+as already summarized on a bundle by `evidence/`, into a human-readable
+report section (`registry_summary`, `contamination_summary`) -- it reads
+only what the bundle already recorded and does not re-check the registry
+itself.
+
 ## Limitations and future work
 
-- **No downstream consumer exists yet.** A `DatasetRecordV1`/`ArtifactRecordV1`
-  sitting in the registry is not itself evidence of anything; it only
-  records how a dataset *may* be used going forward.
+- **No downstream consumer reads this registry file directly yet outside
+  `evidence.builder`.** A `DatasetRecordV1`/`ArtifactRecordV1` sitting in
+  the registry is not itself evidence of anything; it only records how a
+  dataset *may* be used going forward. `reports/` summarizes registry
+  decisions only as already surfaced on an `EvidenceBundleV1`, not by
+  reading `benchmarks/registry_seed.json` (or any other registry file)
+  itself.
 - **Not implemented by this milestone** (listed only to show what this
   substrate is for -- none of these descriptions is a commitment to a
   design): a Theory Competition Engine that would consult

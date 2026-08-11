@@ -53,6 +53,16 @@ def main() -> int:
     parser.add_argument("--mark-seen", action="store_true")
     parser.add_argument("--seen-by", default="exploration", choices=("exploration", "llm", "theory_generation", "model_selection"))
     parser.add_argument("--updated-registry-out", type=Path, default=None)
+    parser.add_argument(
+        "--include-report", action="store_true",
+        help="after building the bundle, also generate an EvidenceReportV1 (Markdown+JSON) "
+             "from it via reports.evidence_report.build_report -- default: no report generated",
+    )
+    parser.add_argument(
+        "--report-out", type=Path, default=None,
+        help="output directory for the report when --include-report is given "
+             "(default: the same directory as --out)",
+    )
     args = parser.parse_args()
 
     try:
@@ -70,6 +80,8 @@ def main() -> int:
             seen_by=args.seen_by,
             updated_registry_out=args.updated_registry_out,
             no_registry=args.no_registry,
+            include_report=args.include_report,
+            report_out=args.report_out,
         )
     except BuildError as exc:
         print(f"[evidence.export_bundle] FAILED: {exc}")
@@ -91,6 +103,8 @@ def main() -> int:
         "null_control_status": bundle.null_control_summary.get("status"),
         "out_dir": str(args.out),
     }
+    if args.include_report:
+        summary["report"] = bundle.metadata.get("report")
     print(json.dumps(summary, indent=2))
     return 0
 

@@ -732,6 +732,11 @@ modifying any exporter logic in this package. `evidence.builder.DISPATCH`
 currently covers both real ds005620 feature families (`cohort_summary`,
 `spatial_defect_map`) and both ds000245 parcellation variants.
 
+`reports/` (see `docs/evidence_report_generator.md`) is the first module to
+turn a bundle -- and by extension the `TransitionRecordV1` artifacts this
+package produces -- into a deterministic, human-readable summary, with no
+LLM call and no scientific recomputation.
+
 ## Future consumers
 
 The remaining systems below are **not implemented**. They are listed here

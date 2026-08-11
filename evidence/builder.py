@@ -171,6 +171,8 @@ def build_evidence_bundle(
     seen_by: str = "exploration",
     updated_registry_out: Optional[Path] = None,
     no_registry: bool = False,
+    include_report: bool = False,
+    report_out: Optional[Path] = None,
 ) -> EvidenceBundleV1:
     key = (dataset, feature_set)
     if key not in DISPATCH:
@@ -375,4 +377,32 @@ def build_evidence_bundle(
         raise BuildError(f"built bundle failed validation: {'; '.join(errors)}")
 
     store.write(bundle)
+
+    if include_report:
+        from reports.evidence_report import ReportBuildError, build_report
+        from reports.renderer import render_markdown
+
+        bundle_path = store.root / "EvidenceBundle.json"
+        try:
+            report = build_report(bundle, bundle_path)
+        except ReportBuildError as exc:
+            raise BuildError(f"report generation failed: {exc}") from exc
+
+        report_dir = Path(report_out) if report_out is not None else Path(out)
+        md_path = report_dir / "EvidenceReport.md"
+        json_path = report_dir / "EvidenceReport.json"
+        report.generated_files = [_relative_path(md_path), _relative_path(json_path)]
+        report_dir.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(render_markdown(report), encoding="utf-8")
+        report.write_json(json_path)
+
+        bundle.metadata["report"] = {
+            "report_id": report.report_id,
+            "generated_files": list(report.generated_files),
+        }
+        post_report_errors = bundle.validate()
+        if post_report_errors:
+            raise BuildError(f"bundle failed validation after attaching report metadata: {'; '.join(post_report_errors)}")
+        store.write(bundle)  # re-write so EvidenceBundle.json reflects metadata.report
+
     return bundle
