@@ -1,0 +1,221 @@
+"""Structural validation and shared vocabulary for
+`FeatureRecipeSpecV1`/`DerivedFeatureRecipeManifestV1`.
+
+Reuses this repository's shared banned-phrase scanner
+(`phase_space.coordinate.scan_banned_phrases`),
+`transitions.features.validate_feature_name` (the same namespace check
+`adapters.mne_bids_features.cross_validate_rows` already uses), and
+`dataset_acquisition.store.validate_target_root` for output-path safety --
+mirroring how every validation module in this repository reuses shared
+checks rather than declaring new copies.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from phase_space.coordinate import scan_banned_phrases
+from transitions.features import FeatureNameError, validate_feature_name
+
+ALLOWED_INPUT_KINDS: frozenset[str] = frozenset({"bids_raw", "epoch_table"})
+ALLOWED_MODALITIES: frozenset[str] = frozenset({"EEG"})
+ALLOWED_OUTPUT_FORMATS: frozenset[str] = frozenset({"long"})
+ALLOWED_ARTIFACT_POLICIES: frozenset[str] = frozenset({"none"})
+ALLOWED_REFERENCE_POLICIES: frozenset[str] = frozenset({"as_recorded", "average"})
+
+# Mission Phase C: kept deliberately small. Every name here must also be
+# namespace-valid per transitions.features.validate_feature_name -- this
+# set is a *subset* of what that function would accept, not a superset.
+SUPPORTED_SPECTRAL_FEATURES: frozenset[str] = frozenset(
+    {"spectral.delta_power", "spectral.theta_power", "spectral.alpha_power", "spectral.beta_power", "spectral.gamma_power"}
+)
+SUPPORTED_QC_FEATURES: frozenset[str] = frozenset(
+    {"qc.valid_epoch_count", "qc.channel_count", "qc.duration_seconds", "qc.missing_value_fraction"}
+)
+SUPPORTED_COMPLEXITY_FEATURES: frozenset[str] = frozenset({"complexity.spectral_entropy"})
+SUPPORTED_FEATURES: frozenset[str] = SUPPORTED_SPECTRAL_FEATURES | SUPPORTED_QC_FEATURES | SUPPORTED_COMPLEXITY_FEATURES
+
+_REQUIRED_BOUNDS_FIELDS: tuple[str, ...] = ("max_subjects", "max_runs", "max_epochs_per_state", "max_total_epochs")
+
+FEATURE_RECIPE_EXTRA_BANNED_PHRASES: tuple[str, ...] = (
+    "recipe output is evidence",
+    "features prove",
+    "extraction confirms",
+    "guaranteed real signal",
+)
+
+
+class FeatureRecipeValidationError(ValueError):
+    """Raised when a recipe spec or manifest fails structural validation."""
+
+
+def _scan_extra_phrases(value: Any, path: str, errors: list[str]) -> None:
+    if isinstance(value, str):
+        low = value.lower()
+        for phrase in FEATURE_RECIPE_EXTRA_BANNED_PHRASES:
+            if phrase in low:
+                errors.append(f"{path}: banned phrase detected: '{phrase}'")
+    elif isinstance(value, dict):
+        for key, sub in value.items():
+            _scan_extra_phrases(sub, f"{path}.{key}", errors)
+    elif isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            _scan_extra_phrases(item, f"{path}[{idx}]", errors)
+
+
+def _scan_banned_phrases(value: Any, path: str, errors: list[str]) -> None:
+    scan_banned_phrases(value, path, errors)
+    _scan_extra_phrases(value, path, errors)
+
+
+def validate_recipe_spec(spec: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises."""
+    errors: list[str] = []
+
+    dataset_id = getattr(spec, "dataset_id", None)
+    if not dataset_id:
+        errors.append("dataset_id is required")
+
+    feature_set_id = getattr(spec, "feature_set_id", None)
+    if not feature_set_id:
+        errors.append("feature_set_id is required")
+
+    input_kind = getattr(spec, "input_kind", None)
+    if input_kind not in ALLOWED_INPUT_KINDS:
+        errors.append(f"input_kind '{input_kind}' must be one of {sorted(ALLOWED_INPUT_KINDS)}")
+
+    source_state = getattr(spec, "source_state", None)
+    target_state = getattr(spec, "target_state", None)
+
+    # Rule 1: recipe_id deterministic from identity fields.
+    if dataset_id and feature_set_id and source_state and target_state:
+        from adapters.mne_bids_feature_recipe_schema import compute_recipe_id
+
+        expected_id = compute_recipe_id(
+            dataset_id=dataset_id,
+            feature_set_id=feature_set_id,
+            source_state=source_state,
+            target_state=target_state,
+            requested_features=list(getattr(spec, "requested_features", None) or []),
+            max_subjects=getattr(spec, "max_subjects", None),
+            max_runs=getattr(spec, "max_runs", None),
+            max_epochs_per_state=getattr(spec, "max_epochs_per_state", None),
+            max_total_epochs=getattr(spec, "max_total_epochs", None),
+        )
+        recipe_id = getattr(spec, "recipe_id", None)
+        if recipe_id != expected_id:
+            errors.append(f"recipe_id '{recipe_id}' does not match deterministic id '{expected_id}' (rule 1)")
+
+    # Rule 3.
+    if not getattr(spec, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 3)")
+
+    # Rule 4.
+    if not getattr(spec, "provenance", None):
+        errors.append("provenance is required (rule 4)")
+
+    # Rule 5: event_state_mapping required, no implicit state inference.
+    event_state_mapping = getattr(spec, "event_state_mapping", None) or {}
+    if not event_state_mapping:
+        errors.append("event_state_mapping is required and must be non-empty (rule 5) -- states are never inferred")
+
+    # Rule 6: source_state/target_state required and must both appear as
+    # values in event_state_mapping.
+    if not source_state:
+        errors.append("source_state is required (rule 6)")
+    if not target_state:
+        errors.append("target_state is required (rule 6)")
+    if source_state and target_state and source_state == target_state:
+        errors.append("source_state and target_state must differ (rule 6)")
+    mapped_states = set(event_state_mapping.values())
+    if source_state and event_state_mapping and source_state not in mapped_states:
+        errors.append(f"source_state '{source_state}' does not appear as a value in event_state_mapping (rule 6)")
+    if target_state and event_state_mapping and target_state not in mapped_states:
+        errors.append(f"target_state '{target_state}' does not appear as a value in event_state_mapping (rule 6)")
+
+    # Rule 7: modality must be EEG for v1.
+    modality = getattr(spec, "modality", None)
+    if modality not in ALLOWED_MODALITIES:
+        errors.append(f"modality '{modality}' must be one of {sorted(ALLOWED_MODALITIES)} for v1 (rule 7)")
+
+    # Rule 8: requested_features must map to transitions feature namespaces
+    # AND be within this recipe's deliberately small supported set.
+    requested_features = getattr(spec, "requested_features", None) or []
+    if not requested_features:
+        errors.append("requested_features must be a non-empty list (rule 8)")
+    for feature_name in requested_features:
+        try:
+            validate_feature_name(feature_name)
+        except FeatureNameError as exc:
+            errors.append(f"requested_features: {exc} (rule 8)")
+        if feature_name not in SUPPORTED_FEATURES:
+            errors.append(
+                f"requested_features: '{feature_name}' is not in this recipe's supported feature set "
+                f"{sorted(SUPPORTED_FEATURES)} (rule 8)"
+            )
+        if feature_name not in (getattr(spec, "feature_definitions", None) or {}):
+            errors.append(f"requested_features: '{feature_name}' has no entry in feature_definitions (rule 8)")
+
+    # Rule 9: resource bounds required.
+    for bound_field in _REQUIRED_BOUNDS_FIELDS:
+        value = getattr(spec, bound_field, None)
+        if value is None:
+            errors.append(f"{bound_field} is required (rule 9)")
+        elif not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            errors.append(f"{bound_field} must be a positive integer, got {value!r} (rule 9)")
+
+    output_format = getattr(spec, "output_format", None)
+    if output_format not in ALLOWED_OUTPUT_FORMATS:
+        errors.append(f"output_format '{output_format}' must be one of {sorted(ALLOWED_OUTPUT_FORMATS)}")
+
+    artifact_policy = getattr(spec, "artifact_policy", None)
+    if artifact_policy not in ALLOWED_ARTIFACT_POLICIES:
+        errors.append(
+            f"artifact_policy '{artifact_policy}' must be one of {sorted(ALLOWED_ARTIFACT_POLICIES)} for v1 "
+            "(Autoreject/PyPREP are future work, not v1 dependencies)"
+        )
+
+    reference_policy = getattr(spec, "reference_policy", None)
+    if reference_policy not in ALLOWED_REFERENCE_POLICIES:
+        errors.append(f"reference_policy '{reference_policy}' must be one of {sorted(ALLOWED_REFERENCE_POLICIES)}")
+
+    if input_kind == "bids_raw" and not getattr(spec, "bids_root", None):
+        errors.append("bids_root is required when input_kind='bids_raw'")
+
+    # Rule 11: banned overclaim language.
+    for field_name in ("recipe_name", "provenance", "reference_policy"):
+        _scan_banned_phrases(getattr(spec, field_name, None) or "", field_name, errors)
+    for field_name in ("limitations",):
+        _scan_banned_phrases(getattr(spec, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(event_state_mapping, "event_state_mapping", errors)
+    _scan_banned_phrases(getattr(spec, "feature_definitions", None) or {}, "feature_definitions", errors)
+    _scan_banned_phrases(getattr(spec, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_manifest(manifest: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises."""
+    errors: list[str] = []
+
+    if not getattr(manifest, "recipe_id", None):
+        errors.append("recipe_id is required")
+    if not getattr(manifest, "dataset_id", None):
+        errors.append("dataset_id is required")
+
+    if not getattr(manifest, "limitations", None):
+        errors.append("limitations must be a non-empty list")
+    if not getattr(manifest, "provenance", None):
+        errors.append("provenance is required")
+
+    features_written = getattr(manifest, "features_written", 0)
+    if not isinstance(features_written, int) or features_written < 0:
+        errors.append("features_written must be a non-negative integer")
+
+    for field_name in ("provenance", "repo_commit"):
+        _scan_banned_phrases(getattr(manifest, field_name, None) or "", field_name, errors)
+    for field_name in ("limitations", "errors", "skipped_subjects", "skipped_runs", "skipped_events", "states_observed"):
+        _scan_banned_phrases(getattr(manifest, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(getattr(manifest, "qc_summary", None) or {}, "qc_summary", errors)
+    _scan_banned_phrases(getattr(manifest, "metadata", None) or {}, "metadata", errors)
+
+    return errors

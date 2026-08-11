@@ -19,6 +19,15 @@ local BIDS root has been scanned/verified -- this adapter's own metadata-
 scan-only behavior and `mapping_provided=False` conservatism are unchanged
 by that caller.
 
+`adapters.mne_bids_feature_recipe` (see
+`docs/mne_bids_feature_recipe.md`) fills the remaining gap: it computes an
+explicit, bounded `derived_features.csv`/`mapping.json` pair from a local
+BIDS-like root or epoch-table fixture, then calls this adapter's own
+`export_mne_bids_derived_transitions` unmodified (optional CLI flag
+`--run-mne-bids-adapter`) -- this adapter's own eligibility checks,
+mapping validation, and registry discipline all apply unchanged to that
+caller too.
+
 ## What it does
 
 `adapters.mne_bids` is the bridge from a lab's own MNE/BIDS-organized
