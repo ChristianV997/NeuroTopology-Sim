@@ -369,6 +369,26 @@ def test_records_can_be_read_back_via_transition_store(tmp_path):
         assert len(rows) == 2  # awake, sedated
 
 
+def test_cohort_summary_records_carry_feature_definitions_and_feature_set_id(tmp_path):
+    input_dir = _write_fixture_dir(tmp_path)
+    result = export(input_dir, tmp_path / "out")
+    for record in result["subject_records"] + [result["cohort_record"]]:
+        assert record.metadata["feature_set_id"] == "ds005620_pitnn_cohort_summary"
+        assert set(record.metadata["feature_definitions"]) == set(record.feature_names)
+
+
+def test_default_feature_set_is_cohort_summary(tmp_path):
+    input_dir = _write_fixture_dir(tmp_path)
+    result = export(input_dir, tmp_path / "out")
+    assert result["feature_set"] == "cohort_summary"
+
+
+def test_unknown_feature_set_fails_closed(tmp_path):
+    input_dir = _write_fixture_dir(tmp_path)
+    with pytest.raises(ExportError, match="unknown feature_set"):
+        export(input_dir, tmp_path / "out", feature_set="not_a_real_feature_set")
+
+
 def test_cli_end_to_end(tmp_path):
     import subprocess
     import sys

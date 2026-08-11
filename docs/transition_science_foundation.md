@@ -343,15 +343,117 @@ committed `contracts/btc_icft/ds005620/pitnn_cohort/` files already in the
 repository, so no local dataset generation or raw-data re-fetch is required
 to reproduce it.
 
-**Future work**: extend this pattern to the `spatial_defect_map` per-subject
-`qabs`/`beta1` series in the same `cohort_summary.json` (a distinct
-topology measurement from `cohort_per_subject.csv`'s columns, intentionally
-not merged into these records to avoid conflating two differently-defined
-`beta1` quantities under one feature name); wire in a similar exporter for
-`outputs/pitnn_cohort/ds005620/subjects/*.json`'s per-window feature
-vectors (gitignored, so any such exporter's tests would need fixtures, as
-this one's do); and reuse this exporter's mapping/governance pattern for
-other datasets' committed cohort artifacts once they exist.
+**Future work** (as of the initial `cohort_summary` integration): extend
+this pattern to the `spatial_defect_map` per-subject `qabs`/`beta1` series
+in the same `cohort_summary.json` -- **done, see the next section** -- and
+to `outputs/pitnn_cohort/ds005620/subjects/*.json`'s per-window feature
+vectors (still gitignored, so any such exporter's tests would still need
+fixtures); reuse this exporter's mapping/governance pattern for other
+datasets' committed cohort artifacts once they exist remains open.
+
+### Two ds005620 feature families: cohort_summary vs. spatial_defect_map
+
+`cohort_summary.json` contains **two real, differently-computed feature
+families**, both exportable via the same tool
+(`tools/export_ds005620_pitnn_transitions.py --feature-set <name>`):
+
+| `--feature-set` | Source location | Features | Method |
+|---|---|---|---|
+| `cohort_summary` (default) | `cohort_per_subject.csv` + `topology_tests.*` | `topology.persistence_landscape_area`, `topology.betti1`, `connectivity.mean_plv` | Windowed persistent cubical homology, averaged across `windows_per_condition` windows per condition |
+| `spatial_defect_map` | `cohort_summary.json['spatial_defect_map']` | `topology.q_abs`, `topology.spatial_defect_betti1` | Spatial defect/vortex counting in a single condition snapshot |
+
+**Why this split matters**: both families independently produce a
+"beta1"-named quantity in the raw source data --
+`cohort_per_subject.csv`'s `{awake,sedated}_beta1` (fractional, e.g. 1.333,
+because it is a *mean across 3 windows*) and
+`spatial_defect_map.per_subject[].{awake,sedated}_beta1` (small integers,
+e.g. 2, 4, because it is a *single-snapshot spatial count*). These are
+genuinely different topological measurements that happen to share a short
+name in the source data. Exporting both under the canonical feature name
+`topology.betti1` would silently conflate them for any downstream reader
+that only inspects `feature_names` — exactly the failure mode this
+milestone exists to prevent. The fix applied:
+
+1. **Different canonical feature names.** `topology.betti1` (cohort_summary)
+   vs. `topology.spatial_defect_betti1` (spatial_defect_map) — both valid
+   `topology.*` names per `transitions.features` (new names under a known
+   namespace need no registry change), but textually and namespace-locally
+   distinct, so a reader of bare `feature_names` cannot conflate them even
+   without reading further metadata. `topology.q_abs` needed no renaming:
+   it only appears in `spatial_defect_map`, so it is already unambiguous.
+2. **`metadata.feature_definitions`** on every record (both feature sets):
+   an exact, source-specific prose definition of each exported feature name,
+   including an explicit cross-reference telling a reader which *other*
+   feature set's similarly-named quantity it is not the same as.
+3. **`metadata.feature_set_id`** (`"ds005620_pitnn_cohort_summary"` or
+   `"ds005620_spatial_defect_map"`) on every record — an explicit, greppable
+   tag identifying which feature family produced it, independent of
+   `feature_names` and never mutated after export.
+4. **No new first-class `TransitionRecordV1` field.** A `feature_set_id`
+   field on the schema itself, or in the deterministic-ID basis, was
+   considered per this milestone's brief and rejected: the two feature
+   sets already use fully disjoint `feature_names`
+   (`{persistence_landscape_area, betti1, mean_plv}` vs.
+   `{q_abs, spatial_defect_betti1}`), and `transitions.record.compute_transition_id`'s
+   basis already includes `feature_names` — so `transition_id` can never
+   collide between them for the same subject/dataset/session/state/modality,
+   with **no schema change and no risk to existing IDs**. This was verified
+   directly: exporting the real committed cohort produces the *same*
+   `cohort_summary` cohort `transition_id` (`e59e1431abd38f12`) as before
+   this milestone, and a *different*, non-colliding
+   `spatial_defect_map` cohort `transition_id`
+   (`2e7230df10b9154c`). `tests/test_export_ds005620_spatial_defect_transitions.py`
+   asserts this non-collision property directly, per-subject and at the
+   cohort level, not just for the specific two IDs above.
+
+**Cohort-level asymmetry, faithfully preserved, not smoothed over**: the
+source artifact reports a cohort-level aggregate (`mean_qabs_awake`/
+`mean_qabs_sedated` + a paired Wilcoxon test) for `q_abs`, but *no*
+cohort-level aggregate for the spatial defect count. Rather than compute one
+by averaging the per-subject integers ourselves — which the source artifact
+itself does not assert — the `spatial_defect_map` cohort record's
+`feature_names` is `["topology.q_abs"]` only;
+`topology.spatial_defect_betti1` appears in subject-level records but is
+never given a fabricated cohort summary.
+
+**Null-control honesty across a subtler case**: `spatial_defect_map`'s only
+cohort-level statistical test is a plain paired Wilcoxon signed-rank test
+(`paired_wilcoxon_qabs`), not a permutation/surrogate-based null-control
+test like `cohort_summary`'s `subject_blocked_permutation`. These are not
+the same evidentiary category — a permutation test constructs an empirical
+null by shuffling condition labels; a Wilcoxon test does not. The exporter
+does not relabel the Wilcoxon result as a null control to give this feature
+set a `"passed"`/`"failed"` verdict it doesn't have evidence for;
+`null_control_summary.status` is `"not_provided"` for every
+`spatial_defect_map` record, and the Wilcoxon result is preserved,
+unrelabeled, in `metadata.additional_statistics.paired_wilcoxon_qabs`.
+
+**How to run each feature set**:
+
+```bash
+python tools/export_ds005620_pitnn_transitions.py \
+    --input contracts/btc_icft/ds005620/pitnn_cohort \
+    --out outputs/transitions/ds005620_pitnn \
+    --feature-set cohort_summary   # default; --feature-set may be omitted
+
+python tools/export_ds005620_pitnn_transitions.py \
+    --input contracts/btc_icft/ds005620/pitnn_cohort \
+    --out outputs/transitions/ds005620_spatial_defect_map \
+    --feature-set spatial_defect_map
+```
+
+**Claim scope / evidence level for `spatial_defect_map`**: identical policy
+to `cohort_summary` — `claim_scope="exploratory_metric"` for every record;
+`evidence_level="L2_single_subject_real_signal"` per subject and
+`"L4_cross_subject_dataset_specific"` only for the cohort record (real
+`metadata.subject_count` from the source's `n_subjects`).
+
+**What remains future work**: `spatial_defect_map`'s spatial defect
+positions/coordinates themselves (not just the per-condition Q_abs/count
+summaries) are not exported here; a richer spatial-trajectory record would
+need a dedicated `topology.spatial_defect_*` sub-namespace decision beyond
+this milestone's scope. `outputs/pitnn_cohort/ds005620/subjects/*.json`'s
+per-window vectors remain unexported (gitignored, would need fixtures).
 
 ## Extension guidelines
 

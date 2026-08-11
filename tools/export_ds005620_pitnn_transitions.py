@@ -7,18 +7,41 @@ Reads the already-computed, git-committed cohort artifact at
 `cohort_per_subject.csv`, `pairing.json`, `RunRecord.json`) -- produced by
 `tools/analyze_pitnn_cohort_ds005620.py` from
 `tools/stream_pitnn_cohort_ds005620.py`'s per-subject output -- and converts
-it into `transitions.TransitionRecordV1` artifacts: one per subject with a
-paired awake/sedated summary, plus one cohort-level record built from the
-same artifact's subject-median statistics. No raw EEG data is read or
-reprocessed here; this is a pure format conversion over an existing,
+it into `transitions.TransitionRecordV1` artifacts. No raw EEG data is read
+or reprocessed here; this is a pure format conversion over an existing,
 already-computed real-output artifact, reusing `transitions.record`,
 `transitions.metrics`, and `transitions.store` rather than duplicating any
 transition-record logic.
 
+`cohort_summary.json` contains **two distinct real feature families** that
+must never be conflated, selected via `--feature-set`:
+
+  * `cohort_summary` (default) -- `cohort_per_subject.csv`'s
+    persistence-landscape-area / windowed-mean-Betti-1 / mean-PLV summary,
+    computed by `tools/analyze_pitnn_cohort_ds005620.py` from per-window
+    persistent cubical homology.
+  * `spatial_defect_map` -- the *nested*
+    `cohort_summary.json["spatial_defect_map"]` block's per-subject
+    unsigned topological charge (Q_abs) and a spatially-counted,
+    integer-valued Betti-1-like defect/vortex count. This is a genuinely
+    different topological measurement method from `cohort_summary`'s
+    windowed persistent-homology Betti-1 mean, despite both loosely being
+    "beta1"-flavored quantities in the source data -- see
+    `docs/transition_science_foundation.md`'s "Two ds005620 feature
+    families" section for why they are kept under different canonical
+    feature names (`topology.betti1` vs `topology.spatial_defect_betti1`)
+    rather than merged.
+
 Usage:
   python tools/export_ds005620_pitnn_transitions.py \\
       --input contracts/btc_icft/ds005620/pitnn_cohort \\
-      --out outputs/transitions/ds005620_pitnn
+      --out outputs/transitions/ds005620_pitnn \\
+      --feature-set cohort_summary
+
+  python tools/export_ds005620_pitnn_transitions.py \\
+      --input contracts/btc_icft/ds005620/pitnn_cohort \\
+      --out outputs/transitions/ds005620_spatial_defect_map \\
+      --feature-set spatial_defect_map
 """
 from __future__ import annotations
 
@@ -39,15 +62,89 @@ from transitions.record import TransitionRecordV1, TransitionValidationError  # 
 from transitions.store import TransitionStore  # noqa: E402
 
 _EXPECTED_SCHEMA = "NeuroTopologySim.DS005620PITNNCohort.v1"
-_FEATURE_NAMES = [
-    "topology.persistence_landscape_area",
-    "topology.betti1",
-    "connectivity.mean_plv",
-]
 _TRANSITION_CLASS = "anesthesia_propofol_awake_to_sedated"
 _MODALITY = "EEG"
 _TIME_AXIS = {"unit": "condition_summary", "n_samples": 2, "labels": ["awake", "sedated"]}
 _ALPHA = 0.05
+
+# ── Feature-set registry ──────────────────────────────────────────────────
+#
+# Each entry names the exact source-specific meaning of every feature it
+# exports, so a downstream reader (or `metadata.feature_definitions` on the
+# record itself) never has to guess what a bare "beta1" or "Q_abs" means.
+# `feature_set_id` is recorded in `metadata`, not in the deterministic ID
+# basis -- the two feature sets already use disjoint `feature_names`, which
+# alone guarantees their transition_ids cannot collide (see
+# transitions.record.compute_transition_id: dataset/subject/session/state/
+# modality/feature_names is the full identity basis). Adding a first-class
+# `feature_set_id` field to TransitionRecordV1 was considered and rejected
+# as unnecessary schema churn for a collision this metadata-only field
+# already prevents; see docs/transition_science_foundation.md.
+
+_COHORT_SUMMARY_FEATURE_NAMES = [
+    "topology.persistence_landscape_area",
+    "topology.betti1",
+    "connectivity.mean_plv",
+]
+_COHORT_SUMMARY_FEATURE_DEFINITIONS = {
+    "topology.persistence_landscape_area": (
+        "Integrated persistent-H1 landscape area per condition, computed by "
+        "tools/analyze_pitnn_cohort_ds005620.py from "
+        "tools/stream_pitnn_cohort_ds005620.py's per-window persistent cubical "
+        "homology output (cohort_per_subject.csv column "
+        "{awake,sedated}_landscape_area)."
+    ),
+    "topology.betti1": (
+        "Mean H1 Betti number across windows_per_condition persistent-homology "
+        "windows per condition (cohort_per_subject.csv column "
+        "{awake,sedated}_beta1) -- a fractional per-condition average. This is "
+        "NOT the same measurement as the spatial defect map's integer spatial "
+        "Betti-1-like count (feature set 'spatial_defect_map', feature "
+        "topology.spatial_defect_betti1); do not conflate the two."
+    ),
+    "connectivity.mean_plv": (
+        "Mean pairwise phase-locking value across channel pairs per condition "
+        "(cohort_per_subject.csv column {awake,sedated}_mean_plv)."
+    ),
+}
+
+_SPATIAL_DEFECT_FEATURE_NAMES = [
+    "topology.q_abs",
+    "topology.spatial_defect_betti1",
+]
+_SPATIAL_DEFECT_FEATURE_DEFINITIONS = {
+    "topology.q_abs": (
+        "Unsigned topological charge magnitude (|Q|) of the spatial "
+        "defect/vortex map for one condition, from "
+        "cohort_summary.json['spatial_defect_map'] (per-subject: "
+        "per_subject[].{awake,sedated}_qabs; cohort: "
+        "mean_qabs_{awake,sedated})."
+    ),
+    "topology.spatial_defect_betti1": (
+        "Integer count of non-trivial topological loops (a spatially-counted "
+        "Betti-1-like quantity) detected in a single spatial defect/vortex map "
+        "snapshot per condition, from cohort_summary.json['spatial_defect_map']"
+        "['per_subject'][].{awake,sedated}_beta1. This is NOT the same "
+        "measurement as the windowed persistent-homology mean used by feature "
+        "set 'cohort_summary''s topology.betti1 feature; do not conflate the "
+        "two despite the shared 'beta1' short name in the source data."
+    ),
+}
+
+_FEATURE_SET_REGISTRY: dict[str, dict[str, Any]] = {
+    "cohort_summary": {
+        "feature_names": _COHORT_SUMMARY_FEATURE_NAMES,
+        "feature_definitions": _COHORT_SUMMARY_FEATURE_DEFINITIONS,
+        "feature_set_id": "ds005620_pitnn_cohort_summary",
+        "default_out": "outputs/transitions/ds005620_pitnn",
+    },
+    "spatial_defect_map": {
+        "feature_names": _SPATIAL_DEFECT_FEATURE_NAMES,
+        "feature_definitions": _SPATIAL_DEFECT_FEATURE_DEFINITIONS,
+        "feature_set_id": "ds005620_spatial_defect_map",
+        "default_out": "outputs/transitions/ds005620_spatial_defect_map",
+    },
+}
 
 
 class ExportError(ValueError):
@@ -135,22 +232,24 @@ def _preprocessing_provenance(summary: dict[str, Any], run_record: dict[str, Any
 
 def _base_limitations() -> list[str]:
     return [
-        "TransitionRecord exported from the existing, already-computed ds005620 "
-        "PITNN/cohort topology artifact (contracts/btc_icft/ds005620/pitnn_cohort/); "
-        "no raw EEG data were reprocessed in this export step.",
-        "Exploratory EEG topology artifact; not a clinical anesthesia-depth measure.",
-        "Does not validate consciousness detection, treatment response, or "
-        "mechanistic causal interpretation.",
-        "Condition labels ('awake', 'sedated') are inherited from the source "
-        "artifact's own pairing.json / cohort analysis and were not "
-        "independently re-verified by this exporter.",
+        "TransitionRecord exported from existing committed ds005620 PITNN/cohort "
+        "topology artifacts (contracts/btc_icft/ds005620/pitnn_cohort/); no raw "
+        "data were reprocessed in this step.",
+        "Exploratory EEG topology summary; not a clinical anesthesia-depth measure.",
+        "This artifact does not validate consciousness detection, treatment "
+        "response, mechanistic causality, or spiritual/meditative attainment.",
+        "Feature definitions are source-specific (see metadata.feature_definitions "
+        "and metadata.feature_set_id) and should not be conflated with other "
+        "beta1 or Betti summaries without checking metadata.",
+        "Condition labels ('awake', 'sedated') are inherited from source "
+        "artifacts and were not independently revalidated by this exporter.",
         "velocity_summary reflects a two-point condition-summary trajectory "
         "(awake -> sedated), not a continuously sampled time series; treat it "
         "as a per-condition-step delta, not a physical rate.",
     ]
 
 
-def _build_subject_record(
+def _build_cohort_summary_subject_record(
     row: dict[str, Any],
     *,
     pairing: dict[str, Any],
@@ -158,6 +257,7 @@ def _build_subject_record(
     artifact_paths: dict[str, str],
     repo_commit: str | None,
 ) -> TransitionRecordV1:
+    spec = _FEATURE_SET_REGISTRY["cohort_summary"]
     subject = row.get("subject")
     if not subject:
         raise ExportError("cohort_per_subject.csv row is missing a 'subject' value")
@@ -202,7 +302,7 @@ def _build_subject_record(
         source_state="awake",
         target_state="sedated",
         transition_class=_TRANSITION_CLASS,
-        feature_names=list(_FEATURE_NAMES),
+        feature_names=list(spec["feature_names"]),
         limitations=limitations,
         claim_scope="exploratory_metric",
         evidence_level="L2_single_subject_real_signal",
@@ -215,6 +315,8 @@ def _build_subject_record(
         preprocessing_provenance=preprocessing_provenance,
         artifact_paths=dict(artifact_paths),
         metadata={
+            "feature_set_id": spec["feature_set_id"],
+            "feature_definitions": dict(spec["feature_definitions"]),
             "bayes_factor": bayes_factor,
             "pitnn_verdict": verdict,
             "source_files": pairing.get(subject, {}),
@@ -233,13 +335,14 @@ def _feature_stat(topology_tests: dict[str, Any], name: str) -> tuple[dict[str, 
     return stat.get("paired_wilcoxon_subject_means", {}), stat.get("subject_blocked_permutation", {})
 
 
-def _build_cohort_record(
+def _build_cohort_summary_cohort_record(
     summary: dict[str, Any],
     *,
     preprocessing_provenance: dict[str, Any],
     artifact_paths: dict[str, str],
     repo_commit: str | None,
 ) -> tuple[TransitionRecordV1, list[list[float]]]:
+    spec = _FEATURE_SET_REGISTRY["cohort_summary"]
     topology_tests = summary.get("topology_tests", {})
 
     landscape_wilcoxon, landscape_perm = _feature_stat(topology_tests, "integrated_landscape_area")
@@ -323,7 +426,7 @@ def _build_cohort_record(
         source_state="awake",
         target_state="sedated",
         transition_class=_TRANSITION_CLASS,
-        feature_names=list(_FEATURE_NAMES),
+        feature_names=list(spec["feature_names"]),
         limitations=limitations,
         claim_scope="exploratory_metric",
         evidence_level="L4_cross_subject_dataset_specific",
@@ -336,6 +439,8 @@ def _build_cohort_record(
         preprocessing_provenance=preprocessing_provenance,
         artifact_paths=dict(artifact_paths),
         metadata={
+            "feature_set_id": spec["feature_set_id"],
+            "feature_definitions": dict(spec["feature_definitions"]),
             "subject_count": n_paired,
             "pitnn_verdict_counts": pitnn.get("verdict_counts"),
             "additional_statistics": {
@@ -358,7 +463,176 @@ def _build_cohort_record(
     return record, trajectory
 
 
-def export(input_dir: Path, out_dir: Path, *, include_cohort: bool = True) -> dict[str, Any]:
+# ── spatial_defect_map feature-set builders ──────────────────────────────
+
+def _build_spatial_defect_subject_record(
+    entry: dict[str, Any],
+    *,
+    pairing: dict[str, Any],
+    preprocessing_provenance: dict[str, Any],
+    artifact_paths: dict[str, str],
+    repo_commit: str | None,
+) -> tuple[TransitionRecordV1, list[list[float]]]:
+    spec = _FEATURE_SET_REGISTRY["spatial_defect_map"]
+    subject = entry.get("subject")
+    if not subject:
+        raise ExportError("spatial_defect_map.per_subject entry is missing a 'subject' value")
+
+    try:
+        awake_vec = [float(entry["awake_qabs"]), float(entry["awake_beta1"])]
+        sedated_vec = [float(entry["sedated_qabs"]), float(entry["sedated_beta1"])]
+    except (KeyError, ValueError) as exc:
+        raise ExportError(
+            f"subject {subject!r}: missing or malformed awake/sedated spatial_defect_map "
+            f"values ({exc})"
+        ) from exc
+
+    trajectory = [awake_vec, sedated_vec]
+    delta_summary = trajectory_mean_delta(trajectory)
+    velocity_summary = transition_velocity(trajectory)
+
+    limitations = _base_limitations() + [
+        "Spatial defect map features are exploratory EEG topology summaries, "
+        "not clinical anesthesia-depth measures.",
+        "topology.spatial_defect_betti1 is a spatially-counted integer defect "
+        "count from a single condition's defect/vortex map, computed by a "
+        "different method than the ds005620_pitnn_cohort_summary feature "
+        "set's windowed persistent-homology topology.betti1; the two must not "
+        "be treated as the same measurement.",
+    ]
+
+    record = TransitionRecordV1.make(
+        dataset_id="ds005620",
+        subject_id=subject,
+        session_id=None,
+        record_level="subject",
+        modality=_MODALITY,
+        source_state="awake",
+        target_state="sedated",
+        transition_class=_TRANSITION_CLASS,
+        feature_names=list(spec["feature_names"]),
+        limitations=limitations,
+        claim_scope="exploratory_metric",
+        evidence_level="L2_single_subject_real_signal",
+        repo_commit=repo_commit,
+        time_axis=dict(_TIME_AXIS),
+        duration=None,
+        delta_summary=delta_summary,
+        velocity_summary=velocity_summary,
+        null_control_summary={"status": "not_provided"},
+        preprocessing_provenance=preprocessing_provenance,
+        artifact_paths=dict(artifact_paths),
+        metadata={
+            "feature_set_id": spec["feature_set_id"],
+            "feature_definitions": dict(spec["feature_definitions"]),
+            "source_files": pairing.get(subject, {}),
+        },
+    )
+    errors = record.validate()
+    if errors:
+        raise TransitionValidationError(
+            f"subject {subject!r}: exported spatial-defect record failed validation: {'; '.join(errors)}"
+        )
+    return record, trajectory
+
+
+def _build_spatial_defect_cohort_record(
+    summary: dict[str, Any],
+    *,
+    preprocessing_provenance: dict[str, Any],
+    artifact_paths: dict[str, str],
+    repo_commit: str | None,
+) -> tuple[TransitionRecordV1, list[list[float]]]:
+    spec = _FEATURE_SET_REGISTRY["spatial_defect_map"]
+    spatial = summary.get("spatial_defect_map") or {}
+    if not spatial.get("available"):
+        raise ExportError("cohort_summary.json['spatial_defect_map'] is missing or not available")
+
+    mean_awake = spatial.get("mean_qabs_awake")
+    mean_sedated = spatial.get("mean_qabs_sedated")
+    if mean_awake is None or mean_sedated is None:
+        raise ExportError(
+            "cohort_summary.json['spatial_defect_map'] is missing "
+            "mean_qabs_awake/mean_qabs_sedated cohort statistics"
+        )
+
+    # Only topology.q_abs has a source-reported cohort-level aggregate; no
+    # cohort-level statistic for spatial_defect_betti1 exists in the source
+    # artifact, so it is not fabricated here -- it stays subject-level only.
+    trajectory = [[float(mean_awake)], [float(mean_sedated)]]
+    delta_summary = trajectory_mean_delta(trajectory)
+    velocity_summary = transition_velocity(trajectory)
+
+    wilcoxon_qabs = spatial.get("paired_wilcoxon_qabs") or {}
+    n_subjects = spatial.get("n_subjects")
+
+    null_control_summary = {
+        "status": "not_provided",
+        "note": (
+            "The source artifact reports a plain paired Wilcoxon signed-rank "
+            "test on Q_abs (see metadata.additional_statistics.paired_wilcoxon_qabs), "
+            "not a permutation/surrogate-based null-control test; "
+            "null_control_summary is reserved for the latter, which this "
+            "feature set does not provide in the source artifact."
+        ),
+    }
+
+    limitations = _base_limitations() + [
+        "Spatial defect map features are exploratory EEG topology summaries, "
+        "not clinical anesthesia-depth measures.",
+        "Cohort-level topology.q_abs uses the source's real mean_qabs_awake/"
+        "mean_qabs_sedated values; no cohort-level aggregate for "
+        "topology.spatial_defect_betti1 is reported by the source artifact, "
+        "so it is included only in subject-level spatial-defect records, not "
+        "this cohort record.",
+        "A paired Wilcoxon signed-rank test on Q_abs is reported in "
+        "metadata.additional_statistics; it is not a permutation-based null "
+        "control, so null_control_summary honestly reflects that no such "
+        "control is provided for this feature set here.",
+    ]
+
+    record = TransitionRecordV1.make(
+        dataset_id="ds005620",
+        subject_id=None,
+        session_id=None,
+        record_level="cohort",
+        modality=_MODALITY,
+        source_state="awake",
+        target_state="sedated",
+        transition_class=_TRANSITION_CLASS,
+        feature_names=["topology.q_abs"],
+        limitations=limitations,
+        claim_scope="exploratory_metric",
+        evidence_level="L4_cross_subject_dataset_specific",
+        repo_commit=repo_commit,
+        time_axis=dict(_TIME_AXIS),
+        duration=None,
+        delta_summary=delta_summary,
+        velocity_summary=velocity_summary,
+        null_control_summary=null_control_summary,
+        preprocessing_provenance=preprocessing_provenance,
+        artifact_paths=dict(artifact_paths),
+        metadata={
+            "feature_set_id": spec["feature_set_id"],
+            "feature_definitions": {"topology.q_abs": spec["feature_definitions"]["topology.q_abs"]},
+            "subject_count": n_subjects,
+            "additional_statistics": {"paired_wilcoxon_qabs": wilcoxon_qabs},
+        },
+    )
+    errors = record.validate()
+    if errors:
+        raise TransitionValidationError(f"spatial-defect cohort record failed validation: {'; '.join(errors)}")
+    return record, trajectory
+
+
+def export(
+    input_dir: Path, out_dir: Path, *, include_cohort: bool = True, feature_set: str = "cohort_summary"
+) -> dict[str, Any]:
+    if feature_set not in _FEATURE_SET_REGISTRY:
+        raise ExportError(
+            f"unknown feature_set {feature_set!r}; choose one of {sorted(_FEATURE_SET_REGISTRY)}"
+        )
+
     artifact = _load_artifact(input_dir)
     repo_commit = _git_commit(_REPO_ROOT)
     preprocessing_provenance = _preprocessing_provenance(artifact["summary"], artifact["run_record"])
@@ -367,11 +641,25 @@ def export(input_dir: Path, out_dir: Path, *, include_cohort: bool = True) -> di
     subject_records: list[TransitionRecordV1] = []
     skipped: list[dict[str, str]] = []
 
-    for row in artifact["per_subject_rows"]:
-        subject = row.get("subject", "<unknown>")
+    if feature_set == "cohort_summary":
+        subject_entries: list[dict[str, Any]] = artifact["per_subject_rows"]
+        build_subject_fn = _build_cohort_summary_subject_record
+        build_cohort_fn = _build_cohort_summary_cohort_record
+    else:  # spatial_defect_map
+        spatial = artifact["summary"].get("spatial_defect_map") or {}
+        subject_entries = spatial.get("per_subject") or []
+        if not subject_entries:
+            raise ExportError(
+                f"no spatial_defect_map.per_subject data found in {input_dir}/cohort_summary.json"
+            )
+        build_subject_fn = _build_spatial_defect_subject_record
+        build_cohort_fn = _build_spatial_defect_cohort_record
+
+    for entry in subject_entries:
+        subject = entry.get("subject", "<unknown>")
         try:
-            record, trajectory = _build_subject_record(
-                row,
+            record, trajectory = build_subject_fn(
+                entry,
                 pairing=artifact["pairing"],
                 preprocessing_provenance=preprocessing_provenance,
                 artifact_paths=artifact["artifact_paths"],
@@ -380,30 +668,31 @@ def export(input_dir: Path, out_dir: Path, *, include_cohort: bool = True) -> di
         except (ExportError, TransitionValidationError) as exc:
             skipped.append({"subject": subject, "reason": str(exc)})
             continue
-        store.write(record, trajectory=trajectory, trajectory_columns=_FEATURE_NAMES)
+        store.write(record, trajectory=trajectory, trajectory_columns=record.feature_names)
         subject_records.append(record)
 
     if not subject_records:
         raise ExportError(
-            f"no subjects could be exported from {input_dir} "
+            f"no subjects could be exported from {input_dir} for feature_set={feature_set!r} "
             f"(skipped {len(skipped)}: {skipped})"
         )
 
     cohort_record = None
     if include_cohort:
-        cohort_record, cohort_trajectory = _build_cohort_record(
+        cohort_record, cohort_trajectory = build_cohort_fn(
             artifact["summary"],
             preprocessing_provenance=preprocessing_provenance,
             artifact_paths=artifact["artifact_paths"],
             repo_commit=repo_commit,
         )
-        store.write(cohort_record, trajectory=cohort_trajectory, trajectory_columns=_FEATURE_NAMES)
+        store.write(cohort_record, trajectory=cohort_trajectory, trajectory_columns=cohort_record.feature_names)
 
     return {
         "subject_records": subject_records,
         "cohort_record": cohort_record,
         "skipped": skipped,
         "out_dir": out_dir,
+        "feature_set": feature_set,
     }
 
 
@@ -415,8 +704,16 @@ def main() -> int:
              "(default: contracts/btc_icft/ds005620/pitnn_cohort)",
     )
     parser.add_argument(
-        "--out", type=Path, default=Path("outputs/transitions/ds005620_pitnn"),
-        help="output directory for the TransitionStore (default: outputs/transitions/ds005620_pitnn)",
+        "--feature-set", choices=sorted(_FEATURE_SET_REGISTRY), default="cohort_summary",
+        help="which real feature family in cohort_summary.json to export "
+             "(default: cohort_summary)",
+    )
+    parser.add_argument(
+        "--out", type=Path, default=None,
+        help="output directory for the TransitionStore (default depends on "
+             "--feature-set: outputs/transitions/ds005620_pitnn for "
+             "cohort_summary, outputs/transitions/ds005620_spatial_defect_map "
+             "for spatial_defect_map)",
     )
     parser.add_argument(
         "--no-cohort-record", action="store_true",
@@ -424,13 +721,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    out_dir = args.out or Path(_FEATURE_SET_REGISTRY[args.feature_set]["default_out"])
+
     try:
-        result = export(args.input, args.out, include_cohort=not args.no_cohort_record)
+        result = export(
+            args.input, out_dir, include_cohort=not args.no_cohort_record, feature_set=args.feature_set
+        )
     except (ExportError, TransitionValidationError) as exc:
         print(f"[export_ds005620_pitnn_transitions] FAILED: {exc}")
         return 1
 
     summary = {
+        "feature_set": result["feature_set"],
         "n_subjects_exported": len(result["subject_records"]),
         "n_subjects_skipped": len(result["skipped"]),
         "skipped": result["skipped"],
