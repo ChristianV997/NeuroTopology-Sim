@@ -163,6 +163,112 @@
         "cli": "python -m adapters.mne_bids",
         "docs": "docs/mne_bids_adapter.md"
       }
+    },
+    {
+      "schema_version": "1",
+      "adapter_id": "3bb52fe4f2930332",
+      "tool_id": "moabb",
+      "adapter_name": "MOABB Dataset Candidate Importer v1",
+      "integration_mode": "metadata_import",
+      "input_artifact_kinds": [
+        "moabb_dataset_registry"
+      ],
+      "output_artifact_kinds": [
+        "dataset_candidate_metadata"
+      ],
+      "output_targets": [
+        "external_metadata_only",
+        "DatasetRecordV1",
+        "ArtifactRecordV1"
+      ],
+      "feature_namespaces": [
+        "moabb.dataset_metadata"
+      ],
+      "required_dependencies": [],
+      "optional_dependencies": [
+        "moabb"
+      ],
+      "license_constraints": [
+        "dataset_importers.moabb_importer has zero hard runtime dependency on moabb -- it consumes lightweight fixture JSON with the Python standard library only; moabb (BSD-3-Clause, permissive_low, current_status=planned/not yet a declared dependency per external_tools/registry_seed.json) is only imported, optionally, for best-effort installed-package introspection that never calls .get_data()/.download()"
+      ],
+      "provenance_requirements": [
+        "source_tool_version",
+        "fixture_path_or_installed_package"
+      ],
+      "validation_requirements": [
+        "fail_closed_if_required_metadata_missing"
+      ],
+      "forbidden_outputs": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim"
+      ],
+      "allowed_claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "implementation_status": "implemented",
+      "limitations": [
+        "This adapter produces DatasetCandidateRecordV1 scouting records only -- it never produces TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1/EvidenceReportV1 artifacts, and a candidate record is never treated as evidence.",
+        "moabb is not installed in every environment this repository runs in; the installed-package introspection path is best-effort and falls back to a clear error if the package is unavailable."
+      ],
+      "metadata": {
+        "implementation_verified": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "adapter_id": "a1045476875a731b",
+      "tool_id": "eegdash",
+      "adapter_name": "EEGDash Dataset Candidate Importer v1",
+      "integration_mode": "metadata_import",
+      "input_artifact_kinds": [
+        "eegdash_dataset_registry"
+      ],
+      "output_artifact_kinds": [
+        "dataset_candidate_metadata"
+      ],
+      "output_targets": [
+        "external_metadata_only",
+        "DatasetRecordV1",
+        "ArtifactRecordV1"
+      ],
+      "feature_namespaces": [
+        "eegdash.dataset_metadata"
+      ],
+      "required_dependencies": [],
+      "optional_dependencies": [
+        "eegdash"
+      ],
+      "license_constraints": [
+        "dataset_importers.eegdash_importer has zero hard runtime dependency on eegdash -- it consumes lightweight fixture JSON with the Python standard library only; eegdash (BSD-3-Clause, permissive_low, already declared in requirements.txt and importable this session as eegdash==0.8.4) is only imported, optionally, for a metadata-only catalog query (eegdash.EEGDash.find_datasets, documented by the package itself as transferring no signal bytes) which defaults to off (live_query=False) and is never invoked by this repository's tests or CLI default paths"
+      ],
+      "provenance_requirements": [
+        "source_tool_version",
+        "fixture_path_or_installed_package"
+      ],
+      "validation_requirements": [
+        "fail_closed_if_required_metadata_missing"
+      ],
+      "forbidden_outputs": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim"
+      ],
+      "allowed_claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L0_computational_artifact",
+      "implementation_status": "implemented",
+      "limitations": [
+        "This adapter produces DatasetCandidateRecordV1 scouting records only -- it never produces TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1/EvidenceReportV1 artifacts, and a candidate record is never treated as evidence.",
+        "The installed-package live-query path requires network access and is opt-in only (live_query=True / CLI --allow-live-query); its default behavior performs no network I/O at all."
+      ],
+      "metadata": {
+        "implementation_verified": true
+      }
     }
   ]
 }

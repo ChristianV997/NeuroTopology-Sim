@@ -219,6 +219,20 @@ is `"candidate_unstructured"`, `path` points at the real, committed
 machine-parseable artifact exists. No exporter should read that path as a
 JSON/CSV source.
 
+## Upstream of this registry: dataset candidate scouting
+
+`dataset_importers/` (see `docs/dataset_candidate_importers.md`) is a
+separate, pre-registry package that scores public MOABB/EEGDash datasets
+and can convert its own highest-quality candidates into
+`DatasetRecordV1`/`ArtifactRecordV1` stubs -- but only into a separate
+output file via `dataset_importers.export_candidates
+--to-benchmark-candidates`, never into `benchmarks/registry_seed.json`
+directly. A human still decides whether to fold a converted candidate into
+the seed registry above; nothing in `dataset_importers` writes to it
+automatically. Every candidate-converted record lands at
+`current_role="exploration"`, the same conservative floor every other
+entry in this file starts from.
+
 ## Dataset/artifact role policy
 
 Roles (`benchmarks.split_policy.DATASET_ROLES`): `exploration`,

@@ -300,7 +300,7 @@
       "feature_namespaces": [
         "eegdash.dataset_metadata"
       ],
-      "planned_adapter": "eegdash_importer_v1 (not yet implemented; would generate DatasetRecordV1 candidates for future scouting passes)",
+      "planned_adapter": "dataset_importers.eegdash_importer (implemented; see docs/dataset_candidate_importers.md -- produces DatasetCandidateRecordV1 scouting records, not TransitionRecordV1)",
       "allowed_uses": [
         "documentation",
         "feature_design"
@@ -955,7 +955,7 @@
       "feature_namespaces": [
         "moabb.dataset_metadata"
       ],
-      "planned_adapter": "moabb_importer_v1 (not yet implemented; would generate DatasetRecordV1 entries from MOABB's dataset catalog)",
+      "planned_adapter": "dataset_importers.moabb_importer (implemented; see docs/dataset_candidate_importers.md -- produces DatasetCandidateRecordV1 scouting records, not TransitionRecordV1)",
       "allowed_uses": [
         "documentation",
         "feature_design"
