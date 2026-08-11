@@ -43,12 +43,12 @@ def compute_plv(signals: np.ndarray) -> np.ndarray:
         raise ValueError(f"signals must be 2D (channels x samples), got shape {arr.shape}")
 
     phase = np.angle(hilbert(arr, axis=1))
-    n_ch = phase.shape[0]
-    plv = np.ones((n_ch, n_ch), dtype=float)
-    for i in range(n_ch):
-        for j in range(i + 1, n_ch):
-            v = np.abs(np.mean(np.exp(1j * (phase[i] - phase[j]))))
-            plv[i, j] = plv[j, i] = float(v)
+    n_samples = phase.shape[1]
+    z = np.exp(1j * phase)
+    # |mean_t(exp(i*(phase_i - phase_j)))| = |(Z @ Z^H)[i, j]| / n_samples, since
+    # (Z @ Z^H)[i, j] = sum_t exp(i*phase_i[t]) * exp(-i*phase_j[t]). A single
+    # BLAS matmul replaces the O(n_channels^2) pairwise Python loop.
+    plv = np.abs(z @ z.conj().T) / n_samples
     return plv
 
 
@@ -74,11 +74,15 @@ def compute_pli(signals: np.ndarray) -> np.ndarray:
     phase = np.angle(hilbert(arr, axis=1))
     n_ch = phase.shape[0]
     pli = np.ones((n_ch, n_ch), dtype=float)
-    for i in range(n_ch):
-        for j in range(i + 1, n_ch):
-            diff = phase[i] - phase[j]
-            v = np.abs(np.mean(np.sign(np.sin(diff))))
-            pli[i, j] = pli[j, i] = float(v)
+    # sign(sin(.)) is nonlinear, so unlike PLV this can't collapse to one matmul;
+    # instead the inner Python loop over j is vectorized per row, cutting the
+    # O(n_channels^2) pairwise loop down to O(n_channels) without materializing
+    # a full (n_channels, n_channels, n_samples) tensor.
+    for i in range(n_ch - 1):
+        diff = phase[i] - phase[i + 1:]
+        v = np.abs(np.mean(np.sign(np.sin(diff)), axis=1))
+        pli[i, i + 1:] = v
+        pli[i + 1:, i] = v
     return pli
 
 
@@ -108,14 +112,17 @@ def compute_wpli(signals: np.ndarray) -> np.ndarray:
     analytic = hilbert(arr, axis=1)
     n_ch = arr.shape[0]
     wpli = np.ones((n_ch, n_ch), dtype=float)
-    for i in range(n_ch):
-        for j in range(i + 1, n_ch):
-            cross_spectrum = analytic[i] * np.conj(analytic[j])
-            imag_part = np.imag(cross_spectrum)
-            numerator = np.abs(np.mean(imag_part))
-            denominator = np.mean(np.abs(imag_part))
-            v = float(numerator / denominator) if denominator > 1e-12 else 0.0
-            wpli[i, j] = wpli[j, i] = v
+    # Same row-at-a-time vectorization as compute_pli: O(n_channels) Python
+    # iterations instead of O(n_channels^2), bounded (n_channels, n_samples)
+    # memory per iteration.
+    for i in range(n_ch - 1):
+        cross_spectrum = analytic[i] * np.conj(analytic[i + 1:])
+        imag_part = np.imag(cross_spectrum)
+        numerator = np.abs(np.mean(imag_part, axis=1))
+        denominator = np.mean(np.abs(imag_part), axis=1)
+        v = np.where(denominator > 1e-12, numerator / np.where(denominator > 1e-12, denominator, 1.0), 0.0)
+        wpli[i, i + 1:] = v
+        wpli[i + 1:, i] = v
     return wpli
 
 

@@ -106,3 +106,28 @@ Two honest readings, not adjudicated here:
 
 Data: `outputs/dual_engine/ds005917/cohort_result.json`,
 `outputs/dual_engine/ds005917/paired_stats.json`.
+
+## 6. Addendum: graph-structure re-run for `/fmri-connectome` visualization
+
+A subsequent pass re-fetched all 50 real drug/placebo BOLD sessions from
+OpenNeuro S3 and re-ran the identical pipeline with a new
+`--save-graph-structure` flag (`tools/stream_process_ds005917.py`,
+`dual_engine/fmri_tda_pipeline.py`), persisting each subject/condition's
+real 100-parcel centroid coordinates and the real Pearson connectivity
+matrix — data the pipeline already computed but previously discarded after
+collapsing it to the scalar metrics above.
+
+**Reproduction check**: all six scalar metrics (`betti1`,
+`total_persistence_h1`, `modularity`, `global_efficiency`, `mean_degree`,
+`small_worldness`) for every subject/condition in the re-run matched the
+original `cohort_result.json` exactly (0 mismatches across 25 subjects x 2
+conditions x 6 metrics) — confirming the re-run reproduces this report's
+findings and the new graph-structure export changes no prior result.
+
+The consolidated graph-structure + scalar + paired-stats payload
+(`outputs/dual_engine/ds005917/fmri_connectome.json`, built by
+`tools/export_fmri_connectome_for_command_center.py`) now backs a real 3D
+connectome viewer at `/fmri-connectome` in Awareness Studio (24 of 25
+subjects have graph structure for both arms; one subject's `ses-d2` session
+is not present on S3, consistent with the download failure already noted in
+this report's manifest).

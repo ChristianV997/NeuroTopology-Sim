@@ -604,6 +604,13 @@ def defect_spatial_clustering(
     cand = centroids[cand_mask]
     cand_w = signed[cand_mask]
 
+    # per-triangle cluster label, aligned to the full input arrays (not just the
+    # candidate subset) so a caller can color every triangle by cluster membership
+    # without re-deriving the candidate mask itself; -1 means "not clustered"
+    # (either below min_winding_abs, or DBSCAN noise) -- the same convention
+    # DBSCAN itself uses for noise, extended to cover the excluded triangles too.
+    triangle_cluster_label = np.full(signed.shape[0], -1, dtype=int)
+
     if cand.shape[0] < min_samples:
         return {
             "n_clusters": 0,
@@ -611,6 +618,7 @@ def defect_spatial_clustering(
             "cluster_centroids": np.empty((0, 2), dtype=float),
             "cluster_net_charge": np.empty((0,), dtype=float),
             "cluster_sizes": np.empty((0,), dtype=int),
+            "triangle_cluster_label": triangle_cluster_label,
             "eps_used": float(eps) if eps is not None else 0.0,
             "min_samples": int(min_samples),
             "note": "insufficient candidate defects for clustering",
@@ -619,6 +627,7 @@ def defect_spatial_clustering(
 
     eps_used = float(eps) if eps is not None else _median_nn_distance(cand)
     labels = DBSCAN(eps=eps_used, min_samples=min_samples).fit_predict(cand)
+    triangle_cluster_label[cand_mask] = labels
 
     cluster_ids = sorted(l for l in set(labels.tolist()) if l != -1)
     cluster_centroids = []
@@ -646,6 +655,7 @@ def defect_spatial_clustering(
         "cluster_centroids": cluster_centroids,
         "cluster_net_charge": cluster_net_charge,
         "cluster_sizes": cluster_sizes,
+        "triangle_cluster_label": triangle_cluster_label,
         "eps_used": float(eps_used),
         "min_samples": int(min_samples),
         "metric_kind": "defect_spatial_clustering",

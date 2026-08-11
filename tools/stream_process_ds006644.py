@@ -89,25 +89,44 @@ def download_subject_bold(subject: str, dest_dir: Path) -> Path:
     return dest
 
 
-def process_subject(subject: str, group: str, work_root: Path) -> SubjectResult:
+def _real_schaefer_labels() -> list[str]:
+    """The real Schaefer-2018 100-ROI region names, in `NiftiLabelsMasker` column order.
+
+    Index 0 ('Background') is dropped -- `parcellate_bold`'s masker output has exactly
+    100 columns, one per real region, matching `atlas["labels"][1:]` one-to-one. Unlike
+    ds005917 (raw BOLD, no spatial normalization -- see stream_process_ds005917.py's
+    docstring), ds006644 uses fMRIPrep's AROMA-denoised MNI152NLin6Asym-space BOLD, the
+    same template family as this cached Schaefer atlas, so this correspondence is real,
+    not approximate.
+    """
+    from validation.atlas_utils import fetch_schaefer_atlas
+
+    return fetch_schaefer_atlas(n_rois=100)["labels"][1:]
+
+
+def process_subject(subject: str, group: str, work_root: Path, graph_structure_dir: Path | None = None,
+                     region_labels: list[str] | None = None) -> SubjectResult:
     bold_path = download_subject_bold(subject, work_root)
     try:
         res = run_subject(
             subject_id=subject, group=group, bold_path=str(bold_path),
             atlas_labels_img=_ATLAS_PATH, t_r=1.8, confounds=None,
             connectivity_kind="correlation", provenance="real_fmri",
+            save_graph_structure_dir=str(graph_structure_dir) if graph_structure_dir else None,
+            region_labels=region_labels,
         )
     finally:
         bold_path.unlink(missing_ok=True)  # disk-bounded: delete raw before next subject
     return res
 
 
-def _process_subject_safe(sub: str, group: str, work_path: Path) -> dict:
+def _process_subject_safe(sub: str, group: str, work_path: Path, graph_structure_dir: Path | None = None,
+                           region_labels: list[str] | None = None) -> dict:
     """Always returns a full SubjectResult dict (with `error` set on failure),
     so the shared manifest loop never records the generic {"error"} shape that
     build_cohort_payload's SubjectResult.from_dict cannot rebuild."""
     try:
-        res = process_subject(sub, group, work_path)
+        res = process_subject(sub, group, work_path, graph_structure_dir=graph_structure_dir, region_labels=region_labels)
     except Exception as exc:  # never crash the whole cohort run on one bad subject
         res = SubjectResult(
             subject_id=sub, group=group, n_regions=0, n_timepoints=0,
@@ -118,7 +137,8 @@ def _process_subject_safe(sub: str, group: str, work_path: Path) -> dict:
     return res.to_dict()
 
 
-def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None) -> int:
+def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None,
+        save_graph_structure_dir: str | None = None) -> int:
     out_path = Path(out_dir)
     work_path = Path(work_root)
 
@@ -129,10 +149,13 @@ def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | N
     print(f"{sum(1 for v in labels.values() if v=='verum')} verum / "
           f"{sum(1 for v in labels.values() if v=='placebo')} placebo labeled subjects.")
 
+    graph_dir = Path(save_graph_structure_dir) if save_graph_structure_dir else None
+    region_labels = _real_schaefer_labels() if graph_dir is not None else None
+
     manifest = base_runner.run_manifest_loop(
         items, out_path,
         key_fn=lambda t: t[0],
-        process_fn=lambda t: _process_subject_safe(t[0], t[1], work_path),
+        process_fn=lambda t: _process_subject_safe(t[0], t[1], work_path, graph_structure_dir=graph_dir, region_labels=region_labels),
         limit=limit,
         label_fn=lambda t: f"{t[0]} ({t[1]})",
     )
@@ -151,8 +174,12 @@ def main() -> int:
     p.add_argument("--work-root", default="data/ds006644")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
+    p.add_argument("--save-graph-structure", default=None,
+                    help="directory to persist real parcel centroids + connectivity matrix + real "
+                         "Schaefer-100 region names (.npz) per subject -- valid here because ds006644 "
+                         "uses fMRIPrep's spatially-normalized AROMA-denoised BOLD, unlike ds005917")
     a = p.parse_args()
-    return run(a.out, a.work_root, a.limit, a.subjects)
+    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ import csv
 import json
 import math
 import os
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESULTS_ROOT = REPOSITORY_ROOT / "outputs/btc_icft/ds005620/full_21_optimized"
 DEFAULT_PITNN_COHORT_ROOT = REPOSITORY_ROOT / "outputs/pitnn_cohort/ds005620"
+DEFAULT_DS000245_ROOT = REPOSITORY_ROOT / "data" / "ds000245"
 SCHEMA_VERSION = "command-center-real-results/v1"
 PROXY_METRICS = {
     "q_net": "channel-mean topology proxy; not a demonstrated conserved physical charge",
@@ -264,11 +266,15 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
 
     Populated only when the streaming run used `--export-persistence`
     (`tools/stream_pitnn_cohort_ds005620.py`'s `window_topology` then calls
-    `core.topology.export_persistence_json` on each window's PLV matrix). This
-    reads the LAST window's H1 diagram per condition per subject -- the same
-    window `cubical_h1_bottleneck_distance_last_window` was computed from, so a
-    viewer plotting both is showing the same pair of diagrams the bottleneck
-    number describes, not a different window.
+    `core.topology.export_persistence_json` on each window's PLV matrix).
+    `diagrams_h1` reads the LAST window's H1 diagram per condition per subject
+    -- the same window `cubical_h1_bottleneck_distance_last_window` was
+    computed from, so a viewer plotting both is showing the same pair of
+    diagrams the bottleneck number describes, not a different window.
+    `diagrams_h1_by_window` carries every window's H1 diagram per condition
+    (real data already stored per-window in `topology_windows`, not newly
+    computed here) so a viewer can render a vineyard -- the diagram's real
+    trajectory across the recording, rather than a single static snapshot.
 
     "Available" always means every subject record it returns actually carries a
     diagram; a subject whose windows lack `cubical_persistence` (streaming run
@@ -292,21 +298,27 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
             continue
         windows = record.get("topology_windows") or {}
         diagrams: dict[str, list[list[float | None]]] = {}
+        diagrams_by_window: dict[str, list[list[list[float | None]]]] = {}
         for label, rows in windows.items():
             if not rows:
                 continue
-            cp = rows[-1].get("cubical_persistence")
-            if not cp:
+            per_window_h1: list[list[list[float | None]]] = []
+            for row in rows:
+                cp = row.get("cubical_persistence")
+                h1 = cp.get("diagrams", {}).get("1") if cp else None
+                per_window_h1.append(h1 if h1 is not None else [])
+            if any(per_window_h1):
+                diagrams_by_window[label] = per_window_h1
+            last_h1 = rows[-1].get("cubical_persistence", {}).get("diagrams", {}).get("1")
+            if last_h1 is None:
                 continue
-            h1 = cp.get("diagrams", {}).get("1")
-            if h1 is None:
-                continue
-            diagrams[label] = h1
+            diagrams[label] = last_h1
         if not diagrams:
             continue
         subjects.append({
             "subject_id": record.get("subject", path.stem),
             "diagrams_h1": diagrams,
+            "diagrams_h1_by_window": diagrams_by_window,
             "bottleneck_distance_h1_last_window": record.get("cubical_h1_bottleneck_distance_last_window"),
         })
 
@@ -324,7 +336,10 @@ def build_pitnn_cohort_persistence_artifact(root: str | Path | None = None) -> d
         "subject_count": len(subjects),
         "subjects": subjects,
         "scientific_note": "GUDHI sub-level cubical persistence on each window's PLV "
-                            "matrix, last window per condition; a descriptive spatial-"
+                            "matrix. diagrams_h1 is the last window per condition; "
+                            "diagrams_h1_by_window carries every real window (a "
+                            "vineyard -- the diagram's trajectory across the "
+                            "recording, not interpolated). Descriptive spatial-"
                             "network summary, not a validated physical or clinical "
                             "measurement. Infinite-death H0 features are omitted from H1.",
     }
@@ -345,6 +360,176 @@ def build_visualization_payload(root: str | Path | None = None) -> dict[str, Any
         "pitnn_cohort_persistence_artifact": build_pitnn_cohort_persistence_artifact(),
         "source_artifacts": results["source_artifacts"],
     }
+
+
+def build_vortex_field_payload(root: str | Path | None = None) -> dict[str, Any]:
+    """Real per-subject + grand-average ds005620 vortex-field data for `/vortex-field`.
+
+    Reuses `tools/export_cohort_vortex_field_data.py`'s `build_payload()` -- the
+    same reproducible extraction already verified byte-identical against the
+    page's previously-shipped inline payload -- and enriches it with two real,
+    precomputed additions that used to be duplicated/approximated client-side:
+
+    - `clustering`: `validation.montage_topology.defect_spatial_clustering()`, the
+      real, tested DBSCAN implementation, replacing the page's prior live-JS BFS
+      connected-components reimplementation.
+    - `landscape`: `core.topology.persistence_landscape()` layer-0 curve alongside
+      the existing H1 birth/death diagrams.
+
+    Both are computed offline by `tools/export_vortex_field_clustering_landscape.py`
+    (which needs numpy/scikit-learn, available in the root environment) and read
+    here as plain JSON -- this module is loaded inside the Awareness Studio
+    process, which intentionally has neither dependency (see CLAUDE.md's
+    two-environment split), so no numpy/sklearn import happens at request time.
+
+    "unavailable" (no cohort run yet) mirrors the other `pitnn_cohort_*` builders
+    in this module.
+    """
+    result_root = _pitnn_cohort_root(root)
+    subjects_dir = result_root / "subjects"
+    if not subjects_dir.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No PITNN cohort subject records at {subjects_dir}. Run "
+                      "tools/stream_pitnn_cohort_ds005620.py --export-spatial "
+                      "--export-persistence first.",
+        }
+
+    # Load by file path, not `from tools.export_cohort_vortex_field_data import ...`:
+    # a same-named `tools` package lives inside apps/awareness_studio's own tree, and
+    # whichever one is imported first wins the `sys.modules["tools"]` cache for the
+    # whole process, silently shadowing this repository's `tools` package otherwise.
+    import importlib.util
+
+    _export_path = REPOSITORY_ROOT / "tools" / "export_cohort_vortex_field_data.py"
+    _export_spec = importlib.util.spec_from_file_location(
+        "neurotopology_export_cohort_vortex_field_data", _export_path
+    )
+    _export_module = importlib.util.module_from_spec(_export_spec)
+    _export_spec.loader.exec_module(_export_module)
+    _build_cohort_payload = _export_module.build_payload
+
+    try:
+        payload = _build_cohort_payload(result_root)
+    except (FileNotFoundError, ValueError) as exc:
+        return {"status": "unavailable", "reason": str(exc)}
+
+    enriched_path = result_root / "vortex_field_clustering_landscape.json"
+    if not enriched_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No precomputed clustering/landscape data at {enriched_path}. Run "
+                      "tools/export_vortex_field_clustering_landscape.py first.",
+        }
+    try:
+        enriched = json.loads(enriched_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {enriched_path}: {exc}"}
+
+    payload["cohort_average"]["clustering_and_landscape"] = enriched["cohort_average"]
+    for subject in payload["subjects"]:
+        subject_enriched = enriched["subjects"].get(subject["id"])
+        if subject_enriched is not None:
+            subject["clustering_and_landscape"] = subject_enriched
+
+    payload["status"] = "available"
+    payload["source"] = (
+        "tools/export_cohort_vortex_field_data.py "
+        "+ tools/export_vortex_field_clustering_landscape.py "
+        "(validation.montage_topology.defect_spatial_clustering "
+        "+ core.topology.persistence_landscape)"
+    )
+    return payload
+
+
+def build_mapper_graph_payload(root: str | Path | None = None) -> dict[str, Any]:
+    """Real KeplerMapper topological network graph over the ds005620 cohort's
+    per-window feature vectors, for `/mapper-graph`.
+
+    Precomputed by `tools/export_mapper_graph_for_vortex_field.py` (needs
+    numpy/scikit-learn/kmapper, available in the root environment, not this
+    process -- see `build_vortex_field_payload`'s docstring for the same
+    two-environment constraint). Read here as plain JSON.
+    """
+    result_root = _pitnn_cohort_root(root)
+    graph_path = result_root / "mapper_graph.json"
+    if not graph_path.exists():
+        return {
+            "status": "unavailable",
+            "reason": f"No precomputed Mapper graph at {graph_path}. Run "
+                      "tools/export_mapper_graph_for_vortex_field.py first.",
+        }
+    try:
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {graph_path}: {exc}"}
+
+    graph["status"] = "available"
+    graph["source"] = "tools/export_mapper_graph_for_vortex_field.py (kmapper.KeplerMapper, MIT-licensed)"
+    return graph
+
+
+DEFAULT_DS005917_ROOT = REPOSITORY_ROOT / "outputs" / "dual_engine" / "ds005917"
+DEFAULT_DS006644_LABELED_ROOT = REPOSITORY_ROOT / "outputs" / "dual_engine" / "ds006644_labeled"
+
+
+def build_fmri_connectome_payload(dataset: str = "ds005917", root: str | Path | None = None) -> dict[str, Any]:
+    """Real fMRI connectome graph for `/fmri-connectome`.
+
+    `dataset="ds005917"` (default): real ketamine drug-vs-placebo connectome, real
+    Pearson connectivity, but anonymous synthetic (KMeans-coordinate) parcels --
+    ds005917 ships raw BOLD with no spatial normalization, so no real anatomical
+    atlas can be validly attached (see `tools/stream_process_ds005917.py`'s
+    docstring). Precomputed by `tools/export_fmri_connectome_for_command_center.py`.
+
+    `dataset="ds006644"`: real DMT/harmine-vs-placebo connectome with REAL Schaefer-
+    2018 atlas region names -- valid here because ds006644 uses fMRIPrep's
+    spatially-normalized, AROMA-denoised BOLD (same template family as the atlas).
+    One real session per subject (no drug/placebo morph pair; ds006644's group is
+    between-subject). Precomputed by
+    `tools/export_ds006644_connectome_for_command_center.py`.
+
+    Both are read here as plain JSON -- same two-environment constraint as
+    `build_vortex_field_payload` and `build_mapper_graph_payload` (this process
+    has no numpy of its own).
+    """
+    if dataset == "ds005917":
+        cohort_dir = Path(root) if root is not None else DEFAULT_DS005917_ROOT
+        payload_path = cohort_dir / "fmri_connectome.json"
+        missing_reason = (
+            f"No precomputed fMRI connectome payload at {payload_path}. Run "
+            "tools/stream_process_ds005917.py --save-graph-structure ... then "
+            "tools/export_fmri_connectome_for_command_center.py first."
+        )
+        source = (
+            "tools/stream_process_ds005917.py --save-graph-structure "
+            "+ tools/export_fmri_connectome_for_command_center.py"
+        )
+    elif dataset == "ds006644":
+        cohort_dir = Path(root) if root is not None else DEFAULT_DS006644_LABELED_ROOT
+        payload_path = cohort_dir / "fmri_connectome_labeled.json"
+        missing_reason = (
+            f"No precomputed labeled fMRI connectome payload at {payload_path}. Run "
+            "tools/stream_process_ds006644.py --save-graph-structure ... then "
+            "tools/export_ds006644_connectome_for_command_center.py first."
+        )
+        source = (
+            "tools/stream_process_ds006644.py --save-graph-structure "
+            "+ tools/export_ds006644_connectome_for_command_center.py"
+        )
+    else:
+        return {"status": "unavailable", "reason": f"No connectome payload builder for dataset={dataset!r} yet."}
+
+    if not payload_path.exists():
+        return {"status": "unavailable", "reason": missing_reason}
+    try:
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "unavailable", "reason": f"Could not read {payload_path}: {exc}"}
+
+    payload["status"] = "available"
+    payload["source"] = source
+    return payload
 
 
 def build_command_center_registry(root: str | Path | None = None) -> dict[str, Any]:
@@ -495,3 +680,37 @@ def get_downloadable_artifact(artifact_id: str, root: str | Path | None = None) 
             path = Path(artifact["path"])
             return path if path.is_file() else None
     return None
+
+
+_SUBJECT_ID_RE = re.compile(r"^sub-[A-Za-z0-9]+$")
+
+
+def list_ds000245_subjects(root: str | Path | None = None) -> list[str]:
+    """Real subject ids with a rest-BOLD NIfTI on disk for ds000245, sorted."""
+    dataset_root = Path(root) if root is not None else DEFAULT_DS000245_ROOT
+    if not dataset_root.is_dir():
+        return []
+    return sorted(
+        p.parent.parent.name
+        for p in dataset_root.glob("sub-*/func/*_task-rest_bold.nii.gz")
+        if _SUBJECT_ID_RE.match(p.parent.parent.name)
+    )
+
+
+def get_ds000245_bold_path(subject_id: str, root: str | Path | None = None) -> Path | None:
+    """Resolve a client-supplied ds000245 subject id to its real BOLD NIfTI path.
+
+    Never opens an arbitrary client-supplied path: `subject_id` must match the
+    strict `sub-<alnum>` pattern and the resolved path must land inside
+    `dataset_root` (no `..`, no symlink escape) and actually exist on disk.
+    """
+    if not _SUBJECT_ID_RE.match(subject_id):
+        return None
+    dataset_root = Path(root) if root is not None else DEFAULT_DS000245_ROOT
+    dataset_root = dataset_root.resolve()
+    candidate = (dataset_root / subject_id / "func" / f"{subject_id}_task-rest_bold.nii.gz").resolve()
+    try:
+        candidate.relative_to(dataset_root)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None

@@ -1,0 +1,158 @@
+<meta charset="utf-8">
+<title>Mapper Graph — ds005620 PITNN Cohort Structure</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .mg-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781;
+    --grid: #e1e0d9; --ring: rgba(11,11,11,0.10);
+    --awake: #0074ff; --sedated: #ff2e2e;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="dark"] .mg-root, @media (prefers-color-scheme: dark) {
+    .mg-root { color-scheme: dark; }
+  }
+  :root[data-theme="dark"] .mg-root {
+    --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+    --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    .mg-root:not([data-theme="light"]) {
+      --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+      --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+    }
+  }
+  .mg-wrap { max-width: 1400px; margin: 0 auto; padding: 28px 24px 60px; }
+  .mg-eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; }
+  .mg-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 30px; margin: 8px 0 12px; letter-spacing: -0.01em; text-wrap: balance; }
+  .mg-sub { max-width: 80ch; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; margin: 0 0 20px; }
+  .mg-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+  .mg-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; margin-top: 18px; }
+  .mg-stage-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; }
+  .mg-stage-head { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 16px; }
+  .mg-stage-head h2 { font-size: 13px; margin: 0; font-weight: 700; }
+  #mg-graph { width: 100%; height: 620px; display: block; position: relative; }
+  .mg-side { display: flex; flex-direction: column; gap: 14px; }
+  .mg-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; }
+  .mg-card h3 { font-size: 12px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); }
+  .mg-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .mg-legend-row { display: flex; align-items: center; gap: 8px; }
+  .mg-swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .mg-detail { font-size: 12.5px; line-height: 1.6; color: var(--ink-2); font-family: ui-monospace, monospace; white-space: pre-wrap; }
+  .mg-error { padding: 40px 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); }
+  .mg-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 11.5px; line-height: 1.75; color: var(--ink-muted); max-width: 90ch; }
+</style>
+
+<div class="mg-root">
+  <div class="mg-wrap">
+    <div class="mg-eyebrow">OPENNEURO DS005620 &middot; N = 20 PAIRED SUBJECTS &middot; KEPLERMAPPER &middot; <a href="/command-center">COMMAND CENTRE</a> &middot; <a href="/vortex-field">VORTEX FIELD →</a></div>
+    <h1>Cohort structure as a Mapper graph</h1>
+    <p class="mg-sub">
+      Every node is a real cluster of real 10-second analysis windows (mean PLV, integrated
+      persistence-landscape area, &beta;<sub>1</sub>, max-filtration &beta;<sub>1</sub>, and the
+      spatial defect charge q), built with <code>kmapper.KeplerMapper</code> (MIT-licensed) over
+      all 20 subjects &times; 2 conditions &times; 3 real windows = up to 120 real feature
+      vectors. Edges connect clusters that share real windows in overlapping cover intervals.
+      Node color is the real awake/sedated fraction of its members; node size is real member
+      count. Click a node for its exact real window membership.
+    </p>
+
+    <div class="mg-layout">
+      <div class="mg-stage-card">
+        <div class="mg-stage-head">
+          <h2>Mapper network &mdash; drag to orbit, scroll to zoom, click a node</h2>
+          <span id="mg-graph-stats" style="font-size:11.5px;color:var(--ink-muted);font-family:ui-monospace,monospace;"></span>
+        </div>
+        <div id="mg-graph"></div>
+      </div>
+      <div class="mg-side">
+        <div class="mg-card">
+          <h3>Legend</h3>
+          <div class="mg-legend">
+            <div class="mg-legend-row"><span class="mg-swatch" style="background:var(--awake)"></span>all-awake node</div>
+            <div class="mg-legend-row"><span class="mg-swatch" style="background:var(--sedated)"></span>all-sedated node</div>
+            <div class="mg-legend-row"><span class="mg-swatch" style="background:linear-gradient(90deg,var(--awake),var(--sedated))"></span>mixed node</div>
+            <div class="mg-legend-row">node radius &prop; real member count</div>
+          </div>
+        </div>
+        <div class="mg-card">
+          <h3>Selected node</h3>
+          <div class="mg-detail" id="mg-detail">Click a node to inspect its real window membership.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mg-footer">
+      Source: <code>tools/export_mapper_graph_for_vortex_field.py</code> (KeplerMapper, MIT) over
+      <code>outputs/pitnn_cohort/ds005620/subjects/*.json</code>, served by
+      <code>GET /mapper-graph/data</code>. Rendered with
+      <code>3d-force-graph</code> (Three.js-based, MIT-licensed).
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpColor(hexA, hexB, t) {
+    function hexToRgb(h) { h = h.replace('#', ''); return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)]; }
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = Math.round(lerp(a[0], b[0], t)), g = Math.round(lerp(a[1], b[1], t)), bl = Math.round(lerp(a[2], b[2], t));
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+  }
+
+  function renderError(msg) {
+    document.getElementById('mg-graph').innerHTML = '<div class="mg-error">' + msg + '</div>';
+  }
+
+  fetch('/mapper-graph/data').then(function (r) { return r.json(); }).then(function (data) {
+    if (data.status !== 'available') {
+      renderError('Mapper graph data unavailable: ' + (data.reason || 'unknown'));
+      return;
+    }
+    document.getElementById('mg-graph-stats').textContent =
+      data.nodes.length + ' nodes · ' + data.edges.length + ' edges · ' + data.n_windows + ' real windows · n = ' + data.n_subjects;
+
+    var graphData = {
+      nodes: data.nodes.map(function (n) {
+        return { id: n.id, size: n.size, awake_fraction: n.awake_fraction, feature_mean: n.feature_mean, members: n.members };
+      }),
+      links: data.edges.map(function (e) { return { source: e.source, target: e.target }; })
+    };
+
+    var detailEl = document.getElementById('mg-detail');
+    function showDetail(node) {
+      var lines = [
+        'id: ' + node.id,
+        'members: ' + node.size,
+        'awake fraction: ' + node.awake_fraction.toFixed(2),
+        '',
+        'feature means:'
+      ];
+      Object.keys(node.feature_mean).forEach(function (k) { lines.push('  ' + k + ' = ' + node.feature_mean[k]); });
+      lines.push('', 'windows:');
+      node.members.forEach(function (m) { lines.push('  ' + m.subject + ' · ' + m.condition + ' · w' + m.window + ' @' + m.start_s + 's'); });
+      detailEl.textContent = lines.join('\n');
+    }
+
+    var Graph = ForceGraph3D()(document.getElementById('mg-graph'))
+      .graphData(graphData)
+      .backgroundColor('rgba(0,0,0,0)')
+      .nodeLabel(function (n) { return n.id + ' (' + n.size + ' windows, ' + (n.awake_fraction * 100).toFixed(0) + '% awake)'; })
+      .nodeColor(function (n) { return lerpColor('#0074ff', '#ff2e2e', n.awake_fraction); })
+      .nodeVal(function (n) { return Math.max(2, n.size); })
+      .linkColor(function () { return 'rgba(150,150,150,0.5)'; })
+      .linkWidth(1.2)
+      .onNodeClick(showDetail);
+
+    if (graphData.nodes.length) showDetail(graphData.nodes[0]);
+  }).catch(function (err) {
+    renderError('Mapper graph data failed to load: ' + err);
+  });
+})();
+</script>

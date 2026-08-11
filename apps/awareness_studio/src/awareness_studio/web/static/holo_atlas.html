@@ -1,0 +1,2032 @@
+<meta charset="utf-8">
+<title>Holo-Atlas — Combined EEG · fMRI · Mapper, One Brain</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .ha-root {
+    color-scheme: dark;
+    --page: #05070c; --surface: #0c1018; --ink: #eef2fb; --ink-2: #b7c0d6; --ink-muted: #7c8296;
+    --grid: #1c2331; --ring: rgba(255,255,255,0.10); --stage-bg: #05070c;
+    --accent: #7ad7ff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="light"] .ha-root {
+    color-scheme: light;
+    --page: #f7f8fb; --surface: #ffffff; --ink: #0b0d14; --ink-2: #444a5c; --ink-muted: #767c90;
+    --grid: #e2e5ee; --ring: rgba(11,13,20,0.10); --stage-bg: #eef1f8;
+  }
+  * { box-sizing: border-box; }
+  .ha-wrap { max-width: 1680px; margin: 0 auto; padding: 22px 22px 52px; }
+  .ha-eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .ha-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 32px; margin: 8px 0 10px; letter-spacing: -0.01em; text-wrap: balance;
+    background: linear-gradient(90deg, #6fd7ff, #9fffb0 40%, #ffe66d 68%, #ff6b6b 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .ha-sub { max-width: 96ch; color: var(--ink-2); font-size: 14px; line-height: 1.65; margin: 0 0 14px; }
+  .ha-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+  .ha-disclosure { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--ring); border-left: 3px solid var(--accent); border-radius: 8px; font-size: 12.5px; color: var(--ink-2); line-height: 1.6; background: var(--surface); }
+  .ha-disclosure b { color: var(--ink); }
+  .ha-disclosure ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .ha-controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; margin-bottom: 12px; padding: 12px 16px; border: 1px solid var(--ring); border-radius: 10px; background: var(--surface); }
+  .ha-ctl-group { display: flex; align-items: center; gap: 8px; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
+  .ha-ctl-group input[type=range] { width: 150px; accent-color: var(--accent); }
+  .ha-select { font: 12.5px ui-monospace, monospace; padding: 5px 8px; border: 1px solid var(--ring); border-radius: 6px; background: var(--page); color: var(--ink); }
+  .ha-btn { font: 700 12.5px ui-sans-serif, system-ui; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--accent); background: rgba(122,215,255,0.12); color: var(--accent); cursor: pointer; }
+  .ha-btn:hover { background: rgba(122,215,255,0.22); }
+  .ha-readout { margin-left: auto; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
+  .ha-readout b { color: var(--ink); }
+  .ha-layer-toggles-label { font: 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); }
+  .ha-layer-toggle { display: flex; align-items: center; gap: 5px; font: 12.5px ui-sans-serif, system-ui; color: var(--ink-2); cursor: pointer; user-select: none; }
+  .ha-layer-toggle input { accent-color: var(--accent); cursor: pointer; }
+
+  .ha-stage-card { position: relative; border: 1px solid var(--ring); border-radius: 14px; overflow: hidden; background: var(--stage-bg); box-shadow: 0 0 80px rgba(122,215,255,0.06) inset; }
+  #ha-scene { width: 100%; height: 780px; display: block; }
+  .ha-legend-layer { position: absolute; left: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 6px; font: 11.5px ui-monospace, monospace; color: var(--ink-2); background: rgba(5,7,12,0.55); backdrop-filter: blur(4px); padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ring); }
+  .ha-legend-row { display: flex; align-items: center; gap: 7px; }
+  .ha-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .ha-spectrum-bar { width: 140px; height: 8px; border-radius: 4px; margin-top: 2px;
+    background: linear-gradient(90deg, #040a2e, #0b2f9e 18%, #1f8fd6 36%, #2ecc71 52%, #e4322c 68%, #ffd23f 85%, #ffffff 100%); }
+  .ha-callout-layer { position: absolute; inset: 0; pointer-events: none; font: 11px ui-monospace, monospace; }
+  .ha-callout-label { position: absolute; transform: translate(-50%, -100%); padding: 3px 7px; border-radius: 5px; background: rgba(5,7,12,0.7); color: #fff; white-space: nowrap; border: 1px solid rgba(255,255,255,0.15); }
+  .ha-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+
+  .ha-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1px; background: var(--ring); border: 1px solid var(--ring); border-radius: 10px; overflow: hidden; margin-top: 16px; }
+  .ha-stat { background: var(--surface); padding: 12px 14px 11px; }
+  .ha-stat-label { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 5px; }
+  .ha-stat-value { font-size: 19px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .ha-stat-sub { font-size: 10.5px; color: var(--ink-muted); margin-top: 3px; }
+
+  .ha-footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--grid); font-size: 11px; line-height: 1.75; color: var(--ink-muted); max-width: 100ch; }
+  .ha-footer code { font-family: ui-monospace, monospace; }
+
+  .ha-panel-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+  .ha-chart-card { flex: 1 1 320px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px 14px; }
+  .ha-panel-title { font-size: 10.5px; letter-spacing: .04em; color: var(--ink-muted); margin-bottom: 8px; line-height: 1.5; }
+  .ha-panel-title b { color: var(--ink-2); }
+  .ha-chart-card canvas { width: 100%; height: auto; display: block; }
+  .ha-panel-note { font-size: 10.5px; color: var(--ink-muted); margin-top: 6px; }
+
+  .ha-section-label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); margin: 20px 0 6px; }
+
+  .ha-zone-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .ha-zone-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 11px 13px; }
+  .ha-zone-card-title { font: 700 12.5px ui-sans-serif, system-ui; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+  .ha-zone-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .ha-zone-card canvas { width: 100%; height: 74px; display: block; margin: 6px 0 4px; }
+  .ha-zone-card-desc { font-size: 10.5px; color: var(--ink-muted); line-height: 1.5; }
+  .ha-zone-card-dominant { font-size: 10.5px; color: var(--accent); margin-top: 2px; font-family: ui-monospace, monospace; }
+  .ha-zone-empty { font-size: 11.5px; color: var(--ink-muted); padding: 10px 2px; }
+
+  /* zone "pointer" key: real leader lines from each 3D zone marker (projected to
+     stage screen-space every frame) to this key's rows, both scoped inside the
+     stage card so they stay co-visible regardless of page scroll */
+  .ha-zone-key { position: absolute; right: 14px; top: 14px; display: flex; flex-direction: column; gap: 3px; font: 11px ui-monospace, monospace; color: var(--ink-2); background: rgba(5,7,12,0.55); backdrop-filter: blur(4px); padding: 9px 11px; border-radius: 8px; border: 1px solid var(--ring); min-width: 150px; }
+  .ha-zone-key-title { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 2px; }
+  .ha-zone-key-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #ha-pointer-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5; }
+  #ha-pointer-svg line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.55; }
+  #ha-pointer-svg circle { opacity: 0.9; }
+
+  .ha-interp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .ha-interp-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 11px 13px; }
+  .ha-interp-card-title { font: 700 12.5px ui-sans-serif, system-ui; color: var(--ink); margin-bottom: 4px; }
+  .ha-interp-card-live { font-size: 11px; font-family: ui-monospace, monospace; color: var(--accent); margin: 3px 0; }
+  .ha-interp-card-desc { font-size: 10.5px; color: var(--ink-muted); line-height: 1.55; }
+
+  .ha-theory-toggle { font: 700 12px ui-sans-serif, system-ui; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink-2); cursor: pointer; margin: 6px 0 10px; }
+  .ha-theory-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .ha-theory-panel { display: none; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; margin-bottom: 8px; }
+  .ha-theory-panel.ha-open { display: block; }
+  .ha-theory-panel h3 { font-size: 12.5px; margin: 12px 0 4px; color: var(--ink); }
+  .ha-theory-panel h3:first-child { margin-top: 0; }
+  .ha-theory-panel p { font-size: 11.5px; color: var(--ink-2); line-height: 1.6; margin: 0 0 2px; }
+</style>
+
+<div class="ha-root">
+  <div class="ha-wrap">
+    <div class="ha-eyebrow">
+      <span>HOLO-ATLAS &middot; ONE DATASET, ONE SUBJECT AT A TIME</span>
+      <span><a href="/atlas">TABBED ATLAS</a> &middot; <a href="/command-center">COMMAND CENTRE</a></span>
+    </div>
+    <h1>One dataset, one subject, their own real change</h1>
+    <p class="ha-sub">
+      Pick a real dataset above, then a real subject within it. Only that dataset's own real
+      layers are shown -- EEG datasets (ds005620) show the cortex heatmap, Betti-1 loops, H1
+      loops, skyrmion-style phase-vortex field, this subject's real EEG waveform, and their real
+      windows highlighted within the Mapper cohort structure; fMRI datasets (ds005917, ds006644)
+      show that subject's real functional connectome instead. Where the dataset records a real
+      two-condition change for this subject (e.g. awake&harr;sedated, drug&harr;placebo), press
+      <b>Play</b> to watch that subject's own real recorded transition; single-session datasets
+      have no transition to animate and show that subject's one real session instead.
+    </p>
+    <div class="ha-disclosure">
+      <b>What is real vs. illustrative placement</b> &mdash; read before interpreting node positions:
+      <ul>
+        <li><b>EEG scalp mesh + cortex heat:</b> real ds005620 electrode positions, triangulation, winding numbers, and phase, spherically interpolated onto FreeSurfer's real <code>fsaverage5</code> template surface (a standard group-average anatomy, not this cohort's own scan).</li>
+        <li><b>Interior connectome:</b> one real ds005917 subject's real 100-parcel KMeans centroids (native in-brain voxel space, so their <i>relative</i> geometry is real brain-shaped structure) and real Pearson connectivity, uniformly rescaled to fit inside this <code>fsaverage5</code> mesh. This is an illustrative fit, <b>not</b> a co-registration &mdash; a different subject, different modality, different scanner space than the EEG cortex above.</li>
+        <li><b>Mapper satellite graph:</b> real KeplerMapper nodes/edges over real per-window cohort features; its 3D layout is a force-directed spring simulation computed for display only &mdash; Mapper nodes carry no spatial/anatomical coordinate at all.</li>
+        <li><b>One dataset at a time:</b> the EEG awake&harr;sedated (ds005620) and fMRI drug&harr;placebo (ds005917) transitions are two independent real experiments on different subjects; the dataset selector above shows only one at a time so neither is ever implied to be simultaneous with, or otherwise related to, the other.</li>
+        <li><b>Per-subject EEG swap:</b> the EEG selector's real subjects are one individual's own real signed-winding/phase snapshot (same channel order and triangulation as the cohort average, verified). Color/size normalization stays fixed from the cohort so subjects stay visually comparable; no per-subject spatial clustering was computed, so the "clusters=" readout still reflects the real cohort-level value.</li>
+        <li><b>H1 loops:</b> real GUDHI cubical persistence on the selected subject's real last-window PLV matrix. Each line connects the two real electrode positions of one persistent H1 feature's <i>birth cell</i> (the exact channel pair GUDHI's <code>cofaces_of_persistence_pairs</code> reports) &mdash; this is the real location where that feature is born in the PLV filtration, not a full traced topological cycle (no cycle-representative extraction exists in this repo's GUDHI usage), and not shown for the cohort-average view, which has no per-subject PLV matrix to compute from.</li>
+        <li><b>Labeled connectome (teal):</b> real ds006644 subjects, real Schaefer-2018 atlas parcel centroids and connectivity, with real anatomical region names (hover a node) &mdash; unlike the violet ds005917 connectome above, this correspondence <i>is</i> scientifically valid: ds006644 uses fMRIPrep's spatially-normalized, AROMA-denoised BOLD in the same MNI template family as the atlas, whereas ds005917 ships raw, unregistered BOLD (no FSL/ANTs available in this environment to normalize it), so its parcels stay honestly anonymous rather than mislabeled. One real session per subject here, not a two-condition morph.</li>
+      </ul>
+    </div>
+
+    <div class="ha-controls">
+      <div class="ha-ctl-group"><b style="color:var(--ink);">Dataset</b>
+        <select id="ha-dataset-select" class="ha-select">
+          <option value="ds005620">ds005620 &mdash; Propofol EEG (awake &harr; sedated)</option>
+          <option value="ds005917">ds005917 &mdash; Ketamine fMRI connectome (drug &harr; placebo)</option>
+          <option value="ds006644">ds006644 &mdash; DMT/harmine fMRI connectome, real region names (single session)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ha-controls">
+      <div class="ha-ctl-group" data-ds="ds005620">EEG <input id="ha-eeg-slider" type="range" min="0" max="1" step="0.005" value="0"> sedated</div>
+      <select id="ha-eeg-subject" class="ha-select" data-ds="ds005620" title="Real per-subject EEG spatial swap (ds005620)"></select>
+      <div class="ha-ctl-group" data-ds="ds005917">fMRI <input id="ha-fmri-slider" type="range" min="0" max="1" step="0.005" value="0"> placebo</div>
+      <select id="ha-fmri-subject" class="ha-select" data-ds="ds005917"></select>
+      <select id="ha-labeled-conn-subject" class="ha-select" data-ds="ds006644" title="Real ds006644 subject with real Schaefer atlas region names"></select>
+      <button id="ha-play" class="ha-btn" type="button" data-ds="ds005620,ds005917">&#9654; Play</button>
+      <button id="ha-reset-cam" class="ha-btn" type="button" style="border-color:var(--ring);color:var(--ink-2);background:transparent;">Reset view</button>
+      <span class="ha-readout" id="ha-readout"></span>
+    </div>
+
+    <div class="ha-controls" id="ha-layer-toggles">
+      <span class="ha-layer-toggles-label">Layers</span>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-heatmap" checked> EEG heatmap</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-betti1" checked> Betti-1 loops</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-h1loops" checked> H1 loops</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-skyrmions" checked> Skyrmions</label>
+      <label class="ha-layer-toggle" data-ds="ds005620"><input type="checkbox" id="ha-toggle-mapper" checked> Mapper (this subject's real windows highlighted)</label>
+      <label class="ha-layer-toggle" data-ds="ds005917"><input type="checkbox" id="ha-toggle-connectome" checked> Connectome</label>
+      <label class="ha-layer-toggle" data-ds="ds006644"><input type="checkbox" id="ha-toggle-labeled-connectome" checked> Labeled connectome (real region names)</label>
+    </div>
+
+    <div class="ha-stage-card">
+      <canvas id="ha-scene"></canvas>
+      <div class="ha-callout-layer" id="ha-callouts"></div>
+      <svg id="ha-pointer-svg"></svg>
+      <div class="ha-zone-key" id="ha-zone-key" style="display:none;">
+        <div class="ha-zone-key-title">EEG zones (real 10-20 map)</div>
+      </div>
+      <div class="ha-legend-layer">
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#1f8fd6"></span>EEG vortex core (sign = CW/CCW)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#ffd23f"></span>Betti-1 loop ring &mdash; size=|charge|, marker speed=|charge|, marker spin=real turn (CW/CCW)</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#3a12c0,#9b30ff,#ff53d0)"></span>fMRI connectome &mdash; indigo&rarr;violet&rarr;magenta = real degree/weight</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#ff3b30,#ffd23f,#ffffff)"></span>Mapper node &mdash; red&rarr;yellow&rarr;white = real per-node energy</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:#3dff7a"></span>H1 loop (green) &mdash; real GUDHI persistent-loop channel pair, brighter/thicker = more persistent; pick an EEG subject above</div>
+        <div class="ha-legend-row"><span class="ha-legend-dot" style="background:linear-gradient(90deg,#0a3a3a,#1de9b6,#d7fff5)"></span>Labeled connectome (teal) &mdash; real Schaefer-2018 region names on hover, real degree by color</div>
+        <div>inactive &rarr; most energetic</div>
+        <div class="ha-spectrum-bar"></div>
+      </div>
+    </div>
+
+    <div class="ha-stats" id="ha-stats"></div>
+
+    <div class="ha-section-label" data-ds="ds005620">Real EEG oscillations, this subject, current condition (raw voltage, 4 channels)</div>
+    <div class="ha-chart-card" data-ds="ds005620">
+      <div class="ha-panel-title" id="ha-waveform-title">Pick an EEG subject above to see their real recorded waveform.</div>
+      <canvas id="ha-waveform-chart" width="1280" height="220"></canvas>
+    </div>
+
+    <div class="ha-panel-row" data-ds="ds005620">
+      <div class="ha-chart-card">
+        <div class="ha-panel-title">Persistence landscape (real H1, layer 0, GUDHI) &mdash; <b>awake</b> vs <b>sedated</b>, cohort average</div>
+        <canvas id="ha-landscape-chart" width="640" height="200"></canvas>
+      </div>
+      <div class="ha-chart-card">
+        <div class="ha-panel-title" id="ha-diagram-title">Real H1 birth&ndash;death diagram &mdash; pick an EEG subject above to view theirs</div>
+        <canvas id="ha-diagram-chart" width="360" height="200"></canvas>
+        <div id="ha-diagram-window-ctl" style="display:none;font:11px ui-monospace,monospace;color:var(--ink-muted);margin-top:6px;">
+          window <input id="ha-diagram-window" type="range" min="0" max="0" step="1" value="0" style="width:140px;vertical-align:middle;">
+          <span id="ha-diagram-window-label"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ha-section-label" data-ds="ds005917">Real ds005917 drug vs. placebo paired statistics (n=24, per-subject paired t-test + Wilcoxon)</div>
+    <div class="ha-stats" id="ha-fmri-stats" data-ds="ds005917"></div>
+
+    <div class="ha-section-label" data-ds="ds005620">EEG zone frequency bands (real per-subject Welch PSD, delta&ndash;gamma) &mdash; pick an EEG subject above</div>
+    <div class="ha-zone-grid" id="ha-zone-grid" data-ds="ds005620"><div class="ha-zone-empty">Pick an EEG subject above to see their real per-zone band power.</div></div>
+
+    <button class="ha-theory-toggle" type="button" id="ha-theory-toggle">&#9432; Explain this visualization &mdash; theory &amp; interpretation</button>
+    <div class="ha-theory-panel" id="ha-theory-panel"></div>
+
+    <div class="ha-section-label">What each layer shows, and how to read it</div>
+    <div class="ha-interp-grid" id="ha-interp-grid"></div>
+
+    <div class="ha-footer">
+      Sources: <code>/vortex-field/data</code>, <code>/fmri-connectome/data</code>,
+      <code>/mapper-graph/data</code> &mdash; the same real endpoints the standalone
+      <a href="/vortex-field">vortex field</a>, <a href="/fmri-connectome">fMRI connectome</a>, and
+      <a href="/mapper-graph">Mapper graph</a> pages use &mdash; plus <code>/command-center/visualization</code>
+      for the real per-subject H1 persistence diagrams and per-subject EEG spatial swap. This page adds
+      no new computation; it is a single combined rendering of already-real, already-tested data.
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+async function boot() {
+  var stage = document.getElementById('ha-scene');
+  var results;
+  try {
+    results = await Promise.all([
+      fetch('/vortex-field/data').then(function (r) { return r.json(); }),
+      fetch('/fmri-connectome/data').then(function (r) { return r.json(); }),
+      fetch('/mapper-graph/data').then(function (r) { return r.json(); }),
+      fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); }),
+      fetch('/command-center/visualization').then(function (r) { return r.json(); }),
+      fetch('/fmri-connectome/data?dataset=ds006644').then(function (r) { return r.json(); })
+    ]);
+  } catch (err) {
+    stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">Failed to load combined data: ' + err + '</div>');
+    return;
+  }
+  var vf = results[0], fc = results[1], mg = results[2], brainRaw = results[3], ccViz = results[4], fcLabeled = results[5];
+  if (vf.status !== 'available') {
+    stage.parentElement.insertAdjacentHTML('beforeend', '<div class="ha-error">EEG data unavailable: ' + (vf.reason || 'unknown') + '</div>');
+    return;
+  }
+  run(vf, fc, mg, brainRaw, ccViz, fcLabeled);
+}
+
+function run(VF, FC, MG, BRAIN_RAW, CC_VIZ, FC_LABELED) {
+  "use strict";
+
+  // ================= shared helpers =================
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+  function angleLerp(a, b, t) {
+    var x = lerp(Math.cos(a), Math.cos(b), t), y = lerp(Math.sin(a), Math.sin(b), t);
+    return Math.atan2(y, x);
+  }
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // shared multi-stop color-ramp builder -- takes [[x, hex], ...] and returns a
+  // function x -> [r,g,b], used by every colormap in this file so each one only
+  // states its own real stops rather than repeating the interpolation loop
+  function makeRamp(stops) {
+    var rgb = stops.map(function (s) {
+      var c = new THREE.Color(s[1]); return [s[0], c.r, c.g, c.b];
+    });
+    return function (x) {
+      x = clamp01(x);
+      for (var i = 0; i < rgb.length - 1; i++) {
+        var a = rgb[i], b = rgb[i + 1];
+        if (x >= a[0] && x <= b[0]) {
+          var u = (b[0] - a[0]) > 1e-9 ? (x - a[0]) / (b[0] - a[0]) : 0;
+          return [lerp(a[1], b[1], u), lerp(a[2], b[2], u), lerp(a[3], b[3], u)];
+        }
+      }
+      var last = rgb[rgb.length - 1];
+      return [last[1], last[2], last[3]];
+    };
+  }
+
+  // EEG activity colormap: inactive = near-black deep blue, lightening through blue as
+  // activity rises, green at modest activity, then hot red -> yellow -> white at the
+  // most energetic areas -- a classic "thermal" ramp anchored in blue instead of black.
+  var spectrumColor = makeRamp([
+    [0.00, 0x040a2e], [0.18, 0x0b2f9e], [0.36, 0x1f8fd6],
+    [0.52, 0x2ecc71], [0.68, 0xe4322c], [0.85, 0xffd23f], [1.00, 0xffffff]
+  ]);
+
+  // Mapper cohort-graph colormap: always vivid at both ends (red -> yellow -> white)
+  // so it reads as its own bright, distinct layer, contrasting the violet connectome
+  var mapperColor = makeRamp([
+    [0.00, 0xff3b30], [0.50, 0xffd23f], [1.00, 0xffffff]
+  ]);
+
+  // fMRI connectome colormap: a real multi-hue gradient (indigo -> violet -> magenta)
+  // instead of one hue's brightness, so real degree/weight shows as a genuine color
+  // change while staying recognizably in the violet family
+  var connectomeColor = makeRamp([
+    [0.00, 0x3a12c0], [0.50, 0x9b30ff], [1.00, 0xff53d0]
+  ]);
+
+  // ================= real per-zone EEG band-power reference data =================
+  // Zone descriptions are established, general EEG/neuroanatomy background (which
+  // cortex a 10-20 electrode group overlies, and what activity there is classically
+  // associated with in the literature) -- NOT a claim about what this specific
+  // subject's brain is doing, and not a consciousness/clinical diagnosis. Band
+  // descriptions are likewise general background, framed as "classically
+  // associated with," never as a verdict on the real numbers shown alongside them.
+  var ZONE_INFO = {
+    frontal: {
+      label: 'Frontal (F)', hex: 0xff6b6b,
+      desc: 'Overlies prefrontal/frontal cortex -- classically associated with executive function, working memory, and motor planning.'
+    },
+    central: {
+      label: 'Central (C)', hex: 0xffd23f,
+      desc: 'Overlies primary motor and somatosensory cortex -- the central "mu" rhythm (~8-13Hz) is classically linked to sensorimotor idling.'
+    },
+    parietal: {
+      label: 'Parietal (P)', hex: 0x2ecc71,
+      desc: 'Overlies parietal cortex -- classically associated with sensory integration and spatial attention.'
+    },
+    occipital: {
+      label: 'Occipital (O)', hex: 0x7ad7ff,
+      desc: 'Overlies primary visual cortex -- site of the classic posterior alpha rhythm, strongest eyes-closed and suppressed by visual attention.'
+    },
+    temporal_L: {
+      label: 'Temporal L (TL)', hex: 0xcf9bff,
+      desc: 'Overlies left temporal lobe cortex -- classically associated with auditory processing and (left-lateralized in most people) language.'
+    },
+    temporal_R: {
+      label: 'Temporal R (TR)', hex: 0xff9dcf,
+      desc: 'Overlies right temporal lobe cortex -- classically associated with auditory processing and aspects of spatial/prosodic processing.'
+    },
+    temporal_M: {
+      label: 'Temporal mid (TM)', hex: 0xb0b0b0,
+      desc: 'Midline temporal-adjacent site -- classically associated with auditory processing.'
+    }
+  };
+  var BAND_INFO = {
+    delta: { label: 'delta 1-4Hz', hex: 0x0b2f9e, desc: 'Slow-wave activity. Elevated delta is a well-documented EEG signature of deep sleep and propofol-type anesthesia.' },
+    theta: { label: 'theta 4-8Hz', hex: 0x1f8fd6, desc: 'Classically linked to drowsiness and memory processes; frontal-midline theta also tracks sustained attention when awake.' },
+    alpha: { label: 'alpha 8-13Hz', hex: 0x2ecc71, desc: 'The classic posterior "idling" rhythm, strongest eyes-closed; alpha power is a standard arousal/vigilance marker.' },
+    beta: { label: 'beta 13-30Hz', hex: 0xffd23f, desc: 'Associated with active, alert cognitive/motor processing; beta is classically suppressed during movement or focused attention.' },
+    gamma_low: { label: 'gamma 30-45Hz', hex: 0xff6b6b, desc: 'Higher-frequency activity linked to local cortical processing; some anesthesia literature reports disrupted gamma coherence under propofol.' }
+  };
+  var BAND_ORDER = ['delta', 'theta', 'alpha', 'beta', 'gamma_low'];
+
+  function theme() {
+    var root = document.documentElement;
+    var t = root.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+
+  // ================= EEG geometry (real ds005620 cohort grand average) =================
+  var COORDS = VF.coords, TRI = VF.tri, N_CH = VF.n_channels;
+  var ca = VF.cohort_average;
+  var eegAwake = { wind: ca.awake.wind_mean, phase: ca.awake.phase_mean, smooth: null };
+  var eegSedated = { wind: ca.sedated.wind_mean, phase: ca.sedated.phase_mean, smooth: null };
+  var clAwake = (ca.clustering_and_landscape && ca.clustering_and_landscape.awake) || null;
+  var clSedated = (ca.clustering_and_landscape && ca.clustering_and_landscape.sedated) || null;
+
+  function smoothWinding(wind) {
+    var sum = new Array(COORDS.length).fill(0), cnt = new Array(COORDS.length).fill(0);
+    TRI.forEach(function (t3, i) { t3.forEach(function (vi) { sum[vi] += wind[i]; cnt[vi] += 1; }); });
+    return sum.map(function (s, i) { return cnt[i] ? s / cnt[i] : 0; });
+  }
+  eegAwake.smooth = smoothWinding(eegAwake.wind);
+  eegSedated.smooth = smoothWinding(eegSedated.wind);
+  // percentile-based color normalization (standard practice for activity heatmaps, e.g.
+  // nilearn's default clipping) rather than the single raw maximum: a hard max lets one
+  // outlier vertex compress every other real active area into a flat mid-range color,
+  // which is exactly what made the heatmap read as "not present." Clipping at a high
+  // percentile stretches genuine contrast across the real active areas; it changes how
+  // the same real numbers are colored, not the numbers themselves.
+  function percentile(values, p) {
+    var s = values.slice().sort(function (a, b) { return a - b; });
+    var idx = Math.min(s.length - 1, Math.max(0, Math.round(p * (s.length - 1))));
+    return s[idx];
+  }
+  var eegPeak = Math.max(0.005, percentile(eegAwake.smooth.concat(eegSedated.smooth).map(Math.abs), 0.85));
+  var eegTriPeak = Math.max(0.02, percentile(eegAwake.wind.concat(eegSedated.wind).map(Math.abs), 0.85));
+
+  // ================= real per-subject EEG spatial swap (ds005620, optional) =================
+  // both real, both keyed off the same subject_id; "cohort average" (the default,
+  // unchanged behavior) has no equivalent single-subject value to fall back to, so a
+  // subject not carrying one of these is simply left on the cohort value for that half
+  var eegSpatialArtifact = CC_VIZ && CC_VIZ.pitnn_cohort_spatial_artifact;
+  var eegSpatialSubjects = (eegSpatialArtifact && eegSpatialArtifact.status === 'available') ? eegSpatialArtifact.subjects : [];
+  var eegPersistenceArtifact = CC_VIZ && CC_VIZ.pitnn_cohort_persistence_artifact;
+  var eegPersistenceSubjects = (eegPersistenceArtifact && eegPersistenceArtifact.status === 'available') ? eegPersistenceArtifact.subjects : [];
+  var EEG_COHORT_AWAKE = eegAwake, EEG_COHORT_SEDATED = eegSedated;
+
+  function findSpatialSubject(id) {
+    for (var i = 0; i < eegSpatialSubjects.length; i++) if (eegSpatialSubjects[i].subject_id === id) return eegSpatialSubjects[i];
+    return null;
+  }
+  function findPersistenceSubject(id) {
+    for (var i = 0; i < eegPersistenceSubjects.length; i++) if (eegPersistenceSubjects[i].subject_id === id) return eegPersistenceSubjects[i];
+    return null;
+  }
+  // swaps eegAwake/eegSedated to one real subject's real per-condition spatial snapshot
+  // (same 62-channel order and same 102-triangle order as the cohort payload -- verified
+  // against VF.coords/VF.tri before wiring this up) or back to the real cohort average
+  function setEegSubject(subjectId) {
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    function fromSnapshot(snap) {
+      if (!snap) return null;
+      var wind = snap.defects.signed_winding, phase = snap.phase;
+      return { wind: wind, phase: phase, smooth: smoothWinding(wind) };
+    }
+    if (!rec) { eegAwake = EEG_COHORT_AWAKE; eegSedated = EEG_COHORT_SEDATED; return; }
+    eegAwake = fromSnapshot(rec.conditions.awake) || EEG_COHORT_AWAKE;
+    eegSedated = fromSnapshot(rec.conditions.sedated) || EEG_COHORT_SEDATED;
+  }
+
+  // real H1 persistent-loop channel locations for one subject/condition, via
+  // tools.stream_pitnn_cohort_ds005620.h1_cycle_channel_locations (GUDHI cubical
+  // persistence on the last window's real PLV matrix, restricted to real channel
+  // positions). birth_cell/death_cell each name a real channel PAIR (the PLV matrix
+  // cell (i, j) where that persistent feature is born/dies) -- drawn here as a real
+  // line between those two real electrode positions, in green, brighter/thicker for
+  // more persistent (real death - birth) features. Capped to the top 24 most
+  // persistent per condition so the scene stays legible, not because more real data
+  // isn't there -- it's ranked, not fabricated or truncated arbitrarily.
+  var H1_LOOP_TOP_N = 24;
+  var h1LoopState = { subjectId: null, condition: null };
+  function buildH1LoopLayer(subjectId, condition) {
+    h1LoopState.subjectId = subjectId; h1LoopState.condition = condition;
+    while (h1LoopLayer.children.length) h1LoopLayer.remove(h1LoopLayer.children[0]);
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var cycles = snap && snap.h1_cycles;
+    if (!snap || !cycles || !cycles.length) return;
+    var coords = snap.channel_coordinates;
+    var maxR = 0;
+    coords.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var domeR = maxR * 1.006 || 1;
+    function chPos(idx) { return projectSensorXYToDome(coords[idx], domeR, GEOM.R).multiplyScalar(1.01); }
+
+    var top = cycles.slice()
+      .sort(function (a, b) { return (b.death - b.birth) - (a.death - a.birth); })
+      .slice(0, H1_LOOP_TOP_N);
+    var maxPersist = Math.max.apply(null, top.map(function (c) { return c.death - c.birth; }).concat([1e-6]));
+
+    top.forEach(function (cyc) {
+      var persist = cyc.death - cyc.birth;
+      var frac = Math.min(1, persist / maxPersist);
+      var a = chPos(cyc.birth_cell[0]), b = chPos(cyc.birth_cell[1]);
+      var lineGeo = new THREE.BufferGeometry().setFromPoints([a, b]);
+      var lineMat = new THREE.LineBasicMaterial({ color: 0x3dff7a, transparent: true, opacity: 0.35 + 0.55 * frac });
+      h1LoopLayer.add(new THREE.Line(lineGeo, lineMat));
+      [a, b].forEach(function (p) {
+        var dotGeo = new THREE.SphereGeometry(GEOM.R * (0.010 + 0.010 * frac), 8, 6);
+        var dotMat = new THREE.MeshBasicMaterial({ color: 0x8dffb0, transparent: true, opacity: Math.min(1, 0.55 + 0.45 * frac) });
+        var dot = new THREE.Mesh(dotGeo, dotMat);
+        dot.position.copy(p);
+        h1LoopLayer.add(dot);
+      });
+    });
+  }
+
+  // real per-zone EEG marker + panel builder: reads the SAME subject/condition
+  // snapshot buildH1LoopLayer reads (`zone_band_power`, computed server-side from
+  // the real montage's zone centroid position in the same coordinate frame as
+  // `channel_coordinates`/`h1_cycles`), places one small colored marker per real
+  // zone at its real centroid position, and (re)builds the zone-key overlay + the
+  // zone-grid bar-chart panel below the scene from the same real numbers.
+  function buildZoneLayer(subjectId, condition) {
+    while (zoneLabelLayer.children.length) zoneLabelLayer.remove(zoneLabelLayer.children[0]);
+    zoneMarkers.length = 0;
+    var keyEl = document.getElementById('ha-zone-key');
+    var gridEl = document.getElementById('ha-zone-grid');
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var zbp = snap && snap.zone_band_power;
+    if (!snap || !zbp) {
+      keyEl.style.display = 'none';
+      gridEl.innerHTML = '<div class="ha-zone-empty">' +
+        (subjectId ? 'No real per-zone band power for this subject/condition.' : 'Pick an EEG subject above to see their real per-zone band power.') +
+        '</div>';
+      return;
+    }
+    var coords = snap.channel_coordinates;
+    var maxR = 0;
+    coords.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var domeR = maxR * 1.006 || 1;
+
+    var zoneKeys = Object.keys(zbp).filter(function (z) { return zbp[z].centroid_xy; });
+    var globalMaxRel = 1e-6;
+    zoneKeys.forEach(function (z) {
+      BAND_ORDER.forEach(function (b) {
+        var v = zbp[z].bands_power_rel[b];
+        if (v != null) globalMaxRel = Math.max(globalMaxRel, v);
+      });
+    });
+
+    keyEl.style.display = zoneKeys.length ? 'flex' : 'none';
+    var keyRows = ['<div class="ha-zone-key-title">EEG zones (real 10-20 map)</div>'];
+
+    zoneKeys.forEach(function (z) {
+      var info = ZONE_INFO[z] || { label: z, hex: 0xaaaaaa };
+      var p = projectSensorXYToDome(zbp[z].centroid_xy, domeR, GEOM.R).multiplyScalar(1.015);
+      var markerGeo = new THREE.SphereGeometry(GEOM.R * 0.018, 10, 8);
+      var markerMat = new THREE.MeshBasicMaterial({ color: info.hex });
+      var marker = new THREE.Mesh(markerGeo, markerMat);
+      marker.position.copy(p);
+      zoneLabelLayer.add(marker);
+      zoneMarkers.push({ zone: z, mesh: marker, colorHex: info.hex });
+      keyRows.push('<div class="ha-zone-key-row" id="ha-zone-key-row-' + z + '"><span class="ha-legend-dot" style="background:#' +
+        info.hex.toString(16).padStart(6, '0') + '"></span>' + info.label + '</div>');
+    });
+    keyEl.innerHTML = keyRows.join('');
+
+    var cards = zoneKeys.map(function (z) {
+      var info = ZONE_INFO[z] || { label: z, hex: 0xaaaaaa, desc: '' };
+      var bands = zbp[z].bands_power_rel;
+      var dominant = BAND_ORDER.reduce(function (best, b) {
+        return (bands[b] != null && (best == null || bands[b] > bands[best])) ? b : best;
+      }, null);
+      var hexStr = '#' + info.hex.toString(16).padStart(6, '0');
+      return '<div class="ha-zone-card"><div class="ha-zone-card-title"><span class="ha-zone-dot" style="background:' + hexStr + '"></span>' +
+        info.label + ' <span style="color:var(--ink-muted);font-weight:400;">(n=' + zbp[z].n_channels + ' ch)</span></div>' +
+        '<canvas id="ha-zone-canvas-' + z + '" width="200" height="74"></canvas>' +
+        (dominant ? '<div class="ha-zone-card-dominant">dominant: ' + BAND_INFO[dominant].label + '</div>' : '') +
+        '<div class="ha-zone-card-desc">' + info.desc + '</div></div>';
+    });
+    gridEl.innerHTML = cards.length ? cards.join('') : '<div class="ha-zone-empty">No real zone assignment for this montage.</div>';
+
+    zoneKeys.forEach(function (z) {
+      var canvas = document.getElementById('ha-zone-canvas-' + z);
+      if (!canvas) return;
+      var ctx = canvas.getContext('2d');
+      var W = canvas.width, H = canvas.height, pad = 4;
+      ctx.clearRect(0, 0, W, H);
+      var bands = zbp[z].bands_power_rel;
+      var bw = (W - pad * 2) / BAND_ORDER.length;
+      BAND_ORDER.forEach(function (b, i) {
+        var v = bands[b];
+        var h = v != null ? (v / globalMaxRel) * (H - pad * 2) : 0;
+        ctx.fillStyle = '#' + BAND_INFO[b].hex.toString(16).padStart(6, '0');
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(pad + i * bw + 1.5, H - pad - h, bw - 3, h);
+        ctx.globalAlpha = 1;
+      });
+    });
+  }
+
+  // real screen-space "pointer" leader lines: each real zone marker's 3D world
+  // position is projected to the stage's own screen space every frame and drawn
+  // as an SVG line to that zone's row in the zone-key overlay -- both elements
+  // live inside the same bounded stage card, so this stays correct at any camera
+  // angle without depending on page scroll position.
+  function updateZonePointers() {
+    var svg = document.getElementById('ha-pointer-svg');
+    if (!zoneMarkers.length || !eegHeatmapLayer.visible) { svg.innerHTML = ''; return; }
+    var stageRect = stageEl.getBoundingClientRect();
+    var lines = [];
+    zoneMarkers.forEach(function (zm) {
+      var row = document.getElementById('ha-zone-key-row-' + zm.zone);
+      if (!row) return;
+      var v = zm.mesh.position.clone().project(camera);
+      if (v.z > 1) return; // behind camera
+      var sx = (v.x * 0.5 + 0.5) * stageRect.width;
+      var sy = (1 - (v.y * 0.5 + 0.5)) * stageRect.height;
+      var rowRect = row.getBoundingClientRect();
+      var tx = rowRect.left - stageRect.left + 5;
+      var ty = rowRect.top - stageRect.top + rowRect.height / 2;
+      var hexStr = '#' + zm.colorHex.toString(16).padStart(6, '0');
+      lines.push('<line x1="' + sx.toFixed(1) + '" y1="' + sy.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y2="' + ty.toFixed(1) + '" stroke="' + hexStr + '"/>');
+      lines.push('<circle cx="' + sx.toFixed(1) + '" cy="' + sy.toFixed(1) + '" r="2.5" fill="' + hexStr + '"/>');
+    });
+    svg.innerHTML = lines.join('');
+  }
+
+  // ================= real-time EEG waveform trace (real recorded voltage) =================
+  // Reads the SAME per-subject snapshot buildZoneLayer/buildH1LoopLayer read
+  // (`eeg_waveform`, a real ~4s/4-channel/125Hz segment from the middle of this
+  // condition's real analyzed recording -- see
+  // tools.stream_pitnn_cohort_ds005620.extract_waveform_snippet). Drawn as a
+  // scrolling multi-channel oscilloscope trace, looping the real segment and
+  // switching to the other condition's real segment when the EEG slider crosses
+  // the awake/sedated midpoint -- never interpolated/blended between conditions,
+  // since a blended "half-real" waveform would not be a real recorded signal.
+  var WAVEFORM_COLORS = ['#ff6b6b', '#ffd23f', '#2ecc71', '#7ad7ff'];
+  var waveformState = { subjectId: null, condition: null, snap: null };
+  function buildWaveform(subjectId, condition) {
+    waveformState.subjectId = subjectId;
+    waveformState.condition = condition;
+    var titleEl = document.getElementById('ha-waveform-title');
+    var rec = subjectId ? findSpatialSubject(subjectId) : null;
+    var snap = rec && rec.conditions[condition];
+    var wf = snap && snap.eeg_waveform;
+    waveformState.snap = wf || null;
+    if (!wf) {
+      titleEl.textContent = subjectId
+        ? 'No real waveform snippet for this subject/condition.'
+        : 'Pick an EEG subject above to see their real recorded waveform.';
+      var ctx0 = document.getElementById('ha-waveform-chart').getContext('2d');
+      ctx0.clearRect(0, 0, 1280, 220);
+      return;
+    }
+    titleEl.innerHTML = 'Real EEG voltage &mdash; <b>' + subjectId + '</b>, <b>' + condition +
+      '</b> &mdash; channels ' + wf.channels.join(', ') + ' at ' + wf.sfreq + 'Hz (real ~4s segment, looped)';
+  }
+  function drawWaveformTrace(clock) {
+    var canvas = document.getElementById('ha-waveform-chart');
+    if (!canvas.offsetParent) return; // dataset panel hidden -- skip the draw cost
+    var wf = waveformState.snap;
+    if (!wf) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width, H = canvas.height, pad = 8;
+    var nCh = wf.channels.length;
+    var rowH = (H - pad * 2) / nCh;
+    ctx.clearRect(0, 0, W, H);
+
+    var duration = wf.samples[0].length / wf.sfreq;
+    var scrollPx = (clock % duration) / duration * W; // real elapsed-time-driven scroll position
+
+    wf.channels.forEach(function (ch, ci) {
+      var samples = wf.samples[ci];
+      var n = samples.length;
+      var maxAbs = 1e-6;
+      samples.forEach(function (v) { maxAbs = Math.max(maxAbs, Math.abs(v)); });
+      var rowMid = pad + rowH * (ci + 0.5);
+      var rowAmp = rowH * 0.42 / maxAbs;
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.moveTo(0, rowMid); ctx.lineTo(W, rowMid); ctx.stroke();
+
+      ctx.strokeStyle = WAVEFORM_COLORS[ci % WAVEFORM_COLORS.length];
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (var x = 0; x < W; x++) {
+        // real sample index for this pixel, wrapping continuously with real elapsed time
+        var tSec = ((x - scrollPx + W) % W) / W * duration;
+        var idx = Math.min(n - 1, Math.floor(tSec * wf.sfreq));
+        var y = rowMid - samples[idx] * rowAmp;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillStyle = WAVEFORM_COLORS[ci % WAVEFORM_COLORS.length];
+      ctx.fillText(ch, 6, pad + rowH * ci + 12);
+    });
+
+    // real-time playhead: a fixed vertical line at the current scroll position
+    var headX = W - 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.moveTo(headX, 0); ctx.lineTo(headX, H); ctx.stroke();
+  }
+
+  // overall world size -- large enough to comfortably host the cortex heatmap, the
+  // interior fMRI connectome, and the interior Mapper cluster without them crowding
+  // or clipping into each other
+  var WORLD_SCALE = 38;
+
+  // Shared 2D sensor-projection -> 3D dome-surface mapping. Reused for the scalp/
+  // vortex mesh below (COORDS, cohort-average grand mean) and for real per-subject
+  // H1 loop channel positions (a DIFFERENT real subject's own channel_coordinates,
+  // same 2D montage-projection coordinate frame -- verified identical convention,
+  // see setEegSubject above) -- one honest projection, not two different fits.
+  function projectSensorXYToDome(c, domeR, sphereR) {
+    var r2 = c[0] * c[0] + c[1] * c[1];
+    var z = Math.sqrt(Math.max(domeR * domeR - r2, 0));
+    return new THREE.Vector3(c[0] * sphereR / domeR, z * sphereR / domeR, -c[1] * sphereR / domeR);
+  }
+
+  var GEOM = (function () {
+    var maxR = 0;
+    COORDS.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var R = maxR * 1.006;
+    var positions = COORDS.map(function (c) { return projectSensorXYToDome(c, R, WORLD_SCALE); });
+    var tangents = positions.map(function (p) {
+      var n = p.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      return { e1: e1, e2: e2, n: n };
+    });
+    var edgeSet = {}, edges = [];
+    TRI.forEach(function (t3) {
+      [[t3[0], t3[1]], [t3[1], t3[2]], [t3[2], t3[0]]].forEach(function (e) {
+        var key = Math.min(e[0], e[1]) + '_' + Math.max(e[0], e[1]);
+        if (!edgeSet[key]) { edgeSet[key] = true; edges.push(e); }
+      });
+    });
+    // build a vortex/ring/particle/arrow object for every real triangle, not just the
+    // subset active in the cohort average: a real per-subject swap (see the EEG subject
+    // selector below) can have its own real active triangles outside that cohort subset,
+    // and at only 102 real triangles total the extra objects cost nothing measurable
+    var activeTri = [];
+    TRI.forEach(function (t3, i) {
+      var c = positions[t3[0]].clone().add(positions[t3[1]]).add(positions[t3[2]]).multiplyScalar(1 / 3);
+      var edgeLen = Math.min(
+        positions[t3[0]].distanceTo(positions[t3[1]]), positions[t3[1]].distanceTo(positions[t3[2]]), positions[t3[2]].distanceTo(positions[t3[0]])
+      );
+      var n = c.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      activeTri.push({ index: i, tri: t3, centroid: c, edgeLen: edgeLen, e1: e1, e2: e2, n: n });
+    });
+    var centroid = new THREE.Vector3();
+    positions.forEach(function (p) { centroid.add(p); });
+    centroid.multiplyScalar(1 / positions.length);
+    return { positions: positions, tangents: tangents, edges: edges, activeTri: activeTri, centroid: centroid, R: WORLD_SCALE };
+  })();
+
+  // ================= real fsaverage5 cortex mesh =================
+  function b64ToTypedArray(b64, TypedArrayCtor) {
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TypedArrayCtor(bytes.buffer);
+  }
+  var BRAIN = (function () {
+    var raw = BRAIN_RAW;
+    var vertsFS = b64ToTypedArray(raw.vertices_b64, Float32Array);
+    var faces = b64ToTypedArray(raw.faces_b64, Uint16Array);
+    var curv = b64ToTypedArray(raw.curv_b64, Float32Array);
+    var n = raw.n_vertices;
+    var maxSuperior = 0;
+    var world = new Float32Array(n * 3);
+    for (var v = 0; v < n; v++) {
+      var fx = vertsFS[v * 3], fy = vertsFS[v * 3 + 1], fz = vertsFS[v * 3 + 2];
+      world[v * 3] = fx; world[v * 3 + 1] = fz; world[v * 3 + 2] = -fy;
+      if (fz > maxSuperior) maxSuperior = fz;
+    }
+    var NEST_FRACTION = 0.93;
+    var scale = (WORLD_SCALE * NEST_FRACTION) / maxSuperior;
+    var positions = new Float32Array(n * 3);
+    var dirs = [];
+    for (var w = 0; w < n; w++) {
+      var x = world[w * 3] * scale, y = world[w * 3 + 1] * scale, z = world[w * 3 + 2] * scale;
+      positions[w * 3] = x; positions[w * 3 + 1] = y; positions[w * 3 + 2] = z;
+      dirs.push(new THREE.Vector3(x, y, z).normalize());
+    }
+    var geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(0.5), 3));
+    geometry.setAttribute('activity', new THREE.BufferAttribute(new Float32Array(n).fill(0), 1));
+    geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+    geometry.computeVertexNormals();
+    return { n: n, curv: curv, dirs: dirs, geometry: geometry, positions: positions };
+  })();
+
+  // true bounding volume of the real anatomical mesh (post-transform) -- every interior
+  // layer (fMRI connectome, Mapper cluster) is sized/placed against this, not against the
+  // flat EEG scalp sphere, so nothing clips through the actual brain surface
+  var BRAIN_BOUNDS = (function () {
+    var box = new THREE.Box3().setFromBufferAttribute(BRAIN.geometry.getAttribute('position'));
+    var center = box.getCenter(new THREE.Vector3());
+    var size = box.getSize(new THREE.Vector3());
+    return { box: box, center: center, size: size, minHalfExtent: Math.min(size.x, size.y, size.z) / 2 };
+  })();
+
+  // Real electrode -> cortex-vertex interpolation weights (spherical inverse-distance
+  // weighting, angular form). The previous K=5/POWER=6 setting was near-winner-take-all:
+  // with only ~62 real electrodes, that produces hard Voronoi-cell boundaries between
+  // "which electrode dominates this patch" that cut straight across gyri and sulci --
+  // reading as flat wedges/stripes with no relationship to the real cortical folding.
+  // A real 62-channel montage cannot resolve sub-gyral structure -- no EEG topomap can --
+  // but it CAN be rendered as the smooth, continuous field that volume-conducted scalp
+  // potentials actually are, rather than an artificially blocky one. K=14/POWER=2 blends
+  // more real neighbors with much softer falloff (the standard IDW exponent), removing
+  // the hard edges while still weighting nearby real electrodes far more than distant ones.
+  var BRAIN_WEIGHTS = (function () {
+    var K = 14, POWER = 2, nE = GEOM.positions.length, nB = BRAIN.n;
+    var ex = new Float32Array(nE), ey = new Float32Array(nE), ez = new Float32Array(nE);
+    for (var e = 0; e < nE; e++) {
+      var p = GEOM.positions[e], len = p.length() || 1e-9;
+      ex[e] = p.x / len; ey[e] = p.y / len; ez[e] = p.z / len;
+    }
+    var idxOut = new Int16Array(nB * K), wOut = new Float32Array(nB * K);
+    // real montage-coverage factor per brain vertex: the best single real-electrode
+    // angular alignment (cosine similarity). The real 62-channel dome only covers the
+    // upper/superior scalp -- inferior/ventral cortex (temporal poles, orbitofrontal
+    // undersurface, etc.) has no real nearby electrode at all. Rather than silently
+    // extrapolating a "real-looking" color there from whatever electrode is least-far
+    // away, this factor lets updateEEG fade those honestly-uncovered vertices toward a
+    // neutral shade instead of implying real measurement where none exists.
+    var coverageOut = new Float32Array(nB);
+    var topIdx = new Int32Array(K), topDot = new Float32Array(K);
+    for (var bv = 0; bv < nB; bv++) {
+      var bd = BRAIN.dirs[bv], bx = bd.x, by = bd.y, bz = bd.z;
+      for (var k = 0; k < K; k++) topDot[k] = -2;
+      for (var e2 = 0; e2 < nE; e2++) {
+        var dot = bx * ex[e2] + by * ey[e2] + bz * ez[e2];
+        if (dot > topDot[K - 1]) {
+          var pos = K - 1;
+          while (pos > 0 && topDot[pos - 1] < dot) { topDot[pos] = topDot[pos - 1]; topIdx[pos] = topIdx[pos - 1]; pos--; }
+          topDot[pos] = dot; topIdx[pos] = e2;
+        }
+      }
+      coverageOut[bv] = topDot[0];
+      var sum = 0;
+      for (var k2 = 0; k2 < K; k2++) { var wv = Math.pow(Math.max(0, topDot[k2]), POWER); wOut[bv * K + k2] = wv; idxOut[bv * K + k2] = topIdx[k2]; sum += wv; }
+      sum = sum || 1e-9;
+      for (var k3 = 0; k3 < K; k3++) wOut[bv * K + k3] /= sum;
+    }
+    return { idx: idxOut, w: wOut, K: K, coverage: coverageOut };
+  })();
+
+  // ================= real fMRI connectome (one real ds005917 subject, both arms) =================
+  var fmriSubjects = (FC.status === 'available' ? FC.subjects : []).filter(function (s) {
+    return s.conditions.drug.graph && s.conditions.placebo.graph;
+  });
+  // interior placement is derived from the real anatomical BRAIN_BOUNDS (not the flat EEG
+  // scalp sphere) and capped well under the brain's own smallest half-extent, so the fitted
+  // connectome sits fully inside the cortical volume at every rotation, never poking through
+  // the surface
+  var CONNECTOME_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(-1, -0.15, 0.3).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.30);
+  var INTERIOR_R = BRAIN_BOUNDS.minHalfExtent * 0.42;
+
+  function fitCentroidsToSphereAt(centroids, center, radius) {
+    var n = centroids.length;
+    var c = [0, 0, 0];
+    centroids.forEach(function (p) { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; });
+    c = c.map(function (v) { return v / n; });
+    var maxR = 1e-6;
+    centroids.forEach(function (p) {
+      var d = Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]);
+      if (d > maxR) maxR = d;
+    });
+    var scale = radius / maxR;
+    return centroids.map(function (p) {
+      return new THREE.Vector3((p[0] - c[0]) * scale, (p[2] - c[2]) * scale, -(p[1] - c[1]) * scale)
+        .add(center);
+    });
+  }
+  function fitCentroidsToSphere(centroids) { return fitCentroidsToSphereAt(centroids, CONNECTOME_CENTER, INTERIOR_R); }
+
+  // ================= real Mapper satellite graph (force-directed layout, illustrative) =================
+  var mapperNodes = (MG.status === 'available' ? MG.nodes : []);
+  var mapperEdges = (MG.status === 'available' ? MG.edges : []);
+  // interior placement, offset from the connectome so the two structural layers don't
+  // fully overlap, but both stay genuinely inside the real anatomical brain volume
+  var MAPPER_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(1, 0.2, -0.35).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.34);
+  var MAPPER_R = BRAIN_BOUNDS.minHalfExtent * 0.34;
+  var mapperLayout = (function () {
+    var idOf = {}, pos = [];
+    mapperNodes.forEach(function (n, i) { idOf[n.id] = i; });
+    var rnd = mulberry32(hashStr('mapper-satellite-layout'));
+    mapperNodes.forEach(function () {
+      pos.push(new THREE.Vector3((rnd() - 0.5) * 10, (rnd() - 0.5) * 10, (rnd() - 0.5) * 10));
+    });
+    var edgePairs = mapperEdges.map(function (e) { return [idOf[e.source], idOf[e.target]]; })
+      .filter(function (e) { return e[0] !== undefined && e[1] !== undefined; });
+    // bounded Fruchterman-Reingold: repulsion + spring attraction + a weak centering
+    // ("gravity") term, without which sparsely-connected nodes (many real Mapper
+    // clusters have few real shared-window edges) drift apart indefinitely instead
+    // of settling into a compact, framable cluster
+    var REPULSE = 8, SPRING = 0.03, SPRING_LEN = 4.5, GRAVITY = 0.02, DAMP = 0.75;
+    for (var iter = 0; iter < 200; iter++) {
+      var force = pos.map(function () { return new THREE.Vector3(); });
+      for (var i = 0; i < pos.length; i++) {
+        for (var j = i + 1; j < pos.length; j++) {
+          var d = pos[i].clone().sub(pos[j]);
+          var dist = Math.max(d.length(), 0.01);
+          var f = d.normalize().multiplyScalar(Math.min(REPULSE / (dist * dist), 3));
+          force[i].add(f); force[j].sub(f);
+        }
+      }
+      edgePairs.forEach(function (e) {
+        var d = pos[e[1]].clone().sub(pos[e[0]]);
+        var dist = Math.max(d.length(), 0.01);
+        var f = d.normalize().multiplyScalar((dist - SPRING_LEN) * SPRING);
+        force[e[0]].add(f); force[e[1]].sub(f);
+      });
+      for (var k = 0; k < pos.length; k++) {
+        force[k].add(pos[k].clone().multiplyScalar(-GRAVITY));
+        pos[k].add(force[k].multiplyScalar(DAMP));
+      }
+    }
+    // recenter, rescale to fit inside the brain's real interior volume, then translate
+    // to the interior Mapper cluster position
+    var center = new THREE.Vector3();
+    pos.forEach(function (p) { center.add(p); });
+    center.multiplyScalar(1 / Math.max(pos.length, 1));
+    pos.forEach(function (p) { p.sub(center); });
+    var maxDist = 1e-6;
+    pos.forEach(function (p) { maxDist = Math.max(maxDist, p.length()); });
+    var mapperScale = MAPPER_R / maxDist;
+    pos.forEach(function (p) { p.multiplyScalar(mapperScale).add(MAPPER_CENTER); });
+    return { idOf: idOf, pos: pos, edgePairs: edgePairs };
+  })();
+
+  // ================= Three.js scene =================
+  var stageEl = document.getElementById('ha-scene');
+  var calloutLayer = document.getElementById('ha-callouts');
+  var renderer = new THREE.WebGLRenderer({ canvas: stageEl, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(40, 1, 0.1, 800);
+  var controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.07;
+  controls.minDistance = 30; controls.maxDistance = 260;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.4;
+  var resumeTimer = null;
+  controls.addEventListener('start', function () { controls.autoRotate = false; clearTimeout(resumeTimer); });
+  controls.addEventListener('end', function () { resumeTimer = setTimeout(function () { controls.autoRotate = true; }, 5000); });
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  var key = new THREE.DirectionalLight(0xdfe9ff, 1.1); key.position.set(30, 40, 50); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x66aaff, 0.75); rim.position.set(-40, -10, -30); scene.add(rim);
+  var fillGlow = new THREE.PointLight(0x7ad7ff, 0.6, 200); fillGlow.position.copy(GEOM.centroid); scene.add(fillGlow);
+
+  // -- hyperrealistic semi-transparent brain: inner colored shell + fresnel-rim glow shell --
+  // unlit (vertex-color-only) on purpose: a physically-lit clearcoat material dims and
+  // glazes the EEG heatmap under directional lighting, making exactly the areas the user
+  // needs to read -- the active regions -- the hardest to see. Real per-vertex curvature
+  // shading (applied in updateEEG below) already supplies gyrus/sulcus depth cues, so the
+  // heatmap stays legible without depending on scene lighting at all.
+  //
+  // A custom shader (same pattern as the fresnelMat glow shell below) replaces a flat
+  // material.opacity scalar with real per-vertex opacity: the same real per-vertex
+  // activity value that already selects hue now also drives brightness and alpha, so
+  // inactive cortex reads as a dim, solid, muted backdrop while active cortex is both
+  // brighter AND more opaque -- activity has to be visibly "louder," not just a
+  // different color, at the same uniform see-through level as everything else.
+  var brainMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    vertexColors: true,
+    // solidMode: 0 = normal semi-transparent heatmap; 1 = fully opaque surface
+    // (toggled when both interior layers -- Mapper, Connectome -- are hidden, so
+    // there is nothing left to see through the brain FOR, and full opacity makes
+    // the same real per-vertex heatmap colors read more clearly).
+    uniforms: { solidMode: { value: 0.0 } },
+    vertexShader: [
+      'attribute float activity;',
+      'varying vec3 vColor; varying float vActivity;',
+      'void main() {',
+      '  vColor = color;',
+      '  vActivity = activity;',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform float solidMode;',
+      'varying vec3 vColor; varying float vActivity;',
+      'void main() {',
+      // wider dim/alpha range than a plain [0,1] mix: inactive cortex reads
+      // noticeably darker AND more see-through, active cortex reads brighter
+      // than full color (the >1.0 top of the dim range clips at the GPU's
+      // natural [0,1] output, giving peak-activity regions a slight hot
+      // overbright glow) and nearly fully opaque -- the same real vActivity
+      // value, just mapped with more perceptual contrast so "active" is
+      // unmistakable at a glance, not a subtle shade shift.
+      '  float dim = mix(0.14, 1.15, vActivity);',
+      // solid mode's whole point is showing the heatmap MORE clearly with nothing
+      // to see through it to -- an opaque-but-still-near-black inactive region
+      // would defeat that, so the dim floor also rises here (0.14 -> 0.5),
+      // independent of and on top of the real per-vertex activity value.
+      '  dim = mix(dim, mix(0.5, 1.2, vActivity), solidMode);',
+      '  float alpha = mix(0.20, 0.99, vActivity);',
+      '  alpha = mix(alpha, 1.0, solidMode);',
+      '  gl_FragColor = vec4(vColor * dim, alpha);',
+      '}'
+    ].join('\n')
+  });
+  var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
+  var eegHeatmapLayer = new THREE.Group();
+  scene.add(eegHeatmapLayer);
+  eegHeatmapLayer.add(brainMesh);
+
+  var fresnelMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
+    uniforms: { glowColor: { value: new THREE.Color(0x66baff) } },
+    vertexShader: [
+      'varying vec3 vNormalV; varying vec3 vViewPos;',
+      'void main() {',
+      '  vNormalV = normalize(normalMatrix * normal);',
+      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+      '  vViewPos = -mv.xyz;',
+      '  gl_Position = projectionMatrix * mv;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'uniform vec3 glowColor; varying vec3 vNormalV; varying vec3 vViewPos;',
+      'void main() {',
+      '  float rim = 1.0 - clamp(dot(normalize(vNormalV), normalize(vViewPos)), 0.0, 1.0);',
+      '  float a = pow(rim, 2.2) * 0.55;',
+      '  gl_FragColor = vec4(glowColor, a);',
+      '}'
+    ].join('\n')
+  });
+  var fresnelMesh = new THREE.Mesh(BRAIN.geometry.clone(), fresnelMat);
+  fresnelMesh.scale.setScalar(1.012);
+  eegHeatmapLayer.add(fresnelMesh);
+
+  function glowSpriteTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var ctx = c.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  var GLOW_TEX = glowSpriteTexture();
+
+  // real electrode scalp mesh (very faint, mostly a spatial reference for the vortex layer)
+  var nCh = GEOM.positions.length;
+  var posAttr = new Float32Array(nCh * 3);
+  GEOM.positions.forEach(function (p, i) { posAttr[i * 3] = p.x; posAttr[i * 3 + 1] = p.y; posAttr[i * 3 + 2] = p.z; });
+  var meshGeo = new THREE.BufferGeometry();
+  meshGeo.setAttribute('position', new THREE.BufferAttribute(posAttr, 3));
+  meshGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nCh * 3).fill(0.5), 3));
+  var idxAttr = new Uint16Array(TRI.length * 3);
+  TRI.forEach(function (t3, i) { idxAttr[i * 3] = t3[0]; idxAttr[i * 3 + 1] = t3[1]; idxAttr[i * 3 + 2] = t3[2]; });
+  meshGeo.setIndex(new THREE.BufferAttribute(idxAttr, 1));
+  meshGeo.computeVertexNormals();
+  var scalpMat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.16, roughness: 0.5, side: THREE.DoubleSide, depthWrite: false });
+  var scalpMesh = new THREE.Mesh(meshGeo, scalpMat);
+  scene.add(scalpMesh);
+
+  // vortex glow sprites + Betti-1 loop rings + orbiting particles (EEG)
+  var betti1Layer = new THREE.Group();
+  scene.add(betti1Layer);
+  var vortices = [], particles = [], rings = [];
+  GEOM.activeTri.forEach(function (a) {
+    var sprMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+    var sprite = new THREE.Sprite(sprMat);
+    sprite.position.copy(a.centroid);
+    betti1Layer.add(sprite);
+    vortices.push({ sprite: sprite, tri: a });
+
+    // a plain circle -- no glow/additive blending, one fixed calm color. Real |charge|
+    // (|winding|) shows up as the ring's own SIZE (bigger = more charge, via uniform
+    // mesh scale below, which scales the torus radius and tube thickness together), and
+    // as the orbiting marker's SPEED, not as brightness.
+    var ringGeo = new THREE.TorusGeometry(1, 0.05, 8, 40);
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0, side: THREE.DoubleSide });
+    var ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(a.centroid);
+    ring.lookAt(a.centroid.clone().add(a.n));
+    betti1Layer.add(ring);
+    // a small, plain, non-glowing marker orbits the ring's circumference in the loop's
+    // own tangent plane; its angular velocity sign follows the real signed winding
+    // number for this triangle (its visible spin direction IS the real chirality, not a
+    // fabricated "drag" quantity) and its angular SPEED scales with real |charge|
+    var markerMat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0 });
+    var marker = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), markerMat);
+    betti1Layer.add(marker);
+    rings.push({ mesh: ring, tri: a, marker: marker });
+
+    var rnd = mulberry32(hashStr('tri#' + a.index));
+    for (var k = 0; k < 3; k++) {
+      var pMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+      var pSprite = new THREE.Sprite(pMat);
+      pSprite.scale.set(0.5, 0.5, 0.5);
+      betti1Layer.add(pSprite);
+      particles.push({ sprite: pSprite, tri: a, radius: a.edgeLen * (0.3 + 0.45 * rnd()), angle0: rnd() * Math.PI * 2, speed: (0.7 + 0.5 * rnd()), wobble: 0.12 + 0.18 * rnd(), phaseOff: rnd() * Math.PI * 2 });
+    }
+  });
+
+  // skyrmion-texture phase-vortex field: real per-electrode phase arrows plus a dense
+  // barycentric resampling of the same real per-vertex values, so the field's local
+  // dynamics read clearly at a glance
+  // real GUDHI H1 persistent-loop channel locations (populated below, once the
+  // PITNN cohort spatial artifact's h1_cycles field is available for the
+  // selected subject); the group exists from the start so the layer-toggle
+  // wiring below can reference it regardless of data availability.
+  var h1LoopLayer = new THREE.Group();
+  scene.add(h1LoopLayer);
+
+  // real per-zone EEG marker layer (populated by buildZoneLayer below, once a
+  // subject with real zone_band_power is selected); tied to the EEG heatmap
+  // toggle since it is an EEG-specific overlay.
+  var zoneLabelLayer = new THREE.Group();
+  eegHeatmapLayer.add(zoneLabelLayer);
+  var zoneMarkers = []; // [{zone, mesh}], updated per selection for pointer-line projection
+
+  var skyrmionLayer = new THREE.Group();
+  scene.add(skyrmionLayer);
+
+  // real phase arrows, one per real electrode -- opacity/color driven by real local
+  // activity intensity in updateEEG below (hot red->yellow->white sub-range)
+  var arrows = GEOM.positions.map(function (p) {
+    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.13, 0xffffff, GEOM.R * 0.05, GEOM.R * 0.03);
+    ah.line.material.transparent = true;
+    ah.cone.material.transparent = true;
+    skyrmionLayer.add(ah);
+    return ah;
+  });
+
+  // densely resampled phase-vortex ("skyrmion texture") arrows: many more arrows per
+  // active triangle than there are real electrodes, so the field's precise local
+  // dynamics read clearly at a glance. Each one's direction/intensity is a barycentric
+  // interpolation of the same three real per-vertex phase/activity values at that
+  // triangle's corners -- real data resampled more densely and precisely, not fabricated.
+  var EXTRA_ARROWS_PER_TRI = 9;
+  var denseArrows = [];
+  GEOM.activeTri.forEach(function (a) {
+    var rndA = mulberry32(hashStr('arrow-dense#' + a.index));
+    for (var m = 0; m < EXTRA_ARROWS_PER_TRI; m++) {
+      var u = rndA(), v = rndA() * (1 - u), w = 1 - u - v;
+      var pos = GEOM.positions[a.tri[0]].clone().multiplyScalar(w)
+        .add(GEOM.positions[a.tri[1]].clone().multiplyScalar(u))
+        .add(GEOM.positions[a.tri[2]].clone().multiplyScalar(v));
+      var ah2 = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), pos, GEOM.R * 0.085, 0xffffff, GEOM.R * 0.032, GEOM.R * 0.019);
+      ah2.line.material.transparent = true;
+      ah2.cone.material.transparent = true;
+      skyrmionLayer.add(ah2);
+      denseArrows.push({ ah: ah2, tri: a, bary: [w, u, v] });
+    }
+  });
+
+  // interior real fMRI connectome (built once per selected subject)
+  var connLayer = new THREE.Group();
+  scene.add(connLayer);
+  var connState = null;
+
+  function buildConnectomeLayer(subject) {
+    connLayer.clear();
+    if (!subject) { connState = null; return; }
+    var drug = subject.conditions.drug.graph, placebo = subject.conditions.placebo.graph;
+    var drugPos = fitCentroidsToSphere(drug.centroids);
+    var placeboPos = fitCentroidsToSphere(placebo.centroids);
+    var n = drugPos.length;
+
+    var nodeGeo = new THREE.SphereGeometry(0.55, 10, 8);
+    var nodeMeshes = [];
+    for (var i = 0; i < n; i++) {
+      var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x552200, emissiveIntensity: 0.6, roughness: 0.4 });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      connLayer.add(mesh);
+      nodeMeshes.push(mesh);
+    }
+
+    var degree = new Array(n).fill(0);
+    drug.edges.concat(placebo.edges).forEach(function (e) { degree[e.source]++; degree[e.target]++; });
+    var maxDeg = Math.max(1, Math.max.apply(null, degree));
+
+    var edgeMap = {};
+    drug.edges.forEach(function (e) { edgeMap[e.source + '_' + e.target] = { s: e.source, t: e.target, wd: e.weight, wp: 0 }; });
+    placebo.edges.forEach(function (e) {
+      var k = e.source + '_' + e.target;
+      if (edgeMap[k]) edgeMap[k].wp = e.weight; else edgeMap[k] = { s: e.source, t: e.target, wd: 0, wp: e.weight };
+    });
+    var edgeList = Object.keys(edgeMap).map(function (k) { return edgeMap[k]; });
+
+    var edgePos = new Float32Array(edgeList.length * 6);
+    var edgeCol = new Float32Array(edgeList.length * 6);
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    edgeGeo.setAttribute('color', new THREE.BufferAttribute(edgeCol, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    var edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+    connLayer.add(edgeLines);
+
+    connState = {
+      n: n, drugPos: drugPos, placeboPos: placeboPos, nodeMeshes: nodeMeshes, degree: degree, maxDeg: maxDeg,
+      edgeList: edgeList, edgeGeo: edgeGeo
+    };
+  }
+
+  function updateConnectome(t) {
+    if (!connState) return;
+    var cs = connState;
+    for (var i = 0; i < cs.n; i++) {
+      var p = cs.drugPos[i].clone().lerp(cs.placeboPos[i], t);
+      cs.nodeMeshes[i].position.copy(p);
+      var deg01 = cs.degree[i] / cs.maxDeg;
+      var rgb = connectomeColor(deg01);
+      cs.nodeMeshes[i].material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      cs.nodeMeshes[i].material.emissive.setRGB(rgb[0] * 0.7, rgb[1] * 0.5, rgb[2] * 0.9);
+      var s = 0.45 + 0.65 * deg01;
+      cs.nodeMeshes[i].scale.setScalar(s);
+    }
+    var posAttr = cs.edgeGeo.attributes.position, colAttr = cs.edgeGeo.attributes.color;
+    cs.edgeList.forEach(function (e, i) {
+      var pa = cs.nodeMeshes[e.s].position, pb = cs.nodeMeshes[e.t].position;
+      posAttr.array[i * 6] = pa.x; posAttr.array[i * 6 + 1] = pa.y; posAttr.array[i * 6 + 2] = pa.z;
+      posAttr.array[i * 6 + 3] = pb.x; posAttr.array[i * 6 + 4] = pb.y; posAttr.array[i * 6 + 5] = pb.z;
+      var w = Math.abs(lerp(e.wd, e.wp, t));
+      var rgb = connectomeColor(Math.min(1, w));
+      for (var k = 0; k < 2; k++) {
+        colAttr.array[i * 6 + k * 3] = rgb[0]; colAttr.array[i * 6 + k * 3 + 1] = rgb[1]; colAttr.array[i * 6 + k * 3 + 2] = rgb[2];
+      }
+    });
+    posAttr.needsUpdate = true; colAttr.needsUpdate = true;
+  }
+
+  // ================= real LABELED fMRI connectome (ds006644, real Schaefer region
+  // names, one real session per subject -- no drug/placebo morph pair) =================
+  // A teal/cyan ramp keeps this visually distinct from the ds005917 connectome's
+  // indigo/violet/magenta at a glance when both are toggled on together.
+  var labeledConnColor = makeRamp([
+    [0.00, 0x0a3a3a], [0.50, 0x1de9b6], [1.00, 0xd7fff5]
+  ]);
+  var labeledConnSubjects = (FC_LABELED.status === 'available' ? FC_LABELED.subjects : []);
+  var LABELED_CONNECTOME_CENTER = BRAIN_BOUNDS.center.clone()
+    .addScaledVector(new THREE.Vector3(0.1, 0.95, -0.05).normalize(), BRAIN_BOUNDS.minHalfExtent * 0.30);
+  var LABELED_CONNECTOME_R = BRAIN_BOUNDS.minHalfExtent * 0.30;
+
+  var labeledConnLayer = new THREE.Group();
+  scene.add(labeledConnLayer);
+  var labeledConnNodeMeshes = [];
+  var labeledConnLabels = [];
+
+  function buildLabeledConnectomeLayer(subject) {
+    labeledConnLayer.clear();
+    labeledConnNodeMeshes = [];
+    labeledConnLabels = [];
+    if (!subject || !subject.graph) return;
+    var graph = subject.graph;
+    var pos = fitCentroidsToSphereAt(graph.centroids, LABELED_CONNECTOME_CENTER, LABELED_CONNECTOME_R);
+    var n = pos.length;
+    var degree = new Array(n).fill(0);
+    graph.edges.forEach(function (e) { degree[e.source]++; degree[e.target]++; });
+    var maxDeg = Math.max(1, Math.max.apply(null, degree));
+
+    var nodeGeo = new THREE.SphereGeometry(0.5, 10, 8);
+    for (var i = 0; i < n; i++) {
+      var deg01 = degree[i] / maxDeg;
+      var rgb = labeledConnColor(deg01);
+      var mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(rgb[0], rgb[1], rgb[2]),
+        emissive: new THREE.Color(rgb[0] * 0.6, rgb[1] * 0.6, rgb[2] * 0.5), emissiveIntensity: 0.6, roughness: 0.4
+      });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      mesh.position.copy(pos[i]);
+      mesh.scale.setScalar(0.45 + 0.65 * deg01);
+      labeledConnLayer.add(mesh);
+      labeledConnNodeMeshes.push(mesh);
+      labeledConnLabels.push((graph.labels && graph.labels[i]) || ('Parcel ' + (i + 1)));
+    }
+
+    var edgePos = new Float32Array(graph.edges.length * 6);
+    graph.edges.forEach(function (e, i) {
+      var a = pos[e.source], b = pos[e.target];
+      edgePos[i * 6] = a.x; edgePos[i * 6 + 1] = a.y; edgePos[i * 6 + 2] = a.z;
+      edgePos[i * 6 + 3] = b.x; edgePos[i * 6 + 4] = b.y; edgePos[i * 6 + 5] = b.z;
+    });
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ color: 0x1de9b6, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+    labeledConnLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
+  }
+
+  // real Schaefer-2018 label -> a short, readable form: "7Networks_LH_Vis_1" ->
+  // "L Vis 1" (hemisphere + Yeo-7 network + index, dropping the atlas-version
+  // prefix a viewer doesn't need to read at a glance; the full real name still
+  // appears in the tooltip's parenthetical).
+  function formatSchaeferLabel(raw) {
+    var m = /^7Networks_(LH|RH)_([A-Za-z]+)_(.+)$/.exec(raw);
+    if (!m) return raw;
+    return (m[1] === 'LH' ? 'L ' : 'R ') + m[2] + ' ' + m[3];
+  }
+
+  // Mapper satellite graph layer
+  var mapperLayer = new THREE.Group();
+  scene.add(mapperLayer);
+  var mapperNodeMeshes = [];
+  function mapperNodeScale(n) { return 0.62 + 0.26 * Math.sqrt(n.size); }
+  (function buildMapperLayer() {
+    var nodeGeo = new THREE.SphereGeometry(0.6, 12, 10);
+    mapperNodes.forEach(function (n, i) {
+      var mat = new THREE.MeshStandardMaterial({ color: 0xcf9bff, emissive: 0x7a2fff, emissiveIntensity: 1.0, roughness: 0.25, transparent: true, opacity: 1.0 });
+      var mesh = new THREE.Mesh(nodeGeo, mat);
+      mesh.position.copy(mapperLayout.pos[i]);
+      mesh.scale.setScalar(mapperNodeScale(n));
+      mapperLayer.add(mesh);
+      mapperNodeMeshes.push(mesh);
+    });
+    var edgePos = new Float32Array(mapperLayout.edgePairs.length * 6);
+    mapperLayout.edgePairs.forEach(function (e, i) {
+      var a = mapperLayout.pos[e[0]], b = mapperLayout.pos[e[1]];
+      edgePos[i * 6] = a.x; edgePos[i * 6 + 1] = a.y; edgePos[i * 6 + 2] = a.z;
+      edgePos[i * 6 + 3] = b.x; edgePos[i * 6 + 4] = b.y; edgePos[i * 6 + 5] = b.z;
+    });
+    var edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    var edgeMat = new THREE.LineBasicMaterial({ color: 0xcf9bff, transparent: true, opacity: 0.65 });
+    mapperLayer.add(new THREE.LineSegments(edgeGeo, edgeMat));
+  })();
+
+  // real per-node membership: which real cohort windows (subject/condition/window)
+  // fed into each Mapper node, already carried in the payload (n.members). Used to
+  // highlight only the currently-selected subject's own real windows within the
+  // (necessarily cohort-fit) Mapper structure, rather than showing the whole
+  // cohort with no way to tell which nodes are "this subject."
+  var mapperHighlightSubject = null;
+  function setMapperHighlightSubject(subjectId) { mapperHighlightSubject = subjectId || null; }
+  function updateMapperGlow(clock) {
+    mapperNodes.forEach(function (n, i) {
+      var rawEnergy = clamp01((n.feature_mean && n.feature_mean.mean_plv != null) ? n.feature_mean.mean_plv : n.awake_fraction);
+      // dedicated red->yellow->white ramp is bright at both ends by construction, so
+      // real per-node energy can drive it directly -- no artificial floor needed
+      var rgb = mapperColor(rawEnergy);
+      var mesh = mapperNodeMeshes[i];
+      var pulse = 1 + 0.08 * Math.sin(clock * 1.4 + i);
+      var hasSubject = !mapperHighlightSubject ||
+        (n.members || []).some(function (m) { return m.subject === mapperHighlightSubject; });
+      mesh.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      mesh.material.emissive.setRGB(rgb[0] * 0.85, rgb[1] * 0.85, rgb[2] * 0.85);
+      mesh.material.opacity = hasSubject ? 1.0 : 0.12;
+      mesh.scale.setScalar(mapperNodeScale(n) * pulse * (hasSubject ? 1.0 : 0.7));
+    });
+    mapperLayer.rotation.y += 0.0015;
+  }
+
+  function frameCamera() {
+    // frame the true combined bounding box of the brain + scalp + satellite graph,
+    // rather than a hand-picked offset, so nothing is ever cropped regardless of
+    // where the real geometry happens to sit
+    var box = new THREE.Box3();
+    box.expandByObject(brainMesh);
+    GEOM.positions.forEach(function (p) { box.expandByPoint(p); });
+    mapperLayout.pos.forEach(function (p) { box.expandByPoint(p); });
+    var center = box.getCenter(new THREE.Vector3());
+    var radius = box.getSize(new THREE.Vector3()).length() * 0.5;
+    // fit the bounding sphere within the *vertical* FOV (the binding constraint on a
+    // wide/landscape canvas, since horizontal FOV is always larger for aspect > 1)
+    var halfVFov = (camera.fov * Math.PI / 180) / 2;
+    var dist = (radius / Math.sin(halfVFov)) * 1.06;
+    var dir = new THREE.Vector3(0.12, 0.42, 1).normalize();
+    camera.position.copy(center).addScaledVector(dir, dist);
+    controls.target.copy(center);
+    controls.minDistance = radius * 0.3;
+    controls.maxDistance = radius * 5;
+    controls.update();
+  }
+
+  // real cluster count at the current blend: no continuous real clustering exists
+  // between the two real recorded conditions, so this snaps to whichever real
+  // condition `t` is nearer -- a real number from the real server-computed DBSCAN
+  // result (clAwake/clSedated), not a live client-side recomputation
+  function nearestRealClusterCount(t) {
+    var cl = t < 0.5 ? clAwake : clSedated;
+    return cl ? cl.clustering.n_clusters : 0;
+  }
+
+  function updateEEG(t, clock) {
+    var blendedWind = TRI.map(function (_, i) { return lerp(eegAwake.wind[i], eegSedated.wind[i], t); });
+    var activityByTri = blendedWind.map(function (w) { return Math.abs(w); });
+
+    var brainCol = brainMesh.geometry.attributes.color;
+    var brainAct = brainMesh.geometry.attributes.activity;
+    var K = BRAIN_WEIGHTS.K;
+    for (var bv = 0; bv < BRAIN.n; bv++) {
+      var acc = 0;
+      for (var k = 0; k < K; k++) {
+        var eIdx = BRAIN_WEIGHTS.idx[bv * K + k], wgt = BRAIN_WEIGHTS.w[bv * K + k];
+        acc += wgt * lerp(eegAwake.smooth[eIdx], eegSedated.smooth[eIdx], t);
+      }
+      // a mild <1 gamma pushes real mid-activity values further up the spectrum so the
+      // full blue->green->yellow->red->white range is legible across the anatomically
+      // real electrode-covered area, rather than most of it compressing into blue. This
+      // same real value now drives three channels: hue (below), and -- in the brain
+      // shader -- per-vertex brightness and opacity, so active cortex reads as visibly
+      // brighter AND more solid than inactive cortex, not just a different color.
+      var intensity = Math.pow(Math.min(1, Math.abs(acc) / eegPeak), 0.6);
+      var rgb = spectrumColor(intensity);
+      // real montage-coverage fade: the real 62-channel dome only covers the upper/
+      // superior scalp, so a vertex whose single nearest real electrode (coverage,
+      // computed in BRAIN_WEIGHTS above) is more than ~60 degrees of arc away sits on
+      // cortex the montage never actually measured (temporal poles, orbitofrontal
+      // undersurface, etc.). Fading those vertices toward a neutral, muted shade --
+      // instead of painting a "real-looking" heat color extrapolated from a far-away
+      // channel -- keeps the heatmap honest about where real EEG data does and doesn't
+      // reach, rather than implying uniform coverage across the whole cortical surface.
+      var covFade = clamp01((BRAIN_WEIGHTS.coverage[bv] - 0.1) / 0.4);
+      var NEUTRAL = [0.30, 0.32, 0.37];
+      rgb = [lerp(NEUTRAL[0], rgb[0], covFade), lerp(NEUTRAL[1], rgb[1], covFade), lerp(NEUTRAL[2], rgb[2], covFade)];
+      intensity *= covFade;
+      // real FreeSurfer sulcal-depth curvature drives per-vertex shading contrast, the
+      // same signal anatomical surface renderers use to make gyri (light) and sulci
+      // (dark) visually legible -- stronger than a flat energy fill alone
+      var curvShade = Math.max(0.58, 1 + BRAIN.curv[bv] * 0.42);
+      brainCol.setXYZ(bv, Math.min(1, rgb[0] * curvShade), Math.min(1, rgb[1] * curvShade), Math.min(1, rgb[2] * curvShade));
+      brainAct.setX(bv, intensity);
+    }
+    brainCol.needsUpdate = true;
+    brainAct.needsUpdate = true;
+
+    var colAttr = scalpMesh.geometry.attributes.color;
+    for (var i = 0; i < GEOM.positions.length; i++) {
+      var v = lerp(eegAwake.smooth[i], eegSedated.smooth[i], t);
+      var rgb2 = spectrumColor(Math.min(1, Math.abs(v) / eegPeak));
+      colAttr.setXYZ(i, rgb2[0], rgb2[1], rgb2[2]);
+    }
+    colAttr.needsUpdate = true;
+
+    var vertexIntensity = new Array(GEOM.positions.length);
+    for (var j = 0; j < GEOM.positions.length; j++) {
+      var ph = angleLerp(eegAwake.phase[j], eegSedated.phase[j], t);
+      var tf = GEOM.tangents[j];
+      var dir = tf.e1.clone().multiplyScalar(Math.cos(ph)).add(tf.e2.clone().multiplyScalar(Math.sin(ph))).normalize();
+      var vAmp = Math.min(1, Math.abs(lerp(eegAwake.smooth[j], eegSedated.smooth[j], t)) / eegPeak);
+      vertexIntensity[j] = vAmp;
+      var rgbA = spectrumColor(0.38 + vAmp * 0.62);
+      arrows[j].setDirection(dir);
+      arrows[j].setColor(new THREE.Color(rgbA[0], rgbA[1], rgbA[2]));
+      arrows[j].line.material.opacity = 0.6 + 0.4 * vAmp;
+      arrows[j].cone.material.opacity = 0.6 + 0.4 * vAmp;
+      arrows[j].setLength(GEOM.R * (0.08 + 0.1 * vAmp), GEOM.R * (0.03 + 0.024 * vAmp), GEOM.R * (0.018 + 0.014 * vAmp));
+    }
+
+    denseArrows.forEach(function (da) {
+      var t3 = da.tri.tri, bw = da.bary;
+      var p0 = angleLerp(eegAwake.phase[t3[0]], eegSedated.phase[t3[0]], t);
+      var p1 = angleLerp(eegAwake.phase[t3[1]], eegSedated.phase[t3[1]], t);
+      var p2 = angleLerp(eegAwake.phase[t3[2]], eegSedated.phase[t3[2]], t);
+      var cx = bw[0] * Math.cos(p0) + bw[1] * Math.cos(p1) + bw[2] * Math.cos(p2);
+      var cy = bw[0] * Math.sin(p0) + bw[1] * Math.sin(p1) + bw[2] * Math.sin(p2);
+      var ph2 = Math.atan2(cy, cx);
+      var dir2 = da.tri.e1.clone().multiplyScalar(Math.cos(ph2)).add(da.tri.e2.clone().multiplyScalar(Math.sin(ph2))).normalize();
+      var amp = bw[0] * vertexIntensity[t3[0]] + bw[1] * vertexIntensity[t3[1]] + bw[2] * vertexIntensity[t3[2]];
+      var rgbD = spectrumColor(0.38 + amp * 0.62);
+      da.ah.setDirection(dir2);
+      da.ah.setColor(new THREE.Color(rgbD[0], rgbD[1], rgbD[2]));
+      da.ah.line.material.opacity = 0.58 + 0.42 * amp;
+      da.ah.cone.material.opacity = 0.58 + 0.42 * amp;
+      da.ah.setLength(GEOM.R * (0.055 + 0.085 * amp), GEOM.R * (0.024 + 0.018 * amp), GEOM.R * (0.014 + 0.011 * amp));
+    });
+
+    var triScale = eegTriPeak;
+    var activeCount = 0, totalPersist = 0;
+    vortices.forEach(function (vx) {
+      var i = vx.tri.index, blended = blendedWind[i], activity = activityByTri[i];
+      if (activity > 0.08) activeCount++;
+      var vis = Math.min(1, activity / triScale);
+      var rgb3 = spectrumColor(0.15 + vis * 0.6);
+      vx.sprite.material.color.setRGB(blended >= 0 ? 0.4 : rgb3[0], blended >= 0 ? 0.85 : rgb3[1], blended >= 0 ? 1.0 : rgb3[2]);
+      vx.sprite.material.opacity = 0.85 * vis;
+      var s = GEOM.R * (0.12 + 0.32 * vis);
+      vx.sprite.scale.set(s, s, s);
+    });
+    rings.forEach(function (rg) {
+      var i = rg.tri.index, blended = blendedWind[i], activity = activityByTri[i], vis = Math.min(1, activity / triScale);
+      var visible = activity > 0.06;
+      var chargeVis = Math.min(1, Math.abs(blended) / triScale);
+      // fixed, calm, non-flashy color -- energy is no longer shown as brightness
+      var ringOpacity = visible ? 0.5 * Math.min(1, vis * 1.6) : 0;
+      rg.mesh.material.opacity = ringOpacity;
+      rg.marker.material.opacity = 0;
+      if (visible) {
+        // real |charge| sets the ring's own SIZE (radius + tube thickness together,
+        // via uniform scale) -- more real charge reads as a visibly bigger circle
+        var ringR = rg.tri.edgeLen * (0.42 + 0.5 * chargeVis) * (0.94 + 0.08 * Math.sin(clock * 1.6 + i));
+        rg.mesh.scale.set(ringR, ringR, ringR);
+        // real signed winding sets the marker's orbital direction: +1 = CCW, -1 = CW
+        // (matching the sign convention already used for the vortex core coloring
+        // above) -- its visible spin direction IS the real chirality. Real |charge|
+        // sets its angular SPEED: this is "energy via speed of rotation," not brightness.
+        var sign = blended >= 0 ? 1 : -1;
+        var spinSpeed = 0.7 + 2.6 * chargeVis;
+        var ang = clock * spinSpeed * sign + i;
+        var mpos = rg.tri.centroid.clone()
+          .add(rg.tri.e1.clone().multiplyScalar(Math.cos(ang) * ringR))
+          .add(rg.tri.e2.clone().multiplyScalar(Math.sin(ang) * ringR));
+        rg.marker.position.copy(mpos);
+        rg.marker.material.opacity = 0.9 * Math.min(1, vis * 1.6);
+        var ms = ringR * 0.16;
+        rg.marker.scale.set(ms, ms, ms);
+      }
+    });
+    particles.forEach(function (p) {
+      var i = p.tri.index, blended = blendedWind[i], activity = activityByTri[i], sign = blended >= 0 ? 1 : -1;
+      var vis = Math.min(1, activity / triScale);
+      var ang = p.angle0 + clock * p.speed * sign;
+      var r = p.radius * (1 + p.wobble * Math.sin(clock * 1.4 + p.phaseOff));
+      var pos = p.tri.centroid.clone().add(p.tri.e1.clone().multiplyScalar(Math.cos(ang) * r)).add(p.tri.e2.clone().multiplyScalar(Math.sin(ang) * r));
+      p.sprite.position.copy(pos);
+      var rgb4 = spectrumColor(0.15 + vis * 0.75);
+      p.sprite.material.color.setRGB(rgb4[0], rgb4[1], rgb4[2]);
+      p.sprite.material.opacity = 0.95 * vis;
+    });
+
+    return { qabs: lerp(eegAwake.wind.reduce(function(a,b){return a+Math.abs(b);},0), eegSedated.wind.reduce(function(a,b){return a+Math.abs(b);},0), t), activeCount: activeCount, nClusters: nearestRealClusterCount(t) };
+  }
+
+  function resizeRenderer() {
+    var rect = stageEl.parentElement.getBoundingClientRect();
+    renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / Math.max(rect.height, 1);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resizeRenderer);
+
+  // ================= UI wiring =================
+  var eegSlider = document.getElementById('ha-eeg-slider');
+  var eegSelect = document.getElementById('ha-eeg-subject');
+  var fmriSlider = document.getElementById('ha-fmri-slider');
+  var fmriSelect = document.getElementById('ha-fmri-subject');
+  var playBtn = document.getElementById('ha-play');
+  var resetBtn = document.getElementById('ha-reset-cam');
+  var readout = document.getElementById('ha-readout');
+
+  fmriSubjects.forEach(function (s) {
+    var opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.id; fmriSelect.appendChild(opt);
+  });
+  if (fmriSubjects.length) {
+    buildConnectomeLayer(fmriSubjects[0]);
+  }
+  fmriSelect.addEventListener('change', function () {
+    var subj = fmriSubjects.find(function (s) { return s.id === fmriSelect.value; });
+    buildConnectomeLayer(subj);
+    updateConnectome(parseFloat(fmriSlider.value));
+    renderStats();
+    renderInterpretation();
+  });
+
+  var labeledConnSelect = document.getElementById('ha-labeled-conn-subject');
+  labeledConnSubjects.forEach(function (s) {
+    var opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.id + ' (' + s.group + ')'; labeledConnSelect.appendChild(opt);
+  });
+  if (labeledConnSubjects.length) buildLabeledConnectomeLayer(labeledConnSubjects[0]);
+  labeledConnSelect.addEventListener('change', function () {
+    var subj = labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; });
+    buildLabeledConnectomeLayer(subj);
+    renderStats();
+    renderInterpretation();
+  });
+
+  (function () {
+    var opt0 = document.createElement('option'); opt0.value = ''; opt0.textContent = 'EEG: cohort average (n=' + VF.n_subjects + ')'; eegSelect.appendChild(opt0);
+    eegSpatialSubjects.forEach(function (s) {
+      var opt = document.createElement('option'); opt.value = s.subject_id; opt.textContent = 'EEG: ' + s.subject_id; eegSelect.appendChild(opt);
+    });
+    // default to one real subject (not the cohort average) so every per-subject
+    // real panel -- waveform, zone bands, H1 loops, Mapper highlight -- shows real
+    // data immediately, matching "always show this one real subject's own data"
+    if (eegSpatialSubjects.length) {
+      eegSelect.value = eegSpatialSubjects[0].subject_id;
+      setEegSubject(eegSelect.value);
+      var initCond = parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated';
+      buildH1LoopLayer(eegSelect.value, initCond);
+      buildZoneLayer(eegSelect.value, initCond);
+      buildWaveform(eegSelect.value, initCond);
+      setMapperHighlightSubject(eegSelect.value);
+    }
+  })();
+  eegSelect.addEventListener('change', function () {
+    setEegSubject(eegSelect.value || null);
+    drawPersistenceDiagram(eegSelect.value || null);
+    var cond0 = parseFloat(eegSlider.value) < 0.5 ? 'awake' : 'sedated';
+    buildH1LoopLayer(eegSelect.value || null, cond0);
+    buildZoneLayer(eegSelect.value || null, cond0);
+    buildWaveform(eegSelect.value || null, cond0);
+    setMapperHighlightSubject(eegSelect.value || null);
+    renderStats();
+    renderInterpretation();
+  });
+
+  resetBtn.addEventListener('click', frameCamera);
+
+  // ================= per-layer visibility toggles =================
+  // Each artifact (EEG heatmap, Betti-1 loops, H1 loops, skyrmion field, Mapper,
+  // Connectome) is an independent THREE.Group; a checkbox just flips .visible.
+  // Turning off BOTH interior layers (Mapper, Connectome) additionally makes the
+  // brain solid (opaque) via brainMat's solidMode uniform, since there is then
+  // nothing left inside it to see through to -- full opacity reads the real
+  // per-vertex heatmap colors more clearly than a see-through surface does.
+  var toggleHeatmap = document.getElementById('ha-toggle-heatmap');
+  var toggleBetti1 = document.getElementById('ha-toggle-betti1');
+  var toggleH1Loops = document.getElementById('ha-toggle-h1loops');
+  var toggleSkyrmions = document.getElementById('ha-toggle-skyrmions');
+  var toggleMapper = document.getElementById('ha-toggle-mapper');
+  var toggleConnectome = document.getElementById('ha-toggle-connectome');
+  var toggleLabeledConnectome = document.getElementById('ha-toggle-labeled-connectome');
+
+  function updateBrainSolidity() {
+    var interiorHidden = !toggleMapper.checked && !toggleConnectome.checked && !toggleLabeledConnectome.checked;
+    brainMat.uniforms.solidMode.value = interiorHidden ? 1.0 : 0.0;
+    // transparent+depthWrite:false (the correct settings for a see-through surface,
+    // so objects behind it still blend and sort correctly) put the brain in Three.js's
+    // sorted transparent render queue, where a fully-opaque alpha=1 mesh can still end
+    // up visually buried behind other transparent/additive layers (arrows, sprites)
+    // instead of properly occluding them. Solid mode needs the normal opaque queue:
+    // depthWrite back on and transparent off, with needsUpdate so the renderer
+    // reprocesses the material's pipeline state.
+    brainMat.depthWrite = interiorHidden;
+    brainMat.transparent = !interiorHidden;
+    brainMat.needsUpdate = true;
+    fresnelMesh.visible = !interiorHidden; // the rim-glow only reads correctly on a see-through surface
+  }
+
+  toggleHeatmap.addEventListener('change', function () {
+    eegHeatmapLayer.visible = toggleHeatmap.checked;
+    if (!toggleHeatmap.checked) document.getElementById('ha-zone-key').style.display = 'none';
+    else if (zoneMarkers.length) document.getElementById('ha-zone-key').style.display = 'flex';
+  });
+  toggleBetti1.addEventListener('change', function () { betti1Layer.visible = toggleBetti1.checked; });
+  toggleH1Loops.addEventListener('change', function () { h1LoopLayer.visible = toggleH1Loops.checked; });
+  toggleSkyrmions.addEventListener('change', function () { skyrmionLayer.visible = toggleSkyrmions.checked; });
+  toggleMapper.addEventListener('change', function () { mapperLayer.visible = toggleMapper.checked; updateBrainSolidity(); });
+  toggleConnectome.addEventListener('change', function () { connLayer.visible = toggleConnectome.checked; updateBrainSolidity(); });
+  toggleLabeledConnectome.addEventListener('change', function () { labeledConnLayer.visible = toggleLabeledConnectome.checked; updateBrainSolidity(); });
+  updateBrainSolidity();
+
+  // ================= single-dataset mode =================
+  // The user picks ONE real dataset at a time; every control, layer toggle, and
+  // panel scoped to a different dataset (via data-ds) hides, and only that
+  // dataset's own real layers switch on. This reuses the exact same per-layer
+  // THREE.Group/toggle machinery above -- switching datasets just drives those
+  // same checkboxes programmatically, so nothing about how a layer renders
+  // changes, only which layers are eligible to be visible.
+  var ALL_TOGGLES = [toggleHeatmap, toggleBetti1, toggleH1Loops, toggleSkyrmions, toggleMapper, toggleConnectome, toggleLabeledConnectome];
+  var DATASET_TOGGLES = {
+    ds005620: [toggleHeatmap, toggleBetti1, toggleH1Loops, toggleSkyrmions, toggleMapper],
+    ds005917: [toggleConnectome],
+    ds006644: [toggleLabeledConnectome]
+  };
+  var currentDataset = 'ds005620';
+
+  function applyDatasetDomVisibility() {
+    document.querySelectorAll('[data-ds]').forEach(function (el) {
+      var list = el.getAttribute('data-ds').split(',');
+      el.style.display = list.indexOf(currentDataset) !== -1 ? '' : 'none';
+    });
+  }
+
+  function switchDataset(ds) {
+    currentDataset = ds;
+    var activeToggles = DATASET_TOGGLES[ds] || [];
+    ALL_TOGGLES.forEach(function (t) {
+      var shouldBeOn = activeToggles.indexOf(t) !== -1;
+      if (t.checked !== shouldBeOn) {
+        t.checked = shouldBeOn;
+        t.dispatchEvent(new Event('change'));
+      }
+    });
+    applyDatasetDomVisibility();
+    renderStats();
+    renderInterpretation();
+    frameCamera();
+  }
+
+  var datasetSelect = document.getElementById('ha-dataset-select');
+  datasetSelect.addEventListener('change', function () { switchDataset(datasetSelect.value); });
+  switchDataset('ds005620');
+
+  window.__ha_debug = {
+    getState: function () {
+      return {
+        currentDataset: currentDataset,
+        heatmapChecked: toggleHeatmap.checked,
+        connChecked: toggleConnectome.checked,
+        labeledConnChecked: toggleLabeledConnectome.checked,
+        skyrmionsChecked: toggleSkyrmions.checked,
+        mapperChecked: toggleMapper.checked,
+        betti1Checked: toggleBetti1.checked,
+        h1LoopsChecked: toggleH1Loops.checked,
+        waveformState: waveformState,
+        mapperHighlightSubject: mapperHighlightSubject,
+        statsHtmlLen: document.getElementById('ha-stats').innerHTML.length,
+      };
+    },
+    switchDataset: switchDataset,
+  };
+
+  var playing = false, playDir = 1;
+  playBtn.addEventListener('click', function () {
+    playing = !playing;
+    playBtn.textContent = playing ? '&#10074;&#10074; Pause all' : '▶ Play all';
+    playBtn.innerHTML = playing ? '&#10074;&#10074; Pause all' : '&#9654; Play all';
+  });
+
+  // ================= node tooltips (real Mapper feature_mean + real labeled-connectome
+  // region names) =================
+  // wires up the previously-unused .ha-callout-layer/#ha-callouts DOM hook to show, on
+  // hover, real per-node data this page fetches but was never displaying: all 5 real
+  // Mapper features and the real subject/condition composition of that node's members,
+  // plus (for the ds006644 labeled connectome) the real Schaefer-2018 region name and
+  // real degree of whichever parcel is under the pointer.
+  var raycaster = new THREE.Raycaster();
+  var pointerNdc = new THREE.Vector2();
+  function fmt(v, d) { return v == null ? '&mdash;' : v.toFixed(d == null ? 3 : d); }
+  stageEl.addEventListener('pointermove', function (ev) {
+    var rect = stageEl.getBoundingClientRect();
+    pointerNdc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNdc, camera);
+    var left = (ev.clientX - rect.left), top = (ev.clientY - rect.top);
+
+    var connHits = labeledConnLayer.visible ? raycaster.intersectObjects(labeledConnNodeMeshes) : [];
+    if (connHits.length) {
+      var cidx = labeledConnNodeMeshes.indexOf(connHits[0].object);
+      var rawLabel = labeledConnLabels[cidx];
+      calloutLayer.innerHTML = '<div class="ha-callout-label" style="left:' + left + 'px; top:' + top + 'px;">' +
+        '<b>' + formatSchaeferLabel(rawLabel) + '</b> &mdash; real Schaefer-2018 region<br>' +
+        '(' + rawLabel + ')</div>';
+      return;
+    }
+
+    var hits = raycaster.intersectObjects(mapperNodeMeshes);
+    if (!hits.length) { calloutLayer.innerHTML = ''; return; }
+    var idx = mapperNodeMeshes.indexOf(hits[0].object);
+    var n = mapperNodes[idx];
+    var fm = n.feature_mean || {};
+    var subjCounts = {};
+    (n.members || []).forEach(function (m) { subjCounts[m.subject] = (subjCounts[m.subject] || 0) + 1; });
+    var subjSummary = Object.keys(subjCounts).map(function (s) { return s + ' &times;' + subjCounts[s]; }).join(', ');
+    calloutLayer.innerHTML = '<div class="ha-callout-label" style="left:' + left + 'px; top:' + top + 'px;">' +
+      '<b>' + n.id + '</b> &mdash; ' + n.size + ' real windows<br>' +
+      'mean_plv=' + fmt(fm.mean_plv) + ' beta1=' + fmt(fm.beta1, 0) + ' q_spatial=' + fmt(fm.q_spatial, 0) + '<br>' +
+      'landscape_area=' + fmt(fm.integrated_landscape_area) + ' filtration_beta1_max=' + fmt(fm.filtration_beta1_max, 0) + '<br>' +
+      'awake_fraction=' + fmt(n.awake_fraction, 2) + ' &mdash; ' + subjSummary + '</div>';
+  });
+
+  // ================= real persistence-landscape mini chart (awake vs sedated) =================
+  // draws already-fetched real curves (core.topology.persistence_landscape output),
+  // never rendered anywhere before this
+  function drawLandscapeChart() {
+    var canvas = document.getElementById('ha-landscape-chart');
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width, H = canvas.height, pad = 26;
+    ctx.clearRect(0, 0, W, H);
+    if (!clAwake || !clSedated) {
+      ctx.fillStyle = '#7c8296'; ctx.font = '11px ui-monospace, monospace';
+      ctx.fillText('Landscape unavailable for this cohort run.', pad, H / 2);
+      return;
+    }
+    var gA = clAwake.landscape.grid, cA = clAwake.landscape.curve;
+    var gS = clSedated.landscape.grid, cS = clSedated.landscape.curve;
+    var maxX = Math.max(gA[gA.length - 1], gS[gS.length - 1], 1e-6);
+    var maxY = Math.max.apply(null, cA.concat(cS).concat([1e-6]));
+    function toXY(gx, gy) { return [pad + (gx / maxX) * (W - pad * 1.5), H - pad - (gy / maxY) * (H - pad * 1.5)]; }
+    function drawCurve(grid, curve, color) {
+      ctx.beginPath();
+      grid.forEach(function (gx, i) {
+        var xy = toXY(gx, curve[i]);
+        if (i === 0) ctx.moveTo(xy[0], xy[1]); else ctx.lineTo(xy[0], xy[1]);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, H - pad); ctx.lineTo(W - pad * 0.5, H - pad); ctx.moveTo(pad, H - pad); ctx.lineTo(pad, pad * 0.5); ctx.stroke();
+    drawCurve(gA, cA, '#7ad7ff');
+    drawCurve(gS, cS, '#ff6b6b');
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(5,7,12,0.7)'; ctx.fillRect(W - 70, pad - 9, 66, 26);
+    ctx.fillStyle = '#7ad7ff'; ctx.fillText('awake', W - 64, pad + 2);
+    ctx.fillStyle = '#ff6b6b'; ctx.fillText('sedated', W - 64, pad + 14);
+  }
+
+  // ================= real per-subject H1 birth-death diagram =================
+  // windowIndex: null defaults to the last real window (unchanged historical behavior,
+  // matching bottleneck_distance_h1_last_window). diagrams_h1_by_window carries every
+  // real window this subject/condition actually recorded (no interpolation) --
+  // tools/command_center/real_results_adapter.build_pitnn_cohort_persistence_artifact.
+  function drawPersistenceDiagram(subjectId, windowIndex) {
+    var canvas = document.getElementById('ha-diagram-chart');
+    var ctx = canvas.getContext('2d');
+    var titleEl = document.getElementById('ha-diagram-title');
+    var windowCtl = document.getElementById('ha-diagram-window-ctl');
+    var windowSlider = document.getElementById('ha-diagram-window');
+    var windowLabel = document.getElementById('ha-diagram-window-label');
+    var W = canvas.width, H = canvas.height, pad = 24;
+    ctx.clearRect(0, 0, W, H);
+    var rec = subjectId ? findPersistenceSubject(subjectId) : null;
+    if (!rec) {
+      titleEl.innerHTML = 'Real H1 birth&ndash;death diagram &mdash; pick an EEG subject above to view theirs';
+      ctx.fillStyle = '#7c8296'; ctx.font = '11px ui-monospace, monospace';
+      ctx.fillText('No subject selected.', pad, H / 2);
+      windowCtl.style.display = 'none';
+      return;
+    }
+    var byWindow = rec.diagrams_h1_by_window || {};
+    var nWindows = Math.min(
+      (byWindow.awake || [rec.diagrams_h1.awake]).length,
+      (byWindow.sedated || [rec.diagrams_h1.sedated]).length
+    );
+    var lastIdx = Math.max(0, nWindows - 1);
+    var idx = (windowIndex == null) ? lastIdx : Math.min(windowIndex, lastIdx);
+    if (nWindows > 1) {
+      windowCtl.style.display = '';
+      windowSlider.max = lastIdx;
+      windowSlider.value = idx;
+      windowLabel.textContent = idx + ' / ' + lastIdx + (idx === lastIdx ? ' (most recent, = bottleneck pair)' : '');
+    } else {
+      windowCtl.style.display = 'none';
+    }
+    var isVineyardFrame = idx !== lastIdx;
+    titleEl.innerHTML = 'Real H1 birth&ndash;death diagram &mdash; <b>' + subjectId + '</b>' +
+      (isVineyardFrame ? ' (window ' + idx + ' of ' + lastIdx + ')' : ' (real bottleneck=' + rec.bottleneck_distance_h1_last_window.toFixed(3) + ')');
+    var awake = (byWindow.awake ? byWindow.awake[idx] : rec.diagrams_h1.awake) || [];
+    var sedated = (byWindow.sedated ? byWindow.sedated[idx] : rec.diagrams_h1.sedated) || [];
+    var allVals = awake.concat(sedated).reduce(function (acc, p) { return acc.concat(p); }, []);
+    var maxV = Math.max.apply(null, allVals.concat([1e-6]));
+    function toXY(b, d) { return [pad + (b / maxV) * (W - pad * 1.5), H - pad - (d / maxV) * (H - pad * 1.5)]; }
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.beginPath();
+    var o = toXY(0, 0), e = toXY(maxV, maxV);
+    ctx.moveTo(o[0], o[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
+    function drawPts(pts, color) {
+      ctx.fillStyle = color;
+      pts.forEach(function (p) {
+        var xy = toXY(p[0], p[1]);
+        ctx.beginPath(); ctx.arc(xy[0], xy[1], 2, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+    drawPts(awake, 'rgba(122,215,255,0.75)');
+    drawPts(sedated, 'rgba(255,107,107,0.75)');
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(5,7,12,0.7)'; ctx.fillRect(W - 70, pad - 9, 66, 26);
+    ctx.fillStyle = '#7ad7ff'; ctx.fillText('awake', W - 64, pad + 2);
+    ctx.fillStyle = '#ff6b6b'; ctx.fillText('sedated', W - 64, pad + 14);
+  }
+
+  // ================= real fMRI drug-vs-placebo paired statistics table =================
+  function renderFmriStats() {
+    var el = document.getElementById('ha-fmri-stats');
+    var metrics = FC.paired_stats && FC.paired_stats.metrics;
+    if (!metrics) { el.innerHTML = ''; return; }
+    var cards = Object.keys(metrics).map(function (key) {
+      var m = metrics[key];
+      var pText = (m.paired_t_p == null) ? 'undefined (zero variance)' : 'p=' + m.paired_t_p.toFixed(3);
+      var dzText = (m.effect_size_dz == null) ? '' : ' dz=' + m.effect_size_dz.toFixed(2);
+      return '<div class="ha-stat"><div class="ha-stat-label">' + key.replace(/_/g, ' ') + '</div>' +
+        '<div class="ha-stat-value">' + m.drug_mean.toFixed(3) + ' <span style="color:var(--ink-muted);font-weight:400;">vs</span> ' + m.placebo_mean.toFixed(3) + '</div>' +
+        '<div class="ha-stat-sub">' + pText + dzText + ' &middot; n=' + m.n_subjects + '</div></div>';
+    });
+    el.innerHTML = cards.join('');
+  }
+
+  // ================= stats readout (real numbers) =================
+  function renderStats() {
+    var statsEl = document.getElementById('ha-stats');
+    var cards = [];
+    function card(label, value, sub) {
+      cards.push('<div class="ha-stat"><div class="ha-stat-label">' + label + '</div><div class="ha-stat-value">' + value + '</div>' + (sub ? '<div class="ha-stat-sub">' + sub + '</div>' : '') + '</div>');
+    }
+    if (currentDataset === 'ds005620') {
+      card('EEG cohort', VF.n_subjects, VF.n_channels + ' channels, ' + TRI.length + ' triangles, n=20');
+      if (clAwake) card('EEG Betti-1 clusters (awake)', clAwake.clustering.n_clusters, clAwake.clustering.n_noise + ' noise triangles');
+      if (clSedated) card('EEG Betti-1 clusters (sedated)', clSedated.clustering.n_clusters, clSedated.clustering.n_noise + ' noise triangles');
+      var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
+      if (selSubj) {
+        card('Selected EEG subject', selSubj.subject_id,
+          'real β1 awake=' + (selSubj.conditions.awake ? selSubj.conditions.awake.beta1 : '—') +
+          ', sedated=' + (selSubj.conditions.sedated ? selSubj.conditions.sedated.beta1 : '—'));
+      }
+      card('Mapper windows', MG.n_windows || 0, mapperNodes.length + ' nodes, ' + mapperEdges.length + ' edges');
+    } else if (currentDataset === 'ds005917') {
+      card('fMRI subjects w/ connectome', fmriSubjects.length + ' / ' + (FC.n_subjects || 0), 'ds005917, 100 real parcels each');
+      var fmriSubj = fmriSelect.value ? fmriSubjects.find(function (s) { return s.id === fmriSelect.value; }) : null;
+      if (fmriSubj) card('Selected fMRI subject', fmriSubj.id, 'drug/placebo real graph structure loaded');
+    } else if (currentDataset === 'ds006644') {
+      card('Labeled fMRI subjects', labeledConnSubjects.length, 'ds006644, real Schaefer-100 region names');
+      var labSubj = labeledConnSelect.value ? labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; }) : null;
+      if (labSubj) card('Selected subject', labSubj.id, labSubj.group + ' group, single real session');
+    }
+    statsEl.innerHTML = cards.join('');
+  }
+
+  // ================= per-layer interpretation cards (real numbers + descriptive framing) =================
+  // Interpretation text is deliberately descriptive/marker-level (what a rise or
+  // fall in this real quantity classically indicates in the topology/EEG
+  // literature), never a claim about this specific recording's consciousness
+  // state, clinical status, or a proof of any theory -- matching this repo's
+  // governance guardrails (tools/validate_ontology_claim_language.py and
+  // sciencer_d/btc_icft/report_guardrails.py).
+  function renderInterpretation() {
+    var el = document.getElementById('ha-interp-grid');
+    if (!el) return;
+    var selSubj = eegSelect.value ? findSpatialSubject(eegSelect.value) : null;
+    var currentCl = parseFloat(eegSlider.value) < 0.5 ? clAwake : clSedated;
+    var h1Count = h1LoopState.subjectId ? (h1LoopLayer.children.length / 3) : 0;
+    var subjBetaLine = '';
+    if (selSubj) {
+      var awB = selSubj.conditions.awake ? selSubj.conditions.awake.beta1 : null;
+      var sdB = selSubj.conditions.sedated ? selSubj.conditions.sedated.beta1 : null;
+      if (awB != null && sdB != null) {
+        subjBetaLine = ' Real beta1 for ' + selSubj.subject_id + ': awake=' + awB + ', sedated=' + sdB +
+          (awB !== sdB ? ' (a real ' + (sdB > awB ? 'increase' : 'decrease') + ' in this subject\'s own recording).' : ' (no change in this subject\'s own recording).');
+      }
+    }
+    var fmriSubj = fmriSelect.value ? fmriSubjects.find(function (s) { return s.id === fmriSelect.value; }) : null;
+    var labeledSubj = labeledConnSelect.value ? labeledConnSubjects.find(function (s) { return s.id === labeledConnSelect.value; }) : null;
+    var cards = [
+      {
+        ds: 'ds005620', title: 'Betti-1 loops (yellow rings)',
+        live: (currentCl ? currentCl.clustering.n_clusters + ' real spatial clusters, ' + currentCl.clustering.n_noise + ' noise triangles (cohort-level clustering)' + subjBetaLine : 'no clustering for this cohort run'),
+        desc: 'Each ring marks one triangle of the montage whose local phase-defect (signed winding) exceeds threshold; DBSCAN groups active triangles into spatial clusters. More/smaller clusters read as a more spatially fragmented defect pattern; fewer/larger clusters read as a more spatially coherent one -- a description of pattern shape, not a measurement of consciousness.'
+      },
+      {
+        ds: 'ds005620', title: 'H1 loops (green lines)',
+        live: (selSubj ? Math.round(h1Count) + ' of the top-' + H1_LOOP_TOP_N + ' most-persistent real H1 features shown for ' + selSubj.subject_id : 'pick an EEG subject above'),
+        desc: 'Real GUDHI persistent-homology H1 features from the selected subject\'s last-window phase-locking-value (PLV) matrix, ranked by persistence (death − birth) and capped to the most persistent per condition. Higher persistence means that channel pair\'s shared phase-locking structure survives across a wider range of the PLV filtration -- a more statistically robust functional relationship in this analysis, not a specific anatomical circuit.'
+      },
+      {
+        ds: 'ds005620', title: 'Skyrmion-style phase-vortex field (arrows)',
+        live: GEOM.activeTri.length + ' real triangles carry a local phase-vortex arrow field' + (selSubj ? ' for ' + selSubj.subject_id : ''),
+        desc: 'Every real electrode\'s local phase gradient, drawn as a dense arrow field styled after skyrmion-texture visualizations from condensed-matter physics. Convergent or divergent arrow patterns mark the same real phase singularities driving the Betti-1 rings above -- a visual, not a claim that this EEG data contains literal magnetic skyrmions.'
+      },
+      {
+        ds: 'ds005620', title: 'Mapper cohort-structure graph',
+        live: mapperNodes.length + ' real nodes, ' + mapperEdges.length + ' real edges over ' + (MG.n_windows || 0) + ' real cohort windows' +
+          (selSubj ? ' -- ' + selSubj.subject_id + '\'s own real windows are highlighted (dimmed nodes belong to other subjects)' : ''),
+        desc: 'Each node is a KeplerMapper cluster of real per-window feature vectors (mean PLV, persistence-landscape area, beta1, spatial charge); edges connect clusters that share real windows. Node color/size track real per-node mean PLV or awake-fraction. This is necessarily a cohort-fit structure (the clustering itself is computed across all subjects), but the selected subject\'s own real window memberships are highlighted -- Mapper nodes carry no spatial/anatomical coordinate.'
+      },
+      {
+        ds: 'ds005917', title: 'fMRI connectome (violet)',
+        live: fmriSubj ? 'Showing ' + fmriSubj.id + ' -- ' + fmriSubjects.length + ' real ds005917 subjects available' : fmriSubjects.length + ' real ds005917 subjects available, one shown at a time',
+        desc: 'Real 100-parcel KMeans centroids and Pearson functional connectivity for one real ketamine-study subject. Node color/size track real degree (how many other parcels a parcel\'s BOLD timecourse correlates with above threshold) -- a measure of functional integration in this dataset, not anatomical connection strength or clinical significance.'
+      },
+      {
+        ds: 'ds006644', title: 'Labeled connectome (teal)',
+        live: labeledSubj ? 'Showing ' + labeledSubj.id + ' (' + labeledSubj.group + ' group) -- ' + labeledConnSubjects.length + ' real ds006644 subjects available' : labeledConnSubjects.length + ' real ds006644 subjects with real Schaefer-2018 region names',
+        desc: 'Real Schaefer-100 atlas parcels and Pearson functional connectivity for one real DMT/harmine-meditation-study subject; hover a node for its real anatomical region name (e.g. "L Vis 1" = left-hemisphere visual network, parcel 1). Unlike the violet ds005917 connectome, this atlas correspondence is scientifically valid here because ds006644\'s BOLD is already spatially normalized to the same MNI template family the atlas uses.'
+      }
+    ];
+    el.innerHTML = cards.filter(function (c) { return c.ds === currentDataset; }).map(function (c) {
+      return '<div class="ha-interp-card"><div class="ha-interp-card-title">' + c.title + '</div>' +
+        '<div class="ha-interp-card-live">' + c.live + '</div>' +
+        '<div class="ha-interp-card-desc">' + c.desc + '</div></div>';
+    }).join('');
+  }
+
+  // ================= theory / "explain this visualization" panel =================
+  (function () {
+    var toggleBtn = document.getElementById('ha-theory-toggle');
+    var panel = document.getElementById('ha-theory-panel');
+    panel.innerHTML =
+      '<h3>Topological charge: Q<sub>z</sub>, Q<sub>abs</sub>, f<sub>dress</sub></h3>' +
+      '<p>Each mesh triangle carries a real signed winding number of the phase field around its three corners -- a discrete topological charge. Q<sub>z</sub> sums these signed values (net charge; positive and negative windings can cancel); Q<sub>abs</sub> sums their absolute values (total unsigned winding, no cancellation). f<sub>dress</sub> = (Q<sub>abs</sub> − |Q<sub>z</sub>|) / Q<sub>abs</sub> is near zero when local winding mostly cancels into a coherent net charge, and rises when local winding is disordered relative to the net. These are descriptive geometric quantities of the phase field, not a measurement or proof of consciousness.</p>' +
+      '<h3>Persistent homology, Betti numbers, H1</h3>' +
+      '<p>Persistent homology tracks how topological features (connected components = Betti-0, loops = Betti-1) appear and disappear as a threshold sweeps across a real structure -- here, either the montage\'s phase-defect field or a channel-pair PLV matrix. A feature\'s "persistence" (death − birth) is how long it survives across that sweep; more persistent features are considered more robust, less likely to be threshold-dependent noise. This repo computes real GUDHI/ripser persistence on real data -- it does not compute a full traced cycle representative, only birth/death values and (for H1 loops) the real channel pair where a feature is born.</p>' +
+      '<h3>Phase-locking value (PLV)</h3>' +
+      '<p>PLV measures how consistently the instantaneous phase difference between two channels stays constant across a time window, from 0 (no consistent phase relationship) to 1 (perfectly locked). It is a standard EEG functional-connectivity measure; a real, symmetric matrix of PLV values across all channel pairs is the input to the Mapper mean_plv feature, the H1 loops, and (thresholded) the graph-based Betti-1 estimate in the Mapper cohort graph.</p>' +
+      '<h3>Connectome degree &amp; edge weight</h3>' +
+      '<p>In the fMRI connectome, an edge exists between two parcels when their real BOLD timecourses correlate above a threshold; a node\'s degree is how many such edges it has. High-degree nodes are functionally well-connected within this dataset\'s correlation structure -- a descriptive network property, not a claim about anatomical white-matter connectivity or about any parcel\'s importance to cognition.</p>' +
+      '<h3>What this page does NOT claim</h3>' +
+      '<p>None of these real, computed quantities are presented as proof of consciousness, a measurement of subjective experience, or a validated clinical marker. Where a real effect (e.g. a topology metric differing between awake and sedated) is statistically significant in this repo\'s own permutation testing, that is stated plainly in the underlying reports; where it is not significant, this page does not imply otherwise. See the disclosure box above this scene for what is real data versus illustrative placement.</p>';
+    toggleBtn.addEventListener('click', function () {
+      var open = panel.classList.toggle('ha-open');
+      toggleBtn.innerHTML = (open ? '&#9432; Hide theory &amp; interpretation' : '&#9432; Explain this visualization — theory &amp; interpretation');
+    });
+  })();
+
+  renderStats();
+  renderInterpretation();
+  renderFmriStats();
+  drawLandscapeChart();
+  drawPersistenceDiagram(null);
+  document.getElementById('ha-diagram-window').addEventListener('input', function (event) {
+    drawPersistenceDiagram(eegSelect.value || null, parseInt(event.target.value, 10));
+  });
+
+  // ================= render loop =================
+  var t0 = performance.now();
+  var eegT = 0, fmriT = 0;
+  var interpFrameCounter = 0;
+  function render(now) {
+    var clock = (now - t0) / 1000;
+    interpFrameCounter++;
+    if (interpFrameCounter % 20 === 0) renderInterpretation(); // throttled: live numbers track the slider without a per-frame DOM churn cost
+    if (playing) {
+      var speed = 0.09;
+      eegT += playDir * speed * 0.016;
+      fmriT += playDir * speed * 0.9 * 0.016;
+      if (eegT > 1) { eegT = 1; playDir = -1; }
+      if (eegT < 0) { eegT = 0; playDir = 1; }
+      fmriT = Math.max(0, Math.min(1, fmriT));
+      eegSlider.value = eegT; fmriSlider.value = eegT;
+    } else {
+      eegT = parseFloat(eegSlider.value);
+      fmriT = parseFloat(fmriSlider.value);
+    }
+
+    var res = updateEEG(eegT, clock);
+    var currentCondition = eegT < 0.5 ? 'awake' : 'sedated';
+    if (currentCondition !== h1LoopState.condition && h1LoopState.subjectId === (eegSelect.value || null)) {
+      buildH1LoopLayer(eegSelect.value || null, currentCondition);
+      buildZoneLayer(eegSelect.value || null, currentCondition);
+      buildWaveform(eegSelect.value || null, currentCondition);
+    }
+    drawWaveformTrace(clock);
+    updateConnectome(fmriT);
+    updateMapperGlow(clock);
+    fresnelMesh.rotation.copy(brainMesh.rotation);
+    controls.update();
+    renderer.render(scene, camera);
+    updateZonePointers();
+
+    if (currentDataset === 'ds005620') {
+      readout.innerHTML = 'condition=<b>' + currentCondition + '</b> (t=' + eegT.toFixed(2) + ') &Sigma;|winding|=<b>' + res.qabs.toFixed(2) +
+        '</b> loops=<b>' + res.activeCount + '</b> clusters=<b>' + res.nClusters + '</b>';
+    } else if (currentDataset === 'ds005917') {
+      readout.innerHTML = 'condition=<b>' + (fmriT < 0.5 ? 'drug' : 'placebo') + '</b> (t=' + fmriT.toFixed(2) + ')';
+    } else {
+      readout.innerHTML = 'single real session &mdash; no condition transition for this dataset';
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  resizeRenderer();
+  frameCamera();
+  requestAnimationFrame(render);
+}
+
+boot();
+</script>

@@ -11,7 +11,12 @@ from pathlib import Path
 # when pytest is invoked from any working directory.
 sys.path.insert(0, str(Path(__file__).parent))
 _repo_root = Path(__file__).parent
-os.environ["PATH"] = str(_repo_root) + os.pathsep + os.environ.get("PATH", "")
+if os.name == "nt":
+    # Lets `tools.make_compat` be found as `make` on Windows (see
+    # _rewrite_windows_make below). Unnecessary elsewhere, and prepending the
+    # repo root to PATH on every platform risks a repo-root file silently
+    # shadowing a same-named system executable in subprocess calls.
+    os.environ["PATH"] = str(_repo_root) + os.pathsep + os.environ.get("PATH", "")
 
 
 def _rewrite_windows_make(args):
@@ -42,10 +47,15 @@ def _popen_with_make_compat(args, *positional, **keyword):
     return _subprocess_popen(_rewrite_windows_make(args), *positional, **keyword)
 
 
-subprocess.run = _run_with_make_compat
-subprocess.check_call = _check_call_with_make_compat
-subprocess.check_output = _check_output_with_make_compat
-subprocess.Popen = _popen_with_make_compat
+# Only patch on Windows, where the make-compat rewrite actually does something.
+# Replacing subprocess.Popen with a plain function breaks third-party libraries
+# that reference it as a type in annotations (e.g. IPython's
+# `Callable[[subprocess.Popen[bytes]], _T]`, which needs the real class).
+if os.name == "nt":
+    subprocess.run = _run_with_make_compat
+    subprocess.check_call = _check_call_with_make_compat
+    subprocess.check_output = _check_output_with_make_compat
+    subprocess.Popen = _popen_with_make_compat
 for _thread_env in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_thread_env, "1")
 

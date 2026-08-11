@@ -48,7 +48,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from dual_engine.fmri_tda_pipeline import parcellate_bold, connectivity_matrix, persistent_homology, graph_metrics  # noqa: E402
+from dual_engine.fmri_tda_pipeline import parcellate_bold, connectivity_matrix, persistent_homology, graph_metrics, save_graph_structure  # noqa: E402
 from tools.streaming import base_runner  # noqa: E402
 
 _DATASET_ID = "ds005917"
@@ -89,7 +89,8 @@ def download_bold(subject: str, session: str, dest_dir: Path) -> Path:
     return dest
 
 
-def process_session(subject: str, session: str, work_root: Path) -> dict:
+def process_session(subject: str, session: str, work_root: Path, graph_structure_dir: Path | None = None,
+                     condition: str | None = None) -> dict:
     try:
         bold_path = download_bold(subject, session, work_root)
     except Exception as exc:
@@ -100,8 +101,14 @@ def process_session(subject: str, session: str, work_root: Path) -> dict:
                 "total_persistence_h1": 0.0, "modularity": 0.0, "global_efficiency": 0.0,
                 "mean_degree": 0.0, "small_worldness": 0.0, "error": f"download failed: {exc}"}
     try:
-        ts = parcellate_bold(str(bold_path), atlas_labels_img=None, t_r=_TR, n_synthetic_parcels=100)
+        if graph_structure_dir is not None:
+            ts, centroids = parcellate_bold(str(bold_path), atlas_labels_img=None, t_r=_TR,
+                                             n_synthetic_parcels=100, return_centroids=True)
+        else:
+            ts = parcellate_bold(str(bold_path), atlas_labels_img=None, t_r=_TR, n_synthetic_parcels=100)
         conn = connectivity_matrix(ts, kind="correlation")
+        if graph_structure_dir is not None:
+            save_graph_structure(centroids, conn, subject, condition, graph_structure_dir)
         ph = persistent_homology(conn)
         gm = graph_metrics(conn)
         return {
@@ -120,22 +127,24 @@ def process_session(subject: str, session: str, work_root: Path) -> dict:
         bold_path.unlink(missing_ok=True)  # disk-bounded
 
 
-def _process_subject_both_arms(sub: str, work_path: Path) -> dict:
+def _process_subject_both_arms(sub: str, work_path: Path, graph_structure_dir: Path | None = None) -> dict:
     """Both drug (ses-d2) and placebo (ses-p2) arms for one subject. Each
     session's own errors are already caught inside process_session, so this
     always returns a complete {drug, placebo} record for the manifest."""
     result = {}
     for cond, ses in _CONDITIONS.items():
-        r = process_session(sub, ses, work_path)
+        r = process_session(sub, ses, work_path, graph_structure_dir=graph_structure_dir, condition=cond)
         result[cond] = r
         status = "OK" if not r["error"] else f"ERROR: {r['error'][:80]}"
         print(f"  {cond} ({ses}): {status}  betti1={r['betti1']} total_pers_h1={r['total_persistence_h1']:.3f}")
     return result
 
 
-def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None) -> int:
+def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None,
+        save_graph_structure_dir: str | None = None) -> int:
     out_path = Path(out_dir)
     work_path = Path(work_root)
+    graph_structure_dir = Path(save_graph_structure_dir) if save_graph_structure_dir else None
 
     all_subjects = subjects if subjects is not None else load_mdd_complete_subjects()
     print(f"{len(all_subjects)} MDD subjects with complete drug/placebo crossover.")
@@ -143,7 +152,7 @@ def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | N
     manifest = base_runner.run_manifest_loop(
         all_subjects, out_path,
         key_fn=lambda s: s,
-        process_fn=lambda s: _process_subject_both_arms(s, work_path),
+        process_fn=lambda s: _process_subject_both_arms(s, work_path, graph_structure_dir),
         limit=limit,
     )
 
@@ -162,8 +171,10 @@ def main() -> int:
     p.add_argument("--work-root", default="data/ds005917")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
+    p.add_argument("--save-graph-structure", default=None,
+                    help="directory to persist real parcel centroids + connectivity matrix (.npz) per subject/condition")
     a = p.parse_args()
-    return run(a.out, a.work_root, a.limit, a.subjects)
+    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -55,6 +56,7 @@ app = FastAPI(
     description="Monk+Scientist RAG chatbot for the Awareness Research knowledge base.",
     version="0.3.0",
 )
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # ── CORS (optional, controlled by env) ───────────────────────────────────────
 
@@ -476,6 +478,124 @@ async def cortex_viewer():
     viewer = _STATIC_DIR / "3d_cortex_viewer.html"
     if not viewer.exists():
         raise HTTPException(status_code=404, detail="Cortex viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/vortex-field", include_in_schema=False)
+async def vortex_field_viewer():
+    """Real per-triangle winding-number defect field for the ds005620 PITNN cohort.
+
+    Static, self-contained page: the electrode geometry, triangulation, winding
+    numbers, phase values, and H1 persistence diagrams for all 20 subjects are
+    embedded at build time from `outputs/pitnn_cohort/ds005620/subjects/*.json`
+    (see REPORT_ds005620_pitnn_cohort_topology.md). No API call, no live compute.
+    """
+    viewer = _STATIC_DIR / "vortex_field.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Vortex field viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/vortex-field/data")
+@app.get("/api/vortex-field/data", include_in_schema=False)
+async def vortex_field_data():
+    """Real per-subject + grand-average ds005620 vortex-field payload, server-computed.
+
+    Includes DBSCAN clustering (validation.montage_topology.defect_spatial_clustering)
+    and persistence-landscape curves (core.topology.persistence_landscape), replacing
+    the client-side JS clustering the static page used to do itself.
+    """
+    from awareness_studio.integrations.neurotopology_results import build_vortex_field_payload
+    return build_vortex_field_payload()
+
+
+@app.get("/mapper-graph", include_in_schema=False)
+async def mapper_graph_viewer():
+    """KeplerMapper topological network graph over the ds005620 PITNN cohort's
+    real per-window feature vectors (mean PLV, landscape area, beta1, etc.)."""
+    viewer = _STATIC_DIR / "mapper_graph.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Mapper graph viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/mapper-graph/data")
+@app.get("/api/mapper-graph/data", include_in_schema=False)
+async def mapper_graph_data():
+    from awareness_studio.integrations.neurotopology_results import build_mapper_graph_payload
+    return build_mapper_graph_payload()
+
+
+@app.get("/volumetric", include_in_schema=False)
+async def volumetric_viewer():
+    """NiiVue volumetric viewer for real ds000245 resting-state BOLD."""
+    viewer = _STATIC_DIR / "volume_viewer.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Volumetric viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/volumetric/subjects")
+@app.get("/api/volumetric/subjects", include_in_schema=False)
+async def volumetric_subjects():
+    from awareness_studio.integrations.neurotopology_results import list_ds000245_subjects
+    return {"dataset": "ds000245", "subjects": list_ds000245_subjects()}
+
+
+@app.get("/volumetric/{subject_id}")
+async def volumetric_bold(subject_id: str):
+    """Serve a real ds000245 subject's rest-BOLD NIfTI, allowlist-resolved.
+
+    `subject_id` is never used to build a filesystem path directly -- it is
+    resolved through `get_ds000245_bold_path`, which validates the id pattern
+    and confirms the resolved path stays inside the dataset root (mirrors the
+    /command-center/artifacts/{id} allowlist pattern).
+    """
+    from awareness_studio.integrations.neurotopology_results import get_ds000245_bold_path
+    path = get_ds000245_bold_path(subject_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Subject BOLD volume is not available")
+    return FileResponse(str(path), media_type="application/gzip", filename=path.name)
+
+
+@app.get("/fmri-connectome", include_in_schema=False)
+async def fmri_connectome_viewer():
+    """Real ds005917 ketamine drug-vs-placebo fMRI functional-connectome graph."""
+    viewer = _STATIC_DIR / "fmri_connectome.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="fMRI connectome viewer is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/fmri-connectome/data")
+@app.get("/api/fmri-connectome/data", include_in_schema=False)
+async def fmri_connectome_data(dataset: str = Query(default="ds005917")):
+    from awareness_studio.integrations.neurotopology_results import build_fmri_connectome_payload
+    return build_fmri_connectome_payload(dataset=dataset)
+
+
+@app.get("/atlas", include_in_schema=False)
+async def unified_atlas():
+    """Single tabbed dashboard combining all four real visualizations
+    (vortex-field, mapper-graph, fmri-connectome, volumetric) plus a live
+    cross-dataset stat strip -- each panel reuses its standalone page as-is
+    via same-origin iframe, lazy-mounted on first visit."""
+    viewer = _STATIC_DIR / "unified_atlas.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Unified atlas is not available")
+    return FileResponse(str(viewer), media_type="text/html")
+
+
+@app.get("/holo-atlas", include_in_schema=False)
+async def holo_atlas():
+    """Single combined 3D scene fusing all three real datasets into one
+    semi-transparent volumetric brain: the EEG vortex/Betti-1 field draped on
+    the cortex, the ds005917 fMRI connectome fit inside the cortical volume,
+    and the Mapper cohort-structure graph as a satellite network -- one
+    continuous low->high energy spectrum colormap across all three."""
+    viewer = _STATIC_DIR / "holo_atlas.html"
+    if not viewer.exists():
+        raise HTTPException(status_code=404, detail="Holo-atlas is not available")
     return FileResponse(str(viewer), media_type="text/html")
 
 

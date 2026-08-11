@@ -1,0 +1,1221 @@
+<meta charset="utf-8">
+<title>Real Phase-Vortex Field — ds005620 Propofol Cohort (3D)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .vf-root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --ink-muted:   #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --ring:        rgba(11,11,11,0.10);
+    --pos:         #0074ff;   /* +1 winding, CCW */
+    --neg:         #ff2e2e;   /* -1 winding, CW */
+    --posrgb:      0,116,255;
+    --negrgb:      255,46,46;
+    --mid:         #e3e1da;
+    --midrgb:      227,225,218;
+    --awake:       #12b381;
+    --sedated:     #6a3adf;
+    --panel-bezel: #eeece5;
+    --stage-bg:    #eae7dd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .vf-root {
+      color-scheme: dark;
+      --page:        #07080b;
+      --surface:     #101218;
+      --ink:         #ffffff;
+      --ink-2:       #c9c8c2;
+      --ink-muted:   #8f8d87;
+      --grid:        #262a33;
+      --baseline:    #3a3d45;
+      --ring:        rgba(255,255,255,0.10);
+      --pos:         #3fa0ff;
+      --neg:         #ff5252;
+      --posrgb:      63,160,255;
+      --negrgb:      255,82,82;
+      --mid:         #23262d;
+      --midrgb:      35,38,45;
+      --awake:       #1bd696;
+      --sedated:     #a98bff;
+      --panel-bezel: #14171e;
+      --stage-bg:    #04060a;
+    }
+  }
+  :root[data-theme="dark"] .vf-root {
+    color-scheme: dark;
+    --page:        #07080b;
+    --surface:     #101218;
+    --ink:         #ffffff;
+    --ink-2:       #c9c8c2;
+    --ink-muted:   #8f8d87;
+    --grid:        #262a33;
+    --baseline:    #3a3d45;
+    --ring:        rgba(255,255,255,0.10);
+    --pos:         #3fa0ff;
+    --neg:         #ff5252;
+    --posrgb:      63,160,255;
+    --negrgb:      255,82,82;
+    --mid:         #23262d;
+    --midrgb:      35,38,45;
+    --awake:       #1bd696;
+    --sedated:     #a98bff;
+    --panel-bezel: #14171e;
+    --stage-bg:    #04060a;
+  }
+  :root[data-theme="light"] .vf-root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --ink-muted:   #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --ring:        rgba(11,11,11,0.10);
+    --pos:         #0074ff;
+    --neg:         #ff2e2e;
+    --posrgb:      0,116,255;
+    --negrgb:      255,46,46;
+    --mid:         #e3e1da;
+    --midrgb:      227,225,218;
+    --awake:       #12b381;
+    --sedated:     #6a3adf;
+    --panel-bezel: #eeece5;
+    --stage-bg:    #eae7dd;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  .vf-root {
+    background: var(--page);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 28px 20px 60px;
+  }
+  .vf-mono { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .vf-wrap { max-width: 1280px; margin: 0 auto; }
+
+  .vf-eyebrow {
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 11.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-muted);
+    display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: 14px;
+  }
+  .vf-eyebrow .vf-dot { opacity: .5; }
+  .vf-eyebrow a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  h1.vf-title {
+    font-size: clamp(26px, 3.4vw, 38px); line-height: 1.08; letter-spacing: -0.015em; font-weight: 700;
+    margin: 0 0 10px; text-wrap: balance; max-width: 22ch;
+  }
+  .vf-dek { font-size: 15px; line-height: 1.6; color: var(--ink-2); max-width: 74ch; margin: 0 0 10px; }
+  .vf-dek b { color: var(--ink); font-weight: 600; }
+  .vf-caveat {
+    font-size: 12.5px; line-height: 1.65; color: var(--ink-muted); max-width: 78ch; margin: 0 0 20px;
+    border-left: 2px solid var(--baseline); padding-left: 10px;
+  }
+  .vf-caveat b { color: var(--ink-2); }
+
+  .vf-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 20px;
+    padding: 12px 16px; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface);
+    margin-bottom: 16px;
+  }
+  .vf-field { display: flex; align-items: center; gap: 8px; }
+  .vf-field label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+  select.vf-select {
+    font-family: inherit; font-size: 13.5px; color: var(--ink); background: transparent;
+    border: 1px solid var(--baseline); border-radius: 5px; padding: 5px 8px; cursor: pointer;
+  }
+  .vf-playtoggle, .vf-btn {
+    font-size: 12px; color: var(--ink-2); border: 1px solid var(--baseline); background: transparent;
+    border-radius: 5px; padding: 5px 10px; cursor: pointer; font-family: inherit;
+  }
+  .vf-playtoggle:hover, .vf-btn:hover { border-color: var(--ink-2); color: var(--ink); }
+  .vf-morph { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 220px; }
+  .vf-morph input[type=range] { width: 100%; display: block; accent-color: var(--pos); }
+  .vf-morph-labels { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--ink-muted); width: 100%; }
+  .vf-subject-readout {
+    margin-left: auto; font-size: 12px; color: var(--ink-muted); display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  .vf-subject-readout b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- 3D stage ---------- */
+  .vf-stage-card {
+    background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; margin-bottom: 18px;
+  }
+  .vf-stage-head { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 16px 0; flex-wrap: wrap; gap: 8px; }
+  .vf-stage-head h2 { font-size: 13px; margin: 0; font-weight: 700; }
+  .vf-stage-state { font-size: 12px; color: var(--ink-muted); }
+  .vf-stage-state b { color: var(--ink); }
+  .vf-stage-wrap { position: relative; margin: 10px 14px 0; border-radius: 8px; overflow: hidden; background: var(--stage-bg); border: 1px solid var(--ring); }
+  #vf-scene { width: 100%; height: 580px; display: block; touch-action: none; }
+  .vf-stage-hint { position: absolute; left: 10px; bottom: 8px; font-size: 10.5px; color: var(--ink-muted); pointer-events: none; }
+  .vf-callout-layer { position: absolute; inset: 0; pointer-events: none; }
+  .vf-callout-label {
+    position: absolute; transform: translate(-50%, -100%); font-family: ui-monospace, monospace;
+    font-size: 10.5px; line-height: 1.4; padding: 4px 7px; border-radius: 5px;
+    background: var(--surface); border: 1px solid var(--ring); color: var(--ink); white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+  }
+  .vf-colorbar-wrap { display: flex; align-items: center; gap: 10px; padding: 10px 14px 14px; font-size: 11px; color: var(--ink-muted); flex-wrap: wrap; }
+  .vf-colorbar { flex: 1; max-width: 260px; height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--neg), var(--mid) 50%, var(--pos)); border: 1px solid var(--ring); }
+  .vf-colorbar-hot { background: linear-gradient(90deg, #0a0a0a 0%, #c40e00 30%, #ff6a00 55%, #ffd400 75%, #ffffff 100%); }
+  .vf-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 0 14px 14px; font-size: 11.5px; color: var(--ink-2); }
+  .vf-legend-item { display: flex; align-items: center; gap: 6px; }
+  .vf-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+  .vf-swatch.round { border-radius: 50%; }
+  .vf-swatch.ring { border-radius: 50%; background: transparent; border: 2px solid; }
+  .vf-arrow-swatch { width: 14px; height: 10px; position: relative; display: inline-block; flex: none; }
+  .vf-arrow-swatch::before { content: ""; position: absolute; left: 0; top: 5px; width: 12px; height: 1.6px; background: var(--ink-2); }
+  .vf-arrow-swatch::after { content: ""; position: absolute; right: -1px; top: 2px; width: 0; height: 0; border-left: 5px solid var(--ink-2); border-top: 3px solid transparent; border-bottom: 3px solid transparent; }
+
+  /* ---------- lower grid ---------- */
+  .vf-section { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0 8px; }
+  @media (max-width: 880px) { .vf-section { grid-template-columns: 1fr; } }
+  .vf-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px 16px; }
+  .vf-card h2 { font-size: 13px; margin: 0 0 3px; font-weight: 700; }
+  .vf-card .vf-card-sub { font-size: 12px; color: var(--ink-muted); margin: 0 0 10px; line-height: 1.5; }
+  canvas.vf-persist { display: block; width: 100%; height: 260px; }
+  canvas.vf-strip { display: block; width: 100%; height: 300px; }
+  canvas.vf-dyn { display: block; width: 100%; height: 150px; }
+
+  .vf-dyn-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .vf-dyn-readout { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 18px; font-size: 11.5px; margin-top: 10px; }
+  .vf-dyn-readout dt { color: var(--ink-muted); grid-row: 1; }
+  .vf-dyn-readout dd { margin: 0; color: var(--ink); font-family: ui-monospace, monospace; grid-row: 2; }
+
+  .vf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--ring); border: 1px solid var(--ring); border-radius: 10px; overflow: hidden; margin: 22px 0 0; }
+  .vf-stat { background: var(--surface); padding: 16px 16px 14px; }
+  .vf-stat-label { font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px; }
+  .vf-stat-value { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+  .vf-stat-value .vf-arrow-op { color: var(--ink-muted); font-weight: 400; margin: 0 3px; }
+  .vf-stat-sub { font-size: 11.5px; color: var(--ink-muted); margin-top: 5px; }
+
+  .vf-nullbox { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--ring); border-radius: 8px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; background: var(--surface); }
+  .vf-nullbox b { color: var(--ink); }
+
+  .vf-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 11.5px; line-height: 1.75; color: var(--ink-muted); max-width: 90ch; }
+  .vf-footer code { font-family: ui-monospace, monospace; background: var(--surface); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--ring); }
+  .vf-footer ul { margin: 6px 0 0; padding-left: 18px; }
+
+  .vf-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); background: var(--surface); }
+</style>
+
+<div class="vf-root">
+  <div class="vf-wrap">
+
+    <div class="vf-eyebrow">
+      <span>OpenNeuro ds005620</span><span class="vf-dot">·</span>
+      <span>n = 20 paired subjects</span><span class="vf-dot">·</span>
+      <span>gamma band 30–80 Hz</span><span class="vf-dot">·</span>
+      <span>propofol sedation study</span>
+      <a href="/command-center" style="margin-left:auto">Command Centre</a>
+      <a href="/cortex">Cortex playback →</a>
+    </div>
+
+    <h1 class="vf-title">The cohort grand-average phase-vortex field, draped on a real cortical surface</h1>
+    <p class="vf-dek">
+      Default view: the <b>grand average across all 20 real paired subjects</b> — same fixed real
+      electrode mesh, same real triangulation, every triangle's winding and every channel's phase
+      averaged across the whole cohort. Switch to any individual subject in the dropdown. Vortex
+      cores are colored by sign (blue/red) <b>and</b> ringed by real spatial cluster — each ringed
+      loop is a genuine local Betti-1-type obstruction (a real nonzero winding number), not a
+      metaphor. Underneath, the same real data is draped classically on a real FreeSurfer cortex.
+      Scrub the slider or press auto-migrate to watch the cohort's vortices appear, cluster, and
+      fade between the two real measured states; press play on the dynamics panel below to step
+      through three real 10-second measurement windows.
+    </p>
+    <p class="vf-caveat">
+      <b>What is derived, not measured:</b> electrode depth (z) is reconstructed by projecting the
+      real 2D sensor coordinates onto a sphere fit to their own extent — the geometric inverse of
+      the flattening MNE performs for 2D topomaps, not a measured 3D position. The
+      <b>fsaverage5 cortex is FreeSurfer's real, standard template</b> (nilearn-bundled;
+      <code class="vf-mono" style="font-size:11.5px">tools/export_fsaverage5_for_vortex_field.py</code>)
+      — not this cohort's, or any individual's, anatomy; no source localization is performed
+      anywhere in this pipeline. The cortex heat drape is real winding magnitude, spherically
+      interpolated by electrode angle (nearest-5, inverse-distance weighted) — a classical-topomap
+      technique, not a computed inverse solution. <b>The grand average is a real per-triangle,
+      per-channel mean across all 20 subjects</b> (winding: arithmetic mean of real ±1/0 values;
+      phase: real circular mean, with resultant length shown as arrow opacity — short, faint
+      cohort arrows are the correct, honest result where subjects' absolute phase references
+      don't align, since these are independent recordings with no shared time-locking event; real
+      per-triangle winding is unaffected, because it is invariant to each recording's own phase
+      offset). Spatial clusters and their ring color are computed live from the currently-blended
+      real winding field, not stored. The awake↔sedated slider and the window-playhead each
+      linearly interpolate/step between real discrete measurements — neither is continuous
+      measured dynamics.
+    </p>
+
+    <div class="vf-controls">
+      <div class="vf-field">
+        <label for="vf-subject">View</label>
+        <select id="vf-subject" class="vf-select vf-mono"></select>
+      </div>
+      <div class="vf-morph">
+        <div style="flex:1">
+          <input id="vf-morph" type="range" min="0" max="1" step="0.001" value="0">
+          <div class="vf-morph-labels"><span>AWAKE</span><span>SEDATED</span></div>
+        </div>
+      </div>
+      <button id="vf-play" class="vf-playtoggle" type="button">Auto-migrate</button>
+      <button id="vf-reset-cam" class="vf-btn" type="button">Reset view</button>
+      <div class="vf-subject-readout vf-mono" id="vf-subject-readout"></div>
+    </div>
+
+    <div class="vf-stage-card">
+      <div class="vf-stage-head">
+        <h2>Real electrode mesh + real fsaverage5 cortex, classical heat overlay — drag to orbit</h2>
+        <span class="vf-stage-state">state: <b id="vf-state-label">AWAKE</b> · Σ|winding| = <b class="vf-mono" id="vf-qabs-live">–</b> · loops = <b class="vf-mono" id="vf-nvortex-live">–</b> · clusters = <b class="vf-mono" id="vf-ncluster-live">–</b></span>
+      </div>
+      <div class="vf-stage-wrap">
+        <canvas id="vf-scene"></canvas>
+        <div class="vf-callout-layer" id="vf-callouts"></div>
+        <div class="vf-stage-hint">drag = orbit · scroll = zoom · right-drag = pan</div>
+      </div>
+      <div class="vf-colorbar-wrap">
+        <span>−1 (clockwise)</span><span class="vf-colorbar"></span><span>+1 (counter-clockwise)</span>
+        <span style="margin-left:auto">scalp shell + loop core fill: real winding sign</span>
+      </div>
+      <div class="vf-colorbar-wrap">
+        <span>low</span><span class="vf-colorbar vf-colorbar-hot"></span><span>high</span>
+        <span style="margin-left:auto">cortex drape: real winding magnitude, interpolated by electrode angle</span>
+      </div>
+      <div class="vf-legend">
+        <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--pos)"></span>+1 core (CCW)</span>
+        <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--neg)"></span>−1 core (CW)</span>
+        <span class="vf-legend-item"><span class="vf-swatch ring" style="border-color:#ffe000"></span>ring color = spatial cluster, not sign</span>
+        <span class="vf-legend-item"><span class="vf-arrow-swatch"></span>phase, tangent to surface (cohort: length = cross-subject agreement)</span>
+        <span class="vf-legend-item">cortex = real fsaverage5 template, not this cohort's anatomy</span>
+      </div>
+    </div>
+
+    <div class="vf-section">
+      <div class="vf-card">
+        <h2>H1 persistence diagram <span id="vf-persist-title-suffix"></span></h2>
+        <p class="vf-card-sub" id="vf-persist-sub">
+          GUDHI cubical persistence on the PLV connectivity matrix — the <b>global</b> loop
+          structure of the whole sensor network, independent of the local mesh vortices above.
+        </p>
+        <canvas class="vf-persist" id="vf-canvas-persist"></canvas>
+        <div class="vf-legend" style="margin-top:8px;">
+          <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--awake)"></span>awake H1</span>
+          <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--sedated)"></span>sedated H1</span>
+          <span class="vf-legend-item">┄ birth = death</span>
+        </div>
+      </div>
+      <div class="vf-card">
+        <h2>Persistence landscape (layer 0) <span id="vf-landscape-title-suffix"></span></h2>
+        <p class="vf-card-sub">
+          <code>core.topology.persistence_landscape()</code> applied to the H1 diagram at left —
+          a single real-valued summary curve of loop persistence vs. filtration value, one layer.
+        </p>
+        <canvas class="vf-persist" id="vf-canvas-landscape"></canvas>
+        <div class="vf-legend" style="margin-top:8px;">
+          <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--awake)"></span>awake</span>
+          <span class="vf-legend-item"><span class="vf-swatch round" style="background:var(--sedated)"></span>sedated</span>
+        </div>
+        <p class="vf-card-sub" id="vf-dbscan-readout" style="margin-top:10px;"></p>
+      </div>
+      <div class="vf-card">
+        <h2>Real within-condition dynamics — 3 measured 10 s windows</h2>
+        <p class="vf-card-sub">
+          Every subject contributes exactly three real 10-second analysis windows per condition.
+          This is genuine repeated measurement, not interpolation — press play to step through it.
+        </p>
+        <div class="vf-dyn-head">
+          <span class="vf-mono" style="font-size:11px;color:var(--ink-muted)">mean PLV, real per-window</span>
+          <button id="vf-dyn-play" class="vf-playtoggle" type="button">▶ Play windows</button>
+        </div>
+        <canvas class="vf-dyn" id="vf-canvas-dyn"></canvas>
+        <dl class="vf-dyn-readout" id="vf-dyn-readout"></dl>
+      </div>
+    </div>
+
+    <h2 style="font-size:13px;margin:26px 0 10px;">Cohort — Σ|winding| per subject, all n = 20</h2>
+    <div class="vf-card" style="margin-bottom:8px;">
+      <p class="vf-card-sub">Every paired subject's real unsigned defect total, awake → sedated. Click a line to load that subject.</p>
+      <canvas class="vf-strip" id="vf-canvas-strip"></canvas>
+    </div>
+
+    <div class="vf-stats" id="vf-stats"></div>
+
+    <div class="vf-nullbox">
+      <b>The generative model this pipeline exists to test — PITNN — is not supported by this data.</b>
+      Run per subject via <code class="vf-mono" style="font-size:11.5px">scripts/run_empirical_falsification.py</code>:
+      verdict <b>NOT_SUPPORTED in 20 / 20</b> subjects, Bayes factor range 0.9999993–0.9999999
+      (PASS requires K &gt; 100). The vortex field above is a real, measured description of the
+      gamma-band phase topology — it is not evidence for the theory that motivated measuring it.
+    </div>
+
+    <p class="vf-footer">
+      Source: <code>outputs/pitnn_cohort/ds005620/subjects/*.json</code>, produced by
+      <code>tools/stream_pitnn_cohort_ds005620.py --export-spatial --export-persistence</code> and
+      reported in full in <code>REPORT_ds005620_pitnn_cohort_topology.md</code>.
+      <ul>
+        <li>Real, unmodified per subject: electrode (x, y) — identical across all 20 subjects and
+          both conditions, verified before this page relied on it — triangle indices (also
+          identical), per-triangle winding number, per-channel phase, H1 birth/death pairs
+          (pooled across all 20 subjects for the cohort view), bottleneck distances, real
+          per-window mean PLV / landscape area / β1 / max β1 filtration value for all three
+          measured windows per condition, all cohort statistics; the fsaverage5 cortical surface
+          and its sulcal curvature (FreeSurfer standard template, via nilearn).</li>
+        <li>Real aggregate, computed once from the above, not fabricated: the grand-average
+          per-triangle winding (arithmetic mean across 20 subjects) and per-channel circular-mean
+          phase with resultant length, the pooled H1 diagrams, and the per-window cohort-mean
+          trajectories.</li>
+        <li>Derived for display only, disclosed above: electrode z (sphere projection), tangent-frame
+          arrow direction, the electrode-angle interpolation draping winding magnitude onto the
+          template cortex, live spatial clustering of the currently-active triangle set (ring
+          color), awake↔sedated slider interpolation and window-playhead stepping, particle motion
+          (deterministically seeded, cosmetic only).</li>
+      </ul>
+      These are descriptive EEG network measures. They are not a measure of awareness, dreaming, or
+      consciousness.
+    </p>
+
+  </div>
+</div>
+
+<!-- Real cohort geometry/topology and the fsaverage5 anatomical mesh are fetched at
+     runtime from /vortex-field/data and /static/data/fsaverage5_pial.json -- no inline
+     JSON payload is embedded in this page. -->
+
+<script type="importmap">
+{"imports":{
+  "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+async function boot() {
+  var stage = document.getElementById('vf-scene');
+  try {
+    var results = await Promise.all([
+      fetch('/vortex-field/data').then(function (r) { return r.json(); }),
+      fetch('/static/data/fsaverage5_pial.json').then(function (r) { return r.json(); })
+    ]);
+  } catch (err) {
+    if (stage && stage.parentElement) {
+      stage.parentElement.insertAdjacentHTML('beforeend',
+        '<div class="vf-error">Vortex-field data failed to load: ' + err + '</div>');
+    }
+    return;
+  }
+  var RAW = results[0], BRAIN_RAW = results[1];
+  if (RAW.status !== 'available') {
+    if (stage && stage.parentElement) {
+      stage.parentElement.insertAdjacentHTML('beforeend',
+        '<div class="vf-error">Vortex-field data unavailable: ' + (RAW.reason || 'unknown') + '</div>');
+    }
+    return;
+  }
+  run(RAW, BRAIN_RAW);
+}
+
+function run(RAW, BRAIN_RAW) {
+  "use strict";
+
+  // ================= data model =================
+  // Top-level: shared real geometry (identical across all 20 subjects and both conditions,
+  // verified before extraction) + a real grand-average entry + the 20 real per-subject entries.
+  var COORDS = RAW.coords, TRI = RAW.tri, N_CH = RAW.n_channels, N_SUBJ = RAW.n_subjects;
+
+  function normalizeCohortAverage(ca) {
+    var out = { awake: null, sedated: null };
+    ['awake', 'sedated'].forEach(function (cond) {
+      var c = ca[cond];
+      out[cond] = {
+        wind: c.wind_mean, windAbs: c.wind_abs_mean, phase: c.phase_mean, coherence: c.coherence,
+        qabs: c.qabs_grand_mean_map, h1: c.h1_pooled, per_window: c.per_window, pooled: true
+      };
+    });
+    return {
+      id: '__cohort__', label: 'Cohort grand average (n = 20)', isCohort: true, n_channels: N_CH, bottleneck: null,
+      conditions: out, clusteringAndLandscape: ca.clustering_and_landscape || null
+    };
+  }
+
+  var ENTRIES = {};
+  var ORDER = [];
+  var cohortEntry = normalizeCohortAverage(RAW.cohort_average);
+  ENTRIES[cohortEntry.id] = cohortEntry;
+  ORDER.push(cohortEntry.id);
+  RAW.subjects.forEach(function (s) {
+    var out = {
+      id: s.id, label: s.id, isCohort: false, n_channels: s.n_channels, bottleneck: s.bottleneck, conditions: {},
+      clusteringAndLandscape: s.clustering_and_landscape || null
+    };
+    ['awake', 'sedated'].forEach(function (cond) {
+      var c = s.conditions[cond];
+      out.conditions[cond] = { wind: c.wind, windAbs: null, phase: c.phase, coherence: null, qabs: c.qabs, h1: c.h1, per_window: c.per_window, pooled: false };
+    });
+    ENTRIES[s.id] = out;
+    ORDER.push(s.id);
+  });
+
+  function theme() {
+    var root = document.documentElement;
+    var t = root.getAttribute('data-theme');
+    if (t === 'dark' || t === 'light') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+  function cssVar(name) { return getComputedStyle(document.querySelector('.vf-root')).getPropertyValue(name).trim(); }
+  function cssRgb(name) { return cssVar(name).split(',').map(function (v) { return parseFloat(v); }); }
+
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashStr(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function angleLerp(a, b, t) {
+    var x = lerp(Math.cos(a), Math.cos(b), t), y = lerp(Math.sin(a), Math.sin(b), t);
+    return Math.atan2(y, x);
+  }
+
+  // ---------- bright diverging color for a real winding value in [-1, 1] ----------
+  function windingColor(v) {
+    var neg = cssRgb('--negrgb'), mid = cssRgb('--midrgb'), pos = cssRgb('--posrgb');
+    var c = Math.max(-1, Math.min(1, v));
+    var a = c < 0 ? neg : pos, u = Math.pow(Math.abs(c), 0.72); // gamma < 1: reaches saturated color faster, punchier
+    return [lerp(mid[0], a[0], u) / 255, lerp(mid[1], a[1], u) / 255, lerp(mid[2], a[2], u) / 255];
+  }
+
+  // matplotlib "hot" colormap control points, brightened (less dead-black at the low end)
+  function hotColor(x) {
+    x = Math.max(0, Math.min(1, Math.pow(x, 0.8)));
+    var r = x < 0.30 ? lerp(0.10, 1, x / 0.30) : 1;
+    var g = x < 0.30 ? 0 : (x < 0.68 ? lerp(0, 1, (x - 0.30) / (0.68 - 0.30)) : 1);
+    var b = x < 0.68 ? 0 : lerp(0, 1, (x - 0.68) / (1 - 0.68));
+    return [r, g, b];
+  }
+
+  // bright, mutually-distinctive categorical palette for spatial clusters (deliberately excludes
+  // blue/red, reserved for winding sign, so ring color and core fill never collide in meaning)
+  var CLUSTER_HUES = ['#ffe000', '#22e58a', '#ff8a00', '#c86bff', '#00e5ff', '#ff3da3', '#8aff00', '#ffffff'];
+
+  // ================= real anatomical template: FreeSurfer fsaverage5 pial surface =================
+  function b64ToTypedArray(b64, TypedArrayCtor) {
+    var bin = atob(b64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TypedArrayCtor(bytes.buffer);
+  }
+
+  var BRAIN = (function () {
+    var raw = BRAIN_RAW;
+    var vertsFS = b64ToTypedArray(raw.vertices_b64, Float32Array);
+    var faces = b64ToTypedArray(raw.faces_b64, Uint16Array);
+    var curv = b64ToTypedArray(raw.curv_b64, Float32Array);
+    var n = raw.n_vertices;
+
+    var maxSuperior = 0;
+    var world = new Float32Array(n * 3);
+    for (var v = 0; v < n; v++) {
+      var fx = vertsFS[v * 3], fy = vertsFS[v * 3 + 1], fz = vertsFS[v * 3 + 2];
+      world[v * 3] = fx; world[v * 3 + 1] = fz; world[v * 3 + 2] = -fy;
+      if (fz > maxSuperior) maxSuperior = fz;
+    }
+    var NEST_FRACTION = 0.86;
+    var scale = (26 * NEST_FRACTION) / maxSuperior;
+    var positions = new Float32Array(n * 3);
+    var dirs = [];
+    for (var w = 0; w < n; w++) {
+      var x = world[w * 3] * scale, y = world[w * 3 + 1] * scale, z = world[w * 3 + 2] * scale;
+      positions[w * 3] = x; positions[w * 3 + 1] = y; positions[w * 3 + 2] = z;
+      dirs.push(new THREE.Vector3(x, y, z).normalize());
+    }
+
+    var geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(0.6), 3));
+    geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+    geometry.computeVertexNormals();
+
+    return { n: n, curv: curv, dirs: dirs, geometry: geometry };
+  })();
+
+  // ================= shared real geometry (identical across the whole cohort) =================
+  var GEOM = (function () {
+    var maxR = 0;
+    COORDS.forEach(function (c) { maxR = Math.max(maxR, Math.hypot(c[0], c[1])); });
+    var R = maxR * 1.006;
+    var positions = COORDS.map(function (c) {
+      var r2 = c[0] * c[0] + c[1] * c[1];
+      var z = Math.sqrt(Math.max(R * R - r2, 0));
+      return new THREE.Vector3(c[0] * 26 / R, z * 26 / R, -c[1] * 26 / R);
+    });
+    var tangents = positions.map(function (p) {
+      var n = p.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      return { e1: e1, e2: e2, n: n };
+    });
+    var edgeSet = {}, edges = [];
+    var triAdj = TRI.map(function () { return []; }); // triangle-triangle adjacency (shared edge)
+    var edgeToTris = {};
+    TRI.forEach(function (t3, ti) {
+      [[t3[0], t3[1]], [t3[1], t3[2]], [t3[2], t3[0]]].forEach(function (e) {
+        var key = Math.min(e[0], e[1]) + '_' + Math.max(e[0], e[1]);
+        if (!edgeSet[key]) { edgeSet[key] = true; edges.push(e); }
+        (edgeToTris[key] = edgeToTris[key] || []).push(ti);
+      });
+    });
+    Object.keys(edgeToTris).forEach(function (key) {
+      var list = edgeToTris[key];
+      if (list.length === 2) { triAdj[list[0]].push(list[1]); triAdj[list[1]].push(list[0]); }
+    });
+
+    // triangles that are ever active anywhere in the cohort (grand average OR any individual subject)
+    var everActive = new Array(TRI.length).fill(false);
+    ORDER.forEach(function (id) {
+      var e = ENTRIES[id];
+      ['awake', 'sedated'].forEach(function (cond) {
+        e.conditions[cond].wind.forEach(function (w, i) { if (Math.abs(w) > 0.02) everActive[i] = true; });
+      });
+    });
+    var activeTri = [];
+    TRI.forEach(function (t3, i) {
+      if (!everActive[i]) return;
+      var c = positions[t3[0]].clone().add(positions[t3[1]]).add(positions[t3[2]]).multiplyScalar(1 / 3);
+      var edgeLen = Math.min(
+        positions[t3[0]].distanceTo(positions[t3[1]]), positions[t3[1]].distanceTo(positions[t3[2]]), positions[t3[2]].distanceTo(positions[t3[0]])
+      );
+      var n = c.clone().normalize();
+      var worldUp = Math.abs(n.y) > 0.98 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+      var e1 = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n))).normalize();
+      var e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+      activeTri.push({ index: i, tri: t3, centroid: c, edgeLen: edgeLen, e1: e1, e2: e2, n: n });
+    });
+
+    var centroid = new THREE.Vector3();
+    positions.forEach(function (p) { centroid.add(p); });
+    centroid.multiplyScalar(1 / positions.length);
+
+    // real per-vertex smoothed winding, per entry/condition -- averaging real triangle windings
+    // onto their shared vertices for a smooth field
+    function smoothWinding(wind) {
+      var sum = new Array(COORDS.length).fill(0), cnt = new Array(COORDS.length).fill(0);
+      TRI.forEach(function (t3, i) { t3.forEach(function (vi) { sum[vi] += wind[i]; cnt[vi] += 1; }); });
+      return sum.map(function (s, i) { return cnt[i] ? s / cnt[i] : 0; });
+    }
+    ORDER.forEach(function (id) {
+      var e = ENTRIES[id];
+      var peak = 0, triPeak = 0;
+      ['awake', 'sedated'].forEach(function (cond) {
+        var sm = smoothWinding(e.conditions[cond].wind);
+        e.conditions[cond].smooth = sm;
+        sm.forEach(function (v) { peak = Math.max(peak, Math.abs(v)); });
+        e.conditions[cond].wind.forEach(function (v) { triPeak = Math.max(triPeak, Math.abs(v)); });
+      });
+      // real per-entry peaks (vertex-smoothed for the cortex drape; raw per-triangle for the
+      // vortex glow/ring glyphs) -- both auto-normalize their color scale to this entry's own
+      // real range, since cohort-average magnitudes are real but far smaller than any one
+      // subject's (averaging 20 subjects' discrete +-1 values cancels a lot). Every view gets
+      // its own full color range this way; exact real numbers stay in the readouts/callouts.
+      e.activityScale = Math.max(0.02, peak * 0.75);
+      e.triActivityScale = Math.max(0.15, triPeak * 0.85);
+    });
+
+    return { positions: positions, tangents: tangents, edges: edges, triAdj: triAdj, activeTri: activeTri, centroid: centroid, R: 26 };
+  })();
+
+  // nearest-5 real electrodes (by angle) onto each real fsaverage5 vertex -- computed once,
+  // geometry is shared across the whole cohort
+  var BRAIN_WEIGHTS = (function () {
+    var K = 5, POWER = 6, nE = GEOM.positions.length, nB = BRAIN.n;
+    var ex = new Float32Array(nE), ey = new Float32Array(nE), ez = new Float32Array(nE);
+    for (var e = 0; e < nE; e++) {
+      var p = GEOM.positions[e], len = p.length() || 1e-9;
+      ex[e] = p.x / len; ey[e] = p.y / len; ez[e] = p.z / len;
+    }
+    var idxOut = new Int16Array(nB * K), wOut = new Float32Array(nB * K);
+    var topIdx = new Int32Array(K), topDot = new Float32Array(K);
+    for (var bv = 0; bv < nB; bv++) {
+      var bd = BRAIN.dirs[bv], bx = bd.x, by = bd.y, bz = bd.z;
+      for (var k = 0; k < K; k++) topDot[k] = -2;
+      for (var e2 = 0; e2 < nE; e2++) {
+        var dot = bx * ex[e2] + by * ey[e2] + bz * ez[e2];
+        if (dot > topDot[K - 1]) {
+          var pos = K - 1;
+          while (pos > 0 && topDot[pos - 1] < dot) { topDot[pos] = topDot[pos - 1]; topIdx[pos] = topIdx[pos - 1]; pos--; }
+          topDot[pos] = dot; topIdx[pos] = e2;
+        }
+      }
+      var sum = 0;
+      for (var k2 = 0; k2 < K; k2++) { var wv = Math.pow(Math.max(0, topDot[k2]), POWER); wOut[bv * K + k2] = wv; idxOut[bv * K + k2] = topIdx[k2]; sum += wv; }
+      sum = sum || 1e-9;
+      for (var k3 = 0; k3 < K; k3++) wOut[bv * K + k3] /= sum;
+    }
+    return { idx: idxOut, w: wOut, K: K };
+  })();
+
+  // ================= Three.js scene: built ONCE (geometry is shared across the whole cohort) =================
+  var stageEl = document.getElementById('vf-scene');
+  var calloutLayer = document.getElementById('vf-callouts');
+  var renderer = new THREE.WebGLRenderer({ canvas: stageEl, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(38, 1, 0.1, 500);
+  var controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = 0.08;
+  controls.minDistance = 30; controls.maxDistance = 140;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.55;
+  var resumeTimer = null;
+  controls.addEventListener('start', function () { controls.autoRotate = false; clearTimeout(resumeTimer); });
+  controls.addEventListener('end', function () { resumeTimer = setTimeout(function () { controls.autoRotate = true; }, 4000); });
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+  var key = new THREE.DirectionalLight(0xffffff, 1.15); key.position.set(30, 40, 50); scene.add(key);
+  var rim = new THREE.DirectionalLight(0x99bbff, 0.55); rim.position.set(-40, -10, -30); scene.add(rim);
+
+  var brainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.0, side: THREE.FrontSide });
+  var brainMesh = new THREE.Mesh(BRAIN.geometry, brainMat);
+  scene.add(brainMesh);
+
+  function glowSpriteTexture() {
+    var c = document.createElement('canvas'); c.width = c.height = 128;
+    var ctx = c.getContext('2d');
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,0.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }
+  var GLOW_TEX = glowSpriteTexture();
+
+  // real electrode mesh (scalp shell): geometry fixed, only vertex colors change per frame
+  var n = GEOM.positions.length;
+  var posAttr = new Float32Array(n * 3);
+  GEOM.positions.forEach(function (p, i) { posAttr[i * 3] = p.x; posAttr[i * 3 + 1] = p.y; posAttr[i * 3 + 2] = p.z; });
+  var meshGeo = new THREE.BufferGeometry();
+  meshGeo.setAttribute('position', new THREE.BufferAttribute(posAttr, 3));
+  meshGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(0.6), 3));
+  var idxAttr = new Uint16Array(TRI.length * 3);
+  TRI.forEach(function (t3, i) { idxAttr[i * 3] = t3[0]; idxAttr[i * 3 + 1] = t3[1]; idxAttr[i * 3 + 2] = t3[2]; });
+  meshGeo.setIndex(new THREE.BufferAttribute(idxAttr, 1));
+  meshGeo.computeVertexNormals();
+  var meshMat = new THREE.MeshStandardMaterial({ vertexColors: true, transparent: true, opacity: 0.32, roughness: 0.4, metalness: 0.05, side: THREE.DoubleSide, depthWrite: false });
+  var scalpMesh = new THREE.Mesh(meshGeo, meshMat);
+  scene.add(scalpMesh);
+
+  var edgePos = new Float32Array(GEOM.edges.length * 6);
+  GEOM.edges.forEach(function (e, i) {
+    var a = GEOM.positions[e[0]], b = GEOM.positions[e[1]];
+    edgePos[i * 6] = a.x; edgePos[i * 6 + 1] = a.y; edgePos[i * 6 + 2] = a.z;
+    edgePos[i * 6 + 3] = b.x; edgePos[i * 6 + 4] = b.y; edgePos[i * 6 + 5] = b.z;
+  });
+  var edgeGeo = new THREE.BufferGeometry();
+  edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+  var edgeMat = new THREE.LineBasicMaterial({ color: 0x9aa3af, transparent: true, opacity: 0.35 });
+  var edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+  scene.add(edgeLines);
+
+  var outerGeo = new THREE.SphereGeometry(GEOM.R * 1.14, 22, 16);
+  var outerMat = new THREE.MeshBasicMaterial({ color: 0x9aa3af, wireframe: true, transparent: true, opacity: 0.14 });
+  var outerSphere = new THREE.Mesh(outerGeo, outerMat);
+  scene.add(outerSphere);
+
+  // vortex glow sprites, orbiting particles, and loop-ring glyphs -- one fixed pool per
+  // ever-active triangle, hidden/shown and recolored per frame (never rebuilt)
+  var vortices = [], particles = [], rings = [];
+  GEOM.activeTri.forEach(function (a) {
+    var sprMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+    var sprite = new THREE.Sprite(sprMat);
+    sprite.position.copy(a.centroid);
+    scene.add(sprite);
+    vortices.push({ sprite: sprite, tri: a });
+
+    var ringGeo = new THREE.TorusGeometry(1, 0.06, 8, 40);
+    var ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    var ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(a.centroid);
+    ring.lookAt(a.centroid.clone().add(a.n));
+    scene.add(ring);
+    rings.push({ mesh: ring, tri: a });
+
+    var seedKey = 'tri#' + a.index;
+    var rnd = mulberry32(hashStr(seedKey));
+    for (var k = 0; k < 4; k++) {
+      var pMat = new THREE.SpriteMaterial({ map: GLOW_TEX, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
+      var pSprite = new THREE.Sprite(pMat);
+      pSprite.scale.set(0.55, 0.55, 0.55);
+      scene.add(pSprite);
+      particles.push({ sprite: pSprite, tri: a, radius: a.edgeLen * (0.3 + 0.45 * rnd()), angle0: rnd() * Math.PI * 2, speed: (0.7 + 0.5 * rnd()), wobble: 0.12 + 0.18 * rnd(), phaseOff: rnd() * Math.PI * 2 });
+    }
+  });
+
+  var arrows = GEOM.positions.map(function (p) {
+    var ah = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), p, GEOM.R * 0.14, 0xffffff, GEOM.R * 0.05, GEOM.R * 0.03);
+    ah.line.material.transparent = true; ah.cone.material.transparent = true;
+    scene.add(ah);
+    return ah;
+  });
+
+  function frameCamera() {
+    var dist = GEOM.R * 2.25;
+    var dir = new THREE.Vector3(0.05, 0.42, 1).normalize();
+    camera.position.copy(GEOM.centroid).addScaledVector(dir, dist);
+    controls.target.copy(GEOM.centroid);
+    controls.update();
+  }
+  frameCamera();
+
+  // ---------- live spatial clustering of the currently-active triangle subset ----------
+  function clusterActiveTriangles(activityByTri) {
+    var visited = {}, clusterOf = {}, nClusters = 0;
+    GEOM.activeTri.forEach(function (a) {
+      if (activityByTri[a.index] <= 0.06 || visited[a.index]) return;
+      var stack = [a.index], cid = nClusters++;
+      visited[a.index] = true;
+      while (stack.length) {
+        var cur = stack.pop();
+        clusterOf[cur] = cid;
+        (GEOM.triAdj[cur] || []).forEach(function (nb) {
+          if (!visited[nb] && activityByTri[nb] > 0.06) { visited[nb] = true; stack.push(nb); }
+        });
+      }
+    });
+    return { clusterOf: clusterOf, nClusters: nClusters };
+  }
+
+  // ================= per-frame update =================
+  function updateFrame(entry, t, clock) {
+    var awake = entry.conditions.awake, sed = entry.conditions.sedated;
+    var arrowCol = new THREE.Color(theme() === 'dark' ? 0xf0efe9 : 0x232019);
+    var edgeCol = theme() === 'dark' ? 0x6b7280 : 0x9aa3af;
+    edgeLines.material.color.set(edgeCol);
+    outerSphere.material.color.set(theme() === 'dark' ? 0x6b7280 : 0x9aa3af);
+
+    // real per-triangle blended winding (this drives everything below)
+    var blendedWind = TRI.map(function (_, i) { return lerp(awake.wind[i], sed.wind[i], t); });
+    var activityByTri = blendedWind.map(function (w) { return Math.abs(w); });
+    var clusters = clusterActiveTriangles(activityByTri);
+
+    // cortex heat drape: real winding magnitude, angularly interpolated, "hot" colormap
+    var brainCol = brainMesh.geometry.attributes.color;
+    var K = BRAIN_WEIGHTS.K;
+    var baseTissue = theme() === 'dark' ? [0.46, 0.40, 0.39] : [0.74, 0.67, 0.64];
+    var ACTIVITY_SCALE = entry.activityScale;
+    for (var bv = 0; bv < BRAIN.n; bv++) {
+      var acc = 0;
+      for (var k = 0; k < K; k++) {
+        var eIdx = BRAIN_WEIGHTS.idx[bv * K + k], wgt = BRAIN_WEIGHTS.w[bv * K + k];
+        acc += wgt * lerp(awake.smooth[eIdx], sed.smooth[eIdx], t);
+      }
+      var intensity = Math.min(1, Math.abs(acc) / ACTIVITY_SCALE);
+      var curvShade = BRAIN.curv[bv] * 0.32;
+      var t0 = Math.max(0.08, Math.min(0.97, baseTissue[0] + curvShade));
+      var t1 = Math.max(0.08, Math.min(0.97, baseTissue[1] + curvShade));
+      var t2 = Math.max(0.08, Math.min(0.97, baseTissue[2] + curvShade));
+      var hc = hotColor(intensity);
+      brainCol.setXYZ(bv, lerp(t0, hc[0], intensity), lerp(t1, hc[1], intensity), lerp(t2, hc[2], intensity));
+    }
+    brainCol.needsUpdate = true;
+
+    // scalp shell: real per-vertex smoothed winding, blended, normalized to this entry's own peak
+    var colAttr = scalpMesh.geometry.attributes.color;
+    for (var i = 0; i < GEOM.positions.length; i++) {
+      var v = lerp(awake.smooth[i], sed.smooth[i], t);
+      var rgb = windingColor(Math.sign(v) * Math.min(1, Math.abs(v) / ACTIVITY_SCALE));
+      colAttr.setXYZ(i, rgb[0], rgb[1], rgb[2]);
+    }
+    colAttr.needsUpdate = true;
+
+    // real phase arrows -- for the cohort entry, opacity/length carry the real circular
+    // resultant length (cross-subject phase agreement), honestly faint where it's low
+    for (var j = 0; j < GEOM.positions.length; j++) {
+      var ph = angleLerp(awake.phase[j], sed.phase[j], t);
+      var tf = GEOM.tangents[j];
+      var dir = tf.e1.clone().multiplyScalar(Math.cos(ph)).add(tf.e2.clone().multiplyScalar(Math.sin(ph))).normalize();
+      arrows[j].setDirection(dir);
+      arrows[j].setColor(arrowCol);
+      var conf = entry.isCohort ? lerp(awake.coherence[j], sed.coherence[j], t) : 1;
+      arrows[j].line.material.opacity = 0.85 * Math.max(0.12, conf);
+      arrows[j].cone.material.opacity = 0.85 * Math.max(0.12, conf);
+      var len = GEOM.R * 0.14 * (entry.isCohort ? (0.4 + 0.6 * conf) : 1);
+      arrows[j].setLength(len, GEOM.R * 0.05, GEOM.R * 0.03);
+    }
+
+    // vortex cores (sign fill) + loop rings (cluster hue) + orbiting particles.
+    // Visual brightness/scale is normalized to this entry's own real peak (triActivityScale) so
+    // cohort-average and per-subject views are both fully vivid; the real unnormalized magnitude
+    // stays available via activeCount, the callouts, and clusters (computed on raw activity).
+    var triScale = entry.triActivityScale;
+    var totalActivity = 0, activeCount = 0;
+    vortices.forEach(function (vx) {
+      var i = vx.tri.index, blended = blendedWind[i], activity = activityByTri[i];
+      totalActivity += activity;
+      if (activity > 0.08) activeCount++;
+      var vis = Math.min(1, activity / triScale);
+      var rgb = windingColor(Math.sign(blended) * vis);
+      vx.sprite.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      vx.sprite.material.opacity = 0.82 * vis;
+      var s = GEOM.R * (0.12 + 0.32 * vis);
+      vx.sprite.scale.set(s, s, s);
+    });
+    rings.forEach(function (rg) {
+      var i = rg.tri.index, activity = activityByTri[i], vis = Math.min(1, activity / triScale);
+      var cid = clusters.clusterOf[i];
+      var visible = activity > 0.06 && cid !== undefined;
+      rg.mesh.material.opacity = visible ? 0.95 * Math.min(1, vis * 1.6) : 0;
+      if (visible) {
+        var hex = CLUSTER_HUES[cid % CLUSTER_HUES.length];
+        rg.mesh.material.color.set(hex);
+        var ringR = rg.tri.edgeLen * (0.62 + 0.22 * Math.sin(clock * 1.6 + i));
+        rg.mesh.scale.set(ringR, ringR, ringR);
+      }
+    });
+    particles.forEach(function (p) {
+      var i = p.tri.index, blended = blendedWind[i], activity = activityByTri[i], sign = blended >= 0 ? 1 : -1;
+      var vis = Math.min(1, activity / triScale);
+      var ang = p.angle0 + clock * p.speed * sign;
+      var r = p.radius * (1 + p.wobble * Math.sin(clock * 1.4 + p.phaseOff));
+      var pos = p.tri.centroid.clone().add(p.tri.e1.clone().multiplyScalar(Math.cos(ang) * r)).add(p.tri.e2.clone().multiplyScalar(Math.sin(ang) * r));
+      p.sprite.position.copy(pos);
+      var rgb = windingColor(sign * vis);
+      p.sprite.material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      p.sprite.material.opacity = 0.95 * vis;
+    });
+
+    return { qabs: lerp(awake.qabs, sed.qabs, t), activeCount: activeCount, nClusters: clusters.nClusters };
+  }
+
+  function resizeRenderer() {
+    var rect = stageEl.parentElement.getBoundingClientRect();
+    renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / Math.max(rect.height, 1);
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resizeRenderer);
+
+  // ================= persistence diagram (individual: scatter; cohort: pooled, all 20 subjects) =================
+  function sizeCanvas2D(canvas) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var rect = canvas.getBoundingClientRect();
+    var w = Math.max(rect.width, 1), h = Math.max(rect.height, 1);
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function drawPersistence(canvas, entry) {
+    var dims = sizeCanvas2D(canvas);
+    var ctx = dims.ctx, w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+    var pad = { l: 40, r: 14, t: 14, b: 30 };
+    var awake = entry.conditions.awake.h1, sed = entry.conditions.sedated.h1;
+    var maxV = 0.001;
+    awake.concat(sed).forEach(function (p) { maxV = Math.max(maxV, p[0], p[1]); });
+    maxV *= 1.08;
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    function X(v) { return pad.l + (v / maxV) * plotW; }
+    function Y(v) { return pad.t + plotH - (v / maxV) * plotH; }
+    var grid = cssVar('--grid'), muted = cssVar('--ink-muted'), baseline = cssVar('--baseline');
+    var awakeCol = cssVar('--awake'), sedCol = cssVar('--sedated');
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.font = '10.5px ui-monospace, monospace'; ctx.fillStyle = muted;
+    for (var i = 0; i <= 4; i++) {
+      var v = (maxV * i) / 4, y = Y(v), x = X(v);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+      ctx.fillText(v.toFixed(2), 4, y + 3); ctx.fillText(v.toFixed(2), x - 8, h - pad.b + 14);
+    }
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = baseline;
+    ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(maxV), Y(maxV)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = muted; ctx.fillText('birth →', pad.l, h - 6);
+    ctx.save(); ctx.translate(10, pad.t + 10); ctx.rotate(-Math.PI / 2); ctx.fillText('death →', 0, 0); ctx.restore();
+    var pointR = entry.isCohort ? 1.1 : 2.1, alpha = entry.isCohort ? 0.18 : 0.55;
+    function scatter(pts, col) {
+      ctx.fillStyle = col; ctx.globalAlpha = alpha;
+      pts.forEach(function (p) { ctx.beginPath(); ctx.arc(X(p[0]), Y(p[1]), pointR, 0, Math.PI * 2); ctx.fill(); });
+      ctx.globalAlpha = 1;
+    }
+    scatter(awake, awakeCol); scatter(sed, sedCol);
+  }
+
+  // ================= persistence landscape (server-computed, real DBSCAN backing data) =================
+  function drawLandscape(canvas, entry) {
+    var dims = sizeCanvas2D(canvas);
+    var ctx = dims.ctx, w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+    var cl = entry.clusteringAndLandscape;
+    if (!cl) return;
+    var pad = { l: 40, r: 14, t: 14, b: 30 };
+    var awakeL = cl.awake.landscape, sedL = cl.sedated.landscape;
+    var maxX = 0.001, maxY = 0.001;
+    [awakeL, sedL].forEach(function (L) {
+      L.grid.forEach(function (v) { maxX = Math.max(maxX, v); });
+      L.curve.forEach(function (v) { maxY = Math.max(maxY, v); });
+    });
+    maxX *= 1.02; maxY = Math.max(maxY * 1.15, 0.001);
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    function X(v) { return pad.l + (v / maxX) * plotW; }
+    function Y(v) { return pad.t + plotH - (v / maxY) * plotH; }
+    var grid = cssVar('--grid'), muted = cssVar('--ink-muted');
+    var awakeCol = cssVar('--awake'), sedCol = cssVar('--sedated');
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.font = '10.5px ui-monospace, monospace'; ctx.fillStyle = muted;
+    for (var i = 0; i <= 3; i++) {
+      var y = pad.t + (plotH * i) / 3;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    }
+    function drawCurve(L, col) {
+      if (!L.grid.length) return;
+      ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+      L.grid.forEach(function (gx, i) {
+        var x = X(gx), y = Y(L.curve[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    drawCurve(awakeL, awakeCol);
+    drawCurve(sedL, sedCol);
+    ctx.fillStyle = muted; ctx.fillText('filtration →', pad.l, h - 6);
+    ctx.save(); ctx.translate(10, pad.t + 10); ctx.rotate(-Math.PI / 2); ctx.fillText('landscape(t) →', 0, 0); ctx.restore();
+  }
+
+  function dbscanReadoutText(entry) {
+    var cl = entry.clusteringAndLandscape;
+    if (!cl) return '';
+    var a = cl.awake.clustering, s = cl.sedated.clustering;
+    return 'Server DBSCAN (validation.montage_topology.defect_spatial_clustering) on the discrete ' +
+      'awake/sedated states: <b>' + a.n_clusters + '</b> defect cluster(s) awake (' + a.n_noise + ' noise triangles), ' +
+      '<b>' + s.n_clusters + '</b> sedated (' + s.n_noise + ' noise triangles). The live 3D scene above recomputes ' +
+      'clustering per animation frame to support continuous awake↔sedated morphing; these two numbers are the exact ' +
+      'server-side values at the pure endpoints, shown for cross-check.';
+  }
+
+  // ================= real per-window dynamics (3 measured windows per condition) =================
+  var dynCanvas = document.getElementById('vf-canvas-dyn');
+  var dynReadout = document.getElementById('vf-dyn-readout');
+  var dynPlayBtn = document.getElementById('vf-dyn-play');
+  var dynPlaying = false, dynWindowIdx = 0, dynLastStep = 0;
+
+  function drawDynamics(entry, condLabel, windowIdx) {
+    var cond = entry.conditions[condLabel];
+    var pw = cond.per_window;
+    var dims = sizeCanvas2D(dynCanvas);
+    var ctx = dims.ctx, w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+    var pad = { l: 34, r: 14, t: 10, b: 22 };
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    var vals = pw.map(function (p) { return p.mean_plv; });
+    var minV = Math.min.apply(null, vals), maxV = Math.max.apply(null, vals);
+    var span = Math.max(maxV - minV, 1e-6) * 1.3;
+    var mid = (maxV + minV) / 2;
+    minV = mid - span / 2; maxV = mid + span / 2;
+    function X(i) { return pad.l + (i / 2) * plotW; }
+    function Y(v) { return pad.t + plotH - ((v - minV) / (maxV - minV)) * plotH; }
+    ctx.strokeStyle = cssVar('--grid'); ctx.lineWidth = 1;
+    for (var gy = 0; gy <= 2; gy++) { var yy = pad.t + (plotH / 2) * gy; ctx.beginPath(); ctx.moveTo(pad.l, yy); ctx.lineTo(w - pad.r, yy); ctx.stroke(); }
+    ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = cssVar('--ink-muted');
+    ctx.fillText(maxV.toFixed(3), 2, pad.t + 4); ctx.fillText(minV.toFixed(3), 2, pad.t + plotH);
+    var lineCol = condLabel === 'awake' ? cssVar('--awake') : cssVar('--sedated');
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 2;
+    ctx.beginPath();
+    pw.forEach(function (p, i) { var x = X(i), y = Y(p.mean_plv); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+    ctx.stroke();
+    pw.forEach(function (p, i) {
+      var x = X(i), y = Y(p.mean_plv), active = i === windowIdx;
+      ctx.beginPath(); ctx.arc(x, y, active ? 5 : 3, 0, Math.PI * 2);
+      ctx.fillStyle = active ? cssVar('--ink') : lineCol; ctx.fill();
+      ctx.font = '9.5px ui-monospace, monospace'; ctx.fillStyle = cssVar('--ink-muted');
+      ctx.fillText(p.start_s.toFixed(0) + 's', x - 8, h - 6);
+    });
+    var wRow = pw[windowIdx];
+    dynReadout.innerHTML =
+      '<dt>window</dt><dt>mean PLV</dt><dt>landscape area</dt><dt>β1 (max filtration)</dt>' +
+      '<dd>' + condLabel + ' · t=' + wRow.start_s.toFixed(0) + 's</dd>' +
+      '<dd>' + wRow.mean_plv.toFixed(4) + '</dd>' +
+      '<dd>' + wRow.landscape_area.toExponential(2) + '</dd>' +
+      '<dd>' + wRow.beta1.toFixed(entry.isCohort ? 2 : 0) + ' (' + wRow.filtration_beta1_max.toFixed(entry.isCohort ? 2 : 0) + ')</dd>';
+  }
+
+  dynPlayBtn.addEventListener('click', function () {
+    dynPlaying = !dynPlaying;
+    dynPlayBtn.textContent = dynPlaying ? '⏸ Pause windows' : '▶ Play windows';
+  });
+
+  // ================= cohort Σ|winding| slope chart =================
+  var stripCanvas = document.getElementById('vf-canvas-strip');
+  function drawStrip(highlightId) {
+    var dims = sizeCanvas2D(stripCanvas);
+    var ctx = dims.ctx, w = dims.w, h = dims.h;
+    ctx.clearRect(0, 0, w, h);
+    var pad = { l: 34, r: 92, t: 14, b: 26 };
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    var maxV = 0.001;
+    RAW.subjects.forEach(function (s) { maxV = Math.max(maxV, s.conditions.awake.qabs, s.conditions.sedated.qabs); });
+    maxV *= 1.12;
+    function X(which) { return which === 'awake' ? pad.l : pad.l + plotW; }
+    function Y(v) { return pad.t + plotH - (v / maxV) * plotH; }
+    var grid = cssVar('--grid'), muted = cssVar('--ink-muted'), ink = cssVar('--ink');
+    var awakeCol = cssVar('--awake'), sedCol = cssVar('--sedated');
+    ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.font = '10.5px ui-monospace, monospace'; ctx.fillStyle = muted;
+    for (var i = 0; i <= 3; i++) { var v = (maxV * i) / 3, y = Y(v); ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke(); ctx.fillText(v.toFixed(1), 2, y + 3); }
+    ctx.fillText('AWAKE', pad.l - 6, h - 6); ctx.fillText('SEDATED', w - pad.r - 18, h - 6);
+    RAW.subjects.forEach(function (s) {
+      var a = s.conditions.awake.qabs, b = s.conditions.sedated.qabs, isHi = s.id === highlightId;
+      ctx.beginPath(); ctx.moveTo(X('awake'), Y(a)); ctx.lineTo(X('sedated'), Y(b));
+      ctx.strokeStyle = isHi ? ink : (b >= a ? sedCol : awakeCol); ctx.lineWidth = isHi ? 2.4 : 1; ctx.globalAlpha = isHi ? 1 : 0.45;
+      ctx.stroke(); ctx.globalAlpha = 1;
+      [[X('awake'), a, awakeCol], [X('sedated'), b, sedCol]].forEach(function (pt) { ctx.beginPath(); ctx.arc(pt[0], Y(pt[1]), isHi ? 3.2 : 2, 0, Math.PI * 2); ctx.fillStyle = pt[2]; ctx.fill(); });
+      if (isHi) { ctx.fillStyle = ink; ctx.fillText(s.id, X('sedated') + 8, Y(b) + 3); }
+    });
+  }
+  stripCanvas.addEventListener('click', function (ev) {
+    var rect = stripCanvas.getBoundingClientRect();
+    var relX = (ev.clientX - rect.left) / rect.width, clickY = (ev.clientY - rect.top) / rect.height;
+    var padL = 34 / rect.width, padR = 1 - 92 / rect.width, side = relX < (padL + padR) / 2 ? 'awake' : 'sedated';
+    var maxV = 0.001; RAW.subjects.forEach(function (s2) { maxV = Math.max(maxV, s2.conditions.awake.qabs, s2.conditions.sedated.qabs); }); maxV *= 1.12;
+    var best = null, bestD = Infinity;
+    RAW.subjects.forEach(function (s) {
+      var v = side === 'awake' ? s.conditions.awake.qabs : s.conditions.sedated.qabs;
+      var padTfrac = 14 / rect.height, padBfrac = 1 - 26 / rect.height;
+      var yFrac = padTfrac + (padBfrac - padTfrac) * (1 - v / maxV);
+      var d = Math.abs(yFrac - clickY);
+      if (d < bestD) { bestD = d; best = s.id; }
+    });
+    if (best) { select.value = best; fullRedraw(); }
+  });
+
+  // ================= stat strip =================
+  var statsEl = document.getElementById('vf-stats');
+  statsEl.innerHTML =
+    '<div class="vf-stat"><div class="vf-stat-label">Cohort</div><div class="vf-stat-value vf-mono">n = 20</div><div class="vf-stat-sub">paired awake / sedated, all 20 subjects on OpenNeuro S3</div></div>' +
+    '<div class="vf-stat"><div class="vf-stat-label">Mean Σ|winding| (Qabs)</div><div class="vf-stat-value vf-mono">3.30<span class="vf-arrow-op">→</span>5.95</div><div class="vf-stat-sub">mean of each subject\'s own Σ|winding|; paired Wilcoxon p = 0.054</div></div>' +
+    '<div class="vf-stat"><div class="vf-stat-label">Grand-average map Σ|winding|</div><div class="vf-stat-value vf-mono">3.20<span class="vf-arrow-op">→</span>4.75</div><div class="vf-stat-sub">Σ|mean winding| after averaging triangles across subjects first — smaller than the row above because opposite-sign vortices at the same triangle cancel</div></div>' +
+    '<div class="vf-stat"><div class="vf-stat-label">H1 bottleneck distance</div><div class="vf-stat-value vf-mono">0.194</div><div class="vf-stat-sub">mean, range 0.077–0.355; one-sample p = 9.5×10⁻⁷</div></div>' +
+    '<div class="vf-stat"><div class="vf-stat-label">Phase-discontinuity proxy</div><div class="vf-stat-value vf-mono">19 / 20 ↑</div><div class="vf-stat-sub">paired Wilcoxon p = 8.2×10⁻⁵ — a phase-jump count, not persistent homology</div></div>';
+
+  // ================= wiring =================
+  var select = document.getElementById('vf-subject');
+  ORDER.forEach(function (id) {
+    var opt = document.createElement('option'); opt.value = id; opt.textContent = ENTRIES[id].label; select.appendChild(opt);
+  });
+  select.value = cohortEntry.id;
+
+  var morphSlider = document.getElementById('vf-morph');
+  var playBtn = document.getElementById('vf-play');
+  var resetCamBtn = document.getElementById('vf-reset-cam');
+  var autoMigrate = false, migrateDir = 1;
+  playBtn.addEventListener('click', function () { autoMigrate = !autoMigrate; playBtn.textContent = autoMigrate ? 'Pause migration' : 'Auto-migrate'; });
+  resetCamBtn.addEventListener('click', frameCamera);
+
+  function projectToScreen(vec3) {
+    var v = vec3.clone().project(camera);
+    var rect = stageEl.getBoundingClientRect();
+    return { x: (v.x * 0.5 + 0.5) * rect.width, y: (-v.y * 0.5 + 0.5) * rect.height, z: v.z };
+  }
+
+  function updateCallouts(entry, t) {
+    var awake = entry.conditions.awake, sed = entry.conditions.sedated;
+    var scored = GEOM.activeTri.map(function (a) {
+      var blended = lerp(awake.wind[a.index], sed.wind[a.index], t);
+      return { a: a, activity: Math.abs(blended), blended: blended };
+    }).filter(function (x) { return x.activity > 0.15; }).sort(function (x, y) { return y.activity - x.activity; }).slice(0, 2);
+    calloutLayer.innerHTML = '';
+    scored.forEach(function (x) {
+      var scr = projectToScreen(x.a.centroid);
+      if (scr.z > 1) return;
+      var div = document.createElement('div');
+      div.className = 'vf-callout-label';
+      div.style.left = scr.x + 'px'; div.style.top = (scr.y - 10) + 'px';
+      div.textContent = 'triangle #' + x.a.index + ' · winding ' + x.blended.toFixed(2);
+      calloutLayer.appendChild(div);
+    });
+  }
+
+  function fullRedraw() {
+    var entry = ENTRIES[select.value];
+    var persistSuffix = document.getElementById('vf-persist-title-suffix');
+    var persistSub = document.getElementById('vf-persist-sub');
+    if (entry.isCohort) {
+      persistSuffix.textContent = '— pooled, all 20 subjects';
+      persistSub.innerHTML = 'GUDHI cubical persistence on the PLV connectivity matrix, <b>every real point from all 20 subjects overlaid</b> — the global loop structure of the whole sensor network, independent of the local mesh vortices above.';
+    } else {
+      persistSuffix.textContent = '— ' + entry.id + ', last analysis window';
+      persistSub.innerHTML = 'GUDHI cubical persistence on the PLV connectivity matrix — the <b>global</b> loop structure of the whole sensor network, independent of the local mesh vortices above.';
+    }
+    drawPersistence(document.getElementById('vf-canvas-persist'), entry);
+    var landscapeSuffix = document.getElementById('vf-landscape-title-suffix');
+    landscapeSuffix.textContent = entry.isCohort ? '— pooled, all 20 subjects' : '— ' + entry.id;
+    drawLandscape(document.getElementById('vf-canvas-landscape'), entry);
+    document.getElementById('vf-dbscan-readout').innerHTML = dbscanReadoutText(entry);
+    drawStrip(entry.isCohort ? null : entry.id);
+    dynWindowIdx = 0;
+    drawDynamics(entry, parseFloat(morphSlider.value) < 0.5 ? 'awake' : 'sedated', dynWindowIdx);
+    resizeRenderer();
+    render(performance.now());
+  }
+
+  select.addEventListener('change', fullRedraw);
+  morphSlider.addEventListener('input', function () {
+    var entry = ENTRIES[select.value];
+    drawDynamics(entry, parseFloat(morphSlider.value) < 0.5 ? 'awake' : 'sedated', dynWindowIdx);
+    render(performance.now());
+  });
+
+  window.addEventListener('resize', function () { clearTimeout(window.__vfResizeT); window.__vfResizeT = setTimeout(fullRedraw, 120); });
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', fullRedraw);
+  new MutationObserver(fullRedraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  var t0 = performance.now();
+  function render(now) {
+    var entry = ENTRIES[select.value];
+    var clock = (now - t0) / 1000;
+
+    if (autoMigrate) {
+      var cur = parseFloat(morphSlider.value);
+      cur += migrateDir * 0.0026;
+      if (cur >= 1) { cur = 1; migrateDir = -1; } if (cur <= 0) { cur = 0; migrateDir = 1; }
+      morphSlider.value = cur;
+    }
+    var t = parseFloat(morphSlider.value);
+
+    if (dynPlaying && now - dynLastStep > 1100) {
+      dynLastStep = now;
+      dynWindowIdx = (dynWindowIdx + 1) % 3;
+      drawDynamics(entry, t < 0.5 ? 'awake' : 'sedated', dynWindowIdx);
+    }
+
+    renderer.setClearColor(new THREE.Color(cssVar('--stage-bg')), 1);
+    var res = updateFrame(entry, t, clock);
+    controls.update();
+    renderer.render(scene, camera);
+    updateCallouts(entry, t);
+
+    document.getElementById('vf-state-label').textContent = t < 0.5 ? 'AWAKE-leaning' : 'SEDATED-leaning';
+    document.getElementById('vf-qabs-live').textContent = res.qabs.toFixed(2);
+    document.getElementById('vf-nvortex-live').textContent = res.activeCount;
+    document.getElementById('vf-ncluster-live').textContent = res.nClusters;
+    document.getElementById('vf-subject-readout').innerHTML =
+      '<span>' + entry.label + '</span><span>' + entry.n_channels + ' ch</span>' +
+      (entry.bottleneck !== null ? '<span>bottleneck ' + entry.bottleneck.toFixed(3) + '</span>' : '<span>bottleneck mean 0.194</span>');
+
+    requestAnimationFrame(render);
+  }
+
+  fullRedraw();
+}
+
+boot();
+</script>

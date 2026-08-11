@@ -7,6 +7,7 @@ import pytest
 
 from tools.command_center.real_results_adapter import (
     build_command_center_registry,
+    build_fmri_connectome_payload,
     build_pitnn_cohort_persistence_artifact,
     build_pitnn_cohort_spatial_artifact,
     build_real_results,
@@ -80,6 +81,14 @@ def _write_pitnn_cohort_subject(root, subject_id, *, awake=True, sedated=True, b
                 "n_valid_triangles": 1,
             },
             "wave_vectors": None,
+            "h1_cycles": [{"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}],
+            "zone_band_power": {
+                "frontal": {
+                    "bands_power_rel": {"delta": 0.3, "theta": 0.1, "alpha": 0.05, "beta": 0.02, "gamma_low": 0.01},
+                    "n_channels": 5,
+                    "centroid_xy": [0.1, 0.9],
+                },
+            },
             "quality_control": {"n_channels": 3, "all_finite": True},
         }
     record = {
@@ -120,6 +129,12 @@ def test_pitnn_cohort_spatial_artifact_available_with_real_defect_map(tmp_path):
     assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.42)
     assert subject["conditions"]["awake"]["wave_vectors"] is None
     assert subject["conditions"]["awake"]["defects"]["n_valid_triangles"] == 1
+    assert subject["conditions"]["awake"]["h1_cycles"] == [
+        {"birth_cell": [0, 1], "death_cell": [0, 2], "birth": 0.1, "death": 0.4}
+    ]
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["bands_power_rel"]["delta"] == 0.3
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["n_channels"] == 5
+    assert subject["conditions"]["awake"]["zone_band_power"]["frontal"]["centroid_xy"] == [0.1, 0.9]
 
 
 def test_pitnn_cohort_spatial_artifact_skips_subjects_with_no_snapshot(tmp_path):
@@ -159,15 +174,21 @@ def test_registry_reflects_pitnn_cohort_spatial_availability(tmp_path, monkeypat
     assert pilot["status"] == "available"
 
 
-def _write_pitnn_cohort_subject_with_persistence(root, subject_id, *, awake=True, sedated=True, bottleneck=0.19):
+def _write_pitnn_cohort_subject_with_persistence(
+    root, subject_id, *, awake=True, sedated=True, bottleneck=0.19,
+    awake_windows_h1=None, sedated_windows_h1=None,
+):
     """Mirror tools/stream_pitnn_cohort_ds005620.py's real record shape for the
     --export-persistence path: topology_windows.{label}[-1].cubical_persistence.
-    diagrams['1'] is exactly what build_pitnn_cohort_persistence_artifact reads."""
+    diagrams['1'] is exactly what build_pitnn_cohort_persistence_artifact reads.
+    `*_windows_h1`, when given, is a list of per-window H1 diagrams (real windows,
+    mirroring topology_windows.{label} having multiple rows), so multi-window
+    (vineyard) behavior can be exercised; otherwise a single window is written."""
     (root / "subjects").mkdir(parents=True, exist_ok=True)
 
-    def window(h1):
+    def window(h1, idx=0):
         return {
-            "window": 0, "start_s": 0.0, "channels": 3, "beta1": 1,
+            "window": idx, "start_s": float(idx * 10), "channels": 3, "beta1": 1,
             "filtration_beta1_max": 1, "integrated_landscape_area": 0.01,
             "mean_plv": 0.5, "q_spatial": 0.0,
             "cubical_persistence": {
@@ -177,13 +198,18 @@ def _write_pitnn_cohort_subject_with_persistence(root, subject_id, *, awake=True
             },
         }
 
+    awake_rows = (
+        [window(h1, i) for i, h1 in enumerate(awake_windows_h1)] if awake_windows_h1 is not None
+        else ([window([[0.1, 0.2]])] if awake else [])
+    )
+    sedated_rows = (
+        [window(h1, i) for i, h1 in enumerate(sedated_windows_h1)] if sedated_windows_h1 is not None
+        else ([window([[0.15, 0.35], [0.2, 0.4]])] if sedated else [])
+    )
     record = {
         "subject": subject_id,
         "cubical_h1_bottleneck_distance_last_window": bottleneck,
-        "topology_windows": {
-            "awake": [window([[0.1, 0.2]])] if awake else [],
-            "sedated": [window([[0.15, 0.35], [0.2, 0.4]])] if sedated else [],
-        },
+        "topology_windows": {"awake": awake_rows, "sedated": sedated_rows},
     }
     (root / "subjects" / f"{subject_id}.json").write_text(json.dumps(record), encoding="utf-8")
 
@@ -217,6 +243,30 @@ def test_pitnn_cohort_persistence_artifact_available_with_real_diagrams(tmp_path
     assert subject["diagrams_h1"]["awake"] == [[0.1, 0.2]]
     assert subject["diagrams_h1"]["sedated"] == [[0.15, 0.35], [0.2, 0.4]]
     assert subject["bottleneck_distance_h1_last_window"] == pytest.approx(0.194)
+    # Single real window per condition -> the vineyard field has exactly one
+    # entry, matching diagrams_h1 (no fabricated extra points).
+    assert subject["diagrams_h1_by_window"]["awake"] == [[[0.1, 0.2]]]
+    assert subject["diagrams_h1_by_window"]["sedated"] == [[[0.15, 0.35], [0.2, 0.4]]]
+
+
+def test_pitnn_cohort_persistence_artifact_vineyard_carries_every_real_window(tmp_path):
+    """A cohort run with 3 real windows per condition (this repo's actual
+    streaming cadence) must expose all 3 in diagrams_h1_by_window, not just
+    the last one that diagrams_h1 reports -- the whole point of the field."""
+    awake_windows = [[[0.1, 0.2]], [[0.12, 0.25]], [[0.11, 0.3]]]
+    sedated_windows = [[[0.2, 0.5]], [[0.25, 0.6]], [[0.3, 0.7]]]
+    _write_pitnn_cohort_subject_with_persistence(
+        tmp_path, "sub-1010",
+        awake_windows_h1=awake_windows, sedated_windows_h1=sedated_windows,
+    )
+    result = build_pitnn_cohort_persistence_artifact(tmp_path)
+    subject = result["subjects"][0]
+    assert subject["diagrams_h1_by_window"]["awake"] == awake_windows
+    assert subject["diagrams_h1_by_window"]["sedated"] == sedated_windows
+    # diagrams_h1 (last-window, existing consumer) must still match the last
+    # entry of the vineyard -- both describe the same window.
+    assert subject["diagrams_h1"]["awake"] == awake_windows[-1]
+    assert subject["diagrams_h1"]["sedated"] == sedated_windows[-1]
 
 
 def test_pitnn_cohort_persistence_artifact_skips_subjects_missing_diagrams(tmp_path):
@@ -239,3 +289,38 @@ def test_visualization_payload_includes_pitnn_cohort_persistence_artifact(tmp_pa
     payload = build_visualization_payload(tmp_path)
     assert payload["pitnn_cohort_persistence_artifact"]["status"] == "available"
     assert payload["pitnn_cohort_persistence_artifact"]["subject_count"] == 1
+
+
+def test_fmri_connectome_payload_unavailable_for_unknown_dataset(tmp_path):
+    result = build_fmri_connectome_payload(dataset="ds999999", root=tmp_path)
+    assert result["status"] == "unavailable"
+    assert "ds999999" in result["reason"]
+
+
+def test_fmri_connectome_payload_ds005917_unavailable_when_no_precomputed_file(tmp_path):
+    result = build_fmri_connectome_payload(dataset="ds005917", root=tmp_path)
+    assert result["status"] == "unavailable"
+    assert "fmri_connectome.json" in result["reason"]
+
+
+def test_fmri_connectome_payload_ds006644_unavailable_when_no_precomputed_file(tmp_path):
+    result = build_fmri_connectome_payload(dataset="ds006644", root=tmp_path)
+    assert result["status"] == "unavailable"
+    assert "fmri_connectome_labeled.json" in result["reason"]
+
+
+def test_fmri_connectome_payload_ds006644_available_with_real_region_labels(tmp_path):
+    payload = {
+        "dataset": "ds006644",
+        "atlas": "Schaefer2018_100Parcels_7Networks",
+        "n_subjects": 1,
+        "subjects": [{
+            "id": "sub-03", "group": "verum",
+            "graph": {"centroids": [[0.0, 0.0, 0.0]], "labels": ["7Networks_LH_Vis_1"], "edges": [], "n_regions": 1},
+        }],
+    }
+    (tmp_path / "fmri_connectome_labeled.json").write_text(json.dumps(payload), encoding="utf-8")
+    result = build_fmri_connectome_payload(dataset="ds006644", root=tmp_path)
+    assert result["status"] == "available"
+    assert result["subjects"][0]["graph"]["labels"] == ["7Networks_LH_Vis_1"]
+    assert "stream_process_ds006644.py" in result["source"]

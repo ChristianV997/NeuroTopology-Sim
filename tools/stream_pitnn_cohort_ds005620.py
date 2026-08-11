@@ -189,8 +189,8 @@ def fetch_recording(client, vhdr_key: str, dest_dir: Path, duration_seconds: flo
 
 def read_condition(
     vhdr_path: Path, *, skip_seconds: float, analyze_seconds: float, target_rate_hz: float
-) -> tuple[np.ndarray, float, np.ndarray | None]:
-    """Return `(samples, channels)` decimated EEG plus rate and montage coordinates.
+) -> tuple[np.ndarray, float, np.ndarray | None, list[str]]:
+    """Return `(samples, channels)` decimated EEG plus rate, montage coordinates, and channel names.
 
     Decimation is anti-aliased (`scipy.signal.decimate`, zero-phase FIR). 5000 Hz is far
     above what a <=80 Hz analysis needs; decimating to `target_rate_hz` cuts the
@@ -207,6 +207,7 @@ def read_condition(
     picks = [i for i, kind in enumerate(raw.get_channel_types()) if kind == "eeg"]
     if len(picks) < 8:
         raise ValueError(f"{vhdr_path.name}: only {len(picks)} EEG channels")
+    ch_names = [raw.ch_names[i] for i in picks]
 
     start = int(round(skip_seconds * rate))
     stop = min(int(raw.n_times), start + int(round(analyze_seconds * rate)))
@@ -233,10 +234,11 @@ def read_condition(
     data = data[keep]
     if montage is not None:
         montage = montage[keep]
+    ch_names = [c for c, k in zip(ch_names, keep) if k]
     if data.shape[0] < 8:
         raise ValueError(f"{vhdr_path.name}: fewer than 8 non-degenerate channels")
 
-    return data.T, float(rate), montage
+    return data.T, float(rate), montage, ch_names
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +268,8 @@ def window_topology(
     plv_threshold: float,
     landscape_layers: int,
     export_cubical_persistence: bool = False,
-) -> tuple[list[dict[str, Any]], np.ndarray]:
+    keep_last_plv: bool = False,
+) -> tuple[list[dict[str, Any]], np.ndarray, np.ndarray | None]:
     """Per-window PLV persistence + spatial charge for one condition.
 
     `data` is `(samples, channels)`. Band-limited analytic phase matches the discipline
@@ -284,6 +287,12 @@ def window_topology(
     2D grid, so it captures amplitude structure the graph-distance view discards.
     `core/persistence_export.py` was built and unit-tested in isolation but never
     exercised on real data before this call.
+
+    `keep_last_plv`, when set, returns the LAST window's raw (unfiltered-channel)
+    PLV matrix as the third element (`None` otherwise) -- the caller needs it,
+    restricted to the same finite-position channel subset `spatial_defect_snapshot`
+    uses, to locate real H1 persistent-loop channel pairs consistently with
+    `channel_coordinates`.
     """
     import mne
     from scipy.signal import hilbert
@@ -299,9 +308,12 @@ def window_topology(
 
     span = int(round(window_seconds * rate_hz))
     out: list[dict[str, Any]] = []
+    last_plv: np.ndarray | None = None
     for index, start in enumerate(range(0, phase.shape[1] - span + 1, span)):
         chunk = phase[:, start : start + span]
         plv = _plv_matrix(chunk)
+        if keep_last_plv:
+            last_plv = plv
         result = analyze_adjacency(plv, threshold=plv_threshold, n_layers=landscape_layers)
         charge = None
         if montage is not None:
@@ -326,7 +338,7 @@ def window_topology(
 
             row["cubical_persistence"] = export_persistence_json(plv, max_dimension=1)
         out.append(row)
-    return out, phase
+    return out, phase, last_plv
 
 
 def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -341,10 +353,183 @@ def _condition_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# Real H1 persistent-loop channel locations (birth/death cell of each real H1
+# feature, restricted to the same finite-position channel subset channel_coordinates
+# uses -- so a viewer can draw them at real electrode positions, not fabricated ones)
+# --------------------------------------------------------------------------- #
+
+def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list[dict[str, Any]]:
+    """Real H1 birth/death channel-pair locations for one window's PLV matrix,
+    restricted to channels with a finite montage position.
+
+    `plv[finite][:, finite]` submatrix indices are, by construction, in the exact
+    same order as `xy[finite]` in `spatial_defect_snapshot` -- so the `birth_cell`/
+    `death_cell` indices this returns index directly into that same
+    `channel_coordinates` array, with no separate remapping step to get wrong.
+
+    A PLV matrix is symmetric (`plv[i,j] == plv[j,i]`), but `extract_h1_cycle_locations`
+    treats it as a plain, orientation-aware grid and does not know that -- so it
+    reports the mirror-image cell (c, r) as a structurally distinct feature from
+    (r, c) even when their birth/death values are identical. This is real, correct
+    output of the general function on a symmetric input, not a bug in it; the
+    de-duplication belongs here, where the symmetry assumption actually holds
+    (PLV specifically, not persistence on an arbitrary field), keeping one
+    representative per real, distinct channel-PAIR feature.
+    """
+    from core.topology import extract_h1_cycle_locations
+
+    finite_mask = np.asarray(finite_mask, dtype=bool)
+    restricted = np.asarray(plv, dtype=float)[finite_mask][:, finite_mask]
+    if restricted.shape[0] < 3:
+        return []
+    raw = extract_h1_cycle_locations(restricted)
+
+    seen: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+    deduped: list[dict[str, Any]] = []
+    for loc in raw:
+        br, bc = loc["birth_cell"]
+        dr, dc = loc["death_cell"]
+        key = (tuple(sorted((br, bc))), tuple(sorted((dr, dc))))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(loc)
+    return deduped
+
+
+# --------------------------------------------------------------------------- #
+# Real short multi-channel EEG waveform snippet (for real-time playback)
+# --------------------------------------------------------------------------- #
+
+def extract_waveform_snippet(
+    data: np.ndarray, rate_hz: float, ch_names: list[str],
+    target_rate_hz: float = 125.0, duration_s: float = 4.0,
+) -> dict[str, Any] | None:
+    """Real short multi-channel EEG segment for a real-time oscilloscope-style trace.
+
+    `data` is `(samples, channels)`, the same array `read_condition` returns before
+    any band-limiting -- this is real recorded voltage, not simulated. Picks up to 4
+    representative channels (Fz/Cz/Pz/Oz if present in this montage; otherwise the
+    first real channel found in each of the frontal/central/parietal/occipital zones
+    via `zone_of`), takes a real `duration_s`-second segment from the MIDDLE of this
+    condition's analyzed recording (avoiding onset/offset filter-edge artifacts), and
+    decimates it to `target_rate_hz` -- downsampled only for a compact payload, not
+    smoothed or synthesized; every sample value is real. Returns `None` when no
+    channel maps to a known zone at all.
+    """
+    from dual_engine.anesthesia_signed_winding_pipeline import zone_of
+    from scipy.signal import decimate
+
+    preferred = ["Fz", "Cz", "Pz", "Oz"]
+    chosen: list[int] = []
+    for name in preferred:
+        if name in ch_names:
+            chosen.append(ch_names.index(name))
+    if len(chosen) < 4:
+        for zone_target in ("frontal", "central", "parietal", "occipital"):
+            if len(chosen) >= 4:
+                break
+            for i, ch in enumerate(ch_names):
+                if i in chosen:
+                    continue
+                if zone_of(ch) == zone_target:
+                    chosen.append(i)
+                    break
+    if not chosen:
+        return None
+
+    n_samples = data.shape[0]
+    span = min(n_samples, int(round(duration_s * rate_hz)))
+    start = max(0, (n_samples - span) // 2)
+    chunk = data[start : start + span, chosen]  # (span, n_chosen)
+
+    factor = max(1, int(round(rate_hz / target_rate_hz)))
+    if factor > 1 and chunk.shape[0] > factor * 4:
+        chunk = decimate(chunk, factor, axis=0, ftype="fir", zero_phase=True)
+        eff_rate = rate_hz / factor
+    else:
+        eff_rate = rate_hz
+
+    return {
+        "channels": [ch_names[i] for i in chosen],
+        "sfreq": float(eff_rate),
+        "samples": [np.round(chunk[:, k], 3).astype(float).tolist() for k in range(chunk.shape[1])],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Real per-zone EEG band power (delta/theta/alpha/beta/gamma_low), Welch PSD
+# --------------------------------------------------------------------------- #
+
+def zone_band_power(
+    data: np.ndarray, rate_hz: float, ch_names: list[str], montage: np.ndarray | None = None
+) -> dict[str, Any] | None:
+    """Real per-zone relative band power for one condition's recording.
+
+    `data` is `(samples, channels)`, the same array `read_condition` returns
+    before `window_topology`'s internal 30-80Hz band-limiting -- this computes
+    the classic delta/theta/alpha/beta/gamma_low decomposition
+    (`sciencer_d.btc_icft.level_m.real_features.compute_band_power`, real
+    `scipy.signal.welch` PSD) per channel, then averages each band's real
+    relative power across the channels in a coarse scalp zone
+    (`dual_engine.anesthesia_signed_winding_pipeline.zone_of`'s 10-20-naming
+    zone map -- explicitly a naming convention, not an anatomical atlas).
+    Returns `None` (not a fabricated empty dict) when no channel name maps to
+    a known zone.
+
+    `montage`, when given, is the same `(n, 3)` array `read_condition` already
+    returns (its xy plane is the real sensor 2D projection): this additionally
+    computes each zone's real centroid xy position -- the mean position of
+    exactly the same real channels this zone's band power was averaged from --
+    so a viewer can place a real, honest "which zone is this" marker rather
+    than an approximated one.
+    """
+    from dual_engine.anesthesia_signed_winding_pipeline import build_region_labels
+    from sciencer_d.btc_icft.level_m.real_features import DEFAULT_BANDS, compute_band_power
+
+    labels = build_region_labels(ch_names)
+    if not labels:
+        return None
+    zone_bands: dict[str, dict[str, list[float]]] = {}
+    zone_xy: dict[str, list[list[float]]] = {}
+    for i, ch in enumerate(ch_names):
+        zone = labels.get(ch)
+        if zone is None:
+            continue
+        bp = compute_band_power(data[:, i], rate_hz, bands=DEFAULT_BANDS)
+        if not bp:
+            continue
+        bucket = zone_bands.setdefault(zone, {b: [] for b in DEFAULT_BANDS})
+        for band in DEFAULT_BANDS:
+            rel = bp.get(f"{band}_power_rel")
+            if rel is not None and np.isfinite(rel):
+                bucket[band].append(rel)
+        if montage is not None and i < len(montage) and np.all(np.isfinite(montage[i][:2])):
+            zone_xy.setdefault(zone, []).append([float(montage[i][0]), float(montage[i][1])])
+    if not zone_bands:
+        return None
+    out: dict[str, Any] = {}
+    for zone, bands in zone_bands.items():
+        entry: dict[str, Any] = {
+            "bands_power_rel": {b: (float(np.mean(v)) if v else None) for b, v in bands.items()},
+            "n_channels": max((len(v) for v in bands.values()), default=0),
+        }
+        xy = zone_xy.get(zone)
+        entry["centroid_xy"] = [float(np.mean([p[0] for p in xy])), float(np.mean([p[1] for p in xy]))] if xy else None
+        out[zone] = entry
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Spatial defect snapshot (closes the command-center `spatial_artifact` gap)
 # --------------------------------------------------------------------------- #
 
-def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1: int | None = None) -> dict[str, Any] | None:
+def spatial_defect_snapshot(
+    phase: np.ndarray,
+    montage: np.ndarray | None,
+    beta1: int | None = None,
+    last_plv: np.ndarray | None = None,
+) -> dict[str, Any] | None:
     """Real channel-coordinate defect map from one condition's final window.
 
     Reuses `validation.montage_topology.signed_defect_map` unmodified -- the same
@@ -358,6 +543,12 @@ def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1
     Returns `None` (not a fabricated zero-filled record) when there is no montage,
     fewer than three finite positions, or fewer than three triangles survive
     triangulation -- callers must treat absence as absence.
+
+    `last_plv`, when given, additionally computes `h1_cycles`: real H1
+    birth/death channel-pair locations via `h1_cycle_channel_locations`, using
+    the SAME `finite` mask this function already computes -- so the returned
+    channel indices index directly into `channel_coordinates` below, guaranteed
+    consistent by construction (one mask, used once, for both).
     """
     from validation.montage_topology import signed_defect_map, triangulate_xy
 
@@ -377,11 +568,19 @@ def spatial_defect_snapshot(phase: np.ndarray, montage: np.ndarray | None, beta1
     except Exception:
         return None
 
+    h1_cycles = None
+    if last_plv is not None:
+        try:
+            h1_cycles = h1_cycle_channel_locations(last_plv, finite)
+        except Exception:
+            h1_cycles = None  # a degenerate/too-small submatrix is reported as null, not fabricated
+
     return {
         "channel_coordinates": xy.tolist(),
         "coordinate_frame": "sensor_2d_projection_of_standard_1020_montage",
         "phase": phase_last.tolist(),
         "beta1": beta1,
+        "h1_cycles": h1_cycles,
         "defects": {
             "triangle_indices": defects["triangle_indices"].tolist(),
             "signed_winding": defects["signed_winding"].tolist(),
@@ -414,7 +613,7 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
         vhdr = next(iter(sorted((subject_root / label).glob("*.vhdr"))), None)
         if vhdr is None:
             raise FileNotFoundError(f"{subject}: no {label} header fetched")
-        data, rate, montage = read_condition(
+        data, rate, montage, ch_names = read_condition(
             vhdr,
             skip_seconds=cfg.skip_seconds,
             analyze_seconds=cfg.analyze_seconds,
@@ -427,7 +626,7 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             raise ValueError(f"{subject}: condition sample rates differ ({rate_hz} vs {rate})")
         rate_hz = rate
         arrays[state_key] = data
-        rows, phase = window_topology(
+        rows, phase, last_plv = window_topology(
             data,
             rate,
             montage,
@@ -436,9 +635,17 @@ def process_subject(subject_root: Path, subject: str, out_dir: Path, cfg: argpar
             plv_threshold=cfg.plv_threshold,
             landscape_layers=cfg.landscape_layers,
             export_cubical_persistence=cfg.export_persistence,
+            keep_last_plv=cfg.export_h1_cycles,
         )
         last_beta1 = rows[-1]["filtration_beta1_max"] if rows else None
-        spatial = spatial_defect_snapshot(phase, montage, beta1=last_beta1) if cfg.export_spatial else None
+        spatial = (
+            spatial_defect_snapshot(phase, montage, beta1=last_beta1, last_plv=last_plv if cfg.export_h1_cycles else None)
+            if cfg.export_spatial else None
+        )
+        if spatial is not None and cfg.export_band_power:
+            spatial["zone_band_power"] = zone_band_power(data, rate, ch_names, montage=montage)
+        if spatial is not None and cfg.export_waveform:
+            spatial["eeg_waveform"] = extract_waveform_snippet(data, rate, ch_names)
         conditions[label] = {
             "source_file": vhdr.name,
             "windows": rows,
@@ -555,6 +762,28 @@ def parser() -> argparse.ArgumentParser:
         help="save GUDHI cubical persistence (H0/H1) of the last window's PLV matrix "
              "per condition, plus the awake-vs-sedated H1 bottleneck distance; "
              "requires the optional gudhi dependency",
+    )
+    p.add_argument(
+        "--export-h1-cycles", action="store_true",
+        help="save real H1 birth/death channel-pair locations (via "
+             "core.topology.extract_h1_cycle_locations) for the last window's PLV "
+             "matrix per condition, restricted to channels with a finite montage "
+             "position -- requires --export-spatial (the channel_coordinates these "
+             "index into) and the optional gudhi dependency",
+    )
+    p.add_argument(
+        "--export-band-power", action="store_true",
+        help="save real per-zone delta/theta/alpha/beta/gamma_low relative band "
+             "power (Welch PSD, sciencer_d.btc_icft.level_m.real_features) per "
+             "condition, averaged across each 10-20-naming-convention scalp zone "
+             "(dual_engine.anesthesia_signed_winding_pipeline.zone_of) -- requires "
+             "--export-spatial",
+    )
+    p.add_argument(
+        "--export-waveform", action="store_true",
+        help="save a real ~4s, 4-channel (Fz/Cz/Pz/Oz or zone-based fallback), "
+             "125Hz-decimated multi-channel EEG waveform snippet per condition, for "
+             "real-time oscilloscope-style playback -- requires --export-spatial",
     )
     return p
 

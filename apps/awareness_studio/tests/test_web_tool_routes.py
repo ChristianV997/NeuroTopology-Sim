@@ -65,6 +65,125 @@ def test_command_center_page_and_read_only_registry_are_available():
     assert all(item["execution_allowed"] is False for item in data["command_registry"])
 
 
+def test_vortex_field_viewer_is_available():
+    resp = client.get("/vortex-field")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Real Phase-Vortex Field" in resp.text
+    assert "ds005620" in resp.text
+
+
+def test_cortex_viewer_links_to_vortex_field():
+    resp = client.get("/cortex")
+    assert resp.status_code == 200
+    assert "/vortex-field" in resp.text
+
+
+def test_mapper_graph_viewer_and_data_are_available():
+    page = client.get("/mapper-graph")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "Mapper graph" in page.text or "mapper graph" in page.text.lower()
+
+    resp = client.get("/mapper-graph/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert isinstance(data["nodes"], list) and len(data["nodes"]) > 0
+        assert isinstance(data["edges"], list)
+        node = data["nodes"][0]
+        assert "size" in node and "awake_fraction" in node and "members" in node
+
+
+def test_volumetric_viewer_and_subjects_are_available():
+    page = client.get("/volumetric")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "ds000245" in page.text
+
+    resp = client.get("/volumetric/subjects")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["dataset"] == "ds000245"
+    assert isinstance(data["subjects"], list)
+
+
+def test_volumetric_bold_rejects_path_traversal():
+    resp = client.get("/volumetric/..%2F..%2Fetc%2Fpasswd")
+    assert resp.status_code in (404, 422)
+    resp2 = client.get("/volumetric/not-a-real-subject")
+    assert resp2.status_code == 404
+
+
+def test_volumetric_bold_serves_real_subject_when_available():
+    subjects = client.get("/volumetric/subjects").json()["subjects"]
+    if not subjects:
+        pytest.skip("no local ds000245 subject volumes in this environment")
+    resp = client.get("/volumetric/" + subjects[0])
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/gzip"
+
+
+def test_unified_atlas_page_links_to_all_four_visualizations():
+    resp = client.get("/atlas")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    for path in ("/vortex-field", "/mapper-graph", "/fmri-connectome", "/volumetric"):
+        assert path in resp.text
+
+
+def test_holo_atlas_page_fetches_all_real_endpoints():
+    resp = client.get("/holo-atlas")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    for path in (
+        "/vortex-field/data", "/fmri-connectome/data", "/mapper-graph/data",
+        "/static/data/fsaverage5_pial.json", "/command-center/visualization",
+    ):
+        assert path in resp.text
+
+
+def test_fmri_connectome_viewer_and_data_are_available():
+    page = client.get("/fmri-connectome")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "ds005917" in page.text or "ketamine" in page.text.lower()
+
+    resp = client.get("/fmri-connectome/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert data["dataset"] == "ds005917"
+        assert isinstance(data["subjects"], list) and len(data["subjects"]) > 0
+        subject = data["subjects"][0]
+        assert "conditions" in subject
+        assert "drug" in subject["conditions"] and "placebo" in subject["conditions"]
+
+
+def test_fmri_connectome_data_unknown_dataset_is_unavailable():
+    resp = client.get("/fmri-connectome/data?dataset=not-a-real-dataset")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "unavailable"
+
+
+def test_vortex_field_data_is_available():
+    resp = client.get("/vortex-field/data")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] in {"available", "unavailable"}
+    if data["status"] == "available":
+        assert "coords" in data and "tri" in data
+        assert isinstance(data["subjects"], list) and len(data["subjects"]) > 0
+        ca = data["cohort_average"]
+        assert "clustering_and_landscape" in ca
+        for cond in ("awake", "sedated"):
+            cl = ca["clustering_and_landscape"][cond]
+            assert "clustering" in cl and "landscape" in cl
+            assert len(cl["clustering"]["triangle_cluster_label"]) == len(data["tri"])
+
+
 def test_command_center_status_exposes_real_quality_contract():
     response = client.get("/command-center/status")
     assert response.status_code == 200

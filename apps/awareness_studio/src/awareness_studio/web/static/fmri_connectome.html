@@ -1,0 +1,198 @@
+<meta charset="utf-8">
+<title>fMRI Connectome — ds005917 Ketamine Drug vs. Placebo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  .fc-root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --ink-muted: #898781;
+    --grid: #e1e0d9; --ring: rgba(11,11,11,0.10);
+    --drug: #a855f7; --placebo: #14b8a6;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink); min-height: 100vh;
+  }
+  :root[data-theme="dark"] .fc-root {
+    --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+    --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    .fc-root:not([data-theme="light"]) {
+      --page: #0e0e0d; --surface: #171615; --ink: #f0efe9; --ink-2: #c9c7bf; --ink-muted: #8b8a83;
+      --grid: #2a2926; --ring: rgba(255,255,255,0.12);
+    }
+  }
+  .fc-wrap { max-width: 1440px; margin: 0 auto; padding: 28px 24px 60px; }
+  .fc-eyebrow { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); font-family: ui-monospace, monospace; }
+  .fc-eyebrow a { color: var(--ink-muted); }
+  h1 { font-size: 30px; margin: 8px 0 12px; letter-spacing: -0.01em; text-wrap: balance; }
+  .fc-sub { max-width: 82ch; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; margin: 0 0 20px; }
+  .fc-sub code { font-family: ui-monospace, monospace; background: var(--surface); border: 1px solid var(--ring); border-radius: 4px; padding: 1px 5px; }
+  .fc-controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .fc-select { font: 13px ui-monospace, monospace; padding: 7px 10px; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .fc-morph { display: flex; align-items: center; gap: 10px; font: 12px ui-monospace, monospace; color: var(--ink-muted); }
+  .fc-morph input { width: 220px; }
+  .fc-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+  .fc-stage-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; overflow: hidden; }
+  .fc-stage-head { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 16px; }
+  .fc-stage-head h2 { font-size: 13px; margin: 0; font-weight: 700; }
+  #fc-graph { width: 100%; height: 620px; display: block; }
+  .fc-side { display: flex; flex-direction: column; gap: 14px; }
+  .fc-card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; }
+  .fc-card h3 { font-size: 12px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-muted); }
+  .fc-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .fc-legend-row { display: flex; align-items: center; gap: 8px; }
+  .fc-swatch { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .fc-stats-table { width: 100%; border-collapse: collapse; font-size: 11.5px; font-family: ui-monospace, monospace; }
+  .fc-stats-table th, .fc-stats-table td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--ring); }
+  .fc-stats-table th { color: var(--ink-muted); font-weight: 600; }
+  .fc-error { padding: 40px 24px; text-align: center; font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-2); }
+  .fc-footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 11.5px; line-height: 1.75; color: var(--ink-muted); max-width: 90ch; }
+</style>
+
+<div class="fc-root">
+  <div class="fc-wrap">
+    <div class="fc-eyebrow">OPENNEURO DS005917 &middot; N = 25 MDD, WITHIN-SUBJECT CROSSOVER &middot; <a href="/command-center">COMMAND CENTRE</a> &middot; <a href="/vortex-field">VORTEX FIELD</a> &middot; <a href="/mapper-graph">MAPPER GRAPH</a></div>
+    <h1>Ketamine functional connectome, drug vs. placebo</h1>
+    <p class="fc-sub">
+      Real per-subject resting-state functional connectivity, re-derived from raw BOLD
+      (<code>tools/stream_process_ds005917.py --save-graph-structure</code>): 100 real
+      per-subject data-driven parcels (native-space KMeans on in-brain voxel coordinates,
+      not an anatomical atlas -- this dataset ships no spatial-normalization derivatives) and
+      the real Pearson connectivity matrix between them, edges above |r| &ge; 0.3 shown. Scrub
+      the drug&harr;placebo slider to morph node positions and edge weights between the two
+      real within-subject sessions. Scalar topology metrics (&beta;<sub>1</sub>, modularity,
+      global efficiency) reproduced byte-identical against the prior scalar-only run before
+      this graph-structure extraction was added.
+    </p>
+
+    <div class="fc-controls">
+      <select id="fc-subject" class="fc-select"></select>
+      <div class="fc-morph">
+        <span>DRUG</span>
+        <input id="fc-morph-slider" type="range" min="0" max="1" step="0.01" value="0">
+        <span>PLACEBO</span>
+      </div>
+    </div>
+
+    <div class="fc-layout">
+      <div class="fc-stage-card">
+        <div class="fc-stage-head">
+          <h2>Connectome &mdash; drag to orbit, scroll to zoom</h2>
+          <span id="fc-graph-stats" style="font-size:11.5px;color:var(--ink-muted);font-family:ui-monospace,monospace;"></span>
+        </div>
+        <div id="fc-graph"></div>
+      </div>
+      <div class="fc-side">
+        <div class="fc-card">
+          <h3>Legend</h3>
+          <div class="fc-legend">
+            <div class="fc-legend-row"><span class="fc-swatch" style="background:var(--drug)"></span>drug-leaning</div>
+            <div class="fc-legend-row"><span class="fc-swatch" style="background:var(--placebo)"></span>placebo-leaning</div>
+            <div class="fc-legend-row">edges: real |Pearson r| &ge; 0.3</div>
+          </div>
+        </div>
+        <div class="fc-card">
+          <h3>Paired drug vs. placebo stats</h3>
+          <table class="fc-stats-table" id="fc-stats-table"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="fc-footer">
+      Source: <code>tools/stream_process_ds005917.py --save-graph-structure</code> +
+      <code>tools/export_fmri_connectome_for_command_center.py</code>, served by
+      <code>GET /fmri-connectome/data</code>. Rendered with
+      <code>3d-force-graph</code> (Three.js-based, MIT-licensed). Paired statistics from
+      <code>tools/analyze_ds005917_paired_stats.py</code>.
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.0/dist/3d-force-graph.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function lerpColor(hexA, hexB, t) {
+    function hexToRgb(h) { h = h.replace('#', ''); return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)]; }
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    return 'rgb(' + Math.round(lerp(a[0],b[0],t)) + ',' + Math.round(lerp(a[1],b[1],t)) + ',' + Math.round(lerp(a[2],b[2],t)) + ')';
+  }
+  function renderError(msg) { document.getElementById('fc-graph').innerHTML = '<div class="fc-error">' + msg + '</div>'; }
+
+  fetch('/fmri-connectome/data').then(function (r) { return r.json(); }).then(function (data) {
+    if (data.status !== 'available') { renderError('fMRI connectome data unavailable: ' + (data.reason || 'unknown')); return; }
+
+    var select = document.getElementById('fc-subject');
+    var withGraph = data.subjects.filter(function (s) { return s.conditions.drug.graph && s.conditions.placebo.graph; });
+    if (!withGraph.length) { renderError('No subjects have real graph-structure data in this deployment.'); return; }
+    withGraph.forEach(function (s) {
+      var opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.id; select.appendChild(opt);
+    });
+    document.getElementById('fc-graph-stats').textContent =
+      withGraph.length + ' / ' + data.n_subjects + ' subjects with real graph structure';
+
+    // paired stats table
+    var tbl = document.getElementById('fc-stats-table');
+    var rows = ['<tr><th>metric</th><th>drug</th><th>placebo</th><th>p (paired t)</th></tr>'];
+    if (data.paired_stats && data.paired_stats.metrics) {
+      Object.keys(data.paired_stats.metrics).forEach(function (k) {
+        var m = data.paired_stats.metrics[k];
+        rows.push('<tr><td>' + k + '</td><td>' + (m.drug_mean != null ? m.drug_mean.toFixed(3) : '–') +
+          '</td><td>' + (m.placebo_mean != null ? m.placebo_mean.toFixed(3) : '–') +
+          '</td><td>' + (m.paired_t_p != null ? m.paired_t_p.toExponential(2) : 'undefined') + '</td></tr>');
+      });
+    }
+    tbl.innerHTML = rows.join('');
+
+    var Graph = ForceGraph3D()(document.getElementById('fc-graph'))
+      .backgroundColor('rgba(0,0,0,0)')
+      .nodeLabel(function (n) { return 'parcel ' + n.id; })
+      .linkOpacity(0.35)
+      .linkWidth(function (l) { return Math.min(3, Math.abs(l.weight) * 3); });
+
+    var morphSlider = document.getElementById('fc-morph-slider');
+
+    function buildGraphData(subject, t) {
+      var drug = subject.conditions.drug.graph, placebo = subject.conditions.placebo.graph;
+      var n = drug.centroids.length;
+      var nodes = [];
+      for (var i = 0; i < n; i++) {
+        var cd = drug.centroids[i], cp = placebo.centroids[i] || cd;
+        nodes.push({
+          id: i,
+          x: lerp(cd[0], cp[0], t) * 2, y: lerp(cd[1], cp[1], t) * 2, z: lerp(cd[2], cp[2], t) * 2,
+          fx: lerp(cd[0], cp[0], t) * 2, fy: lerp(cd[1], cp[1], t) * 2, fz: lerp(cd[2], cp[2], t) * 2,
+        });
+      }
+      // union of drug/placebo edges; weight morphs where both exist, else fades toward 0 as it leaves its own condition
+      var edgeMap = {};
+      drug.edges.forEach(function (e) { edgeMap[e.source + '_' + e.target] = { source: e.source, target: e.target, wd: e.weight, wp: 0 }; });
+      placebo.edges.forEach(function (e) {
+        var k = e.source + '_' + e.target;
+        if (edgeMap[k]) edgeMap[k].wp = e.weight;
+        else edgeMap[k] = { source: e.source, target: e.target, wd: 0, wp: e.weight };
+      });
+      var links = Object.keys(edgeMap).map(function (k) {
+        var e = edgeMap[k];
+        return { source: e.source, target: e.target, weight: lerp(e.wd, e.wp, t) };
+      }).filter(function (l) { return Math.abs(l.weight) > 0.05; });
+      return { nodes: nodes, links: links };
+    }
+
+    function render() {
+      var subject = withGraph.find(function (s) { return s.id === select.value; }) || withGraph[0];
+      var t = parseFloat(morphSlider.value);
+      var gd = buildGraphData(subject, t);
+      var col = lerpColor('#a855f7', '#14b8a6', t);
+      Graph.graphData(gd)
+        .nodeColor(function () { return col; })
+        .linkColor(function () { return col; });
+    }
+
+    select.addEventListener('change', render);
+    morphSlider.addEventListener('input', render);
+    render();
+  }).catch(function (err) { renderError('fMRI connectome data failed to load: ' + err); });
+})();
+</script>
