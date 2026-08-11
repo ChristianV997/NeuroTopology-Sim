@@ -177,6 +177,29 @@ outputs/evidence/<bundle_name>/
 same directory as `--out`), for cases where the report should live
 somewhere other than alongside the bundle.
 
+### Generating a report from an `adapters.mne_bids` export
+
+`adapters.mne_bids` (see `docs/mne_bids_adapter.md`) can produce the same
+`EvidenceReport.md`/`EvidenceReport.json` pair for a lab's own derived
+feature artifacts, without any `evidence.export_bundle`/
+`evidence.builder.DISPATCH` entry for that dataset:
+
+```bash
+python -m adapters.mne_bids \
+    --features derived_features.csv --mapping mapping.json \
+    --out outputs/adapters/mne_bids/my_export \
+    --registry benchmarks/registry_seed.json \
+    --updated-registry-out outputs/adapters/mne_bids/my_export/registry_updated.json \
+    --include-evidence-bundle --include-report
+```
+
+This calls `reports.evidence_report.build_report` exactly as
+`evidence.builder.build_evidence_bundle`'s own `--include-report` does --
+the only difference is the bundle upstream of it was built via
+`evidence.builder.build_generic_evidence_bundle()` (see
+`docs/governed_evidence_bundles.md`) rather than a `DISPATCH`-registered
+exporter.
+
 ## Limitations
 
 - No downstream consumer of `EvidenceReportV1` exists yet beyond a human

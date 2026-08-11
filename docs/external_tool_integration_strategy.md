@@ -233,10 +233,12 @@ how they'd otherwise rank.
 python -m external_tools.export_registry --recommended-next --limit 10
 ```
 
-## Why MNE/BIDS is the next highest-leverage adapter
+## Why MNE/BIDS was the next highest-leverage adapter
 
-Three independent facts converge on **MNE + BIDS** as the next milestone,
-not a fresh registry query:
+Three independent facts converged on **MNE + BIDS** as the milestone
+immediately after this registry, not a fresh registry query -- and it has
+since been implemented (`adapters.mne_bids`, see
+`docs/mne_bids_adapter.md`):
 
 1. **Already partially present.** `mne` and `mne-bids` are both already
    real, declared, importable dependencies of this repository -- there is
@@ -252,9 +254,17 @@ not a fresh registry query:
    `mne`+`mne-bids` adapter would replace N one-off readers with one
    governed, provenance-tracked ingestion path.
 
-`recommended_next()` reflects this: `mne-python`, `mne-bids`, `gudhi`,
-`networkx`, and `eegdash` all rank at the top of the P0 tier this session
+`recommended_next()` reflected this: `mne-python`, `mne-bids`, `gudhi`,
+`networkx`, and `eegdash` all ranked at the top of the P0 tier
 (verified via `python -m external_tools.export_registry --recommended-next`).
+
+`adapters.mne_bids`'s v1 scope is deliberately narrower than "a full MNE
+adapter" would eventually be: it consumes lightweight BIDS metadata and
+explicit, already-derived feature tables, not raw MNE `Raw`/`Epochs`
+objects -- see `docs/mne_bids_adapter.md`'s Future Work section for what a
+v2 direct-object ingestion adapter would add on top of this. `mne-python`,
+`gudhi`, and `networkx` remain the next-ranked P0 candidates for a
+follow-on adapter.
 
 ## How this supports productized reports, SaaS, SDK/API, and clinical-research analytics
 

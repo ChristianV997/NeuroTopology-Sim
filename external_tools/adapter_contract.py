@@ -1,14 +1,21 @@
-"""AdapterContractV1 -- the schema a future adapter for an external tool
-must satisfy before it is allowed to write into this repository's
-canonical artifact schemas.
+"""AdapterContractV1 -- the schema an adapter for an external tool must
+satisfy before it is allowed to write into this repository's canonical
+artifact schemas.
 
-No adapter is implemented by this milestone. This is the bridge contract
-that will later let an MNE/BIDS/fMRIPrep/MOABB (etc.) adapter emit
-`DatasetRecordV1`/`ArtifactRecordV1`/`TransitionRecordV1`/
+This is the bridge contract that lets an MNE/BIDS/fMRIPrep/MOABB (etc.)
+adapter emit `DatasetRecordV1`/`ArtifactRecordV1`/`TransitionRecordV1`/
 `PhaseSpaceCoordinateV1`/`EvidenceBundleV1`/`EvidenceReportV1` artifacts
 without polluting any of those schemas with tool-specific fields, and
 without silently exceeding the claim/evidence ceilings those schemas
 already enforce. See docs/external_tool_integration_strategy.md.
+
+The first real adapter satisfying this contract is `adapters.mne_bids`
+(see docs/mne_bids_adapter.md); its own `AdapterContractV1` entry lives in
+`external_tools/adapter_contracts_seed.json`, loaded via
+`load_adapter_contracts()` below -- a separate file from
+`external_tools/registry_seed.json` (which holds `ExternalToolRecordV1`
+entries only), so that adding an adapter contract never requires touching
+the already-committed, already-tested tool registry seed.
 """
 from __future__ import annotations
 
@@ -148,3 +155,37 @@ class AdapterContractV1:
         errors = self.validate()
         if errors:
             raise ExternalToolValidationError("; ".join(errors))
+
+
+_ADAPTER_CONTRACTS_SCHEMA = "NeuroTopologySim.AdapterContractRegistry.v1"
+
+
+class AdapterContractRegistryError(ValueError):
+    """Raised for adapter-contracts-file-level problems (missing file, bad shape, ...)."""
+
+
+def load_adapter_contracts(path: Union[str, Path]) -> dict[str, "AdapterContractV1"]:
+    """Load `{adapter_id: AdapterContractV1}` from an adapter-contracts seed
+    file (schema `NeuroTopologySim.AdapterContractRegistry.v1`), e.g.
+    `external_tools/adapter_contracts_seed.json`. Deliberately not a method
+    on `ExternalToolRegistry` -- adapter contracts are a distinct artifact
+    kind stored in their own file, not merged into the tool registry.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise AdapterContractRegistryError(f"adapter contracts file does not exist: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {
+        c["adapter_id"]: AdapterContractV1.from_dict(c) for c in data.get("adapter_contracts") or []
+    }
+
+
+def save_adapter_contracts(contracts: dict[str, "AdapterContractV1"], path: Union[str, Path]) -> Path:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": _ADAPTER_CONTRACTS_SCHEMA,
+        "adapter_contracts": [contracts[k].to_dict() for k in sorted(contracts)],
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    return path
