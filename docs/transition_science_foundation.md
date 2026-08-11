@@ -230,6 +230,129 @@ null/surrogate data). Every exported record's `limitations` explicitly state
 that it is "not a validated consciousness biomarker, clinical assessment, or
 diagnostic output."
 
+## First real-output integration: ds005620 PITNN/cohort topology
+
+The generic exporter above (`transitions.export_from_results`) is
+demonstrated on synthetic fixtures only. This section documents a second,
+concrete exporter — `tools/export_ds005620_pitnn_transitions.py` — that
+consumes a **real, already-computed, git-committed** repository artifact and
+proves the transition layer is not merely a synthetic test package.
+
+**Exporter added**: `tools/export_ds005620_pitnn_transitions.py`, a
+standalone tool (not a flag on the analysis script that produces the source
+artifact, to avoid conflating "re-run the cohort analysis" with "convert its
+already-written output" — the exporter never re-runs
+`tools/analyze_pitnn_cohort_ds005620.py` or touches raw EEG data).
+
+**Input artifact it consumes**: `contracts/btc_icft/ds005620/pitnn_cohort/`
+— `cohort_summary.json`, `cohort_per_subject.csv`, `pairing.json`,
+`RunRecord.json`. This directory is committed to the repository (unlike
+`outputs/`, which is gitignored), produced by
+`tools/analyze_pitnn_cohort_ds005620.py` from
+`tools/stream_pitnn_cohort_ds005620.py`'s per-subject EEG topology output
+for the real, 20-subject ds005620 propofol cohort (schema
+`NeuroTopologySim.DS005620PITNNCohort.v1`). The exporter validates this
+schema tag before parsing anything else and fails closed on a mismatch.
+
+**Records it emits**: one `TransitionRecordV1` per subject with a paired
+awake/sedated row in `cohort_per_subject.csv` (20 for the real committed
+cohort), plus one cohort-level record built from the same artifact's
+per-feature subject-median statistics (`topology_tests.*.paired_wilcoxon_subject_means`).
+Three features are mapped onto the canonical namespace, matching
+`tools/analyze_pitnn_cohort_ds005620.py`'s own `_METRICS` tuple exactly:
+
+| Source column | Canonical feature |
+|---|---|
+| `awake_landscape_area` / `sedated_landscape_area` | `topology.persistence_landscape_area` |
+| `awake_beta1` / `sedated_beta1` | `topology.betti1` (a per-condition **mean** across `windows_per_condition` windows — fractional, not a single-window integer count; documented in `preprocessing_provenance.betti1_definition`) |
+| `awake_mean_plv` / `sedated_mean_plv` | `connectivity.mean_plv` |
+
+Each record's two-point trajectory (`awake` → `sedated`) is written through
+`transitions.store.TransitionStore`, both as `TransitionRecord.json` and a
+2-row `TransitionTrajectory.csv`; `delta_summary`/`velocity_summary` are
+computed via the existing `transitions.metrics` functions, unmodified.
+`bayes_factor`/`verdict` (PITNN-specific, not a canonical transition
+feature) and the subject's real source file paths (from `pairing.json`) are
+preserved in `metadata`, not silently dropped.
+
+**Claim scope and evidence-level policy**: every record — subject-level and
+cohort-level — uses `claim_scope="exploratory_metric"`, per this milestone's
+instruction and because the source artifact's own conclusion (PITNN
+`NOT_SUPPORTED` for all 20 subjects; none of the three subject-blocked
+permutation tests reached p < 0.05) does not support a stronger scope.
+`evidence_level` differs by record level, reflecting evidentiary *strength*
+of the underlying data, not a claim-scope escalation:
+`L2_single_subject_real_signal` for subject records, and
+`L4_cross_subject_dataset_specific` only for the cohort record, which
+carries `metadata.subject_count` from the artifact's real
+`n_paired_subjects` field (20 in the committed cohort — never a fabricated
+count).
+
+`null_control_summary` is set **honestly per record, from real data, not
+hardcoded**: subject-level records have no per-subject null-control test in
+the source artifact, so their status is `not_provided`. The cohort record's
+status is computed dynamically from the source's own
+`subject_blocked_permutation` p-values (`method:
+permutation_test_subject_blocked_paired`, real p-values/effect sizes for
+all three exported features, embedded verbatim in `per_feature`) against
+α = 0.05 — `"failed"` if none reach significance, `"passed"` if at least one
+does. For the real committed cohort artifact today, this evaluates to
+`"failed"` (p = 0.075, 0.44, 0.27 for the three features) — the exporter
+does not soften or reinterpret that outcome. MixedLM p-values on the same
+data are smaller for two features but are recorded only informationally
+under `metadata.additional_statistics`, never substituted into
+`null_control_summary`, to avoid presenting the more favorable test as the
+null control.
+
+**What it does not claim**: no clinical, diagnostic, treatment, biomarker,
+mechanistic-causal, or consciousness-detection interpretation. Every
+record's `limitations` state explicitly that it is an exploratory EEG
+topology artifact exported from an existing analysis output (no raw data
+reprocessed), that condition labels are inherited from the source and not
+independently re-verified, that `velocity_summary` reflects a two-point
+condition-summary trajectory rather than a continuously sampled time
+series, and (per subject/cohort) the real PITNN verdict and Bayes-factor
+context so a reader cannot mistake the transition record for confirmation
+of the anesthesia hypothesis.
+
+**How to run it**:
+
+```bash
+python tools/export_ds005620_pitnn_transitions.py \
+    --input contracts/btc_icft/ds005620/pitnn_cohort \
+    --out outputs/transitions/ds005620_pitnn
+```
+
+Fails closed with a clear message if `--input` doesn't exist, if
+`cohort_summary.json`/`cohort_per_subject.csv` is missing or has an
+unrecognized schema tag, if the CSV has no rows, or if every subject row is
+malformed (a single malformed subject row is skipped with an explicit
+reason in the printed summary and in the returned `skipped` list, rather
+than failing the whole export — but the export still fails if *zero*
+subjects can be exported). Re-running is deterministic: the same input
+always produces the same `transition_id`s.
+
+**Fixtures vs. real output**: the exporter's tests
+(`tests/test_export_ds005620_pitnn_transitions.py`) use small, 1–2-subject
+synthetic fixtures modeled on the *shape* of the real committed artifact —
+not the real 20-subject data — so the test suite stays fast and
+self-contained. No new empirical result is produced or implied by these
+fixtures; the real, 20-subject export (verified manually during this
+integration, not re-asserted in the fast test suite) reads the actual
+committed `contracts/btc_icft/ds005620/pitnn_cohort/` files already in the
+repository, so no local dataset generation or raw-data re-fetch is required
+to reproduce it.
+
+**Future work**: extend this pattern to the `spatial_defect_map` per-subject
+`qabs`/`beta1` series in the same `cohort_summary.json` (a distinct
+topology measurement from `cohort_per_subject.csv`'s columns, intentionally
+not merged into these records to avoid conflating two differently-defined
+`beta1` quantities under one feature name); wire in a similar exporter for
+`outputs/pitnn_cohort/ds005620/subjects/*.json`'s per-window feature
+vectors (gitignored, so any such exporter's tests would need fixtures, as
+this one's do); and reuse this exporter's mapping/governance pattern for
+other datasets' committed cohort artifacts once they exist.
+
 ## Extension guidelines
 
 - **Adding a feature**: if it fits an existing namespace, just use it —
