@@ -517,14 +517,43 @@ LLM's interpretation of a record constitutes scientific evidence. The
 that any code path attempting one of these fails validation rather than
 silently producing a record that reads as though it supports the claim.
 
+## First consumer: PhaseSpaceCoordinateV1
+
+The first system to consume `TransitionRecordV1` is now implemented:
+`phase_space/`, documented in
+[`phase_space_coordinates.md`](phase_space_coordinates.md). It reads
+transition records and emits `PhaseSpaceCoordinateV1` artifacts —
+operational summaries of named transition features along nine registered
+axes, each with explicit provenance, confidence, missing-feature status, and
+limitations.
+
+Two properties of that layer matter to this one:
+
+- **It never bypasses the transition record.** `phase_space/` imports from
+  `transitions/` and reads no recording, BIDS tree, or pipeline CSV
+  directly, so the transition record stays the single governed choke point
+  where condition labels, null-control status, and claim scope are
+  established.
+- **It never promotes a claim.** A coordinate's `output_claim_scope` is the
+  weaker of its source record's scope and the phase-space ceiling
+  (`exploratory_metric`), so consuming a `dataset_specific` or
+  `cross_subject_dataset_specific` transition record yields a *weaker*
+  derived artifact, never a stronger one.
+
+A phase-space coordinate is an operational summary, not a consciousness
+measure — the same discipline this document applies to transition records.
+
 ## Future consumers
 
-The following systems are **not implemented** by this milestone. They are
-listed here only to show what a canonical transition substrate is *for* —
-none of the descriptions below should be read as a commitment to a
-particular design, only as the reason this schema was built the way it was.
+The remaining systems below are **not implemented**. They are listed here
+only to show what a canonical transition substrate is *for* — none of the
+descriptions should be read as a commitment to a particular design, only as
+the reason this schema was built the way it was.
 
-- **Consciousness Phase Space** — would consume many `TransitionRecordV1`s'
+- **Consciousness Phase Space** — the *coordinate substrate* for this is now
+  implemented (see above); what remains unimplemented is any embedding of
+  many records into a shared, validated state space. Today's layer would
+  consume many `TransitionRecordV1`s'
   `delta_summary`/`velocity_summary`/`feature_names` to embed states in a
   shared coordinate system across datasets.
 - **Theory Competition Engine** — would score competing theoretical
