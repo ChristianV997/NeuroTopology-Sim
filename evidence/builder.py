@@ -32,7 +32,7 @@ from phase_space.coordinate import CLAIM_SCOPE_ORDER, PHASE_SPACE_MAX_CLAIM_SCOP
 from phase_space.export_from_transitions import ExportError as PhaseSpaceExportError  # noqa: E402
 from phase_space.export_from_transitions import export as export_phase_space  # noqa: E402
 from phase_space.store import PhaseSpaceStore  # noqa: E402
-from transitions.store import RECORD_FILENAME  # noqa: E402
+from transitions.store import RECORD_FILENAME, TransitionStore  # noqa: E402
 from tools.export_ds000245_fmri_transitions import ExportError as DS000245ExportError  # noqa: E402
 from tools.export_ds000245_fmri_transitions import export as export_ds000245  # noqa: E402
 from tools.export_ds005620_pitnn_transitions import ExportError as DS005620ExportError  # noqa: E402
@@ -404,5 +404,250 @@ def build_evidence_bundle(
         if post_report_errors:
             raise BuildError(f"bundle failed validation after attaching report metadata: {'; '.join(post_report_errors)}")
         store.write(bundle)  # re-write so EvidenceBundle.json reflects metadata.report
+
+    return bundle
+
+
+def build_generic_evidence_bundle(
+    *,
+    dataset_id: str,
+    feature_set: str,
+    modality: str,
+    transitions_dir: Path,
+    out: Path,
+    registry: Optional[BenchmarkRegistry] = None,
+    registry_path: Optional[Path] = None,
+    requested_use: str = "transition_export",
+    claim_family: Optional[str] = None,
+    artifact_kind: Optional[str] = None,
+    include_phase_space: bool = False,
+    normalization_mode: str = "within_record",
+    no_registry: bool = False,
+    include_report: bool = False,
+    report_out: Optional[Path] = None,
+    source_artifact_path: Optional[str] = None,
+    extra_limitations: Optional[list[str]] = None,
+) -> EvidenceBundleV1:
+    """Build an `EvidenceBundleV1` from `TransitionRecordV1` artifacts a
+    caller has *already written* under `transitions_dir`.
+
+    Unlike `build_evidence_bundle`, this function calls no dataset-specific
+    exporter itself -- it only reads already-written transition records --
+    so it works for any adapter whose `(dataset, feature_set)` pair is not,
+    and need not be, registered in `DISPATCH`. This is the "clean
+    generic-bundle path" `adapters.mne_bids` uses for its optional
+    `--include-evidence-bundle`/`--include-report` flags; `DISPATCH` and
+    `build_evidence_bundle`'s own behavior/signature are unchanged by this
+    addition.
+
+    `registry` (an already-loaded, possibly already-mutated
+    `BenchmarkRegistry` object) takes precedence over `registry_path` (a
+    fresh on-disk load) when both are omitted-vs-given -- this lets a
+    caller that just registered a brand-new candidate `DatasetRecordV1` in
+    memory (never writing it over the on-disk seed file) pass that same
+    in-memory registry straight through, instead of round-tripping through
+    a disk file that would not yet contain the new candidate.
+    """
+    if registry_path is None and registry is None and not no_registry:
+        raise BuildError(
+            "registry_path or registry is required unless no_registry=True is explicitly given "
+            "(validation fails closed on missing registry context otherwise)"
+        )
+
+    transitions_dir = Path(transitions_dir)
+    store_records = TransitionStore(transitions_dir).read_all()
+    if not store_records:
+        raise BuildError(f"no TransitionRecordV1 artifacts found under {transitions_dir}")
+
+    registry_decisions: list[dict[str, Any]] = []
+    artifact_ids: list[str] = []
+    claim_scope_ceiling = CLAIM_SCOPE_ORDER[-1]
+    evidence_level_ceiling = EVIDENCE_LEVEL_ORDER[-1]
+
+    if registry is None and registry_path is not None:
+        try:
+            registry = BenchmarkRegistry.load(registry_path)
+        except RegistryError as exc:
+            raise BuildError(f"benchmark registry error: {exc}") from exc
+
+    if registry is not None:
+        try:
+            allowed, reason = registry.check_use(dataset_id, requested_use, claim_family=claim_family)
+        except RegistryError as exc:
+            raise BuildError(f"benchmark registry error: {exc}") from exc
+        registry_decisions.append(
+            {"id": dataset_id, "kind": "dataset", "requested_use": requested_use, "allowed": allowed, "reason": reason}
+        )
+        if not allowed:
+            raise BuildError(f"benchmark registry denied requested_use={requested_use!r} for dataset='{dataset_id}': {reason}")
+
+        dataset_record = registry.datasets.get(dataset_id)
+        if dataset_record is not None:
+            claim_scope_ceiling = dataset_record.claim_scope_ceiling
+            evidence_level_ceiling = dataset_record.evidence_level_ceiling
+
+        if artifact_kind is not None:
+            for artifact_id, artifact_record in registry.artifacts.items():
+                if artifact_record.dataset_id == dataset_id and artifact_record.artifact_kind == artifact_kind:
+                    artifact_ids.append(artifact_id)
+                    try:
+                        a_allowed, a_reason = registry.check_use(artifact_id, requested_use, claim_family=claim_family)
+                    except RegistryError as exc:
+                        raise BuildError(f"benchmark registry error for artifact {artifact_id!r}: {exc}") from exc
+                    registry_decisions.append(
+                        {"id": artifact_id, "kind": "artifact", "requested_use": requested_use, "allowed": a_allowed, "reason": a_reason}
+                    )
+                    if not a_allowed:
+                        raise BuildError(
+                            f"benchmark registry denied requested_use={requested_use!r} for "
+                            f"artifact='{artifact_id}' ({artifact_kind}): {a_reason}"
+                        )
+
+    store = EvidenceBundleStore(out)
+    phase_space_dir = store.phase_space_dir
+
+    transition_record_ids = [r.transition_id for r in store_records]
+    transition_record_paths = [
+        _relative_path(transitions_dir / tid / RECORD_FILENAME) for tid in transition_record_ids
+    ]
+
+    phase_space_coordinate_ids: list[str] = []
+    phase_space_coordinate_paths: list[str] = []
+    phase_space_trajectory_paths: list[str] = []
+    phase_space_status = "not_requested"
+    phase_space_n_failed_validation = 0
+
+    if include_phase_space:
+        try:
+            ps_result = export_phase_space(
+                transitions_dir, phase_space_dir,
+                normalization_mode=normalization_mode,
+                registry_path=registry_path, requested_use="phase_space_export", claim_family=claim_family,
+                mark_seen=False,
+            )
+        except PhaseSpaceExportError as exc:
+            raise BuildError(f"phase-space export failed: {exc}") from exc
+
+        if registry_path is not None:
+            for decision in ps_result.get("registry_decisions") or []:
+                registry_decisions.append(
+                    {
+                        "id": decision["dataset_id"], "kind": "dataset",
+                        "requested_use": decision["requested_use"],
+                        "allowed": decision["allowed"], "reason": decision["reason"],
+                        "note": "checked again by phase_space.export_from_transitions",
+                    }
+                )
+
+        phase_space_coordinate_ids = [c.coordinate_id for c in ps_result["coordinates"]]
+        phase_space_store = PhaseSpaceStore(phase_space_dir)
+        for tid in phase_space_store.list_records():
+            phase_space_coordinate_paths.append(
+                _relative_path(phase_space_dir / tid / "PhaseSpaceCoordinates.json")
+            )
+            trajectory_path = phase_space_dir / tid / "PhaseSpaceTrajectory.json"
+            if trajectory_path.exists():
+                phase_space_trajectory_paths.append(_relative_path(trajectory_path))
+
+        phase_space_n_failed_validation = ps_result["n_failed_validation"]
+        if ps_result["n_estimated"] > 0:
+            phase_space_status = "estimated"
+        elif ps_result["n_coordinates"] == 0:
+            phase_space_status = "failed"
+        else:
+            phase_space_status = "insufficient_data_only"
+
+        claim_scope_ceiling = CLAIM_SCOPE_ORDER[
+            min(_claim_scope_rank(claim_scope_ceiling), _claim_scope_rank(PHASE_SPACE_MAX_CLAIM_SCOPE))
+        ]
+
+    generated_claim_scope = CLAIM_SCOPE_ORDER[
+        min(_claim_scope_rank(r.claim_scope) for r in store_records)
+    ]
+    generated_evidence_levels = sorted({r.evidence_level for r in store_records})
+
+    base_limitations = [
+        "This is a governed evidence bundle built via "
+        "evidence.builder.build_generic_evidence_bundle -- a reproducible "
+        "artifact manifest linking a registry use decision to the "
+        "TransitionRecordV1/PhaseSpaceCoordinateV1 artifacts it "
+        "authorized, not itself a theory result.",
+        f"Source dataset '{dataset_id}', feature_set '{feature_set}'; every "
+        "referenced TransitionRecordV1/PhaseSpaceCoordinateV1 carries its "
+        "own independent limitations, not repeated here in full.",
+        "Not a clinical, diagnostic, or psychiatric-state measure; does not "
+        "validate treatment response, mechanistic causality, or "
+        "spiritual/meditative attainment.",
+    ]
+    if extra_limitations:
+        base_limitations.extend(extra_limitations)
+
+    bundle = EvidenceBundleV1.make(
+        dataset_id=dataset_id,
+        artifact_ids=sorted(artifact_ids),
+        requested_use=requested_use,
+        transition_record_ids=transition_record_ids,
+        phase_space_coordinate_ids=phase_space_coordinate_ids,
+        artifact_paths={"source": source_artifact_path} if source_artifact_path else {},
+        registry_path=str(registry_path) if registry_path else None,
+        registry_decisions=registry_decisions,
+        contamination_updates=[],
+        transition_record_paths=transition_record_paths,
+        phase_space_coordinate_paths=phase_space_coordinate_paths,
+        phase_space_trajectory_paths=phase_space_trajectory_paths,
+        claim_scope_ceiling=claim_scope_ceiling,
+        evidence_level_ceiling=evidence_level_ceiling,
+        generated_claim_scope=generated_claim_scope,
+        generated_evidence_levels=generated_evidence_levels,
+        null_control_summary=_aggregate_null_control(store_records),
+        validation_summary={
+            "transition_records_valid": True,
+            "phase_space_coordinates_valid": (phase_space_n_failed_validation == 0) if include_phase_space else None,
+            "phase_space_n_failed_validation": phase_space_n_failed_validation,
+        },
+        limitations=base_limitations,
+        repo_commit=_git_commit(_REPO_ROOT),
+        metadata={
+            "feature_set": feature_set,
+            "modality": modality,
+            "include_phase_space": include_phase_space,
+            "phase_space_status": phase_space_status,
+            "normalization_mode": normalization_mode if include_phase_space else None,
+            "generic_bundle": True,
+        },
+    )
+
+    errors = bundle.validate()
+    if errors:
+        raise BuildError(f"built bundle failed validation: {'; '.join(errors)}")
+
+    store.write(bundle)
+
+    if include_report:
+        from reports.evidence_report import ReportBuildError, build_report
+        from reports.renderer import render_markdown
+
+        bundle_path = store.root / "EvidenceBundle.json"
+        try:
+            report = build_report(bundle, bundle_path)
+        except ReportBuildError as exc:
+            raise BuildError(f"report generation failed: {exc}") from exc
+
+        report_dir = Path(report_out) if report_out is not None else Path(out)
+        md_path = report_dir / "EvidenceReport.md"
+        json_path = report_dir / "EvidenceReport.json"
+        report.generated_files = [_relative_path(md_path), _relative_path(json_path)]
+        report_dir.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(render_markdown(report), encoding="utf-8")
+        report.write_json(json_path)
+
+        bundle.metadata["report"] = {
+            "report_id": report.report_id,
+            "generated_files": list(report.generated_files),
+        }
+        post_report_errors = bundle.validate()
+        if post_report_errors:
+            raise BuildError(f"bundle failed validation after attaching report metadata: {'; '.join(post_report_errors)}")
+        store.write(bundle)
 
     return bundle

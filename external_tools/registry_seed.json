@@ -780,7 +780,7 @@
       "feature_namespaces": [
         "mne_bids.layout"
       ],
-      "planned_adapter": "bids_adapter_v1 (not yet implemented; likely paired with PyBIDS, see docs)",
+      "planned_adapter": "adapters.mne_bids (implemented; see docs/mne_bids_adapter.md)",
       "allowed_uses": [
         "documentation",
         "feature_design"
@@ -796,12 +796,12 @@
         "cross_dataset_replication_claim"
       ],
       "risks": [
-        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
-        "Depends on MNE-Python's own preprocessing/provenance decisions (see MNE-Python record)."
+        "Depends on MNE-Python's own preprocessing/provenance decisions (see MNE-Python record).",
+        "adapters.mne_bids (the first real adapter against this tool record) consumes lightweight BIDS metadata and user-provided derived feature tables only -- it does not itself import mne_bids or run raw preprocessing; see docs/mne_bids_adapter.md."
       ],
       "limitations": [
         "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
-        "Not currently wired into DatasetRecordV1 ingestion -- BIDS metadata is read ad hoc by individual dataset scripts today."
+        "adapters.mne_bids ingests explicit BIDS metadata/derived feature tables into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1 -- it does not itself call mne_bids's own BIDS layout parser; a fuller PyBIDS/MNE-BIDS-backed layout reader remains future work (see docs/mne_bids_adapter.md)."
       ],
       "provenance": "Already declared in requirements.txt and importable (verified this session: mne_bids 0.19.0).",
       "metadata": {

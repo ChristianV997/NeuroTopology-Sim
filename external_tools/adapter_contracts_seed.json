@@ -1,0 +1,85 @@
+{
+  "schema": "NeuroTopologySim.AdapterContractRegistry.v1",
+  "adapter_contracts": [
+    {
+      "schema_version": "1",
+      "adapter_id": "7f1007732dbf0886",
+      "tool_id": "mne-bids",
+      "adapter_name": "MNE/BIDS Derived Feature Adapter v1",
+      "integration_mode": "adapter_only",
+      "input_artifact_kinds": [
+        "bids_dataset_description",
+        "bids_participants_tsv",
+        "bids_events_tsv",
+        "bids_derivative_metadata",
+        "mne_bids_derived_feature_table_long",
+        "mne_bids_derived_feature_table_wide"
+      ],
+      "output_artifact_kinds": [
+        "transition_record",
+        "phase_space_coordinate"
+      ],
+      "output_targets": [
+        "DatasetRecordV1",
+        "ArtifactRecordV1",
+        "TransitionRecordV1",
+        "PhaseSpaceCoordinateV1",
+        "EvidenceBundleV1",
+        "EvidenceReportV1"
+      ],
+      "feature_namespaces": [
+        "spectral",
+        "topology",
+        "connectivity",
+        "dynamics",
+        "complexity",
+        "qc"
+      ],
+      "required_dependencies": [],
+      "optional_dependencies": [
+        "mne-python",
+        "mne-bids"
+      ],
+      "license_constraints": [
+        "adapter itself has zero hard runtime dependency on mne/mne_bids -- it consumes lightweight BIDS metadata (JSON/TSV) and user-provided derived feature tables (CSV/JSON) with the Python standard library only; mne/mne_bids remain optional, already permissive_low (BSD-3-Clause) dependencies per external_tools/registry_seed.json if a future v2 ingests real MNE objects directly"
+      ],
+      "provenance_requirements": [
+        "source_tool_version",
+        "preprocessing_provenance",
+        "mapping_path",
+        "features_path"
+      ],
+      "validation_requirements": [
+        "fail_closed_if_required_metadata_missing",
+        "reject_implicit_state_inference",
+        "reject_unsupported_feature_namespace"
+      ],
+      "forbidden_outputs": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim",
+        "prospective_prediction_claim"
+      ],
+      "allowed_claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L2_single_subject_real_signal",
+      "implementation_status": "implemented",
+      "limitations": [
+        "Consumes lightweight BIDS metadata (dataset_description.json, participants.tsv, events.tsv) and explicit user-provided derived feature tables only -- does not read raw EEG/MEG/iEEG/fNIRS signal files and does not run MNE preprocessing.",
+        "Requires an explicit, human-authored mapping file declaring source_state/target_state/modality/canonical feature names/definitions; never infers state labels from column names or file paths.",
+        "Emits subject-level (record_level='subject') TransitionRecordV1 records only -- cohort-level records require real cohort statistics this v1 does not compute.",
+        "Does not itself ingest raw MNE Raw/Epochs objects, MOABB/EEGDash datasets, or live BrainFlow/MNE-LSL streams -- see docs/mne_bids_adapter.md's Future Work section."
+      ],
+      "metadata": {
+        "implementation_verified": true,
+        "adapter_module": "adapters.mne_bids",
+        "cli": "python -m adapters.mne_bids",
+        "docs": "docs/mne_bids_adapter.md"
+      }
+    }
+  ]
+}

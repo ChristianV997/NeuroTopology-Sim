@@ -737,6 +737,17 @@ turn a bundle -- and by extension the `TransitionRecordV1` artifacts this
 package produces -- into a deterministic, human-readable summary, with no
 LLM call and no scientific recomputation.
 
+`adapters.mne_bids` (see `docs/mne_bids_adapter.md`) is the first producer
+of `TransitionRecordV1` artifacts that is not one of this package's own
+dataset-specific exporters (`tools.export_ds005620_pitnn_transitions`,
+`tools.export_ds000245_fmri_transitions`) -- it converts an explicit,
+user/lab-provided derived feature table + mapping into the same
+`TransitionRecordV1` schema this package defines, using the identical
+`transitions.record.TransitionRecordV1.make`/`.validate()` path, so every
+downstream consumer (`phase_space/`, `evidence/`, `reports/`) treats an
+`adapters.mne_bids`-produced record exactly like one from this package's
+own exporters.
+
 ## Future consumers
 
 The remaining systems below are **not implemented**. They are listed here

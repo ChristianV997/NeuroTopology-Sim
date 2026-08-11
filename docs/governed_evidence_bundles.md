@@ -258,6 +258,16 @@ one invocation, recording `{"report_id", "generated_files"}` under
 `--include-phase-space`/`--mark-seen`/registry-check behavior were
 otherwise unchanged.
 
+`adapters.mne_bids` (see `docs/mne_bids_adapter.md`) is the first producer
+of an `EvidenceBundleV1` that is not one of `evidence.builder.DISPATCH`'s
+fixed `(dataset, feature_set)` entries -- its `--include-evidence-bundle`
+flag calls a new, additive `evidence.builder.build_generic_evidence_bundle()`
+function that reads already-written `TransitionRecordV1` artifacts
+directly rather than calling a dataset-specific exporter, so a lab's own
+`dataset_id` never needs a `DISPATCH` entry to reach this schema.
+`build_evidence_bundle`'s own signature, `DISPATCH`, and behavior are
+unchanged by this addition.
+
 ## Limitations and future work
 
 **Not implemented by this milestone** (listed only to show what this
