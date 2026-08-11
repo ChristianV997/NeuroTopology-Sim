@@ -279,6 +279,23 @@ validation should consult `benchmarks.split_policy.can_use_dataset`/
 `can_use_artifact` before treating a coordinate as independent evidence.
 No `phase_space/` code was changed by that milestone.
 
+## Governed evidence bundles (consumer of this layer)
+
+`phase_space.export_from_transitions.export` gained an optional
+`--registry`/`--requested-use`/`--mark-seen`/`--updated-registry-out`
+hook (see `docs/benchmark_dataset_registry.md`'s "governed evidence
+bundles" section for the full mechanics): omitted, behavior is unchanged
+from before that hook existed; given, every unique `dataset_id` found among
+the loaded transition records is checked for `phase_space_export`, and the
+export fails closed before writing any coordinate if any is denied.
+`evidence/` (`docs/governed_evidence_bundles.md`) is the primary caller of
+this hook -- `evidence.builder.build_evidence_bundle`'s `--include-phase-space`
+flag routes through it, always with `mark_seen=False` on this layer's own
+call (the bundle itself owns contamination bookkeeping for the whole
+build). This layer still performs no scientific claim promotion; the
+registry check is a discovery-vs-confirmation usage gate, orthogonal to
+this module's existing `output_claim_scope` capping.
+
 ## Future consumers
 
 The following are **not implemented** by this milestone. They are listed

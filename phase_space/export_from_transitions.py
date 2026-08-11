@@ -87,14 +87,76 @@ def export(
     normalization_mode: str = "within_record",
     axes: Optional[list[str]] = None,
     write_trajectory: bool = True,
+    registry_path: Optional[Path] = None,
+    requested_use: str = "phase_space_export",
+    claim_family: Optional[str] = None,
+    mark_seen: bool = False,
+    seen_by: str = "exploration",
+    updated_registry_out: Optional[Path] = None,
 ) -> dict[str, Any]:
+    """Estimate PhaseSpaceCoordinateV1 records from TransitionRecordV1 input.
+
+    `registry_path` is optional and off by default (None), so existing
+    callers and the default CLI invocation are unaffected. When provided,
+    every unique `dataset_id` found among the loaded transition records is
+    checked against `benchmarks.export_registry.BenchmarkRegistry` for
+    `requested_use` (default "phase_space_export"); this exporter fails
+    closed (raises ExportError) before writing any coordinate if ANY
+    dataset's use is denied -- see docs/benchmark_dataset_registry.md.
+    This is a discovery-vs-confirmation usage check, not a scientific
+    validity check.
+
+    `mark_seen=True` (only meaningful together with `registry_path`) marks
+    every checked dataset as `seen_by="exploration"` (phase-space
+    estimation is itself an exploratory computational step; see
+    `benchmarks.split_policy.mark_seen`'s vocabulary) with a note
+    identifying `phase_space_export` as the consumer, AFTER coordinates
+    have been successfully generated. The mutated registry is written only
+    to `updated_registry_out` (required whenever `mark_seen=True`) -- the
+    file at `registry_path` is never mutated in place.
+    """
     if normalization_mode not in NORMALIZATION_MODES:
         raise ExportError(
             f"unknown normalization mode '{normalization_mode}'; choose one of "
             f"{sorted(NORMALIZATION_MODES)}"
         )
+    if mark_seen and registry_path is None:
+        raise ExportError("mark_seen=True requires registry_path to also be given")
+    if mark_seen and updated_registry_out is None:
+        raise ExportError(
+            "mark_seen=True requires updated_registry_out (never mutates registry_path in place)"
+        )
 
     records = _load_records(input_path)
+
+    registry = None
+    registry_decisions: list[dict[str, Any]] = []
+    if registry_path is not None:
+        from benchmarks.export_registry import BenchmarkRegistry, RegistryError
+
+        try:
+            registry = BenchmarkRegistry.load(registry_path)
+        except RegistryError as exc:
+            raise ExportError(f"benchmark registry error: {exc}") from exc
+
+        dataset_ids = sorted({r.dataset_id for r, _ in records if r.dataset_id})
+        denied: list[str] = []
+        for dataset_id in dataset_ids:
+            try:
+                allowed, reason = registry.check_use(dataset_id, requested_use, claim_family=claim_family)
+            except RegistryError as exc:
+                raise ExportError(f"benchmark registry error for dataset_id={dataset_id!r}: {exc}") from exc
+            registry_decisions.append(
+                {"dataset_id": dataset_id, "requested_use": requested_use, "allowed": allowed, "reason": reason}
+            )
+            if not allowed:
+                denied.append(f"{dataset_id}: {reason}")
+        if denied:
+            raise ExportError(
+                f"benchmark registry denied requested_use={requested_use!r} for "
+                f"{len(denied)} dataset(s): {denied}"
+            )
+
     store = PhaseSpaceStore(out_dir)
 
     axis_names = list(axes) if axes else list(AXIS_NAMES)
@@ -141,6 +203,18 @@ def export(
             ),
         }
 
+    contamination_updates: list[dict[str, Any]] = []
+    updated_registry_path: Optional[str] = None
+    if mark_seen and registry is not None:
+        for decision in registry_decisions:
+            dataset_id = decision["dataset_id"]
+            registry.mark_seen(dataset_id, seen_by=seen_by, note="phase_space_export")
+            contamination_updates.append(
+                {"dataset_id": dataset_id, "seen_by": seen_by, "note": "phase_space_export", "applied": True}
+            )
+        written = registry.save(updated_registry_out)
+        updated_registry_path = str(written)
+
     return {
         "n_transitions": len(records),
         "n_coordinates": len(all_coordinates),
@@ -151,6 +225,9 @@ def export(
         "out_dir": out_dir,
         "normalization_mode": normalization_mode,
         "coordinates": all_coordinates,
+        "registry_decisions": registry_decisions,
+        "contamination_updates": contamination_updates,
+        "updated_registry_path": updated_registry_path,
     }
 
 
@@ -179,6 +256,39 @@ def main() -> int:
         "--no-trajectory", action="store_true",
         help="skip writing the per-transition PhaseSpaceTrajectory.json",
     )
+    parser.add_argument(
+        "--registry", type=Path, default=None,
+        help="optional benchmarks.export_registry.BenchmarkRegistry JSON path; if given, "
+             "fails closed before writing any coordinate if --requested-use is not permitted "
+             "for every dataset_id found in the input (default: no registry check, unchanged "
+             "from prior behavior)",
+    )
+    parser.add_argument(
+        "--requested-use", default="phase_space_export",
+        help="use to check against --registry (default: phase_space_export; ignored if "
+             "--registry is not given)",
+    )
+    parser.add_argument(
+        "--claim-family", default=None,
+        help="claim family for --registry validation-use checks",
+    )
+    parser.add_argument(
+        "--mark-seen", action="store_true",
+        help="after a successful export, mark every dataset_id consumed as "
+             "seen_by='exploration' (note: phase_space_export) and write the updated "
+             "registry to --updated-registry-out (required together with this flag); "
+             "requires --registry",
+    )
+    parser.add_argument(
+        "--seen-by", default="exploration",
+        choices=("exploration", "llm", "theory_generation", "model_selection"),
+        help="contamination kind recorded by --mark-seen (default: exploration)",
+    )
+    parser.add_argument(
+        "--updated-registry-out", type=Path, default=None,
+        help="output path for the updated registry when --mark-seen is given; the file at "
+             "--registry is never mutated in place",
+    )
     args = parser.parse_args()
 
     try:
@@ -187,6 +297,12 @@ def main() -> int:
             normalization_mode=args.normalization_mode,
             axes=args.axes,
             write_trajectory=not args.no_trajectory,
+            registry_path=args.registry,
+            requested_use=args.requested_use,
+            claim_family=args.claim_family,
+            mark_seen=args.mark_seen,
+            seen_by=args.seen_by,
+            updated_registry_out=args.updated_registry_out,
         )
     except ExportError as exc:
         print(f"[phase_space.export_from_transitions] FAILED: {exc}")
@@ -201,6 +317,11 @@ def main() -> int:
         "normalization_mode": result["normalization_mode"],
         "out_dir": str(result["out_dir"]),
     }
+    if args.registry is not None:
+        summary["registry_decisions"] = result["registry_decisions"]
+    if args.mark_seen:
+        summary["contamination_updates"] = result["contamination_updates"]
+        summary["updated_registry_path"] = result["updated_registry_path"]
     print(json.dumps(summary, indent=2))
     return 0
 

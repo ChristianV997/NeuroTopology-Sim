@@ -626,12 +626,43 @@ def _build_spatial_defect_cohort_record(
 
 
 def export(
-    input_dir: Path, out_dir: Path, *, include_cohort: bool = True, feature_set: str = "cohort_summary"
+    input_dir: Path,
+    out_dir: Path,
+    *,
+    include_cohort: bool = True,
+    feature_set: str = "cohort_summary",
+    registry_path: Path | None = None,
+    requested_use: str = "transition_export",
+    claim_family: str | None = None,
 ) -> dict[str, Any]:
+    """Export TransitionRecordV1 artifacts for one ds005620 feature set.
+
+    `registry_path` is optional and off by default (None), so existing
+    callers and the default CLI invocation are unaffected. When provided,
+    this exporter consults `benchmarks.export_registry.BenchmarkRegistry`
+    for dataset_id "ds005620" and fails closed (raises ExportError) before
+    reading any artifact if `requested_use` is not permitted -- see
+    docs/benchmark_dataset_registry.md. This is a discovery-vs-confirmation
+    usage check, not a scientific validity check.
+    """
     if feature_set not in _FEATURE_SET_REGISTRY:
         raise ExportError(
             f"unknown feature_set {feature_set!r}; choose one of {sorted(_FEATURE_SET_REGISTRY)}"
         )
+
+    if registry_path is not None:
+        from benchmarks.export_registry import BenchmarkRegistry, RegistryError
+
+        try:
+            registry = BenchmarkRegistry.load(registry_path)
+            allowed, reason = registry.check_use("ds005620", requested_use, claim_family=claim_family)
+        except RegistryError as exc:
+            raise ExportError(f"benchmark registry error: {exc}") from exc
+        if not allowed:
+            raise ExportError(
+                f"benchmark registry denied requested_use={requested_use!r} for "
+                f"dataset_id='ds005620': {reason}"
+            )
 
     artifact = _load_artifact(input_dir)
     repo_commit = _git_commit(_REPO_ROOT)
@@ -719,13 +750,30 @@ def main() -> int:
         "--no-cohort-record", action="store_true",
         help="skip emitting the cohort-level TransitionRecord",
     )
+    parser.add_argument(
+        "--registry", type=Path, default=None,
+        help="optional benchmarks.export_registry.BenchmarkRegistry JSON path; if given, "
+             "fails closed before exporting if --requested-use is not permitted for ds005620 "
+             "(default: no registry check, unchanged from prior behavior)",
+    )
+    parser.add_argument(
+        "--requested-use", default="transition_export",
+        help="use to check against --registry (default: transition_export; ignored if "
+             "--registry is not given)",
+    )
+    parser.add_argument(
+        "--claim-family", default=None,
+        help="claim family for --registry validation-use checks (only relevant for "
+             "internal_validation/external_validation/confirmatory requested uses)",
+    )
     args = parser.parse_args()
 
     out_dir = args.out or Path(_FEATURE_SET_REGISTRY[args.feature_set]["default_out"])
 
     try:
         result = export(
-            args.input, out_dir, include_cohort=not args.no_cohort_record, feature_set=args.feature_set
+            args.input, out_dir, include_cohort=not args.no_cohort_record, feature_set=args.feature_set,
+            registry_path=args.registry, requested_use=args.requested_use, claim_family=args.claim_family,
         )
     except (ExportError, TransitionValidationError) as exc:
         print(f"[export_ds005620_pitnn_transitions] FAILED: {exc}")
@@ -740,6 +788,12 @@ def main() -> int:
         "cohort_transition_id": result["cohort_record"].transition_id if result["cohort_record"] else None,
         "out_dir": str(result["out_dir"]),
     }
+    if args.registry is not None:
+        summary["registry_check"] = {
+            "registry_path": str(args.registry),
+            "requested_use": args.requested_use,
+            "allowed": True,  # export() already raised ExportError above if denied
+        }
     print(json.dumps(summary, indent=2))
     return 0
 

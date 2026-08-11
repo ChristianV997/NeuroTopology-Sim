@@ -259,6 +259,19 @@ record's free text (`limitations`, `metadata`, `display_name`/
 `artifact_kind`) is scanned against the repository's shared banned-phrase
 list, and validation fails closed on a hit.
 
+## Governed evidence bundles (consumer of this registry)
+
+`evidence/` (see `docs/governed_evidence_bundles.md`) links this registry's
+use decisions to the `TransitionRecordV1`/`PhaseSpaceCoordinateV1`
+artifacts they authorize into one `EvidenceBundleV1` manifest.
+`tools.export_ds005620_pitnn_transitions.py` and
+`tools.export_ds000245_fmri_transitions.py` both gained an optional
+`--registry`/`--requested-use` hook so `evidence.builder` can check use and
+fail closed before either exporter writes anything; `phase_space.export_from_transitions`
+gained the analogous hook plus an optional `--mark-seen` that calls this
+package's own `mark_seen` after a successful phase-space export. No changes
+were made to this registry's own schema or policy for that milestone.
+
 ## Limitations and future work
 
 - **No downstream consumer exists yet.** A `DatasetRecordV1`/`ArtifactRecordV1`
