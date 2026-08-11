@@ -1,0 +1,324 @@
+# Transition Science Foundation
+
+Status: **implemented substrate, no downstream consumers yet.** This
+document describes the `transitions/` package as it exists today. It does
+not describe, and should not be read as promising, any of the future
+modules listed in [Future consumers](#future-consumers) — those are
+explicitly out of scope for this milestone.
+
+## Why transitions, not conditions
+
+Most of this repository's existing pipelines are organized around
+**condition comparison**: awake vs. sedated, drug vs. placebo, baseline vs.
+experience, wake vs. N2/N3/REM. That framing is scientifically sound for a
+single two-arm contrast, but it does not compose. Every new contrast needs
+its own ad hoc pair of labels, its own script, and its own report, and nothing
+in the repository durably records the shape of the change itself — how fast
+a subject moved from one state to another, whether the change was
+recoverable, how confident the state labels were, what evidence level backs
+the claim.
+
+The `transitions/` package reorganizes around the **transition** as the
+first-class object instead: one canonical `TransitionRecordV1` per observed
+or hypothesized source-state → target-state change, carrying its own
+trajectory, provenance, governance, and limitations. A condition comparison
+is then just the special case of a transition record with a well-labeled
+`source_state`/`target_state` pair — but the same schema also covers
+unlabeled exploratory transitions, cohort-level aggregates, and transitions
+observed in modalities that don't yet exist in this repository, without
+inventing a new ad hoc format each time.
+
+This is **infrastructure for future work**, not a new empirical claim.
+Building `TransitionRecordV1` does not itself say anything about
+consciousness, anesthesia depth, or meditative attainment — it says how to
+*durably represent* an observed change so that future analysis can consume
+it consistently.
+
+## Relationship to existing repository infrastructure
+
+This package is additive. It does not replace or duplicate:
+
+- **`runs/run_record.py` (`RunRecordV1`)** — the canonical *pipeline run*
+  artifact ("this pipeline executed, here's what it produced").
+  `TransitionRecordV1` is the canonical *state-transition* artifact ("this
+  state change was observed/hypothesized, here's its trajectory"). A single
+  pipeline run can produce zero, one, or many transition records; the two
+  schemas are siblings, not a hierarchy, and deliberately share the same
+  `to_dict`/`from_dict`/`to_json`/`from_json`/deterministic-ID conventions
+  so they feel familiar side by side.
+- **`research_runtime/`** — a tightly-coupled toolkit built for one specific
+  preregistered campaign (the DS003969 state-transition development
+  protocol): `protocol.py`'s `ProtocolSpec`, `stage_policy.py`'s
+  single-use `StageLock` for confirmatory/external stage gating,
+  `envelope.py`'s write-once `RunEnvelope` (which already reserves a
+  `transition_operators.json` slot for that protocol's Markov-operator
+  output), `feature_adapter.py`'s real-EEG window enrichment, and
+  `transitions.py`'s k-means state-fitting + discrete Markov transition
+  operators (`fit_feature_state_model`, `transition_operator`,
+  `operator_metrics`, `jensen_shannon_distance`). That module computes
+  *aggregate* transition-matrix statistics for one campaign; it never
+  materializes an individual state-to-state edge as its own durable,
+  governance-scoped artifact. `transitions.TransitionRecordV1` fills
+  exactly that gap and is deliberately modality- and campaign-agnostic —
+  any pipeline's per-window metric CSV can be exported into one, not just
+  DS003969's.
+- **`sciencer_d/btc_icft/ontology/`** — the DS005620 M/T/C/Q/O label-contract
+  promotion ladder (`ClaimScope`: `engineering_runtime` →
+  `ontology_candidate`/`rejected`, `PromotionState`). That vocabulary
+  encodes a specific claim-promotion pipeline for one dataset's marker→
+  topology→substrate→theory→ontology bridge claims. This package's
+  `claim_scope`/`evidence_level` vocabulary (below) is deliberately
+  different and narrower — scoped to *transition artifacts specifically* —
+  and is not a substitute for that ontology system. What this package does
+  reuse is `sciencer_d.btc_icft.report_guardrails.BANNED_REPORT_PHRASES`
+  and `validate_safe_text`, the repo's single source of truth for banned
+  overclaim language, rather than declaring a fifth copy of that phrase
+  list (three others already existed before this package:
+  `sciencer_d/btc_icft/ontology/safe_language.py`,
+  `tools/validate_ontology_claim_language.py`,
+  `tools/check_claim_guardrails.py`).
+
+## The canonical object: `TransitionRecordV1`
+
+`transitions.record.TransitionRecordV1` is a stdlib-only dataclass. Its
+fields fall into six groups:
+
+| Group | Fields |
+|---|---|
+| Identity | `dataset_id`, `subject_id`, `session_id`, `record_level`, `modality`, `source_state`, `target_state` |
+| Description | `transition_class`, `time_axis`, `feature_names`, `intervention` |
+| Data | `trajectory_artifact`, `delta_summary`, `velocity_summary`, `duration` |
+| Provenance | `preprocessing_provenance`, `repo_commit`, `created_at` |
+| Governance | `claim_scope`, `evidence_level`, `null_control_summary`, `state_label_confidence`, `limitations` |
+| Storage/extension | `artifact_paths`, `metadata`, `transition_id`, `schema_version` |
+
+### Deterministic IDs
+
+`transition_id` is a `sha256[:16]` over exactly seven fields — `dataset_id`,
+`subject_id`, `session_id`, `source_state`, `target_state`, `modality`, and
+the sorted `feature_names` set — mirroring `runs.run_record.build_run_id`'s
+"stable hash excludes `created_at` and artifact paths" convention. Two
+records built from identical values for those seven fields always get the
+same ID, regardless of what else differs (`transition_class`, `limitations`
+text, `claim_scope`, timestamps, ...); changing any one of the seven always
+changes it. `record.validate()` recomputes the ID and flags a mismatch, so a
+hand-edited or corrupted `transition_id` field is caught rather than
+silently trusted.
+
+### Validation is fail-closed
+
+`record.validate()` returns a list of error strings (never raises directly;
+`validate_or_raise()` wraps it) and enforces, among other rules:
+
+- `dataset_id` is always required.
+- `source_state`/`target_state` are required *unless* `claim_scope` is
+  `computational_artifact` or `exploratory_metric` — the claim scope itself
+  is the "this is an explicitly unlabeled exploratory transition"
+  declaration; there is no separate boolean flag to forget to set.
+  `dataset_specific` and `cross_subject_dataset_specific` always require
+  both states.
+- `record_level="cohort"` records must not carry a `subject_id`;
+  `record_level="subject"` records must.
+- `limitations` must be non-empty.
+- All feature names must pass `transitions.features` namespace validation.
+- All claim/evidence/null-control rules from `transitions.governance` (next
+  section).
+
+## Feature namespace (`transitions.features`)
+
+Every feature name is `namespace.local_name`. Ten namespaces are allowed:
+`spectral`, `topology`, `connectivity`, `dynamics`, `complexity`, `qc`,
+`transition`, `phenomenology`, `phase_space`, `experimental`. A starter
+registry of ~35 canonical names (e.g. `topology.q_net`,
+`connectivity.mean_plv`, `spectral.alpha_power`,
+`complexity.pcist_proxy`) is guaranteed to pass; new names under a *known*
+namespace also pass (namespace membership is the real gate, not an
+exhaustive name allowlist — new metrics shouldn't require editing this file
+every time). Non-namespaced names and unknown namespaces always fail.
+Independent of namespace, any name containing a diagnosis/treatment/
+clinical/biomarker/consciousness-detection/jhāna/cessation/enlightenment/
+spiritual-attainment token (Unicode-normalized, so `jhāna` and `jhana` are
+both caught) fails outright — a feature can never *name itself* into a
+claim its data can't support. `experimental.*` passes structurally here;
+`transitions.governance` is what caps its claim scope.
+
+## Governance (`transitions.governance`)
+
+Four claim scopes are allowed for this milestone's automated validator:
+`computational_artifact`, `exploratory_metric`, `dataset_specific`,
+`cross_subject_dataset_specific`. Nine are always blocked, regardless of
+evidence supplied: `clinical`, `diagnostic`, `treatment`,
+`consciousness_biomarker`, `mechanistic_causal`, `spiritual_attainment`,
+`enlightenment_detection`, `jhana_detection`, `cessation_detection`. Any
+other string fails closed as "not a recognized scope" rather than being
+silently accepted.
+
+Five evidence levels exist, from weakest to strongest claim:
+`L0_computational_artifact`, `L1_synthetic_validation`,
+`L2_single_subject_real_signal`, `L3_dataset_specific_effect`,
+`L4_cross_subject_dataset_specific`. `dataset_specific` additionally
+requires `dataset_id`, both states, and a non-`None` `state_label_confidence`;
+`cross_subject_dataset_specific` requires either `record_level="cohort"` or
+an explicit `metadata.subject_count >= 2` — cohort evidence has to be
+*stated*, not inferred from the absence of a subject ID.
+
+**Null-control status is never silently "passed."** `null_control_summary`
+defaults to `{"status": "not_provided"}` (never `None`), and the four valid
+statuses — `not_provided`, `not_applicable`, `failed`, `passed` — are
+explicit and mutually exclusive. A record with no null-control status field
+at all fails validation; it cannot be misread as a passing control.
+
+Finally, every free-text field (`limitations`, `metadata`, `transition_class`,
+`intervention`, `preprocessing_provenance`) is recursively scanned against
+`sciencer_d.btc_icft.report_guardrails.BANNED_REPORT_PHRASES` plus a small
+transition-specific addendum (`jhana detected`, `cessation detection`,
+`spiritual attainment`, `mechanistic proof`, `validated biomarker`, ...).
+
+## Trajectory metrics (`transitions.metrics`)
+
+Eight generic, modality-agnostic functions operate on plain numeric
+arrays/lists: `trajectory_mean_delta`, `transition_velocity`,
+`transition_acceleration`, `transition_variance`, `dwell_time_summary`,
+`hysteresis_summary`, `label_balance_check`, `subject_pairing_check`. None
+of them interpret what a feature *means* — they compute endpoint deltas,
+first/second differences, run-length dwell statistics, and forward/backward
+path divergence, and nothing else. Malformed input (empty, ragged, NaN)
+raises `ValueError` with a specific message. Genuinely insufficient data
+(fewer than 3 timepoints for acceleration, no recovery leg for hysteresis,
+no overlapping subjects for pairing) returns an explicit
+`{"status": "insufficient_data", "reason": ...}` dict rather than a
+fabricated number — this is the same "never silently substitute a plausible
+value for a missing one" discipline the null-control status field enforces.
+
+## Storage (`transitions.store.TransitionStore`)
+
+One directory per `transition_id`, following the naming convention already
+established by `sciencer_d.btc_icft.runtime.snapshots.ScienceRuntimeSnapshotStore`
+(`write`/`read`/`list`). `TransitionStore(root).write(record, trajectory=...)`
+writes `TransitionRecord.json` and, if a trajectory is given,
+`TransitionTrajectory.csv`, updating `record.trajectory_artifact` and
+`record.artifact_paths["trajectory"]` first so the two files stay
+consistent. No database dependency; every method is a handful of lines over
+`pathlib`/`json`/`csv`.
+
+## Exporting from existing outputs
+
+```bash
+python -m transitions.export_from_results \
+    --dataset ds005620 \
+    --input outputs/pitnn_cohort/ds005620/subjects/sub-1010.json \
+    --out artifacts/transitions/ds005620 \
+    --source-state awake --target-state sedated \
+    --transition-class anesthesia_induction \
+    --modality eeg \
+    --subject sub-1010
+```
+
+The exporter reads a flat CSV or JSON table (one row per timepoint/window,
+file order assumed to be time order), maps recognizable column names (e.g.
+`q_net`, `mean_plv`, `alpha_power`) onto the canonical feature namespace via
+a fixed alias table generated from `transitions.features.CANONICAL_FEATURES`
+itself (so the two can't drift), and skips any column it can't unambiguously
+classify rather than guessing. If *no* columns can be classified, or the
+input file is malformed, it fails closed with a specific error and writes
+nothing. `--source-state`/`--target-state`/`--transition-class`/`--modality`
+are required arguments — state labels are never inferred from filenames,
+column values, or metric values. Defaults are deliberately conservative:
+`claim_scope=computational_artifact`, `evidence_level=L0_computational_artifact`,
+`null_control_summary={"status": "not_provided"}` (this exporter never reads
+null/surrogate data). Every exported record's `limitations` explicitly state
+that it is "not a validated consciousness biomarker, clinical assessment, or
+diagnostic output."
+
+## Extension guidelines
+
+- **Adding a feature**: if it fits an existing namespace, just use it —
+  `transitions.features` does not need editing for new names under a known
+  namespace. Add it to `CANONICAL_FEATURES` only if it should also gain a
+  ready-made CSV column alias in the exporter.
+- **Adding a claim scope or evidence level**: do not add ad hoc new values
+  by editing a record's `claim_scope` string in place. Extending
+  `ALLOWED_CLAIM_SCOPES`/`ALLOWED_EVIDENCE_LEVELS` is a governance decision,
+  not a data decision — it belongs in a PR that explicitly discusses why
+  the new scope's requirements are adequate, following the same discipline
+  `sciencer_d/btc_icft/ontology/evidence.py`'s evidence-requirement matrix
+  already uses for its own promotion ladder.
+- **Adding a new pipeline's export path**: prefer calling
+  `transitions.export_from_results.export()` (the library function, not
+  just the CLI) directly from the pipeline once its metric output already
+  exists as a CSV/JSON, rather than hand-building a `TransitionRecordV1`
+  from scratch — the alias table and column-inference logic are meant to be
+  reused.
+- **Stage-gating a transition record**: if a transition record needs to be
+  produced only after a `research_runtime.stage_policy.StageLock` is
+  consumed (e.g. for a confirmatory-stage claim), gate the *export call*,
+  not the schema — `TransitionRecordV1` itself has no opinion about stage
+  gating.
+
+## Limitations of this milestone
+
+- No downstream consumer exists yet. A `TransitionRecordV1` sitting on disk
+  is not, by itself, evidence of anything beyond what its own
+  `claim_scope`/`evidence_level`/`limitations` state.
+- The exporter's feature-column inference is heuristic (name-matching, not
+  semantic). It will silently skip a genuinely relevant column whose name
+  doesn't match the alias table rather than guess wrong — this trades
+  completeness for safety, but does mean an export can be less complete
+  than the source file.
+- `hysteresis_summary`'s forward/backward comparison collapses each leg to
+  a single mean-across-features scalar path before comparing; it is a
+  coarse structural indicator, not a per-feature analysis.
+- `dwell_time_summary` is sample-count-based by default; converting to
+  seconds requires the caller to supply a uniform `sample_duration_s` — it
+  does not handle non-uniform sampling.
+- This package has not been wired into any existing pipeline's output path
+  (`dual_engine/fmri_tda_pipeline.py`, the `sciencer_d/btc_icft` streamers,
+  `research_runtime/`'s own campaign scripts, ...). Doing so is future
+  work, deliberately not part of this milestone.
+
+## Prohibited interpretations
+
+Per this repository's governance conventions (`AGENTS.md`, `sciencer_d/
+btc_icft/report_guardrails.py`), no `TransitionRecordV1`, no matter its
+`evidence_level`, may be used to automatically assert: a clinical diagnosis;
+a treatment recommendation; a validated biomarker; consciousness detection;
+anesthesia-depth clinical assessment; a psychiatric diagnosis; meditation-
+stage, jhāna, or cessation detection; enlightenment or spiritual-attainment
+inference; mechanistic proof; causal inference from correlation; or that an
+LLM's interpretation of a record constitutes scientific evidence. The
+`clinical`/`diagnostic`/`treatment`/`consciousness_biomarker`/
+`mechanistic_causal`/`spiritual_attainment`/`enlightenment_detection`/
+`jhana_detection`/`cessation_detection` claim scopes exist specifically so
+that any code path attempting one of these fails validation rather than
+silently producing a record that reads as though it supports the claim.
+
+## Future consumers
+
+The following systems are **not implemented** by this milestone. They are
+listed here only to show what a canonical transition substrate is *for* —
+none of the descriptions below should be read as a commitment to a
+particular design, only as the reason this schema was built the way it was.
+
+- **Consciousness Phase Space** — would consume many `TransitionRecordV1`s'
+  `delta_summary`/`velocity_summary`/`feature_names` to embed states in a
+  shared coordinate system across datasets.
+- **Theory Competition Engine** — would score competing theoretical
+  predictions against the same `TransitionRecordV1` population rather than
+  against ad hoc per-dataset comparisons.
+- **Koopman/DMD analysis** — would fit linear operators to trajectory data
+  read via `TransitionStore.read_trajectory`, treating each record's
+  trajectory CSV as one training example.
+- **Counterfactual Reachable Sets** — would use `hysteresis_summary`-style
+  forward/backward divergence, generalized across many records, to ask
+  which states are reachable from which.
+- **Phenomenology system** — would attach first-person report data to a
+  transition record via the already-reserved `phenomenology.*` feature
+  namespace, without conflating it with the physiological measurements in
+  other namespaces.
+- **Holo-Atlas LLM interpreter** — would read `TransitionRecordV1.to_dict()`
+  as *input context* for a natural-language summary, but per the governance
+  rules above, an LLM's output about a record is never itself promoted to
+  evidence within the record.
+- **Consciousness Atlas** — would aggregate `TransitionStore.read_all()`
+  across datasets into a browsable index, gated by each record's own
+  `claim_scope`/`evidence_level` rather than a single global claim.
