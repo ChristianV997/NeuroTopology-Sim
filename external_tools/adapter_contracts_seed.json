@@ -3,6 +3,89 @@
   "adapter_contracts": [
     {
       "schema_version": "1",
+      "adapter_id": "36c863feef7e90bc",
+      "tool_id": "nilearn",
+      "adapter_name": "fMRIPrep/Nilearn Derived fMRI Adapter v1",
+      "integration_mode": "adapter_only",
+      "input_artifact_kinds": [
+        "bids_dataset_description",
+        "fmriprep_dataset_description",
+        "bids_participants_tsv",
+        "fmriprep_confounds_timeseries_tsv",
+        "fmriprep_derivative_metadata",
+        "nilearn_derived_feature_table_long",
+        "nilearn_derived_feature_table_wide",
+        "connectivity_graph_summary_json"
+      ],
+      "output_artifact_kinds": [
+        "transition_record",
+        "phase_space_coordinate"
+      ],
+      "output_targets": [
+        "DatasetRecordV1",
+        "ArtifactRecordV1",
+        "TransitionRecordV1",
+        "PhaseSpaceCoordinateV1",
+        "EvidenceBundleV1",
+        "EvidenceReportV1"
+      ],
+      "feature_namespaces": [
+        "connectivity",
+        "topology",
+        "complexity",
+        "dynamics",
+        "qc"
+      ],
+      "required_dependencies": [],
+      "optional_dependencies": [
+        "nilearn",
+        "fmriprep"
+      ],
+      "license_constraints": [
+        "adapter itself has zero hard runtime dependency on nilearn/fmriprep -- it consumes lightweight fMRIPrep-style metadata (JSON/TSV) and user-provided derived feature tables/graph-summary JSON (CSV/JSON) with the Python standard library only; nilearn remains an optional, already permissive_low (BSD-3-Clause) dependency per external_tools/registry_seed.json if a future v2 ingests real Nilearn objects directly; fmriprep remains external_cli/planned (Apache-2.0, FreeSurfer sub-license not verified) and is never a hard adapter dependency"
+      ],
+      "provenance_requirements": [
+        "source_tool_version",
+        "preprocessing_provenance",
+        "confound_policy",
+        "mapping_path",
+        "features_path"
+      ],
+      "validation_requirements": [
+        "fail_closed_if_required_metadata_missing",
+        "reject_implicit_state_inference",
+        "reject_unsupported_feature_namespace",
+        "require_atlas_or_parcellation_for_graph_features"
+      ],
+      "forbidden_outputs": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim",
+        "prospective_prediction_claim"
+      ],
+      "allowed_claim_scope_ceiling": "exploratory_metric",
+      "evidence_level_ceiling": "L4_cross_subject_dataset_specific",
+      "implementation_status": "implemented",
+      "limitations": [
+        "Consumes lightweight fMRIPrep-style metadata (dataset_description.json, participants.tsv, *_desc-confounds_timeseries.tsv, derivative JSON sidecars) and explicit user-provided derived feature tables/graph-summary JSON only -- does not read raw BOLD NIfTI files and does not run fMRIPrep or fit Nilearn models.",
+        "Requires an explicit, human-authored mapping (or self-contained graph-summary document) declaring source_state/target_state/modality='fMRI'/atlas_or_parcellation (for graph/connectivity features)/canonical feature names/definitions/confound_policy; never infers state labels, atlas identity, or feature identity from column names, file paths, or parcel counts.",
+        "Cohort-level (record_level='cohort') TransitionRecordV1 output requires an explicit, already-computed cohort.subject_count>=2 and cohort.metrics in the graph-summary input -- this adapter never computes cohort statistics itself.",
+        "Does not itself ingest raw fMRIPrep derivatives, Nilearn NiftiMasker/connectome objects, or MOABB/EEGDash datasets -- see docs/fmri_derivatives_adapter.md's Future Work section."
+      ],
+      "metadata": {
+        "implementation_verified": true,
+        "adapter_module": "adapters.fmri_derivatives",
+        "cli": "python -m adapters.fmri_derivatives",
+        "docs": "docs/fmri_derivatives_adapter.md"
+      }
+    },
+    {
+      "schema_version": "1",
       "adapter_id": "7f1007732dbf0886",
       "tool_id": "mne-bids",
       "adapter_name": "MNE/BIDS Derived Feature Adapter v1",
