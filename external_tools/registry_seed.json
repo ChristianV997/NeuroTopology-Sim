@@ -1,0 +1,1806 @@
+{
+  "schema": "NeuroTopologySim.ExternalToolRegistry.v1",
+  "tools": [
+    {
+      "schema_version": "1",
+      "tool_id": "autoreject",
+      "name": "Autoreject",
+      "category": "eeg_preprocessing_qc",
+      "public_url": "https://autoreject.github.io/",
+      "repository_url": "https://github.com/autoreject/autoreject",
+      "documentation_url": "https://autoreject.github.io/stable/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "MEG"
+      ],
+      "artifact_inputs": [
+        "mne_epochs"
+      ],
+      "artifact_outputs": [
+        "cross_validated_rejection_thresholds",
+        "cleaned_epochs"
+      ],
+      "feature_namespaces": [
+        "eeg_preprocessing.autoreject"
+      ],
+      "planned_adapter": "already a declared optional dependency used by data/preprocessing.py's opt-in heavier artifact-rejection mode",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not currently importable in this session's Python environment despite being declared -- a fresh `pip install -r requirements.txt` should resolve this; verified as a declared, not a currently-installed, dependency."
+      ],
+      "provenance": "Already declared in requirements.txt with an explicit BSD-3-licensed comment, used by data/preprocessing.py's opt-in mode.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "data/preprocessing.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "bids-validator",
+      "name": "BIDS Validator",
+      "category": "bids_neuroinformatics",
+      "public_url": "https://bids-validator.readthedocs.io/",
+      "repository_url": "https://github.com/bids-standard/bids-validator",
+      "documentation_url": "https://bids-validator.readthedocs.io/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "external_cli_only",
+      "integration_mode": "external_cli",
+      "priority": "P0",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG",
+        "MEG",
+        "fMRI",
+        "iEEG"
+      ],
+      "artifact_inputs": [
+        "bids_dataset_directory"
+      ],
+      "artifact_outputs": [
+        "bids_validation_report"
+      ],
+      "feature_namespaces": [
+        "bids_validator.report"
+      ],
+      "planned_adapter": "bids_adapter_v1 (validation-report ingestion step; not yet implemented)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "A Node.js-based install path (if used instead of the Python package) adds a second language runtime to the commercial-core deployment surface."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not currently invoked by any pipeline in this repo."
+      ],
+      "provenance": "License verified via the Python 'bids-validator' PyPI package's JSON metadata this session (MIT). The canonical BIDS Validator has historically shipped as a Node.js/npm CLI; treated here as an external_cli integration (subprocess invocation) rather than a Python dependency regardless of which distribution is used.",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "braindecode",
+      "name": "Braindecode",
+      "category": "bci_ml_baseline",
+      "public_url": "https://braindecode.org/",
+      "repository_url": "https://github.com/braindecode/braindecode",
+      "documentation_url": "https://braindecode.org/stable/index.html",
+      "license": "BSD-3-Clause (primary); some components under CC-BY-NC-4.0 per project NOTICE.txt",
+      "license_risk": "copyleft_medium",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "adapter_only",
+      "priority": "P3",
+      "current_status": "blocked_pending_license_review",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "mne_epochs"
+      ],
+      "artifact_outputs": [
+        "deep_learning_decoding_scores"
+      ],
+      "feature_namespaces": [
+        "bci_baseline.braindecode"
+      ],
+      "planned_adapter": "ml_decoding_baseline_adapter_v1 (blocked pending confirmation of which components carry the CC-BY-NC-4.0 restriction)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "A commercial product must not ship the CC-BY-NC-4.0-licensed components without a separate, explicit review identifying exactly which files/modules those are.",
+        "This package IS currently importable in this session's Python environment despite not being a declared repository dependency (likely a transitive install from prior exploratory work) -- its presence in this environment is not itself an endorsement of use."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No adapter should be attempted until the NC-restricted components are specifically enumerated."
+      ],
+      "provenance": "PyPI JSON metadata this session states the project is 'primarily licensed under the BSD-3-Clause License' but explicitly notes 'some components within this repository are licensed under the Creative Commons Attribution-NonCommercial 4.0 International License,' per its LICENSE.txt/NOTICE.txt. This mixed-license profile is treated conservatively (copyleft_medium, not permissive_low) until the NC-encumbered components are identified.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "mixed BSD-3-Clause / CC-BY-NC-4.0 licensing"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "brainflow",
+      "name": "BrainFlow",
+      "category": "live_acquisition",
+      "public_url": "https://brainflow.org/",
+      "repository_url": "https://github.com/brainflow-dev/brainflow",
+      "documentation_url": "https://brainflow.readthedocs.io/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG",
+        "EMG",
+        "ECG"
+      ],
+      "artifact_inputs": [
+        "live_device_stream"
+      ],
+      "artifact_outputs": [
+        "raw_board_samples"
+      ],
+      "feature_namespaces": [
+        "live_acquisition.brainflow"
+      ],
+      "planned_adapter": "live_acquisition_adapter_v1 (explicitly out of scope for this milestone -- 'do not implement live EEG streaming')",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Live-acquisition tooling is explicitly out of scope for this milestone; classified here for future reference only."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not installed or declared in this repo; no live-streaming feature exists to attach it to yet."
+      ],
+      "provenance": "PyPI JSON metadata's structured license field was empty at review time; MIT license confirmed instead via the package's own description text ('distributed under MIT license') and its GitHub-hosted LICENSE file reference.",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "brainstorm",
+      "name": "Brainstorm",
+      "category": "reference_competitor",
+      "public_url": "https://neuroimage.usc.edu/brainstorm/",
+      "repository_url": "https://github.com/brainstorm-tools/brainstorm3",
+      "documentation_url": "https://neuroimage.usc.edu/brainstorm/Tutorials",
+      "license": "GPL-3.0",
+      "license_risk": "copyleft_medium",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG",
+        "MEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "MATLAB/Java-based application; GPL-3.0 copyleft is incompatible with a closed commercial-core dependency."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Studied only as a reference; no code, dashboards, or UI were copied."
+      ],
+      "provenance": "License confirmed via the project's GitHub repository page this session (GPL-3.0 license badge).",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "eegdash",
+      "name": "EEGDash",
+      "category": "dataset_benchmark",
+      "public_url": "https://github.com/eeg2go/eegdash",
+      "repository_url": "https://github.com/eeg2go/eegdash",
+      "documentation_url": "https://github.com/eeg2go/eegdash#readme",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "metadata_import",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "eegdash_dataset_registry"
+      ],
+      "artifact_outputs": [
+        "eeg_dataset_metadata",
+        "dataset_discovery_index"
+      ],
+      "feature_namespaces": [
+        "eegdash.dataset_metadata"
+      ],
+      "planned_adapter": "eegdash_importer_v1 (not yet implemented; would generate DatasetRecordV1 candidates for future scouting passes)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Present as a dependency but entirely unused by any pipeline in this repo today."
+      ],
+      "provenance": "Already declared in requirements.txt and importable in this repo's environment (verified this session: eegdash 0.8.4). No wrapper or tool_router integration currently calls it; its only prior mention in-repo is a hint string inside data/bids_ingest.py's error message.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "none (declared but unused)"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "eeglab",
+      "name": "EEGLAB",
+      "category": "reference_competitor",
+      "public_url": "https://sccn.ucsd.edu/eeglab/",
+      "repository_url": "https://github.com/sccn/eeglab",
+      "documentation_url": "https://eeglab.org/tutorials/",
+      "license": "GNU General Public License (GPL); exact version not confirmed in this session",
+      "license_risk": "copyleft_medium",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG",
+        "MEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "MATLAB-based toolbox; GPL copyleft is incompatible with a closed commercial-core dependency regardless of interest in specific algorithms."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Studied only as a reference for what a mature competing EEG toolbox exposes; no code, data structures, or UI were copied."
+      ],
+      "provenance": "License confirmed via the project's GitHub README/LICENSE reference this session ('all released under the Gnu public license').",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "eegprep",
+      "name": "EEGprep",
+      "category": "eeg_preprocessing_qc",
+      "public_url": "unknown",
+      "repository_url": "unknown",
+      "documentation_url": "unknown",
+      "license": "unknown",
+      "license_risk": "unknown_high",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "blocked_pending_license_review",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- identity unverified, not eligible for adapter planning",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Tool identity itself is unverified -- do not treat as confirmed available on any package index."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No public_url/repository_url/documentation_url could be responsibly filled in without guessing."
+      ],
+      "provenance": "Named in the mission spec's P1 tool list but this session could not confirm a specific, unambiguous package/project matching the name 'EEGPrep' (distinct from PyPREP, listed separately above) via the verification performed this session. Recorded as unknown/review_needed rather than guessing at a specific project or fabricating license terms, per this milestone's explicit instruction not to fabricate exact license details.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "tool identity not verified this session"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "emotiv-cortex",
+      "name": "Emotiv Cortex",
+      "category": "hardware_sdk",
+      "public_url": "https://www.emotiv.com/pages/cortex",
+      "repository_url": "unknown",
+      "documentation_url": "https://emotiv.gitbook.io/cortex-api/",
+      "license": "unknown",
+      "license_risk": "unknown_high",
+      "commercial_use_status": "paid_contract_required",
+      "integration_mode": "paid_api",
+      "priority": "P3",
+      "current_status": "optional_future",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "live_device_stream"
+      ],
+      "artifact_outputs": [
+        "raw_headset_samples",
+        "emotiv_derived_metrics"
+      ],
+      "feature_namespaces": [
+        "hardware.emotiv_cortex"
+      ],
+      "planned_adapter": "none -- paid API / closed hardware, out of scope for this milestone",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "API access to raw (non-derived) data historically requires a paid license tier -- not independently verified in this session but treated conservatively.",
+        "Emotiv's own on-device signal processing is closed-source; any adapter would only see whatever the API exposes, not the underlying algorithm."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No hardware, API key, or vendor agreement available in this development environment."
+      ],
+      "provenance": "Consumer/research EEG headset vendor exposing a licensed Cortex API (subscription/license-key gated for raw data access); exact license terms were not independently verified in this session.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "closed vendor API terms not verified in-repo"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "fieldtrip",
+      "name": "FieldTrip",
+      "category": "reference_competitor",
+      "public_url": "https://www.fieldtriptoolbox.org/",
+      "repository_url": "https://github.com/fieldtrip/fieldtrip",
+      "documentation_url": "https://www.fieldtriptoolbox.org/tutorial/",
+      "license": "GPL-3.0",
+      "license_risk": "copyleft_medium",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG",
+        "MEG",
+        "iEEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "MATLAB-based toolbox; GPL-3.0 copyleft is incompatible with a closed commercial-core dependency."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Studied only as a reference; no code was copied."
+      ],
+      "provenance": "License confirmed via the project's GitHub license badge/COPYING file this session (GPL-3.0).",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "fmriprep",
+      "name": "fMRIPrep",
+      "category": "fmri_neuroimaging",
+      "public_url": "https://fmriprep.org/",
+      "repository_url": "https://github.com/nipreps/fmriprep",
+      "documentation_url": "https://fmriprep.org/en/stable/",
+      "license": "Apache-2.0",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "external_cli_only",
+      "integration_mode": "external_cli",
+      "priority": "P0",
+      "current_status": "planned",
+      "supported_modalities": [
+        "fMRI"
+      ],
+      "artifact_inputs": [
+        "bids_dataset_directory",
+        "raw_fmri_nifti"
+      ],
+      "artifact_outputs": [
+        "spatially_normalized_bold",
+        "confound_regressors",
+        "fmriprep_derivatives"
+      ],
+      "feature_namespaces": [
+        "fmriprep.derivatives"
+      ],
+      "planned_adapter": "fmriprep_adapter_v1 (not yet implemented; would ingest already-run fMRIPrep derivatives, not run fMRIPrep itself)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Heavyweight external tool (Docker/Singularity container, large reference data downloads) -- not a pip-installable dependency in practice, hence external_cli rather than dependency.",
+        "Portions of the default pipeline optionally invoke FreeSurfer, whose license terms were not verified in this session -- flagged for explicit review before any fMRIPrep adapter is built."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "This repo does not run fMRIPrep; any future adapter would ingest already-produced fMRIPrep derivatives, not execute the pipeline."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (Apache-2.0, confirmed as of fMRIPrep >=21.0.x per the package's own documentation). fMRIPrep itself is Apache-2.0, but its pipeline optionally uses FreeSurfer for surface reconstruction; FreeSurfer's own license terms were not verified in this session.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "FreeSurfer sub-dependency license not verified"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "giotto-tda",
+      "name": "giotto-tda",
+      "category": "topology_tda",
+      "public_url": "https://giotto-ai.github.io/gtda-docs/",
+      "repository_url": "https://github.com/giotto-ai/giotto-tda",
+      "documentation_url": "https://giotto-ai.github.io/gtda-docs/",
+      "license": "AGPL-3.0",
+      "license_risk": "agpl_high",
+      "commercial_use_status": "avoid_core",
+      "integration_mode": "avoid_core",
+      "priority": "avoid",
+      "current_status": "avoid_core",
+      "supported_modalities": [
+        "EEG",
+        "generic_field"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- avoid_core, already explicitly excluded",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "AGPLv3's network-use clause is the strictest copyleft tier this registry tracks -- must never become a commercial-core dependency."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "KeplerMapper (MIT) already covers this repo's real Mapper-algorithm need (tools/export_mapper_graph_for_vortex_field.py); giotto-tda is not a functionality gap, just a deliberately avoided alternative."
+      ],
+      "provenance": "AGPLv3 already confirmed and documented in this repo's own README.md ('giotto-tda (AGPLv3) flagged as copyleft, not default') -- this record makes that existing repo-level policy queryable in the registry rather than re-deciding it.",
+      "metadata": {}
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "gudhi",
+      "name": "GUDHI",
+      "category": "topology_tda",
+      "public_url": "https://gudhi.inria.fr/",
+      "repository_url": "https://github.com/GUDHI/gudhi-devel",
+      "documentation_url": "https://gudhi.inria.fr/python/latest/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "fMRI",
+        "generic_field"
+      ],
+      "artifact_inputs": [
+        "scalar_field",
+        "point_cloud",
+        "distance_matrix"
+      ],
+      "artifact_outputs": [
+        "persistence_diagrams",
+        "betti_numbers",
+        "persistence_landscapes"
+      ],
+      "feature_namespaces": [
+        "topology.persistence"
+      ],
+      "planned_adapter": "already a direct dependency of core/topology.py -- no separate adapter needed for its current use; a future TDA-adapter would only be about exposing it to externally-supplied (non-repo-native) fields",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use core dependency -- no integration gap for this tool specifically."
+      ],
+      "provenance": "Already declared in requirements.txt with an explicit MIT-license comment, and is the backend for core/topology.py::compute_cubical_persistence.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "core/topology.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "keplermapper",
+      "name": "KeplerMapper",
+      "category": "topology_tda",
+      "public_url": "https://kepler-mapper.scikit-tda.org/",
+      "repository_url": "https://github.com/scikit-tda/kepler-mapper",
+      "documentation_url": "https://kepler-mapper.scikit-tda.org/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "generic_feature_vectors"
+      ],
+      "artifact_inputs": [
+        "per_window_feature_vectors"
+      ],
+      "artifact_outputs": [
+        "mapper_graph_nodes",
+        "mapper_graph_edges"
+      ],
+      "feature_namespaces": [
+        "topology.mapper_graph"
+      ],
+      "planned_adapter": "already a direct dependency (tools/export_mapper_graph_for_vortex_field.py) -- no separate adapter needed for current use",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use dependency."
+      ],
+      "provenance": "Already declared in requirements.txt with an explicit MIT-license comment (deliberately chosen over giotto-tda's AGPLv3 Mapper implementation, per README.md's license policy), used by tools/export_mapper_graph_for_vortex_field.py.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "tools/export_mapper_graph_for_vortex_field.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "mne-bids",
+      "name": "MNE-BIDS",
+      "category": "bids_neuroinformatics",
+      "public_url": "https://mne.tools/mne-bids/",
+      "repository_url": "https://github.com/mne-tools/mne-bids",
+      "documentation_url": "https://mne.tools/mne-bids/stable/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "MEG",
+        "iEEG"
+      ],
+      "artifact_inputs": [
+        "bids_dataset_directory"
+      ],
+      "artifact_outputs": [
+        "bids_layout_metadata",
+        "raw_eeg_meg_files"
+      ],
+      "feature_namespaces": [
+        "mne_bids.layout"
+      ],
+      "planned_adapter": "bids_adapter_v1 (not yet implemented; likely paired with PyBIDS, see docs)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Depends on MNE-Python's own preprocessing/provenance decisions (see MNE-Python record)."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not currently wired into DatasetRecordV1 ingestion -- BIDS metadata is read ad hoc by individual dataset scripts today."
+      ],
+      "provenance": "Already declared in requirements.txt and importable (verified this session: mne_bids 0.19.0).",
+      "metadata": {
+        "already_declared_dependency": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "mne-lsl",
+      "name": "MNE-LSL",
+      "category": "live_acquisition",
+      "public_url": "https://mne.tools/mne-lsl/",
+      "repository_url": "https://github.com/mne-tools/mne-lsl",
+      "documentation_url": "https://mne.tools/mne-lsl/stable/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "lsl_stream"
+      ],
+      "artifact_outputs": [
+        "raw_lsl_samples"
+      ],
+      "feature_namespaces": [
+        "live_acquisition.mne_lsl"
+      ],
+      "planned_adapter": "live_acquisition_adapter_v1 (explicitly out of scope for this milestone)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Live-acquisition tooling is explicitly out of scope for this milestone; classified here for future reference only."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not installed or declared in this repo."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (BSD-3-Clause).",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "mne-python",
+      "name": "MNE-Python",
+      "category": "neurophysiology_core",
+      "public_url": "https://mne.tools/",
+      "repository_url": "https://github.com/mne-tools/mne-python",
+      "documentation_url": "https://mne.tools/stable/documentation/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "MEG",
+        "iEEG"
+      ],
+      "artifact_inputs": [
+        "raw_eeg_meg_files",
+        "edf",
+        "bdf",
+        "fif",
+        "set"
+      ],
+      "artifact_outputs": [
+        "preprocessed_signal_blocks",
+        "epochs",
+        "connectivity_estimates",
+        "spectral_features"
+      ],
+      "feature_namespaces": [
+        "mne.signal",
+        "mne.epochs",
+        "mne.connectivity"
+      ],
+      "planned_adapter": "mne_adapter_v1 (not yet implemented; see docs/external_tool_integration_strategy.md)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "A real adapter would need to decide which of MNE's many preprocessing choices (filter bands, reference scheme, ICA) become part of provenance vs. silently defaulted."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "The existing P19.1 prototype extracts signal blocks only; it does not produce TransitionRecordV1/ArtifactRecordV1 artifacts."
+      ],
+      "provenance": "Already declared in requirements.txt and importable in this repo's environment (verified this session: mne 1.12.1). A narrow, pre-existing prototype (sciencer_d/btc_icft/pipelines/extract_mne_signal_blocks.py, P19.1) already extracts fixed signal windows via MNE, but is not wired into transitions/phase_space/evidence -- see docs/eeg_mne_adapter_runbook.md.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_prototype": "sciencer_d/btc_icft/pipelines/extract_mne_signal_blocks.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "moabb",
+      "name": "MOABB",
+      "category": "dataset_benchmark",
+      "public_url": "https://moabb.neurotechx.com/",
+      "repository_url": "https://github.com/NeuroTechX/moabb",
+      "documentation_url": "https://moabb.neurotechx.com/docs/",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "metadata_import",
+      "priority": "P0",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "moabb_dataset_registry"
+      ],
+      "artifact_outputs": [
+        "standardized_bci_dataset_splits",
+        "dataset_metadata"
+      ],
+      "feature_namespaces": [
+        "moabb.dataset_metadata"
+      ],
+      "planned_adapter": "moabb_importer_v1 (not yet implemented; would generate DatasetRecordV1 entries from MOABB's dataset catalog)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "MOABB bundles its own copies of dataset-specific loader code per dataset; each dataset it exposes may carry its own separate license/usage terms distinct from MOABB's own BSD-3-Clause license."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No current repo usage."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (BSD-3-Clause). Not currently declared in requirements.txt or installed.",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "muse-sdk-interaxon",
+      "name": "Muse SDK (InteraXon)",
+      "category": "hardware_sdk",
+      "public_url": "https://choosemuse.com/",
+      "repository_url": "unknown",
+      "documentation_url": "unknown",
+      "license": "unknown",
+      "license_risk": "unknown_high",
+      "commercial_use_status": "paid_contract_required",
+      "integration_mode": "paid_hardware",
+      "priority": "P3",
+      "current_status": "optional_future",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "live_device_stream"
+      ],
+      "artifact_outputs": [
+        "raw_headband_samples"
+      ],
+      "feature_namespaces": [
+        "hardware.muse"
+      ],
+      "planned_adapter": "none -- paid hardware / closed SDK, out of scope for this milestone",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Requires purchasing physical hardware and accepting a vendor developer agreement not reviewed in this session."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No hardware, SDK access, or vendor agreement available in this development environment."
+      ],
+      "provenance": "Consumer EEG headband vendor with a closed developer SDK; exact license/developer-agreement terms were not independently verified in this session.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "closed vendor SDK terms not verified in-repo"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "myndlift-style-clinical-neurofeedback-platform",
+      "name": "Myndlift-style clinical neurofeedback platform",
+      "category": "commercial_neurofeedback",
+      "public_url": "unknown",
+      "repository_url": "unknown",
+      "documentation_url": "unknown",
+      "license": "proprietary (category placeholder; no specific product license reviewed)",
+      "license_risk": "proprietary_high",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only competitor category, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Category represents proprietary, closed commercial platforms -- never a dependency/adapter target, reference classification only."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No specific product was inspected; this record exists to keep the competitor category itself visible in the registry, not to describe a verified real product."
+      ],
+      "provenance": "Named generically ('Myndlift-style') per the mission spec to represent the category of closed, subscription-based clinical neurofeedback platforms, not a specific verified product. No specific platform's terms, dashboards, or reports were reviewed, scraped, or copied in this session.",
+      "metadata": {
+        "generic_category_placeholder": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "networkx",
+      "name": "NetworkX",
+      "category": "graph_network",
+      "public_url": "https://networkx.org/",
+      "repository_url": "https://github.com/networkx/networkx",
+      "documentation_url": "https://networkx.org/documentation/stable/",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "fMRI",
+        "generic_graph"
+      ],
+      "artifact_inputs": [
+        "connectivity_matrix",
+        "adjacency_list"
+      ],
+      "artifact_outputs": [
+        "graph_metrics",
+        "spectral_dimension",
+        "clustering_coefficients"
+      ],
+      "feature_namespaces": [
+        "graph.metrics"
+      ],
+      "planned_adapter": "already a direct dependency (analysis/itct/, analysis/connectivity_topology.py) -- no separate adapter needed for current use",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use dependency."
+      ],
+      "provenance": "Already declared in requirements.txt with an explicit BSD-licensed comment, used by analysis/connectivity_topology.py and analysis/itct/.",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "analysis/connectivity_topology.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "neurable-style-licensing-platform",
+      "name": "Neurable-style licensing platform",
+      "category": "commercial_neurofeedback",
+      "public_url": "unknown",
+      "repository_url": "unknown",
+      "documentation_url": "unknown",
+      "license": "proprietary (category placeholder; no specific product license reviewed)",
+      "license_risk": "proprietary_high",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only competitor category, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Category represents proprietary, closed hardware+analytics licensing platforms -- never a dependency/adapter target."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No specific product was inspected."
+      ],
+      "provenance": "Named generically ('Neurable-style') per the mission spec to represent the category of closed, hardware-plus-analytics licensing platforms, not a specific verified product. No specific platform's terms, SDK internals, or dashboards were reviewed, scraped, or copied in this session.",
+      "metadata": {
+        "generic_category_placeholder": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "neuroguide-style-qeeg-platform",
+      "name": "NeuroGuide-style qEEG platform",
+      "category": "clinical_qeeg",
+      "public_url": "unknown",
+      "repository_url": "unknown",
+      "documentation_url": "unknown",
+      "license": "proprietary (category placeholder; no specific product license reviewed)",
+      "license_risk": "proprietary_high",
+      "commercial_use_status": "reference_only",
+      "integration_mode": "reference_only",
+      "priority": "reference",
+      "current_status": "reference_only",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [],
+      "artifact_outputs": [],
+      "feature_namespaces": [],
+      "planned_adapter": "none -- reference-only competitor category, not an integration target",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Category represents proprietary clinical software with regulatory/normative-database implications well outside this repository's scope -- never a dependency/adapter target."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No specific product was inspected."
+      ],
+      "provenance": "Named generically ('NeuroGuide-style') per the mission spec to represent the category of closed, clinical quantitative-EEG platforms, not a specific verified product. No specific product's terms, dashboards, normative databases, or reports were reviewed, scraped, or copied in this session.",
+      "metadata": {
+        "generic_category_placeholder": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "neurokit2",
+      "name": "NeuroKit2",
+      "category": "eeg_preprocessing_qc",
+      "public_url": "https://neuropsychology.github.io/NeuroKit/",
+      "repository_url": "https://github.com/neuropsychology/NeuroKit",
+      "documentation_url": "https://neuropsychology.github.io/NeuroKit/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG",
+        "ECG",
+        "EDA",
+        "RSP"
+      ],
+      "artifact_inputs": [
+        "raw_physiological_signal"
+      ],
+      "artifact_outputs": [
+        "biosignal_features"
+      ],
+      "feature_namespaces": [
+        "physiology.neurokit2"
+      ],
+      "planned_adapter": "eeg_preprocessing_adapter_v1 (not yet implemented)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Broader than EEG (also ECG/EDA/RSP); this repo has no non-EEG/fMRI physiological modality today, so most of its surface would be unused.",
+        "Not installed or declared in this repo."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (MIT).",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "neurosity-sdk",
+      "name": "Neurosity SDK",
+      "category": "hardware_sdk",
+      "public_url": "https://neurosity.co/",
+      "repository_url": "https://github.com/neurosity",
+      "documentation_url": "https://docs.neurosity.co/",
+      "license": "unknown",
+      "license_risk": "unknown_high",
+      "commercial_use_status": "paid_contract_required",
+      "integration_mode": "paid_hardware",
+      "priority": "P3",
+      "current_status": "optional_future",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "live_device_stream"
+      ],
+      "artifact_outputs": [
+        "raw_device_samples"
+      ],
+      "feature_namespaces": [
+        "hardware.neurosity"
+      ],
+      "planned_adapter": "none -- paid hardware / cloud SDK, out of scope for this milestone",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Requires purchasing physical hardware and a cloud account; cloud dependency adds an external-service risk beyond a pure library dependency."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No hardware, SDK access, or vendor agreement available in this development environment."
+      ],
+      "provenance": "Consumer EEG hardware + cloud SDK vendor; exact SDK license and cloud-service terms were not independently verified in this session.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "closed vendor SDK/cloud terms not verified in-repo"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "nilearn",
+      "name": "Nilearn",
+      "category": "fmri_neuroimaging",
+      "public_url": "https://nilearn.github.io/",
+      "repository_url": "https://github.com/nilearn/nilearn",
+      "documentation_url": "https://nilearn.github.io/stable/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "fMRI"
+      ],
+      "artifact_inputs": [
+        "nifti_files",
+        "fmriprep_derivatives"
+      ],
+      "artifact_outputs": [
+        "parcellated_timeseries",
+        "connectivity_matrices",
+        "atlas_maps"
+      ],
+      "feature_namespaces": [
+        "nilearn.connectivity",
+        "nilearn.atlas"
+      ],
+      "planned_adapter": "fmriprep_adapter_v1 (Nilearn is already the fMRI loading/masking backend for dual_engine/fmri_tda_pipeline.py)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use dependency for this repo's fMRI pipeline -- the remaining gap is a governed-artifact adapter, not the library itself."
+      ],
+      "provenance": "Already declared in requirements.txt and used directly by dual_engine/fmri_tda_pipeline.py (per that module's requirements.txt comment: BSD-licensed).",
+      "metadata": {
+        "already_declared_dependency": true,
+        "existing_usage": "dual_engine/fmri_tda_pipeline.py"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "openbci",
+      "name": "OpenBCI",
+      "category": "hardware_sdk",
+      "public_url": "https://openbci.com/",
+      "repository_url": "https://github.com/OpenBCI",
+      "documentation_url": "https://docs.openbci.com/",
+      "license": "unknown",
+      "license_risk": "unknown_high",
+      "commercial_use_status": "paid_contract_required",
+      "integration_mode": "paid_hardware",
+      "priority": "P3",
+      "current_status": "optional_future",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "live_device_stream"
+      ],
+      "artifact_outputs": [
+        "raw_board_samples"
+      ],
+      "feature_namespaces": [
+        "hardware.openbci"
+      ],
+      "planned_adapter": "none -- paid hardware, out of scope for this milestone and for the 'no live EEG streaming' constraint",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Requires purchasing physical hardware; not integrable without a paid device.",
+        "Exact SDK/firmware license terms not verified in-repo."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No hardware or SDK access available in this development environment."
+      ],
+      "provenance": "Hardware vendor; hardware unit cost and any SDK license terms were not independently verified in this session. BrainFlow (recorded separately, MIT) already provides an open-source client library for OpenBCI boards.",
+      "metadata": {
+        "review_needed": true,
+        "review_reason": "hardware vendor SDK terms not verified in-repo"
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "persim",
+      "name": "Persim",
+      "category": "topology_tda",
+      "public_url": "https://persim.scikit-tda.org/",
+      "repository_url": "https://github.com/scikit-tda/persim",
+      "documentation_url": "https://persim.scikit-tda.org/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "generic_field"
+      ],
+      "artifact_inputs": [
+        "persistence_diagrams"
+      ],
+      "artifact_outputs": [
+        "bottleneck_distance",
+        "wasserstein_distance",
+        "persistence_images"
+      ],
+      "feature_namespaces": [
+        "topology.persistence_distance"
+      ],
+      "planned_adapter": "already a direct dependency alongside ripser -- no separate adapter needed for current use",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use dependency."
+      ],
+      "provenance": "Already declared in requirements.txt alongside ripser; license verified via PyPI JSON metadata this session (MIT classifier; license field itself unpopulated).",
+      "metadata": {
+        "already_declared_dependency": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "pybids",
+      "name": "PyBIDS",
+      "category": "bids_neuroinformatics",
+      "public_url": "https://bids-standard.github.io/pybids/",
+      "repository_url": "https://github.com/bids-standard/pybids",
+      "documentation_url": "https://bids-standard.github.io/pybids/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG",
+        "MEG",
+        "fMRI",
+        "iEEG"
+      ],
+      "artifact_inputs": [
+        "bids_dataset_directory"
+      ],
+      "artifact_outputs": [
+        "bids_layout_metadata",
+        "participants_tsv",
+        "events_tsv"
+      ],
+      "feature_namespaces": [
+        "pybids.layout"
+      ],
+      "planned_adapter": "bids_adapter_v1 (not yet implemented; would generate DatasetRecordV1 metadata from a BIDS layout)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "Would need a real BIDS dataset on disk to validate against -- not exercised by this repo's current onboarded datasets, which are read by dataset-specific scripts rather than a generic BIDS layout reader."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "No current repo usage to cross-check the license classification against; PyPI metadata is the sole source."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (classifier: MIT License). Not currently declared in requirements.txt or installed.",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "pyprep",
+      "name": "PyPREP",
+      "category": "eeg_preprocessing_qc",
+      "public_url": "https://pyprep.readthedocs.io/",
+      "repository_url": "https://github.com/sappelhoff/pyprep",
+      "documentation_url": "https://pyprep.readthedocs.io/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "raw_eeg"
+      ],
+      "artifact_outputs": [
+        "bad_channel_labels",
+        "referenced_signal"
+      ],
+      "feature_namespaces": [
+        "eeg_preprocessing.pyprep"
+      ],
+      "planned_adapter": "eeg_preprocessing_adapter_v1 (not yet implemented)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not installed or declared in this repo; this repo currently implements its own filter/notch/reref preprocessing chain directly (data/preprocessing.py) rather than via PyPREP's PREP-pipeline implementation."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (MIT).",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "pyriemann",
+      "name": "pyRiemann",
+      "category": "bci_ml_baseline",
+      "public_url": "https://pyriemann.readthedocs.io/",
+      "repository_url": "https://github.com/pyRiemann/pyRiemann",
+      "documentation_url": "https://pyriemann.readthedocs.io/",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG"
+      ],
+      "artifact_inputs": [
+        "covariance_matrices",
+        "epochs"
+      ],
+      "artifact_outputs": [
+        "riemannian_classifier_scores"
+      ],
+      "feature_namespaces": [
+        "bci_baseline.pyriemann"
+      ],
+      "planned_adapter": "ml_decoding_baseline_adapter_v1 (not yet implemented; would complement the repo's existing ML decoding validity check, BT-Ph6)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not installed or declared in this repo."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (BSD 3-clause).",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "ripser-py",
+      "name": "Ripser.py",
+      "category": "topology_tda",
+      "public_url": "https://ripser.scikit-tda.org/",
+      "repository_url": "https://github.com/scikit-tda/ripser.py",
+      "documentation_url": "https://ripser.scikit-tda.org/",
+      "license": "MIT",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_with_notice",
+      "integration_mode": "dependency",
+      "priority": "P0",
+      "current_status": "ready_for_adapter",
+      "supported_modalities": [
+        "EEG",
+        "generic_field"
+      ],
+      "artifact_inputs": [
+        "point_cloud",
+        "distance_matrix"
+      ],
+      "artifact_outputs": [
+        "persistence_diagrams"
+      ],
+      "feature_namespaces": [
+        "topology.persistence"
+      ],
+      "planned_adapter": "already a direct dependency (analysis/itct/ and related PLV-graph persistence code) -- no separate adapter needed for current use",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Already a real, in-use dependency."
+      ],
+      "provenance": "Already declared in requirements.txt (as 'ripser') and importable; license verified via PyPI JSON metadata this session (MIT, derived from the original C++ Ripser, also MIT).",
+      "metadata": {
+        "already_declared_dependency": true
+      }
+    },
+    {
+      "schema_version": "1",
+      "tool_id": "yasa",
+      "name": "YASA",
+      "category": "physiology_sleep",
+      "public_url": "https://raphaelvallat.com/yasa/",
+      "repository_url": "https://github.com/raphaelvallat/yasa",
+      "documentation_url": "https://raphaelvallat.com/yasa/build/html/index.html",
+      "license": "BSD-3-Clause",
+      "license_risk": "permissive_low",
+      "commercial_use_status": "allowed_optional_dependency",
+      "integration_mode": "optional_backend",
+      "priority": "P1",
+      "current_status": "planned",
+      "supported_modalities": [
+        "EEG",
+        "sleep_polysomnography"
+      ],
+      "artifact_inputs": [
+        "raw_eeg",
+        "hypnogram"
+      ],
+      "artifact_outputs": [
+        "sleep_stage_labels",
+        "spindle_detections"
+      ],
+      "feature_namespaces": [
+        "physiology.sleep_staging"
+      ],
+      "planned_adapter": "sleep_staging_adapter_v1 (not yet implemented; relevant to the already-onboarded ds005555 sleep dataset)",
+      "allowed_uses": [
+        "documentation",
+        "feature_design"
+      ],
+      "forbidden_uses": [
+        "clinical_claim",
+        "diagnostic_claim",
+        "treatment_claim",
+        "consciousness_biomarker_claim",
+        "spiritual_attainment_claim",
+        "mechanistic_causal_claim",
+        "final_claim_confirmation",
+        "cross_dataset_replication_claim"
+      ],
+      "risks": [
+        "No adapter into DatasetRecordV1/ArtifactRecordV1/TransitionRecordV1/PhaseSpaceCoordinateV1/EvidenceBundleV1 exists yet for this tool -- this record is a classification only, not a working integration.",
+        "License verification is metadata-only (PyPI classifier); no independent confirmation against a specific pinned version's LICENSE file text was performed this session."
+      ],
+      "limitations": [
+        "License/commercial-use classification is based on the source project's own published license file / package-index metadata reviewed this session, not independent legal counsel.",
+        "Not installed or declared in this repo; ds005555's existing pipeline computes its own sleep-stage handling rather than via YASA."
+      ],
+      "provenance": "License verified via PyPI JSON metadata this session (BSD 3-clause classifier).",
+      "metadata": {
+        "already_declared_dependency": false
+      }
+    }
+  ]
+}
