@@ -289,6 +289,11 @@ already does from parsed CLI args. `ReportPipelineSpecV1`/
 JSON-serializable, so a worker's job payload and result payload need no
 new serialization layer.
 
+[docs/job_runner.md](job_runner.md) builds the first layer of this: a
+tracked, file-backed job around one `run_report_pipeline` call (job
+status, a job store, a lock, a CLI, and an optional local API), without
+yet adding a real queue or authentication.
+
 ## How a report pack differs from evidence
 
 A `ReportPackV1` is not itself evidence -- it is a deterministic index
