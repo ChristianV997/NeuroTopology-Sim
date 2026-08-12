@@ -347,9 +347,9 @@ substrate is for; none of these descriptions is a commitment to a design:
 - **Holo-Atlas evidence viewer consumption** -- once a real visualization
   layer exists, it would consume `ReportPackV1`/`EvidenceBundleV1`
   output, never raw derived features.
-- **Benchmark-pack generator** -- a batch mode that runs the same
-  `input_mode` across many datasets and produces one comparison report
-  pack, building on `benchmarks/` (`docs/benchmark_dataset_registry.md`).
+- **Benchmark-pack generator** -- a curated collection of report
+  pipelines assembled into one indexed pack. Now implemented -- see
+  [docs/benchmark_pack_generator.md](benchmark_pack_generator.md).
 - **Richer QC and topology backends** -- once the underlying recipes gain
   them (see `docs/mne_bids_feature_recipe.md#future-work` and
   `docs/fmri_derivatives_feature_recipe.md#future-work`), this runner
