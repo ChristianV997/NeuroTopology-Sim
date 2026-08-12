@@ -7,7 +7,7 @@
 
     python -m workflows.export_report_pack --spec pipeline_spec.json \\
         --registry benchmarks/registry_seed.json \\
-        --include-phase-space --include-evidence-bundle --include-report
+        --include-phase-space --include-evidence-bundle --include-report --include-html
 
 Default behavior runs the pipeline exactly as declared in `--spec`.
 `--dry-run`/`--out`/`--include-*`/`--registry` override the corresponding
@@ -43,6 +43,8 @@ def main() -> int:
     parser.add_argument("--include-phase-space", action="store_true")
     parser.add_argument("--include-evidence-bundle", action="store_true")
     parser.add_argument("--include-report", action="store_true")
+    parser.add_argument("--include-html", action="store_true", help="render a static HTML report pack once the run completes (see workflows.html_report_pack)")
+    parser.add_argument("--html-out", type=str, default=None, help="override where the HTML report pack is written (default: <output_root>/html)")
     parser.add_argument("--registry", type=str, default=None, help="override spec.registry_path for this run")
     parser.add_argument("--updated-registry-out", type=str, default=None, help="accepted for interface parity; informational only (see module docstring)")
     args = parser.parse_args()
@@ -64,6 +66,10 @@ def main() -> int:
         spec.include_evidence_bundle = True
     if args.include_report:
         spec.include_report = True
+    if args.include_html:
+        spec.include_html = True
+    if args.html_out is not None:
+        spec.html_out = args.html_out
     if args.registry is not None:
         spec.registry_path = args.registry
 
@@ -99,6 +105,10 @@ def main() -> int:
         "evidence_bundle_paths": manifest.evidence_bundle_paths,
         "evidence_report_paths": manifest.evidence_report_paths,
     }
+    if manifest.warnings:
+        summary["warnings"] = manifest.warnings
+    if manifest.metadata.get("html_report_pack"):
+        summary["html_report_pack"] = manifest.metadata["html_report_pack"]
     print(json.dumps(summary, indent=2))
     return 0
 

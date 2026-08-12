@@ -102,6 +102,8 @@ class ReportPipelineSpecV1:
     include_phase_space: bool = False
     include_evidence_bundle: bool = False
     include_report: bool = False
+    include_html: bool = False
+    html_out: Optional[str] = None
     dry_run: bool = False
     resource_bounds: dict[str, Any] = field(default_factory=dict)
     execution_steps: list[str] = field(default_factory=list)
@@ -172,6 +174,8 @@ class ReportPipelineSpecV1:
             "include_phase_space": self.include_phase_space,
             "include_evidence_bundle": self.include_evidence_bundle,
             "include_report": self.include_report,
+            "include_html": self.include_html,
+            "html_out": self.html_out,
             "dry_run": self.dry_run,
             "resource_bounds": dict(self.resource_bounds or {}),
             "execution_steps": list(self.execution_steps),
@@ -203,6 +207,8 @@ class ReportPipelineSpecV1:
             include_phase_space=bool(d.get("include_phase_space", False)),
             include_evidence_bundle=bool(d.get("include_evidence_bundle", False)),
             include_report=bool(d.get("include_report", False)),
+            include_html=bool(d.get("include_html", False)),
+            html_out=d.get("html_out"),
             dry_run=bool(d.get("dry_run", False)),
             resource_bounds=dict(d.get("resource_bounds") or {}),
             execution_steps=list(d.get("execution_steps") or []),
@@ -400,6 +406,8 @@ def _planned_steps_for_mode(input_mode: str, spec: "ReportPipelineSpecV1") -> li
         if spec.include_report:
             steps.append("build_evidence_report")
         steps.append("write_report_pack")
+        if spec.include_html:
+            steps.append("render_html_report_pack")
         return steps
     if input_mode in {"mne_bids_epoch_table_recipe", "fmri_timeseries_recipe", "fmri_connectivity_matrix_recipe", "fmri_graph_summary_recipe"}:
         steps = ["run_feature_recipe", "write_recipe_outputs", "export_adapter_transitions"]
@@ -410,6 +418,8 @@ def _planned_steps_for_mode(input_mode: str, spec: "ReportPipelineSpecV1") -> li
         if spec.include_report:
             steps.append("build_evidence_report")
         steps.append("write_report_pack")
+        if spec.include_html:
+            steps.append("render_html_report_pack")
         return steps
     if input_mode in {"mne_bids_derived_features", "fmri_derived_features"}:
         steps = ["export_adapter_transitions"]
@@ -420,12 +430,16 @@ def _planned_steps_for_mode(input_mode: str, spec: "ReportPipelineSpecV1") -> li
         if spec.include_report:
             steps.append("build_evidence_report")
         steps.append("write_report_pack")
+        if spec.include_html:
+            steps.append("render_html_report_pack")
         return steps
     if input_mode in _BUILTIN_DISPATCH:
         steps = ["build_evidence_bundle"]
         if spec.include_report:
             steps.append("build_evidence_report")
         steps.append("write_report_pack")
+        if spec.include_html:
+            steps.append("render_html_report_pack")
         return steps
     return []
 
@@ -605,6 +619,36 @@ def run_report_pipeline(spec: "ReportPipelineSpecV1") -> ReportPipelineRunManife
     manifest.validate_or_raise()
     spec.write_json(layout.spec_path)
     manifest.write_json(layout.manifest_path)
+
+    # Optional HTML report-pack rendering -- only ever attempted after a
+    # successful run with a real ReportPack.json already on disk (a failed
+    # run returns earlier, above, and never reaches this point). Metadata
+    # is added additively, mirroring evidence.builder.build_evidence_bundle's
+    # own "write once, optionally augment metadata, re-write" pattern for
+    # its include_report step.
+    if spec.include_html and report_pack_path is not None:
+        from workflows.html_report_pack import HtmlReportPackError, render_html_report_pack
+
+        html_out = spec.html_out or str(Path(spec.output_root) / "html")
+        try:
+            html_pack = render_html_report_pack(
+                report_pack_path=layout.report_pack_path, out_dir=html_out,
+                pipeline_manifest_path=layout.manifest_path,
+            )
+        except HtmlReportPackError as exc:
+            manifest.warnings.append(f"HTML report pack rendering failed (report pack itself is unaffected): {exc}")
+            manifest.execution_status = "completed_with_warnings"
+        else:
+            manifest.metadata["html_report_pack"] = {
+                "html_pack_id": html_pack.html_pack_id,
+                "index_html_path": html_pack.index_html_path,
+                "html_pack_json_path": _relative_path(Path(html_out) / "HtmlReportPack.json"),
+            }
+            manifest.steps_completed.append("render_html_report_pack")
+            if "render_html_report_pack" in manifest.steps_skipped:
+                manifest.steps_skipped.remove("render_html_report_pack")
+        manifest.write_json(layout.manifest_path)
+
     return manifest
 
 
