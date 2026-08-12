@@ -1,13 +1,22 @@
-"""Tests for `job_runner.api`. This repository's environments do not
-currently have `fastapi` installed (confirmed: `pip show fastapi` finds
-nothing in both the root and `.venv/` environments), so
-`job_runner.api.API_AVAILABLE` is expected to be `False` here and
-`job_runner.api.app` is expected to be `None` -- these tests assert that
-graceful-degradation behavior explicitly, per the module's own contract,
-and otherwise call the plain functions directly (the same functions the
-FastAPI routes would call if the dependency were present)."""
+"""Tests for `job_runner.api`. `fastapi` is declared (unpinned) in root
+`requirements.txt`, so whether it is actually importable is an environment
+fact, not a repository constant: this repository's local sandbox does not
+have it installed, but a CI job that runs `pip install -r requirements.txt`
+does. These tests must be portable across both -- see PR #203's Required
+Checks failure (`test_api_unavailable_in_this_environment_is_reported_honestly`
+hardcoded `API_AVAILABLE is False`, which is only true where `fastapi`
+happens to be absent) and `docs/ci_failure_audit.md` for the incident this
+fixed.
+
+The unavailable branch is exercised deterministically via monkeypatching
+regardless of what is actually installed; the available branch runs only
+when `fastapi` is actually importable (skipped honestly otherwise). Every
+other test calls the plain functions directly -- the same functions the
+FastAPI routes call when the dependency is present -- so coverage of the
+actual job-running behavior does not depend on `fastapi` either way."""
 from __future__ import annotations
 
+import importlib.util
 import shutil
 from pathlib import Path
 
@@ -16,6 +25,8 @@ import pytest
 import job_runner.api as api
 from job_runner.store import JobStore
 from workflows.report_pipeline import ReportPipelineSpecV1
+
+_FASTAPI_ACTUALLY_INSTALLED = importlib.util.find_spec("fastapi") is not None
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SEED_REGISTRY = _REPO_ROOT / "benchmarks" / "registry_seed.json"
@@ -39,12 +50,40 @@ def _demo_spec_dict(name: str) -> dict:
     return spec.to_dict()
 
 
-def test_api_unavailable_in_this_environment_is_reported_honestly():
-    # This is the environment-truth assertion the mission's Phase F
-    # fallback explicitly asks for: fail gracefully, don't pretend.
-    assert api.API_AVAILABLE is False
+def test_api_available_reflects_actual_fastapi_import_state():
+    # API_AVAILABLE is an environment fact, not a repository constant --
+    # this compares it against an independent probe (importlib.util.find_spec)
+    # rather than hardcoding a value, so the assertion is true in every
+    # environment (fastapi absent, as in this sandbox, or present, as in CI).
+    assert api.API_AVAILABLE is _FASTAPI_ACTUALLY_INSTALLED
+
+
+def test_get_app_returns_none_when_fastapi_unavailable(monkeypatch):
+    # Deterministic regardless of what is actually installed: simulates the
+    # unavailable branch by monkeypatching the module's own flag/class, the
+    # same pair `get_app()` reads at call time.
+    monkeypatch.setattr(api, "API_AVAILABLE", False)
+    monkeypatch.setattr(api, "FastAPI", None)
+    assert api.get_app() is None
+
+
+def test_module_level_app_is_none_when_fastapi_unavailable():
+    if api.API_AVAILABLE:
+        pytest.skip("fastapi is installed in this environment; api.app is expected non-None here")
     assert api.app is None
     assert api.get_app() is None
+
+
+@pytest.mark.skipif(not _FASTAPI_ACTUALLY_INSTALLED, reason="fastapi is not installed in this environment")
+def test_get_app_returns_fastapi_app_when_available():
+    app = api.get_app()
+    assert app is not None
+    assert api.app is not None
+    # The available branch must not imply production-readiness -- the app's
+    # own title states local-dev-only/no-auth, matching job_runner.api's and
+    # docs/job_runner.md's documented scope.
+    assert "local dev only" in app.title.lower()
+    assert "no auth" in app.title.lower()
 
 
 def test_health_works_regardless_of_fastapi_availability():

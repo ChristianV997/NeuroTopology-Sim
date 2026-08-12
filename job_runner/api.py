@@ -9,18 +9,20 @@ upload handling, no rate limiting, no TLS, synchronous request handling
 (a `run` request blocks until the pipeline finishes). Do not expose this
 outside a local machine.
 
-`fastapi` is declared (unpinned) in `requirements.txt` but is **not
-installed** in this repository's Python environments as of this
-milestone (`pip show fastapi` finds nothing, `import fastapi` raises
-`ModuleNotFoundError`, and neither the root `.venv/` nor the isolated
-`apps/awareness_studio/` environment has it either). `API_AVAILABLE`
-below reflects that honestly. The plain functions
-(`health`/`create_job`/`get_job`/`run_job`/`list_jobs`) work regardless
--- they are what the tests import and call directly -- and are the same
-functions the FastAPI routes call when the dependency is present. Every
-one of them is a thin wrapper over `job_runner.store.JobStore` /
-`job_runner.runner.run_pipeline_job`; no pipeline logic is duplicated
-here. See docs/job_runner.md.
+`fastapi` is declared (unpinned) in `requirements.txt`, so whether it is
+actually importable is an environment fact, not a repository constant --
+this repository's local sandbox does not have it installed, while a CI
+job that runs `pip install -r requirements.txt` does (see
+`docs/ci_failure_audit.md` for the PR #203 Required Checks failure this
+distinction caused, and its fix). `API_AVAILABLE` below reflects the
+*actual* import state in whatever environment this module runs in -- it
+is computed once from a real `try: import / except: None`, never
+hardcoded. The plain functions (`health`/`create_job`/`get_job`/
+`run_job`/`list_jobs`) work regardless -- they are what the tests import
+and call directly -- and are the same functions the FastAPI routes call
+when the dependency is present. Every one of them is a thin wrapper over
+`job_runner.store.JobStore` / `job_runner.runner.run_pipeline_job`; no
+pipeline logic is duplicated here. See docs/job_runner.md.
 """
 from __future__ import annotations
 
