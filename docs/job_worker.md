@@ -285,9 +285,9 @@ design:
   cross-machine lock service once more than one worker process needs to
   share a job store.
 - **Scheduled batch jobs** -- a cron-like trigger that calls
-  `create_batch_from_specs`/`run_batch` on a recurring schedule, building
-  on `benchmarks/` (`docs/benchmark_dataset_registry.md`) for a
-  benchmark-pack generator.
+  `create_batch_from_specs`/`run_batch` on a recurring schedule. A
+  curated (non-scheduled) batch mode now exists -- see
+  [docs/benchmark_pack_generator.md](benchmark_pack_generator.md).
 - **PDF export** of a batch's aggregated report packs.
 
 This milestone does not imply clinical validity for any artifact a job
