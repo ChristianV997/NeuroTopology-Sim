@@ -42,14 +42,37 @@ FAILED tests/btc_icft/test_microstates.py::test_fit_microstates_returns_expected
 FAILED tests/btc_icft/test_real_features.py::test_complexity_short_signal_returns_nan - ValueError: short signal
 """
 
+# ERROR lines cover pytest collection/fixture-setup failures, which use a
+# different short-summary prefix than a normal assertion failure and can
+# omit the "::test_id" part for a whole-file collection error.
+_SAMPLE_LOG_WITH_ERROR = """\
+ERROR tests/test_cross_modal_fusion.py
+ERROR tests/test_job_runner_api.py::test_create_job_via_plain_function - ModuleNotFoundError: no module named 'x'
+"""
+
 
 def test_extracts_failed_test_node_ids():
     summary = parse_log(_SAMPLE_LOG_WITH_FAILURE)
     assert summary["total_failed_tests"] == 1
+    assert summary["failed_tests"][0]["status"] == "FAILED"
     assert summary["failed_tests"][0]["node_id"] == (
         "tests/test_job_runner_api.py::test_api_unavailable_in_this_environment_is_reported_honestly"
     )
     assert summary["failed_tests"][0]["reason"] == "assert True is False"
+
+
+def test_extracts_error_lines_alongside_failed_lines():
+    # pytest's collection/fixture-setup failures use "ERROR ..." rather than
+    # "FAILED ...", and a whole-file collection error can omit "::test_id".
+    summary = parse_log(_SAMPLE_LOG_WITH_ERROR)
+    assert summary["total_failed_tests"] == 2
+    assert summary["has_failures"] is True
+    assert summary["failed_tests"][0]["status"] == "ERROR"
+    assert summary["failed_tests"][0]["node_id"] == "tests/test_cross_modal_fusion.py"
+    assert summary["failed_tests"][0]["reason"] == ""
+    assert summary["failed_tests"][1]["status"] == "ERROR"
+    assert summary["failed_tests"][1]["node_id"] == "tests/test_job_runner_api.py::test_create_job_via_plain_function"
+    assert summary["failed_tests"][1]["reason"] == "ModuleNotFoundError: no module named 'x'"
 
 
 def test_extracts_failed_isolated_batch_number():
@@ -96,7 +119,14 @@ def test_markdown_render_with_failures_lists_node_ids():
     summary = parse_log(_SAMPLE_LOG_WITH_FAILURE)
     text = render_markdown(summary)
     assert "test_api_unavailable_in_this_environment_is_reported_honestly" in text
+    assert "[FAILED]" in text
     assert "failed_batch: 31 / 44" in text
+
+
+def test_markdown_render_distinguishes_error_status():
+    summary = parse_log(_SAMPLE_LOG_WITH_ERROR)
+    text = render_markdown(summary)
+    assert "[ERROR]" in text
 
 
 def test_cli_json_output(tmp_path):

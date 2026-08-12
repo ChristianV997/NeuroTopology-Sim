@@ -1,6 +1,6 @@
 """Summarize a pytest / `scripts/run_tests_isolated.py` log into a small,
-deterministic JSON or Markdown report -- failed test node IDs and the
-failed isolated-batch number, if any.
+deterministic JSON or Markdown report -- failed/errored test node IDs and
+the failed isolated-batch number, if any.
 
 Stdlib-only. No network. No GitHub API call. Reads a local log file (or
 stdin) and does string parsing only -- it does not run any test itself and
@@ -21,9 +21,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# pytest's short summary line: "FAILED tests/foo.py::test_bar - AssertionError: ..."
-# The " - <reason>" suffix is optional (pytest omits it for some failure kinds).
-_FAILED_TEST_RE = re.compile(r"^FAILED\s+(?P<node_id>\S+?)(?:\s+-\s+(?P<reason>.*))?$")
+# pytest's short summary lines: "FAILED tests/foo.py::test_bar - AssertionError: ..."
+# and "ERROR tests/foo.py::test_bar - Exception: ..." (collection/fixture-setup
+# failures use ERROR rather than FAILED and may omit the "::test_id" part
+# entirely for a whole-file collection error). Both represent a failed run
+# for CI-triage purposes, so both are captured with a `status` field so a
+# caller can still distinguish them if needed. The " - <reason>" suffix is
+# optional in either case (pytest omits it for some failure kinds).
+_FAILED_TEST_RE = re.compile(r"^(?P<status>FAILED|ERROR)\s+(?P<node_id>\S+?)(?:\s+-\s+(?P<reason>.*))?$")
 
 # scripts/run_tests_isolated.py's own failure line:
 # "[isolated] batch 31 failed with exit code 1"
@@ -62,6 +67,7 @@ def parse_log(text: str) -> dict[str, Any]:
         if test_match:
             failed_tests.append(
                 {
+                    "status": test_match.group("status"),
                     "node_id": test_match.group("node_id"),
                     "reason": (test_match.group("reason") or "").strip(),
                 }
@@ -99,7 +105,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         lines.append("")
         for entry in summary["failed_tests"]:
             reason = f" -- {entry['reason']}" if entry["reason"] else ""
-            lines.append(f"- `{entry['node_id']}`{reason}")
+            lines.append(f"- [{entry['status']}] `{entry['node_id']}`{reason}")
 
     return "\n".join(lines) + "\n"
 
