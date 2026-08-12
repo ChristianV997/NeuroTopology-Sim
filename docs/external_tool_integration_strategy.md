@@ -358,3 +358,14 @@ deadline pressure, whether each tool's license is safe to depend on.
 - `ExternalToolRegistry.recommended_next()`'s ranking heuristic is a
   simple, documented, four-key sort -- not a scored/weighted model, and not
   a substitute for a human decision about which adapter to build next.
+
+## Relationship to `oss_opportunities/`
+
+`external_tools/` is this repository's small, **hand-curated** catalog of
+tools it has already deliberately assessed. `oss_opportunities` (see
+`docs/oss_opportunity_pipeline.md`) is the automated **scouting** layer
+upstream of it -- it ranks Trendshift/Star History/GitHub-metadata
+repository candidates and can recommend `integrate_as_external_tool_record`
+as a next action, but it never writes to `external_tools/registry_seed.json`
+directly; turning a scored opportunity into a real `ExternalToolRecordV1`
+entry remains a separate, human-reviewed step.
