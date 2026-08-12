@@ -14,6 +14,13 @@ via `evidence.builder`'s `include_report` flag (recipe/derived-features/
 `EvidenceReportV1`'s `report_id` in its own `ReportPackV1`; it never
 regenerates or reinterprets report content.
 
+`workflows.html_report_pack` (see `docs/html_report_pack_renderer.md`)
+goes one step further for the `EvidenceReportV1`s a report pack
+references: it reads the already-rendered `EvidenceReport.json`/`.md`
+files this package produced and formats their already-computed
+`transition_summary`/`phase_space_summary`/etc. fields into a static
+HTML page -- it re-renders nothing, it only re-formats.
+
 ## What an `EvidenceReportV1` is
 
 `transitions/`, `phase_space/`, `benchmarks/`, and `evidence/` (see their

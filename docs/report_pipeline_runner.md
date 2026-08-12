@@ -225,7 +225,7 @@ python -m workflows.export_report_pack --spec pipeline_spec.json \
 
 python -m workflows.export_report_pack --spec pipeline_spec.json \
     --registry benchmarks/registry_seed.json \
-    --include-phase-space --include-evidence-bundle --include-report
+    --include-phase-space --include-evidence-bundle --include-report --include-html
 ```
 
 `--dry-run`/`--out`/`--include-*`/`--registry` override the corresponding
@@ -303,6 +303,15 @@ explicit statement that the pack is not clinical evidence. See
 [docs/evidence_report_generator.md](evidence_report_generator.md) for
 where the actual scientific/governance claims a report pack references
 are made and bounded.
+
+## HTML report packs
+
+`--include-html` (or `include_html=True` on the spec) renders a
+deterministic, static `index.html` from the run's `ReportPackV1` once it
+completes -- see
+[docs/html_report_pack_renderer.md](html_report_pack_renderer.md). This
+is the first shareable, non-technical artifact this runner produces;
+default behavior (no `--include-html`) is unchanged.
 
 ## Limitations
 
