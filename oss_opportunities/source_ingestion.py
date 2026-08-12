@@ -195,7 +195,12 @@ def _parse_trendshift_html(html_text: str, *, timeframe: str, snapshot_date: str
         if repo.endswith(".git"):
             repo = repo[: -len(".git")]
         repo_full_name = f"{owner}/{repo}"
-        if repo_full_name in seen or owner.lower() in ("trendshift", "sponsors", "about", "features"):
+        # Only Trendshift's own repo link is excluded by owner name -- it
+        # is virtually guaranteed to appear in any Trendshift page's own
+        # nav/footer chrome. Excluding by "sponsors"/"about"/"features" was
+        # too broad: those are plausible real GitHub org names and would
+        # incorrectly drop a legitimate trending repository owned by one.
+        if repo_full_name in seen or owner.lower() == "trendshift":
             continue
         seen.add(repo_full_name)
         candidates.append(

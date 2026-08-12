@@ -96,7 +96,7 @@ def test_parse_trendshift_html_extracts_repo_links_no_network():
         assert c.source == "trendshift_daily"
 
 
-def test_parse_trendshift_html_deduplicates_and_excludes_site_chrome_links():
+def test_parse_trendshift_html_deduplicates_and_excludes_trendshift_own_link():
     html = """
     <a href="https://github.com/microsoft/markitdown">a</a>
     <a href="https://github.com/microsoft/markitdown">dup</a>
@@ -105,6 +105,22 @@ def test_parse_trendshift_html_deduplicates_and_excludes_site_chrome_links():
     candidates = _parse_trendshift_html(html, timeframe="daily", snapshot_date="2026-08-12", limit=20)
     assert len(candidates) == 1
     assert candidates[0].repo_full_name == "microsoft/markitdown"
+
+
+def test_parse_trendshift_html_does_not_drop_legitimate_orgs_named_like_site_chrome():
+    # Regression: the exclusion filter previously matched owner names
+    # "sponsors"/"about"/"features" broadly, which would have incorrectly
+    # dropped a real trending repo owned by a GitHub org that happens to
+    # share one of those names. Only Trendshift's own repo link (owner
+    # "trendshift") should ever be excluded.
+    html = """
+    <a href="https://github.com/about/some-project">about-project</a>
+    <a href="https://github.com/features/another-project">features-project</a>
+    <a href="https://github.com/sponsors/a-real-org-repo">sponsors-project</a>
+    """
+    candidates = _parse_trendshift_html(html, timeframe="daily", snapshot_date="2026-08-12", limit=20)
+    names = {c.repo_full_name for c in candidates}
+    assert names == {"about/some-project", "features/another-project", "sponsors/a-real-org-repo"}
 
 
 def test_parse_trendshift_html_respects_limit():

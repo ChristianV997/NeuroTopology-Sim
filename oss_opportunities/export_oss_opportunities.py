@@ -57,7 +57,18 @@ def _resolve_out_root(raw: str) -> Path:
     errors = validate_repo_relative_root(raw, "out")
     if errors:
         raise OssOpportunityStoreError("; ".join(errors))
-    return (_REPO_ROOT / raw).resolve()
+    resolved = (_REPO_ROOT / raw).resolve()
+    # String-level validation above only checks the *requested* path --
+    # a symlink under an allowed prefix (e.g. outputs/link -> /etc) can
+    # still make .resolve() escape the repository root. Fail closed on
+    # the resolved path too, mirroring
+    # dataset_acquisition.store.validate_target_root's own containment
+    # check.
+    try:
+        resolved.relative_to(_REPO_ROOT)
+    except ValueError as exc:
+        raise OssOpportunityStoreError(f"out resolves outside the repository root: {raw!r}") from exc
+    return resolved
 
 
 def _build_and_write(candidates: list[OpenSourceRepositoryCandidateV1], out_root: Path) -> OpenSourceLeverageBatchV1:

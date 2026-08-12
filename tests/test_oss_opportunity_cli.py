@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from oss_opportunities.export_oss_opportunities import _resolve_out_root
+from oss_opportunities.validation import OssOpportunityStoreError
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _OUT_ROOT = "outputs/oss_opportunities_cli_test"
 
@@ -128,6 +131,25 @@ def test_unsafe_output_root_rejected(tmp_path):
     result = _run_cli("from-manual-seed", "--seed", str(seed_path), "--out", "/etc/evil")
     assert result.returncode != 0
     assert "FAILED" in result.stdout + result.stderr
+
+
+def test_symlink_escape_under_allowed_prefix_rejected():
+    # Regression: string-level validation alone doesn't catch a symlink
+    # under an allowed prefix (outputs/) whose target resolves outside the
+    # repository root -- _resolve_out_root must fail closed on the
+    # *resolved* path too, mirroring
+    # dataset_acquisition.store.validate_target_root's containment check.
+    outputs_dir = _REPO_ROOT / "outputs"
+    outputs_dir.mkdir(exist_ok=True)
+    link_path = outputs_dir / "oss_opportunities_symlink_escape_test"
+    if link_path.exists() or link_path.is_symlink():
+        link_path.unlink()
+    link_path.symlink_to("/tmp", target_is_directory=True)
+    try:
+        with pytest.raises(OssOpportunityStoreError):
+            _resolve_out_root("outputs/oss_opportunities_symlink_escape_test/evil")
+    finally:
+        link_path.unlink()
 
 
 def test_invalid_trendshift_timeframe_in_fixture_fails_clearly(tmp_path):
