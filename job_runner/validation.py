@@ -23,10 +23,20 @@ ALLOWED_JOB_STATUSES: frozenset[str] = frozenset(
 
 ALLOWED_REQUESTED_OUTPUTS: frozenset[str] = frozenset({"report_pack", "html_report_pack", "json_manifests_only"})
 
+ALLOWED_BATCH_STATUSES: frozenset[str] = frozenset(
+    {"created", "queued", "running", "completed", "completed_with_failures", "failed", "blocked"}
+)
+
 # A job that never terminates after this many attempts is a bug or a
 # structurally broken spec, not something worth retrying indefinitely --
 # a ceiling, not a target.
 MAX_ATTEMPTS_CEILING = 10
+
+# One worker invocation or batch processing an unbounded number of jobs
+# is a design smell, not a feature -- these are ceilings, not targets.
+MAX_JOBS_CEILING = 1000
+MAX_LOOPS_CEILING = 1000
+MAX_POLL_INTERVAL_SECONDS_CEILING = 3600
 
 JOB_RUNNER_EXTRA_BANNED_PHRASES: tuple[str, ...] = REPORT_PIPELINE_EXTRA_BANNED_PHRASES
 
@@ -61,21 +71,31 @@ def _scan_banned_phrases(value: Any, path: str, errors: list[str]) -> None:
             _scan_banned_phrases(item, f"{path}[{idx}]", errors)
 
 
-def validate_output_root(output_root: Any) -> list[str]:
-    """String-level prefix check only (rule 4) -- the real traversal/
-    containment safety check is `dataset_acquisition.store.validate_target_root`,
-    applied at write time in the job store."""
+def _validate_repo_relative_root(value: Any, field_name: str, *, rule_label: str = "") -> list[str]:
+    """String-level prefix check only -- the real traversal/containment
+    safety check is `dataset_acquisition.store.validate_target_root`,
+    applied at write time in the job store. Shared by `validate_output_root`
+    and `validate_jobs_root` so the two safety checks never drift apart."""
+    suffix = f" ({rule_label})" if rule_label else ""
     errors: list[str] = []
-    if not output_root or not isinstance(output_root, str):
-        errors.append("output_root is required (non-empty string) (rule 4)")
+    if not value or not isinstance(value, str):
+        errors.append(f"{field_name} is required (non-empty string){suffix}")
         return errors
-    raw = output_root.strip()
+    raw = value.strip()
     if raw.startswith("/") or raw.startswith("~") or ".." in raw.split("/"):
-        errors.append(f"output_root must be a safe relative repository path, got {output_root!r} (rule 4)")
+        errors.append(f"{field_name} must be a safe relative repository path, got {value!r}{suffix}")
         return errors
     if not any(raw == prefix.rstrip("/") or raw.startswith(prefix) for prefix in ALLOWED_TARGET_ROOT_PREFIXES):
-        errors.append(f"output_root must be under one of {ALLOWED_TARGET_ROOT_PREFIXES}, got {output_root!r} (rule 4)")
+        errors.append(f"{field_name} must be under one of {ALLOWED_TARGET_ROOT_PREFIXES}, got {value!r}{suffix}")
     return errors
+
+
+def validate_output_root(output_root: Any) -> list[str]:
+    return _validate_repo_relative_root(output_root, "output_root", rule_label="rule 4")
+
+
+def validate_jobs_root(jobs_root: Any) -> list[str]:
+    return _validate_repo_relative_root(jobs_root, "jobs_root", rule_label="rule 3")
 
 
 def validate_pipeline_job(job: Any) -> list[str]:
@@ -190,5 +210,120 @@ def validate_pipeline_job_result(result: Any) -> list[str]:
     for field_name in ("limitations", "errors", "warnings", "generated_files"):
         _scan_banned_phrases(getattr(result, field_name, None) or [], field_name, errors)
     _scan_banned_phrases(getattr(result, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_job_queue_state(state: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises;
+    never reads a path off disk -- `state` is already an in-memory
+    snapshot by the time this runs."""
+    errors: list[str] = []
+
+    # Rule 1.
+    if not getattr(state, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+
+    # Rule 2.
+    if not getattr(state, "provenance", None):
+        errors.append("provenance is required (rule 2)")
+
+    # Rule 3.
+    errors.extend(validate_jobs_root(getattr(state, "jobs_root", None)))
+
+    # Rule 11 analogue.
+    if hasattr(state, "claim_scope") or hasattr(state, "evidence_level"):
+        errors.append("JobQueueStateV1 must not carry its own claim_scope/evidence_level field (rule 11)")
+
+    # Rule 14 (+ 12 phrase coverage): banned-phrase scan.
+    _scan_banned_phrases(getattr(state, "provenance", None) or "", "provenance", errors)
+    _scan_banned_phrases(getattr(state, "limitations", None) or [], "limitations", errors)
+    _scan_banned_phrases(getattr(state, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_worker_run_manifest(manifest: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises;
+    never executes a job -- purely structural."""
+    errors: list[str] = []
+
+    # Rule 1.
+    if not getattr(manifest, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+
+    # Rule 2.
+    if not getattr(manifest, "provenance", None):
+        errors.append("provenance is required (rule 2)")
+
+    # Rule 3.
+    errors.extend(validate_jobs_root(getattr(manifest, "jobs_root", None)))
+
+    # Rule 4.
+    max_jobs = getattr(manifest, "max_jobs", None)
+    if not isinstance(max_jobs, int) or isinstance(max_jobs, bool) or not (1 <= max_jobs <= MAX_JOBS_CEILING):
+        errors.append(f"max_jobs must be an integer in [1, {MAX_JOBS_CEILING}], got {max_jobs!r} (rule 4)")
+
+    # Rule 5.
+    poll_interval = getattr(manifest, "poll_interval_seconds", None)
+    if (
+        not isinstance(poll_interval, (int, float)) or isinstance(poll_interval, bool)
+        or not (0 <= poll_interval <= MAX_POLL_INTERVAL_SECONDS_CEILING)
+    ):
+        errors.append(
+            f"poll_interval_seconds must be a number in [0, {MAX_POLL_INTERVAL_SECONDS_CEILING}], "
+            f"got {poll_interval!r} (rule 5)"
+        )
+
+    # Rule 11 analogue.
+    if hasattr(manifest, "claim_scope") or hasattr(manifest, "evidence_level"):
+        errors.append("WorkerRunManifestV1 must not carry its own claim_scope/evidence_level field (rule 11)")
+
+    # Rule 14 (+ 12 phrase coverage): banned-phrase scan.
+    _scan_banned_phrases(getattr(manifest, "provenance", None) or "", "provenance", errors)
+    for field_name in ("limitations", "errors", "warnings"):
+        _scan_banned_phrases(getattr(manifest, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(getattr(manifest, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_batch_run_manifest(manifest: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises;
+    never reads a spec path off disk -- purely structural."""
+    errors: list[str] = []
+
+    # Rule 1.
+    if not getattr(manifest, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+
+    # Rule 2.
+    if not getattr(manifest, "provenance", None):
+        errors.append("provenance is required (rule 2)")
+
+    # Rule 3.
+    errors.extend(validate_jobs_root(getattr(manifest, "jobs_root", None)))
+
+    spec_paths = getattr(manifest, "spec_paths", None) or []
+    if not spec_paths:
+        errors.append("spec_paths must be a non-empty list")
+
+    batch_status = getattr(manifest, "batch_status", None)
+    if batch_status not in ALLOWED_BATCH_STATUSES:
+        errors.append(f"batch_status '{batch_status}' must be one of {sorted(ALLOWED_BATCH_STATUSES)}")
+
+    requested_outputs = getattr(manifest, "requested_outputs", None) or []
+    for item in requested_outputs:
+        if item not in ALLOWED_REQUESTED_OUTPUTS:
+            errors.append(f"requested_outputs: '{item}' must be one of {sorted(ALLOWED_REQUESTED_OUTPUTS)}")
+
+    # Rule 11 analogue.
+    if hasattr(manifest, "claim_scope") or hasattr(manifest, "evidence_level"):
+        errors.append("BatchRunManifestV1 must not carry its own claim_scope/evidence_level field (rule 11)")
+
+    # Rule 14 (+ 12 phrase coverage): banned-phrase scan.
+    _scan_banned_phrases(getattr(manifest, "provenance", None) or "", "provenance", errors)
+    _scan_banned_phrases(getattr(manifest, "limitations", None) or [], "limitations", errors)
+    _scan_banned_phrases(getattr(manifest, "metadata", None) or {}, "metadata", errors)
 
     return errors
