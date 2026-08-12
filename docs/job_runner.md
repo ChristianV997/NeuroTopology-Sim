@@ -348,7 +348,9 @@ design:
 - **Background queue worker** -- a real consumer (e.g. backed by a
   message queue) that dequeues `queued` jobs and calls
   `run_pipeline_job` asynchronously, using the `queued`/`blocked`
-  `job_status` values this schema already reserves.
+  `job_status` values this schema already reserves. A bounded,
+  local, single-process version of this now exists -- see
+  [docs/job_worker.md](job_worker.md).
 - **Signed report archives** -- a tamper-evident bundle of a completed
   job's `ReportPack.json`/`HtmlReportPack.json`/referenced artifacts.
 - **PDF export** of a report pack or HTML report pack.
