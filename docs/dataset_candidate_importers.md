@@ -348,6 +348,12 @@ substrate is for; none of these descriptions is a commitment to a design:
   the *remote fetch* step itself -- `dataset_acquisition` v1 has no
   implemented download path for either catalog; see that document's own
   Future work section.
+- **Opportunity ranking across many candidates.** Since this milestone,
+  `dataset_opportunities/` (see
+  `docs/dataset_opportunity_pipeline.md`) now fills this gap: it scores a
+  list of already-imported `DatasetCandidateRecordV1` records and produces a
+  ranked, human-reviewed next-action plan -- it does not change what this
+  module produces per candidate.
 
 This milestone does not imply that any imported candidate is analyzed
 evidence, does not imply clinical validity for any dataset it surfaces,
