@@ -7,6 +7,15 @@ does not describe, and should not be read as promising, any of the
 capabilities listed in [Future work](#future-work) -- those are
 explicitly out of scope for this milestone.
 
+`adapters.fmri_derivatives_feature_recipe` (see
+`docs/fmri_derivatives_feature_recipe.md`) fills the remaining gap: it
+computes an explicit, bounded `derived_features.csv`/`mapping.json` pair
+from a local timeseries-table/connectivity-matrix/graph-summary fixture,
+then calls this adapter's own `export_fmri_derivative_transitions`
+unmodified (optional CLI flag `--run-fmri-derivatives-adapter`) -- this
+adapter's own eligibility checks, mapping validation, and registry
+discipline all apply unchanged to that caller too.
+
 ## What it does
 
 `adapters.fmri_derivatives` is the bridge from an fMRI lab's own
