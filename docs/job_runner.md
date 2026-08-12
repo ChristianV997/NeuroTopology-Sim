@@ -217,23 +217,32 @@ python -m job_runner.export_job list --jobs-root outputs/jobs --status completed
 `job_runner/api.py` follows the exact `try: from fastapi import FastAPI
 / except Exception: FastAPI = None` fallback already established in
 `api/rag_server.py`. **`fastapi` is declared (unpinned) in
-`requirements.txt` but is not installed in this repository's Python
-environments as of this milestone** -- confirmed via `pip show fastapi`
-(not found) and a direct `import fastapi` (`ModuleNotFoundError`) in both
-the root environment and `.venv/`; the isolated `apps/awareness_studio/`
-environment does declare `fastapi>=0.111` in its own `pyproject.toml`,
-but that is a separate Python environment per this repository's
-documented "Two Python Environments" split and is not importable from
-`job_runner/`.
+`requirements.txt`, so whether it is actually importable is an
+environment fact, not a repository constant.** This repository's local
+sandbox does not have it installed (confirmed via `pip show fastapi`
+(not found) and a direct `import fastapi` (`ModuleNotFoundError`)); a CI
+job that runs `pip install -r requirements.txt` does install it, since
+the package is declared there. The two environments legitimately differ,
+and this module -- and its tests -- must behave correctly in either one.
+See [docs/ci_failure_audit.md](ci_failure_audit.md) for the PR #203
+Required Checks failure this distinction caused (a test hardcoded
+`API_AVAILABLE is False`) and its fix.
 
-`job_runner.api.API_AVAILABLE` reflects this honestly (`False` today).
-`job_runner.api.app` is a real `FastAPI` instance when the dependency is
-present, and `None` otherwise -- callers must check for `None` rather
-than assume the API is usable. The plain functions underneath
-(`health`/`create_job`/`get_job`/`run_job`/`list_jobs`) work regardless
-of `fastapi`'s availability -- they are what the test suite calls
-directly, and they are the same functions the FastAPI routes call when
-the dependency is present, so no logic is duplicated between the two.
+`job_runner.api.API_AVAILABLE` reflects the actual import state of
+whatever environment it runs in, computed once from a real `try: import
+/ except: None` -- never hardcoded to a value observed in one
+environment. `job_runner.api.app` is a real `FastAPI` instance when the
+dependency is present, and `None` otherwise -- callers must check for
+`None` rather than assume the API is usable. The plain functions
+underneath (`health`/`create_job`/`get_job`/`run_job`/`list_jobs`) work
+regardless of `fastapi`'s availability -- they are what the test suite
+calls directly, and they are the same functions the FastAPI routes call
+when the dependency is present, so no logic is duplicated between the
+two. `tests/test_job_runner_api.py` exercises the unavailable branch
+deterministically via monkeypatching (so it is covered in every
+environment) and the available branch only when `fastapi` is actually
+importable (skipped honestly otherwise) -- see that file for the exact
+test list.
 
 Endpoints (once `fastapi` is installed): `GET /health`, `POST /jobs`,
 `GET /jobs/{job_id}`, `POST /jobs/{job_id}/run`, `GET /jobs`.
