@@ -206,3 +206,129 @@ def validate_benchmark_pack_index(index: Any) -> list[str]:
     _scan_banned_phrases(getattr(index, "metadata", None) or {}, "metadata", errors)
 
     return errors
+
+
+# -- verification + gallery (this milestone) --------------------------------
+
+ALLOWED_VERIFICATION_STATUSES: frozenset[str] = frozenset({"passed", "passed_with_warnings", "failed"})
+
+# A raw-data-looking path -- mirrors dataset_acquisition/store.py's own
+# documented .gitignore patterns (`data/raw/`, `data/ds[0-9]{6}*`) -- used
+# to catch a report pack accidentally referencing a raw input file rather
+# than a derived artifact.
+_RAW_DATA_PATH_MARKERS: tuple[str, ...] = ("data/raw/",)
+
+
+def looks_like_raw_data_path(path: str) -> bool:
+    """True if `path` looks like a raw dataset path rather than a derived
+    artifact -- `data/raw/...` or a bare `data/dsNNNNNN...` directory.
+    Never raises; a pure string heuristic, not a filesystem check."""
+    import re
+
+    if not path:
+        return False
+    raw = str(path)
+    if any(marker in raw for marker in _RAW_DATA_PATH_MARKERS):
+        return True
+    return bool(re.search(r"(^|/)data/ds\d{6}", raw))
+
+
+def validate_benchmark_pack_verification(verification: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises;
+    purely structural -- the real file/id checks happen in
+    `benchmark_packs.verification.verify_benchmark_pack`."""
+    errors: list[str] = []
+
+    if not getattr(verification, "verification_id", None):
+        errors.append("verification_id is required")
+    if not getattr(verification, "benchmark_pack_id", None):
+        errors.append("benchmark_pack_id is required")
+
+    # Rule 1.
+    if not getattr(verification, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+
+    # Rule 2.
+    if not getattr(verification, "provenance", None):
+        errors.append("provenance is required (rule 2)")
+
+    status = getattr(verification, "verification_status", None)
+    if status not in ALLOWED_VERIFICATION_STATUSES:
+        errors.append(f"verification_status '{status}' must be one of {sorted(ALLOWED_VERIFICATION_STATUSES)}")
+
+    if status == "failed" and not getattr(verification, "errors", None):
+        errors.append("a failed verification must record errors")
+    if status == "passed" and getattr(verification, "errors", None):
+        errors.append("a passed verification must not record errors")
+
+    if hasattr(verification, "claim_scope") or hasattr(verification, "evidence_level"):
+        errors.append("BenchmarkPackVerificationV1 must not carry its own claim_scope/evidence_level field")
+
+    _scan_banned_phrases(getattr(verification, "provenance", None) or "", "provenance", errors)
+    for field_name in ("limitations", "warnings", "errors"):
+        _scan_banned_phrases(getattr(verification, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(getattr(verification, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_benchmark_gallery(gallery: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises."""
+    errors: list[str] = []
+
+    if not getattr(gallery, "gallery_id", None):
+        errors.append("gallery_id is required")
+
+    # Rule 1 / 3.
+    if not getattr(gallery, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+    if not getattr(gallery, "blocked_interpretations", None):
+        errors.append("blocked_interpretations must be a non-empty list (rule 3)")
+
+    # Rule 2.
+    if not getattr(gallery, "provenance", None):
+        errors.append("provenance is required (rule 2)")
+
+    # Rule 10: a gallery cannot list a pack as verified without a passing verification.
+    verified_ids = set(getattr(gallery, "verified_pack_ids", None) or [])
+    failed_ids = set(getattr(gallery, "failed_pack_ids", None) or [])
+    overlap = verified_ids & failed_ids
+    if overlap:
+        errors.append(f"pack ids present in both verified_pack_ids and failed_pack_ids: {sorted(overlap)} (rule 10)")
+
+    if hasattr(gallery, "claim_scope") or hasattr(gallery, "evidence_level"):
+        errors.append("BenchmarkGalleryV1 must not carry its own claim_scope/evidence_level field (rule 8)")
+
+    for field_name in ("gallery_name",):
+        _scan_banned_phrases(getattr(gallery, field_name, None) or "", field_name, errors)
+    for field_name in ("limitations", "blocked_interpretations"):
+        _scan_banned_phrases(getattr(gallery, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(getattr(gallery, "metadata", None) or {}, "metadata", errors)
+
+    return errors
+
+
+def validate_benchmark_gallery_index(gallery_index: Any) -> list[str]:
+    """Return a list of error strings (empty = valid). Never raises."""
+    errors: list[str] = []
+
+    if not getattr(gallery_index, "gallery_index_id", None):
+        errors.append("gallery_index_id is required")
+    if not getattr(gallery_index, "gallery_id", None):
+        errors.append("gallery_id is required")
+
+    # Rule 1.
+    if not getattr(gallery_index, "limitations", None):
+        errors.append("limitations must be a non-empty list (rule 1)")
+    if not getattr(gallery_index, "blocked_interpretations", None):
+        errors.append("blocked_interpretations must be a non-empty list (rule 1)")
+
+    if hasattr(gallery_index, "claim_scope") or hasattr(gallery_index, "evidence_level"):
+        errors.append("BenchmarkGalleryIndexV1 must not carry its own claim_scope/evidence_level field (rule 8)")
+
+    _scan_banned_phrases(getattr(gallery_index, "title", None) or "", "title", errors)
+    for field_name in ("limitations", "blocked_interpretations"):
+        _scan_banned_phrases(getattr(gallery_index, field_name, None) or [], field_name, errors)
+    _scan_banned_phrases(getattr(gallery_index, "metadata", None) or {}, "metadata", errors)
+
+    return errors

@@ -270,7 +270,8 @@ design:
 - **PDF export** of a benchmark pack.
 - **Richer cross-report comparison dashboards**.
 - **Holo-Atlas evidence viewer** consumption of `BenchmarkPackV1` output.
-- **Benchmark-pack gallery** -- a hosted index over many built packs.
+- **Benchmark-pack gallery** -- a static index over many verified packs
+  now exists -- see [docs/benchmark_gallery.md](benchmark_gallery.md).
 
 This milestone does not imply clinical validity for any artifact a
 benchmark pack references, does not imply consciousness or
