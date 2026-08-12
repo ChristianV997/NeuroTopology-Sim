@@ -204,6 +204,14 @@ only surfaces an identifier and a reason a human might want to follow up.
   untested against a real network call by design.
 - No authenticated API exists for triggering a scouting run.
 
+## Relationship to `oss_opportunities/`
+
+`oss_opportunities` (see `docs/oss_opportunity_pipeline.md`) is the
+structurally parallel scout for *repositories* (Trendshift/Star History/
+GitHub metadata) rather than *datasets* -- same candidate -> opportunity
+-> batch -> plan -> render shape, different source domain. The two
+packages do not read or write each other's artifacts.
+
 ## Future work
 
 **Not implemented by this milestone** -- listed only to show what this
