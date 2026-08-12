@@ -296,6 +296,15 @@ only when the resulting derived-feature table is passed through
 - Atlas/parcellation identity is recorded as provided, never
   independently validated as anatomically accurate.
 
+## Used by the report pipeline runner
+
+`workflows.report_pipeline` (see `docs/report_pipeline_runner.md`) can
+run this recipe as its `input_mode="fmri_timeseries_recipe"`/
+`"fmri_connectivity_matrix_recipe"`/`"fmri_graph_summary_recipe"` step,
+then continue into `adapters.fmri_derivatives` and, optionally,
+`evidence.builder`/`reports.evidence_report` -- unmodified, exactly as
+this recipe's own CLI (`--run-fmri-derivatives-adapter`) already does.
+
 ## Future work
 
 **Not implemented by this milestone** -- listed only to show what this
