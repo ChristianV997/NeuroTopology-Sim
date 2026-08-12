@@ -168,12 +168,16 @@ def score_opportunity(
     elif is_non_python_core or leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack", "infra_observability_stack"):
         recommended_action = "emulate_architecture_pattern"
     elif leverage_category in ("document_ingestion", "web_literature_acquisition"):
-        # High-value categories get a real integration path regardless of
-        # license: permissive/weak-copyleft can be an in-process optional
-        # adapter, while a copyleft/proprietary/unknown license (e.g. an
-        # AGPL scraping library) is still worth using as an external
-        # process/service adapter -- just never as copied-in code (rule 8).
-        if license_review.license_risk in ("permissive_low", "weak_copyleft_medium"):
+        # High-value categories always get a real integration path: only a
+        # permissive_low license (the one risk tier whose default
+        # commercial_core_policy is copy-permitting, see
+        # oss_opportunities.license_review._DEFAULT_POLICY_BY_RISK) can be
+        # an in-process optional adapter. Every other risk tier -- weak
+        # copyleft, strong copyleft, source-available/fair-code,
+        # proprietary/unknown (e.g. an AGPL scraping library) -- is still
+        # worth using, just only as an external process/service adapter,
+        # never as copied-in code (rule 8).
+        if license_review.license_risk == "permissive_low":
             recommended_action = "integrate_as_optional_adapter"
         else:
             recommended_action = "integrate_as_external_tool_record"

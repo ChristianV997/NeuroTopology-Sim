@@ -88,6 +88,22 @@ def test_blocked_actions_always_include_required_floor():
     assert set(result["blocked_actions"]) >= REQUIRED_BLOCKED_ACTIONS
 
 
+def test_weak_copyleft_document_ingestion_uses_external_tool_record_not_optional_adapter():
+    # Only permissive_low may recommend integrate_as_optional_adapter (the
+    # one action that implies in-process code copy) -- weak_copyleft_medium
+    # (e.g. LGPL) is a real, common license tier for document-ingestion
+    # tooling and must consistently get the external-tool-record path
+    # instead, matching validate_opportunity_against_license_review's
+    # cross-object gate.
+    c = make_document_ingestion_candidate("some/lgpl-repo")
+    c.license_spdx = "LGPL-2.1"
+    c.license_name = "GNU LGPL v2.1"
+    review = _review_for(c)
+    assert review.license_risk == "weak_copyleft_medium"
+    result = score_opportunity(c, review)
+    assert result["recommended_action"] == "integrate_as_external_tool_record"
+
+
 def test_never_recommends_execution_or_install_actions():
     for maker in (make_document_ingestion_candidate, make_agpl_scraper_candidate, make_frontend_stack_candidate):
         c = maker()

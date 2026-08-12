@@ -41,6 +41,7 @@ from oss_opportunities.planner import OpenSourceIntegrationPlanV1, plan_oss_inte
 from oss_opportunities.renderer import write_oss_opportunity_summary
 from oss_opportunities.repository_candidate import OpenSourceRepositoryCandidateV1
 from oss_opportunities.source_ingestion import (
+    LiveNetworkNotAllowedError,
     TrendshiftLiveScanError,
     import_from_manual_seed,
     import_from_starmap_fixture,
@@ -112,8 +113,8 @@ def _cmd_live_trendshift_scan(args: argparse.Namespace) -> int:
         return 2
     out_root = _resolve_out_root(args.out)
     try:
-        candidates = import_from_trendshift_live_scan(timeframes=args.timeframe or ["daily"])
-    except TrendshiftLiveScanError as exc:
+        candidates = import_from_trendshift_live_scan(timeframes=args.timeframe or ["daily"], allow_live_network=True)
+    except (TrendshiftLiveScanError, LiveNetworkNotAllowedError) as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
     if not candidates:

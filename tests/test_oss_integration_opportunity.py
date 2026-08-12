@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from oss_opportunities.integration_opportunity import OpenSourceIntegrationOpportunityV1, compute_opportunity_id
-from oss_opportunities.validation import REQUIRED_BLOCKED_ACTIONS
+from oss_opportunities.license_review import RepositoryLicenseReviewV1
+from oss_opportunities.validation import REQUIRED_BLOCKED_ACTIONS, validate_opportunity_against_license_review
 
 
 def _make(**overrides):
@@ -78,3 +79,49 @@ def test_claim_scope_injected_via_setattr_fails():
 def test_missing_limitations_fails():
     o = _make(limitations=[])
     assert any("limitations" in e for e in o.validate())
+
+
+def _review(**overrides):
+    # Built via the raw dataclass constructor (not .make()) so tests can
+    # freely set arbitrary (commercial_core_policy, license_risk)
+    # combinations -- including tampered/mismatched ones -- to exercise
+    # the cross-object check. .make() derives license_risk from
+    # license_spdx and does not accept it as a direct override.
+    kwargs = dict(
+        repo_full_name="a/b", license_spdx="GPL-3.0", license_name="GPLv3",
+        provenance="fixture", limitations=["synthetic"],
+        commercial_core_policy="external_process_only", license_risk="strong_copyleft_high",
+        allowed_use_modes=["external_process_only"], blocked_use_modes=["commercial_core_copy"],
+    )
+    kwargs.update(overrides)
+    return RepositoryLicenseReviewV1(license_review_id="fixed-test-id", **kwargs)
+
+
+def test_cross_check_fails_closed_for_non_copy_permitting_policy_mismatch():
+    # Regression for a real gap: the cross-object check previously only
+    # ran when commercial_core_policy was ALREADY copy-permitting, so a
+    # mismatched pair like external_process_only/strong_copyleft_high
+    # paired with integrate_as_optional_adapter silently passed.
+    o = _make(recommended_action="integrate_as_optional_adapter")
+    review = _review(commercial_core_policy="external_process_only", license_risk="strong_copyleft_high")
+    errs = validate_opportunity_against_license_review(o, review)
+    assert any("rule 7/8" in e for e in errs)
+
+
+def test_cross_check_fails_closed_for_docs_reference_only_mismatch():
+    o = _make(recommended_action="integrate_as_optional_adapter")
+    review = _review(commercial_core_policy="docs_reference_only", license_risk="source_available_or_fair_code_high")
+    errs = validate_opportunity_against_license_review(o, review)
+    assert any("rule 7/8" in e for e in errs)
+
+
+def test_cross_check_passes_for_permissive_optional_adapter():
+    o = _make(recommended_action="integrate_as_optional_adapter")
+    review = _review(commercial_core_policy="allowed_with_attribution", license_risk="permissive_low")
+    assert validate_opportunity_against_license_review(o, review) == []
+
+
+def test_cross_check_ignores_other_recommended_actions():
+    o = _make(recommended_action="integrate_as_external_tool_record")
+    review = _review(commercial_core_policy="blocked", license_risk="missing_high")
+    assert validate_opportunity_against_license_review(o, review) == []

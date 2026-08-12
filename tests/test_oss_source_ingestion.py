@@ -10,10 +10,12 @@ import json
 import pytest
 
 from oss_opportunities.source_ingestion import (
+    LiveNetworkNotAllowedError,
     _parse_trendshift_html,
     import_from_manual_seed,
     import_from_starmap_fixture,
     import_from_trendshift_fixture,
+    import_from_trendshift_live_scan,
 )
 
 
@@ -114,3 +116,16 @@ def test_parse_trendshift_html_respects_limit():
 def test_parse_trendshift_html_handles_empty_input():
     candidates = _parse_trendshift_html("", timeframe="daily", snapshot_date="2026-08-12")
     assert candidates == []
+
+
+def test_live_scan_refuses_network_without_explicit_flag():
+    # Defense in depth: a caller that imports import_from_trendshift_live_scan
+    # directly (bypassing the CLI's own --allow-live-network check) must
+    # still be structurally blocked from real network I/O by default.
+    with pytest.raises(LiveNetworkNotAllowedError):
+        import_from_trendshift_live_scan(timeframes=["daily"])
+
+
+def test_live_scan_refuses_network_with_explicit_false():
+    with pytest.raises(LiveNetworkNotAllowedError):
+        import_from_trendshift_live_scan(timeframes=["daily"], allow_live_network=False)

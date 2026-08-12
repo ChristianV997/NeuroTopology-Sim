@@ -216,13 +216,27 @@ def _parse_trendshift_html(html_text: str, *, timeframe: str, snapshot_date: str
 
 
 def import_from_trendshift_live_scan(
-    *, timeframes: list[str], snapshot_date: str = "", limit_per_timeframe: int = _LIVE_SCAN_LIMIT_PER_TIMEFRAME
+    *,
+    timeframes: list[str],
+    snapshot_date: str = "",
+    limit_per_timeframe: int = _LIVE_SCAN_LIMIT_PER_TIMEFRAME,
+    allow_live_network: bool = False,
 ) -> list[OpenSourceRepositoryCandidateV1]:
     """Performs one bounded HTTP GET per timeframe against Trendshift's
-    public trending page. Never called by this repository's test suite --
-    the CLI requires `--allow-live-network` before this function is ever
-    reached. Fails cleanly (`TrendshiftLiveScanError`) rather than
-    returning a partial/fabricated result on any fetch or parse error."""
+    public trending page -- only if `allow_live_network=True` is passed
+    explicitly. This is a second, structural gate on top of the CLI's own
+    `--allow-live-network` check: any caller that imports this function
+    directly (bypassing the CLI) still cannot trigger a real network fetch
+    without opting in here too. Never called by this repository's test
+    suite. Fails cleanly (`TrendshiftLiveScanError`/
+    `LiveNetworkNotAllowedError`) rather than returning a partial/
+    fabricated result on any fetch or parse error."""
+    if not allow_live_network:
+        raise LiveNetworkNotAllowedError(
+            "import_from_trendshift_live_scan requires allow_live_network=True -- "
+            "this scout never performs live network I/O by default"
+        )
+
     import urllib.error
     import urllib.request
     from datetime import date

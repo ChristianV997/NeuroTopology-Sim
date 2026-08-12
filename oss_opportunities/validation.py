@@ -377,12 +377,22 @@ def validate_opportunity_against_license_review(opportunity: Any, license_review
     commercial_core_policy = getattr(license_review, "commercial_core_policy", None)
     license_risk = getattr(license_review, "license_risk", None)
 
-    if recommended_action == "integrate_as_optional_adapter" and commercial_core_policy in _COMMERCIAL_CORE_COPY_POLICIES:
-        if license_risk not in _COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK:
+    # `integrate_as_optional_adapter` is the one recommended_action that
+    # implies copying the repository's own code in-process -- it may only
+    # ever pair with the single (policy, risk) combination that actually
+    # permits that (rule 7/8). This must fail closed for every other
+    # combination, not only when commercial_core_policy already happens to
+    # be copy-permitting -- a mismatched/tampered pair (e.g.
+    # commercial_core_policy="external_process_only" or
+    # "docs_reference_only" alongside this action) is exactly the case
+    # this cross-object check exists to catch.
+    if recommended_action == "integrate_as_optional_adapter":
+        if commercial_core_policy not in _COMMERCIAL_CORE_COPY_POLICIES or license_risk not in _COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK:
             errors.append(
-                f"opportunity recommends '{recommended_action}' with commercial_core_policy="
-                f"'{commercial_core_policy}' but license_risk='{license_risk}' does not permit "
-                "commercial-core copy (rule 7/8)"
+                f"opportunity recommends '{recommended_action}' but license_review has "
+                f"commercial_core_policy='{commercial_core_policy}', license_risk='{license_risk}' -- "
+                f"only commercial_core_policy in {sorted(_COMMERCIAL_CORE_COPY_POLICIES)} with license_risk "
+                f"in {sorted(_COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK)} permits this action (rule 7/8)"
             )
     return errors
 
