@@ -6,6 +6,14 @@ not describe, and should not be read as promising, any of the future
 capabilities listed in [Future work](#future-work-toward-htmlpdfsaasapi) --
 those are explicitly out of scope for this milestone.
 
+`workflows.report_pipeline` (see `docs/report_pipeline_runner.md`) calls
+`reports.evidence_report.build_report` unmodified -- either indirectly
+via `evidence.builder`'s `include_report` flag (recipe/derived-features/
+`builtin_*` input modes), or directly for `input_mode=
+"existing_evidence_bundle"`. It then indexes the resulting
+`EvidenceReportV1`'s `report_id` in its own `ReportPackV1`; it never
+regenerates or reinterprets report content.
+
 ## What an `EvidenceReportV1` is
 
 `transitions/`, `phase_space/`, `benchmarks/`, and `evidence/` (see their

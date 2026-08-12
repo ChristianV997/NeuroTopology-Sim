@@ -233,6 +233,14 @@ rule 12). Evidence begins only once the recipe's output is passed through
 - `complexity.spectral_entropy` is a self-contained, direct implementation
   rather than a call into `antropy` (not guaranteed installed).
 
+## Used by the report pipeline runner
+
+`workflows.report_pipeline` (see `docs/report_pipeline_runner.md`) can
+run this recipe as its `input_mode="mne_bids_epoch_table_recipe"` step,
+then continue into `adapters.mne_bids` and, optionally,
+`evidence.builder`/`reports.evidence_report` -- unmodified, exactly as
+this recipe's own CLI (`--run-mne-bids-adapter`) already does.
+
 ## Future work
 
 **Not implemented by this milestone** -- listed only to show what this

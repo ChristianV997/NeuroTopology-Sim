@@ -1,10 +1,19 @@
 # Governed Evidence Bundles
 
-Status: **implemented substrate, no downstream consumers yet.** This
-document describes the `evidence/` package as it exists today. It does not
-describe, and should not be read as promising, any of the future modules
-listed in [Limitations and future work](#limitations-and-future-work) --
-those are explicitly out of scope for this milestone.
+Status: **implemented substrate.** This document describes the
+`evidence/` package as it exists today. It does not describe, and should
+not be read as promising, any of the future modules listed in
+[Limitations and future work](#limitations-and-future-work) -- those are
+explicitly out of scope for this milestone.
+
+`adapters.mne_bids`/`adapters.fmri_derivatives` already call
+`evidence.builder.build_generic_evidence_bundle` for their optional
+`--include-evidence-bundle` flag; `workflows.report_pipeline` (see
+`docs/report_pipeline_runner.md`) is the newest and most complete
+downstream consumer -- it calls `evidence.builder.build_evidence_bundle`
+directly for its `builtin_*` input modes, and reads an already-built
+`EvidenceBundleV1` back for `input_mode="existing_evidence_bundle"`. Both
+call this package's functions unmodified.
 
 ## What an `EvidenceBundleV1` is
 
