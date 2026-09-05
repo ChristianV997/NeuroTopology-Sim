@@ -32,6 +32,19 @@ from physics.open_quantum import (
     coupled_lattice,
     solve_gap,
 )
+from runs.run_record import RunRecordV1, build_run_id, write_json
+
+CAMPAIGN_SCHEMA = "NeuroTopologySim.DisorderAveragedCollectiveModes.v1"
+CAMPAIGN_FILENAME = "disorder_averaged_collective_modes.json"
+RUN_RECORD_SIDECAR_FILENAME = "RunRecord.json"
+SIDECAR_RUN_KIND = "disorder_averaged_collective_modes"
+SIDECAR_REPO = "NeuroTopology-Sim"
+SIDECAR_GIT_COMMIT = "working-tree"
+SIDECAR_ARGV = ["scripts/run_disorder_averaged_collective_modes.py"]
+_IO_AND_SIDECAR_FLAGS = frozenset(
+    {"output_dir", "checkpoint", "resume", "workers", "progress_every", "write_run_record"}
+)
+_ALLOWED_SIDECAR_VERDICTS = frozenset({"NOT_SUPPORTED", "INCONCLUSIVE"})
 
 
 def _safe(value: Any) -> Any:
@@ -66,10 +79,150 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _run_fingerprint(args: argparse.Namespace) -> str:
-    excluded = {"output_dir", "checkpoint", "resume", "workers", "progress_every"}
-    values = {key: _safe(value) for key, value in vars(args).items() if key not in excluded}
+    values = {key: _safe(value) for key, value in vars(args).items() if key not in _IO_AND_SIDECAR_FLAGS}
     encoded = json.dumps(values, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _campaign_configuration(args: argparse.Namespace) -> dict[str, Any]:
+    """Campaign configuration omits the sidecar flag so v1 JSON shape stays stable."""
+    return {key: value for key, value in vars(args).items() if key != "write_run_record"}
+
+
+def _sidecar_input_params(payload: dict[str, Any]) -> dict[str, Any]:
+    config = payload.get("configuration")
+    if not isinstance(config, dict):
+        return {}
+    return {str(key): value for key, value in config.items() if key not in _IO_AND_SIDECAR_FLAGS}
+
+
+def _finite_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if np.isfinite(number) else None
+
+
+def _sidecar_metrics(payload: dict[str, Any]) -> dict[str, float]:
+    """Copy existing campaign summary floats only. Does not rescore."""
+    metrics: dict[str, float] = {}
+    summaries = payload.get("summaries")
+    if not isinstance(summaries, list):
+        return metrics
+    n_effect_candidate = 0.0
+    n_not_supported = 0.0
+    for index, summary in enumerate(summaries):
+        if not isinstance(summary, dict):
+            continue
+        prefix = f"summary_{index}"
+        for key in (
+            "paired_disorder_samples",
+            "invalid_disorder_samples",
+            "mean_log_short_vs_long_null_adjusted_contrast",
+            "standard_error",
+            "exact_sign_flip_pvalue",
+        ):
+            number = _finite_float(summary.get(key))
+            if number is not None:
+                metrics[f"{prefix}_{key}"] = number
+        decision = summary.get("pre_registered_decision")
+        if decision == "EFFECT_CANDIDATE":
+            n_effect_candidate += 1.0
+        elif decision == "NOT_SUPPORTED":
+            n_not_supported += 1.0
+    metrics["n_summaries"] = float(len(summaries))
+    metrics["n_pre_registered_effect_candidate"] = n_effect_candidate
+    metrics["n_pre_registered_not_supported"] = n_not_supported
+    return metrics
+
+
+def _sidecar_verdict(payload: dict[str, Any]) -> str:
+    """Envelope only: never PASS. K > 100 remains the only PASS elsewhere.
+
+    Missing or invalid campaign material is INCONCLUSIVE. A completed
+    synthetic lattice campaign cannot emit PASS and maps to NOT_SUPPORTED.
+    Campaign ``pre_registered_decision`` is left on the v1 JSON unchanged.
+    """
+    if not isinstance(payload, dict) or payload.get("schema") != CAMPAIGN_SCHEMA:
+        return "INCONCLUSIVE"
+    summaries = payload.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return "INCONCLUSIVE"
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            return "INCONCLUSIVE"
+        decision = summary.get("pre_registered_decision")
+        if decision not in {"EFFECT_CANDIDATE", "NOT_SUPPORTED"}:
+            return "INCONCLUSIVE"
+        paired = summary.get("paired_disorder_samples")
+        invalid = summary.get("invalid_disorder_samples")
+        effect = summary.get("mean_log_short_vs_long_null_adjusted_contrast")
+        if not isinstance(paired, int) or paired < 1:
+            return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
+        if not isinstance(invalid, int) or invalid > 0:
+            return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
+        if effect is None or _finite_float(effect) is None:
+            return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
+    return "NOT_SUPPORTED"
+
+
+def _campaign_sha256(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        return ""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_run_record_sidecar(
+    payload: dict[str, Any],
+    campaign_path: Path,
+    *,
+    fingerprint: str | None = None,
+    _now: Any = None,
+) -> RunRecordV1:
+    """Build a deterministic RunRecordV1 sidecar from campaign inputs and provenance."""
+    campaign_path = Path(campaign_path)
+    inputs = _sidecar_input_params(payload)
+    if fingerprint:
+        inputs = {**inputs, "run_fingerprint": fingerprint}
+    metrics = _sidecar_metrics(payload)
+    run_id = build_run_id(
+        SIDECAR_RUN_KIND,
+        SIDECAR_REPO,
+        SIDECAR_GIT_COMMIT,
+        list(SIDECAR_ARGV),
+        inputs,
+        metrics,
+        repo_root=ROOT,
+    )
+    verdict = _sidecar_verdict(payload)
+    if verdict not in _ALLOWED_SIDECAR_VERDICTS:
+        verdict = "INCONCLUSIVE"
+    record = RunRecordV1.make(
+        run_id,
+        SIDECAR_RUN_KIND,
+        data_mode="synthetic",
+        verdict=verdict,
+        metrics=metrics,
+        artifacts={
+            "campaign_json": campaign_path.name,
+            "campaign_schema": CAMPAIGN_SCHEMA,
+            "campaign_sha256": _campaign_sha256(campaign_path),
+        },
+        source="scripts/run_disorder_averaged_collective_modes.py",
+        _now=_now,
+    )
+    record.input = inputs
+    if isinstance(payload, dict):
+        note = payload.get("scientific_note")
+        if isinstance(note, str):
+            record.notes = note
+    record.guardrails = {
+        "pass_reserved_for_bayes_factor_k_gt_100": True,
+        "synthetic_lattice_is_not_empirical_biology": True,
+        "campaign_schema": CAMPAIGN_SCHEMA,
+        "sidecar_does_not_replace_campaign_json": True,
+    }
+    return record
 
 
 def _checkpoint_header(fingerprint: str) -> dict[str, str]:
@@ -285,7 +438,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             else "NOT_SUPPORTED"
         )
     payload = {
-        "schema": "NeuroTopologySim.DisorderAveragedCollectiveModes.v1",
+        "schema": CAMPAIGN_SCHEMA,
         "pre_registered_null": {
             "collective_radiative_rate_s": 0.0,
             "claim": "No disorder-averaged separation-dependent lifetime shift beyond the independent-bath model.",
@@ -296,13 +449,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "alpha": args.alpha,
             "test": "two-sided exact paired sign-flip test",
         },
-        "configuration": _safe(vars(args)),
+        "configuration": _safe(_campaign_configuration(args)),
         "records": _safe(records),
         "summaries": _safe(summaries),
         "scientific_note": "Finite dipolar lattice calculations test model sensitivity only. They do not establish biological subradiance or quantum coherence.",
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    _atomic_json(args.output_dir / "disorder_averaged_collective_modes.json", payload)
+    campaign_path = args.output_dir / CAMPAIGN_FILENAME
+    _atomic_json(campaign_path, payload)
+    if getattr(args, "write_run_record", False):
+        record = build_run_record_sidecar(payload, campaign_path, fingerprint=fingerprint)
+        write_json(record, args.output_dir / RUN_RECORD_SIDECAR_FILENAME)
     return payload
 
 
@@ -332,6 +489,11 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--resume", action="store_true")
     result.add_argument("--progress-every", type=int, default=1)
     result.add_argument("--output-dir", type=Path, default=Path("artifacts/campaign/disorder_averaged_collective_modes"))
+    result.add_argument(
+        "--write-run-record",
+        action="store_true",
+        help="Write a RunRecordV1 sidecar next to the campaign JSON. Does not replace NeuroTopologySim.DisorderAveragedCollectiveModes.v1.",
+    )
     return result
 
 

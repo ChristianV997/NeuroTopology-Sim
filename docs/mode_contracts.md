@@ -88,3 +88,15 @@ This document defines runtime contracts for each `--mode` in `main.py` so caller
 - **External dependencies/datasets**: local sqlite DB via `database.database`.
 - **Offline-safe**: yes.
 - **Primary entrypoints**: `main.main()` -> DB helper functions in `database.database`.
+
+---
+
+## Related campaign sidecar (not a `main.py` mode)
+
+`scripts/run_disorder_averaged_collective_modes.py` still writes `disorder_averaged_collective_modes.json` (`NeuroTopologySim.DisorderAveragedCollectiveModes.v1`). With `--write-run-record` it also writes a **sidecar** `RunRecord.json` in the same output directory.
+
+- The sidecar does **not** replace the campaign v1 JSON.
+- `run_id` is `runs.run_record.build_run_id` over campaign inputs and seeds (no wall-clock, no artifact paths).
+- Linkage: `artifacts.campaign_sha256` is the SHA-256 of the campaign JSON.
+- Contract stub: `contracts/campaign/disorder_averaged_collective_modes_run_record.contract.json`.
+- Sidecar `verdict` is `NOT_SUPPORTED` or `INCONCLUSIVE` only. PASS remains reserved for Bayes factor K > 100. This synthetic lattice campaign does not compute K and does not claim empirical biology.
