@@ -1,0 +1,1419 @@
+# PR retirement register — Lead inventory ONLY.
+# Authoritative open-PR / key-branch inventory for later Integration recommendations.
+# This file is not a merger decision, not evidence, and not a second evidence-bundle authority.
+# Do not modify configs/release/evidence_schema.yaml or docs/release/{agent_contribution_matrix.yaml,current_state.md}.
+# Do not close or merge any PR from this pack.
+
+matrix_id: nts-pr-retirement-register-lead-2026-09-06
+schema_version: "0.1"
+phase: LEAD
+purpose: pr_retirement_inventory
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_ref: origin/main
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+inspected_at: "2026-09-06T22:21:12Z"
+inspector: lead
+evidence_source: github_api_and_gh
+worktree: disposable
+primary_checkout_untouched: true
+inventory_is_not_evidence: true
+final_retirement_recommendations: false
+merger_instruction: do_not_merge
+open_pr_count: 28
+open_pr_numbers: [206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233]
+
+status_hint_allowed:
+  - keep_open
+  - needs_human_review
+status_hint_note: >
+  Lead does not finalize retirement. Ambiguous or overlapping work is
+  needs_human_review. Independent open work with no retirement evidence is
+  keep_open. close / merge / retire are Integration-only and unused here.
+
+required_warnings:
+  - "PRs are not merged unless GitHub says merged (state=OPEN and mergedAt is null). Every row in this snapshot is unmerged."
+  - "CI billing failure is not a passing test. Jobs with the payments/spending-limit annotation and empty steps are billing_not_started."
+  - "Disk-full / install CI failure is not a passing test. Sampled #206/#211/#212 logs show OSError Errno 28 during pip install; pytest was skipped."
+  - "Synthetic fixtures and performance stand-in workloads cannot establish biological evidence or scientific PASS."
+  - "Proxy Bayes (on-main bayes_factor RSS / Gaussian residual likelihood ratio) is not a formal marginal-likelihood Bayes factor."
+  - "Inventory is not evidence. This matrix is not a compiled evidence bundle."
+  - "#218 reconciliation metadata is not a replacement implementation."
+  - "Missing or unmerged adapters are not supported."
+  - "Do not invent DUPLICATE or SUPERSEDED without cited GitHub metadata, PR body, or base/head overlap."
+
+rows:
+  - id: nts-pr-206
+    pr_number: 206
+    branch: "cursor/setup-dev-environment-52dc"
+    title: "Add Cloud Agent dev environment config for both Python subsystems"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/206"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "52118e741a20897e7f28a41cf7491d2af0d73107"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-05T03:48:35Z"
+    updated_at: "2026-09-06T04:45:40Z"
+    changed_files: 2
+    additions: 58
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: disk_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101243532368"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 1
+      annotation: "Process completed with exit code 1."
+      note: "Job started; pip install failed with OSError [Errno 28] No space left on device. Pytest skipped. Disk failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/206"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/52118e741a20897e7f28a41cf7491d2af0d73107"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33942874430 (core-tests job 101243532368: OSError Errno 28 during pip install)"
+    notes: "Cloud Agent env config only (.cursor/environment.json, install.sh). Do not treat as scientific work. Include so the #206–#208 wave is not silently ignored."
+  - id: nts-pr-207
+    pr_number: 207
+    branch: "cursor/pitnn-perf-opt-52dc"
+    title: "perf(pitnn): buffer-reuse Lindblad RK4 propagation (bit-identical)"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/207"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a0038fd0fe368fbb2f22b5b93104736bccbe9c6e"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-05T04:56:27Z"
+    updated_at: "2026-09-06T04:45:30Z"
+    changed_files: 1
+    additions: 67
+    deletions: 9
+    status_hint: "keep_open"
+    check_summary:
+      classification: job_started_install_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101251780434"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 8
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 5
+      annotation: "Process completed with exit code 1."
+      note: "Job started and failed at Install root dependencies (annotation exit 1; pytest skipped). ENOSPC log text not re-fetched for this PR in this Lead run; same step pattern as independently verified disk_fail rows."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/207"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a0038fd0fe368fbb2f22b5b93104736bccbe9c6e"
+    notes: "Lindblad RK4 buffer reuse in sim/pitnn/tryptophan_lindblad.py only. Different file from #211 kernels_fast.py. Author speedup table unverified. Not a scientific PASS."
+  - id: nts-pr-208
+    pr_number: 208
+    branch: "cursor/disorder-modes-runrecord-sidecar-v1-04d8"
+    title: "Add optional RunRecordV1 sidecar for disorder-averaged collective modes"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/208"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "5c2bfe045158cf788a658cda6f43121e91e053c7"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-05T05:06:22Z"
+    updated_at: "2026-09-06T04:46:24Z"
+    changed_files: 4
+    additions: 416
+    deletions: 5
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: job_started_install_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101252966226"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 1
+      annotation: "Process completed with exit code 1."
+      note: "Job started and failed at Install root dependencies (annotation exit 1; pytest skipped). ENOSPC log text not re-fetched for this PR in this Lead run; same step pattern as independently verified disk_fail rows."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/208"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/5c2bfe045158cf788a658cda6f43121e91e053c7"
+    notes: "Opt-in RunRecordV1 sidecar for disorder-averaged collective modes. Author text: sidecar verdict NOT_SUPPORTED / INCONCLUSIVE; no K computed. Synthetic lattice ≠ biological evidence. Proxy Bayes warning applies to campaign language."
+  - id: nts-pr-209
+    pr_number: 209
+    branch: "grok-bot/retrofit-inventory"
+    title: "Phase 1–5: retrofit inventory scanner, registry, validators, reports, and CLI"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/209"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "3a3cf3dfd60416876914bb90f8604ab9e9e8d360"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T02:07:20Z"
+    updated_at: "2026-09-06T04:45:03Z"
+    changed_files: 32
+    additions: 5884
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101415509541"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/209"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/3a3cf3dfd60416876914bb90f8604ab9e9e8d360"
+      - "check-run annotation on core-tests job 101415509541: billing/spending-limit not-started"
+    notes: "Retrofit inventory Phases 1–5. Author: inventory is not scientific evidence. Grok implementation report not located. Billing-blocked CI."
+  - id: nts-pr-210
+    pr_number: 210
+    branch: "claude/ecosystem-integration"
+    title: "Ecosystem integration scaffold: bridge, assembler, tests, docs"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/210"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "2d46f863bfcc142de34dd052719be5d838ec42a1"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T02:10:05Z"
+    updated_at: "2026-09-06T04:44:52Z"
+    changed_files: 19
+    additions: 2273
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: job_started_install_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101412547695"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 1
+      annotation: "Process completed with exit code 1."
+      note: "Job started and failed at Install root dependencies (annotation exit 1; pytest skipped). ENOSPC log text not re-fetched for this PR in this Lead run; same step pattern as independently verified disk_fail rows."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/210"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/2d46f863bfcc142de34dd052719be5d838ec42a1"
+    notes: "Ecosystem integration scaffold. NOT MERGED. Scaffold ≠ integration proof. Disk/install pattern on started jobs."
+  - id: nts-pr-211
+    pr_number: 211
+    branch: "cursor/streaming-performance-benchmarks"
+    title: "perf: bounded streaming utilities + allocation-reduced PITNN NumPy kernel"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/211"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "54c246943e7c3ba8171066eec24c67a1408b2956"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T02:13:47Z"
+    updated_at: "2026-09-06T04:44:42Z"
+    changed_files: 8
+    additions: 1117
+    deletions: 7
+    status_hint: "keep_open"
+    check_summary:
+      classification: disk_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101412998793"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 8
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 5
+      annotation: "Process completed with exit code 1."
+      note: "Job started; pip install failed with OSError [Errno 28] No space left on device. Pytest skipped. Disk failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/211"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/54c246943e7c3ba8171066eec24c67a1408b2956"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33945890473 (core-tests: OSError Errno 28 during pip install)"
+    notes: "Base of the streaming performance stack. Author tracemalloc peaks are Python allocations, not process RSS. Benchmark is a performance stand-in, not a scientific computation. Independently verified process-memory numbers: unavailable."
+  - id: nts-pr-212
+    pr_number: 212
+    branch: "codex/interop-signal-contracts"
+    title: "Add native signal interoperability contracts"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/212"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a21dcb2461cdf94da0b41a684a2ac1353153ab35"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T02:19:31Z"
+    updated_at: "2026-09-06T04:44:32Z"
+    changed_files: 6
+    additions: 992
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: disk_fail
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101413702579"
+      steps_empty: false
+      core_tests: FAILURE
+      awareness_tests: SUCCESS
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 3
+        SUCCESS: 1
+      annotation: "Process completed with exit code 1."
+      note: "Job started; pip install failed with OSError [Errno 28] No space left on device. Pytest skipped. Disk failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/212"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a21dcb2461cdf94da0b41a684a2ac1353153ab35"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33945890464 (Cross-system smoke: OSError Errno 28 during pip install)"
+    notes: "Interop contracts + lazy registry only. Contracts ≠ adapters supported. Parent of #220 (GitHub base)."
+  - id: nts-pr-213
+    pr_number: 213
+    branch: "antigravity/test-isolation-dependency-profiles"
+    title: "feat(test-isolation): add dependency profiles, hardened isolated runner, markers, and CI contracts"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/213"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "f23c7ef74b133d65c355d7c4e7778d63a08cc8eb"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T03:09:50Z"
+    updated_at: "2026-09-06T04:44:17Z"
+    changed_files: 17
+    additions: 1142
+    deletions: 213
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101419445593"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 9
+      rollup_conclusions:
+        FAILURE: 9
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/213"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/f23c7ef74b133d65c355d7c4e7778d63a08cc8eb"
+      - "check-run annotation on core-tests job 101419445593: billing/spending-limit not-started"
+    notes: "Dependency profiles + isolated runner + CI workflow contracts. Edits .github/workflows/ci.yml and required-checks.yml. Parent of #227 (GitHub base). File overlap with #222 (parallel from main). No Antigravity implementation report located."
+  - id: nts-pr-214
+    pr_number: 214
+    branch: "antigravity/mne-scipy-streaming-eeg"
+    title: "feat(eeg): memory-bounded provenance-rich streaming pipeline and preprocessing"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/214"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "8aed328fa23af07737882566d6b60aaca74ac4fb"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T03:16:54Z"
+    updated_at: "2026-09-06T04:44:01Z"
+    changed_files: 8
+    additions: 1318
+    deletions: 14
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101420257614"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 5
+      rollup_conclusions:
+        FAILURE: 5
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/214"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/8aed328fa23af07737882566d6b60aaca74ac4fb"
+      - "check-run annotation on core-tests job 101420257614: billing/spending-limit not-started"
+    notes: "BTC-ICFT MNE/SciPy streaming in sciencer_d/btc_icft/io/* plus validation/analytic_phase.py. Zero path overlap with #220 shared/interop/adapters. Related domain only. Cited as a conformance target by #233. No Antigravity implementation report located."
+  - id: nts-pr-215
+    pr_number: 215
+    branch: "cursor/rss-memory-telemetry"
+    title: "perf: process-memory (RSS) telemetry + benchmark to cross-check tracemalloc"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/215"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "cursor/streaming-performance-benchmarks"
+    base_sha: "54c246943e7c3ba8171066eec24c67a1408b2956"
+    head_sha: "0dadb61b1d5de190225909ce98953e93768a4766"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:10:11Z"
+    updated_at: "2026-09-06T04:43:38Z"
+    changed_files: 4
+    additions: 826
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101426204225"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/215"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/0dadb61b1d5de190225909ce98953e93768a4766"
+      - "check-run annotation on core-tests job 101426204225: billing/spending-limit not-started"
+    notes: "STACKED on #211 (GitHub baseRefOid equals #211 head; PR body: Stacked on #211). RSS vs tracemalloc must stay labeled. Author table unverified."
+  - id: nts-pr-216
+    pr_number: 216
+    branch: "grok-bot/evidence-bundle-release"
+    title: "Evidence-bundle release: Lead, Research, QA, Release compiler (do not merge)"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/216"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "9c862d90e1996a21e42bc84dc9d737e2d5663a25"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:12:29Z"
+    updated_at: "2026-09-06T06:27:22Z"
+    changed_files: 24
+    additions: 7346
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101441042226"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/216"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/9c862d90e1996a21e42bc84dc9d737e2d5663a25"
+      - "check-run annotation on core-tests job 101441042226: billing/spending-limit not-started"
+    notes: "Evidence-bundle schema/compiler/tests/release/** authority. Inventory docs overlap #225 docs/release/* only. Live head 9c862d90 is a QA schema delta after 07841284. Do not fork schema/compiler. Do not close: schema still lives here. Docs-supersede is not whole-PR retirement."
+  - id: nts-pr-217
+    pr_number: 217
+    branch: "grok/tool-registry-admission"
+    title: "Add optional backend capability registry admission layer"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/217"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "ffc8f6df66f6a28d88a4ca81659e421ee767e1c4"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:13:07Z"
+    updated_at: "2026-09-06T04:13:24Z"
+    changed_files: 6
+    additions: 1302
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101426544372"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/217"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/ffc8f6df66f6a28d88a4ca81659e421ee767e1c4"
+      - "check-run annotation on core-tests job 101426544372: billing/spending-limit not-started"
+    notes: "Optional backend capability registry. Git parent of #223 content (compare #217...#223 is ahead 4 / behind 0) but #223 GitHub base is main, not this branch. Not a verified duplicate."
+  - id: nts-pr-218
+    pr_number: 218
+    branch: "claude/integration-reconciliation"
+    title: "Read-only integration reconciliation tool"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/218"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "d8702e279356cf21847633826e1dc6217a422957"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:14:21Z"
+    updated_at: "2026-09-06T06:13:13Z"
+    changed_files: 36
+    additions: 3495
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101439523246"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/218"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/d8702e279356cf21847633826e1dc6217a422957"
+      - "check-run annotation on core-tests job 101439523246: billing/spending-limit not-started"
+    notes: "Read-only integration reconciliation tooling + snapshot fixtures. PR body: exclusive ownership of tools/integration_reconciliation/**; does not touch #210/#211/#212 implementations, Bayesian code, workflows, adapters, or dashboard. Reconciliation metadata ≠ replacement implementation."
+  - id: nts-pr-219
+    pr_number: 219
+    branch: "codex/bayes-falsification-hardening"
+    title: "Harden Bayesian falsification evidence contract"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/219"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:54:35Z"
+    updated_at: "2026-09-06T04:54:50Z"
+    changed_files: 3
+    additions: 610
+    deletions: 44
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101431055474"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 8
+      rollup_conclusions:
+        FAILURE: 8
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/219"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb"
+      - "check-run annotation on core-tests job 101431055474: billing/spending-limit not-started"
+    notes: "Hardens Bayesian falsification evidence contract. Related to, not duplicate of, branch-only codex/scientific-falsification-contract (git compare diverged). Proxy Bayes ≠ formal K. SCIENTIFIC_REVIEW_REQUIRED. Parent of #226."
+  - id: nts-pr-220
+    pr_number: 220
+    branch: "antigravity/native-signal-adapters"
+    title: "Implement native signal interoperability adapters"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/220"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "codex/interop-signal-contracts"
+    base_sha: "a21dcb2461cdf94da0b41a684a2ac1353153ab35"
+    head_sha: "5bd26dc56a84ea47ff16ab45f1bc758dab6d835c"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T04:58:06Z"
+    updated_at: "2026-09-06T04:58:22Z"
+    changed_files: 11
+    additions: 688
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101431397201"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/220"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/5bd26dc56a84ea47ff16ab45f1bc758dab6d835c"
+      - "check-run annotation on core-tests job 101431397201: billing/spending-limit not-started"
+    notes: "STACKED on #212 (GitHub baseRefOid equals #212 head). Native adapters under shared/interop/adapters. Missing/unmerged adapters ≠ supported. Zero path overlap with #214."
+  - id: nts-pr-221
+    pr_number: 221
+    branch: "antigravity/legacy-timeout-repair"
+    title: "fix(legacy-tests): repair timeout and path validation failures"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/221"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a9aba5158091762a97cd2edcd4c6628a8c7857b4"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T05:04:57Z"
+    updated_at: "2026-09-06T05:05:11Z"
+    changed_files: 5
+    additions: 76
+    deletions: 6
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101432154015"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 5
+      rollup_conclusions:
+        FAILURE: 5
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/221"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a9aba5158091762a97cd2edcd4c6628a8c7857b4"
+      - "check-run annotation on core-tests job 101432154015: billing/spending-limit not-started"
+    notes: "Legacy timeout / path validation repairs. No Antigravity implementation report located. Not a scientific PASS."
+  - id: nts-pr-222
+    pr_number: 222
+    branch: "codex/ci-root-cause-and-green"
+    title: "Fix bounded isolated CI execution and dependency bootstrap"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/222"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "14bce7f7fadc10e1a57c21c505cde4294e04127a"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T05:11:33Z"
+    updated_at: "2026-09-06T05:11:49Z"
+    changed_files: 11
+    additions: 505
+    deletions: 75
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101432887520"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 9
+      rollup_conclusions:
+        FAILURE: 9
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/222"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/14bce7f7fadc10e1a57c21c505cde4294e04127a"
+      - "check-run annotation on core-tests job 101432887520: billing/spending-limit not-started"
+    notes: "CI bootstrap / isolated-runner repair from main. Parallel to #227 (stacked on #213). Six workflow files overlap #227. Git compare #222...#227 is diverged. Not a verified duplicate. Author-claimed 117 tests unverified on GitHub Actions (billing not-started)."
+  - id: nts-pr-223
+    pr_number: 223
+    branch: "grok/tool-capability-snapshot"
+    title: "Add capability snapshot sidecar on top of the optional backend registry"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/223"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "e0e616189a57570b090b0e535911e3eef583aa36"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T06:06:08Z"
+    updated_at: "2026-09-06T06:06:23Z"
+    changed_files: 9
+    additions: 1889
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101438761057"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/223"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/e0e616189a57570b090b0e535911e3eef583aa36"
+      - "check-run annotation on core-tests job 101438761057: billing/spending-limit not-started"
+    notes: "PR body: continues #217 instead of duplicating. GitHub base is main (not stacked in GitHub metadata). Git compare from #217 tip is ahead 4 / behind 0 with only snapshot files unique. File-list overlap vs main is expected because the branch contains #217 commits."
+  - id: nts-pr-224
+    pr_number: 224
+    branch: "cursor/adaptive-streaming-budget"
+    title: "feat: deterministic adaptive chunk-size planner for bounded streaming"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/224"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "cursor/rss-memory-telemetry"
+    base_sha: "0dadb61b1d5de190225909ce98953e93768a4766"
+    head_sha: "507625f1bf876b530f62a207670a31fec9902ee7"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T06:07:29Z"
+    updated_at: "2026-09-06T06:07:29Z"
+    changed_files: 4
+    additions: 740
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101438916591"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/224"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/507625f1bf876b530f62a207670a31fec9902ee7"
+      - "check-run annotation on core-tests job 101438916591: billing/spending-limit not-started"
+    notes: "STACKED on #215 (GitHub baseRefOid equals #215 head; body: stacked on #215 which is stacked on #211). Adaptive chunk planner. Estimate ≠ process RSS guarantee."
+  - id: nts-pr-225
+    pr_number: 225
+    branch: "cursor/release-evidence-compilation-9077"
+    title: "release-evidence-compilation superseding #216 inventory"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/225"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a3f7e7e8024de6487164b9d19203a3b6ae9d7e66"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T06:10:21Z"
+    updated_at: "2026-09-06T06:19:33Z"
+    changed_files: 3
+    additions: 2279
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101440210003"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/225"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a3f7e7e8024de6487164b9d19203a3b6ae9d7e66"
+      - "check-run annotation on core-tests job 101440210003: billing/spending-limit not-started"
+    notes: "Title and body: superseding #216 inventory docs only. Owns docs/release/{README.md,agent_contribution_matrix.yaml,current_state.md}. Schema/compiler stay on #216. This retirement register is a new matrix and does not rewrite #225."
+  - id: nts-pr-226
+    pr_number: 226
+    branch: "codex/falsification-consumer-semantics"
+    title: "Clarify falsification consumer semantics"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/226"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "codex/bayes-falsification-hardening"
+    base_sha: "a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb"
+    head_sha: "099b949b9ddf50ff71ff3352fb1246be34ef2f41"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T06:23:15Z"
+    updated_at: "2026-09-06T06:23:31Z"
+    changed_files: 3
+    additions: 360
+    deletions: 11
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101440689815"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 8
+      rollup_conclusions:
+        FAILURE: 8
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/226"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/099b949b9ddf50ff71ff3352fb1246be34ef2f41"
+      - "check-run annotation on core-tests job 101440689815: billing/spending-limit not-started"
+    notes: "STACKED on #219 (GitHub baseRefOid equals #219 head). Consumer semantics around proxy vs formal. Does not convert proxy evidence into formal Bayes factors."
+  - id: nts-pr-227
+    pr_number: 227
+    branch: "codex/ci-install-reliability"
+    title: "CI: partition profiles and bound installation reliability"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/227"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "antigravity/test-isolation-dependency-profiles"
+    base_sha: "f23c7ef74b133d65c355d7c4e7778d63a08cc8eb"
+    head_sha: "f1796a0bd675c5ba12f0176e3e5af60bda2c72d3"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T08:12:40Z"
+    updated_at: "2026-09-06T08:15:49Z"
+    changed_files: 11
+    additions: 988
+    deletions: 241
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101454454976"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 10
+      rollup_conclusions:
+        FAILURE: 9
+        SKIPPED: 1
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/227"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/f1796a0bd675c5ba12f0176e3e5af60bda2c72d3"
+      - "check-run annotation on core-tests job 101454454976: billing/spending-limit not-started"
+    notes: "Exists. STACKED on #213 (GitHub baseRefOid equals #213 head; body: stacked on #213). Mentions #222 as a parallel billing-blocked CI attempt. Not stacked on #222. Not a verified duplicate of #222."
+  - id: nts-pr-228
+    pr_number: 228
+    branch: "claude/merge-gate-policy"
+    title: "Deterministic merge-gate policy layer"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/228"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "6893002a1d55cb2fe70e483a4dbbc3289600ce33"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T21:53:03Z"
+    updated_at: "2026-09-06T21:53:03Z"
+    changed_files: 4
+    additions: 897
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101565075459"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 8
+      rollup_conclusions:
+        FAILURE: 8
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/228"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/6893002a1d55cb2fe70e483a4dbbc3289600ce33"
+      - "check-run annotation on core-tests job 101565075459: billing/spending-limit not-started"
+    notes: "Deterministic merge-gate policy layer. Policy/docs/tests only. Does not merge or close PRs. Not a retirement decision."
+  - id: nts-pr-229
+    pr_number: 229
+    branch: "grok/dataset-provenance-contract"
+    title: "Add local-first dataset provenance contract"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/229"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "6a7ec19d7bc41256944c25dc5dd66cf684e8fd7f"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T21:54:26Z"
+    updated_at: "2026-09-06T21:54:41Z"
+    changed_files: 6
+    additions: 799
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101565254618"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/229"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/6a7ec19d7bc41256944c25dc5dd66cf684e8fd7f"
+      - "check-run annotation on core-tests job 101565254618: billing/spending-limit not-started"
+    notes: "Local-first dataset provenance contract. source_url is metadata only. Validation does not download data."
+  - id: nts-pr-230
+    pr_number: 230
+    branch: "cursor/performance-regression-policy"
+    title: "feat: additive performance-regression policy evaluator for benchmark records"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/230"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "a4d0e7786797e5669fc6fbcf2cf960a2175e0585"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T21:55:03Z"
+    updated_at: "2026-09-06T21:55:03Z"
+    changed_files: 4
+    additions: 983
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101565331044"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/230"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a4d0e7786797e5669fc6fbcf2cf960a2175e0585"
+      - "check-run annotation on core-tests job 101565331044: billing/spending-limit not-started"
+    notes: "Additive performance-regression policy evaluator. Related domain to the #211 stack but GitHub base is main and files do not overlap #211/#215/#224/#232."
+  - id: nts-pr-231
+    pr_number: 231
+    branch: "codex/ci-evidence-preflight"
+    title: "Add read-only CI evidence preflight diagnostics"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/231"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "1c3916a5f882c798f811850f0178ca32ecb477e8"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T22:03:55Z"
+    updated_at: "2026-09-06T22:04:10Z"
+    changed_files: 7
+    additions: 651
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101566513881"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/231"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/1c3916a5f882c798f811850f0178ca32ecb477e8"
+      - "check-run annotation on core-tests job 101566513881: billing/spending-limit not-started"
+    notes: "Read-only CI evidence preflight diagnostics. Surfaces billing/disk/install facts; does not replace #213/#222/#227 workflow edits."
+  - id: nts-pr-232
+    pr_number: 232
+    branch: "cursor/streaming-checkpoints-replay-64cc"
+    title: "feat: deterministic streaming checkpoints + replay audits"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/232"
+    draft: true
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "cursor/adaptive-streaming-budget"
+    base_sha: "507625f1bf876b530f62a207670a31fec9902ee7"
+    head_sha: "2ebe094be0c1950a6ff571cd185131602ad096ed"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T22:11:20Z"
+    updated_at: "2026-09-06T22:12:38Z"
+    changed_files: 5
+    additions: 1625
+    deletions: 0
+    status_hint: "keep_open"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101567533088"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/232"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/2ebe094be0c1950a6ff571cd185131602ad096ed"
+      - "check-run annotation on core-tests job 101567533088: billing/spending-limit not-started"
+    notes: "STACKED on #224 (GitHub baseRefOid equals #224 head; body: stacked on #224). Extends the #211→#215→#224 streaming stack. Checkpoints/replay are engineering reproducibility, not scientific PASS."
+  - id: nts-pr-233
+    pr_number: 233
+    branch: "antigravity/interop-conformance"
+    title: "feat(interop): cross-adapter interoperability conformance suite"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/pull/233"
+    draft: false
+    state: "OPEN"
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "825858d5f17a31002606d3084eac40179a1044d6"
+    mergeable: "MERGEABLE"
+    mergeable_state: "UNSTABLE"
+    author: "ChristianV997"
+    created_at: "2026-09-06T22:18:11Z"
+    updated_at: "2026-09-06T22:18:26Z"
+    changed_files: 16
+    additions: 1355
+    deletions: 0
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: billing_not_started
+      sampled_job: "core-tests"
+      sampled_job_conclusion: failure
+      sampled_job_id: "101568449837"
+      steps_empty: true
+      core_tests: FAILURE
+      awareness_tests: FAILURE
+      rollup_count: 4
+      rollup_conclusions:
+        FAILURE: 4
+      annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings"
+      note: "core-tests annotation: account payments failed / spending limit. Job steps empty. Billing failure is not a test pass."
+    evidence_links:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/233"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/825858d5f17a31002606d3084eac40179a1044d6"
+      - "check-run annotation on core-tests job 101568449837: billing/spending-limit not-started"
+    notes: "PR body: conformance suite validating 16 signal-contract properties across #212, #214, and #220. Consumer of those PRs, not a replacement implementation. GitHub base is main."
+  - id: nts-branch-scientific-falsification-contract
+    pr_number: null
+    branch: "codex/scientific-falsification-contract"
+    title: "BRANCH_ONLY scientific falsification contract (no open or closed PR)"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/tree/codex/scientific-falsification-contract"
+    draft: null
+    state: BRANCH_ONLY
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "111d4fc008a1cf967243631367104e0561014e4a"
+    mergeable: null
+    mergeable_state: null
+    author: null
+    created_at: null
+    updated_at: null
+    changed_files: 7
+    additions: null
+    deletions: null
+    status_hint: "needs_human_review"
+    check_summary:
+      classification: unknown
+      sampled_job: null
+      sampled_job_conclusion: null
+      sampled_job_id: null
+      steps_empty: null
+      core_tests: null
+      awareness_tests: null
+      rollup_count: 0
+      rollup_conclusions: {}
+      annotation: ""
+      note: "No PR exists, so there is no PR check rollup. Do not treat the branch tip as CI-green."
+    evidence_links:
+      - "gh pr list --head ChristianV997:codex/scientific-falsification-contract --state all returned []"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/compare/main...codex/scientific-falsification-contract"
+    notes: "ahead 1 / behind 0 vs origin/main. Shares sim/pitnn/bayesian_falsification.py with open #219 but git compare vs #219 is diverged (ahead 1 / behind 1). Related, not DUPLICATE. SCIENTIFIC_REVIEW_REQUIRED. Proxy Bayes ≠ formal K."
+  - id: nts-branch-grok-tool-admission-research
+    pr_number: null
+    branch: "grok/tool-admission-research"
+    title: "BRANCH_ONLY tool-admission research notes (no open or closed PR)"
+    url: "https://github.com/ChristianV997/NeuroTopology-Sim/tree/grok/tool-admission-research"
+    draft: null
+    state: BRANCH_ONLY
+    merged: false
+    merged_at: null
+    base_ref: "main"
+    base_sha: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+    head_sha: "1dac04d62912bcb32245cfad20315d3363b41220"
+    mergeable: null
+    mergeable_state: null
+    author: null
+    created_at: null
+    updated_at: null
+    changed_files: 23
+    additions: null
+    deletions: null
+    status_hint: "keep_open"
+    check_summary:
+      classification: unknown
+      sampled_job: null
+      sampled_job_conclusion: null
+      sampled_job_id: null
+      steps_empty: null
+      core_tests: null
+      awareness_tests: null
+      rollup_count: 0
+      rollup_conclusions: {}
+      annotation: ""
+      note: "No PR exists, so there is no PR check rollup."
+    evidence_links:
+      - "gh pr list --head ChristianV997:grok/tool-admission-research --state all returned []"
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/compare/main...grok/tool-admission-research"
+    notes: "ahead 5 / behind 0 vs origin/main. Offline tool-admission catalog. Catalog ≠ admission decision ≠ scientific evidence. Related domain to #217, different paths (configs/tool_admission vs configs/tools). Not a verified duplicate."
+
+relationships:
+  - id: rel-216-225-docs-supersede
+    kind: docs_supersede
+    from: nts-pr-225
+    to: nts-pr-216
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#225 title: release-evidence-compilation superseding #216 inventory"
+      - "#225 body: this draft #225 supersedes PR #216 inventory docs; schema/compiler stay on #216"
+      - "#216 latest body: inventory docs for #215–#222 remain on #225 HEAD a3f7e7e8024d; #225 docs were not rewritten"
+      - "file overlap is exactly docs/release/README.md, docs/release/agent_contribution_matrix.yaml, docs/release/current_state.md"
+      - "#216 uniquely owns configs/release/evidence_schema.yaml, scripts/compile_repository_evidence.py, tests/release/**"
+      - "#216 live head 9c862d90e199 is a QA schema delta after 078412848d99; docs-supersede scope remains inventory docs only"
+    notes: "Do not retire #216. Schema/compiler/tests stay there. Do not treat whole-PR #216 as SUPERSEDED."
+
+  - id: rel-214-220-related-domain
+    kind: related_domain_parallel
+    from: nts-pr-214
+    to: nts-pr-220
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#214 files: sciencer_d/btc_icft/io/eeg_mne_adapter.py, eeg_readers.py, validation/analytic_phase.py, tests/eeg/**"
+      - "#220 files: shared/interop/adapters/** ; GitHub base is #212 head a21dcb2461cd"
+      - "gh PR file intersection #214 ∩ #220 = empty"
+      - "#220 body: adapters mapping to PR #212 contracts"
+      - "#233 body cites #212, #214, and #220 as conformance targets"
+    notes: "Same signal/EEG domain, different paths and stacks. Not DUPLICATE. Not SUPERSEDED."
+
+  - id: rel-222-227-parallel-ci
+    kind: related_parallel_ci
+    from: nts-pr-222
+    to: nts-pr-227
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#227 exists: https://github.com/ChristianV997/NeuroTopology-Sim/pull/227"
+      - "#227 GitHub baseRefName=antigravity/test-isolation-dependency-profiles baseRefOid=f23c7ef74b13 (#213 head)"
+      - "#222 GitHub base is main 62637a4b"
+      - "file overlap: awareness-studio.yml, ci.yml, ds005620-e2e.yml, ontology-claim-language.yml, required-checks.yml, smoke.yml"
+      - "git compare #222...#227 status=diverged (ahead 2 / behind 1)"
+      - "#227 body names #213 as stack parent and mentions #222 as a later billing-blocked CI attempt"
+    notes: "#227 is stacked on #213, not on #222. Overlap is a merge-conflict risk, not verified duplication."
+
+  - id: rel-211-215-224-232-stack
+    kind: stacked_chain
+    members: [211, 215, 224, 232]
+    verified: true
+    retirement_final: false
+    edges:
+      - {from: 215, to: 211, child_base_ref: cursor/streaming-performance-benchmarks, child_base_sha: 54c246943e7c3ba8171066eec24c67a1408b2956, parent_head: 54c246943e7c3ba8171066eec24c67a1408b2956}
+      - {from: 224, to: 215, child_base_ref: cursor/rss-memory-telemetry, child_base_sha: 0dadb61b1d5de190225909ce98953e93768a4766, parent_head: 0dadb61b1d5de190225909ce98953e93768a4766}
+      - {from: 232, to: 224, child_base_ref: cursor/adaptive-streaming-budget, child_base_sha: 507625f1bf876b530f62a207670a31fec9902ee7, parent_head: 507625f1bf876b530f62a207670a31fec9902ee7}
+    evidence:
+      - "GitHub baseRefOid of each child equals parent head SHA"
+      - "#215 body: Stacked on #211"
+      - "#224 body: Stacked on #215 (which is stacked on #211)"
+      - "#232 body: Stacked on #224"
+    notes: "Verified #211 → #215 → #224 stack, plus later #232. Children cannot be retired independently of parents."
+
+  - id: rel-219-scientific-falsification-contract
+    kind: related_diverged
+    from: nts-pr-219
+    to: nts-branch-scientific-falsification-contract
+    verified: true
+    retirement_final: false
+    evidence:
+      - "shared path: sim/pitnn/bayesian_falsification.py"
+      - "#219 other files: docs/scientific_falsification/README.md, tests/test_bayesian_falsification_hardening.py"
+      - "branch-only other files: analysis/connectivity_topology.py, docs/scientific_falsification_contract.md, tests/science_contracts/*, topo_monitor/*"
+      - "git compare a7dd8e24...111d4fc0 status=diverged (ahead 1 / behind 1)"
+      - "gh pr list --head ChristianV997:codex/scientific-falsification-contract --state all = []"
+    notes: "Related scientific-contract work. Not DUPLICATE. Both need scientific review. Neither is merged."
+
+  - id: rel-213-ci-dependencies
+    kind: ci_workflow_dependency
+    from: nts-pr-213
+    to: nts-pr-227
+    also_overlaps: [222]
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#213 edits .github/workflows/ci.yml, required-checks.yml, requirements-*.txt profiles, scripts/run_tests_isolated.py, conftest.py, pytest.ini"
+      - "#227 GitHub base is #213 head f23c7ef74b13; body: stacked on #213 because it consumes dependency profile manifests without modifying them"
+      - "#222 also edits ci.yml, required-checks.yml, run_tests_isolated.py, conftest.py, pytest.ini from main"
+      - "#213 ∩ #222 files: ci.yml, required-checks.yml, conftest.py, pytest.ini, scripts/run_tests_isolated.py"
+      - "#213 ∩ #227 files: ci.yml, required-checks.yml"
+    notes: "#213 is the verified CI-profile parent of #227. #222 is a parallel main-based CI repair, not a child of #213."
+
+  - id: rel-218-reconciliation-metadata
+    kind: reconciliation_metadata_not_replacement
+    from: nts-pr-218
+    to: null
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#218 title: Read-only integration reconciliation tool"
+      - "#218 body: exclusive ownership of tools/integration_reconciliation/**; no file in #210/#211/#212 implementations, bayesian_falsification.py, workflows, adapters, or dashboard is touched"
+      - "36 files, all under tools/integration_reconciliation, scripts/verify_integration_reconciliation.py, tests/integration_reconciliation, docs/integration_reconciliation"
+    notes: "Surfaces reported-vs-actual branch/PR state. Not a replacement for any implementation PR."
+
+  - id: rel-212-220-stack
+    kind: stacked
+    from: nts-pr-220
+    to: nts-pr-212
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#220 baseRefName=codex/interop-signal-contracts baseRefOid=a21dcb2461cdf94da0b41a684a2ac1353153ab35 (#212 head)"
+      - "#220 body: adapters mapping to PR #212 contracts"
+    notes: "Adapters stacked on contracts. Missing/unmerged adapters ≠ supported."
+
+  - id: rel-219-226-stack
+    kind: stacked
+    from: nts-pr-226
+    to: nts-pr-219
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#226 baseRefName=codex/bayes-falsification-hardening baseRefOid=a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb (#219 head)"
+      - "#226 body: stacked on #219; does not convert proxy evidence into formal Bayes factors"
+    notes: "Consumer-semantics child of #219. Scientific review still required."
+
+  - id: rel-217-223-continues
+    kind: continues_without_github_base_stack
+    from: nts-pr-223
+    to: nts-pr-217
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#223 body: Continues PR #217 instead of duplicating the registry; branch from #217"
+      - "git compare ffc8f6df...e0e61618 status=ahead, ahead_by=4, behind_by=0; unique files are capability_snapshot.* only"
+      - "GitHub #223 baseRefName is main, not grok/tool-registry-admission — stacking is git-ancestry + body, not GitHub base metadata"
+    notes: "Not DUPLICATE. Merging #223 as-is onto main would include #217 files. Human review before any retirement of either side."
+
+  - id: rel-233-conformance-consumer
+    kind: conformance_consumer
+    from: nts-pr-233
+    to_prs: [212, 214, 220]
+    verified: true
+    retirement_final: false
+    evidence:
+      - "#233 body: validating the 16 signal contract properties across PR #212, PR #214, and PR #220"
+      - "#233 GitHub base is main; files are tests/interop_conformance/** plus docs/scripts"
+    notes: "Consumer suite, not a replacement of #212/#214/#220."
+
+duplicate_candidates: []
+duplicate_candidates_note: >
+  No exact-duplicate open PRs verified. Related pairs with cited overlap or
+  shared files are recorded under relationships, not as DUPLICATE.
+
+superseded_candidates:
+  - id: nts-pr-216-inventory-docs
+    pr_number: 216
+    scope: inventory_docs_only
+    superseded_by: 225
+    whole_pr_superseded: false
+    retirement_final: false
+    evidence:
+      - "#225 title and body (docs supersede; schema/compiler stay on #216)"
+      - "#216 latest body acknowledges #225 as inventory-docs home"
+      - "path overlap limited to docs/release/*"
+    notes: "Candidate for docs-only supersede labeling. Do not close #216 while schema/compiler/tests/release live there."
+
+ci_blockers:
+  - id: billing-wall
+    classification: billing_not_started
+    prs: [209, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233]
+    annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased."
+    note: "Empty step lists. Billing ≠ pass and billing ≠ scientific fail."
+  - id: disk-install-wall-verified
+    classification: disk_fail
+    prs: [206, 211, 212]
+    note: "Independently re-read failed logs this Lead run: OSError [Errno 28] No space left on device during pip install. Pytest skipped."
+  - id: disk-install-wall-same-step-pattern
+    classification: job_started_install_fail
+    prs: [207, 208, 210]
+    note: "Jobs started and failed at Install root dependencies; pytest skipped. ENOSPC string not re-fetched for these three in this run."
+
+scientific_blockers:
+  - "No scientific PASS is claimed from this inventory."
+  - "Synthetic ≠ biological evidence (#208 sidecar, #211/#215/#224/#232 performance fixtures, author pytest counts)."
+  - "Proxy Bayes ≠ formal Bayes factors (on-main bayes_factor; open #219/#226; branch-only scientific-falsification-contract)."
+  - "Independently verified RSS vs tracemalloc numbers: unavailable."
+  - "Missing/unmerged adapters ≠ supported (#212 contracts; #220 unmerged; #214 is a different BTC-ICFT path)."
+  - "#218 reconciliation report ≠ integration proof."
+
+next_action_research:
+  - "Classify claim surfaces for rows #223–#233 and the two BRANCH_ONLY rows against this retirement matrix (not the #216/#225 evidence pack)."
+  - "Keep stacked chains explicit; do not recommend retiring a child before its parent."
+  - "Do not finalize DUPLICATE or SUPERSEDED beyond the cited #216 inventory-docs candidate."
+  - "Restate: billing ≠ pass; disk ≠ pass; proxy Bayes ≠ formal; synthetic ≠ biology; inventory ≠ evidence."
+  - "Hand relationship edges to Integration only after QA validates this matrix. Lead does not merge."
+
+out_of_scope_this_pack:
+  - scripts/compile_repository_evidence.py
+  - configs/release/evidence_schema.yaml
+  - docs/release/agent_contribution_matrix.yaml
+  - docs/release/current_state.md
+  - scripts/validate_pr_retirement_matrix.py
+  - tests/release/test_pr_retirement_matrix.py
+  - production solvers, CI workflows, Bayesian implementation, signal adapters, streaming tools, dashboard, datasets, credentials
+
