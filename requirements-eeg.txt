@@ -1,0 +1,29 @@
+# ==============================================================================
+# NeuroTopology-Sim: EEG / MNE Dependency Profile
+# ==============================================================================
+# Purpose: Electrophysiology ingestion, MNE-BIDS format adapters, signal preprocessing,
+#          microstate segmentation, nonlinear complexity (entropy/fractal), and
+#          aperiodic/oscillatory spectral parameterization.
+# Status: Optional / Profile-specific. Required for EEG signal pipelines and Level M/T extraction.
+# Affected tests:
+#   - tests/test_connectivity_topology.py
+#   - tests/btc_icft/test_dfa_mfdfa_features.py
+#   - tests/btc_icft/test_eeg_mne_adapter.py
+#   - tests/btc_icft/test_eeg_signal_blocks.py
+#   - tests/test_preprocessing_artifact_rejection.py
+# Platform constraints: Python 3.10-3.12 recommended.
+# ==============================================================================
+-r requirements-base.txt
+
+mne>=1.4.0
+mne-bids>=0.13
+edfio>=0.2.0
+eegdash>=0.1.0
+mne-connectivity>=0.5.0
+pycrostates>=0.3.0
+autoreject>=0.4.0
+mne-icalabel>=0.4.0
+antropy>=0.1.6
+specparam>=2.0.0
+MFDFA>=0.4.0
+fbm>=0.3.0

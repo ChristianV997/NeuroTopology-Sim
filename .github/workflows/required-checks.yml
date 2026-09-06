@@ -20,15 +20,29 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+          cache-dependency-path: requirements-base.txt
 
-      - name: Install root dependencies
-        run: pip install -r requirements.txt
+      - name: Install root base dependencies
+        run: pip install -r requirements-base.txt
 
       - name: Run core tests in isolated batches
         # Scientific Python extensions can retain native allocations across a
-        # monolithic collection.  The bounded runner keeps discovery intact
+        # monolithic collection. The bounded runner keeps discovery intact
         # while giving each batch a fresh interpreter and a hard timeout.
-        run: python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120
+        run: >
+          python scripts/run_tests_isolated.py
+          --batch-size 8
+          --timeout-s 120
+          --report outputs/required_core_test_report.json
+          tests/test_run_record.py
+          tests/test_run_records.py
+          tests/test_topology.py
+          tests/test_benchmarks_registry.py
+          tests/test_transitions_governance.py
+          tests/test_transitions_features.py
+          tests/btc_icft/test_report_guardrails.py
+          tests/btc_icft/test_ontology_schema.py
+          tests/runner/test_runner_isolation.py
 
   awareness-tests:
     runs-on: ubuntu-latest
