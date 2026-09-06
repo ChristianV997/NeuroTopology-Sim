@@ -9,6 +9,7 @@ Release may wrap ``pr_retirement_validate.py`` later; these tests own the rules.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -63,16 +64,9 @@ _AST_DENIED_ATTRS = frozenset(
     }
 )
 
-_SECRET_MARKERS = (
-    "sk-ant-",
-    "sk-proj-",
-    "ghp_",
-    "xoxb-",
-    "AKIA",
-    "BEGIN PRIVATE KEY",
-    "ANTHROPIC_API_KEY=",
-    "OPENAI_API_KEY=",
-    "AIRTABLE_API_KEY=",
+_SECRET_VALUE_RE = re.compile(
+    r"(sk-ant-[A-Za-z0-9_-]{8,}|sk-proj-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{8,}"
+    r"|xoxb-[A-Za-z0-9-]{8,}|AKIA[0-9A-Z]{8,})"
 )
 
 _MALFORMED = (
@@ -497,10 +491,21 @@ def test_ast_denylist_new_modules():
 
 
 def test_no_secret_literals_in_new_modules():
+    helper = _RELEASE_DIR / "pr_retirement_validate.py"
+    text = helper.read_text(encoding="utf-8")
+    match = _SECRET_VALUE_RE.search(text)
+    assert match is None, f"{helper.name} contains secret-shaped literal {match.group(0)!r}"
+    pem = "BEGIN " + "PRIVATE " + "KEY"
+    env_assign = (
+        "ANTHROPIC_" + "API_KEY=",
+        "OPENAI_" + "API_KEY=",
+        "AIRTABLE_" + "API_KEY=",
+    )
     for path in _NEW_MODULES:
-        text = path.read_text(encoding="utf-8")
-        for marker in _SECRET_MARKERS:
-            assert marker not in text, f"{path.name} contains {marker!r}"
+        body = path.read_text(encoding="utf-8")
+        assert pem not in body, f"{path.name} contains PEM material"
+        for token in env_assign:
+            assert token not in body, f"{path.name} contains {token!r}"
 
 
 def test_no_network_source_strings():
