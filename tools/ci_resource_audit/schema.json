@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ChristianV997/NeuroTopology-Sim/schemas/ci-resource-audit-v1.json",
+  "title": "NeuroTopology CI Resource Audit",
+  "type": "object",
+  "required": ["schema", "mode", "failure_classes"],
+  "properties": {
+    "schema": {"const": "NeuroTopology.CIResourceAudit.v1"},
+    "mode": {"enum": ["environment", "log"]},
+    "generated_at_utc": {"type": ["string", "null"]},
+    "failure_classes": {"type": "array", "items": {"type": "string"}},
+    "environment": {"type": ["object", "null"]},
+    "log": {"type": ["object", "null"]}
+  },
+  "additionalProperties": true
+}
