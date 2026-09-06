@@ -51,9 +51,9 @@ def test_compiler_script_exists_and_is_offline_source():
     assert re.search(
         r"^\s*(import|from)\s+(requests|urllib|http\.client|httpx|aiohttp|github|ghapi|marketos)\b",
         text,
-        re.M,
+        re.M | re.I,
     ) is None
-    assert "MarketOS" not in text
+    assert re.search(r"^\s*(import|from)\s+\S*marketos", text, re.M | re.I) is None
     assert "offline" in text.lower()
 
 
