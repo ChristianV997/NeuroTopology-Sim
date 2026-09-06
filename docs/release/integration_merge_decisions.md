@@ -66,3 +66,9 @@
 | Baseline | Use actual GitHub `origin/main` because task-mirror fetch requires unavailable credentials. | Fresh clone resolves `origin/main` to `62637a4`; API PR base OIDs match. | Recorded; primary checkout untouched. |
 
 Additional entries are appended after each logical merge group and final validation.
+
+### 2026-09-06 — falsification contract group
+
+- Merged branch-only `codex/scientific-falsification-contract` as the source of the distinct graph-beta-1 and spatial-winding contract modules and tests.
+- Merged PR #219 with an explicit conflict resolution in `sim/pitnn/bayesian_falsification.py`: PR #219 supersedes the branch-only Bayesian implementation because it adds stronger finite-value handling, multiplicity gates, effective-sample checks, explicit proxy/formal separation, and expanded compatibility metadata.
+- Validation: `python -m pytest -q tests/science_contracts` passed (12 tests) before the #219 replacement; the combined Bayesian/falsification group is re-run after the merge commit.
