@@ -7,8 +7,10 @@ or evidence queue.
 
 ## Supersede of PR #216 (inventory docs only)
 
-This compilation branch is a **delta / supersede of draft PR #216**
+This compilation PR ([#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225))
+is a **delta / supersede of draft PR #216**
 (`grok-bot/evidence-bundle-release`, FINAL `078412848d99a1cb7fa31666d24fdcca96d5ac4a`).
+#216 is `SUPERSEDED` for inventory docs by #225.
 
 - **This pack refreshes only** [`agent_contribution_matrix.yaml`](agent_contribution_matrix.yaml)
   and [`current_state.md`](current_state.md).

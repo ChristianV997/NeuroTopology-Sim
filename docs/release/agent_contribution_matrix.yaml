@@ -19,7 +19,9 @@ supersedes:
   final_commit: 078412848d99a1cb7fa31666d24fdcca96d5ac4a
   scope: inventory_docs_only
   second_evidence_authority: false
-  note: "This compilation supersedes #216 inventory docs only. Schema, compiler, and tests/release/** stay on #216 and must not be forked."
+  superseded_by_pr: 225
+  superseded_by_pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/225
+  note: "PR #225 supersedes #216 inventory docs only. Schema, compiler, and tests/release/** stay on #216 and must not be forked."
 status_categories_allowed:
   - VERIFIED_MERGED
   - OPEN_REVIEW
@@ -991,7 +993,8 @@ contributions:
     superseded_by:
       scope: inventory_docs_only
       compilation_branch: cursor/release-evidence-compilation-9077
-      compilation_pr: pending_this_pr
+      compilation_pr: 225
+      compilation_pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/225
       keep_on_216:
         - configs/release/evidence_schema.yaml
         - scripts/compile_repository_evidence.py

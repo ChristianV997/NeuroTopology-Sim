@@ -8,9 +8,12 @@
 **Evidence source:** GitHub API / `gh` (live), including check-run annotations  
 **Scope:** Lead inventory refresh. No schema, no compiler, no validators,
 no production solvers, no CI edits, no adapters, no MarketOS.  
+**This PR:** [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225)
+(`cursor/release-evidence-compilation-9077`)  
 **Supersede:** draft PR #216 inventory docs only
 (`grok-bot/evidence-bundle-release` FINAL `07841284`). Do **not** open a
-second evidence authority.
+second evidence authority. #216 is `SUPERSEDED` for inventory docs by
+#225. Schema / compiler / `tests/release/**` stay on #216.
 
 This document is a **snapshot of contribution location and merge status**.
 It is not a test report and not a scientific verdict.
@@ -131,7 +134,7 @@ heads).
 | `nts-pr-213` | [#213](https://github.com/ChristianV997/NeuroTopology-Sim/pull/213) Test isolation / dependency profiles | no | `antigravity/test-isolation-dependency-profiles` @ `f23c7ef7` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled required/docker/E2E FAILURE; billing annotation. No Antigravity implementation report. |
 | `nts-pr-214` | [#214](https://github.com/ChristianV997/NeuroTopology-Sim/pull/214) EEG streaming / preprocessing | no | `antigravity/mne-scipy-streaming-eeg` @ `8aed328f` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled FAILURE; billing annotation. No Antigravity implementation report. |
 | `nts-pr-215` | [#215](https://github.com/ChristianV997/NeuroTopology-Sim/pull/215) Process-memory **RSS** telemetry | draft | `cursor/rss-memory-telemetry` @ `0dadb61b` | **#211** `54c24694` | `DRAFT_REVIEW`, `BILLING_BLOCKED` | **STACKED on #211.** All sampled FAILURE; billing annotation. Memory numbers: see below. |
-| `nts-pr-216` | [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216) Evidence-bundle release (Lead/Research/QA/Release) | draft | `grok-bot/evidence-bundle-release` @ `07841284` | `62637a4b` | `SUPERSEDED`, `DRAFT_REVIEW`, `BILLING_BLOCKED` | Inventory docs superseded by this compilation. Schema/compiler stay on #216. Do not fork. |
+| `nts-pr-216` | [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216) Evidence-bundle release (Lead/Research/QA/Release) | draft | `grok-bot/evidence-bundle-release` @ `07841284` | `62637a4b` | `SUPERSEDED`, `DRAFT_REVIEW`, `BILLING_BLOCKED` | Inventory docs superseded by **#225**. Schema/compiler stay on #216. Do not fork. |
 | `nts-pr-217` | [#217](https://github.com/ChristianV997/NeuroTopology-Sim/pull/217) Optional backend capability registry | no | `grok/tool-registry-admission` @ `ffc8f6df` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled FAILURE; billing annotation. No Grok implementation report. |
 | `nts-pr-218` | [#218](https://github.com/ChristianV997/NeuroTopology-Sim/pull/218) Read-only integration reconciliation | draft | `claude/integration-reconciliation` @ `746da4df` | `62637a4b` | `DRAFT_REVIEW`, `BILLING_BLOCKED` | All sampled FAILURE; billing annotation. Tooling only. |
 | `nts-pr-219` | [#219](https://github.com/ChristianV997/NeuroTopology-Sim/pull/219) Harden Bayesian falsification evidence contract | no | `codex/bayes-falsification-hardening` @ `a7dd8e24` | `62637a4b` | `OPEN_REVIEW`, `SCIENTIFIC_REVIEW_REQUIRED`, `BILLING_BLOCKED` | All sampled FAILURE; billing annotation. Proxy vs formal K language is **not** a scientific PASS. |
@@ -179,7 +182,7 @@ Related open PR #219 uses a different path set
 
 | ID | What | Status |
 | --- | --- | --- |
-| `nts-pr-216` | Draft evidence-bundle pack FINAL `07841284` | **`SUPERSEDED`** for **inventory docs** by this compilation branch. Schema / compiler / `tests/release/**` are **not** superseded and must not be re-implemented. |
+| `nts-pr-216` | Draft evidence-bundle pack FINAL `07841284` | **`SUPERSEDED`** for **inventory docs** by [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225). Schema / compiler / `tests/release/**` are **not** superseded and must not be re-implemented. |
 | — | Exact duplicate PRs in this snapshot | **None verified.** Related pairs that are **not** `DUPLICATE`: #219 ↔ branch-only falsification contract; #217 ↔ `grok/tool-admission-research`; #213 ↔ #222 (both touch isolation/CI); #212 ↔ #220 (contracts vs stacked adapters). |
 
 ---
