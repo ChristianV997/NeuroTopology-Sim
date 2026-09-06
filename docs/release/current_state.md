@@ -1,4 +1,4 @@
-# Current state — evidence-bundle-release Lead inventory
+# Current state — evidence-bundle-release Lead inventory + Research classification
 
 **Inventory date:** 2026-09-06  
 **Repository:** https://github.com/ChristianV997/NeuroTopology-Sim  
@@ -6,7 +6,8 @@
 **Main tip:** merge of PR #205 (`Merge pull request #205 …`)  
 **Inspector:** Lead phase, disposable worktree from `origin/main`  
 **Evidence source:** GitHub API / `gh` (live). Caller handoff used only for the dirty-checkout prohibition and the required scientific warnings below.  
-**Scope:** Lead inventory only. No schema, no compiler, no production solvers, no CI edits, no MarketOS.
+**Scope:** Lead inventory only. No schema, no compiler, no production solvers, no CI edits, no MarketOS.  
+**Research addendum:** claim classification appended below (2026-09-06, classifier `research_and_tooling`, base Lead commit `be80bdd5`). Still no schema/compiler.
 
 This document is a **snapshot of contribution location and merge status**.
 It is not a test report and not a scientific verdict.
@@ -202,3 +203,72 @@ Classify each matrix row:
    Do not invent the schema in this Lead pack.
 
 Exact merger instruction: **do not merge.**
+
+---
+
+## Research claim classification
+
+Research phase landed 2026-09-06 on Lead inventory
+`be80bdd5db85b417dd5f15a5445d6c6a6bfd3368`. Every contribution row now
+has a `research_classification` block. Inventory remains **not
+evidence**. `empirical_pass_allowed` is `false` on every row.
+`empirical_pass_from_this_pack` is `false`. This pack does **not** add
+`configs/release/evidence_schema.yaml`,
+`scripts/compile_repository_evidence.py`, or
+`tests/release/test_evidence_compiler.py`.
+
+### Required warnings (Research; verbatim)
+
+1. PRs #210, #211, #212 are NOT merged unless independently verified as merged.
+2. scientific-falsification branch has no confirmed PR unless one is found.
+3. Missing Antigravity/Grok implementation reports are unverified.
+4. Synthetic data cannot establish a scientific PASS.
+5. Current proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation.
+
+### Classification of all inventory rows
+
+| ID | value_class | claim_class | bayesian_warning | Note |
+| --- | --- | --- | --- | --- |
+| `nts-pr-205` | tooling (+governance) | none | false | Engineering opportunity registry only; not scientific evidence. |
+| `nts-pr-189` | engineering (+governance) | none | false | Report formatter is not an empirical result. |
+| `nts-pr-188` | governance (+engineering) | none | false | Substrate for a later compiler; not a theory result. |
+| `nts-pr-184` | engineering (+scientific) | synthetic | false | Synthetic lattice campaign is not empirical biology; no K>100 PASS from this PR. |
+| `nts-pr-206` | tooling | none | false | Cloud Agent env config only; not scientific evidence. |
+| `nts-pr-207` | engineering | synthetic | false | Bit-identity/speedup unverified; not a scientific PASS. |
+| `nts-pr-208` | engineering (+governance) | synthetic | **true** | NOT MERGED; synthetic lattice sidecar is not empirical; no K computed. |
+| `nts-pr-209` | tooling (+governance) | none | false | Inventory is not evidence; never PASS; Grok impl report missing. |
+| `nts-pr-210` | engineering | unsupported | false | **NOT MERGED** (verified open draft). Scaffold does not prove integration; author absence-claim stale. |
+| `nts-pr-211` | engineering | synthetic | false | **NOT MERGED**. Performance stand-in, not scientific computation; synthetic ≠ PASS. |
+| `nts-pr-212` | governance (+engineering) | none | false | **NOT MERGED**. Contracts are not empirical results. |
+| `nts-pr-213` | engineering (+tooling) | unsupported | false | Antigravity implementation report missing → unverified. |
+| `nts-pr-214` | engineering (+tooling) | unsupported | false | Antigravity report missing; streaming/preprocessing ≠ empirical PASS. |
+| `nts-branch-scientific-falsification-contract` | scientific (+governance) | proxy | **true** | No confirmed PR. Do not cite as landed. Proxy vs formal K split. |
+| `nts-branch-grok-tool-admission-research` | tooling (+governance) | none | false | Catalog ≠ admission decision ≠ scientific evidence; Grok report missing. |
+| `nts-blocked-disorder-modes-leftover-abba063` | engineering | synthetic | false | Leftover tip of already-merged #184; not new work. |
+| `nts-unverified-antigravity-implementation-reports` | governance | unsupported | false | Missing Antigravity implementation reports remain unverified. |
+| `nts-unverified-grok-implementation-reports` | governance | unsupported | false | Missing Grok implementation reports remain unverified. |
+| `nts-unverified-proxy-bayesian-likelihood` | scientific | proxy | **true** | On-main `bayes_factor` is a descriptive proxy; needs formal likelihood validation. |
+
+### Explicit limits (do not invent merge status)
+
+- **#210 / #211 / #212 are NOT MERGED.** Lead merge_status remains
+  draft / draft / open. Research did not change those fields.
+- **`scientific-falsification` branch has no confirmed PR.** Branch-only
+  row `nts-branch-scientific-falsification-contract`. Do not cite as
+  landed.
+- **Antigravity / Grok implementation reports are unverified.**
+- **Synthetic data cannot establish a scientific PASS.**
+- **Proxy Bayes needs formal likelihood validation** before strong
+  empirical interpretation. `bayesian_warning: true` on `nts-pr-208`,
+  `nts-branch-scientific-falsification-contract`, and
+  `nts-unverified-proxy-bayesian-likelihood`.
+
+### Hand off (QA)
+
+QA may now own `configs/release/evidence_schema.yaml` and
+`tests/release/test_evidence_compiler.py`. Do **not** invent the schema
+in this Research pack. Schema must refuse scientific `PASS` from
+synthetic data and refuse unverified author-claimed test counts as
+compiled evidence.
+
+**Merger: do not merge.**

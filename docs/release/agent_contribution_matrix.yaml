@@ -1,4 +1,5 @@
 # Lead contribution inventory only.
+# Research classification added 2026-09-06 (phase RESEARCH).
 # Not configs/release/evidence_schema.yaml. Not a compiler. Not evidence.
 # Inventory is not a scientific PASS.
 
@@ -17,6 +18,20 @@ required_warnings:
   - "Synthetic data cannot establish scientific PASS."
   - "Proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation."
 merger_instruction: do_not_merge
+
+research_phase:
+  phase: RESEARCH
+  classified_at: "2026-09-06"
+  classifier: research_and_tooling
+  base_lead_commit: be80bdd5db85b417dd5f15a5445d6c6a6bfd3368
+  inventory_is_not_evidence: true
+  empirical_pass_from_this_pack: false
+  required_warnings:
+    - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
+    - "scientific-falsification branch has no confirmed PR unless one is found."
+    - "Missing Antigravity/Grok implementation reports are unverified."
+    - "Synthetic data cannot establish a scientific PASS."
+    - "Current proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation."
 
 contributions:
   - id: nts-pr-205
@@ -57,6 +72,20 @@ contributions:
       - "Branch name is a reused Claude lane; it does not describe the PR contents."
       - "Merged engineering registry only; not scientific evidence."
 
+    research_classification:
+      value_class: tooling
+      value_classes: [tooling, governance]
+      claim_class: none
+      claim_surface: tooling-catalog
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Engineering opportunity registry only; not a scientific result."
+        - "Catalog / opportunity rows cannot establish empirical PASS."
+      research_notes: "Engineering opportunity registry only; not scientific evidence."
+
   - id: nts-pr-189
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Evidence Report Generator v1 (reports/): deterministic EvidenceBundle -> human-readable report"
@@ -92,6 +121,20 @@ contributions:
       - "Already on main. A report generator is not an empirical result."
       - "Reused Claude branch name; do not infer topic from the branch string."
 
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering, governance]
+      claim_class: none
+      claim_surface: engineering-runtime
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "A report formatter is not an empirical campaign result."
+        - "Generated human-readable reports inherit source-bundle limits."
+      research_notes: "Report formatter is not an empirical result."
+
   - id: nts-pr-188
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Add evidence/ governed evidence bundle layer linking registry, transitions, phase-space"
@@ -126,6 +169,20 @@ contributions:
     limitations:
       - "On-main docs state a governed EvidenceBundle is not a theory result."
       - "This landed layer is substrate for a later compiler; it is not this Lead pack."
+
+    research_classification:
+      value_class: governance
+      value_classes: [governance, engineering]
+      claim_class: none
+      claim_surface: governance-docs
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Governed EvidenceBundle layer is substrate, not a theory result."
+        - "Does not compile or validate scientific PASS."
+      research_notes: "Substrate for a later compiler; not a theory result."
 
   - id: nts-pr-184
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -164,6 +221,20 @@ contributions:
       - "Merged 2026-08-04 as merge commit 1031a939."
       - "Remote branch name still exists at the same tip; see nts-blocked-disorder-modes-leftover-abba063."
       - "Synthetic lattice campaign is not empirical biology."
+
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering, scientific]
+      claim_class: synthetic
+      claim_surface: engineering-runtime
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Synthetic lattice campaign is not empirical biology."
+        - "No K>100 scientific PASS is established from this PR."
+      research_notes: "Synthetic lattice campaign is not empirical biology; no K>100 PASS from this PR."
 
   - id: nts-pr-206
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -204,6 +275,20 @@ contributions:
       - "Author-claimed local validation numbers in the PR body were not re-run."
       - "Environment config only; not scientific evidence."
 
+    research_classification:
+      value_class: tooling
+      value_classes: [tooling]
+      claim_class: none
+      claim_surface: tooling-catalog
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Cloud Agent environment config only."
+        - "Author-claimed local validation numbers were not re-run."
+      research_notes: "Environment config / tooling catalog only; not scientific evidence."
+
   - id: nts-pr-207
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "perf(pitnn): buffer-reuse Lindblad RK4 propagation (bit-identical)"
@@ -241,6 +326,20 @@ contributions:
       - "Author-claimed bit-identity and speedup numbers were not independently re-measured."
       - "Performance change is not a scientific PASS."
       - "File overlap risk with later PITNN work is limited to tryptophan_lindblad.py vs kernels_fast.py on #211."
+
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering]
+      claim_class: synthetic
+      claim_surface: engineering-runtime
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Author-claimed bit-identity and speedup numbers were not independently re-measured."
+        - "Performance change is not a scientific PASS."
+      research_notes: "Bit-identity/speedup unverified; not a scientific PASS."
 
   - id: nts-pr-208
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -285,6 +384,21 @@ contributions:
       - "Author text reserves PASS for Bayes factor K > 100; this campaign does not compute K."
       - "Synthetic lattice sidecar is not empirical biology."
       - "Author-claimed 33 passed pytest was not re-run here."
+
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering, governance]
+      claim_class: synthetic
+      claim_surface: engineering-runtime
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: true
+      bayesian_note: "Author reserves PASS for Bayes factor K>100; this campaign does not compute K. Sidecar NOT_SUPPORTED/INCONCLUSIVE only."
+      methodological_limitations:
+        - "NOT MERGED; draft PR only."
+        - "Synthetic lattice sidecar is not empirical biology."
+        - "Campaign does not compute Bayes factor K."
+      research_notes: "NOT MERGED; synthetic lattice sidecar is not empirical."
 
   - id: nts-pr-209
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -331,6 +445,21 @@ contributions:
       - "No Grok implementation report located."
       - "CI logs were empty; do not classify as pytest regression or disk-full from this snapshot."
 
+    research_classification:
+      value_class: tooling
+      value_classes: [tooling, governance]
+      claim_class: none
+      claim_surface: tooling-catalog
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Inventory is not evidence; scientific_claim_status is always not_evidence."
+        - "Reports never emit scientific PASS."
+        - "Grok implementation report is missing."
+      research_notes: "Inventory is not evidence; scientific_claim_status always not_evidence; never PASS; Grok impl report missing."
+
   - id: nts-pr-210
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Ecosystem integration scaffold: bridge, assembler, tests, docs"
@@ -374,6 +503,21 @@ contributions:
       - "PR body claimed seven dependency branches were absent at 2026-09-06T02:10Z. Those branches exist in this later snapshot."
       - "Scaffold does not consume interop, falsification, streaming, isolation, or retrofit branches."
       - "Author-claimed 67 passed integration tests were not re-run."
+
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering]
+      claim_class: unsupported
+      claim_surface: engineering-runtime
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "NOT MERGED (verified open draft)."
+        - "Scaffold does not prove integration of dependency branches."
+        - "Author absence-claim for those branches is stale versus this snapshot."
+      research_notes: "NOT MERGED (verified open draft). Scaffold does not prove integration of dependency branches; author absence-claim stale."
 
   - id: nts-pr-211
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -420,6 +564,21 @@ contributions:
       - "PR body states the benchmark workload is a performance stand-in, not a scientific computation."
       - "Synthetic fixtures cannot establish scientific PASS."
 
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering]
+      claim_class: synthetic
+      claim_surface: engineering-runtime
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "NOT MERGED."
+        - "Benchmark is a performance stand-in, not a scientific computation."
+        - "Synthetic fixtures cannot establish scientific PASS."
+      research_notes: "NOT MERGED. Benchmark is a performance stand-in, not a scientific computation; synthetic is not PASS."
+
   - id: nts-pr-212
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Add native signal interoperability contracts"
@@ -463,6 +622,20 @@ contributions:
       - "NOT MERGED. Independently verified open (not draft); mergedAt is null."
       - "Author-claimed pytest/governance commands were not re-run."
       - "Contracts and synthetic-data boundary docs are not empirical results."
+
+    research_classification:
+      value_class: governance
+      value_classes: [governance, engineering]
+      claim_class: none
+      claim_surface: governance-docs
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "NOT MERGED."
+        - "Contracts and synthetic-data boundary docs are not empirical results."
+      research_notes: "NOT MERGED. Contracts are not empirical results."
 
   - id: nts-pr-213
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -514,6 +687,20 @@ contributions:
       - "Touches CI and requirements; Lead did not review or edit those files."
       - "Author-claimed architecture text is not compiled evidence."
 
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering, tooling]
+      claim_class: unsupported
+      claim_surface: missing-report
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Antigravity implementation report is missing; treat quality as unverified."
+        - "Test isolation / CI contracts are not compiled scientific evidence."
+      research_notes: "Antigravity implementation report missing, so this row stays unverified."
+
   - id: nts-pr-214
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "feat(eeg): memory-bounded provenance-rich streaming pipeline and preprocessing"
@@ -559,6 +746,21 @@ contributions:
       - "Streaming/preprocessing code is not an empirical PASS."
       - "Lead did not execute EEG tests or inspect a dirty checkout."
 
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering, tooling]
+      claim_class: unsupported
+      claim_surface: missing-report
+      data_mode: local-unknown
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Antigravity implementation report is missing."
+        - "Streaming/preprocessing is not an empirical PASS."
+        - "No live downloads in tests are expected."
+      research_notes: "Antigravity report missing; streaming/preprocessing is not an empirical PASS; no live downloads in tests expected."
+
   - id: nts-branch-scientific-falsification-contract
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Harden scientific falsification contracts"
@@ -601,6 +803,21 @@ contributions:
       - "On-main bayes_factor remains a proxy until a formal likelihood path is merged and validated."
       - "Do not cite this branch as a landed contract."
 
+    research_classification:
+      value_class: scientific
+      value_classes: [scientific, governance]
+      claim_class: proxy
+      claim_surface: scientific-interpretation
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: true
+      bayesian_note: "Separates formal marginal-likelihood K from bayes_factor_proxy_from_rss. Branch-only (no PR). Do not cite as landed. On-main bayes_factor remains proxy until formal likelihood path is merged and validated."
+      methodological_limitations:
+        - "No confirmed PR; branch-only."
+        - "Do not cite as a landed contract."
+        - "On-main bayes_factor remains a proxy until a formal likelihood path is merged and validated."
+      research_notes: "No confirmed PR. Branch-only proxy/formal split; do not cite as landed."
+
   - id: nts-branch-grok-tool-admission-research
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Tool-admission governance registry and research notes"
@@ -638,6 +855,21 @@ contributions:
       - "No Grok implementation report located."
       - "A tool catalog is not an admission decision and not scientific evidence."
 
+    research_classification:
+      value_class: tooling
+      value_classes: [tooling, governance]
+      claim_class: none
+      claim_surface: tooling-catalog
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "A tool catalog is not an admission decision."
+        - "Catalog is not scientific evidence."
+        - "Grok implementation report is missing."
+      research_notes: "Catalog is not an admission decision and not scientific evidence; Grok report missing."
+
   - id: nts-blocked-disorder-modes-leftover-abba063
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Leftover remote tip of already-merged disorder-modes branch"
@@ -673,6 +905,20 @@ contributions:
       - "GitHub compare vs current main reports diverged (ahead 1 / behind 51) because main moved after the merge."
       - "New sidecar work is nts-pr-208, not this leftover tip."
 
+    research_classification:
+      value_class: engineering
+      value_classes: [engineering]
+      claim_class: synthetic
+      claim_surface: leftover-branch
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "Leftover remote tip of already-merged PR #184."
+        - "Do not treat as new unmerged work."
+      research_notes: "Leftover tip of already-merged #184; do not treat as new work."
+
   - id: nts-unverified-antigravity-implementation-reports
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Missing Antigravity implementation reports"
@@ -706,6 +952,20 @@ contributions:
       - "PRs #213 and #214 exist; reports do not."
       - "Missing reports = unverified. Do not infer quality from branch presence."
 
+    research_classification:
+      value_class: governance
+      value_classes: [governance]
+      claim_class: unsupported
+      claim_surface: missing-report
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "No Antigravity implementation report located."
+        - "PRs #213 and #214 exist; reports do not."
+      research_notes: "Missing Antigravity implementation reports remain unverified."
+
   - id: nts-unverified-grok-implementation-reports
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
     title: "Missing Grok / grok-bot implementation reports"
@@ -738,6 +998,20 @@ contributions:
       - "gh search issues and PR search found no Grok implementation report."
       - "Applies to grok/tool-admission-research and PR #209."
       - "Missing reports = unverified."
+
+    research_classification:
+      value_class: governance
+      value_classes: [governance]
+      claim_class: unsupported
+      claim_surface: missing-report
+      data_mode: none
+      empirical_pass_allowed: false
+      bayesian_warning: false
+      bayesian_note: null
+      methodological_limitations:
+        - "No Grok / grok-bot implementation report located."
+        - "Applies to grok/tool-admission-research and PR #209."
+      research_notes: "Missing Grok implementation reports remain unverified."
 
   - id: nts-unverified-proxy-bayesian-likelihood
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -774,3 +1048,18 @@ contributions:
       - "Requires correction / formal likelihood validation before strong empirical interpretation."
       - "Synthetic fixtures on this path cannot establish scientific PASS."
       - "Unmerged scientific-falsification-contract branch is not a substitute validation."
+
+    research_classification:
+      value_class: scientific
+      value_classes: [scientific]
+      claim_class: proxy
+      claim_surface: scientific-interpretation
+      data_mode: synthetic
+      empirical_pass_allowed: false
+      bayesian_warning: true
+      bayesian_note: "On-main bayes_factor is a descriptive proxy (Gaussian residual likelihood ratio / RSS). Requires correction / formal likelihood validation before strong empirical interpretation. Synthetic fixtures on this path cannot establish scientific PASS. Unmerged falsification-contract branch is not a substitute validation."
+      methodological_limitations:
+        - "On-main bayes_factor is a descriptive proxy, not a formal marginal-likelihood K."
+        - "Synthetic fixtures on this path cannot establish scientific PASS."
+        - "Unmerged falsification-contract branch is not a substitute validation."
+      research_notes: "Proxy Bayes needs formal likelihood validation; synthetic fixtures cannot establish scientific PASS."
