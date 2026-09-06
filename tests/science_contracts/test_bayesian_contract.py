@@ -23,6 +23,8 @@ def _empirical_kwargs() -> dict:
         "controls": _passing_controls(),
         "method": "formal_marginal_likelihood",
         "validation_status": "VALID",
+        "multiplicity_status": "not_needed",
+        "effective_sample_count": 32,
     }
 
 
@@ -82,7 +84,7 @@ def test_provenance_and_input_validation_fail_closed():
 
 def test_proxy_is_explicit_and_structured():
     result = bayes_factor_proxy_from_rss(1.0, 2.0, n=40, k_model=3, k_null=2)
-    assert result["method"] == "rss_ratio_proxy"
+    assert result["method"] == "bic_proxy"
     assert result["formal"] is False
     assert result["parameter_count"] == {"model": 3, "null": 2}
     assert result["model"]["aicc"] != result["null"]["aicc"]

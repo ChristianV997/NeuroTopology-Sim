@@ -164,7 +164,7 @@ def bayes_factor_proxy_from_rss(rss_model: float, rss_null: float, n: int, k_mod
     bic_model, bic_null = _bic(rss_m, n_int, k_model), _bic(rss_n, n_int, k_null)
     model_ic = {"aic": aic_model, "aicc": aicc_model, "bic": bic_model}[metric]
     null_ic = {"aic": aic_null, "aicc": aicc_null, "bic": bic_null}[metric]
-    common = {"selected_evidence_metric": metric, "aic": {"model": aic_model, "null": aic_null}, "aicc": {"model": aicc_model, "null": aicc_null}, "bic": {"model": bic_model, "null": bic_null}, "model_parameter_count": k_model, "null_parameter_count": k_null, "multiplicity_status": mult_status, "multiplicity_correction": multiplicity_correction}
+    common = {"selected_evidence_metric": metric, "aic": {"model": aic_model, "null": aic_null}, "aicc": {"model": aicc_model, "null": aicc_null}, "bic": {"model": bic_model, "null": bic_null}, "model": {"rss": rss_m, "aic": aic_model, "aicc": aicc_model, "bic": bic_model}, "null": {"rss": rss_n, "aic": aic_null, "aicc": aicc_null, "bic": bic_null}, "model_parameter_count": k_model, "null_parameter_count": k_null, "multiplicity_status": mult_status, "multiplicity_correction": multiplicity_correction}
     if model_ic is None or null_ic is None:
         result = _empty_evidence(method=f"{metric}_proxy", n=n_int, effective_n=effective, errors=[f"{metric.upper()} is undefined for this sample/model-size combination"])
         result.update(common)
@@ -176,7 +176,7 @@ def bayes_factor_proxy_from_rss(rss_model: float, rss_null: float, n: int, k_mod
         result = _empty_evidence(method=f"{metric}_proxy", n=n_int, effective_n=effective, errors=["evidence ratio overflow; K is intentionally left null"])
         result.update(common)
         return result
-    result = {"status": "NOT_SUPPORTED", "method": f"{metric}_proxy", "formal": False, "k_value": k_value, "bayes_factor": k_value, "log_bayes_factor": float(log_k), "threshold": PASS_THRESHOLD, "sample_count": n_int, "effective_sample_count": effective, "uncertainty": None, "warnings": ["This is an information-criterion/RSS proxy, not a formal Bayes factor", "No likelihood normalization or prior integration was performed"], "errors": []}
+    result = {"status": "NOT_SUPPORTED", "method": f"{metric}_proxy", "formal": False, "k_value": k_value, "bayes_factor": k_value, "log_k_value": float(log_k), "log_bayes_factor": float(log_k), "threshold": PASS_THRESHOLD, "sample_count": n_int, "effective_sample_count": effective, "parameter_count": {"model": k_model, "null": k_null}, "uncertainty": None, "warnings": ["This is an information-criterion/RSS proxy, not a formal Bayes factor", "No likelihood normalization or prior integration was performed"], "errors": []}
     result.update(common)
     return result
 
@@ -194,8 +194,8 @@ def bayes_factor_from_marginal_likelihoods(model_marginal_likelihood: float, nul
         return _empty_evidence(method="formal_marginal_likelihood", n=None, effective_n=None, errors=errors)
     log_k = math.log(model) - math.log(null)
     try:
-        k_value = float(math.exp(log_k))
-        posterior = float((model * prior_model) / (null * prior_null))
+        k_value = float(model / null)
+        posterior = float(k_value * (prior_model / prior_null))
     except (OverflowError, ValueError):
         return _empty_evidence(method="formal_marginal_likelihood", n=None, effective_n=None, errors=["formal evidence ratio overflow; K is intentionally left null"])
     return {"status": "NOT_SUPPORTED", "method": "formal_marginal_likelihood", "formal": True, "k_value": k_value, "bayes_factor": k_value, "log_bayes_factor": float(log_k), "posterior_odds": posterior, "threshold": PASS_THRESHOLD, "selected_evidence_metric": "marginal_likelihood", "model_marginal_likelihood": model, "null_marginal_likelihood": null, "model_prior": prior_model, "null_prior": prior_null, "likelihood_assumptions": dict(assumptions or {}), "uncertainty": None, "warnings": [], "errors": []}
@@ -265,7 +265,41 @@ def validate_falsification_input(signal: Any, inversion: Mapping[str, Any] | Non
         warnings.extend(mult_errors)
     prereg_status = "complete" if preregistered is True else "not_preregistered" if preregistered is False else "not_declared"
     status = "VALID" if not errors else "INCONCLUSIVE"
-    return {"status": status, "valid": status == "VALID", "data_mode": mode, "sample_count": sample_count, "feature_count": feature_count, "effective_sample_count": effective, "provenance_status": "complete" if provenance_ok else "missing_or_incomplete", "provenance_completeness": provenance_ok, "preregistration_status": prereg_status, "multiplicity_status": mult_status, "multiplicity_correction": multiplicity_correction, "paired_subjects": paired_subjects, "analysis_interpretable": not errors, "warnings": warnings, "errors": errors}
+    provenance_status = "complete" if provenance_ok else (
+        "incomplete" if mode == "empirical" and isinstance(provenance, Mapping)
+        else "missing_or_incomplete"
+    )
+    return {"status": status, "valid": status == "VALID", "data_mode": mode, "sample_count": sample_count, "feature_count": feature_count, "effective_sample_count": effective, "provenance_status": provenance_status, "provenance_completeness": provenance_ok, "preregistration_status": prereg_status, "multiplicity_status": mult_status, "multiplicity_correction": multiplicity_correction, "paired_subjects": paired_subjects, "analysis_interpretable": not errors, "warnings": warnings, "errors": errors}
+
+
+def _controls_pass(controls: Any) -> bool | None:
+    """Return a tri-state result for declared deterministic null controls."""
+    if controls is None:
+        return None
+    if isinstance(controls, Mapping):
+        if "passed" in controls:
+            return bool(controls["passed"])
+        values = list(controls.values())
+    elif isinstance(controls, (list, tuple)):
+        values = list(controls)
+    else:
+        return False
+    if not values:
+        return None
+    states: list[bool] = []
+    for value in values:
+        if isinstance(value, Mapping):
+            passed = value.get("passed", value.get("status"))
+            if passed not in (True, "PASS", "PASSED", "pass", "passed"):
+                return False
+            if "seed" not in value or not value.get("method"):
+                return False
+            states.append(True)
+        elif isinstance(value, bool):
+            states.append(value)
+        else:
+            return False
+    return all(states)
 
 
 def classify_falsification_status(k_value: Any, *, threshold: float = PASS_THRESHOLD, method: str = "unknown", data_mode: str = "unknown", validation_status: str = "VALID", provenance_status: str = "complete", analysis_interpretable: bool = True, controls: Mapping[str, Any] | None = None, controls_pass: bool | None = None, multiplicity_status: str = "unknown", effective_sample_count: int | None = None, min_effective_sample_count: int = MIN_EFFECTIVE_SAMPLE_COUNT, model_comparison_supported: bool = True, execution_error: bool = False) -> str:
@@ -289,9 +323,8 @@ def classify_falsification_status(k_value: Any, *, threshold: float = PASS_THRES
         return "INCONCLUSIVE"
     if multiplicity_status in {"unknown", "missing", "invalid"}:
         return "INCONCLUSIVE"
-    if controls_pass is None and isinstance(controls, Mapping):
-        booleans = [value for value in controls.values() if isinstance(value, bool)]
-        controls_pass = controls.get("status") in {"PASS", "passed", "valid"} or (bool(booleans) and all(booleans))
+    if controls_pass is None:
+        controls_pass = _controls_pass(controls)
     if controls_pass is not True:
         return "INCONCLUSIVE" if controls_pass is None else "NOT_SUPPORTED"
     if not str(method).startswith("formal_marginal_likelihood"):
