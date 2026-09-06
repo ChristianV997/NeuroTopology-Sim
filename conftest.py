@@ -1,11 +1,16 @@
 """Root conftest – ensures the repository root is on sys.path for all tests."""
 from __future__ import annotations
-import sys
 import gc
 import os
+import random
+import sys
 import subprocess
 import pytest
+import numpy as np
 from pathlib import Path
+
+# Ensure plotting tests are headless before any test module imports pyplot.
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 # Add the repo root so that bare ``from core.topology import ...`` imports work
 # when pytest is invoked from any working directory.
@@ -29,39 +34,56 @@ _subprocess_run = subprocess.run
 _subprocess_check_call = subprocess.check_call
 _subprocess_check_output = subprocess.check_output
 _subprocess_popen = subprocess.Popen
+_TEST_SUBPROCESS_TIMEOUT_S = 120
+
+
+def _with_test_timeout(keyword):
+    if keyword.get("timeout") is None:
+        keyword["timeout"] = _TEST_SUBPROCESS_TIMEOUT_S
+    return keyword
 
 
 def _run_with_make_compat(args, *positional, **keyword):
-    return _subprocess_run(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_run(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _check_call_with_make_compat(args, *positional, **keyword):
-    return _subprocess_check_call(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_check_call(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _check_output_with_make_compat(args, *positional, **keyword):
-    return _subprocess_check_output(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_check_output(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _popen_with_make_compat(args, *positional, **keyword):
     return _subprocess_popen(_rewrite_windows_make(args), *positional, **keyword)
 
 
-# Only patch on Windows, where the make-compat rewrite actually does something.
-# Replacing subprocess.Popen with a plain function breaks third-party libraries
-# that reference it as a type in annotations (e.g. IPython's
-# `Callable[[subprocess.Popen[bytes]], _T]`, which needs the real class).
+# Keep the real Popen class: third-party libraries reference it as a type in
+# annotations. The convenience helpers above are bounded on every platform;
+# only the Windows Popen wrapper is needed for make compatibility.
+subprocess.run = _run_with_make_compat
+subprocess.check_call = _check_call_with_make_compat
+subprocess.check_output = _check_output_with_make_compat
 if os.name == "nt":
-    subprocess.run = _run_with_make_compat
-    subprocess.check_call = _check_call_with_make_compat
-    subprocess.check_output = _check_output_with_make_compat
     subprocess.Popen = _popen_with_make_compat
 for _thread_env in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_thread_env, "1")
 
 
 @pytest.fixture(autouse=True)
-def collect_numpy_garbage():
-    """Release cyclic Python objects after each test without touching arrays."""
+def isolate_test_process_state():
+    """Restore test-mutated RNG/display state and collect Python cycles."""
+    python_random_state = random.getstate()
+    numpy_random_state = np.random.get_state()
+    torch = sys.modules.get("torch")
+    torch_random_state = torch.get_rng_state() if torch is not None else None
     yield
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is not None:
+        pyplot.close("all")
+    random.setstate(python_random_state)
+    np.random.set_state(numpy_random_state)
+    if torch is not None and torch_random_state is not None:
+        torch.set_rng_state(torch_random_state)
     gc.collect()

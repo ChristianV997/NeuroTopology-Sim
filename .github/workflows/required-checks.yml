@@ -9,8 +9,17 @@ on:
 jobs:
   core-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
+
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PIP_NO_CACHE_DIR: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -19,21 +28,38 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-          cache: pip
 
-      - name: Install root dependencies
-        run: pip install -r requirements.txt
+      - name: Install CPU PyTorch before root dependencies
+        run: python -m pip install --no-cache-dir --no-deps --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple "torch==2.9.1+cpu" "torchaudio==2.9.1+cpu"
+
+      - name: Install root dependencies without pip cache
+        run: python -m pip install --no-cache-dir -r requirements.txt
 
       - name: Run core tests in isolated batches
         # Scientific Python extensions can retain native allocations across a
         # monolithic collection.  The bounded runner keeps discovery intact
         # while giving each batch a fresh interpreter and a hard timeout.
-        run: python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120
+        run: python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120 --report-dir test-results/isolated
+
+      - name: Upload isolated batch report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-isolated-test-report
+          path: test-results/isolated/
+          if-no-files-found: warn
 
   awareness-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
     defaults:
       run:
         working-directory: apps/awareness_studio
@@ -45,10 +71,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-          cache: pip
 
       - name: Install Awareness package and dev extras
-        run: pip install -e '.[dev]'
+        run: python -m pip install --no-cache-dir -e '.[dev]'
 
       - name: Run Awareness tests
         run: pytest -q tests
