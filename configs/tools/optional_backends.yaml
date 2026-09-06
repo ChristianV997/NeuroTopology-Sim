@@ -1,0 +1,350 @@
+schema_version: "1.0"
+registry_id: NeuroTopologySim.OptionalBackends.v1
+description: >
+  Declarative catalog of optional scientific and research tools that may
+  eventually interoperate with NeuroTopology-Sim. Presence of a name here is
+  not a claim that the repository supports, wraps, or validates that tool.
+defaults:
+  offline: true
+  allow_remote: false
+  allow_install: false
+  silent_fallback: false
+tools:
+  - id: mne
+    display_name: MNE-Python
+    package_name: mne
+    import_name: mne
+    minimum_version: "1.6.0"
+    classification: local_optional_dependency
+    capability_category: eeg_ingestion
+    also_categories: [meg_ingestion, signal_filtering]
+    purposes: [eeg_ingestion, meg_ingestion, signal_filtering]
+    input_contract: "Local EEG/MEG files or in-memory arrays; no automatic remote fetch."
+    output_contract: "samples x channels float array plus sampling frequency in Hz."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: V
+    shapes:
+      data: [n_times, n_channels]
+    license: BSD-3-Clause
+    provenance: MNE-Python project
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "Probe-only admission. A successful import is not EEG pipeline support."
+  - id: scipy_signal
+    display_name: SciPy signal
+    package_name: scipy
+    import_name: scipy.signal
+    minimum_version: "1.10.0"
+    classification: local_optional_dependency
+    capability_category: signal_filtering
+    also_categories: []
+    purposes: [signal_filtering]
+    input_contract: "Finite 1D/2D float arrays and a positive sampling frequency in Hz."
+    output_contract: "Filtered arrays of the same shape; frequencies in Hz."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: dimensionless_or_source_units
+    shapes:
+      data: [n_samples, n_channels]
+    license: BSD-3-Clause
+    provenance: SciPy project
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Filter kernels only. Not a topology or quantum backend."
+  - id: eeglab
+    display_name: EEGLAB
+    package_name: EEGLAB
+    import_name: null
+    minimum_version: null
+    classification: external_desktop_toolchain
+    capability_category: eeg_ingestion
+    also_categories: [signal_filtering]
+    purposes: [eeg_ingestion, signal_filtering]
+    input_contract: "MATLAB EEGLAB datasets on local disk (.set/.fdt)."
+    output_contract: "Not produced by this Python registry."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: uV
+    shapes:
+      data: [n_channels, n_times]
+    license: BSD-style
+    provenance: SCCN / UCSD EEGLAB
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "MATLAB desktop toolchain. Not importable from this registry."
+  - id: fieldtrip
+    display_name: FieldTrip
+    package_name: FieldTrip
+    import_name: null
+    minimum_version: null
+    classification: external_desktop_toolchain
+    capability_category: meg_ingestion
+    also_categories: [eeg_ingestion, signal_filtering]
+    purposes: [meg_ingestion, eeg_ingestion, signal_filtering]
+    input_contract: "MATLAB FieldTrip raw/data structures on local disk."
+    output_contract: "Not produced by this Python registry."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: T_or_V
+    shapes:
+      data: [n_channels, n_times]
+    license: GPL-3.0
+    provenance: Donders Institute FieldTrip
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "MATLAB desktop toolchain. Not a silent fallback for MNE."
+  - id: pylsl
+    display_name: Lab Streaming Layer (pylsl)
+    package_name: pylsl
+    import_name: pylsl
+    minimum_version: "1.16.0"
+    classification: local_optional_dependency
+    capability_category: streaming
+    also_categories: []
+    purposes: [streaming]
+    input_contract: "Local LSL stream handles; live ingest is opt-in and non-deterministic."
+    output_contract: "Chunked samples x channels with timestamps in seconds."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: source_units
+    shapes:
+      chunk: [n_samples, n_channels]
+    license: MIT
+    provenance: Lab Streaming Layer / pylsl
+    network_requirement: optional
+    deterministic_offline: false
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Live LSL is not offline-compatible. No automatic stream resolution."
+  - id: brainflow
+    display_name: BrainFlow
+    package_name: brainflow
+    import_name: brainflow
+    minimum_version: "5.0.0"
+    classification: local_optional_dependency
+    capability_category: streaming
+    also_categories: [eeg_ingestion]
+    purposes: [streaming, eeg_ingestion]
+    input_contract: "Local board session or already-recorded file. No auto board scan."
+    output_contract: "Board-native sample matrix; caller must document units."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: board_dependent
+    shapes:
+      data: [n_channels, n_times]
+    license: MIT
+    provenance: BrainFlow project
+    network_requirement: optional
+    deterministic_offline: false
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Hardware/live paths stay opt-in. Import success is not device support."
+  - id: psychopy
+    display_name: PsychoPy
+    package_name: psychopy
+    import_name: psychopy
+    minimum_version: "2023.1.0"
+    classification: external_desktop_toolchain
+    capability_category: experiment_control
+    also_categories: []
+    purposes: []
+    input_contract: "Local experiment scripts and display hardware."
+    output_contract: "Event timestamps and logs; not neural time series."
+    units:
+      time: s
+    shapes:
+      events: [n_events]
+    license: GPL-3.0
+    provenance: Open Science Tools PsychoPy
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "Stimulus control only. Not an EEG, TDA, or decoding backend."
+  - id: spikeinterface
+    display_name: SpikeInterface
+    package_name: spikeinterface
+    import_name: spikeinterface
+    minimum_version: "0.100.0"
+    classification: local_optional_dependency
+    capability_category: spike_sorting
+    also_categories: []
+    purposes: [spike_sorting]
+    input_contract: "Local extracellular recordings already on disk."
+    output_contract: "Unit times in seconds and optional waveforms."
+    units:
+      time: s
+      amplitude: uV
+    shapes:
+      traces: [n_samples, n_channels]
+    license: MIT
+    provenance: SpikeInterface project
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "Sorter binaries are external. This registry does not launch them."
+  - id: pynwb
+    display_name: PyNWB
+    package_name: pynwb
+    import_name: pynwb
+    minimum_version: "2.5.0"
+    classification: local_optional_dependency
+    capability_category: eeg_ingestion
+    also_categories: [meg_ingestion]
+    purposes: [eeg_ingestion, meg_ingestion]
+    input_contract: "Local NWB/HDF5 files. Remote remfile/DANDI access is out of scope."
+    output_contract: "Time series extracted by the caller; registry does not stream S3."
+    units:
+      time: s
+      sampling_frequency: Hz
+      amplitude: source_units
+    shapes:
+      data: [n_samples, n_channels]
+    license: BSD-3-Clause
+    provenance: Neurodata Without Borders / PyNWB
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "File format reader only when used on local files."
+  - id: braindecode
+    display_name: Braindecode
+    package_name: braindecode
+    import_name: braindecode
+    minimum_version: "0.8.0"
+    classification: local_optional_dependency
+    capability_category: neural_decoding
+    also_categories: []
+    purposes: [neural_decoding]
+    input_contract: "Windowed arrays with explicit labels supplied by the caller."
+    output_contract: "Model scores; not topology, charge, or Bayes-factor evidence."
+    units:
+      time: s
+      sampling_frequency: Hz
+    shapes:
+      windows: [n_windows, n_channels, n_times]
+    license: BSD-3-Clause
+    provenance: Braindecode project
+    network_requirement: none
+    deterministic_offline: false
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "Optional decoder library. Cannot replace a missing ingestion backend."
+  - id: snntorch
+    display_name: snnTorch
+    package_name: snntorch
+    import_name: snntorch
+    minimum_version: "0.7.0"
+    classification: research_reference_only
+    capability_category: neural_decoding
+    also_categories: []
+    purposes: []
+    input_contract: "Synthetic or pre-encoded spike trains supplied by the caller."
+    output_contract: "SNN activations. Not an empirical neural recording API."
+    units:
+      time: dimensionless_steps
+    shapes:
+      spikes: [n_steps, n_neurons]
+    license: MIT
+    provenance: snnTorch project
+    network_requirement: none
+    deterministic_offline: true
+    memory_risk: high
+    scientific_support: not_claimed
+    notes: "Reference SNN library. Not admitted as a measurement backend."
+  - id: neurodata_tooling
+    display_name: Neurodata tooling
+    package_name: neurodata
+    import_name: null
+    minimum_version: null
+    classification: research_reference_only
+    capability_category: artifact_mining
+    also_categories: [eeg_ingestion]
+    purposes: []
+    input_contract: "Unspecified umbrella of NWB-adjacent utilities."
+    output_contract: "None. Use pynwb for local NWB files."
+    units: {}
+    shapes: {}
+    license: unspecified
+    provenance: community umbrella term
+    network_requirement: optional
+    deterministic_offline: false
+    memory_risk: unknown
+    scientific_support: not_claimed
+    notes: "Name-only umbrella. Not a concrete package and not selectable."
+  - id: notebooklm_mcp
+    display_name: NotebookLM MCP
+    package_name: notebooklm
+    import_name: null
+    minimum_version: null
+    classification: remote_service_mcp
+    capability_category: notebook_document_research
+    also_categories: []
+    purposes: [notebook_document_research]
+    input_contract: "Remote MCP session explicitly enabled by the operator."
+    output_contract: "Document notes. Not neural measurements."
+    units: {}
+    shapes: {}
+    license: proprietary
+    provenance: Google NotebookLM
+    network_requirement: required
+    deterministic_offline: false
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Remote service. Disabled unless allow_remote is true."
+  - id: semantica
+    display_name: Semantica
+    package_name: semantica
+    import_name: semantica
+    minimum_version: null
+    classification: research_reference_only
+    capability_category: notebook_document_research
+    also_categories: [artifact_mining]
+    purposes: [notebook_document_research, artifact_mining]
+    input_contract: "Local or remote text corpora. Not EEG/MEG bytes."
+    output_contract: "Semantic annotations. Not scientific observables."
+    units: {}
+    shapes: {}
+    license: unspecified
+    provenance: third-party semantic tooling
+    network_requirement: optional
+    deterministic_offline: false
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Document/knowledge tooling. Not a silent substitute for signal methods."
+  - id: scrapling
+    display_name: Scrapling
+    package_name: scrapling
+    import_name: scrapling
+    minimum_version: "0.2.0"
+    classification: research_reference_only
+    capability_category: artifact_mining
+    also_categories: []
+    purposes: [artifact_mining]
+    input_contract: "Operator-supplied URLs. This registry never fetches them."
+    output_contract: "HTML/text extracts if a future adapter is written."
+    units: {}
+    shapes: {}
+    license: unspecified
+    provenance: Scrapling web-extraction library
+    network_requirement: required
+    deterministic_offline: false
+    memory_risk: medium
+    scientific_support: not_claimed
+    notes: "Web extraction is not a scientific method and cannot be a fallback."
