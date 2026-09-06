@@ -1,0 +1,22 @@
+# Malformed: proxy flag on an id that is not 219 / 226 / falsification branch.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-208
+    pr_number: 208
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: needs_human_review
+    check_summary:
+      classification: job_started_install_fail
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+      proxy_evidence_flag: true
+      proxy_flagged: true
+      bayesian_warning: true
+      claim_class: proxy
+      evidence_mode: proxy
+duplicate_candidates: []
+superseded_candidates: []

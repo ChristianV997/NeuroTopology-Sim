@@ -1,0 +1,18 @@
+# Malformed: invents a duplicate without cited evidence fields.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-214
+    pr_number: 214
+    state: OPEN
+    merged: false
+    status_hint: needs_human_review
+    check_summary:
+      classification: billing_not_started
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+duplicate_candidates:
+  - id: nts-pr-214
+    of: 220
+superseded_candidates: []

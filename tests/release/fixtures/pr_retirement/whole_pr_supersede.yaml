@@ -1,0 +1,25 @@
+# Malformed: labels whole #216 superseded (only docs-only / whole_pr=false is allowed).
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-216
+    pr_number: 216
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: needs_human_review
+    check_summary:
+      classification: billing_not_started
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+duplicate_candidates: []
+superseded_candidates:
+  - id: nts-pr-216
+    pr_number: 216
+    scope: whole_pr
+    superseded_by: 225
+    whole_pr_superseded: true
+    whole_pr: true
+    evidence:
+      - "invented whole-PR supersede"

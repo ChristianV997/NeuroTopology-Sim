@@ -1,0 +1,21 @@
+# Malformed: invents scientific / empirical PASS from inventory.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+research_phase:
+  scientific_pass_from_this_pack: true
+rows:
+  - id: nts-pr-206
+    pr_number: 206
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: keep_open
+    check_summary:
+      classification: disk_fail
+    research_classification:
+      scientific_pass_allowed: true
+      biological_evidence: false
+      empirical_claim_present: true
+      empirical_verdict: PASS
+duplicate_candidates: []
+superseded_candidates: []

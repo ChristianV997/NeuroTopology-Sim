@@ -1,0 +1,33 @@
+# Malformed: recommendation would retire stacked child #215 before parent #211.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-211
+    pr_number: 211
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: keep_open
+    check_summary:
+      classification: disk_fail
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+  - id: nts-pr-215
+    pr_number: 215
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: keep_open
+    recommendation: retire
+    check_summary:
+      classification: billing_not_started
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+relationships:
+  - kind: stacked
+    from: nts-pr-215
+    to: nts-pr-211
+duplicate_candidates: []
+superseded_candidates: []

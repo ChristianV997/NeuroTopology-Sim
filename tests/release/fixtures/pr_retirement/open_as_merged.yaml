@@ -1,0 +1,19 @@
+# Malformed: open/draft PR recorded as merge_status=merged.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-206
+    pr_number: 206
+    state: OPEN
+    draft: true
+    merged: false
+    merge_status: merged
+    merged_at: "2026-09-06T00:00:00Z"
+    status_hint: keep_open
+    check_summary:
+      classification: disk_fail
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+duplicate_candidates: []
+superseded_candidates: []

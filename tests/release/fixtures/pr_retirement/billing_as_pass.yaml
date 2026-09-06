@@ -1,0 +1,33 @@
+# Malformed: billing_not_started and ENOSPC treated as pass.
+schema_version: "0.1"
+status_hint_allowed: [keep_open, needs_human_review]
+rows:
+  - id: nts-pr-209
+    pr_number: 209
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: keep_open
+    check_summary:
+      classification: billing_not_started
+      treated_as_pass: true
+      overall: pass
+      annotation: "account payments have failed or your spending limit needs to be increased"
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+  - id: nts-pr-206
+    pr_number: 206
+    state: OPEN
+    draft: true
+    merged: false
+    status_hint: keep_open
+    check_summary:
+      classification: disk_fail
+      ci_result: success
+      note: "OSError [Errno 28] No space left on device; treated as green"
+    research_classification:
+      scientific_pass_allowed: false
+      biological_evidence: false
+duplicate_candidates: []
+superseded_candidates: []
