@@ -83,3 +83,9 @@ Additional entries are appended after each logical merge group and final validat
   - retained #222's workflow hardening in non-overlapping workflow files, while using profile-scoped `requirements-*` installs and no pip cache in the reconciled root CI jobs;
   - included #222's CI isolation documentation and regression tests.
 - Validation: 14 runner/isolation tests passed; governance passed; Python compilation passed; all workflow YAML parsed.
+
+### 2026-09-06 — streaming and memory group
+
+- Merged PR #211, then the stacked PR #215 after #211's exact head was present.
+- Kept the allocation-reduced PITNN kernel and bounded streaming utilities; added process RSS telemetry without changing solver or signal semantics.
+- Validation: performance/streaming suite passed (46 tests after #215), governance passed, and affected modules compiled.
