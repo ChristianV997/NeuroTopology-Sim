@@ -1,0 +1,27 @@
+# ==============================================================================
+# NeuroTopology-Sim: Research Index & Brain Modeling Profile
+# ==============================================================================
+# Purpose: Cortical surface geometry (TemplateFlow), whole-brain neural mass models
+#          (neurolib), cubical persistence (GUDHI, cripser), spatial autocorrelation
+#          null spin tests (neuromaps), fMRI neuroimaging (nibabel, nilearn),
+#          and active inference controllers (pymdp).
+# Status: Optional / Profile-specific.
+# Affected tests:
+#   - tests/test_run_neurolib.py
+#   - tests/test_fmri_tda_pipeline.py
+#   - tests/test_spatial_nulls.py
+#   - tests/test_topology.py
+#   - tests/test_speculative_boundary.py
+# Platform constraints: Native C++ extensions (GUDHI); heavy mathematical libraries.
+# ==============================================================================
+-r requirements-base.txt
+
+nibabel>=5.1.0
+nilearn>=0.10.0
+templateflow>=22.06
+neurolib>=0.3.0
+cripser>=0.0.32
+neuromaps>=0.0.4
+the_well>=0.1.0
+gudhi>=3.8.0
+inferactively-pymdp==0.0.7.1
