@@ -11,6 +11,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  MPLBACKEND: Agg
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  PIP_NO_CACHE_DIR: "1"
+
 jobs:
   governance-validate:
     name: Governance validation
@@ -25,11 +33,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir -r requirements-base.txt
 
       - name: Validate governance specs
         run: python -m governance.validate
@@ -82,11 +88,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir -r requirements-base.txt
 
       - name: Run test runner unit suite
         run: python -m pytest tests/runner/ -v
@@ -112,11 +116,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir -r requirements-base.txt
 
       - name: Run isolated core tests (no heavy optional dependencies)
         # Bounded worker processes, hard timeouts, thread caps, no external network
@@ -159,11 +161,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements-eeg.txt
 
       - name: Install EEG profile dependencies
-        run: pip install -r requirements-eeg.txt
+        run: python -m pip install --no-cache-dir -r requirements-eeg.txt
 
       - name: Run isolated EEG tests
         run: >
@@ -197,11 +197,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements-ml.txt
 
       - name: Install ML profile dependencies
-        run: pip install -r requirements-ml.txt
+        run: python -m pip install --no-cache-dir -r requirements-ml.txt
 
       - name: Run isolated ML tests
         run: >

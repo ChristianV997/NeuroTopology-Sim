@@ -73,3 +73,13 @@ Additional entries are appended after each logical merge group and final validat
 - Merged PR #219 with an explicit conflict resolution in `sim/pitnn/bayesian_falsification.py`: PR #219 supersedes the branch-only Bayesian implementation because it adds stronger finite-value handling, multiplicity gates, effective-sample checks, explicit proxy/formal separation, and expanded compatibility metadata.
 - Validation: `python -m pytest -q tests/science_contracts` passed (12 tests) before the #219 replacement; the combined Bayesian/falsification group is re-run after the merge commit.
 - Compatibility repair: retained the #219 BIC-proxy default while restoring legacy `parameter_count`/log fields, added tri-state nested control recognition, differentiated missing versus incomplete empirical provenance, and updated the older branch test to assert the authoritative BIC-proxy contract. No scientific gate was widened.
+
+### 2026-09-06 — CI/dependency profile group
+
+- Merged PR #213 as the dependency-profile and baseline isolation foundation.
+- Reconciled PR #222's overlapping files without taking its duplicate implementation wholesale:
+  - kept #213's modular dependency profiles, profile-specific CI suites, tested `run_batch`/`run_batches` API, telemetry report schema, network guard, deterministic seeds, and full marker registry;
+  - added #222's heavy-test singleton batching, process-group termination, bounded subprocess defaults, explicit pytest-timeout requirement, headless plotting/thread caps, per-batch log directory, continuation after failures/timeouts, and machine-readable `batch_summary.json` compatibility fields;
+  - retained #222's workflow hardening in non-overlapping workflow files, while using profile-scoped `requirements-*` installs and no pip cache in the reconciled root CI jobs;
+  - included #222's CI isolation documentation and regression tests.
+- Validation: 14 runner/isolation tests passed; governance passed; Python compilation passed; all workflow YAML parsed.

@@ -13,15 +13,43 @@ Features:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
+import signal
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Sequence
+
+
+# Keep known native/plotting-heavy tests in singleton workers. This bounds
+# memory without weakening or replacing their scientific assertions.
+HEAVY_TEST_FILES = frozenset(
+    {
+        "test_anesthesia_pipeline.py",
+        "test_connectivity_topology.py",
+        "test_cross_modal_fusion.py",
+        "test_decoherence_sweep.py",
+        "test_fmri_tda_pipeline.py",
+        "test_mne_bids_feature_recipe_features.py",
+        "test_multi_lattice_dashboard.py",
+        "test_non_markovian_bath.py",
+        "test_open_quantum.py",
+        "test_preprocessing.py",
+        "test_preprocessing_artifact_rejection.py",
+        "test_quantum_trajectories.py",
+        "test_spectral_tda.py",
+        "test_speculative_non_hermitian.py",
+        "test_t_real_cli_stats_wiring.py",
+        "test_topology.py",
+        "test_tryptophan_lindblad.py",
+        "test_unified_quantum_lattice.py",
+    }
+)
 
 
 def discover(root: Path) -> List[Path]:
@@ -39,6 +67,28 @@ def discover(root: Path) -> List[Path]:
     return sorted(candidates, key=lambda p: p.relative_to(root_resolved).as_posix())
 
 
+def is_heavy_test(path: Path) -> bool:
+    return path.name in HEAVY_TEST_FILES
+
+
+def iter_batches(files: Sequence[Path], batch_size: int) -> Iterator[List[Path]]:
+    """Yield deterministic batches while isolating known heavy files."""
+    batch: List[Path] = []
+    for path in files:
+        if is_heavy_test(path):
+            if batch:
+                yield batch
+                batch = []
+            yield [path]
+            continue
+        batch.append(path)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
 def _probe_pytest_timeout() -> bool:
     """Check if the current Python environment has pytest-timeout installed."""
     try:
@@ -52,6 +102,14 @@ def _probe_pytest_timeout() -> bool:
         )
         return "--timeout=" in res.stdout or "--timeout" in res.stdout
     except Exception:
+        return False
+
+
+def _pytest_timeout_available() -> bool:
+    """Compatibility name used by the CI contract tests."""
+    try:
+        return importlib.util.find_spec("pytest_timeout") is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
         return False
 
 
@@ -85,11 +143,19 @@ def _terminate_process_tree(proc: subprocess.Popen) -> None:
                 pass
 
 
+def _terminate_worker(worker: subprocess.Popen) -> None:
+    """Compatibility name used by the bounded-worker regression tests."""
+    _terminate_process_tree(worker)
+
+
 def _measure_peak_rss(proc: subprocess.Popen, timeout_s: float) -> tuple[int, Optional[float]]:
     """Wait for process completion while monitoring peak RSS if psutil is available."""
     try:
         import psutil
-        p = psutil.Process(proc.pid)
+        try:
+            p = psutil.Process(proc.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return proc.wait(timeout=timeout_s), None
         peak_bytes = 0
         start_time = time.monotonic()
         while True:
@@ -139,6 +205,7 @@ def run_batch(
         "VECLIB_MAXIMUM_THREADS",
     ):
         env[var] = "1"
+    env["MPLBACKEND"] = "Agg"
 
     cmd: List[str] = [
         sys.executable,
@@ -166,24 +233,34 @@ def run_batch(
     peak_memory_mb: Optional[float] = None
 
     try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
+        popen_kwargs: Dict[str, Any] = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+            "env": env,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **popen_kwargs)
         try:
             exit_code, peak_memory_mb = _measure_peak_rss(proc, timeout_s=timeout_s + 15)
-            stdout_text, stderr_text = proc.communicate()
+            if hasattr(proc, "communicate"):
+                stdout_text, stderr_text = proc.communicate()
+            else:
+                stdout_text, stderr_text = "", ""
         except subprocess.TimeoutExpired:
             print(
                 f"[isolated] batch {batch_idx} exceeded timeout ({timeout_s}s); terminating worker tree...",
                 flush=True,
             )
-            _terminate_process_tree(proc)
+            _terminate_worker(proc)
             try:
-                stdout_text, stderr_text = proc.communicate(timeout=5)
+                if hasattr(proc, "communicate"):
+                    stdout_text, stderr_text = proc.communicate(timeout=5)
+                else:
+                    stdout_text, stderr_text = "", ""
             except Exception:
                 pass
             status = "timeout"
@@ -228,21 +305,23 @@ def run_batches(
     timeout_s: int,
     extra_pytest_args: Optional[List[str]] = None,
     report_path: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
     stop_on_first_failure: bool = False,
 ) -> int:
     """Run all test files in partitioned batches and optionally write a telemetry report."""
     if batch_size < 1 or timeout_s < 1:
         raise ValueError("batch_size and timeout_s must be positive")
 
-    total_batches = (len(files) + batch_size - 1) // batch_size
-    has_pytest_timeout = _probe_pytest_timeout()
+    batches = list(iter_batches(files, batch_size))
+    total_batches = len(batches)
+    has_pytest_timeout = _pytest_timeout_available()
+    if not has_pytest_timeout:
+        raise RuntimeError("pytest-timeout is required for bounded isolated execution")
     batch_reports: List[Dict[str, Any]] = []
     overall_exit_code = 0
     suite_start = time.monotonic()
 
-    for offset in range(0, len(files), batch_size):
-        batch = files[offset : offset + batch_size]
-        batch_idx = offset // batch_size + 1
+    for batch_idx, batch in enumerate(batches, start=1):
         res = run_batch(
             batch=batch,
             batch_idx=batch_idx,
@@ -270,23 +349,42 @@ def run_batches(
         flush=True,
     )
 
+    report_data = {
+        "summary": {
+            "total_files": len(files),
+            "total_batches": len(batch_reports),
+            "passed_batches": passed_count,
+            "failed_batches": failed_count,
+            "timeout_batches": timeout_count,
+            "duration_s": suite_duration,
+            "overall_exit_code": overall_exit_code,
+        },
+        "batches": batch_reports,
+    }
+    report_data["completed"] = len(batch_reports) == len(batches)
+    report_data["exit_code"] = overall_exit_code
+    for batch in batch_reports:
+        batch["batch_number"] = batch["batch_index"]
+        batch["test_files"] = [Path(path).as_posix() for path in batch["files"]]
+        batch["timed_out"] = batch["status"] == "timeout"
+        batch["timeout_status"] = "timeout" if batch["timed_out"] else "completed"
     if report_path:
-        report_data = {
-            "summary": {
-                "total_files": len(files),
-                "total_batches": len(batch_reports),
-                "passed_batches": passed_count,
-                "failed_batches": failed_count,
-                "timeout_batches": timeout_count,
-                "duration_s": suite_duration,
-                "overall_exit_code": overall_exit_code,
-            },
-            "batches": batch_reports,
-        }
         report_path = Path(report_path)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report_data, indent=2), encoding="utf-8")
         print(f"[isolated] telemetry report written to {report_path}", flush=True)
+    if report_dir:
+        report_dir = Path(report_dir)
+        report_dir.mkdir(parents=True, exist_ok=True)
+        for batch in batch_reports:
+            idx = int(batch["batch_index"])
+            stdout_path = (report_dir / f"batch_{idx:03d}.stdout.log").resolve()
+            stderr_path = (report_dir / f"batch_{idx:03d}.stderr.log").resolve()
+            stdout_path.write_text(batch["stdout_tail"], encoding="utf-8")
+            stderr_path.write_text(batch["stderr_tail"], encoding="utf-8")
+            batch["stdout_path"] = stdout_path.as_posix()
+            batch["stderr_path"] = stderr_path.as_posix()
+        (report_dir / "batch_summary.json").write_text(json.dumps(report_data, indent=2), encoding="utf-8")
 
     return overall_exit_code
 
@@ -297,6 +395,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--batch-size", type=int, default=8, help="Number of test files per fresh subprocess")
     parser.add_argument("--timeout-s", type=int, default=120, help="Per-batch hard timeout in seconds")
     parser.add_argument("--report", type=Path, default=None, help="Path to write JSON telemetry report")
+    parser.add_argument("--report-dir", type=Path, default=None, help="Directory for per-batch logs and batch_summary.json")
     parser.add_argument("--marker", "-m", type=str, default=None, help="Pytest marker expression (e.g. 'not slow')")
     parser.add_argument("--fail-fast", action="store_true", help="Halt execution on first failing batch")
     parser.add_argument("files", nargs="*", type=Path, help="Explicit test files; defaults to discovery")
@@ -317,6 +416,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         timeout_s=args.timeout_s,
         extra_pytest_args=extra_args,
         report_path=args.report,
+        report_dir=args.report_dir,
         stop_on_first_failure=args.fail_fast,
     )
 

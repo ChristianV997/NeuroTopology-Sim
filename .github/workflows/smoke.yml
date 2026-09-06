@@ -9,6 +9,7 @@ jobs:
   smoke:
     name: Cross-system smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
 
@@ -21,6 +22,12 @@ jobs:
       TOOLS_ENABLED: "false"
       AIRTABLE_ENABLED: "false"
       AUTH_ENABLED: "false"
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PIP_NO_CACHE_DIR: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -29,13 +36,12 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            apps/awareness_studio/pyproject.toml
 
-      - name: Install root dependencies
-        run: pip install -r requirements.txt
+      - name: Install CPU PyTorch before root dependencies
+        run: python -m pip install --no-cache-dir --no-deps --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple "torch==2.9.1+cpu" "torchaudio==2.9.1+cpu"
+
+      - name: Install root dependencies without pip cache
+        run: python -m pip install --no-cache-dir -r requirements.txt
 
       - name: Root synthetic smoke
         run: python main.py --mode synthetic
@@ -53,7 +59,7 @@ jobs:
 
       - name: Install Awareness Studio
         working-directory: apps/awareness_studio
-        run: pip install -e ".[dev,embeddings]"
+        run: python -m pip install --no-cache-dir -e ".[dev,embeddings]"
 
       - name: Export sim artifacts
         run: |

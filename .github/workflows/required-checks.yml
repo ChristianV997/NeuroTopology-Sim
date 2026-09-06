@@ -9,8 +9,17 @@ on:
 jobs:
   core-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: read
+
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      PIP_NO_CACHE_DIR: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -19,11 +28,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install root base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir -r requirements-base.txt
 
       - name: Run core tests in isolated batches
         # Scientific Python extensions can retain native allocations across a
@@ -46,6 +53,7 @@ jobs:
 
   awareness-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     defaults:
@@ -59,10 +67,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-          cache: pip
 
       - name: Install Awareness package and dev extras
-        run: pip install -e '.[dev]'
+        run: python -m pip install --no-cache-dir -e '.[dev]'
 
       - name: Run Awareness tests
         run: pytest -q tests
