@@ -748,7 +748,9 @@ def _norm_token(value: Any) -> str:
 def _hint_token(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    text = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    # Strip punctuation so close_now! / retire. cannot bypass the allowlist.
+    return "".join(char for char in text if char.isalnum() or char == "_")
 
 
 def _coerce_pr(value: Any) -> int | None:

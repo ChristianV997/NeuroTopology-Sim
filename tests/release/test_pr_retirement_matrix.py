@@ -415,6 +415,30 @@ def test_status_hint_retire_is_rejected():
     assert any("status_hint_not_allowed" in err for err in result.errors)
 
 
+def test_status_hint_punctuation_cannot_bypass_retire_guard():
+    data = {
+        "status_hint_allowed": ["close_now!"],
+        "rows": [
+            {
+                "id": "nts-pr-221",
+                "pr_number": 221,
+                "state": "OPEN",
+                "merged": False,
+                "status_hint": "close_now!",
+                "research_classification": {
+                    "scientific_pass_allowed": False,
+                    "biological_evidence": False,
+                },
+            }
+        ],
+        "duplicate_candidates": [],
+        "superseded_candidates": [],
+    }
+    result = validate_matrix(data)
+    assert not result.ok
+    assert any("status_hint_not_allowed" in err for err in result.errors)
+
+
 def test_careful_wo_status_hint_allowed():
     data = {
         "rows": [
