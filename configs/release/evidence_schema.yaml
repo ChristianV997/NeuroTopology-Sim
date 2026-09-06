@@ -4,6 +4,7 @@
 # Release owns scripts/compile_repository_evidence.py (not in this write set).
 
 schema_version: "1.0.0"
+schema_delta: stacked_billing_adapters
 schema_id: nts-release-evidence-bundle
 kind: evidence_bundle_contract
 inventory_is_not_evidence: true
@@ -133,6 +134,30 @@ enums:
     - unverified
     - closed
     - unknown
+  # Work-order / row status categories. These are NOT merge_status.
+  # VERIFIED_MERGED does not invent merge_status=merged.
+  status_category:
+    - VERIFIED_MERGED
+    - OPEN_REVIEW
+    - DRAFT_REVIEW
+    - BRANCH_ONLY
+    - CI_BLOCKED
+    - BILLING_BLOCKED
+    - SUPERSEDED
+    - DUPLICATE
+    - SCIENTIFIC_REVIEW_REQUIRED
+    - UNVERIFIED
+  stacked_relationship:
+    - STACKED
+  memory_kind:
+    - rss
+    - RSS
+    - tracemalloc
+    - unavailable
+  memory_availability:
+    - unavailable
+    - unverified
+    - verified
   verification_existence:
     - verified
     - missing
@@ -153,6 +178,7 @@ enums:
   author_test_results:
     - unverified
     - verified
+    - verified_pass
     - missing
     - not_applicable
     - claimed_unverified
@@ -167,11 +193,14 @@ enums:
     - proxy
     - unsupported
     - empirical
+    - unavailable
   value_class:
     - scientific
     - engineering
     - governance
     - tooling
+    - performance
+    - interoperability
   data_mode:
     - none
     - synthetic
@@ -268,6 +297,38 @@ hard_rules:
     statement: >
       Validators return an error list or raise. An empty list is the only
       success signal. Notes must not be treated as success.
+  - id: billing_not_started_not_pass
+    statement: >
+      CI billing not-started, payment/spending-limit annotations, or jobs
+      that never ran MUST NOT be recorded as a passing test result.
+      github_checks billing_not_started / BILLING_BLOCKED cannot set
+      verification_status.author_test_results=verified_pass or test_results
+      PASS. Billing failure is not pytest pass.
+  - id: stacked_parent_required
+    statement: >
+      If a row is marked STACKED / stacked_on / stacked_base / base_pr,
+      a parent id (parent_pr or base_pr) must be present. #215→#211 and
+      #220→#212 are the canonical stacked pairs.
+  - id: stacked_merged_parent_open_contradiction
+    statement: >
+      A stacked child recorded as merge_status=merged while its parent is
+      still open or draft is a contradiction and must fail closed.
+  - id: process_memory_kind_or_unavailable
+    statement: >
+      If process-memory metrics are present, they must distinguish RSS vs
+      tracemalloc (kind/unit) or mark independently_verified unavailable.
+      Unlabeled memory numbers cannot be treated as verified.
+  - id: adapters_supported_false_not_described_supported
+    statement: >
+      adapters_supported=false must not be described as supported.
+      Missing or unmerged adapters are not supported.
+  - id: status_category_is_not_merge_status
+    statement: >
+      WO status categories (VERIFIED_MERGED, OPEN_REVIEW, DRAFT_REVIEW,
+      BRANCH_ONLY, CI_BLOCKED, BILLING_BLOCKED, SUPERSEDED, DUPLICATE,
+      SCIENTIFIC_REVIEW_REQUIRED, UNVERIFIED) are not merge_status values.
+      OPEN_REVIEW / DRAFT_REVIEW cannot be merge_status=merged.
+      VERIFIED_MERGED does not invent merge.
 
 watched_pr_numbers:
   - 210
@@ -292,3 +353,64 @@ non_empirical_claim_classes:
   - synthetic
   - proxy
   - unsupported
+  - unavailable
+
+billing_not_pass:
+  description: >
+    Billing / payment / jobs-never-run annotations are not passing tests.
+  author_test_results_forbidden_when_billing:
+    - verified_pass
+    - pass
+    - PASS
+  detect:
+    status_category: BILLING_BLOCKED
+    github_checks_flags:
+      - billing_not_started
+      - jobs_never_run
+    text_tokens:
+      - billing_blocked
+      - billing_not_started
+      - payments failed
+      - spending limit
+      - job was not started
+      - jobs were not started
+      - jobs never run
+    not_billing_token: "not billing"
+
+stacked:
+  markers:
+    - STACKED
+    - stacked_on
+    - stacked_base
+    - base_pr
+  parent_id_fields:
+    - parent_pr
+    - base_pr
+    - parent_id
+  canonical_pairs:
+    - child_pr: 215
+      parent_pr: 211
+    - child_pr: 220
+      parent_pr: 212
+
+process_memory:
+  objects:
+    - process_memory
+    - memory_metrics
+    - memory_measurement
+  required_when_present: kind_or_unavailable
+  kinds:
+    - rss
+    - RSS
+    - tracemalloc
+  unavailable_tokens:
+    - unavailable
+    - unverified
+  reject_unlabeled_as_verified: true
+
+adapters:
+  flag: adapters_supported
+  forbidden_when_false:
+    - described_as_supported
+    - adapters_claim: supported
+    - adapters_status: supported

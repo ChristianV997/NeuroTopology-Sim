@@ -22,6 +22,7 @@ from .evidence_validate import (
     clone_doc,
     load_inventory,
     load_schema,
+    load_yaml,
     validate,
     validate_compiled_report,
     validate_inventory,
@@ -50,18 +51,34 @@ def test_schema_file_defines_required_contract():
         "closed",
         "unknown",
     }
+    assert schema["enums"]["status_category"] == [
+        "VERIFIED_MERGED",
+        "OPEN_REVIEW",
+        "DRAFT_REVIEW",
+        "BRANCH_ONLY",
+        "CI_BLOCKED",
+        "BILLING_BLOCKED",
+        "SUPERSEDED",
+        "DUPLICATE",
+        "SCIENTIFIC_REVIEW_REQUIRED",
+        "UNVERIFIED",
+    ]
+    assert "verified_pass" in schema["enums"]["author_test_results"]
     assert schema["enums"]["claim_class"] == [
         "none",
         "synthetic",
         "proxy",
         "unsupported",
         "empirical",
+        "unavailable",
     ]
     assert schema["enums"]["value_class"] == [
         "scientific",
         "engineering",
         "governance",
         "tooling",
+        "performance",
+        "interoperability",
     ]
     assert schema["enums"]["release_recommendation"] == [
         "READY_FOR_REVIEW",
@@ -109,6 +126,11 @@ def test_schema_file_defines_required_contract():
     assert "prs_210_211_212_not_merged_unless_verified" in rule_ids
     assert "inventory_is_not_evidence_required" in rule_ids
     assert "empirical_pass_false_for_weak_claims" in rule_ids
+    assert "billing_not_started_not_pass" in rule_ids
+    assert "stacked_parent_required" in rule_ids
+    assert "stacked_merged_parent_open_contradiction" in rule_ids
+    assert "process_memory_kind_or_unavailable" in rule_ids
+    assert "adapters_supported_false_not_described_supported" in rule_ids
     assert SCHEMA_PATH.is_file()
 
 
@@ -130,6 +152,7 @@ def test_real_matrix_passes_structural_validation():
             "proxy",
             "unsupported",
             "empirical",
+            "unavailable",
         }
         assert row["verification_status"]["scientific_pass"] == "not_claimed"
         assert row["verification_status"]["author_test_results"] == "unverified"
@@ -386,3 +409,143 @@ def test_validate_accepts_path_and_mapping():
     from_path = validate(MATRIX_PATH, kind="inventory")
     from_doc = validate(load_inventory(), kind="inventory")
     assert from_path == from_doc == []
+
+
+def test_billing_not_started_cannot_be_verified_pass():
+    errors = validate_compiled_report(FIXTURE_DIR / "malformed_billing_as_pass.yaml")
+    assert any(
+        item.startswith("billing_not_started_as_verified_pass:") for item in errors
+    ), errors
+    assert any(
+        item.startswith("billing_not_started_as_test_results_pass:") for item in errors
+    ), errors
+
+
+def test_matrix_billing_annotation_flipped_to_pass_fails():
+    doc = load_inventory()
+    mutated = clone_doc(doc)
+    row = mutated["contributions"][0]
+    row["status"] = ["OPEN_REVIEW", "BILLING_BLOCKED"]
+    row["github_checks"] = {
+        "billing_not_started": True,
+        "log_note": "job was not started because payments failed / spending limit",
+    }
+    row["verification_status"]["author_test_results"] = "verified_pass"
+    row["test_results"] = "PASS"
+    errors = validate_inventory(mutated)
+    assert any("billing_not_started" in item for item in errors), errors
+
+
+def test_stacked_canonical_pairs_pass():
+    errors = validate_inventory(FIXTURE_DIR / "wellformed_stacked_pairs.yaml")
+    assert errors == [], errors
+
+
+def test_stacked_missing_parent_fails():
+    errors = validate_compiled_report(FIXTURE_DIR / "malformed_stacked_missing_parent.yaml")
+    assert any(item.startswith("stacked_parent_missing:") for item in errors), errors
+
+
+def test_stacked_merged_while_parent_open_fails():
+    errors = validate_inventory(FIXTURE_DIR / "malformed_stacked_merged_parent_open.yaml")
+    assert any(
+        item.startswith("stacked_merged_while_parent_open:") for item in errors
+    ), errors
+
+
+def test_stacked_pairs_child_flipped_to_merged_fails():
+    doc = load_yaml(FIXTURE_DIR / "wellformed_stacked_pairs.yaml")
+    mutated = clone_doc(doc)
+    child = next(item for item in mutated["contributions"] if item.get("pr_number") == 215)
+    child["merge_status"] = "merged"
+    child["is_draft"] = False
+    child["section"] = "MERGED"
+    child["status"] = ["VERIFIED_MERGED"]
+    errors = validate_inventory(mutated)
+    assert any(
+        item.startswith("stacked_merged_while_parent_open:") for item in errors
+    ), errors
+
+
+def test_adapters_supported_false_cannot_claim_supported():
+    errors = validate_compiled_report(
+        FIXTURE_DIR / "malformed_adapters_supported_claim.yaml"
+    )
+    assert any(
+        item.startswith("adapters_supported_false_described_as_supported:")
+        for item in errors
+    ), errors
+
+
+def test_stacked_220_adapters_false_flipped_to_supported_claim_fails():
+    doc = load_yaml(FIXTURE_DIR / "wellformed_stacked_pairs.yaml")
+    mutated = clone_doc(doc)
+    row = next(item for item in mutated["contributions"] if item.get("pr_number") == 220)
+    assert row["research_classification"]["adapters_supported"] is False
+    row["research_classification"]["research_notes"] = (
+        "Native signal adapters are supported."
+    )
+    row["adapters_claim"] = "supported"
+    errors = validate_inventory(mutated)
+    assert any(
+        item.startswith("adapters_supported_false_described_as_supported:")
+        for item in errors
+    ), errors
+
+
+def test_unlabeled_memory_as_verified_fails():
+    errors = validate_compiled_report(FIXTURE_DIR / "malformed_unlabeled_memory.yaml")
+    assert any(item.startswith("unlabeled_memory_as_verified:") for item in errors), errors
+    assert any(
+        item.startswith("memory_kind_or_unavailable_required:") for item in errors
+    ), errors
+
+
+def test_labeled_or_unavailable_memory_passes():
+    doc = load_yaml(FIXTURE_DIR / "wellformed_stacked_pairs.yaml")
+    errors = validate_inventory(doc)
+    assert errors == [], errors
+    row = next(item for item in doc["contributions"] if item.get("pr_number") == 215)
+    assert row["process_memory"]["independently_verified"] == "unavailable"
+
+
+def test_pr225_inventory_fixture_does_not_invent_pass():
+    path = FIXTURE_DIR / "inventory_pr225_head.yaml"
+    doc = load_yaml(path)
+    errors = validate_inventory(doc)
+    assert errors == [], errors
+    assert doc.get("empirical_pass_from_this_pack") is not True
+    assert doc["research_phase"]["empirical_pass_from_this_pack"] is False
+    assert doc["inventory_is_not_evidence"] is True
+    scientific_pass_values = {
+        row["verification_status"]["scientific_pass"] for row in doc["contributions"]
+    }
+    assert "pass" not in scientific_pass_values
+    assert "claimed" not in scientific_pass_values
+    for row in doc["contributions"]:
+        classified = row["research_classification"]
+        assert classified["empirical_pass_allowed"] is False
+        assert row["verification_status"]["author_test_results"] != "verified_pass"
+        assert row["verification_status"]["author_test_results"] != "pass"
+        assert row["verification_status"]["scientific_pass"] == "not_claimed"
+    by_pr = {
+        row["pr_number"]: row
+        for row in doc["contributions"]
+        if row.get("pr_number") in {211, 212, 215, 220}
+    }
+    assert by_pr[215]["stacked_base"]["parent_pr"] == 211
+    assert by_pr[220]["stacked_base"]["parent_pr"] == 212
+    assert by_pr[220]["research_classification"]["adapters_supported"] is False
+    assert by_pr[215]["merge_status"] != "merged"
+    assert by_pr[220]["merge_status"] != "merged"
+
+
+def test_open_status_category_cannot_be_merged():
+    doc = load_inventory()
+    mutated = clone_doc(doc)
+    row = mutated["contributions"][0]
+    row["merge_status"] = "merged"
+    row["status"] = ["OPEN_REVIEW"]
+    row["is_draft"] = False
+    errors = validate_inventory(mutated)
+    assert any("merged_and_open_status_category" in item for item in errors), errors

@@ -22,9 +22,56 @@ SCHEMA_PATH = REPO_ROOT / "configs" / "release" / "evidence_schema.yaml"
 MATRIX_PATH = REPO_ROOT / "docs" / "release" / "agent_contribution_matrix.yaml"
 
 WATCHED_PRS = (210, 211, 212)
-NON_EMPIRICAL_CLAIM_CLASSES = frozenset({"synthetic", "proxy", "unsupported"})
+NON_EMPIRICAL_CLAIM_CLASSES = frozenset(
+    {"synthetic", "proxy", "unsupported", "unavailable"}
+)
 PASS_STRINGS = frozenset({"pass", "scientific_pass"})
 SYNTHETIC_LABELS = frozenset({"synthetic"})
+OPEN_STATUS_CATEGORIES = frozenset({"OPEN_REVIEW", "DRAFT_REVIEW"})
+BILLING_PASS_AUTHOR_RESULTS = frozenset({"verified_pass", "pass"})
+BILLING_POSITIVE_TOKENS = (
+    "billing_blocked",
+    "billing_not_started",
+    "payments failed",
+    "payment have failed",
+    "account payments have failed",
+    "spending limit",
+    "job was not started",
+    "jobs were not started",
+    "jobs never run",
+    "jobs_never_run",
+    "billing failure",
+)
+MEMORY_NUMBER_KEYS = frozenset(
+    {
+        "memory_mb",
+        "memory",
+        "rss",
+        "rss_mb",
+        "rss_delta",
+        "peak_rss",
+        "peak_rss_lifetime",
+        "tracemalloc",
+        "tracemalloc_peak",
+        "peak_memory",
+        "rss_bytes",
+        "peak",
+    }
+)
+ADAPTER_NEGATION_TOKENS = (
+    "not supported",
+    "≠ supported",
+    "!= supported",
+    "not-supported",
+    "unsupported",
+    "are not",
+    "is not",
+    "cannot be described as supported",
+    "missing adapters",
+    "unmerged adapters",
+    "≠supported",
+    "not adapter support",
+)
 
 _NON_FINITE_STRINGS = frozenset(
     {
@@ -417,6 +464,11 @@ def _validate_enums_for_row(
                 f"invalid_enum:{prefix}.research_classification.data_mode:{data_mode}"
             )
 
+    allowed_status = enums.get("status_category") or []
+    for item in _status_values(row):
+        if allowed_status and not _enum_ok(item, allowed_status):
+            errors.append(f"invalid_enum:{prefix}.status:{item}")
+
 
 def _check_status_enums(
     status: Mapping[str, Any],
@@ -449,6 +501,18 @@ def _check_row_hard_rules(row: Mapping[str, Any], prefix: str, errors: list[str]
         errors.append(f"contradiction:{prefix}:merged_and_pr_state_{pr_state}")
     if merge_status == "merged" and row.get("section") in {"OPEN/DRAFT", "OPEN", "DRAFT"}:
         errors.append(f"contradiction:{prefix}:merged_and_open_section")
+
+    status_cats = set(_status_values(row))
+    if merge_status == "merged" and status_cats & OPEN_STATUS_CATEGORIES:
+        errors.append(f"contradiction:{prefix}:merged_and_open_status_category")
+    if "VERIFIED_MERGED" in status_cats and merge_status in {
+        "open",
+        "draft",
+        "branch_only",
+    }:
+        errors.append(f"contradiction:{prefix}:verified_merged_status_but_not_merged")
+    if "BRANCH_ONLY" in status_cats and merge_status == "merged":
+        errors.append(f"contradiction:{prefix}:branch_only_status_and_merged")
 
     scientific_pass = _scientific_pass_value(row)
     empirical_allowed = _empirical_pass_allowed(row)
@@ -493,6 +557,333 @@ def _check_row_hard_rules(row: Mapping[str, Any], prefix: str, errors: list[str]
             ):
                 if _is_synthetic_row(row) or _is_weak_claim(row):
                     errors.append(f"unsupported_scientific_assertion_pass:{prefix}[{index}]")
+
+    _check_billing_not_pass(row, prefix, errors)
+    _check_memory_metrics(row, prefix, errors)
+    _check_adapters_supported_claim(row, prefix, errors)
+    if _is_stacked_row(row) and _parent_pr_id(row) is None:
+        errors.append(f"stacked_parent_missing:{prefix}")
+
+
+def _status_values(row: Mapping[str, Any]) -> list[str]:
+    raw = row.get("status")
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()]
+    if isinstance(raw, list):
+        return [item.strip() for item in raw if isinstance(item, str) and item.strip()]
+    return []
+
+
+def _parent_pr_id(row: Mapping[str, Any]) -> int | None:
+    locations: list[Any] = [
+        row.get("stacked_base"),
+        row.get("stacked_on"),
+        _classification(row).get("stacked_on"),
+        row,
+    ]
+    for loc in locations:
+        if isinstance(loc, bool):
+            continue
+        if isinstance(loc, int):
+            return loc
+        if isinstance(loc, str) and loc.isdigit():
+            return int(loc)
+        if not isinstance(loc, Mapping):
+            continue
+        for key in ("parent_pr", "base_pr", "parent_id"):
+            value = loc.get(key)
+            parsed = _coerce_pr_id(value)
+            if parsed is not None:
+                return parsed
+            if isinstance(value, Mapping):
+                nested = _coerce_pr_id(
+                    value.get("parent_pr", value.get("base_pr", value.get("number")))
+                )
+                if nested is not None:
+                    return nested
+    return None
+
+
+def _coerce_pr_id(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _is_stacked_row(row: Mapping[str, Any]) -> bool:
+    if _as_str(row.get("section")).upper() == "STACKED":
+        return True
+    if "STACKED" in {item.upper() for item in _status_values(row)}:
+        return True
+    if row.get("base_pr") is not None:
+        return True
+    stacked_on = row.get("stacked_on")
+    if stacked_on not in (None, False, {}):
+        return True
+    classified = _classification(row)
+    if classified.get("stacked_on") not in (None, False, {}):
+        return True
+    stacked_base = row.get("stacked_base")
+    if stacked_base is True:
+        return True
+    if isinstance(stacked_base, Mapping):
+        rel = _as_str(stacked_base.get("relationship")).upper()
+        if rel == "STACKED":
+            return True
+        if any(
+            stacked_base.get(key) is not None
+            for key in ("parent_pr", "base_pr", "parent_id")
+        ):
+            return True
+    return False
+
+
+def _parent_is_open(parent: Mapping[str, Any]) -> bool:
+    merge_status = parent.get("merge_status")
+    if merge_status in {"open", "draft"}:
+        return True
+    if parent.get("is_draft") is True:
+        return True
+    if _as_str(parent.get("pr_state")).strip().lower() in {"open", "draft"}:
+        return True
+    if set(_status_values(parent)) & OPEN_STATUS_CATEGORIES:
+        return True
+    if parent.get("section") in {"OPEN/DRAFT", "OPEN", "DRAFT"}:
+        return True
+    return False
+
+
+def _check_stacked_pack(rows: Sequence[Any], errors: list[str]) -> None:
+    by_pr: dict[int, Mapping[str, Any]] = {}
+    for raw in rows:
+        if not isinstance(raw, Mapping):
+            continue
+        prn = _pr_number(raw)
+        if prn is not None:
+            by_pr[prn] = raw
+    for index, raw in enumerate(rows):
+        if not isinstance(raw, Mapping) or not _is_stacked_row(raw):
+            continue
+        prefix = f"contributions[{index}]"
+        parent_id = _parent_pr_id(raw)
+        if parent_id is None:
+            continue
+        parent = by_pr.get(parent_id)
+        if parent is None:
+            continue
+        if raw.get("merge_status") == "merged" and _parent_is_open(parent):
+            errors.append(
+                f"stacked_merged_while_parent_open:{prefix}:parent_pr:{parent_id}"
+            )
+
+
+def _github_checks_mapping(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    checks = row.get("github_checks")
+    return checks if isinstance(checks, Mapping) else {}
+
+
+def _checks_text_blob(checks: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for value in checks.values():
+        if isinstance(value, (str, int, float)):
+            parts.append(_as_str(value))
+    return " ".join(parts)
+
+
+def _billing_not_started(row: Mapping[str, Any]) -> bool:
+    if "BILLING_BLOCKED" in _status_values(row):
+        return True
+    checks = _github_checks_mapping(row)
+    if checks.get("billing_not_started") is True:
+        return True
+    if checks.get("jobs_never_run") is True:
+        return True
+    if checks.get("jobs_started") is False:
+        return True
+    if _as_str(checks.get("status_category")).upper() == "BILLING_BLOCKED":
+        return True
+    blob = _checks_text_blob(checks).lower()
+    if not blob:
+        return False
+    if re.search(r"\bnot billing\b", blob):
+        if not any(
+            token in blob
+            for token in (
+                "billing_blocked",
+                "payments failed",
+                "spending limit",
+                "job was not started",
+            )
+        ):
+            return False
+    return any(token in blob for token in BILLING_POSITIVE_TOKENS)
+
+
+def _check_billing_not_pass(
+    row: Mapping[str, Any], prefix: str, errors: list[str]
+) -> None:
+    if not _billing_not_started(row):
+        return
+    author = _as_str(_author_test_results(row)).strip().lower()
+    if author in BILLING_PASS_AUTHOR_RESULTS:
+        errors.append(f"billing_not_started_as_verified_pass:{prefix}")
+    if _is_pass_value(_test_results_value(row)):
+        errors.append(f"billing_not_started_as_test_results_pass:{prefix}")
+    if _is_pass_value(_scientific_pass_value(row)):
+        errors.append(f"billing_not_started_as_scientific_pass:{prefix}")
+    if author == "verified" and _is_pass_value(_test_results_value(row)):
+        errors.append(f"billing_not_started_as_verified_pass:{prefix}")
+
+
+def _memory_objects(row: Mapping[str, Any]) -> list[Any]:
+    blobs: list[Any] = []
+    for key in ("process_memory", "memory_metrics"):
+        if key in row and row.get(key) is not None:
+            blobs.append(row.get(key))
+    classified = _classification(row)
+    if classified.get("memory_measurement") is not None:
+        blobs.append(classified.get("memory_measurement"))
+    return blobs
+
+
+def _memory_marked_unavailable(blob: Any) -> bool:
+    if isinstance(blob, Mapping):
+        for key in (
+            "independently_verified",
+            "availability",
+            "verified",
+            "author_table",
+        ):
+            token = _as_str(blob.get(key)).strip().lower()
+            if token in {"unavailable", "unverified", "false", "none"}:
+                return True
+        if blob.get("author_claimed_unverified") is True:
+            return True
+        if blob.get("independently_verified") is False:
+            return True
+    text = _as_str(blob).lower()
+    return "unavailable" in text or "unverified" in text
+
+
+def _memory_has_kind(blob: Any) -> bool:
+    if isinstance(blob, Mapping):
+        kind = _as_str(
+            blob.get("kind") or blob.get("unit") or blob.get("memory_kind")
+        ).strip().lower()
+        if kind in {"rss", "tracemalloc"}:
+            return True
+        walked = " ".join(_as_str(value) for _, value in _walk(blob)).lower()
+        return "rss" in walked or "tracemalloc" in walked
+    text = _as_str(blob).lower()
+    return "rss" in text or "tracemalloc" in text
+
+
+def _memory_has_numbers(blob: Any) -> bool:
+    if isinstance(blob, Mapping):
+        for path, value in _walk(blob):
+            leaf = path.rsplit(".", 1)[-1]
+            if leaf in MEMORY_NUMBER_KEYS:
+                return True
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if "memory" in path.lower() or leaf in MEMORY_NUMBER_KEYS:
+                    return True
+        return False
+    return bool(re.search(r"\d", _as_str(blob)))
+
+
+def _memory_marked_verified(blob: Any) -> bool:
+    if not isinstance(blob, Mapping):
+        return False
+    if blob.get("independently_verified") is True:
+        return True
+    token = _as_str(blob.get("independently_verified") or blob.get("verified")).lower()
+    return token in {"verified", "true"}
+
+
+def _check_memory_metrics(
+    row: Mapping[str, Any], prefix: str, errors: list[str]
+) -> None:
+    for blob in _memory_objects(row):
+        has_numbers = _memory_has_numbers(blob)
+        if not has_numbers:
+            continue
+        unavailable = _memory_marked_unavailable(blob)
+        has_kind = _memory_has_kind(blob)
+        verified = _memory_marked_verified(blob)
+        if verified and not has_kind:
+            errors.append(f"unlabeled_memory_as_verified:{prefix}")
+        if not has_kind and not unavailable:
+            errors.append(f"memory_kind_or_unavailable_required:{prefix}")
+
+
+def _adapters_supported_flag(row: Mapping[str, Any]) -> Any:
+    if "adapters_supported" in row:
+        return row.get("adapters_supported")
+    return _classification(row).get("adapters_supported")
+
+
+def _explicit_adapters_supported_claim(row: Mapping[str, Any]) -> bool:
+    locations = (row, _classification(row))
+    for loc in locations:
+        if not isinstance(loc, Mapping):
+            continue
+        if loc.get("adapters_described_as_supported") is True:
+            return True
+        for key in ("adapters_claim", "adapters_status"):
+            token = _as_str(loc.get(key)).strip().lower()
+            if token in {"supported", "yes", "true"}:
+                return True
+    return False
+
+
+def _row_text_blobs(row: Mapping[str, Any]) -> list[str]:
+    texts: list[str] = []
+    for key in (
+        "research_notes",
+        "limitations",
+        "scientific_assertions",
+        "next_action",
+        "notes",
+        "open_questions",
+    ):
+        value = row.get(key)
+        if isinstance(value, list):
+            texts.extend(_as_str(item) for item in value)
+        elif value is not None:
+            texts.append(_as_str(value))
+    classified = _classification(row)
+    notes = classified.get("research_notes")
+    if notes is not None:
+        texts.append(_as_str(notes))
+    extra = classified.get("methodological_limitations")
+    if isinstance(extra, list):
+        texts.extend(_as_str(item) for item in extra)
+    return texts
+
+
+def _unnegated_adapter_supported_text(row: Mapping[str, Any]) -> bool:
+    for text in _row_text_blobs(row):
+        lowered = text.lower()
+        if "adapter" not in lowered or "supported" not in lowered:
+            continue
+        if any(token in lowered for token in ADAPTER_NEGATION_TOKENS):
+            continue
+        if re.search(r"\badapters?\b.{0,60}\bsupported\b", lowered):
+            return True
+    return False
+
+
+def _check_adapters_supported_claim(
+    row: Mapping[str, Any], prefix: str, errors: list[str]
+) -> None:
+    if _adapters_supported_flag(row) is not False:
+        return
+    if _explicit_adapters_supported_claim(row) or _unnegated_adapter_supported_text(row):
+        errors.append(f"adapters_supported_false_described_as_supported:{prefix}")
 
 
 def _check_uniques(
@@ -633,6 +1024,7 @@ def _validate_inventory(
     _check_uniques(rows, check_branches=False, errors=errors)
     _check_pack_flags(doc, rows, errors)
     _check_watched_prs(doc, rows, errors)
+    _check_stacked_pack(rows, errors)
 
 
 def _compiled_field_names(spec: Mapping[str, Any], field: str) -> list[str]:
@@ -697,6 +1089,7 @@ def _validate_compiled_report(
     _check_uniques(rows, check_branches=True, errors=errors)
     _check_pack_flags(doc, rows, errors)
     _check_watched_prs(doc, rows, errors)
+    _check_stacked_pack(rows, errors)
 
 
 def clone_doc(doc: Mapping[str, Any]) -> dict[str, Any]:
