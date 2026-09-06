@@ -416,38 +416,53 @@ def _check_superseded(data: Mapping[str, Any], errors: list[str]) -> None:
         for entry in _as_list(phase.get("superseded_candidates_verified")):
             entries.append(("research_phase.superseded_candidates_verified", entry))
 
+    evidenced_216_docs = any(
+        isinstance(entry, Mapping)
+        and _is_allowed_216_docs(entry)
+        and _has_cited_evidence(entry)
+        for _scope, entry in entries
+    )
+
     for scope, entry in entries:
         if not isinstance(entry, Mapping):
             errors.append(
                 f"invented_superseded: {scope} is not a mapping with cited evidence"
             )
             continue
-        pr_number = _superseded_pr(entry)
-        by = _coerce_pr(entry.get("superseded_by") if "superseded_by" in entry else entry.get("by"))
-        whole = entry.get("whole_pr_superseded")
-        if whole is None:
-            whole = entry.get("whole_pr")
-        scope_text = str(entry.get("scope") or "")
-        docs_only = "docs" in scope_text.lower() or "inventory" in scope_text.lower()
-        allowed_216 = (
-            pr_number == 216
-            and by == 225
-            and whole is False
-            and docs_only
-        )
-        if pr_number == 216 and whole is not False:
+        if _superseded_pr(entry) == 216 and _supersede_whole(entry) is not False:
             errors.append(
                 f"whole_pr_superseded: {scope} labels whole #216 superseded; "
                 "only docs-only #216→#225 with whole_pr=false is allowed"
             )
             continue
-        if allowed_216:
+        if _has_cited_evidence(entry):
             continue
-        if not _has_cited_evidence(entry):
-            errors.append(
-                f"invented_superseded: {scope} invents a superseded label "
-                "without cited evidence fields"
-            )
+        if _is_allowed_216_docs(entry) and evidenced_216_docs:
+            # Pointer at the already-evidenced docs-only candidate (live research_phase).
+            continue
+        errors.append(
+            f"invented_superseded: {scope} invents a superseded label "
+            "without cited evidence fields"
+        )
+
+
+def _supersede_whole(entry: Mapping[str, Any]) -> Any:
+    whole = entry.get("whole_pr_superseded")
+    if whole is None:
+        whole = entry.get("whole_pr")
+    return whole
+
+
+def _is_allowed_216_docs(entry: Mapping[str, Any]) -> bool:
+    by = _coerce_pr(entry.get("superseded_by") if "superseded_by" in entry else entry.get("by"))
+    scope_text = str(entry.get("scope") or "")
+    docs_only = "docs" in scope_text.lower() or "inventory" in scope_text.lower()
+    return (
+        _superseded_pr(entry) == 216
+        and by == 225
+        and _supersede_whole(entry) is False
+        and docs_only
+    )
 
 
 def _superseded_pr(entry: Mapping[str, Any]) -> int | None:

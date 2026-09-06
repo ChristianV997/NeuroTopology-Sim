@@ -364,6 +364,70 @@ def test_docs_only_216_supersede_is_allowed():
     assert validate_matrix(data).ok
 
 
+def test_verified_216_docs_supersede_without_any_evidence_fails():
+    data = {
+        "rows": [
+            {
+                "id": "nts-pr-216",
+                "pr_number": 216,
+                "state": "OPEN",
+                "draft": True,
+                "merged": False,
+                "status_hint": "needs_human_review",
+                "research_classification": {
+                    "scientific_pass_allowed": False,
+                    "biological_evidence": False,
+                },
+            }
+        ],
+        "duplicate_candidates": [],
+        "superseded_candidates": [],
+        "research_phase": {
+            "superseded_candidates_verified": [
+                {"scope": "#216 inventory docs only", "by": 225, "whole_pr": False}
+            ]
+        },
+    }
+    result = validate_matrix(data)
+    assert not result.ok
+    assert any("invented_superseded" in err for err in result.errors)
+
+
+def test_verified_216_docs_supersede_may_point_at_evidenced_candidate():
+    data = {
+        "rows": [
+            {
+                "id": "nts-pr-216",
+                "pr_number": 216,
+                "state": "OPEN",
+                "draft": True,
+                "merged": False,
+                "status_hint": "needs_human_review",
+                "research_classification": {
+                    "scientific_pass_allowed": False,
+                    "biological_evidence": False,
+                },
+            }
+        ],
+        "duplicate_candidates": [],
+        "superseded_candidates": [
+            {
+                "pr_number": 216,
+                "scope": "inventory_docs_only",
+                "superseded_by": 225,
+                "whole_pr_superseded": False,
+                "evidence": ["#225 title superseding #216 inventory"],
+            }
+        ],
+        "research_phase": {
+            "superseded_candidates_verified": [
+                {"scope": "#216 inventory docs only", "by": 225, "whole_pr": False}
+            ]
+        },
+    }
+    assert validate_matrix(data).ok
+
+
 def test_evidenced_duplicate_is_allowed():
     data = {
         "rows": [
