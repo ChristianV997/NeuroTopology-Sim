@@ -1,0 +1,118 @@
+{
+  "schema": "NTS.GitHubReconciliationSnapshot.v1",
+  "fetched_at": "2026-09-06T03:20:00Z",
+  "note": "Hand-fetched via mcp__github__pull_request_read/list_pull_requests against ChristianV997/NeuroTopology-Sim during the claude/integration-reconciliation session. Used as the manual dry-run's evidence input for scripts/verify_integration_reconciliation.py --github-snapshot.",
+  "pull_requests": [
+    {
+      "number": 210,
+      "head_ref": "claude/ecosystem-integration",
+      "head_sha": "2d46f863bfcc142de34dd052719be5d838ec42a1",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "core-tests": "failure",
+        "ontology-claim-language": "failure",
+        "awareness-tests": "success",
+        "Cross-system smoke": "failure"
+      }
+    },
+    {
+      "number": 211,
+      "head_ref": "cursor/streaming-performance-benchmarks",
+      "head_sha": "54c246943e7c3ba8171066eec24c67a1408b2956",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "core-tests": "failure",
+        "awareness-tests": "success",
+        "Cross-system smoke": "failure",
+        "Python 3.12 — offline tests": "success",
+        "Python 3.11 — offline tests": "success",
+        "ontology-claim-language": "failure"
+      }
+    },
+    {
+      "number": 212,
+      "head_ref": "codex/interop-signal-contracts",
+      "head_sha": "a21dcb2461cdf94da0b41a684a2ac1353153ab35",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "copilot-pull-request-reviewer": "success",
+        "core-tests": "failure",
+        "awareness-tests": "success",
+        "Cross-system smoke": "failure",
+        "ontology-claim-language": "failure"
+      }
+    },
+    {
+      "number": 213,
+      "head_ref": "antigravity/test-isolation-dependency-profiles",
+      "head_sha": "f23c7ef74b133d65c355d7c4e7778d63a08cc8eb",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure",
+        "Awareness Studio image": "failure",
+        "DS005620 E2E Mock Run": "failure",
+        "awareness-tests": "failure",
+        "Root sim engine image": "failure",
+        "Cross-system smoke": "failure",
+        "ontology-claim-language": "failure",
+        "core-tests": "failure"
+      }
+    },
+    {
+      "number": 214,
+      "head_ref": "antigravity/mne-scipy-streaming-eeg",
+      "head_sha": "8aed328fa23af07737882566d6b60aaca74ac4fb",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "copilot-pull-request-reviewer": "failure",
+        "core-tests": "failure",
+        "DS005620 E2E Mock Run": "failure",
+        "awareness-tests": "failure",
+        "ontology-claim-language": "failure",
+        "Cross-system smoke": "failure"
+      }
+    },
+    {
+      "number": 209,
+      "head_ref": "grok-bot/retrofit-inventory",
+      "head_sha": "3a3cf3dfd60416876914bb90f8604ab9e9e8d360",
+      "base_ref": "main",
+      "base_sha": "62637a4b9c82c0c258bfc49e28dee1af757b1c25",
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "mergeable_state": "unstable",
+      "checks": {
+        "awareness-tests": "failure",
+        "ontology-claim-language": "failure",
+        "core-tests": "failure",
+        "Cross-system smoke": "failure"
+      }
+    }
+  ]
+}
