@@ -112,9 +112,15 @@ def copy_tiny_repo(tmp_path: Path) -> Path:
         if path.is_dir():
             continue
         rel = path.relative_to(src)
+        if rel.parts and rel.parts[0] == "artifacts":
+            # Root .gitignore drops any `artifacts/` path; assemble at runtime.
+            continue
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(path.read_bytes())
+    artifact = dest / "artifacts" / "synthetic" / "summary.json"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_bytes((src / "synthetic_summary.json").read_bytes())
     init_git_repo(dest)
     return dest
 
