@@ -2,7 +2,7 @@
 
 Consumes the live matrix at HEAD read-only. Malformed fixtures live under
 ``tests/release/fixtures/pr_retirement/``. No network. No secrets.
-Warnings never count as success.
+Warnings never count as success (warnings-only results are not OK).
 
 Release may wrap ``pr_retirement_validate.py`` later; these tests own the rules.
 """
@@ -234,8 +234,10 @@ def test_warnings_never_count_as_success():
         warnings=(),
     )
     warned_only = ValidationResult(errors=(), warnings=("note only",))
+    clean = ValidationResult(errors=(), warnings=())
     assert tainted.ok is False
-    assert warned_only.ok is True
+    assert warned_only.ok is False
+    assert clean.ok is True
 
 
 def test_proxy_allowed_ids_do_not_fail():

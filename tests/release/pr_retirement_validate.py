@@ -5,7 +5,8 @@ Importable helpers so Release can later wrap
 
 This module does not invent scientific PASS, biological evidence, duplicates,
 whole-PR supersedes, or merge/close instructions. Inventory is not evidence.
-Warnings never count as success.
+Warnings never count as success: ``ok`` is true only when both ``errors``
+and ``warnings`` are empty.
 
 No network. No secrets. Deterministic for a given mapping.
 """
@@ -117,14 +118,19 @@ _ENOSPC_MARKERS = (
 
 @dataclass(frozen=True)
 class ValidationResult:
-    """Fail-closed result. ``ok`` is true only when ``errors`` is empty."""
+    """Fail-closed result. ``ok`` is true only when both lists are empty.
+
+    Warnings never count as success. A warnings-only result is not OK.
+    Fail-closed matrix rules emit ``errors``; any leftover ``warnings``
+    still fail the result so they cannot be treated as a pass.
+    """
 
     errors: tuple[str, ...]
     warnings: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
-        return not self.errors
+        return not self.errors and not self.warnings
 
 
 class MatrixLoadError(ValueError):
