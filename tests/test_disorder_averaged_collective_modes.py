@@ -17,6 +17,8 @@ from scripts.run_disorder_averaged_collective_modes import (
     _load_checkpoint,
     _run_fingerprint,
     _signed_permutation_pvalue,
+    _as_int,
+    _finite_float,
     _sidecar_verdict,
     _summarize,
     build_run_record_sidecar,
@@ -141,6 +143,12 @@ def _fake_evaluate(task: dict) -> dict:
     }
 
 
+def _assert_campaign_omits_sidecar_flag(payload: dict) -> None:
+    assert "write_run_record" not in payload["configuration"]
+    for record in payload["records"]:
+        assert "write_run_record" not in record
+
+
 def _parse_run_args(tmp_path: Path, *, write_run_record: bool, seed: int = 20260727) -> object:
     flags = [
         "--disorder-samples", "2",
@@ -207,6 +215,27 @@ def test_sidecar_never_promotes_effect_candidate_to_pass():
     assert _sidecar_verdict(payload) == "NOT_SUPPORTED"
 
 
+def test_sidecar_accepts_numpy_scalars_for_identity_and_verdict(tmp_path):
+    python_payload = _fixture_payload(finite=True)
+    numpy_payload = _fixture_payload(finite=True)
+    numpy_payload["configuration"]["seed"] = np.int64(20260727)
+    numpy_payload["configuration"]["alpha"] = np.float64(0.05)
+    summary = numpy_payload["summaries"][0]
+    summary["paired_disorder_samples"] = np.int64(summary["paired_disorder_samples"])
+    summary["invalid_disorder_samples"] = np.int64(summary["invalid_disorder_samples"])
+    summary["mean_log_short_vs_long_null_adjusted_contrast"] = np.float64(
+        summary["mean_log_short_vs_long_null_adjusted_contrast"]
+    )
+    campaign = tmp_path / CAMPAIGN_FILENAME
+    campaign.write_text(json.dumps(python_payload, sort_keys=True), encoding="utf-8")
+    python_record = build_run_record_sidecar(python_payload, campaign, fingerprint="abc")
+    numpy_record = build_run_record_sidecar(numpy_payload, campaign, fingerprint="abc")
+    assert python_record.run_id == numpy_record.run_id
+    assert _sidecar_verdict(numpy_payload) == "NOT_SUPPORTED"
+    assert _finite_float(np.float64(1.25)) == 1.25
+    assert _as_int(np.int64(2)) == 2
+
+
 def test_missing_or_invalid_campaign_stays_not_supported_or_inconclusive(tmp_path):
     invalid_payload = _fixture_payload(finite=False)
     assert invalid_payload["summaries"][0]["pre_registered_decision"] == "NOT_SUPPORTED"
@@ -239,7 +268,8 @@ def test_opt_in_run_writes_sidecar_and_keeps_campaign_json(tmp_path, monkeypatch
     assert sidecar["verdict"] in {"NOT_SUPPORTED", "INCONCLUSIVE"}
     assert sidecar["verdict"] != "PASS"
     assert sidecar["artifacts"]["campaign_sha256"] == hashlib.sha256(campaign_path.read_bytes()).hexdigest()
-    assert "write_run_record" not in campaign_doc["configuration"]
+    _assert_campaign_omits_sidecar_flag(campaign_doc)
+    _assert_campaign_omits_sidecar_flag(first)
     assert sidecar["input"]["seed"] == 20260727
     assert sidecar["notes"]
     assert sidecar["guardrails"]["pass_reserved_for_bayes_factor_k_gt_100"] is True
@@ -255,7 +285,7 @@ def test_default_run_does_not_write_sidecar(tmp_path, monkeypatch):
     assert not (tmp_path / RUN_RECORD_SIDECAR_FILENAME).exists()
     payload = json.loads((tmp_path / CAMPAIGN_FILENAME).read_text(encoding="utf-8"))
     assert payload["schema"] == CAMPAIGN_SCHEMA
-    assert "write_run_record" not in payload["configuration"]
+    _assert_campaign_omits_sidecar_flag(payload)
 
 
 def test_sidecar_matches_contract_stub(tmp_path):

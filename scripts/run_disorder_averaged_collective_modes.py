@@ -93,14 +93,28 @@ def _sidecar_input_params(payload: dict[str, Any]) -> dict[str, Any]:
     config = payload.get("configuration")
     if not isinstance(config, dict):
         return {}
-    return {str(key): value for key, value in config.items() if key not in _IO_AND_SIDECAR_FLAGS}
+    return {
+        str(key): _safe(value)
+        for key, value in config.items()
+        if key not in _IO_AND_SIDECAR_FLAGS
+    }
 
 
 def _finite_float(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, (bool, np.bool_)):
+        return None
+    if not isinstance(value, (int, float, np.integer, np.floating)):
         return None
     number = float(value)
     return number if np.isfinite(number) else None
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, (bool, np.bool_)):
+        return None
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    return None
 
 
 def _sidecar_metrics(payload: dict[str, Any]) -> dict[str, float]:
@@ -160,12 +174,12 @@ def _sidecar_verdict(payload: dict[str, Any]) -> str:
         decision = summary.get("pre_registered_decision")
         if decision not in {"EFFECT_CANDIDATE", "NOT_SUPPORTED"}:
             return "INCONCLUSIVE"
-        paired = summary.get("paired_disorder_samples")
-        invalid = summary.get("invalid_disorder_samples")
+        paired = _as_int(summary.get("paired_disorder_samples"))
+        invalid = _as_int(summary.get("invalid_disorder_samples"))
         effect = summary.get("mean_log_short_vs_long_null_adjusted_contrast")
-        if not isinstance(paired, int) or paired < 1:
+        if paired is None or paired < 1:
             return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
-        if not isinstance(invalid, int) or invalid > 0:
+        if invalid is None or invalid > 0:
             return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
         if effect is None or _finite_float(effect) is None:
             return "NOT_SUPPORTED" if decision == "NOT_SUPPORTED" else "INCONCLUSIVE"
@@ -428,8 +442,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     else:
         _initialize_checkpoint(checkpoint, fingerprint)
         completed = {}
+    task_base = _campaign_configuration(args)
     tasks = [
-        {**vars(args), "spacing_nm": spacing, "collective_rate_s": rate, "disorder_seed": args.seed + sample,
+        {**task_base, "spacing_nm": spacing, "collective_rate_s": rate, "disorder_seed": args.seed + sample,
          "point_id": _point_id(spacing, rate, args.seed + sample)}
         for spacing in args.spacings_nm
         for rate in args.collective_rates_s
