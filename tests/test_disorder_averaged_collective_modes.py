@@ -22,6 +22,8 @@ from scripts.run_disorder_averaged_collective_modes import (
     build_run_record_sidecar,
     parser,
     run,
+    sidecar_to_dict,
+    write_run_record_sidecar,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -166,7 +168,7 @@ def test_sidecar_builder_schema_and_stable_run_id(tmp_path):
     campaign.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     first = build_run_record_sidecar(payload, campaign, fingerprint="abc")
     second = build_run_record_sidecar(payload, campaign, fingerprint="abc")
-    dumped = first.to_dict()
+    dumped = sidecar_to_dict(first)
     assert dumped["schema_version"] == "0.1"
     assert dumped["run_kind"] == "disorder_averaged_collective_modes"
     assert first.run_id == second.run_id
@@ -176,6 +178,27 @@ def test_sidecar_builder_schema_and_stable_run_id(tmp_path):
     assert first.artifacts["campaign_json"] == CAMPAIGN_FILENAME
     assert first.artifacts["campaign_schema"] == CAMPAIGN_SCHEMA
     assert first.artifacts["campaign_sha256"] == hashlib.sha256(campaign.read_bytes()).hexdigest()
+    assert dumped["input"]["seed"] == 20260727
+    assert dumped["notes"] == payload["scientific_note"]
+    assert dumped["guardrails"]["pass_reserved_for_bayes_factor_k_gt_100"] is True
+    assert "input" not in first.to_dict()
+    assert "notes" not in first.to_dict()
+    assert "guardrails" not in first.to_dict()
+
+
+def test_atomic_sidecar_write_keeps_provenance_fields(tmp_path):
+    payload = _fixture_payload(finite=True)
+    campaign = tmp_path / CAMPAIGN_FILENAME
+    campaign.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    record = build_run_record_sidecar(payload, campaign, fingerprint="abc")
+    path = tmp_path / RUN_RECORD_SIDECAR_FILENAME
+    write_run_record_sidecar(record, path)
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written["schema_version"] == "0.1"
+    assert written["input"] == sidecar_to_dict(record)["input"]
+    assert written["notes"] == payload["scientific_note"]
+    assert written["guardrails"]["sidecar_does_not_replace_campaign_json"] is True
+    assert not list(tmp_path.glob(".RunRecord.json.*.tmp"))
 
 
 def test_sidecar_never_promotes_effect_candidate_to_pass():
@@ -217,6 +240,9 @@ def test_opt_in_run_writes_sidecar_and_keeps_campaign_json(tmp_path, monkeypatch
     assert sidecar["verdict"] != "PASS"
     assert sidecar["artifacts"]["campaign_sha256"] == hashlib.sha256(campaign_path.read_bytes()).hexdigest()
     assert "write_run_record" not in campaign_doc["configuration"]
+    assert sidecar["input"]["seed"] == 20260727
+    assert sidecar["notes"]
+    assert sidecar["guardrails"]["pass_reserved_for_bayes_factor_k_gt_100"] is True
     assert second["schema"] == CAMPAIGN_SCHEMA
 
 
@@ -237,7 +263,7 @@ def test_sidecar_matches_contract_stub(tmp_path):
     payload = _fixture_payload(finite=True)
     campaign = tmp_path / CAMPAIGN_FILENAME
     campaign.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
-    dumped = build_run_record_sidecar(payload, campaign).to_dict()
+    dumped = sidecar_to_dict(build_run_record_sidecar(payload, campaign))
     for key in contract["required_top_level_keys"]:
         assert key in dumped
     for key in contract["required_artifact_keys"]:

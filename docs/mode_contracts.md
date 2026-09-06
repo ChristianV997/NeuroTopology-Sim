@@ -98,5 +98,6 @@ This document defines runtime contracts for each `--mode` in `main.py` so caller
 - The sidecar does **not** replace the campaign v1 JSON.
 - `run_id` is `runs.run_record.build_run_id` over campaign inputs and seeds (no wall-clock, no artifact paths).
 - Linkage: `artifacts.campaign_sha256` is the SHA-256 of the campaign JSON.
+- The sidecar is written atomically (`_atomic_json`) and includes `input` / `notes` / `guardrails` in addition to `RunRecordV1.to_dict()` (`schema_version` stays `0.1`).
 - Contract stub: `contracts/campaign/disorder_averaged_collective_modes_run_record.contract.json`.
 - Sidecar `verdict` is `NOT_SUPPORTED` or `INCONCLUSIVE` only. PASS remains reserved for Bayes factor K > 100. This synthetic lattice campaign does not compute K and does not claim empirical biology.

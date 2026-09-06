@@ -18,8 +18,12 @@
     "verdict",
     "metrics",
     "artifacts",
-    "source"
+    "source",
+    "input",
+    "notes",
+    "guardrails"
   ],
+  "write_path": "atomic sibling of campaign JSON via _atomic_json; not RunRecordV1.write_json/to_dict alone",
   "required_artifact_keys": [
     "campaign_json",
     "campaign_schema",

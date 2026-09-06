@@ -32,7 +32,7 @@ from physics.open_quantum import (
     coupled_lattice,
     solve_gap,
 )
-from runs.run_record import RunRecordV1, build_run_id, write_json
+from runs.run_record import RunRecordV1, build_run_id
 
 CAMPAIGN_SCHEMA = "NeuroTopologySim.DisorderAveragedCollectiveModes.v1"
 CAMPAIGN_FILENAME = "disorder_averaged_collective_modes.json"
@@ -223,6 +223,28 @@ def build_run_record_sidecar(
         "sidecar_does_not_replace_campaign_json": True,
     }
     return record
+
+
+def sidecar_to_dict(record: RunRecordV1) -> dict[str, Any]:
+    """General RunRecordV1 JSON plus sidecar provenance.
+
+    ``to_dict()`` is the canonical v0.1 shape and omits ``input`` / ``notes`` /
+    ``guardrails``. Those fields are set on the dataclass and must be written
+    explicitly so they are not dropped. ``schema_version`` stays ``0.1``.
+    """
+    payload = record.to_dict()
+    payload["schema_version"] = "0.1"
+    payload["input"] = record.input if record.input is not None else {}
+    payload["notes"] = record.notes
+    payload["guardrails"] = record.guardrails if record.guardrails is not None else {}
+    return payload
+
+
+def write_run_record_sidecar(record: RunRecordV1, path: Path) -> Path:
+    """Atomically write the sidecar the same way the campaign JSON is written."""
+    path = Path(path)
+    _atomic_json(path, sidecar_to_dict(record))
+    return path
 
 
 def _checkpoint_header(fingerprint: str) -> dict[str, str]:
@@ -459,7 +481,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _atomic_json(campaign_path, payload)
     if getattr(args, "write_run_record", False):
         record = build_run_record_sidecar(payload, campaign_path, fingerprint=fingerprint)
-        write_json(record, args.output_dir / RUN_RECORD_SIDECAR_FILENAME)
+        write_run_record_sidecar(record, args.output_dir / RUN_RECORD_SIDECAR_FILENAME)
     return payload
 
 
