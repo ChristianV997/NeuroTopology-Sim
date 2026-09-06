@@ -1,0 +1,4 @@
+# Intentionally incomplete compiled report. Must fail closed.
+kind: compiled_report
+schema_version: "1.0.0"
+contributions: []

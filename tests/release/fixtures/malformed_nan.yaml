@@ -1,0 +1,44 @@
+# Non-finite numeric leaves. Must fail closed.
+kind: compiled_report
+schema_version: "1.0.0"
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+required_warnings:
+  - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
+release_recommendation: BLOCKED_BY_CI
+evidence_source: fixture
+contributions:
+  - id: fixture-nan
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: fixture/nan
+    agent: fixture
+    work_order: FIXTURE-NAN
+    final_commit: 0000000000000000000000000000000000000005
+    pr_number: 9995
+    changed_files: []
+    tests: []
+    test_results: unverified
+    artifacts: []
+    scientific_assertions: []
+    limitations: [fixture]
+    open_questions: [fixture]
+    next_action: do_not_merge
+    merge_status: open
+    changed_file_count: .nan
+    additions: .inf
+    deletions: -.inf
+    evidence_source: fixture
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    research_classification:
+      value_class: tooling
+      claim_class: none
+      data_mode: none
+      empirical_pass_allowed: false
