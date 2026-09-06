@@ -77,3 +77,28 @@ replication, an information-criterion result is only a model-comparison
 proxy. A `PASS` from a future formal method would support the declared
 statistical comparison only; it would not establish a biological mechanism or
 biological confirmation.
+
+## Consumer migration
+
+Downstream scripts and dashboards must stop treating the legacy numeric
+`bayes_factor` field as a formal-evidence indicator. It remains available as a
+deprecated compatibility alias so old readers do not break, but its meaning is
+ambiguous by design. New consumers should read the semantic envelope:
+
+- `evidence_method` and `evidence_kind` (`proxy` or `formal`)
+- `data_status` / `empirical_status`
+- `verdict` and `scientific_eligibility`
+- `proxy_value` for an information-criterion/RSS proxy
+- `formal_bayes_factor` for a validated marginal-likelihood result
+- `reason_codes` for machine-readable explanations
+
+Use `serialize_falsification_result` when emitting JSON from the falsification
+module. It keeps the old numeric field, adds the semantic fields, and carries a
+warning that the numeric alias must not be interpreted as formal evidence.
+Missing formal evidence is serialized as JSON `null`; it is not replaced with
+zero or another sentinel that could be mistaken for a measured Bayes factor.
+
+The current classical arm is explicitly
+`wilson_cowan_proxy_regression` with `likelihood_status: not_implemented`.
+Downstream code must not display it as a fitted Wilson--Cowan likelihood or as
+biological confirmation.

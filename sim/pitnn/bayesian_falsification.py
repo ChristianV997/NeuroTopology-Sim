@@ -100,7 +100,7 @@ def _bic(rss: float, n: int, k: int) -> float | None:
 
 
 def _empty_evidence(*, method: str, n: int | None, effective_n: int | None, errors: list[str], warnings: list[str] | None = None) -> dict[str, Any]:
-    return {
+    return _consumer_semantics({
         "status": "INCONCLUSIVE",
         "method": method,
         "formal": method == "formal_marginal_likelihood",
@@ -114,7 +114,7 @@ def _empty_evidence(*, method: str, n: int | None, effective_n: int | None, erro
         "uncertainty": None,
         "warnings": list(warnings or []),
         "errors": list(errors),
-    }
+    })
 
 
 def _multiplicity_status(n_tests: int | None, correction: str | None) -> tuple[str, list[str]]:
@@ -131,6 +131,175 @@ def _multiplicity_status(n_tests: int | None, correction: str | None) -> tuple[s
     if str(correction).lower() == "none":
         return "missing", ["multiple tests cannot declare correction='none'"]
     return "corrected", []
+
+
+_REASON_CODES = {
+    "PROXY_ONLY",
+    "FORMAL_EVIDENCE_AVAILABLE",
+    "EMPIRICAL_DATA",
+    "SYNTHETIC_DATA",
+    "UNKNOWN_DATA_MODE",
+    "INVALID_INPUT",
+    "INSUFFICIENT_SAMPLE_SIZE",
+    "SAMPLE_SIZE_UNDECLARED",
+    "INCOMPLETE_PROVENANCE",
+    "MULTIPLICITY_UNDECLARED",
+    "CONTROL_NOT_PASSED",
+    "ANALYSIS_NOT_INTERPRETABLE",
+    "MODEL_COMPARISON_UNSUPPORTED",
+    "K_UNAVAILABLE",
+    "K_BELOW_THRESHOLD",
+    "K_AT_THRESHOLD",
+    "K_ABOVE_THRESHOLD",
+    "WILSON_COWAN_PROXY",
+    "LEGACY_NUMERIC_BAYES_FACTOR_DEPRECATED",
+    "PASS_GATE_SATISFIED",
+    "EXECUTION_ERROR",
+}
+
+
+def _controls_passed(result: Mapping[str, Any]) -> bool:
+    controls = result.get("controls", result.get("null_control_status", {}))
+    if not isinstance(controls, Mapping):
+        return False
+    if controls.get("passed") is True:
+        return True
+    return controls.get("status") in {"PASS", "passed", "valid"}
+
+
+def _consumer_semantics(
+    result: Mapping[str, Any],
+    *,
+    data_mode: Any = None,
+    reason_codes: list[str] | None = None,
+) -> dict[str, Any]:
+    """Attach an unambiguous semantic envelope to a legacy result mapping."""
+    output = dict(result)
+    method = str(output.get("method", output.get("evidence_method", "unknown")))
+    formal = bool(output.get("formal") is True or method == "formal_marginal_likelihood")
+    evidence_kind = "formal" if formal else "proxy" if method.endswith("_proxy") or output.get("formal") is False else "unknown"
+    mode = _normalise_mode(data_mode if data_mode is not None else output.get("data_mode", "unknown"))
+    k_value = _finite(output.get("k_value"))
+    threshold = _finite(output.get("threshold")) or PASS_THRESHOLD
+    validation = output.get("validation", {})
+    if not isinstance(validation, Mapping):
+        validation = {}
+    provenance_status = str(output.get("provenance_status", validation.get("provenance_status", "missing_or_incomplete")))
+    effective_n = output.get("effective_sample_count", validation.get("effective_sample_count"))
+    try:
+        effective_n = int(effective_n) if effective_n is not None else None
+    except (TypeError, ValueError):
+        effective_n = None
+    multiplicity = str(output.get("multiplicity_correction_status", validation.get("multiplicity_status", "unknown")))
+    interpretable = bool(output.get("analysis_interpretable", output.get("evidence_eligible", validation.get("analysis_interpretable", False))))
+    model_supported = bool(output.get("model_comparison_supported", True))
+    controls_pass = _controls_passed(output)
+    scientific_eligibility = bool(
+        mode == "empirical"
+        and formal
+        and provenance_status == "complete"
+        and effective_n is not None
+        and effective_n >= MIN_EFFECTIVE_SAMPLE_COUNT
+        and multiplicity not in {"unknown", "missing", "invalid"}
+        and controls_pass
+        and interpretable
+        and model_supported
+    )
+    reasons = list(reason_codes or output.get("reason_codes", []))
+    if evidence_kind == "proxy":
+        reasons.append("PROXY_ONLY")
+    elif evidence_kind == "formal":
+        reasons.append("FORMAL_EVIDENCE_AVAILABLE")
+    if mode == "empirical":
+        reasons.append("EMPIRICAL_DATA")
+    elif mode == "synthetic":
+        reasons.append("SYNTHETIC_DATA")
+    else:
+        reasons.append("UNKNOWN_DATA_MODE")
+    if output.get("status") == "INCONCLUSIVE":
+        reasons.append("INVALID_INPUT")
+    if provenance_status != "complete":
+        reasons.append("INCOMPLETE_PROVENANCE")
+    if effective_n is None and "sample_count" in output:
+        reasons.append("SAMPLE_SIZE_UNDECLARED")
+    elif effective_n is not None and effective_n < MIN_EFFECTIVE_SAMPLE_COUNT:
+        reasons.append("INSUFFICIENT_SAMPLE_SIZE")
+    if multiplicity in {"unknown", "missing", "invalid"}:
+        reasons.append("MULTIPLICITY_UNDECLARED")
+    if not controls_pass:
+        reasons.append("CONTROL_NOT_PASSED")
+    if not interpretable:
+        reasons.append("ANALYSIS_NOT_INTERPRETABLE")
+    if not model_supported:
+        reasons.append("MODEL_COMPARISON_UNSUPPORTED")
+    if k_value is None:
+        reasons.append("K_UNAVAILABLE")
+    elif k_value > threshold:
+        reasons.append("K_ABOVE_THRESHOLD")
+    elif k_value == threshold:
+        reasons.append("K_AT_THRESHOLD")
+    else:
+        reasons.append("K_BELOW_THRESHOLD")
+    if output.get("classical_wilson_cowan", {}).get("likelihood_status") == "not_implemented":
+        reasons.append("WILSON_COWAN_PROXY")
+    verdict = str(output.get("verdict", output.get("status", "INCONCLUSIVE")))
+    if verdict == "PASS":
+        reasons.append("PASS_GATE_SATISFIED")
+    if verdict == "ERROR":
+        reasons.append("EXECUTION_ERROR")
+    reasons.append("LEGACY_NUMERIC_BAYES_FACTOR_DEPRECATED")
+    deduplicated = [code for index, code in enumerate(reasons) if code in _REASON_CODES and code not in reasons[:index]]
+    output.update(
+        {
+            "semantic_schema": "PITNN.FalsificationSemantics.v2",
+            "evidence_method": method,
+            "evidence_kind": evidence_kind,
+            "is_proxy": evidence_kind == "proxy",
+            "is_formal": formal,
+            "data_status": mode,
+            "empirical_status": mode,
+            "verdict": verdict,
+            "scientific_eligibility": scientific_eligibility,
+            "proxy_value": k_value if evidence_kind == "proxy" else None,
+            "formal_bayes_factor": k_value if formal else None,
+            "reason_codes": deduplicated,
+            "legacy_bayes_factor_status": "deprecated_numeric_compatibility_alias",
+            "legacy_bayes_factor_warning": "Do not interpret bayes_factor as formal evidence; inspect evidence_method, evidence_kind, and formal_bayes_factor.",
+        }
+    )
+    warnings = list(output.get("warnings", []))
+    legacy_warning = output["legacy_bayes_factor_warning"]
+    if legacy_warning not in warnings:
+        warnings.append(legacy_warning)
+    output["warnings"] = warnings
+    return output
+
+
+def serialize_falsification_result(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a JSON-safe consumer payload with semantic fields preserved.
+
+    The legacy numeric ``bayes_factor`` remains for compatibility, but this
+    serializer always carries its deprecation warning and the unambiguous
+    proxy/formal fields alongside it.
+    """
+    semantic = _consumer_semantics(result)
+
+    def json_safe(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return {str(key): json_safe(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [json_safe(item) for item in value]
+        if isinstance(value, np.ndarray):
+            return [json_safe(item) for item in value.tolist()]
+        if isinstance(value, (np.integer,)):
+            return int(value)
+        if isinstance(value, (np.floating,)):
+            return float(value) if np.isfinite(value) else None
+        if isinstance(value, float):
+            return value if math.isfinite(value) else None
+        return value
+
+    return json_safe(semantic)
 
 
 def bayes_factor_proxy_from_rss(rss_model: float, rss_null: float, n: int, k_model: int, k_null: int, *, effective_sample_count: int | None = None, selected_metric: str = "bic", n_tests: int | None = None, multiplicity_correction: str | None = None) -> dict[str, Any]:
@@ -178,7 +347,7 @@ def bayes_factor_proxy_from_rss(rss_model: float, rss_null: float, n: int, k_mod
         return result
     result = {"status": "NOT_SUPPORTED", "method": f"{metric}_proxy", "formal": False, "k_value": k_value, "bayes_factor": k_value, "log_k_value": float(log_k), "log_bayes_factor": float(log_k), "threshold": PASS_THRESHOLD, "sample_count": n_int, "effective_sample_count": effective, "parameter_count": {"model": k_model, "null": k_null}, "uncertainty": None, "warnings": ["This is an information-criterion/RSS proxy, not a formal Bayes factor", "No likelihood normalization or prior integration was performed"], "errors": []}
     result.update(common)
-    return result
+    return _consumer_semantics(result)
 
 
 def bayes_factor_from_marginal_likelihoods(model_marginal_likelihood: float, null_marginal_likelihood: float, *, model_prior: float = 1.0, null_prior: float = 1.0, assumptions: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -198,7 +367,7 @@ def bayes_factor_from_marginal_likelihoods(model_marginal_likelihood: float, nul
         posterior = float(k_value * (prior_model / prior_null))
     except (OverflowError, ValueError):
         return _empty_evidence(method="formal_marginal_likelihood", n=None, effective_n=None, errors=["formal evidence ratio overflow; K is intentionally left null"])
-    return {"status": "NOT_SUPPORTED", "method": "formal_marginal_likelihood", "formal": True, "k_value": k_value, "bayes_factor": k_value, "log_bayes_factor": float(log_k), "posterior_odds": posterior, "threshold": PASS_THRESHOLD, "selected_evidence_metric": "marginal_likelihood", "model_marginal_likelihood": model, "null_marginal_likelihood": null, "model_prior": prior_model, "null_prior": prior_null, "likelihood_assumptions": dict(assumptions or {}), "uncertainty": None, "warnings": [], "errors": []}
+    return _consumer_semantics({"status": "NOT_SUPPORTED", "method": "formal_marginal_likelihood", "formal": True, "k_value": k_value, "bayes_factor": k_value, "log_bayes_factor": float(log_k), "posterior_odds": posterior, "threshold": PASS_THRESHOLD, "selected_evidence_metric": "marginal_likelihood", "model_marginal_likelihood": model, "null_marginal_likelihood": null, "model_prior": prior_model, "null_prior": prior_null, "likelihood_assumptions": dict(assumptions or {}), "uncertainty": None, "warnings": [], "errors": []})
 
 
 def validate_falsification_input(signal: Any, inversion: Mapping[str, Any] | None = None, *, data_mode: str = "unknown", provenance: Mapping[str, Any] | None = None, paired_subjects: int | None = None, min_paired_subjects: int = 2, effective_sample_count: int | None = None, min_effective_sample_count: int = MIN_EFFECTIVE_SAMPLE_COUNT, n_tests: int | None = None, multiplicity_correction: str | None = None, preregistered: bool | None = None) -> dict[str, Any]:
@@ -304,6 +473,27 @@ def _controls_pass(controls: Any) -> bool | None:
 
 def classify_falsification_status(k_value: Any, *, threshold: float = PASS_THRESHOLD, method: str = "unknown", data_mode: str = "unknown", validation_status: str = "VALID", provenance_status: str = "complete", analysis_interpretable: bool = True, controls: Mapping[str, Any] | None = None, controls_pass: bool | None = None, multiplicity_status: str = "unknown", effective_sample_count: int | None = None, min_effective_sample_count: int = MIN_EFFECTIVE_SAMPLE_COUNT, model_comparison_supported: bool = True, execution_error: bool = False) -> str:
     """Apply the scientific verdict gate without modifying K."""
+    if isinstance(k_value, Mapping):
+        evidence = k_value
+        if method == "unknown":
+            method = str(evidence.get("evidence_method", evidence.get("method", "unknown")))
+        if data_mode == "unknown":
+            data_mode = str(evidence.get("data_status", evidence.get("data_mode", "unknown")))
+        if validation_status == "VALID":
+            validation = evidence.get("validation", {})
+            validation_status = str(validation.get("status", evidence.get("status", "INCONCLUSIVE"))) if isinstance(validation, Mapping) else str(evidence.get("status", "INCONCLUSIVE"))
+        if provenance_status == "complete":
+            provenance_status = str(evidence.get("provenance_status", "missing_or_incomplete"))
+        if effective_sample_count is None:
+            effective_sample_count = evidence.get("effective_sample_count")
+        if multiplicity_status == "unknown":
+            multiplicity_status = str(evidence.get("multiplicity_correction_status", evidence.get("multiplicity_status", "unknown")))
+        if controls is None:
+            candidate_controls = evidence.get("controls", evidence.get("null_control_status"))
+            controls = candidate_controls if isinstance(candidate_controls, Mapping) else None
+        if controls_pass is None and isinstance(controls, Mapping) and "passed" in controls:
+            controls_pass = controls.get("passed") is True
+        k_value = evidence.get("formal_bayes_factor") if method.startswith("formal_marginal_likelihood") else evidence.get("k_value")
     if execution_error:
         return "ERROR"
     if validation_status != "VALID" or not model_comparison_supported:
@@ -417,7 +607,7 @@ def separate_topology_metrics(inversion: Mapping[str, Any] | None) -> dict[str, 
 
 
 def _contract_failure(message: str, *, data_mode: str = "unknown") -> dict[str, Any]:
-    return {"status": "ERROR", "verdict": "ERROR", "method": "unsupported_model_comparison", "k_value": None, "bayes_factor": 0.0, "log_bayes_factor": None, "threshold": PASS_THRESHOLD, "data_mode": _normalise_mode(data_mode), "provenance_status": "missing_or_incomplete", "sample_count": None, "feature_count": None, "effective_sample_count": None, "uncertainty": None, "controls": {"status": "not_run"}, "warnings": [], "errors": [message], "model_comparison_supported": False}
+    return _consumer_semantics({"status": "ERROR", "verdict": "ERROR", "method": "unsupported_model_comparison", "k_value": None, "bayes_factor": 0.0, "log_bayes_factor": None, "threshold": PASS_THRESHOLD, "data_mode": _normalise_mode(data_mode), "provenance_status": "missing_or_incomplete", "sample_count": None, "feature_count": None, "effective_sample_count": None, "uncertainty": None, "controls": {"status": "not_run"}, "warnings": [], "errors": [message], "model_comparison_supported": False})
 
 
 def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalty: float = 1e-4, data_mode: str = "synthetic_demo", provenance: Mapping[str, Any] | None = None, effective_sample_count: int | None = None, paired_subjects: int | None = None, n_tests: int | None = None, multiplicity_correction: str | None = None, controls: Mapping[str, Any] | None = None, preregistered: bool | None = None, selected_evidence_metric: str = "bic") -> dict[str, Any]:
@@ -434,10 +624,10 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
     inversion = inversion if isinstance(inversion, Mapping) else None
     validation = validate_falsification_input(y, inversion, data_mode=data_mode, provenance=provenance, paired_subjects=paired_subjects, effective_sample_count=effective_sample_count, n_tests=n_tests, multiplicity_correction=multiplicity_correction, preregistered=preregistered)
     if inversion is None:
-        return _contract_failure("inversion must be a mapping", data_mode=data_mode) | {"validation": validation}
+        return _consumer_semantics(_contract_failure("inversion must be a mapping", data_mode=data_mode) | {"validation": validation})
     if validation["status"] != "VALID":
         verdict = "INCONCLUSIVE" if _normalise_mode(data_mode) == "empirical" else "NOT_SUPPORTED"
-        return {"status": "INCONCLUSIVE", "verdict": verdict, "method": "unsupported_model_comparison", "formal": False, "k_value": None, "bayes_factor": 0.0, "log_bayes_factor": None, "threshold": PASS_THRESHOLD, "data_mode": validation["data_mode"], "provenance_status": validation["provenance_status"], "provenance": dict(provenance or {}), "sample_count": validation["sample_count"], "feature_count": validation["feature_count"], "effective_sample_count": validation["effective_sample_count"], "uncertainty": None, "controls": dict(controls or {"status": "not_run"}), "warnings": validation["warnings"], "errors": validation["errors"], "validation": validation, "model_comparison_supported": False, "pitnn": {"rss": None, "aic": None, "aicc": None, "bic": None}, "classical_wilson_cowan": {"rss": None, "aic": None, "aicc": None, "bic": None}, "topology_metrics": separate_topology_metrics(inversion)}
+        return _consumer_semantics({"status": "INCONCLUSIVE", "verdict": verdict, "method": "unsupported_model_comparison", "formal": False, "k_value": None, "bayes_factor": 0.0, "log_bayes_factor": None, "threshold": PASS_THRESHOLD, "data_mode": validation["data_mode"], "provenance_status": validation["provenance_status"], "provenance": dict(provenance or {}), "provenance_completeness": validation["provenance_completeness"], "sample_count": validation["sample_count"], "feature_count": validation["feature_count"], "effective_sample_count": validation["effective_sample_count"], "multiplicity_correction_status": validation["multiplicity_status"], "preregistration_status": validation["preregistration_status"], "uncertainty": None, "controls": dict(controls or {"status": "not_run"}), "warnings": validation["warnings"], "errors": validation["errors"], "validation": validation, "model_comparison_supported": False, "pitnn": {"rss": None, "aic": None, "aicc": None, "bic": None}, "classical_wilson_cowan": {"rss": None, "aic": None, "aicc": None, "bic": None}, "topology_metrics": separate_topology_metrics(inversion)})
     n = y.size
     x = np.linspace(0.0, 1.0, n)
     q_series = inversion.get("q_emp_series", inversion.get("topological_charge_series"))
@@ -456,7 +646,7 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
         pred_q, beta_q = _fit_l1(y, topological, topological_l1_penalty)
         pred_c, _ = _fit_linear(y, classical)
     except (TypeError, ValueError, np.linalg.LinAlgError) as exc:
-        return _contract_failure(str(exc), data_mode=data_mode) | {"validation": validation}
+        return _consumer_semantics(_contract_failure(str(exc), data_mode=data_mode) | {"validation": validation})
     rss_q, rss_c = float(np.sum((y - pred_q) ** 2)), float(np.sum((y - pred_c) ** 2))
     active_q = int(1 + np.count_nonzero(np.abs(beta_q[1:]) > 1e-12))
     q_parameters, c_parameters = int(active_q + 1), int(classical.shape[1] + 1)
@@ -464,8 +654,10 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
     topological_active = bool(not topology_static and abs(beta_q[-1]) > 1e-12)
     evidence_eligible = bool(not signal_static and topological_active)
     control_status = dict(controls or {"status": "not_run"})
-    status = classify_falsification_status(evidence.get("k_value"), threshold=PASS_THRESHOLD, method=evidence["method"], data_mode=data_mode, validation_status=validation["status"], provenance_status=validation["provenance_status"], analysis_interpretable=evidence_eligible, controls=control_status, controls_pass=control_status.get("passed") if "passed" in control_status else None, multiplicity_status=validation["multiplicity_status"], effective_sample_count=validation["effective_sample_count"])
-    return {"status": status, "verdict": status, "method": evidence["method"], "formal": False, "k_value": evidence.get("k_value"), "bayes_factor": _finite_or_zero(evidence.get("k_value")), "log_bayes_factor": evidence.get("log_bayes_factor"), "threshold": PASS_THRESHOLD, "data_mode": validation["data_mode"], "provenance_status": validation["provenance_status"], "provenance": dict(provenance or {}), "provenance_completeness": validation["provenance_completeness"], "sample_count": validation["sample_count"], "feature_count": validation["feature_count"], "effective_sample_count": validation["effective_sample_count"], "model_parameter_counts": {"pitnn": q_parameters, "classical_wilson_cowan_proxy": c_parameters}, "likelihood_method": "gaussian_regression_proxy", "null_control_status": control_status, "multiplicity_correction_status": validation["multiplicity_status"], "preregistration_status": validation["preregistration_status"], "selected_evidence_metric": selected_evidence_metric, "uncertainty": evidence.get("uncertainty"), "controls": control_status, "warnings": evidence.get("warnings", []) + ["No biological confirmation is asserted"], "errors": evidence.get("errors", []), "validation": validation, "model_comparison_supported": True, "signal_static": signal_static, "evidence_eligible": evidence_eligible, "topology_metrics": separate_topology_metrics(inversion), "topology_metric_semantics": {"graph_beta1": "graph cycle rank; not spatial charge", "spatial_winding_q": "coordinate-dependent spatial winding; not graph beta-1", "scalar_chirality": "local vector-triple-product observable; not winding"}, "pitnn": {"rss": rss_q, "aic": evidence["aic"]["model"], "aicc": evidence["aicc"]["model"], "bic": evidence["bic"]["model"], "topological_l1_penalty": float(topological_l1_penalty), "topological_weight": float(beta_q[-1]), "topological_feature_static": topology_static, "topological_feature_active": topological_active, "active_parameters": active_q, "parameter_count": q_parameters}, "classical_wilson_cowan": {"rss": rss_c, "aic": evidence["aic"]["null"], "aicc": evidence["aicc"]["null"], "bic": evidence["bic"]["null"], "parameter_count": c_parameters, "model_type": "wilson_cowan_proxy_regression", "likelihood_status": "not_implemented"}}
+    status_input = dict(evidence)
+    status_input.update({"data_mode": data_mode, "provenance_status": validation["provenance_status"], "effective_sample_count": validation["effective_sample_count"], "multiplicity_correction_status": validation["multiplicity_status"], "controls": control_status, "evidence_eligible": evidence_eligible, "validation": validation, "model_comparison_supported": True})
+    status = classify_falsification_status(status_input, threshold=PASS_THRESHOLD, controls_pass=control_status.get("passed") if "passed" in control_status else None)
+    return _consumer_semantics({"status": status, "verdict": status, "method": evidence["method"], "formal": False, "k_value": evidence.get("k_value"), "bayes_factor": _finite_or_zero(evidence.get("k_value")), "log_bayes_factor": evidence.get("log_bayes_factor"), "threshold": PASS_THRESHOLD, "data_mode": validation["data_mode"], "provenance_status": validation["provenance_status"], "provenance": dict(provenance or {}), "provenance_completeness": validation["provenance_completeness"], "sample_count": validation["sample_count"], "feature_count": validation["feature_count"], "effective_sample_count": validation["effective_sample_count"], "model_parameter_counts": {"pitnn": q_parameters, "classical_wilson_cowan_proxy": c_parameters}, "likelihood_method": "gaussian_regression_proxy", "null_control_status": control_status, "multiplicity_correction_status": validation["multiplicity_status"], "preregistration_status": validation["preregistration_status"], "selected_evidence_metric": selected_evidence_metric, "uncertainty": evidence.get("uncertainty"), "controls": control_status, "warnings": evidence.get("warnings", []) + ["No biological confirmation is asserted"], "errors": evidence.get("errors", []), "validation": validation, "model_comparison_supported": True, "signal_static": signal_static, "evidence_eligible": evidence_eligible, "topology_metrics": separate_topology_metrics(inversion), "topology_metric_semantics": {"graph_beta1": "graph cycle rank; not spatial charge", "spatial_winding_q": "coordinate-dependent spatial winding; not graph beta-1", "scalar_chirality": "local vector-triple-product observable; not winding"}, "pitnn": {"rss": rss_q, "aic": evidence["aic"]["model"], "aicc": evidence["aicc"]["model"], "bic": evidence["bic"]["model"], "topological_l1_penalty": float(topological_l1_penalty), "topological_weight": float(beta_q[-1]), "topological_feature_static": topology_static, "topological_feature_active": topological_active, "active_parameters": active_q, "parameter_count": q_parameters}, "classical_wilson_cowan": {"rss": rss_c, "aic": evidence["aic"]["null"], "aicc": evidence["aicc"]["null"], "bic": evidence["bic"]["null"], "parameter_count": c_parameters, "model_type": "wilson_cowan_proxy_regression", "likelihood_status": "not_implemented"}})
 
 
-__all__ = ["PASS_THRESHOLD", "bayes_factor_proxy_from_rss", "bayes_factor_from_marginal_likelihoods", "validate_falsification_input", "classify_falsification_status", "multiplicity_correction", "generate_null_controls", "phase_randomized_surrogate", "condition_label_permutation", "stationary_null_surrogate", "separate_topology_metrics", "compare_models"]
+__all__ = ["PASS_THRESHOLD", "bayes_factor_proxy_from_rss", "bayes_factor_from_marginal_likelihoods", "validate_falsification_input", "classify_falsification_status", "multiplicity_correction", "generate_null_controls", "phase_randomized_surrogate", "condition_label_permutation", "stationary_null_surrogate", "separate_topology_metrics", "serialize_falsification_result", "compare_models"]
