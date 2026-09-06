@@ -1,0 +1,146 @@
+{
+  "allowlisted_public_documentation": [
+    {
+      "id": "mne_docs",
+      "license_hint": "BSD-3-Clause docs/code",
+      "url": "https://mne.tools/stable/index.html"
+    },
+    {
+      "id": "mne_license",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://github.com/mne-tools/mne-python/blob/main/LICENSE.txt"
+    },
+    {
+      "id": "mne_connectivity",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://mne.tools/mne-connectivity/stable/index.html"
+    },
+    {
+      "id": "scipy_signal",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://docs.scipy.org/doc/scipy/reference/signal.html"
+    },
+    {
+      "id": "eeglab",
+      "license_hint": "BSD-style toolbox",
+      "url": "https://sccn.ucsd.edu/eeglab/index.php"
+    },
+    {
+      "id": "fieldtrip",
+      "license_hint": "GPL-3.0",
+      "url": "https://www.fieldtriptoolbox.org/"
+    },
+    {
+      "id": "lsl",
+      "license_hint": "MIT",
+      "url": "https://labstreaminglayer.org/"
+    },
+    {
+      "id": "brainflow",
+      "license_hint": "MIT",
+      "url": "https://brainflow.org/"
+    },
+    {
+      "id": "psychopy",
+      "license_hint": "GPL-3.0",
+      "url": "https://www.psychopy.org/"
+    },
+    {
+      "id": "spikeinterface",
+      "license_hint": "MIT",
+      "url": "https://spikeinterface.readthedocs.io/"
+    },
+    {
+      "id": "nwb",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://www.nwb.org/"
+    },
+    {
+      "id": "pynwb_repo",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://github.com/NeurodataWithoutBorders/pynwb"
+    },
+    {
+      "id": "braindecode",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://braindecode.org/"
+    },
+    {
+      "id": "snntorch",
+      "license_hint": "MIT",
+      "url": "https://snntorch.readthedocs.io/"
+    },
+    {
+      "id": "semantica_docs",
+      "license_hint": "MIT",
+      "url": "https://docs.getsemantica.ai/"
+    },
+    {
+      "id": "semantica_license",
+      "license_hint": "MIT",
+      "url": "https://github.com/semantica-agi/semantica/blob/main/docs/project-license.md"
+    },
+    {
+      "id": "scrapling_docs",
+      "license_hint": "BSD-3-Clause",
+      "url": "https://scrapling.readthedocs.io/en/latest/"
+    },
+    {
+      "id": "notebooklm_product",
+      "license_hint": "Google consumer ToS",
+      "url": "https://notebooklm.google/"
+    },
+    {
+      "id": "gemini_notebook_enterprise_overview",
+      "license_hint": "Google Cloud ToS",
+      "url": "https://docs.cloud.google.com/gemini/enterprise/notebooklm-enterprise/docs/overview"
+    },
+    {
+      "id": "gemini_notebook_enterprise_api",
+      "license_hint": "Google Cloud ToS",
+      "url": "https://docs.cloud.google.com/gemini/enterprise/notebooklm-enterprise/docs/api-notebooks"
+    },
+    {
+      "id": "gemini_mcp_notebook_toolset",
+      "license_hint": "Google Cloud ToS",
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/mcp"
+    }
+  ],
+  "community_experimental_references": [
+    {
+      "id": "pleaseprompto_notebooklm_mcp",
+      "official_api": false,
+      "url": "https://github.com/PleasePrompto/notebooklm-mcp"
+    },
+    {
+      "id": "ers123_notebooklm_mcp",
+      "official_api": false,
+      "url": "https://github.com/ers123/notebooklm-mcp"
+    },
+    {
+      "id": "tenglin_notebooklm_py",
+      "official_api": false,
+      "url": "https://github.com/teng-lin/notebooklm-py"
+    }
+  ],
+  "forbidden_in_tests": [
+    "https://openneuro.org",
+    "s3://",
+    "https://api.github.com",
+    "https://notebooklm.google.com",
+    "https://discoveryengine.googleapis.com"
+  ],
+  "note": "Evidence catalog only. No credentials, tokens, cookies, or private endpoints.",
+  "repo_inspection_anchors": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "requirements.txt",
+    "governance/spec.py",
+    "runs/run_record.py",
+    "sim/pitnn/empirical_pipeline.py",
+    "sim/pitnn/bayesian_falsification.py",
+    "apps/awareness_studio/TOOLS_MANIFEST.md"
+  ],
+  "review_date": "2026-09-05",
+  "schema_version": "1.0"
+}
