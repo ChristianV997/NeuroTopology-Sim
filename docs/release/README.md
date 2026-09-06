@@ -15,9 +15,8 @@ scientific `PASS`. Synthetic data cannot establish a scientific `PASS`.
 The on-main Bayes factor path is a **proxy** and needs formal likelihood
 validation before strong empirical interpretation.
 
-This pack still does **not** contain `configs/release/evidence_schema.yaml`,
-`scripts/compile_repository_evidence.py`, or
-`tests/release/test_evidence_compiler.py`.
+QA schema/tests and the Release compiler are now on this pack. Inventory
+is still not evidence.
 
 ## Owned now (Lead + Research)
 
@@ -37,6 +36,8 @@ This pack still does **not** contain `configs/release/evidence_schema.yaml`,
 Those files are **out of Research scope**. This index only names them so
 QA / Release can attach without rewriting the inventory.
 
+Release compiler landed: `scripts/compile_repository_evidence.py` (stdout by default; write only with `--output-dir` / `--write`).
+
 ## Assembly order
 
 1. **Lead** — inventory contributions (landed): repository, commits, PRs,
@@ -47,8 +48,8 @@ QA / Release can attach without rewriting the inventory.
 3. **QA** — **next.** Write `evidence_schema.yaml` and compiler tests.
    Schema must refuse scientific `PASS` from synthetic data and refuse
    unverified author-claimed test counts as compiled evidence.
-4. **Release** — implement `compile_repository_evidence.py` against the QA
-   schema. Compiler output is a generated report. Not started.
+4. **Release** — **Release compiler landed.** `compile_repository_evidence.py`
+   emits a generated report, not scientific PASS.
 5. **Integration** — recommendation only: what can be assembled, what is
    blocked, what must stay `NOT_SUPPORTED` / `INCONCLUSIVE`. Merger: do
    not merge.
