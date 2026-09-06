@@ -1,0 +1,14 @@
+{
+  "format": "EDF",
+  "sample_rate_hz": 200.0,
+  "channels": ["EEG Fp1-Ref", "EEG Fp2-Ref", "EEG Cz-Ref"],
+  "units": ["uV", "uV", "uV"],
+  "source_sha256": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "native_montage_available": false,
+  "inferred_standard_montage": "standard_1020",
+  "montage_coordinates": [
+    [-0.02, 0.08, 0.02],
+    [0.02, 0.08, 0.02],
+    [0.0, 0.0, 0.08]
+  ]
+}
