@@ -60,11 +60,18 @@ def _generate(output):
     )
 
 
-@pytest.fixture
-def generated(tmp_path):
-    output = tmp_path / "bridge"
-    output.mkdir()
+@pytest.fixture(scope="module")
+def _generated_base(tmp_path_factory):
+    output = tmp_path_factory.mktemp("bridge_base")
     _generate(output)
+    return output
+
+
+@pytest.fixture
+def generated(tmp_path, _generated_base):
+    import shutil
+    output = tmp_path / "bridge"
+    shutil.copytree(_generated_base, output)
     return output
 
 
