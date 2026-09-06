@@ -1,0 +1,25 @@
+# ==============================================================================
+# NeuroTopology-Sim: Base Dependency Profile
+# ==============================================================================
+# Purpose: Minimal numerical core for contracts, governance, topology primitives,
+#          deterministic pipelines, and standard offline test execution.
+# Status: Required for all repository operations.
+# Platform constraints: Pure Python / standard C extension wheels (Linux, macOS, Windows).
+# ==============================================================================
+
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+scikit-learn>=1.2.0
+pyyaml>=6.0
+joblib>=1.2.0
+fastapi>=0.100.0
+httpx>=0.24.0
+h5py>=3.8.0
+networkx>=3.0
+statsmodels>=0.14.0
+persim>=0.3.1
+ripser>=0.6.4
+pytest>=7.0.0
+pytest-timeout>=2.3.0

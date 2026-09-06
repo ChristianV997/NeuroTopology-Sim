@@ -1,0 +1,16 @@
+# ==============================================================================
+# NeuroTopology-Sim: NWB / DANDI Dependency Profile
+# ==============================================================================
+# Purpose: Neurodata Without Borders (NWB) object modeling, remote HDF5 lazy streaming
+#          from DANDI public archive (e.g. dandiset 000458 mouse anesthesia EEG).
+# Status: Optional / Profile-specific.
+# Affected tests:
+#   - tests/test_dandi_nwb_ingest.py
+#   - tests/test_nwb_adapters.py
+# Platform constraints: Pure Python / standard C extension wheels (Linux, macOS, Windows).
+# ==============================================================================
+-r requirements-base.txt
+
+pynwb>=2.5.0
+remfile>=0.1.11
+hdmf>=3.8.0

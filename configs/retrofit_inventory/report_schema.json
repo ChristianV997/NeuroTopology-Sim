@@ -1,0 +1,438 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "configs/retrofit_inventory/report_schema.json",
+  "title": "NeuroTopology-Sim retrofit inventory report bundle",
+  "description": "Common envelope plus the six Phase 4 report kinds. Inventory is not scientific evidence. scientific_claim_status is always not_evidence. Reports never emit scientific PASS. Empirical labels are heuristics, not PASS. The K>100 / scientific PASS gate is out of scope.",
+  "version": "0.1",
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error", "incomplete"]
+    },
+    "string_list": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source_hashes": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "inventory_schema_version",
+        "report_schema_version",
+        "snapshot_digest",
+        "tool_sources_yaml"
+      ],
+      "properties": {
+        "inventory_schema_version": { "type": "string" },
+        "report_schema_version": { "type": "string" },
+        "report_schema": { "type": ["string", "null"] },
+        "snapshot_digest": { "type": ["string", "null"] },
+        "tool_sources_yaml": { "type": ["string", "null"] }
+      }
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "repository_commit",
+        "source_hashes",
+        "status",
+        "warnings",
+        "errors",
+        "limitations",
+        "next_actions",
+        "report_kind",
+        "schema_version"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "description": "ISO-8601. Inject _now / generated_at for a frozen clock."
+        },
+        "repository_commit": {
+          "type": "string",
+          "description": "snapshot.commit_sha (empty when the scan failed closed)."
+        },
+        "source_hashes": { "$ref": "#/$defs/source_hashes" },
+        "status": { "$ref": "#/$defs/status" },
+        "warnings": { "$ref": "#/$defs/string_list" },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fail-closed validation errors. Never downgraded to warnings."
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Always includes that inventory is not scientific evidence."
+        },
+        "next_actions": { "$ref": "#/$defs/string_list" },
+        "report_kind": {
+          "type": "string",
+          "enum": [
+            "repository_inventory",
+            "artifact_inventory",
+            "tool_admission_inventory",
+            "ownership_collision_report",
+            "retrofit_priority_report",
+            "scientific_claim_risk_report"
+          ]
+        },
+        "schema_version": { "type": "string" }
+      }
+    },
+    "file_entry": {
+      "type": "object",
+      "required": ["path", "kind", "size", "content_hash", "hash_policy"],
+      "properties": {
+        "path": { "type": "string" },
+        "kind": { "type": "string", "enum": ["text", "binary"] },
+        "size": { "type": "integer", "minimum": 0 },
+        "content_hash": { "type": "string" },
+        "hash_policy": { "type": "string" },
+        "mtime": { "type": ["number", "null"] }
+      }
+    },
+    "worktree_entry": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["branch", "worktree"] },
+        "name": { "type": "string" },
+        "path": { "type": ["string", "null"] },
+        "commit_sha": { "type": ["string", "null"] },
+        "is_current": { "type": "boolean" },
+        "is_remote": { "type": "boolean" },
+        "is_detached": { "type": "boolean" }
+      }
+    },
+    "artifact_entry": {
+      "type": "object",
+      "required": ["path", "label"],
+      "properties": {
+        "path": { "type": "string" },
+        "label": {
+          "type": "string",
+          "enum": ["synthetic", "empirical", "unknown"],
+          "description": "Heuristic only. empirical is not a scientific PASS."
+        },
+        "schema_id": { "type": ["string", "null"] },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "governance_entry": {
+      "type": "object",
+      "required": ["path", "category"],
+      "properties": {
+        "path": { "type": "string" },
+        "category": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dependency_entry": {
+      "type": "object",
+      "required": ["name", "source_path", "ecosystem"],
+      "properties": {
+        "name": { "type": "string" },
+        "source_path": { "type": "string" },
+        "ecosystem": { "type": "string" },
+        "extra": { "type": ["string", "null"] }
+      }
+    },
+    "overlap_finding": {
+      "type": "object",
+      "required": ["paths", "reason"],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "tool_row": {
+      "type": "object",
+      "description": "One Phase 2 tool-source registry row (research classification only).",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "official_source": { "type": "string" },
+        "license": { "type": "string" },
+        "role": { "type": "string" },
+        "integration_mode": { "type": "string" },
+        "optional_dependency": { "type": "boolean" },
+        "offline_behavior": { "type": "string" },
+        "network_risk": { "type": "string" },
+        "privacy_risk": { "type": "string" },
+        "provenance_capability": { "type": "string" },
+        "adoption_recommendation": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "repository_inventory": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": [
+            "files",
+            "worktrees_and_branches",
+            "governance",
+            "dependencies",
+            "overlaps"
+          ],
+          "properties": {
+            "report_kind": { "const": "repository_inventory" },
+            "files": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/file_entry" }
+            },
+            "worktrees_and_branches": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/worktree_entry" }
+            },
+            "governance": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/governance_entry" }
+            },
+            "dependencies": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/dependency_entry" }
+            },
+            "overlaps": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/overlap_finding" }
+            }
+          }
+        }
+      ]
+    },
+    "artifact_inventory": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": ["artifacts", "label_counts", "label_policy", "empirical_label_is_pass"],
+          "properties": {
+            "report_kind": { "const": "artifact_inventory" },
+            "artifacts": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/artifact_entry" }
+            },
+            "label_counts": {
+              "type": "object",
+              "required": ["synthetic", "empirical", "unknown"],
+              "properties": {
+                "synthetic": { "type": "integer", "minimum": 0 },
+                "empirical": { "type": "integer", "minimum": 0 },
+                "unknown": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "label_policy": { "type": "string" },
+            "empirical_label_is_pass": { "type": "boolean", "const": false }
+          }
+        }
+      ]
+    },
+    "tool_admission_inventory": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": ["tools", "admission_summary"],
+          "properties": {
+            "report_kind": { "const": "tool_admission_inventory" },
+            "tools": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/tool_row" }
+            },
+            "admission_summary": {
+              "type": "object",
+              "required": ["count", "by_adoption_recommendation", "by_integration_mode"],
+              "properties": {
+                "count": { "type": "integer", "minimum": 0 },
+                "by_adoption_recommendation": { "type": "object" },
+                "by_integration_mode": { "type": "object" }
+              }
+            },
+            "expected_real_tool_source_count": { "type": "integer" },
+            "loaded_from_real_yaml": { "type": "boolean" }
+          }
+        }
+      ]
+    },
+    "ownership_collision_report": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": ["overlaps", "claimed_owners", "duplicate_ownership_findings"],
+          "properties": {
+            "report_kind": { "const": "ownership_collision_report" },
+            "overlaps": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/overlap_finding" }
+            },
+            "claimed_owners": { "type": "array" },
+            "duplicate_ownership_findings": { "$ref": "#/$defs/string_list" }
+          }
+        }
+      ]
+    },
+    "retrofit_priority_report": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": ["candidates", "ranking_kind", "ranking_disclaimer"],
+          "properties": {
+            "report_kind": { "const": "retrofit_priority_report" },
+            "ranking_kind": { "type": "string", "const": "engineering_only" },
+            "ranking_disclaimer": { "type": "string" },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "engineering_priority", "ranking_kind"],
+                "properties": {
+                  "id": { "type": ["string", "null"] },
+                  "name": { "type": ["string", "null"] },
+                  "adoption_recommendation": { "type": ["string", "null"] },
+                  "offline_behavior": { "type": ["string", "null"] },
+                  "network_risk": { "type": ["string", "null"] },
+                  "privacy_risk": { "type": ["string", "null"] },
+                  "integration_mode": { "type": ["string", "null"] },
+                  "engineering_priority": { "type": "integer", "minimum": 1 },
+                  "engineering_priority_key": { "type": "array" },
+                  "ranking_kind": { "type": "string", "const": "engineering_only" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scientific_claim_risk_report": {
+      "allOf": [
+        { "$ref": "#/$defs/envelope" },
+        {
+          "type": "object",
+          "required": [
+            "scientific_claim_status",
+            "inventory_is_evidence",
+            "empirical_label_is_pass",
+            "k_gt_100_gate",
+            "scientific_pass_gate",
+            "scientific_assertions",
+            "statements",
+            "claim_record"
+          ],
+          "properties": {
+            "report_kind": { "const": "scientific_claim_risk_report" },
+            "scientific_claim_status": { "type": "string", "const": "not_evidence" },
+            "inventory_is_evidence": { "type": "boolean", "const": false },
+            "empirical_label_is_pass": { "type": "boolean", "const": false },
+            "k_gt_100_gate": { "type": "string", "const": "out_of_scope" },
+            "scientific_pass_gate": { "type": "string", "const": "out_of_scope" },
+            "forbidden_scientific_claim_statuses": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "scientific_assertions": {
+              "type": "object",
+              "required": [
+                "inventory_is_evidence",
+                "scientific_claim_status",
+                "never_pass",
+                "empirical_label_is_pass",
+                "k_gt_100_gate",
+                "scientific_pass_gate"
+              ],
+              "properties": {
+                "inventory_is_evidence": { "type": "boolean", "const": false },
+                "scientific_claim_status": { "type": "string", "const": "not_evidence" },
+                "never_pass": { "type": "boolean", "const": true },
+                "empirical_label_is_pass": { "type": "boolean", "const": false },
+                "k_gt_100_gate": { "type": "string", "const": "out_of_scope" },
+                "scientific_pass_gate": { "type": "string", "const": "out_of_scope" }
+              }
+            },
+            "statements": { "$ref": "#/$defs/string_list" },
+            "claim_record": { "type": "object" }
+          }
+        }
+      ]
+    },
+    "report": {
+      "oneOf": [
+        { "$ref": "#/$defs/repository_inventory" },
+        { "$ref": "#/$defs/artifact_inventory" },
+        { "$ref": "#/$defs/tool_admission_inventory" },
+        { "$ref": "#/$defs/ownership_collision_report" },
+        { "$ref": "#/$defs/retrofit_priority_report" },
+        { "$ref": "#/$defs/scientific_claim_risk_report" }
+      ]
+    },
+    "bundle": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "repository_commit",
+        "source_hashes",
+        "status",
+        "warnings",
+        "errors",
+        "limitations",
+        "next_actions",
+        "reports",
+        "report_filenames"
+      ],
+      "properties": {
+        "timestamp": { "type": "string" },
+        "repository_commit": { "type": "string" },
+        "source_hashes": { "$ref": "#/$defs/source_hashes" },
+        "status": { "$ref": "#/$defs/status" },
+        "warnings": { "$ref": "#/$defs/string_list" },
+        "errors": { "$ref": "#/$defs/string_list" },
+        "limitations": { "$ref": "#/$defs/string_list" },
+        "next_actions": { "$ref": "#/$defs/string_list" },
+        "schema_version": { "type": "string" },
+        "generated_by": { "type": "string" },
+        "report_filenames": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "type": "string" }
+        },
+        "reports": {
+          "type": "object",
+          "required": [
+            "repository_inventory.json",
+            "artifact_inventory.json",
+            "tool_admission_inventory.json",
+            "ownership_collision_report.json",
+            "retrofit_priority_report.json",
+            "scientific_claim_risk_report.json"
+          ],
+          "properties": {
+            "repository_inventory.json": { "$ref": "#/$defs/repository_inventory" },
+            "artifact_inventory.json": { "$ref": "#/$defs/artifact_inventory" },
+            "tool_admission_inventory.json": { "$ref": "#/$defs/tool_admission_inventory" },
+            "ownership_collision_report.json": { "$ref": "#/$defs/ownership_collision_report" },
+            "retrofit_priority_report.json": { "$ref": "#/$defs/retrofit_priority_report" },
+            "scientific_claim_risk_report.json": { "$ref": "#/$defs/scientific_claim_risk_report" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/bundle" },
+    { "$ref": "#/$defs/report" }
+  ]
+}
