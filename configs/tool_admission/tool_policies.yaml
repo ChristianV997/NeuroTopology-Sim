@@ -1,0 +1,109 @@
+schema_version: "1.0"
+review_date: "2026-09-05"
+base_commit: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
+owner: research-methods-tool-admission
+scientific_pass_owner: pitnn_bayesian_falsification
+scientific_pass_condition: "K > 100 on eligible real recordings; synthetic data is NOT_SUPPORTED"
+
+forbidden:
+  admission_status_values:
+    - PASS
+    - FAIL
+    - NOT_SUPPORTED
+  hidden_credentials: true
+  internal_or_private_apis_as_required_deps: true
+  network_execution_inside_tests: true
+  automatic_openneuro_aws_pdb_cloud_downloads_in_tests: true
+  tool_determined_falsification_verdicts: true
+  ontology_promotion_by_external_kg_tools: true
+
+core_signal_path:
+  required_python_tools:
+    - mne
+    - scipy_signal
+  optional_python_tools:
+    - mne_connectivity
+    - pynwb
+  matlab_tools_not_python_dependencies:
+    - eeglab
+    - fieldtrip
+
+live_acquisition_boundary:
+  optional_tools:
+    - labstreaminglayer
+    - brainflow
+  test_mode: fixture_or_emulation_only
+  production_import_must_be_optional: true
+
+archival_interchange:
+  primary: pynwb
+  note: NWB/PyNWB is the archival path for electrophysiology interchange, including DANDI NWB streams already declared in requirements.txt.
+
+downstream_modeling_lanes:
+  tools:
+    - braindecode
+    - snntorch
+  may_determine_scientific_verdict: false
+  may_emit_runrecord_pass: false
+
+matlab_interop:
+  tools:
+    - eeglab
+    - fieldtrip
+  runtime_dependency_allowed_in_python: false
+  role: reference_or_file_export_only
+
+scraping_policy:
+  tool: scrapling
+  default_integration_mode: reject
+  automated_tests_may_fetch: false
+  require_explicit_allowlist: true
+  require_human_approved_public_sources: true
+  allowed_source_classes:
+    - official_project_documentation
+    - SPDX_license_texts
+    - public_dataset_READMEs_already_cited
+  forbidden_source_classes:
+    - paywalled_content
+    - authenticated_dashboards
+    - unpublished_internal_docs
+
+notebooklm_policy:
+  community_mcp_servers:
+    admission_status: experimental
+    official_supported_api: false
+    may_be_required_dependency: false
+  official_gemini_notebook_enterprise_api:
+    admission_status: deferred
+    official_supported_api: true
+    may_be_required_dependency: false
+    requires_gcp_credentials: true
+
+semantica_policy:
+  may_write_scientific_verdicts: false
+  may_promote_ontology: false
+  awareness_studio_only: true
+
+spikeinterface_policy:
+  scope: extracellular_electrophysiology_only
+  not_a_scalp_eeg_preprocessor: true
+
+owner_boundaries:
+  this_change_set:
+    - configs/tool_admission/**
+    - docs/research_tooling_matrix.md
+    - docs/external_tool_review/**
+    - tests/tool_admission/**
+  forbidden_to_modify_in_this_work_order:
+    - sim/**
+    - topo_monitor/**
+    - sciencer_d/**
+    - shared/**
+    - tools/**
+    - scripts/**
+    - conftest.py
+    - pytest.ini
+    - Makefile
+    - .github/**
+    - dashboard/**
+    - apps/awareness_studio/**
