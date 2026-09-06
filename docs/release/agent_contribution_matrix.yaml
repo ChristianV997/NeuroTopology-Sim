@@ -1,0 +1,776 @@
+# Lead contribution inventory only.
+# Not configs/release/evidence_schema.yaml. Not a compiler. Not evidence.
+# Inventory is not a scientific PASS.
+
+inventory_id: nts-evidence-bundle-lead-2026-09-06
+phase: LEAD
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+inspected_at: "2026-09-06"
+inspector: lead
+evidence_source: github_api
+inventory_is_not_evidence: true
+required_warnings:
+  - "PRs #210, #211, #212 are NOT merged (independently verified open on GitHub; mergedAt is null)."
+  - "codex/scientific-falsification-contract: no confirmed PR (gh pr list --head empty)."
+  - "Missing Antigravity/Grok implementation reports = unverified."
+  - "Synthetic data cannot establish scientific PASS."
+  - "Proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation."
+merger_instruction: do_not_merge
+
+contributions:
+  - id: nts-pr-205
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Open-source trend scout + integration opportunity registry v1"
+    section: MERGED
+    baseline_commit: a7aeb63fdd83925b1cd9a9139d8b6481fe693983
+    branch: claude/consciousness-transitions-tests-ggx7ph
+    agent: claude
+    role: unknown
+    work_order: null
+    final_commit: 351c8c31f8d2bc28dae908a7c3cb2f6f7cf63f52
+    pr_number: 205
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/205
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 24
+    additions: 3950
+    deletions: 0
+    changed_file_summary:
+      - oss_opportunities/*
+      - docs/oss_opportunity_pipeline.md
+      - docs/dataset_opportunity_pipeline.md
+      - docs/external_tool_integration_strategy.md
+      - tests/test_oss_*.py
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Merge commit 62637a4b is the live origin/main tip as of this snapshot."
+      - "Branch name is a reused Claude lane; it does not describe the PR contents."
+      - "Merged engineering registry only; not scientific evidence."
+
+  - id: nts-pr-189
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Evidence Report Generator v1 (reports/): deterministic EvidenceBundle -> human-readable report"
+    section: MERGED
+    baseline_commit: 2cd7ee0919ee760cc0ab17b3167ef212e69be5e0
+    branch: claude/consciousness-transitions-tests-ggx7ph
+    agent: claude
+    role: unknown
+    work_order: null
+    final_commit: ff3e71272ff5ea720db1082bbaac11a258ecb977
+    pr_number: 189
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/189
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 17
+    additions: 1991
+    deletions: 3
+    changed_file_summary:
+      - reports/*
+      - docs/evidence_report_generator.md
+      - tests/test_evidence_report*.py
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Already on main. A report generator is not an empirical result."
+      - "Reused Claude branch name; do not infer topic from the branch string."
+
+  - id: nts-pr-188
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Add evidence/ governed evidence bundle layer linking registry, transitions, phase-space"
+    section: MERGED
+    baseline_commit: a7f88f9b04956a8a9b0969813c504cb214a2d5f1
+    branch: claude/consciousness-transitions-tests-ggx7ph
+    agent: claude
+    role: unknown
+    work_order: null
+    final_commit: 619d9aa058f573ea5e1f15544d1b3aa2a9ec2fb3
+    pr_number: 188
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/188
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 16
+    additions: 2330
+    deletions: 4
+    changed_file_summary:
+      - evidence/*
+      - docs/governed_evidence_bundles.md
+      - tests/test_evidence_*.py
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "On-main docs state a governed EvidenceBundle is not a theory result."
+      - "This landed layer is substrate for a later compiler; it is not this Lead pack."
+
+  - id: nts-pr-184
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Harden disorder-averaged collective mode campaigns"
+    section: MERGED
+    baseline_commit: 4ed8a1bf0315c3fb4bd9b6b25b1a97f6b149859b
+    branch: codex/disorder-averaged-collective-modes
+    agent: codex
+    role: unknown
+    work_order: null
+    final_commit: abba063fddffb4a6cbabefe3f8dd2816863a6d8e
+    pr_number: 184
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/184
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 8
+    additions: 538
+    deletions: 8
+    changed_file_summary:
+      - scripts/run_disorder_averaged_collective_modes.py
+      - tests/test_disorder_averaged_collective_modes.py
+      - physics/open_quantum/lindblad_lattice.py
+      - theory_campaign/core.py
+      - theory_campaign/memory.py
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Merged 2026-08-04 as merge commit 1031a939."
+      - "Remote branch name still exists at the same tip; see nts-blocked-disorder-modes-leftover-abba063."
+      - "Synthetic lattice campaign is not empirical biology."
+
+  - id: nts-pr-206
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Add Cloud Agent dev environment config for both Python subsystems"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: cursor/setup-dev-environment-52dc
+    agent: cursor
+    role: unknown
+    work_order: null
+    final_commit: 52118e741a20897e7f28a41cf7491d2af0d73107
+    pr_number: 206
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/206
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 2
+    additions: 58
+    deletions: 0
+    changed_file_summary:
+      - .cursor/environment.json
+      - .cursor/install.sh
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      core-tests_log_note: "Errno 28 No space left on device during pip install (job 101243532368)."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Author-claimed local validation numbers in the PR body were not re-run."
+      - "Environment config only; not scientific evidence."
+
+  - id: nts-pr-207
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "perf(pitnn): buffer-reuse Lindblad RK4 propagation (bit-identical)"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: cursor/pitnn-perf-opt-52dc
+    agent: cursor
+    role: unknown
+    work_order: null
+    final_commit: a0038fd0fe368fbb2f22b5b93104736bccbe9c6e
+    pr_number: 207
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/207
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 1
+    additions: 67
+    deletions: 9
+    changed_file_summary:
+      - sim/pitnn/tryptophan_lindblad.py
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Author-claimed bit-identity and speedup numbers were not independently re-measured."
+      - "Performance change is not a scientific PASS."
+      - "File overlap risk with later PITNN work is limited to tryptophan_lindblad.py vs kernels_fast.py on #211."
+
+  - id: nts-pr-208
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Add optional RunRecordV1 sidecar for disorder-averaged collective modes"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: cursor/disorder-modes-runrecord-sidecar-v1-04d8
+    agent: cursor
+    role: unknown
+    work_order: NTS-SLICE-A-RUNRECORD-SIDECAR-01
+    final_commit: 5c2bfe045158cf788a658cda6f43121e91e053c7
+    pr_number: 208
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/208
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 4
+    additions: 416
+    deletions: 5
+    changed_file_summary:
+      - contracts/campaign/disorder_averaged_collective_modes_run_record.contract.json
+      - docs/mode_contracts.md
+      - scripts/run_disorder_averaged_collective_modes.py
+      - tests/test_disorder_averaged_collective_modes.py
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      core-tests_log_note: "Errno 28 No space left on device during pip install (job 101252966226)."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "NOT merged. Draft PR only."
+      - "Work order and BASE/FINAL commit strings were copied from the PR body and match GitHub commits."
+      - "Author text reserves PASS for Bayes factor K > 100; this campaign does not compute K."
+      - "Synthetic lattice sidecar is not empirical biology."
+      - "Author-claimed 33 passed pytest was not re-run here."
+
+  - id: nts-pr-209
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Phase 1–5: retrofit inventory scanner, registry, validators, reports, and CLI"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: grok-bot/retrofit-inventory
+    agent: grok-bot
+    role: multi_phase_inventory
+    work_order: null
+    final_commit: 3a3cf3dfd60416876914bb90f8604ab9e9e8d360
+    pr_number: 209
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/209
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 32
+    additions: 5884
+    deletions: 0
+    changed_file_summary:
+      - tools/retrofit_inventory/*
+      - scripts/build_retrofit_inventory.py
+      - configs/retrofit_inventory/*
+      - docs/retrofit_inventory_cli.md
+      - docs/retrofit_inventory_report.md
+      - tests/retrofit_inventory/*
+    github_checks:
+      awareness-tests: FAILURE
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      log_note: "Jobs completed in ~3s with empty steps; failure cause unread."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "NOT merged. Draft PR only."
+      - "Author text: inventory is not scientific evidence; reports never emit scientific PASS."
+      - "No Grok implementation report located."
+      - "CI logs were empty; do not classify as pytest regression or disk-full from this snapshot."
+
+  - id: nts-pr-210
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Ecosystem integration scaffold: bridge, assembler, tests, docs"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: claude/ecosystem-integration
+    agent: claude
+    role: integration_scaffold
+    work_order: null
+    final_commit: 2d46f863bfcc142de34dd052719be5d838ec42a1
+    pr_number: 210
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/210
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 19
+    additions: 2273
+    deletions: 0
+    changed_file_summary:
+      - tools/integration_bridge/*
+      - scripts/assemble_ecosystem_run.py
+      - configs/integration/dependency_matrix.yaml
+      - docs/integration_acceptance.md
+      - tests/integration/*
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      core-tests_log_note: "Errno 28 No space left on device during pip install (job 101412547695)."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "NOT MERGED. Independently verified open draft; mergedAt is null."
+      - "PR body claimed seven dependency branches were absent at 2026-09-06T02:10Z. Those branches exist in this later snapshot."
+      - "Scaffold does not consume interop, falsification, streaming, isolation, or retrofit branches."
+      - "Author-claimed 67 passed integration tests were not re-run."
+
+  - id: nts-pr-211
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "perf: bounded streaming utilities + allocation-reduced PITNN NumPy kernel"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: cursor/streaming-performance-benchmarks
+    agent: cursor
+    role: unknown
+    work_order: null
+    final_commit: 54c246943e7c3ba8171066eec24c67a1408b2956
+    pr_number: 211
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/211
+    merge_status: draft
+    is_draft: true
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 8
+    additions: 1117
+    deletions: 7
+    changed_file_summary:
+      - tools/streaming/bounded.py
+      - tools/streaming/__init__.py
+      - sim/pitnn/kernels_fast.py
+      - scripts/benchmark_streaming_pipeline.py
+      - docs/performance_benchmarking.md
+      - tests/performance/*
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      core-tests_log_note: "Errno 28 No space left on device during pip install (job 101412998793)."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "NOT MERGED. Independently verified open draft; mergedAt is null."
+      - "Author-claimed 32/34/17 pytest counts and VM benchmark timings were not re-run."
+      - "PR body states the benchmark workload is a performance stand-in, not a scientific computation."
+      - "Synthetic fixtures cannot establish scientific PASS."
+
+  - id: nts-pr-212
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Add native signal interoperability contracts"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: codex/interop-signal-contracts
+    agent: codex
+    role: unknown
+    work_order: null
+    final_commit: a21dcb2461cdf94da0b41a684a2ac1353153ab35
+    pr_number: 212
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/212
+    merge_status: open
+    is_draft: false
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 6
+    additions: 992
+    deletions: 0
+    changed_file_summary:
+      - docs/signal_interop_contract.md
+      - shared/interop/__init__.py
+      - shared/interop/adapter_registry.py
+      - shared/interop/contracts.py
+      - tests/interop/test_contracts.py
+      - tests/interop/test_registry.py
+    github_checks:
+      awareness-tests: SUCCESS
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      core-tests_log_note: "Errno 28 No space left on device during pip install (job 101413702579)."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "NOT MERGED. Independently verified open (not draft); mergedAt is null."
+      - "Author-claimed pytest/governance commands were not re-run."
+      - "Contracts and synthetic-data boundary docs are not empirical results."
+
+  - id: nts-pr-213
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "feat(test-isolation): add dependency profiles, hardened isolated runner, markers, and CI contracts"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: antigravity/test-isolation-dependency-profiles
+    agent: antigravity
+    role: unknown
+    work_order: null
+    final_commit: f23c7ef74b133d65c355d7c4e7778d63a08cc8eb
+    pr_number: 213
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/213
+    merge_status: open
+    is_draft: false
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 17
+    additions: 1142
+    deletions: 213
+    changed_file_summary:
+      - .github/workflows/ci.yml
+      - .github/workflows/required-checks.yml
+      - requirements*.txt
+      - scripts/run_tests_isolated.py
+      - conftest.py
+      - pytest.ini
+      - Makefile
+      - docs/test_execution_contract.md
+      - tests/runner/*
+    github_checks:
+      awareness-tests: FAILURE
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      DS005620_E2E_Mock_Run: FAILURE
+      docker_images: FAILURE
+      log_note: "Jobs completed in ~2-6s with empty steps; failure cause unread."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "NOT merged."
+      - "No Antigravity implementation report located; treat implementation quality as unverified."
+      - "Touches CI and requirements; Lead did not review or edit those files."
+      - "Author-claimed architecture text is not compiled evidence."
+
+  - id: nts-pr-214
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "feat(eeg): memory-bounded provenance-rich streaming pipeline and preprocessing"
+    section: OPEN/DRAFT
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: antigravity/mne-scipy-streaming-eeg
+    agent: antigravity
+    role: unknown
+    work_order: null
+    final_commit: 8aed328fa23af07737882566d6b60aaca74ac4fb
+    pr_number: 214
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/214
+    merge_status: open
+    is_draft: false
+    mergeable: MERGEABLE
+    merge_state_status: UNSTABLE
+    changed_file_count: 8
+    additions: 1318
+    deletions: 14
+    changed_file_summary:
+      - docs/eeg_streaming_adapter.md
+      - sciencer_d/btc_icft/io/eeg_mne_adapter.py
+      - sciencer_d/btc_icft/io/eeg_readers.py
+      - tests/eeg/*
+      - validation/analytic_phase.py
+    github_checks:
+      awareness-tests: FAILURE
+      core-tests: FAILURE
+      ontology-claim-language: FAILURE
+      Cross-system smoke: FAILURE
+      DS005620_E2E_Mock_Run: FAILURE
+      log_note: "Jobs completed in ~3s with empty steps; failure cause unread."
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "NOT merged."
+      - "No Antigravity implementation report located; treat implementation quality as unverified."
+      - "Streaming/preprocessing code is not an empirical PASS."
+      - "Lead did not execute EEG tests or inspect a dirty checkout."
+
+  - id: nts-branch-scientific-falsification-contract
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Harden scientific falsification contracts"
+    section: BRANCH_ONLY
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: codex/scientific-falsification-contract
+    agent: codex
+    role: unknown
+    work_order: null
+    final_commit: 111d4fc008a1cf967243631367104e0561014e4a
+    pr_number: null
+    pr_url: null
+    merge_status: branch_only
+    is_draft: null
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 7
+    additions: 1427
+    deletions: 117
+    changed_file_summary:
+      - analysis/connectivity_topology.py
+      - docs/scientific_falsification_contract.md
+      - sim/pitnn/bayesian_falsification.py
+      - tests/science_contracts/test_bayesian_contract.py
+      - tests/science_contracts/test_topology_contract.py
+      - topo_monitor/graph_persistence.py
+      - topo_monitor/spatial_phase.py
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "No PR found (gh pr list --head codex/scientific-falsification-contract returned [])."
+      - "Branch is ahead of main by 1 commit; not merged."
+      - "Lead read the added contract doc via GitHub Contents API; that is not scientific validation."
+      - "On-main bayes_factor remains a proxy until a formal likelihood path is merged and validated."
+      - "Do not cite this branch as a landed contract."
+
+  - id: nts-branch-grok-tool-admission-research
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Tool-admission governance registry and research notes"
+    section: BRANCH_ONLY
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: grok/tool-admission-research
+    agent: grok
+    role: research
+    work_order: null
+    final_commit: 1dac04d62912bcb32245cfad20315d3363b41220
+    pr_number: null
+    pr_url: null
+    merge_status: branch_only
+    is_draft: null
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 23
+    additions: 923
+    deletions: 0
+    changed_file_summary:
+      - configs/tool_admission/*
+      - docs/external_tool_review/*
+      - docs/research_tooling_matrix.md
+      - tests/tool_admission/*
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "No PR found (gh pr list --head grok/tool-admission-research returned [])."
+      - "No Grok implementation report located."
+      - "A tool catalog is not an admission decision and not scientific evidence."
+
+  - id: nts-blocked-disorder-modes-leftover-abba063
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Leftover remote tip of already-merged disorder-modes branch"
+    section: BLOCKED
+    baseline_commit: 4ed8a1bf0315c3fb4bd9b6b25b1a97f6b149859b
+    branch: codex/disorder-averaged-collective-modes
+    agent: codex
+    role: unknown
+    work_order: null
+    final_commit: abba063fddffb4a6cbabefe3f8dd2816863a6d8e
+    pr_number: 184
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/184
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: 8
+    additions: 538
+    deletions: 8
+    changed_file_summary:
+      - "Same file set as nts-pr-184; leftover remote was not deleted after merge."
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "Caller forbade touching dirty primary checkout / this branch / abba063."
+      - "Lead used GitHub compare only; no local dirty tree was inspected."
+      - "GitHub compare vs current main reports diverged (ahead 1 / behind 51) because main moved after the merge."
+      - "New sidecar work is nts-pr-208, not this leftover tip."
+
+  - id: nts-unverified-antigravity-implementation-reports
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Missing Antigravity implementation reports"
+    section: UNVERIFIED
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: null
+    agent: antigravity
+    role: unknown
+    work_order: null
+    final_commit: null
+    pr_number: null
+    pr_url: null
+    merge_status: unverified
+    is_draft: null
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: null
+    additions: null
+    deletions: null
+    changed_file_summary: []
+    github_checks: null
+    verification_status:
+      existence: missing
+      merge_status: not_applicable
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "gh search issues and PR search found no Antigravity implementation report."
+      - "PRs #213 and #214 exist; reports do not."
+      - "Missing reports = unverified. Do not infer quality from branch presence."
+
+  - id: nts-unverified-grok-implementation-reports
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "Missing Grok / grok-bot implementation reports"
+    section: UNVERIFIED
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: null
+    agent: grok
+    role: unknown
+    work_order: null
+    final_commit: null
+    pr_number: null
+    pr_url: null
+    merge_status: unverified
+    is_draft: null
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: null
+    additions: null
+    deletions: null
+    changed_file_summary: []
+    github_checks: null
+    verification_status:
+      existence: missing
+      merge_status: not_applicable
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: missing
+    evidence_source: github_api
+    limitations:
+      - "gh search issues and PR search found no Grok implementation report."
+      - "Applies to grok/tool-admission-research and PR #209."
+      - "Missing reports = unverified."
+
+  - id: nts-unverified-proxy-bayesian-likelihood
+    repository: https://github.com/ChristianV997/NeuroTopology-Sim
+    title: "On-main Bayes factor is a proxy; formal likelihood unvalidated"
+    section: UNVERIFIED
+    baseline_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    branch: main
+    agent: null
+    role: unknown
+    work_order: null
+    final_commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25
+    pr_number: null
+    pr_url: null
+    merge_status: merged
+    is_draft: false
+    mergeable: null
+    merge_state_status: null
+    changed_file_count: null
+    additions: null
+    deletions: null
+    changed_file_summary:
+      - sim/pitnn/bayesian_falsification.py
+      - docs/empirical_falsification_phase1.md
+    github_checks: null
+    verification_status:
+      existence: verified
+      merge_status: verified
+      scientific_pass: not_claimed
+      author_test_results: unverified
+      implementation_report: not_located
+    evidence_source: github_api
+    limitations:
+      - "On-main comment: descriptive Bayes-factor proxy; Gaussian residual likelihood ratio; no prior-sensitive claim."
+      - "Requires correction / formal likelihood validation before strong empirical interpretation."
+      - "Synthetic fixtures on this path cannot establish scientific PASS."
+      - "Unmerged scientific-falsification-contract branch is not a substitute validation."
