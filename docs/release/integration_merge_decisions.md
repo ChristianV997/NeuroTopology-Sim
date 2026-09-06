@@ -89,3 +89,9 @@ Additional entries are appended after each logical merge group and final validat
 - Merged PR #211, then the stacked PR #215 after #211's exact head was present.
 - Kept the allocation-reduced PITNN kernel and bounded streaming utilities; added process RSS telemetry without changing solver or signal semantics.
 - Validation: performance/streaming suite passed (46 tests after #215), governance passed, and affected modules compiled.
+
+### 2026-09-06 — signal interoperability and EEG group
+
+- Merged PR #212 before stacked PR #220, preserving the contract/adapter ownership boundary and lazy optional dependency behavior.
+- Merged PR #214 after the interoperability contract was present; its MNE/SciPy streaming path remains provenance-rich, memory-bounded, and offline by default.
+- Validation: 28 interoperability/adapter tests and 39 EEG tests passed; governance and compilation passed. No optional network, MNE download, solver, AWS, or QPU execution was performed.
