@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Phase 5 Integration CLI: write the offline retrofit inventory report bundle.
 
 Calls ``tools.retrofit_inventory.reporting.build_report_bundle``. Does not
@@ -14,15 +13,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PACKAGE_ROOT = _SCRIPT_DIR.parent
 if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 
-from tools.retrofit_inventory.reporting import (  # noqa: E402
+from tools.retrofit_inventory.reporting import (
     DEFAULT_OUTPUT_RELATIVE,
     REPORT_FILENAMES,
     STATUS_ERROR,
@@ -60,7 +59,7 @@ def resolve_repo_root(raw: str) -> Path:
     return resolved
 
 
-def resolve_output_dir(raw: Optional[str], repo_root: Path) -> Path:
+def resolve_output_dir(raw: str | None, repo_root: Path) -> Path:
     """Resolve ``--output-dir`` so it stays under ``repo_root``.
 
     Policy (documented in ``docs/retrofit_inventory_cli.md``):
@@ -158,7 +157,7 @@ def _exit_for_status(status: str) -> int:
     return EXIT_ERROR
 
 
-def run(argv: Optional[Sequence[str]] = None) -> int:
+def run(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(list(argv) if argv is not None else None)
@@ -199,7 +198,7 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
     return _exit_for_status(str(bundle.get("status", STATUS_ERROR)))
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     return run(argv)
 
 
