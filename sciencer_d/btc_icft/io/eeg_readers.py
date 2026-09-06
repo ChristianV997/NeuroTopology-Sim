@@ -20,7 +20,7 @@ from typing import Optional
 import importlib.util
 
 SUPPORTED_FIXTURE_EXTENSIONS = {".txt", ".csv", ".tsv"}
-KNOWN_EEG_EXTENSIONS = {".edf", ".bdf", ".set", ".vhdr", ".fif", ".eeg"}
+KNOWN_EEG_EXTENSIONS = {".edf", ".bdf", ".gdf", ".set", ".vhdr", ".fif", ".fif.gz", ".eeg", ".cnt"}
 
 
 @dataclass
@@ -79,7 +79,7 @@ def get_reader_capabilities() -> dict[str, EEGReaderCapability]:
         ),
         "optional_mne": EEGReaderCapability(
             adapter_name="optional_mne",
-            supported_extensions=[".edf", ".bdf", ".set", ".vhdr", ".fif"],
+            supported_extensions=[".edf", ".bdf", ".gdf", ".set", ".vhdr", ".fif", ".fif.gz", ".cnt"],
             dependency_required="mne",
             dependency_available=mne_available,
             status="available" if mne_available else "dependency_not_installed",
@@ -150,10 +150,14 @@ def _try_read_mne(path: Path) -> tuple[bool, Optional[int], Optional[float], lis
             raw = mne.io.read_raw_edf(str(path), preload=False, verbose="ERROR")
         elif suffix.endswith(".bdf"):
             raw = mne.io.read_raw_bdf(str(path), preload=False, verbose="ERROR")
+        elif suffix.endswith(".gdf"):
+            raw = mne.io.read_raw_gdf(str(path), preload=False, verbose="ERROR")
         elif suffix.endswith(".set"):
             raw = mne.io.read_raw_eeglab(str(path), preload=False, verbose="ERROR")
         elif suffix.endswith(".vhdr"):
             raw = mne.io.read_raw_brainvision(str(path), preload=False, verbose="ERROR")
+        elif suffix.endswith(".cnt"):
+            raw = mne.io.read_raw_cnt(str(path), preload=False, verbose="ERROR")
 
         if raw is None:
             return False, None, None, ["Unsupported format or unable to load"]
@@ -177,7 +181,11 @@ def inspect_eeg_file(path: str) -> EEGFileReadability:
         EEGFileReadability with inspection results.
     """
     p = Path(path)
-    ext = p.suffix.lower()
+    name_lower = p.name.lower()
+    if name_lower.endswith(".fif.gz"):
+        ext = ".fif.gz"
+    else:
+        ext = p.suffix.lower()
     result = EEGFileReadability(
         path=str(p),
         extension=ext,

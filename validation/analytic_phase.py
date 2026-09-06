@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
 import numpy as np
-from scipy.signal import butter, hilbert, sosfiltfilt
+from scipy.signal import butter, filtfilt, hilbert, iirnotch, sosfiltfilt
 
 from core.topology import (
     compute_Qabs_slice,
@@ -310,4 +310,318 @@ def phase_grid_topology_metrics(theta2d: np.ndarray) -> Dict[str, float]:
         "phase_grad": phase_grad,
         "f_dress": f_dress,
         "metric_kind": "phase_grid_topology",
+    }
+
+
+def validate_signal_finite(data: np.ndarray) -> None:
+    """Validate that signal data contains strictly finite numeric values.
+
+    Raises
+    ------
+    ValueError
+        If any NaN or Inf value is encountered.
+    """
+    arr = np.asarray(data)
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("Input signal contains non-finite values (NaN or Inf).")
+
+
+def zscore_normalize(
+    data: np.ndarray,
+    axis: int = -1,
+    eps: float = 1e-12,
+) -> Tuple[np.ndarray, Dict[str, object]]:
+    """Per-channel z-score normalization across samples.
+
+    Parameters
+    ----------
+    data : ndarray
+        Input signal, shape (n_channels, n_samples).
+    axis : int
+        Axis along which to normalize (default: -1, over samples).
+    eps : float
+        Numerical epsilon to avoid division by zero.
+
+    Returns
+    -------
+    normalized : ndarray
+    stats : dict
+        Dict with mean and std vectors.
+    """
+    arr = np.asarray(data, dtype=float)
+    validate_signal_finite(arr)
+    mean = np.mean(arr, axis=axis, keepdims=True)
+    std = np.std(arr, axis=axis, keepdims=True)
+    normalized = (arr - mean) / (std + eps)
+    return normalized, {
+        "means": mean.squeeze().tolist(),
+        "stds": std.squeeze().tolist(),
+        "eps": eps,
+        "axis": axis,
+    }
+
+
+def notch_filter(
+    data: np.ndarray,
+    sfreq: float,
+    freq_hz: float = 50.0,
+    q: float = 30.0,
+) -> Tuple[np.ndarray, Dict[str, float]]:
+    """Zero-phase IIR notch filter for powerline noise removal.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_samples)
+    sfreq : float
+        Sampling frequency in Hz.
+    freq_hz : float
+        Center frequency of notch (e.g. 50.0 or 60.0 Hz).
+    q : float
+        Quality factor.
+
+    Returns
+    -------
+    filtered : ndarray
+    metadata : dict
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"data must be 2D (channels x samples), got shape {arr.shape}")
+    validate_signal_finite(arr)
+
+    nyq = sfreq / 2.0
+    if freq_hz <= 0 or freq_hz >= nyq:
+        raise ValueError(f"notch freq ({freq_hz} Hz) must be strictly between 0 and Nyquist ({nyq} Hz).")
+
+    b, a = iirnotch(freq_hz, q, fs=sfreq)
+    filtered = filtfilt(b, a, arr, axis=-1)
+    return filtered, {
+        "notch_freq_hz": float(freq_hz),
+        "q": float(q),
+        "sfreq_hz": float(sfreq),
+    }
+
+
+def bandpass_filter_sos(
+    data: np.ndarray,
+    sfreq: float,
+    low_hz: float,
+    high_hz: float,
+    order: int = 4,
+) -> Tuple[np.ndarray, Dict[str, float]]:
+    """Zero-phase Butterworth bandpass filter using Second-Order Sections (SOS).
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_samples)
+    sfreq : float
+        Sampling frequency in Hz.
+    low_hz, high_hz : float
+        Passband frequency boundaries in Hz.
+    order : int
+        Filter order.
+
+    Returns
+    -------
+    filtered : ndarray
+    metadata : dict
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"data must be 2D (channels x samples), got shape {arr.shape}")
+    validate_signal_finite(arr)
+    _validate_band(low_hz, high_hz, sfreq)
+
+    nyq = sfreq / 2.0
+    sos = butter(order, [low_hz / nyq, high_hz / nyq], btype="band", output="sos")
+    filtered = sosfiltfilt(sos, arr, axis=-1)
+    return filtered, {
+        "low_hz": float(low_hz),
+        "high_hz": float(high_hz),
+        "order": int(order),
+        "sfreq_hz": float(sfreq),
+    }
+
+
+def compute_analytic_signal(
+    data: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, str]]:
+    """Compute Hilbert transform analytic phase and amplitude envelope.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_samples)
+
+    Returns
+    -------
+    phase : ndarray, values in (-pi, pi]
+    amplitude : ndarray, non-negative instantaneous amplitude
+    metadata : dict
+    """
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"data must be 2D (channels x samples), got shape {arr.shape}")
+    validate_signal_finite(arr)
+
+    analytic = hilbert(arr, axis=-1)
+    phase = np.angle(analytic)
+    amplitude = np.abs(analytic)
+    return phase, amplitude, {
+        "transform": "hilbert",
+        "phase_range": "(-pi, pi]",
+        "axis": "-1",
+    }
+
+
+def amplitude_validity_mask(
+    amplitude: np.ndarray,
+    min_amplitude_quantile: float = 0.05,
+    abs_min_threshold: float = 1e-12,
+) -> np.ndarray:
+    """Compute a boolean validity mask identifying samples above the noise floor.
+
+    Parameters
+    ----------
+    amplitude : ndarray, shape (n_channels, n_samples)
+    min_amplitude_quantile : float
+        Quantile threshold below which samples are flagged as invalid (e.g. flatline/dropout).
+    abs_min_threshold : float
+        Absolute minimum threshold.
+
+    Returns
+    -------
+    mask : ndarray of bool, shape (n_channels, n_samples)
+        True where amplitude is valid, False where below noise/drop floor.
+    """
+    arr = np.asarray(amplitude, dtype=float)
+    validate_signal_finite(arr)
+    if arr.size == 0:
+        return np.ones_like(arr, dtype=bool)
+
+    q_val = float(np.quantile(arr, min_amplitude_quantile))
+    thresh = max(abs_min_threshold, q_val)
+    return arr >= thresh
+
+
+def apply_boundary_taper(
+    data: np.ndarray,
+    taper_fraction: float = 0.05,
+) -> np.ndarray:
+    """Apply a smooth Tukey/cosine boundary taper to minimize filter transients.
+
+    Parameters
+    ----------
+    data : ndarray, shape (..., n_samples)
+    taper_fraction : float
+        Fraction of samples at each edge to taper (between 0.0 and 0.5).
+
+    Returns
+    -------
+    tapered : ndarray
+    """
+    arr = np.asarray(data, dtype=float).copy()
+    n_samples = arr.shape[-1]
+    if n_samples < 4 or taper_fraction <= 0.0:
+        return arr
+
+    taper_len = int(round(n_samples * min(0.5, taper_fraction)))
+    if taper_len < 1:
+        return arr
+
+    window = 0.5 * (1.0 - np.cos(np.pi * np.arange(taper_len) / taper_len))
+    arr[..., :taper_len] *= window
+    arr[..., -taper_len:] *= window[::-1]
+    return arr
+
+
+def preprocess_signal_pipeline(
+    data: np.ndarray,
+    sfreq: float,
+    low_hz: Optional[float] = None,
+    high_hz: Optional[float] = None,
+    notch_hz: Optional[float] = None,
+    zscore: bool = True,
+    order: int = 4,
+    apply_taper: bool = False,
+    min_amplitude_quantile: float = 0.05,
+) -> Dict[str, object]:
+    """Execute deterministic preprocessing pipeline on EEG/MEG signal block.
+
+    Steps applied:
+    1. Validation of finite values and shape (n_channels, n_samples).
+    2. Optional boundary cosine tapering.
+    3. Optional IIR notch filter (e.g. 50 Hz or 60 Hz).
+    4. Optional SOS Butterworth bandpass filter.
+    5. Optional per-channel z-score normalization.
+    6. Hilbert analytic phase and amplitude extraction.
+    7. Amplitude validity masking.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_samples)
+    sfreq : float
+        Sampling frequency in Hz.
+    low_hz, high_hz : float | None
+        Bandpass cutoffs in Hz. Both must be specified to apply bandpass.
+    notch_hz : float | None
+        Notch frequency in Hz. If specified, notch filter is applied.
+    zscore : bool
+        Whether to z-score normalize per channel.
+    order : int
+        Butterworth bandpass order.
+    apply_taper : bool
+        Whether to apply boundary taper before filtering.
+    min_amplitude_quantile : float
+        Quantile threshold for amplitude validity mask.
+
+    Returns
+    -------
+    dict with keys:
+        - "filtered_data": ndarray (n_channels, n_samples)
+        - "phase": ndarray (n_channels, n_samples) in (-pi, pi]
+        - "amplitude": ndarray (n_channels, n_samples)
+        - "validity_mask": ndarray (n_channels, n_samples) bool
+        - "provenance": dict detailing all applied operations
+    """
+    arr = np.asarray(data, dtype=float).copy()
+    if arr.ndim != 2:
+        raise ValueError(f"data must be 2D (channels x samples), got shape {arr.shape}")
+    validate_signal_finite(arr)
+
+    provenance: Dict[str, object] = {
+        "sfreq_hz": float(sfreq),
+        "n_channels": int(arr.shape[0]),
+        "n_samples": int(arr.shape[1]),
+        "boundary_taper_applied": bool(apply_taper),
+        "notch_filter": None,
+        "bandpass_filter": None,
+        "zscore_applied": bool(zscore),
+        "min_amplitude_quantile": float(min_amplitude_quantile),
+    }
+
+    if apply_taper:
+        arr = apply_boundary_taper(arr)
+
+    if notch_hz is not None:
+        arr, notch_meta = notch_filter(arr, sfreq=sfreq, freq_hz=notch_hz)
+        provenance["notch_filter"] = notch_meta
+
+    if low_hz is not None and high_hz is not None:
+        arr, bp_meta = bandpass_filter_sos(arr, sfreq=sfreq, low_hz=low_hz, high_hz=high_hz, order=order)
+        provenance["bandpass_filter"] = bp_meta
+
+    if zscore:
+        arr, z_meta = zscore_normalize(arr, axis=-1)
+        provenance["zscore_meta"] = z_meta
+
+    phase, amplitude, hilbert_meta = compute_analytic_signal(arr)
+    validity_mask = amplitude_validity_mask(amplitude, min_amplitude_quantile=min_amplitude_quantile)
+    provenance["hilbert_meta"] = hilbert_meta
+
+    return {
+        "filtered_data": arr,
+        "phase": phase,
+        "amplitude": amplitude,
+        "validity_mask": validity_mask,
+        "provenance": provenance,
     }

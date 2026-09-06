@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import importlib
 import importlib.util
 import json
 import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any, Iterator, Optional
 
-SUPPORTED_EXTENSIONS = {".edf", ".bdf", ".gdf", ".set", ".fdt", ".vhdr", ".vmrk", ".eeg", ".cnt", ".fif"}
+SUPPORTED_EXTENSIONS = {
+    ".edf", ".bdf", ".gdf", ".set", ".fdt",
+    ".vhdr", ".vmrk", ".eeg", ".cnt", ".fif", ".fif.gz",
+}
 BANNED_PHRASES = (
     "proves consciousness", "consciousness proven", "soul proven", "afterlife proven",
     "liberation detected", "ontology solved", "ultimate reality", "q equals self", "q equals soul",
@@ -16,6 +21,36 @@ BANNED_PHRASES = (
     "unresponsive implies unconscious", "topology proves liberation", "eeg proves consciousness",
 )
 SAFE_CLAIM = "Local EEG data were extracted through an optional MNE adapter into fixed signal windows without inferring labels or targets."
+
+
+@dataclass
+class MNESignalChunk:
+    """Descriptor and data payload for a memory-bounded streaming EEG/MEG chunk."""
+    chunk_index: int
+    chunk_start_s: float
+    chunk_end_s: float
+    sample_start: int
+    sample_end: int
+    sfreq: float
+    n_channels: int
+    n_samples: int
+    channel_names: list[str]
+    channel_types: list[str]
+    units: dict[str, str]
+    data: Any
+    annotations: list[dict]
+    source_file: str
+    source_sha256: str
+    montage_coordinates: dict[str, list[float]]
+    montage_source: str
+    unmatched_channels: list[str]
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        if hasattr(self.data, "tolist"):
+            d["data"] = self.data.tolist()
+        return d
 
 
 @dataclass
@@ -78,9 +113,125 @@ def check_mne_available() -> dict:
     return {"installed": available, "version": ver}
 
 
+def compute_file_sha256(path: str | Path, block_size: int = 65536) -> str:
+    """Compute SHA-256 checksum of a file for provenance tracking."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        while chunk := f.read(block_size):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def detect_mne_supported_file(path: str) -> dict:
-    ext = Path(path).suffix.lower()
+    p = Path(path)
+    name_lower = p.name.lower()
+    if name_lower.endswith(".fif.gz"):
+        ext = ".fif.gz"
+    else:
+        ext = p.suffix.lower()
     return {"supported": ext in SUPPORTED_EXTENSIONS, "extension": ext, "file_format": ext.lstrip(".") if ext else "unknown"}
+
+
+def resolve_montage_coordinates(
+    raw,
+    fallback_montages: tuple[str, ...] = ("standard_1020", "standard_1005"),
+) -> dict:
+    """Extract sensor coordinates from raw or resolve against standard montages.
+
+    Preserves SI units (meters) for electrode coordinates.
+    """
+    coordinates: dict[str, list[float]] = {}
+    matched: list[str] = []
+    unmatched: list[str] = []
+    warnings: list[str] = []
+    montage_source = "none"
+
+    ch_names = list(raw.ch_names)
+
+    # 1. Check if raw info already contains sensor positions
+    has_raw_coords = False
+    if hasattr(raw, "info") and "chs" in raw.info:
+        for ch_info in raw.info["chs"]:
+            name = ch_info.get("ch_name")
+            loc = ch_info.get("loc")
+            if loc is not None and len(loc) >= 3:
+                pos = [float(loc[0]), float(loc[1]), float(loc[2])]
+                if any(x != 0.0 and not math.isnan(x) for x in pos):
+                    coordinates[name] = pos
+                    matched.append(name)
+                    has_raw_coords = True
+
+    if has_raw_coords and len(matched) > 0:
+        montage_source = "raw_montage"
+        for ch in ch_names:
+            if ch not in coordinates:
+                unmatched.append(ch)
+                warnings.append(f"Channel {ch!r} missing sensor coordinates in raw montage.")
+        return {
+            "coordinates": coordinates,
+            "matched_channels": matched,
+            "unmatched_channels": unmatched,
+            "montage_source": montage_source,
+            "warnings": warnings,
+        }
+
+    # 2. Fallback to standard montages (standard_1020, standard_1005)
+    mne_mod = None
+    try:
+        mne_mod = importlib.import_module("mne")
+    except Exception:
+        pass
+
+    if mne_mod is not None and hasattr(mne_mod, "channels"):
+        for mont_name in fallback_montages:
+            try:
+                std_mont = mne_mod.channels.make_standard_montage(mont_name)
+                pos_dict = std_mont.get_positions().get("ch_pos", {})
+                norm_pos = {k.strip().upper(): (k, [float(c) for c in v]) for k, v in pos_dict.items()}
+
+                cur_coords: dict[str, list[float]] = {}
+                cur_matched: list[str] = []
+                cur_unmatched: list[str] = []
+
+                for ch in ch_names:
+                    ch_clean = ch.strip().upper()
+                    if ch_clean.startswith("EEG "):
+                        ch_clean = ch_clean[4:].strip()
+                    elif ch_clean.startswith("EEG-"):
+                        ch_clean = ch_clean[4:].strip()
+
+                    if ch_clean in norm_pos:
+                        cur_coords[ch] = norm_pos[ch_clean][1]
+                        cur_matched.append(ch)
+                    else:
+                        cur_unmatched.append(ch)
+
+                if cur_matched:
+                    coordinates = cur_coords
+                    matched = cur_matched
+                    unmatched = cur_unmatched
+                    montage_source = mont_name
+                    for un in unmatched:
+                        warnings.append(f"Channel {un!r} unmatched in standard montage {mont_name}.")
+                    break
+            except Exception as e:
+                warnings.append(f"Failed loading fallback montage {mont_name}: {e}")
+
+    if not coordinates:
+        montage_source = "none"
+        unmatched = list(ch_names)
+        warnings.append("No 3D sensor coordinates resolved from raw or standard montages.")
+
+    return {
+        "coordinates": coordinates,
+        "matched_channels": matched,
+        "unmatched_channels": unmatched,
+        "montage_source": montage_source,
+        "warnings": warnings,
+    }
 
 
 def _init_result(dataset_id: str, path: str, status: str, blockers: list[str], supported: bool, fmt: str, mne_meta: dict) -> MNESignalExtractionResult:
@@ -92,14 +243,178 @@ def _init_result(dataset_id: str, path: str, status: str, blockers: list[str], s
 
 def _load_raw(path: str):
     mne = importlib.import_module("mne")
-    ext = Path(path).suffix.lower()
-    if ext in {".edf", ".gdf"}: return mne.io.read_raw_edf(path, preload=False, verbose="ERROR")
-    if ext == ".bdf": return mne.io.read_raw_bdf(path, preload=False, verbose="ERROR")
-    if ext == ".fif": return mne.io.read_raw_fif(path, preload=False, verbose="ERROR")
-    if ext in {".set", ".fdt"}: return mne.io.read_raw_eeglab(path, preload=False, verbose="ERROR")
-    if ext in {".vhdr", ".vmrk", ".eeg"}: return mne.io.read_raw_brainvision(path, preload=False, verbose="ERROR")
-    if ext == ".cnt": return mne.io.read_raw_cnt(path, preload=False, verbose="ERROR")
-    raise ValueError("unsupported extension")
+    p = Path(path)
+    name_lower = p.name.lower()
+    if name_lower.endswith((".fif", ".fif.gz")):
+        return mne.io.read_raw_fif(path, preload=False, verbose="ERROR")
+    ext = p.suffix.lower()
+    if ext == ".edf":
+        return mne.io.read_raw_edf(path, preload=False, verbose="ERROR")
+    if ext == ".bdf":
+        return mne.io.read_raw_bdf(path, preload=False, verbose="ERROR")
+    if ext == ".gdf":
+        if hasattr(mne.io, "read_raw_gdf"):
+            return mne.io.read_raw_gdf(path, preload=False, verbose="ERROR")
+        return mne.io.read_raw_edf(path, preload=False, verbose="ERROR")
+    if ext in {".set", ".fdt"}:
+        return mne.io.read_raw_eeglab(path, preload=False, verbose="ERROR")
+    if ext in {".vhdr", ".vmrk", ".eeg"}:
+        return mne.io.read_raw_brainvision(path, preload=False, verbose="ERROR")
+    if ext == ".cnt":
+        return mne.io.read_raw_cnt(path, preload=False, verbose="ERROR")
+    raise ValueError(f"unsupported extension: {ext}")
+
+
+def iter_mne_signal_chunks(
+    path: str | Path,
+    chunk_seconds: float = 2.0,
+    picks: list[str] | None = None,
+    start_s: float | None = None,
+    stop_s: float | None = None,
+    return_dict: bool = False,
+    fallback_montages: tuple[str, ...] = ("standard_1020", "standard_1005"),
+) -> Iterator[MNESignalChunk | dict]:
+    """Stream EEG/MEG signal data chunk-by-chunk with bounded memory and provenance tracking.
+
+    Parameters
+    ----------
+    path : str | Path
+        Path to the recording file.
+    chunk_seconds : float
+        Length of each chunk in seconds (default: 2.0).
+    picks : list[str] | None
+        Channel names to pick. If None, all channels are extracted.
+    start_s : float | None
+        Start time in seconds. If None, begins at 0.0.
+    stop_s : float | None
+        Stop time in seconds. If None, streams until end of recording.
+    return_dict : bool
+        If True, yields dict; otherwise yields MNESignalChunk dataclass.
+    fallback_montages : tuple[str, ...]
+        Montages to try if raw has no sensor locations.
+
+    Yields
+    ------
+    chunk : MNESignalChunk | dict
+        Yields chunks with shape (n_channels, n_samples) and metadata.
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Recording file not found: {path}")
+
+    det = detect_mne_supported_file(str(p))
+    if not det["supported"]:
+        raise ValueError(f"Unsupported file format for MNE streaming: {det.get('extension')}")
+
+    cap = check_mne_available()
+    if not cap["installed"]:
+        raise ImportError("mne package is required for iter_mne_signal_chunks but is not installed.")
+
+    import numpy as np
+
+    source_sha256 = compute_file_sha256(p)
+    raw = _load_raw(str(p))
+
+    # Enforce memory-bounded guarantee: raw must not be preloaded
+    if getattr(raw, "preload", False) is True:
+        raw.preload = False
+
+    sfreq = float(raw.info.get("sfreq", 0.0))
+    if sfreq <= 0:
+        raise ValueError(f"Invalid sampling rate in recording: {sfreq}")
+
+    all_ch_names = list(raw.ch_names)
+    if picks is not None:
+        indices = [i for i, ch in enumerate(all_ch_names) if ch in picks]
+        if not indices:
+            raise ValueError(f"None of the requested picks {picks} were found in channels {all_ch_names}")
+        ch_names = [all_ch_names[i] for i in indices]
+    else:
+        indices = list(range(len(all_ch_names)))
+        ch_names = all_ch_names
+
+    try:
+        ch_types = [raw.get_channel_types(picks=[i])[0] for i in indices]
+    except Exception:
+        ch_types = ["eeg"] * len(indices)
+
+    units: dict[str, str] = {}
+    for ch, t in zip(ch_names, ch_types):
+        t_l = t.lower()
+        if t_l in {"eeg", "seeg", "ecog"}:
+            units[ch] = "V"
+        elif t_l == "mag":
+            units[ch] = "T"
+        elif t_l == "grad":
+            units[ch] = "T/m"
+        else:
+            units[ch] = "arbitrary"
+
+    montage_info = resolve_montage_coordinates(raw, fallback_montages=fallback_montages)
+    picked_coords = {ch: montage_info["coordinates"][ch] for ch in ch_names if ch in montage_info["coordinates"]}
+    picked_matched = [ch for ch in ch_names if ch in montage_info["matched_channels"]]
+    picked_unmatched = [ch for ch in ch_names if ch in montage_info["unmatched_channels"]]
+
+    n_total = int(raw.n_times)
+    s_start = max(0, int(round(start_s * sfreq))) if start_s is not None else 0
+    s_stop = min(n_total, int(round(stop_s * sfreq))) if stop_s is not None else n_total
+
+    if s_start >= s_stop:
+        return
+
+    chunk_samples = max(1, int(round(chunk_seconds * sfreq)))
+    chunk_idx = 0
+    curr_sample = s_start
+
+    raw_annots = getattr(raw, "annotations", None)
+
+    while curr_sample < s_stop:
+        c_end_sample = min(curr_sample + chunk_samples, s_stop)
+        c_start_s = curr_sample / sfreq
+        c_end_s = c_end_sample / sfreq
+
+        data_slice = raw.get_data(picks=indices, start=curr_sample, stop=c_end_sample)
+        data_arr = np.asarray(data_slice, dtype=float)
+
+        warnings: list[str] = list(montage_info.get("warnings", []))
+        if not np.all(np.isfinite(data_arr)):
+            warnings.append("non_finite_values_detected_in_chunk")
+            data_arr = np.nan_to_num(data_arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+        chunk_annots: list[dict] = []
+        if raw_annots is not None and len(raw_annots) > 0:
+            for annot in raw_annots:
+                onset = float(annot.get("onset", 0.0))
+                dur = float(annot.get("duration", 0.0))
+                desc = str(annot.get("description", ""))
+                if onset <= c_end_s and (onset + dur) >= c_start_s:
+                    chunk_annots.append({"onset": onset, "duration": dur, "description": desc})
+
+        chunk = MNESignalChunk(
+            chunk_index=chunk_idx,
+            chunk_start_s=c_start_s,
+            chunk_end_s=c_end_s,
+            sample_start=curr_sample,
+            sample_end=c_end_sample,
+            sfreq=sfreq,
+            n_channels=len(ch_names),
+            n_samples=data_arr.shape[1],
+            channel_names=ch_names,
+            channel_types=ch_types,
+            units=units,
+            data=data_arr,
+            annotations=chunk_annots,
+            source_file=str(p),
+            source_sha256=source_sha256,
+            montage_coordinates=picked_coords,
+            montage_source=montage_info["montage_source"],
+            unmatched_channels=picked_unmatched,
+            warnings=sorted(set(warnings)),
+        )
+
+        yield chunk.to_dict() if return_dict else chunk
+        curr_sample = c_end_sample
+        chunk_idx += 1
 
 
 def load_mne_raw_metadata(path: str) -> dict:
