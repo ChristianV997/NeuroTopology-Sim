@@ -9,6 +9,7 @@ Release may wrap ``pr_retirement_validate.py`` later; these tests own the rules.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -16,23 +17,37 @@ from pathlib import Path
 import pytest
 
 _RELEASE_DIR = Path(__file__).resolve().parent
-if str(_RELEASE_DIR) not in sys.path:
-    sys.path.insert(0, str(_RELEASE_DIR))
+_HELPER_PATH = _RELEASE_DIR / "pr_retirement_validate.py"
 
-from pr_retirement_validate import (  # noqa: E402
-    ALLOWED_PROXY_IDENTIFIERS,
-    ALLOWED_STATUS_HINTS,
-    CANONICAL_STACK_CHAINS,
-    DEFAULT_MATRIX_PATH,
-    FIXTURE_DIR,
-    ValidationResult,
-    child_before_parent_violations,
-    detect_stack_edges,
-    load_matrix,
-    validate_matrix,
-    validate_path,
-    validate_pr_retirement_matrix,
-)
+
+def _load_helper():
+    """Load the sibling helper without mutating ``sys.path``."""
+    spec = importlib.util.spec_from_file_location(
+        "nts_pr_retirement_validate",
+        _HELPER_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load helper: {_HELPER_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    # Register before exec so dataclasses can resolve the module namespace.
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_validate = _load_helper()
+ALLOWED_PROXY_IDENTIFIERS = _validate.ALLOWED_PROXY_IDENTIFIERS
+ALLOWED_STATUS_HINTS = _validate.ALLOWED_STATUS_HINTS
+CANONICAL_STACK_CHAINS = _validate.CANONICAL_STACK_CHAINS
+DEFAULT_MATRIX_PATH = _validate.DEFAULT_MATRIX_PATH
+FIXTURE_DIR = _validate.FIXTURE_DIR
+ValidationResult = _validate.ValidationResult
+child_before_parent_violations = _validate.child_before_parent_violations
+detect_stack_edges = _validate.detect_stack_edges
+load_matrix = _validate.load_matrix
+validate_matrix = _validate.validate_matrix
+validate_path = _validate.validate_path
+validate_pr_retirement_matrix = _validate.validate_pr_retirement_matrix
 
 _NEW_MODULES = (
     _RELEASE_DIR / "pr_retirement_validate.py",
