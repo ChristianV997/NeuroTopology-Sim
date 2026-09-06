@@ -198,3 +198,127 @@ These are **warnings for Research**, not executed falsification results.
 5. Hand relationship edges to QA, then Integration. Lead does not merge.
 
 **Merger: do not merge.**
+
+---
+
+## Research scientific / infra classification
+
+**Phase:** RESEARCH  
+**Classified at:** 2026-09-06  
+**Classifier:** `research_and_tooling`  
+**Base Lead commit:** `c87f97b01cf8612d65564f5fb61d345c70fe7c2a`  
+**Owned files still only:** `configs/release/pr_retirement_matrix.yaml`, this document  
+
+This section classifies every Lead inventory row (#206–#233 plus both BRANCH_ONLY remotes). It does **not** replace the Lead snapshot, change any `status_hint`, invent `DUPLICATE` / whole-PR `SUPERSEDED`, or authorize a merge.
+
+**Inventory ≠ evidence.**  
+**Scientific PASS from this pack: false.**  
+**Biological evidence from this pack: false.**  
+**Merger: do not merge. Do not mark ready. Do not close any PR.**
+
+### Lead warnings restated (still in force)
+
+1. **PRs are not merged unless GitHub says so.** Every open PR in the #206–#233 wave remains `state=OPEN` and `mergedAt=null` in the Lead snapshot this pack classifies.
+2. **CI billing failure ≠ passing tests.** `billing_not_started` jobs have empty step lists. That is not a pass.
+3. **Disk-full / install CI failure ≠ passing tests.** Verified ENOSPC on #206/#211/#212; same install-step pattern on #207/#208/#210. Pytest was skipped.
+4. **Synthetic ≠ biological evidence.** Synthetic fixtures, lattice campaigns, and performance stand-in workloads cannot establish scientific `PASS` or biological evidence.
+5. **Proxy Bayes ≠ formal Bayes factors.** On-main `bayes_factor` is a descriptive RSS / Gaussian residual likelihood-ratio proxy. Open #219 / #226 and the branch-only scientific-falsification contract do not convert that into formal K.
+6. **Inventory ≠ evidence.** This register is not a compiled evidence bundle and is not a second #216/#225 evidence authority.
+7. **#218 reconciliation metadata ≠ replacement implementation.**
+8. **Missing / unmerged adapters ≠ supported.**
+9. **Do not invent DUPLICATE or SUPERSEDED** without cited GitHub metadata, PR body, or base/head overlap.
+10. **Do not retire a stacked child before its parent.** Verified stacks: **#211 → #215 → #224 → #232**, **#212 → #220**, **#219 → #226**, **#213 → #227**.
+
+`status_hint` values remain Lead-only: `keep_open` or `needs_human_review`. Research did not change them.
+
+### Classification table (#206–#233 + BRANCH_ONLY)
+
+`scientific_pass_allowed` is **false** on every row. `biological_evidence` is **false** on every row. `empirical_claim_present` is **false** on every row.
+
+| ID | Relevance | `evidence_mode` | `changes_scientific_semantics` | Proxy flag | One-line note |
+| --- | --- | --- | --- | --- | --- |
+| #206 | tooling (+ infrastructure) | none | false | false | Env config only. Not a scientific surface. |
+| #207 | performance (+ engineering) | synthetic | false | false | Lindblad buffer reuse. Bit-identical / speedup unverified. |
+| #208 | engineering (+ scientific-adjacent) | synthetic | false | false | RunRecord sidecar; no K; SCIENTIFIC_REVIEW; not PASS. |
+| #209 | tooling (+ governance) | none | false | false | Retrofit inventory is `not_evidence`. |
+| #210 | engineering | unavailable | false | false | Scaffold ≠ integration proof. |
+| #211 | performance | synthetic | false | false | Stack root. Stand-in / tracemalloc ≠ science. |
+| #212 | interoperability (+ governance) | none | false | false | Contracts ≠ adapters supported. Parent of #220. |
+| #213 | infrastructure | none | false | false | CI profiles. Parent of #227. |
+| #214 | engineering (+ interoperability) | unavailable | false | false | EEG MNE streaming; domain-parallel to #220; not empirical PASS. |
+| #215 | performance | unavailable | false | false | STACKED on #211. RSS vs tracemalloc unverified. |
+| #216 | governance | none | false | false | Schema/compiler authority. Docs-only supersede candidate vs #225. |
+| #217 | tooling | unavailable | false | false | Registry. Continued by #223. Catalog ≠ evidence. |
+| #218 | tooling (+ governance) | none | false | false | Reconciliation metadata ≠ replacement. |
+| #219 | scientific | **proxy** | **true** | **true** | Contract language only. Proxy ≠ formal K. Not PASS. |
+| #220 | interoperability | unavailable | false | false | STACKED on #212. `adapters_supported: false`. |
+| #221 | engineering | unavailable | false | false | Legacy timeout/path repair. Not scientific PASS. |
+| #222 | infrastructure | unavailable | false | false | Parallel / diverged vs #227. Not a duplicate. |
+| #223 | tooling | unavailable | false | false | Continues #217 (ancestry). Catalog ≠ evidence. Not a duplicate. |
+| #224 | performance | synthetic | false | false | STACKED on #215. Planner estimate ≠ RSS guarantee. |
+| #225 | documentation (+ governance) | none | false | false | Docs-supersedes #216 inventory only. Schema stays on #216. |
+| #226 | scientific | **proxy** | **true** | **true** | STACKED on #219. Proxy remains proxy. Not formal K. |
+| #227 | infrastructure | unavailable | false | false | STACKED on #213, not #222. Diverged from #222. |
+| #228 | governance | none | false | false | Merge-gate policy ≠ merge action. |
+| #229 | governance (+ documentation) | none | false | false | Local-first provenance. No downloads. Not empirical PASS. |
+| #230 | governance (+ performance) | none | false | false | Related domain to #211 stack; base `main`; no file overlap. |
+| #231 | infrastructure | none | false | false | Read-only CI preflight. Does not replace #213/#222/#227. |
+| #232 | performance (+ engineering) | synthetic | false | false | STACKED on #224. Engineering replay ≠ scientific PASS. |
+| #233 | interoperability | unavailable | false | false | Conformance consumer of #212/#214/#220. Not a replacement. |
+| `codex/scientific-falsification-contract` | scientific | **proxy** | **true** | **true** | BRANCH_ONLY. Diverged vs #219. SCIENTIFIC_REVIEW_REQUIRED. No PR. |
+| `grok/tool-admission-research` | tooling | none | false | false | BRANCH_ONLY. Catalog ≠ admission ≠ evidence. |
+
+### Duplicates and supersedes
+
+**Verified duplicates: none.** `duplicate_candidates` stays empty. `research_phase.duplicate_candidates_verified` is empty.
+
+Related pairs that remain **not** `DUPLICATE`:
+
+- #214 vs #220 — `domain_parallel`, zero path overlap
+- #222 vs #227 — infrastructure-only parallel, git-diverged; #227 stacked on #213
+- #219 vs `codex/scientific-falsification-contract` — `diverged_scientific` (shared Bayesian file; other files differ)
+- #217 vs #223 — tooling continuation via ancestry, not a duplicate
+- #216 vs #225 — docs overlap only
+
+**Superseded candidates (unchanged, docs-only):** #216 inventory docs by #225. Scope is `docs/release/{README.md,agent_contribution_matrix.yaml,current_state.md}` only. Whole-PR #216 is **not** superseded. Schema / compiler / `tests/release/**` stay on #216. Do not close #216.
+
+No other SUPERSEDED label is claimed.
+
+### Stacked chains (do not retire children first)
+
+| Chain | Kind | Research overlap |
+| --- | --- | --- |
+| **#211 → #215 → #224 → #232** | performance / infrastructure stack | `infrastructure_only` |
+| **#212 → #220** | interoperability stack | scientific overlap `none`; adapters still unsupported |
+| **#219 → #226** | scientific stack | `semantic`; proxy remains proxy |
+| **#213 → #227** | CI infrastructure stack | `infrastructure_only` |
+| #217 → #223 | tooling continues (ancestry, GitHub base is `main`) | scientific overlap `none` |
+| #233 → #212 / #214 / #220 | conformance consumer | scientific overlap `none` |
+
+Retiring a child before its parent would orphan stacked GitHub bases. Research does not recommend that.
+
+### Scientific blockers (still warnings, not results)
+
+- No scientific `PASS` from this classification pack.
+- Synthetic ≠ biological evidence (#208 sidecar; #211/#215/#224/#232 performance fixtures).
+- Proxy Bayes ≠ formal Bayes factors (#219, #226, branch-only scientific-falsification-contract). `proxy_evidence_flag` is true on those three only.
+- Independently verified RSS vs tracemalloc numbers: **unavailable**.
+- Missing / unmerged adapters ≠ supported (`adapters_supported: false` on #212, #214, #220, #233).
+- #218 reconciliation report ≠ integration proof.
+- CI billing ≠ pass. Disk ENOSPC ≠ pass.
+
+### Next action (QA)
+
+Hand this matrix to QA for `tests/release/test_pr_retirement_matrix.py` **fail-closed** rules. Research did **not** create that test file or `scripts/validate_pr_retirement_matrix.py`.
+
+Suggested fail-closed checks (QA owns the implementation):
+
+- Every row #206–#233 and both BRANCH_ONLY rows have `research_classification.status: classified`.
+- `scientific_pass_allowed: false` and `biological_evidence: false` everywhere.
+- `proxy_evidence_flag: true` only on #219, #226, and the scientific-falsification branch.
+- `adapters_supported: false` on #220 (and false/null on #212/#214/#233).
+- `duplicate_candidates` empty; superseded only the docs-only #216 → #225 candidate.
+- Lead `status_hint` remains `keep_open` or `needs_human_review` only.
+- Stacked children must not be marked retire-before-parent.
+
+Integration owns any later merger recommendation. **Merger: do not merge.**

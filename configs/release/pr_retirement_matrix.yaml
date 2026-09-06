@@ -41,6 +41,29 @@ required_warnings:
   - "Missing or unmerged adapters are not supported."
   - "Do not invent DUPLICATE or SUPERSEDED without cited GitHub metadata, PR body, or base/head overlap."
 
+research_phase:
+  phase: RESEARCH
+  classified_at: "2026-09-06"
+  classifier: research_and_tooling
+  base_lead_commit: c87f97b01cf8612d65564f5fb61d345c70fe7c2a
+  inventory_is_not_evidence: true
+  scientific_pass_from_this_pack: false
+  biological_evidence_from_this_pack: false
+  duplicate_candidates_verified: []
+  superseded_candidates_verified:
+    - {scope: "#216 inventory docs only", by: 225, whole_pr: false}
+  required_warnings:
+    - "PRs are not merged unless GitHub says merged (state=OPEN and mergedAt is null). Every row in this snapshot is unmerged."
+    - "CI billing failure is not a passing test. Jobs with the payments/spending-limit annotation and empty steps are billing_not_started."
+    - "Disk-full / install CI failure is not a passing test. Sampled #206/#211/#212 logs show OSError Errno 28 during pip install; pytest was skipped."
+    - "Synthetic fixtures and performance stand-in workloads cannot establish biological evidence or scientific PASS."
+    - "Proxy Bayes (on-main bayes_factor RSS / Gaussian residual likelihood ratio) is not a formal marginal-likelihood Bayes factor."
+    - "Inventory is not evidence. This matrix is not a compiled evidence bundle."
+    - "#218 reconciliation metadata is not a replacement implementation."
+    - "Missing or unmerged adapters are not supported."
+    - "Do not invent DUPLICATE or SUPERSEDED without cited GitHub metadata, PR body, or base/head overlap."
+    - "Do not retire a stacked child before its parent. Verified stacks: #211→#215→#224→#232, #212→#220, #219→#226, #213→#227."
+
 rows:
   - id: nts-pr-206
     pr_number: 206
@@ -82,6 +105,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/52118e741a20897e7f28a41cf7491d2af0d73107"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33942874430 (core-tests job 101243532368: OSError Errno 28 during pip install)"
     notes: "Cloud Agent env config only (.cursor/environment.json, install.sh). Do not treat as scientific work. Include so the #206–#208 wave is not silently ignored."
+    research_classification:
+      status: classified
+      relevance: tooling
+      relevance_classes:
+        - tooling
+        - infrastructure
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Env config (.cursor/environment.json, install.sh) is not a scientific surface."
+        - "Disk ENOSPC on core-tests is not a test pass."
+      research_notes: "Cloud Agent environment scaffolding only. Tooling/infrastructure; no scientific semantics; evidence_mode none."
   - id: nts-pr-207
     pr_number: 207
     branch: "cursor/pitnn-perf-opt-52dc"
@@ -121,6 +161,24 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/207"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a0038fd0fe368fbb2f22b5b93104736bccbe9c6e"
     notes: "Lindblad RK4 buffer reuse in sim/pitnn/tryptophan_lindblad.py only. Different file from #211 kernels_fast.py. Author speedup table unverified. Not a scientific PASS."
+    research_classification:
+      status: classified
+      relevance: performance
+      relevance_classes:
+        - performance
+        - engineering
+      changes_scientific_semantics: false
+      evidence_mode: synthetic
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Author bit-identical / speedup table is unverified in this pack."
+        - "Synthetic/perf stand-in cannot establish biological evidence or scientific PASS."
+        - "Install-fail CI is not a test pass."
+      research_notes: "Lindblad RK4 buffer reuse is a performance/engineering change on tryptophan_lindblad.py. Bit-identical claim unverified. Semantics unchanged for PASS."
   - id: nts-pr-208
     pr_number: 208
     branch: "cursor/disorder-modes-runrecord-sidecar-v1-04d8"
@@ -160,6 +218,25 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/208"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/5c2bfe045158cf788a658cda6f43121e91e053c7"
     notes: "Opt-in RunRecordV1 sidecar for disorder-averaged collective modes. Author text: sidecar verdict NOT_SUPPORTED / INCONCLUSIVE; no K computed. Synthetic lattice ≠ biological evidence. Proxy Bayes warning applies to campaign language."
+    research_classification:
+      status: classified
+      relevance: engineering
+      relevance_classes:
+        - engineering
+        - scientific
+      changes_scientific_semantics: false
+      evidence_mode: synthetic
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Author sidecar verdict NOT_SUPPORTED / INCONCLUSIVE; no K computed."
+        - "Synthetic lattice is not biological evidence."
+        - "Campaign language may mention proxy Bayes; this pack does not treat the sidecar as proxy evidence."
+        - "SCIENTIFIC_REVIEW recommended; scientific_pass_allowed remains false."
+      research_notes: "Opt-in RunRecordV1 sidecar for disorder-averaged collective modes. Engineering with scientific-adjacent surfaces. Synthetic only; no K; proxy_evidence_flag false; not a scientific PASS."
   - id: nts-pr-209
     pr_number: 209
     branch: "grok-bot/retrofit-inventory"
@@ -199,6 +276,24 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/3a3cf3dfd60416876914bb90f8604ab9e9e8d360"
       - "check-run annotation on core-tests job 101415509541: billing/spending-limit not-started"
     notes: "Retrofit inventory Phases 1–5. Author: inventory is not scientific evidence. Grok implementation report not located. Billing-blocked CI."
+    research_classification:
+      status: classified
+      relevance: tooling
+      relevance_classes:
+        - tooling
+        - governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Author: inventory is not scientific evidence (not_evidence)."
+        - "Inventory is not a compiled evidence bundle."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Retrofit inventory scanner/registry. Tooling/governance only. Inventory is not_evidence and is not a scientific PASS."
   - id: nts-pr-210
     pr_number: 210
     branch: "claude/ecosystem-integration"
@@ -238,6 +333,21 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/210"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/2d46f863bfcc142de34dd052719be5d838ec42a1"
     notes: "Ecosystem integration scaffold. NOT MERGED. Scaffold ≠ integration proof. Disk/install pattern on started jobs."
+    research_classification:
+      status: classified
+      relevance: engineering
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Scaffold is not integration proof."
+        - "PR is not merged; independently verified integration evidence is unavailable."
+        - "Install-fail CI is not a test pass."
+      research_notes: "Ecosystem integration scaffold. Engineering only. Scaffold is not integration proof; evidence_mode unavailable."
   - id: nts-pr-211
     pr_number: 211
     branch: "cursor/streaming-performance-benchmarks"
@@ -278,6 +388,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/54c246943e7c3ba8171066eec24c67a1408b2956"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33945890473 (core-tests: OSError Errno 28 during pip install)"
     notes: "Base of the streaming performance stack. Author tracemalloc peaks are Python allocations, not process RSS. Benchmark is a performance stand-in, not a scientific computation. Independently verified process-memory numbers: unavailable."
+    research_classification:
+      status: classified
+      relevance: performance
+      changes_scientific_semantics: false
+      evidence_mode: synthetic
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Author tracemalloc peaks are Python allocations, not process RSS."
+        - "Performance stand-in workload is not a scientific computation."
+        - "Independently verified process-memory numbers: unavailable."
+        - "Disk ENOSPC is not a test pass."
+        - "Stack root: do not retire children #215/#224/#232 before this parent."
+      research_notes: "Stack root of #211 to #215 to #224 to #232. Performance stand-in / tracemalloc is not RSS and is not scientific PASS."
   - id: nts-pr-212
     pr_number: 212
     branch: "codex/interop-signal-contracts"
@@ -318,6 +445,24 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a21dcb2461cdf94da0b41a684a2ac1353153ab35"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/33945890464 (Cross-system smoke: OSError Errno 28 during pip install)"
     notes: "Interop contracts + lazy registry only. Contracts ≠ adapters supported. Parent of #220 (GitHub base)."
+    research_classification:
+      status: classified
+      relevance: interoperability
+      relevance_classes:
+        - interoperability
+        - governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: false
+      methodological_limitations:
+        - "Contracts are not adapters supported."
+        - "Missing or unmerged adapters are not supported."
+        - "Disk ENOSPC is not a test pass."
+      research_notes: "Native signal contracts plus lazy registry. Contracts are not adapters supported. Parent of #220."
   - id: nts-pr-213
     pr_number: 213
     branch: "antigravity/test-isolation-dependency-profiles"
@@ -357,6 +502,21 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/f23c7ef74b133d65c355d7c4e7778d63a08cc8eb"
       - "check-run annotation on core-tests job 101419445593: billing/spending-limit not-started"
     notes: "Dependency profiles + isolated runner + CI workflow contracts. Edits .github/workflows/ci.yml and required-checks.yml. Parent of #227 (GitHub base). File overlap with #222 (parallel from main). No Antigravity implementation report located."
+    research_classification:
+      status: classified
+      relevance: infrastructure
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "CI profile / isolated-runner edits are infrastructure, not scientific evidence."
+        - "Billing-blocked CI is not a test pass."
+        - "Parent of #227; do not retire the stacked child first."
+      research_notes: "Dependency profiles plus isolated runner plus CI contracts. Infrastructure only. Parent of #227."
   - id: nts-pr-214
     pr_number: 214
     branch: "antigravity/mne-scipy-streaming-eeg"
@@ -396,6 +556,25 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/8aed328fa23af07737882566d6b60aaca74ac4fb"
       - "check-run annotation on core-tests job 101420257614: billing/spending-limit not-started"
     notes: "BTC-ICFT MNE/SciPy streaming in sciencer_d/btc_icft/io/* plus validation/analytic_phase.py. Zero path overlap with #220 shared/interop/adapters. Related domain only. Cited as a conformance target by #233. No Antigravity implementation report located."
+    research_classification:
+      status: classified
+      relevance: engineering
+      relevance_classes:
+        - engineering
+        - interoperability
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: false
+      methodological_limitations:
+        - "Local/unknown runtime; independently verified EEG evidence is unavailable."
+        - "Zero path overlap with #220; domain-parallel only."
+        - "Not an empirical PASS and not biological evidence."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "BTC-ICFT MNE/SciPy streaming. Domain-parallel to #220 with zero path overlap. Evidence unavailable; not an empirical PASS."
   - id: nts-pr-215
     pr_number: 215
     branch: "cursor/rss-memory-telemetry"
@@ -435,6 +614,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/0dadb61b1d5de190225909ce98953e93768a4766"
       - "check-run annotation on core-tests job 101426204225: billing/spending-limit not-started"
     notes: "STACKED on #211 (GitHub baseRefOid equals #211 head; PR body: Stacked on #211). RSS vs tracemalloc must stay labeled. Author table unverified."
+    research_classification:
+      status: classified
+      relevance: performance
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "STACKED on #211; do not retire this child before the parent."
+        - "RSS versus tracemalloc must stay labeled; author table unverified."
+        - "Independently verified process-memory numbers: unavailable."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "STACKED on #211. RSS versus tracemalloc telemetry. Independently verified numbers unavailable. Not a scientific PASS."
   - id: nts-pr-216
     pr_number: 216
     branch: "grok-bot/evidence-bundle-release"
@@ -474,6 +669,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/9c862d90e1996a21e42bc84dc9d737e2d5663a25"
       - "check-run annotation on core-tests job 101441042226: billing/spending-limit not-started"
     notes: "Evidence-bundle schema/compiler/tests/release/** authority. Inventory docs overlap #225 docs/release/* only. Live head 9c862d90 is a QA schema delta after 07841284. Do not fork schema/compiler. Do not close: schema still lives here. Docs-supersede is not whole-PR retirement."
+    research_classification:
+      status: classified
+      relevance: governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "This retirement register is not a compiled evidence bundle."
+        - "Docs-only supersede by #225 does not retire schema/compiler/tests/release."
+        - "Do not close #216 while schema authority lives here."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Evidence-bundle schema/compiler authority. Inventory docs only are a docs-supersede candidate versus #225. Schema stays here. Inventory is not evidence."
   - id: nts-pr-217
     pr_number: 217
     branch: "grok/tool-registry-admission"
@@ -513,6 +724,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/ffc8f6df66f6a28d88a4ca81659e421ee767e1c4"
       - "check-run annotation on core-tests job 101426544372: billing/spending-limit not-started"
     notes: "Optional backend capability registry. Git parent of #223 content (compare #217...#223 is ahead 4 / behind 0) but #223 GitHub base is main, not this branch. Not a verified duplicate."
+    research_classification:
+      status: classified
+      relevance: tooling
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Capability registry catalog is not scientific evidence."
+        - "Independently verified admission/runtime evidence is unavailable."
+        - "Continued by #223 via git ancestry; not a verified duplicate."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Optional backend capability registry. Continued by #223 via git ancestry. Catalog is not evidence. Not a verified duplicate."
   - id: nts-pr-218
     pr_number: 218
     branch: "claude/integration-reconciliation"
@@ -552,6 +779,24 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/d8702e279356cf21847633826e1dc6217a422957"
       - "check-run annotation on core-tests job 101439523246: billing/spending-limit not-started"
     notes: "Read-only integration reconciliation tooling + snapshot fixtures. PR body: exclusive ownership of tools/integration_reconciliation/**; does not touch #210/#211/#212 implementations, Bayesian code, workflows, adapters, or dashboard. Reconciliation metadata ≠ replacement implementation."
+    research_classification:
+      status: classified
+      relevance: tooling
+      relevance_classes:
+        - tooling
+        - governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Reconciliation metadata is not a replacement implementation."
+        - "Read-only report is not integration proof."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Read-only reconciliation tooling. Metadata is not a replacement implementation and is not integration proof."
   - id: nts-pr-219
     pr_number: 219
     branch: "codex/bayes-falsification-hardening"
@@ -591,6 +836,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb"
       - "check-run annotation on core-tests job 101431055474: billing/spending-limit not-started"
     notes: "Hardens Bayesian falsification evidence contract. Related to, not duplicate of, branch-only codex/scientific-falsification-contract (git compare diverged). Proxy Bayes ≠ formal K. SCIENTIFIC_REVIEW_REQUIRED. Parent of #226."
+    research_classification:
+      status: classified
+      relevance: scientific
+      changes_scientific_semantics: true
+      evidence_mode: proxy
+      empirical_claim_present: false
+      proxy_evidence_flag: true
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Proxy Bayes (RSS / Gaussian residual likelihood ratio) is not a formal marginal-likelihood Bayes factor."
+        - "changes_scientific_semantics is true for contract language only; this is not formal K and not scientific PASS."
+        - "SCIENTIFIC_REVIEW_REQUIRED. Parent of #226; do not retire the child first."
+        - "Related to, not duplicate of, branch-only scientific-falsification-contract."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Hardens Bayesian falsification evidence contract language. Proxy Bayes is not formal K. Semantics change is contract wording only; scientific_pass_allowed false. SCIENTIFIC_REVIEW_REQUIRED."
   - id: nts-pr-220
     pr_number: 220
     branch: "antigravity/native-signal-adapters"
@@ -630,6 +892,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/5bd26dc56a84ea47ff16ab45f1bc758dab6d835c"
       - "check-run annotation on core-tests job 101431397201: billing/spending-limit not-started"
     notes: "STACKED on #212 (GitHub baseRefOid equals #212 head). Native adapters under shared/interop/adapters. Missing/unmerged adapters ≠ supported. Zero path overlap with #214."
+    research_classification:
+      status: classified
+      relevance: interoperability
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: false
+      methodological_limitations:
+        - "STACKED on #212; do not retire this child before the parent."
+        - "Missing or unmerged adapters are not supported (adapters_supported false)."
+        - "Independently verified adapter runtime evidence is unavailable."
+        - "Zero path overlap with #214."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "STACKED on #212. Native adapters under shared/interop/adapters. Unmerged adapters are not supported (adapters_supported false)."
   - id: nts-pr-221
     pr_number: 221
     branch: "antigravity/legacy-timeout-repair"
@@ -669,6 +948,20 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a9aba5158091762a97cd2edcd4c6628a8c7857b4"
       - "check-run annotation on core-tests job 101432154015: billing/spending-limit not-started"
     notes: "Legacy timeout / path validation repairs. No Antigravity implementation report located. Not a scientific PASS."
+    research_classification:
+      status: classified
+      relevance: engineering
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Legacy timeout / path repairs are not a scientific PASS."
+        - "Independently verified test-green evidence is unavailable (billing not-started)."
+      research_notes: "Legacy timeout / path validation repairs. Engineering only. Not a scientific PASS."
   - id: nts-pr-222
     pr_number: 222
     branch: "codex/ci-root-cause-and-green"
@@ -708,6 +1001,21 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/14bce7f7fadc10e1a57c21c505cde4294e04127a"
       - "check-run annotation on core-tests job 101432887520: billing/spending-limit not-started"
     notes: "CI bootstrap / isolated-runner repair from main. Parallel to #227 (stacked on #213). Six workflow files overlap #227. Git compare #222...#227 is diverged. Not a verified duplicate. Author-claimed 117 tests unverified on GitHub Actions (billing not-started)."
+    research_classification:
+      status: classified
+      relevance: infrastructure
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Parallel and diverged versus #227 (which is stacked on #213, not this PR)."
+        - "Workflow overlap is a merge-conflict risk, not a verified duplicate."
+        - "Author-claimed 117 tests unverified; billing not-started is not a pass."
+      research_notes: "CI bootstrap / isolated-runner repair from main. Parallel and diverged versus #227. Not a verified duplicate."
   - id: nts-pr-223
     pr_number: 223
     branch: "grok/tool-capability-snapshot"
@@ -747,6 +1055,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/e0e616189a57570b090b0e535911e3eef583aa36"
       - "check-run annotation on core-tests job 101438761057: billing/spending-limit not-started"
     notes: "PR body: continues #217 instead of duplicating. GitHub base is main (not stacked in GitHub metadata). Git compare from #217 tip is ahead 4 / behind 0 with only snapshot files unique. File-list overlap vs main is expected because the branch contains #217 commits."
+    research_classification:
+      status: classified
+      relevance: tooling
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Continues #217 via git ancestry; GitHub base is main, not a verified duplicate."
+        - "Capability catalog / snapshot is not scientific evidence."
+        - "Independently verified admission/runtime evidence is unavailable."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Capability snapshot sidecar continuing #217 via ancestry, not GitHub-base stack. Catalog is not evidence. Not a verified duplicate."
   - id: nts-pr-224
     pr_number: 224
     branch: "cursor/adaptive-streaming-budget"
@@ -786,6 +1110,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/507625f1bf876b530f62a207670a31fec9902ee7"
       - "check-run annotation on core-tests job 101438916591: billing/spending-limit not-started"
     notes: "STACKED on #215 (GitHub baseRefOid equals #215 head; body: stacked on #215 which is stacked on #211). Adaptive chunk planner. Estimate ≠ process RSS guarantee."
+    research_classification:
+      status: classified
+      relevance: performance
+      changes_scientific_semantics: false
+      evidence_mode: synthetic
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "STACKED on #215 (itself stacked on #211); do not retire this child before its parents."
+        - "Planner estimate is not a process RSS guarantee."
+        - "Independently verified RSS numbers: unavailable."
+        - "Synthetic/planner stand-in is not scientific PASS."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "STACKED on #215. Adaptive chunk planner. Estimate is not an RSS guarantee. Semantics false for PASS; evidence is synthetic/unavailable."
   - id: nts-pr-225
     pr_number: 225
     branch: "cursor/release-evidence-compilation-9077"
@@ -825,6 +1166,26 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a3f7e7e8024de6487164b9d19203a3b6ae9d7e66"
       - "check-run annotation on core-tests job 101440210003: billing/spending-limit not-started"
     notes: "Title and body: superseding #216 inventory docs only. Owns docs/release/{README.md,agent_contribution_matrix.yaml,current_state.md}. Schema/compiler stay on #216. This retirement register is a new matrix and does not rewrite #225."
+    research_classification:
+      status: classified
+      relevance: documentation
+      relevance_classes:
+        - documentation
+        - governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Docs-supersedes #216 inventory docs only; schema/compiler stay on #216."
+        - "Whole-PR #216 is not superseded."
+        - "This retirement register does not rewrite #225 files."
+        - "Inventory is not evidence."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Release-evidence inventory docs. Docs-supersedes #216 inventory only. Documentation/governance; evidence_mode none."
   - id: nts-pr-226
     pr_number: 226
     branch: "codex/falsification-consumer-semantics"
@@ -864,6 +1225,23 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/099b949b9ddf50ff71ff3352fb1246be34ef2f41"
       - "check-run annotation on core-tests job 101440689815: billing/spending-limit not-started"
     notes: "STACKED on #219 (GitHub baseRefOid equals #219 head). Consumer semantics around proxy vs formal. Does not convert proxy evidence into formal Bayes factors."
+    research_classification:
+      status: classified
+      relevance: scientific
+      changes_scientific_semantics: true
+      evidence_mode: proxy
+      empirical_claim_present: false
+      proxy_evidence_flag: true
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "STACKED on #219; do not retire this child before the parent."
+        - "Proxy remains proxy. Consumer semantics do not convert proxy evidence into formal Bayes factors."
+        - "changes_scientific_semantics is true for consumer-contract language only; not formal K and not PASS."
+        - "SCIENTIFIC_REVIEW_REQUIRED."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "STACKED on #219. Clarifies falsification consumer semantics. Proxy remains proxy (proxy_evidence_flag true). Not formal K and not scientific PASS."
   - id: nts-pr-227
     pr_number: 227
     branch: "codex/ci-install-reliability"
@@ -904,6 +1282,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/f1796a0bd675c5ba12f0176e3e5af60bda2c72d3"
       - "check-run annotation on core-tests job 101454454976: billing/spending-limit not-started"
     notes: "Exists. STACKED on #213 (GitHub baseRefOid equals #213 head; body: stacked on #213). Mentions #222 as a parallel billing-blocked CI attempt. Not stacked on #222. Not a verified duplicate of #222."
+    research_classification:
+      status: classified
+      relevance: infrastructure
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "STACKED on #213, not #222. Do not retire this child before #213."
+        - "Diverged from #222; workflow overlap is not a verified duplicate."
+        - "Independently verified CI-green evidence is unavailable."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Exists. STACKED on #213, not #222. Infrastructure install-reliability. Diverged from #222. Not a verified duplicate."
   - id: nts-pr-228
     pr_number: 228
     branch: "claude/merge-gate-policy"
@@ -943,6 +1337,21 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/6893002a1d55cb2fe70e483a4dbbc3289600ce33"
       - "check-run annotation on core-tests job 101565075459: billing/spending-limit not-started"
     notes: "Deterministic merge-gate policy layer. Policy/docs/tests only. Does not merge or close PRs. Not a retirement decision."
+    research_classification:
+      status: classified
+      relevance: governance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Merge-gate policy is not a merge action and not a retirement decision."
+        - "Does not merge or close PRs."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Deterministic merge-gate policy layer. Policy is not a merge action. Governance only; evidence_mode none."
   - id: nts-pr-229
     pr_number: 229
     branch: "grok/dataset-provenance-contract"
@@ -982,6 +1391,25 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/6a7ec19d7bc41256944c25dc5dd66cf684e8fd7f"
       - "check-run annotation on core-tests job 101565254618: billing/spending-limit not-started"
     notes: "Local-first dataset provenance contract. source_url is metadata only. Validation does not download data."
+    research_classification:
+      status: classified
+      relevance: governance
+      relevance_classes:
+        - governance
+        - documentation
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Local-first provenance; validation does not download data."
+        - "source_url is metadata only."
+        - "Not an empirical PASS and not biological evidence."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Local-first dataset provenance contract. No downloads. Governance/documentation; not an empirical PASS."
   - id: nts-pr-230
     pr_number: 230
     branch: "cursor/performance-regression-policy"
@@ -1021,6 +1449,24 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/a4d0e7786797e5669fc6fbcf2cf960a2175e0585"
       - "check-run annotation on core-tests job 101565331044: billing/spending-limit not-started"
     notes: "Additive performance-regression policy evaluator. Related domain to the #211 stack but GitHub base is main and files do not overlap #211/#215/#224/#232."
+    research_classification:
+      status: classified
+      relevance: governance
+      relevance_classes:
+        - governance
+        - performance
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Related performance domain to the #211 stack but GitHub base is main and files do not overlap."
+        - "Policy evaluator is not a scientific PASS."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Additive performance-regression policy evaluator. Related domain to #211 stack; no file overlap; base is main. Governance/performance."
   - id: nts-pr-231
     pr_number: 231
     branch: "codex/ci-evidence-preflight"
@@ -1060,6 +1506,21 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/1c3916a5f882c798f811850f0178ca32ecb477e8"
       - "check-run annotation on core-tests job 101566513881: billing/spending-limit not-started"
     notes: "Read-only CI evidence preflight diagnostics. Surfaces billing/disk/install facts; does not replace #213/#222/#227 workflow edits."
+    research_classification:
+      status: classified
+      relevance: infrastructure
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Read-only diagnostics do not replace #213 / #222 / #227 workflow edits."
+        - "Surfacing billing/disk/install facts is not a CI pass."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Read-only CI evidence preflight diagnostics. Infrastructure only. Does not replace #213/#222/#227."
   - id: nts-pr-232
     pr_number: 232
     branch: "cursor/streaming-checkpoints-replay-64cc"
@@ -1099,6 +1560,25 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/2ebe094be0c1950a6ff571cd185131602ad096ed"
       - "check-run annotation on core-tests job 101567533088: billing/spending-limit not-started"
     notes: "STACKED on #224 (GitHub baseRefOid equals #224 head; body: stacked on #224). Extends the #211→#215→#224 streaming stack. Checkpoints/replay are engineering reproducibility, not scientific PASS."
+    research_classification:
+      status: classified
+      relevance: performance
+      relevance_classes:
+        - performance
+        - engineering
+      changes_scientific_semantics: false
+      evidence_mode: synthetic
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "STACKED on #224 (then #215 then #211); do not retire this child before its parents."
+        - "Engineering checkpoints/replay are not a scientific PASS."
+        - "Synthetic/perf fixtures are not biological evidence."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "STACKED on #224. Deterministic streaming checkpoints plus replay audits. Engineering replay is not scientific PASS."
   - id: nts-pr-233
     pr_number: 233
     branch: "antigravity/interop-conformance"
@@ -1138,6 +1618,22 @@ rows:
       - "https://github.com/ChristianV997/NeuroTopology-Sim/tree/825858d5f17a31002606d3084eac40179a1044d6"
       - "check-run annotation on core-tests job 101568449837: billing/spending-limit not-started"
     notes: "PR body: conformance suite validating 16 signal-contract properties across #212, #214, and #220. Consumer of those PRs, not a replacement implementation. GitHub base is main."
+    research_classification:
+      status: classified
+      relevance: interoperability
+      changes_scientific_semantics: false
+      evidence_mode: unavailable
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: false
+      methodological_limitations:
+        - "Consumer of #212/#214/#220; not a replacement implementation."
+        - "Conformance suite is not adapters supported."
+        - "Independently verified interop runtime evidence is unavailable."
+        - "Billing-blocked CI is not a test pass."
+      research_notes: "Interop conformance consumer of #212/#214/#220. Not a replacement. adapters_supported false. Evidence unavailable."
   - id: nts-branch-scientific-falsification-contract
     pr_number: null
     branch: "codex/scientific-falsification-contract"
@@ -1175,6 +1671,23 @@ rows:
       - "gh pr list --head ChristianV997:codex/scientific-falsification-contract --state all returned []"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/compare/main...codex/scientific-falsification-contract"
     notes: "ahead 1 / behind 0 vs origin/main. Shares sim/pitnn/bayesian_falsification.py with open #219 but git compare vs #219 is diverged (ahead 1 / behind 1). Related, not DUPLICATE. SCIENTIFIC_REVIEW_REQUIRED. Proxy Bayes ≠ formal K."
+    research_classification:
+      status: classified
+      relevance: scientific
+      changes_scientific_semantics: true
+      evidence_mode: proxy
+      empirical_claim_present: false
+      proxy_evidence_flag: true
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "BRANCH_ONLY: no open or closed PR; do not cite as a merged contract."
+        - "Diverged versus #219 (shared bayesian_falsification.py; other files differ). Not a verified duplicate."
+        - "Proxy Bayes is not a formal marginal-likelihood Bayes factor."
+        - "SCIENTIFIC_REVIEW_REQUIRED. Not scientific PASS."
+        - "No PR check rollup; do not treat the branch tip as CI-green."
+      research_notes: "BRANCH_ONLY scientific falsification contract. Diverged versus #219. Proxy evidence; SCIENTIFIC_REVIEW_REQUIRED. No PR."
   - id: nts-branch-grok-tool-admission-research
     pr_number: null
     branch: "grok/tool-admission-research"
@@ -1212,6 +1725,21 @@ rows:
       - "gh pr list --head ChristianV997:grok/tool-admission-research --state all returned []"
       - "https://github.com/ChristianV997/NeuroTopology-Sim/compare/main...grok/tool-admission-research"
     notes: "ahead 5 / behind 0 vs origin/main. Offline tool-admission catalog. Catalog ≠ admission decision ≠ scientific evidence. Related domain to #217, different paths (configs/tool_admission vs configs/tools). Not a verified duplicate."
+    research_classification:
+      status: classified
+      relevance: tooling
+      changes_scientific_semantics: false
+      evidence_mode: none
+      empirical_claim_present: false
+      proxy_evidence_flag: false
+      biological_evidence: false
+      scientific_pass_allowed: false
+      adapters_supported: null
+      methodological_limitations:
+        - "Offline tool-admission catalog is not an admission decision and not scientific evidence."
+        - "Related domain to #217 with different paths; not a verified duplicate."
+        - "BRANCH_ONLY: no PR."
+      research_notes: "BRANCH_ONLY tool-admission research notes. Catalog is not admission and not evidence. Tooling; evidence_mode none."
 
 relationships:
   - id: rel-216-225-docs-supersede
@@ -1228,6 +1756,9 @@ relationships:
       - "#216 uniquely owns configs/release/evidence_schema.yaml, scripts/compile_repository_evidence.py, tests/release/**"
       - "#216 live head 9c862d90e199 is a QA schema delta after 078412848d99; docs-supersede scope remains inventory docs only"
     notes: "Do not retire #216. Schema/compiler/tests stay there. Do not treat whole-PR #216 as SUPERSEDED."
+    research_edge_note:
+      scientific_overlap: infrastructure_only
+      notes: "Docs supersede for #216 inventory docs only; schema/compiler/tests stay on #216. Documentation overlap, not whole-PR retirement."
 
   - id: rel-214-220-related-domain
     kind: related_domain_parallel
@@ -1242,6 +1773,9 @@ relationships:
       - "#220 body: adapters mapping to PR #212 contracts"
       - "#233 body cites #212, #214, and #220 as conformance targets"
     notes: "Same signal/EEG domain, different paths and stacks. Not DUPLICATE. Not SUPERSEDED."
+    research_edge_note:
+      scientific_overlap: domain_parallel
+      notes: "Same signal/EEG domain, zero path overlap. #214 BTC-ICFT IO versus #220 shared/interop/adapters stacked on #212."
 
   - id: rel-222-227-parallel-ci
     kind: related_parallel_ci
@@ -1257,6 +1791,9 @@ relationships:
       - "git compare #222...#227 status=diverged (ahead 2 / behind 1)"
       - "#227 body names #213 as stack parent and mentions #222 as a later billing-blocked CI attempt"
     notes: "#227 is stacked on #213, not on #222. Overlap is a merge-conflict risk, not verified duplication."
+    research_edge_note:
+      scientific_overlap: infrastructure_only
+      notes: "Parallel diverged CI repairs. #227 is stacked on #213, not #222. Overlap is merge-conflict risk, not duplication."
 
   - id: rel-211-215-224-232-stack
     kind: stacked_chain
@@ -1273,6 +1810,9 @@ relationships:
       - "#224 body: Stacked on #215 (which is stacked on #211)"
       - "#232 body: Stacked on #224"
     notes: "Verified #211 → #215 → #224 stack, plus later #232. Children cannot be retired independently of parents."
+    research_edge_note:
+      scientific_overlap: infrastructure_only
+      notes: "Performance/infrastructure stack #211 to #215 to #224 to #232. Do not retire a stacked child before its parent."
 
   - id: rel-219-scientific-falsification-contract
     kind: related_diverged
@@ -1287,6 +1827,9 @@ relationships:
       - "git compare a7dd8e24...111d4fc0 status=diverged (ahead 1 / behind 1)"
       - "gh pr list --head ChristianV997:codex/scientific-falsification-contract --state all = []"
     notes: "Related scientific-contract work. Not DUPLICATE. Both need scientific review. Neither is merged."
+    research_edge_note:
+      scientific_overlap: diverged_scientific
+      notes: "Shared sim/pitnn/bayesian_falsification.py; other files differ. Git compare diverged. Related proxy-Bayes work, not duplicate."
 
   - id: rel-213-ci-dependencies
     kind: ci_workflow_dependency
@@ -1302,6 +1845,9 @@ relationships:
       - "#213 ∩ #222 files: ci.yml, required-checks.yml, conftest.py, pytest.ini, scripts/run_tests_isolated.py"
       - "#213 ∩ #227 files: ci.yml, required-checks.yml"
     notes: "#213 is the verified CI-profile parent of #227. #222 is a parallel main-based CI repair, not a child of #213."
+    research_edge_note:
+      scientific_overlap: infrastructure_only
+      notes: "#213 is the CI-profile parent of #227. #222 is a parallel main-based repair, not a child."
 
   - id: rel-218-reconciliation-metadata
     kind: reconciliation_metadata_not_replacement
@@ -1314,6 +1860,9 @@ relationships:
       - "#218 body: exclusive ownership of tools/integration_reconciliation/**; no file in #210/#211/#212 implementations, bayesian_falsification.py, workflows, adapters, or dashboard is touched"
       - "36 files, all under tools/integration_reconciliation, scripts/verify_integration_reconciliation.py, tests/integration_reconciliation, docs/integration_reconciliation"
     notes: "Surfaces reported-vs-actual branch/PR state. Not a replacement for any implementation PR."
+    research_edge_note:
+      scientific_overlap: infrastructure_only
+      notes: "Reconciliation metadata only. Not a replacement for implementation PRs and not scientific overlap."
 
   - id: rel-212-220-stack
     kind: stacked
@@ -1325,6 +1874,9 @@ relationships:
       - "#220 baseRefName=codex/interop-signal-contracts baseRefOid=a21dcb2461cdf94da0b41a684a2ac1353153ab35 (#212 head)"
       - "#220 body: adapters mapping to PR #212 contracts"
     notes: "Adapters stacked on contracts. Missing/unmerged adapters ≠ supported."
+    research_edge_note:
+      scientific_overlap: none
+      notes: "Interoperability stack: #220 adapters on #212 contracts. Scientific overlap none. Unmerged adapters are not supported."
 
   - id: rel-219-226-stack
     kind: stacked
@@ -1336,6 +1888,9 @@ relationships:
       - "#226 baseRefName=codex/bayes-falsification-hardening baseRefOid=a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb (#219 head)"
       - "#226 body: stacked on #219; does not convert proxy evidence into formal Bayes factors"
     notes: "Consumer-semantics child of #219. Scientific review still required."
+    research_edge_note:
+      scientific_overlap: semantic
+      notes: "Scientific stack: #226 consumer semantics on #219 proxy-Bayes contract. Proxy remains proxy. Do not retire the child first."
 
   - id: rel-217-223-continues
     kind: continues_without_github_base_stack
@@ -1348,6 +1903,9 @@ relationships:
       - "git compare ffc8f6df...e0e61618 status=ahead, ahead_by=4, behind_by=0; unique files are capability_snapshot.* only"
       - "GitHub #223 baseRefName is main, not grok/tool-registry-admission — stacking is git-ancestry + body, not GitHub base metadata"
     notes: "Not DUPLICATE. Merging #223 as-is onto main would include #217 files. Human review before any retirement of either side."
+    research_edge_note:
+      scientific_overlap: none
+      notes: "Tooling continuation: #223 snapshot on #217 registry ancestry. Catalog is not evidence. Not a verified duplicate."
 
   - id: rel-233-conformance-consumer
     kind: conformance_consumer
@@ -1359,6 +1917,9 @@ relationships:
       - "#233 body: validating the 16 signal contract properties across PR #212, PR #214, and PR #220"
       - "#233 GitHub base is main; files are tests/interop_conformance/** plus docs/scripts"
     notes: "Consumer suite, not a replacement of #212/#214/#220."
+    research_edge_note:
+      scientific_overlap: none
+      notes: "Interoperability conformance consumer of #212/#214/#220. Not a replacement implementation."
 
 duplicate_candidates: []
 duplicate_candidates_note: >
