@@ -1,0 +1,20 @@
+# ==============================================================================
+# NeuroTopology-Sim: Open Quantum & Exact Dynamics Profile
+# ==============================================================================
+# Purpose: Non-Hermitian Hamiltonian and exceptional-point validation (QuTiP),
+#          stochastic Langevin PDE solving (py-pde), and quantum circuit mapping
+#          (Amazon Braket SDK, OQuPy).
+# Status: Optional / Specialized solver profile.
+# Affected tests:
+#   - tests/test_cloud_payload_and_cross_validation.py
+#   - tests/exact_dynamics/test_qpu_cloud_runner.py
+# Platform constraints: Python 3.10-3.12 (QuTiP 5.3 requires ipython<9 on Python 3.11/3.12).
+# ==============================================================================
+-r requirements-base.txt
+
+py-pde==0.58.0
+qutip==5.3.0
+ipython<9
+amazon-braket-sdk>=1.70.0
+oqupy>=0.5,<0.6
+biopython>=1.83

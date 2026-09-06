@@ -34,7 +34,8 @@ def validate_target_root(target_root: Union[str, Path]) -> Path:
     if ".." in parts:
         raise TargetRootError(f"target_root must not contain '..' path segments: {raw!r}")
 
-    if not any(raw == prefix.rstrip("/") or raw.startswith(prefix) for prefix in ALLOWED_TARGET_ROOT_PREFIXES):
+    raw_posix = Path(raw).as_posix()
+    if not any(raw_posix == prefix.rstrip("/") or raw_posix.startswith(prefix) for prefix in ALLOWED_TARGET_ROOT_PREFIXES):
         raise TargetRootError(
             f"target_root must be under one of {ALLOWED_TARGET_ROOT_PREFIXES}, got {raw!r} (rule 13/14)"
         )
