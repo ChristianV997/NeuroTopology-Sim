@@ -91,9 +91,22 @@ def git_fixture_repo(tmp_path: Path) -> Path:
     _git(repo, "commit", "-q", "-m", "with-artifact: accidentally commit a RunRecord.json")
     _git(repo, "checkout", "-q", "main")
 
+    # stacked-on-feature-a: a real PR-style stack -- branched from
+    # feature-a itself (not main), one small commit of its own. A naive
+    # diff against main would include feature-a's shared/a.py too; the
+    # correct "effective diff" is only stacked_only.py.
+    _git(repo, "checkout", "-q", "feature-a")
+    _git(repo, "checkout", "-q", "-b", "stacked-on-feature-a")
+    (repo / "stacked_only.py").write_text("stacked = True\n", encoding="utf-8")
+    _git(repo, "add", "stacked_only.py")
+    _git(repo, "commit", "-q", "-m", "stacked-on-feature-a: add stacked_only.py")
+    _git(repo, "checkout", "-q", "main")
+
     # Simulate "origin/*" remote-tracking refs the tool actually looks up,
     # without a real remote: a plain ref copy under refs/remotes/origin/.
-    for branch in ("main", "feature-a", "feature-b", "already-merged", "with-artifact"):
+    for branch in (
+        "main", "feature-a", "feature-b", "already-merged", "with-artifact", "stacked-on-feature-a",
+    ):
         _git(repo, "update-ref", f"refs/remotes/origin/{branch}", f"refs/heads/{branch}")
 
     return repo

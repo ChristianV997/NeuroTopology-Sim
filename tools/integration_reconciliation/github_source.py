@@ -25,7 +25,15 @@ Snapshot schema (``NTS.GitHubReconciliationSnapshot.v1``)::
           "draft": true,
           "merged": false,
           "mergeable_state": "unstable",
-          "checks": {"core-tests": "failure", "awareness-tests": "success"}
+          "body": "full PR description text, used only for scientific-gate text hints",
+          "checks": {
+            "core-tests": "failure",
+            "awareness-tests": "success",
+            "ontology-claim-language": {
+              "status": "completed", "conclusion": "failure",
+              "failure_signature": "No space left on device"
+            }
+          }
         },
         ...
       ]
@@ -33,7 +41,13 @@ Snapshot schema (``NTS.GitHubReconciliationSnapshot.v1``)::
 
 Every field beyond ``number``/``head_ref`` is optional in a snapshot; a
 missing field surfaces as an explicit null with an "absent from snapshot"
-evidence note, never as a fabricated default.
+evidence note, never as a fabricated default. Each entry in ``checks`` may
+be either the legacy flat string form (a bare GitHub conclusion, e.g.
+``"success"``/``"failure"``) or the richer object form shown above
+(``status``/``conclusion``/optional ``failure_signature`` -- a short,
+evidenced excerpt such as a `get_job_logs` snippet, used by
+`ci_interpretation.py` to distinguish an infrastructure/billing block from
+an actual test failure). `normalize_checks()` below accepts either form.
 """
 from __future__ import annotations
 
@@ -73,6 +87,28 @@ def find_pr_by_number(snapshot: dict[str, Any], number: int) -> Optional[dict[st
         if pr.get("number") == number:
             return pr
     return None
+
+
+def normalize_checks(checks: Optional[dict[str, Any]]) -> dict[str, dict[str, Optional[str]]]:
+    """Accept either the legacy flat form ({name: "success"}) or the rich
+    object form ({name: {"status":..., "conclusion":..., "failure_signature":...}})
+    and always return the rich form, so downstream code (ci_interpretation.py)
+    has exactly one shape to handle."""
+    if not checks:
+        return {}
+    normalized: dict[str, dict[str, Optional[str]]] = {}
+    for name, value in checks.items():
+        if isinstance(value, dict):
+            normalized[name] = {
+                "status": value.get("status", "completed"),
+                "conclusion": value.get("conclusion"),
+                "failure_signature": value.get("failure_signature"),
+            }
+        else:
+            # Legacy flat form: a bare conclusion string implies the check
+            # already completed.
+            normalized[name] = {"status": "completed", "conclusion": value, "failure_signature": None}
+    return normalized
 
 
 def checks_all_passing(checks: Optional[dict[str, str]]) -> Optional[bool]:
