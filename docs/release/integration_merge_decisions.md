@@ -95,3 +95,60 @@ Additional entries are appended after each logical merge group and final validat
 - Merged PR #212 before stacked PR #220, preserving the contract/adapter ownership boundary and lazy optional dependency behavior.
 - Merged PR #214 after the interoperability contract was present; its MNE/SciPy streaming path remains provenance-rich, memory-bounded, and offline by default.
 - Validation: 28 interoperability/adapter tests and 39 EEG tests passed; governance and compilation passed. No optional network, MNE download, solver, AWS, or QPU execution was performed.
+
+### 2026-09-06 — integration bridge group
+
+- Merged PR #210 after the dependency graph was present. Its read-only bridge, artifact, quality, and dashboard-isolation surfaces remain solver-free and offline by default.
+- Updated the dependency matrix/reconciliation note after merge so the state is not left claiming that #209, #211, #212, #214, or the falsification contract are unavailable.
+- Portability repair: the symlink rejection test now skips only when Windows denies symlink creation (`WinError 1314`); the preflight implementation remains tested where symlink support is available.
+- Validation: 66 integration tests passed and 1 Windows privilege-limited symlink test skipped; governance and compilation passed.
+
+### 2026-09-06 — inventory, admission, repair, and reconciliation groups
+
+- Merged PR #209 for the offline retrofit inventory, PR #217 for optional
+  tool admission, PR #221 for legacy timeout/path repairs, and PR #218 for
+  read-only integration reconciliation tooling.
+- The exact branch named `grok/tool-admission-research` was not fetched or
+  reconstructed; PR #217 is the actual available tool-registry branch.
+- Validation: 67 inventory tests, 19 tooling tests, 22 legacy-repair tests,
+  and 78 reconciliation tests passed; governance, compilation, and overlap
+  checks passed. No credentials, sockets, package installation, or external
+  datasets were used by these validations.
+
+### 2026-09-06 — documentation and artifact-state reconciliation
+
+- Updated `docs/integration_acceptance.md` and
+  `configs/integration/dependency_matrix.yaml` from PR #210's pre-merge
+  scaffold narrative to the actual integrated branch state.
+- Corrected the consumed `tools.streaming` symbol list to the public exports
+  `bounded_stream`, `iter_chunks`, and `iter_windows`.
+- The synthetic bridge smoke produced exactly the four documented artifacts;
+  both `quality_report.json.status` and `RunRecord.json.verdict` were
+  `NOT_SUPPORTED`, all numeric fields were finite, and the manifest schema was
+  `NTS.IntegrationArtifactManifest.v1`.
+
+### 2026-09-06 — final validation and handoff
+
+- Targeted final validation passed: integration 66 passed/1 platform-limited
+  skip; reconciliation 78 passed; scientific/performance/interop/EEG/tooling/
+  inventory/legacy/isolation group 242 passed; governance, compileall, YAML,
+  diff-check, secret scan, and synthetic artifact checks passed.
+- The full isolated runner completed all 401 discovered files in 73 batches:
+  63 batches passed, 6 had failures, and 4 timed out; exit code 124. The
+  failure log is external to the checkout at
+  `%TEMP%\\nts-isolated-final-20260906`.
+- The six non-timeout classifications are: an unchanged benchmark absolute
+  path assertion; missing optional `torch` during cross-modal collection;
+  one transient job-queue output-file permission failure (the node passed on
+  direct rerun); a pre-existing Windows path-separator expectation in the
+  MNE-BIDS fixture; Windows symlink privilege `WinError 1314`; and one
+  optional `cripser`-only file with all tests skipped. The four timeouts are
+  bounded workers for `test_t_real_cli_stats_wiring.py`, the mixed
+  reconciliation/interop batch, the PITNN/pipeline batch, and the mixed
+  research/record batch. None of these failure test files is changed by the
+  accepted integration PRs.
+- GitHub required checks for representative accepted PRs remain red and jobs
+  terminate before steps/logs are available; this is recorded as CI
+  infrastructure unavailable, not as a local scientific failure. No GitHub
+  Actions billing entitlement was required or exercised, and no AWS/QPU/cloud
+  execution or credentialed operation was attempted.

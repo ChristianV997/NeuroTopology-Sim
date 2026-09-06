@@ -1,57 +1,41 @@
 # Ecosystem Integration — Acceptance Document
 
-Branch: `claude/ecosystem-integration`
+Branch: `codex/integration-all-open-prs`
 Base: `origin/main` @ `62637a4b9c82c0c258bfc49e28dee1af757b1c25`
-Owner: this branch only touches `tools/integration_bridge/**`,
-`scripts/assemble_ecosystem_run.py`, `configs/integration/**`,
-`docs/integration_acceptance.md`, `tests/integration/**`. No file outside
-that list is modified by this branch.
+This document began as PR #210's acceptance record and was updated in the
+dedicated merger checkout after compatible dependency groups were integrated.
+The final branch intentionally spans the accepted PRs listed below.
 
 ## 1. Branch order
 
-The mission expected seven dependency branches
-(`codex/interop-signal-contracts`, `codex/scientific-falsification-contract`,
-`antigravity/mne-scipy-streaming-eeg`,
-`antigravity/test-isolation-dependency-profiles`,
-`cursor/streaming-performance-benchmarks`, `grok/tool-admission-research`,
-`grok-bot/retrofit-inventory`) to merge ahead of this integration. **None
-of them exist on the `ChristianV997/NeuroTopology-Sim` remote** — verified
-by `git fetch origin --prune` followed by an exact
-`git rev-parse --verify origin/<name>` check for each name against the
-full 154-branch remote enumeration (`git branch -r`). No `antigravity/`,
-`grok/`, or `grok-bot/` namespace exists on this remote at all; the
-`cursor/` namespace has three unrelated branches, none matching
-`cursor/streaming-performance-benchmarks`.
+The dependency graph was reconciled in this order: the topology-only portion
+of the scientific contract branch, PR #219's authoritative Bayesian module,
+PRs #213/#222 for dependency profiles and isolated CI, #211 then #215 for
+streaming and RSS telemetry, #212 then #220 for signal contracts and native
+adapters, #214 for EEG streaming, #209/#217 for offline inventory and tool
+admission, #221 for legacy repairs, #218 for reconciliation tooling, and
+PR #210 as the final bridge layer. PR #216 remains intentionally unmerged.
 
-Full detail, per-branch blocker text, and the exact seam each branch was
-expected to fill (so it can slot in later without reshaping this code) is
-in `configs/integration/dependency_matrix.yaml`. This PR was built and
-validated standing alone against `origin/main`, with each of those seven
-seams occupied by a documented placeholder or a real fallback to an
-existing `main`-branch public adapter — never by a recreated
-implementation of the missing branch's own work.
+The exact commit hashes, stacked relationships, overlap resolutions, and the
+unavailable exact branch named `grok/tool-admission-research` are recorded in
+`configs/integration/dependency_matrix.yaml` and
+`docs/release/integration_merge_decisions.md`. The branch-only Bayesian file
+was not silently duplicated: its distinct topology modules were retained and
+the overlapping Bayesian implementation was superseded by PR #219.
 
-**Consequence for merge order:** this PR does not merge any of the seven
-branches (there is nothing to merge). It is the integration *scaffold*
-that those branches, when they exist, will be integrated through. Re-run
-`configs/integration/dependency_matrix.yaml`'s branch check before the
-next integration pass; if a branch has since appeared, its commit hash,
-changed files, and CI status must be recorded there before it is
-consumed.
+## 2. Integration boundaries
 
-## 2. Ownership boundaries
-
-| Path | Owner | Notes |
+| Area | Integrated sources | Notes |
 |---|---|---|
-| `tools/integration_bridge/**` | this branch | new package, no prior history |
-| `scripts/assemble_ecosystem_run.py` | this branch | new file |
-| `configs/integration/**` | this branch | new directory |
-| `tests/integration/**` | this branch | new directory |
-| `docs/integration_acceptance.md` | this branch | this file |
-| everything else | unchanged | zero lines touched outside the five paths above (verified: `git diff --stat origin/main` after `git add` shows only new, untracked-turned-added files) |
+| `tools/integration_bridge/**`, `scripts/assemble_ecosystem_run.py`, `tests/integration/**` | PR #210 | bridge, artifact, quality, preflight, and dashboard isolation |
+| `shared/interop/**`, EEG adapters, `tools/streaming/**` | PRs #212, #214, #211, #215, #220 | canonical contracts with lazy optional dependencies |
+| `sim/pitnn/bayesian_falsification.py`, topology-contract modules | branch-only contract + PR #219 | distinct topology semantics; #219 is authoritative for Bayesian behavior |
+| CI, runner, profiles | PRs #213 and #222 | manually reconciled at overlapping paths |
+| inventories, admission, repairs, reconciliation | PRs #209, #217, #221, #218 | offline/read-only tooling |
 
-This integration **consumes** the following existing public adapters
-unmodified (full list with roles in `configs/integration/dependency_matrix.yaml`'s
+The integrated bridge **consumes** the following public adapters, with
+compatibility tested against the strengthened implementations (full list with
+roles in `configs/integration/dependency_matrix.yaml`'s
 `consumed_public_adapters`): `runs.run_record.RunRecordV1`/`build_run_id`,
 `governance.spec.HypothesisSpec`, `governance.io.load_spec`,
 `governance.validate.validate_spec`, `sim.pitnn.ingest_empirical.
@@ -59,7 +43,7 @@ ingest_empirical`, `sim.pitnn.mumax3_macro_tda.synthetic_signal`/
 `invert_macro_signal`, `sim.pitnn.bayesian_falsification.compare_models`,
 `core.topology.compute_Qz`/`compute_f_dress`, `analysis.
 connectivity_topology.compute_beta1`, `sim.pitnn.topological_invariants.
-TopologicalInvariantTracker`. None of these modules' source was edited.
+TopologicalInvariantTracker`. The bridge does not reimplement these contracts.
 
 ## 3. Merge gates
 
@@ -69,13 +53,13 @@ Before this branch merges into `main`:
    valid) — unaffected by this branch, re-checked as a baseline.
 2. `PYTHONPATH=. python -m pytest tests/integration -q` passes in full.
 3. `python -m compileall -q tools/integration_bridge scripts/assemble_ecosystem_run.py tests/integration configs/integration` exits 0.
-4. A changed-file audit (`git diff --stat origin/main`) shows only files
-   under the five owned paths above.
-5. A secret scan over the new files finds nothing (API keys, tokens,
+4. A changed-file audit covers every accepted PR and records all overlap
+   resolutions in the merger decision log.
+5. A secret scan over tracked production/config/docs files finds nothing
+   (API keys, tokens,
    private key blocks, AWS access-key patterns).
-6. No unresolved ownership collision: since no dependency branch exists,
-   there is nothing to collide with this round; this gate is re-checked
-   the next time a real dependency branch is integrated.
+6. No unresolved ownership collision remains after the #213/#222 and
+   branch-only/#219 reconciliations.
 7. Every optional-dependency adapter this integration can invoke is
    explicitly classified as available/unavailable in the run's own
    `environment.adapters` output (never silently attempted).
@@ -94,23 +78,20 @@ Before this branch merges into `main`:
 # Governance validator (baseline; this branch does not touch governance/specs)
 python -m governance.validate
 
-# This branch's own test suite
+# Integration bridge and reconciliation suites
 PYTHONPATH=. python -m pytest tests/integration -q
+python -m pytest tests/integration_reconciliation -q
 
 # Static checks
 python -m compileall -q tools/integration_bridge scripts/assemble_ecosystem_run.py tests/integration configs/integration
 
 # Manual smoke run (synthetic, no network, no dataset download)
-python scripts/assemble_ecosystem_run.py --data-mode synthetic --output-dir /tmp/nts_smoke --dataset-id demo --seed 0
+python scripts/assemble_ecosystem_run.py --data-mode synthetic --output-dir <temp-dir>/nts_smoke --dataset-id demo --seed 0
 ```
 
-`scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120` (the
-repository-wide isolated runner) was **not** run in full for this PR: this
-branch adds files only and edits none, so it carries zero regression risk
-to the ~1600-file existing suite; running the full isolated batch runner
-end-to-end is deferred to CI rather than this review pass. The commands
-above are the actual, complete verification surface for what this PR
-changes.
+The merger's final validation also runs the repository-wide isolated runner
+with bounded batches and records optional-dependency failures separately from
+core regressions in `docs/release/integration_merge_decisions.md`.
 
 ## 5. Artifact contract
 
@@ -149,7 +130,8 @@ touch).
 
 ## 7. Review checklist
 
-- [ ] `git diff --stat origin/main` shows only the five owned paths.
+- [ ] `git diff --stat origin/main` matches the accepted PR inventory and
+      has no unexplained files outside the recorded ownership boundaries.
 - [ ] `configs/integration/dependency_matrix.yaml` accurately reflects the
       remote's actual branches at merge time (re-run the branch-existence
       check if time has passed since this document was written).
@@ -171,28 +153,16 @@ touch).
 
 ## 8. Remaining scientific limitations
 
-These are pre-existing conditions of the modules this integration
-*consumes*, not defects introduced by this PR. They are recorded here
-because `scripts/assemble_ecosystem_run.py` invokes the affected code
-directly and this document is the place an integrator should see them
-before trusting a packaged `PASS`/`NOT_SUPPORTED` verdict:
+These limits remain explicit after integration. They are recorded here
+because `scripts/assemble_ecosystem_run.py` invokes the affected code and no
+packaged artifact should be read as biological confirmation:
 
-1. **`sim.pitnn.bayesian_falsification.compare_models`'s `K > 100` gate
-   produces false `PASS` verdicts on pure noise at small sample sizes.**
-   An empirical check (independent random noise as the topology
-   regressor, `n=8`, 200 trials) found a 9% false-positive `PASS` rate at
-   the function's own permitted minimum sample size (`n >= 8`); the rate
-   falls to 0.5–1.5% by `n=128` but does not reach zero. Root cause: the
-   gating statistic (`log_k = 0.5*n*log(rss_c/rss_q)`) omits the standard
-   BIC-style model-complexity correction that the module's own
-   correctly-computed `delta_aicc` would apply, and the gate uses the
-   uncorrected statistic, not `delta_aicc`. This integration's
-   `quality_gate.classify_status` downgrades any `PASS` computed from
-   `data_mode="synthetic"` to `NOT_SUPPORTED`, which blocks the most
-   direct abuse (a synthetic demo being reported as evidence), but does
-   **not** fix the underlying false-positive risk for genuine small-`n`
-   empirical data — that fix belongs in `sim/pitnn/bayesian_falsification.py`
-   itself, outside this integration's ownership boundary.
+1. **A K threshold is not evidence by itself.** PR #219 now requires a
+   formal marginal-likelihood method, empirical provenance, valid inputs,
+   declared controls/multiplicity, and an effective-sample gate before an
+   empirical `PASS` can be emitted. RSS/AICc/BIC outputs remain explicit
+   proxies; synthetic, invalid, or incomplete-provenance inputs are blocked
+   or inconclusive.
 2. **The baseline this integration's `bayesian_falsification` step
    compares against, labeled `classical_wilson_cowan` by the upstream
    module, does not implement the Wilson-Cowan neural-mass model** — it
@@ -203,18 +173,14 @@ before trusting a packaged `PASS`/`NOT_SUPPORTED` verdict:
    comparison in Wilson-Cowan terms should be read as referring to the
    upstream module's internal (mis)labeling, not a validated neural-mass
    baseline.
-3. **No multiple-comparisons correction exists anywhere in this
-   repository's statistics stack** (`analysis/stats.py`,
-   `analysis/permutation.py`). This integration's `analyze` stage invokes
-   at most one topology metric per namespace per run, so it does not
-   itself compound this gap, but any downstream cohort-level aggregation
-   built on top of `scripts/assemble_ecosystem_run.py`'s output should
-   apply its own correction before treating any per-metric significance
-   claim as decisive.
-4. **`streaming-performance-benchmarks` (cursor/), the streaming EEG
-   adapter (antigravity/), and the tool-admission/retrofit-inventory
-   research (grok/, grok-bot/) are all unavailable** (Section 1). This
-   integration's `ingest` stage therefore runs the existing batch
-   ingestion path (`sim.pitnn.ingest_empirical`), which loads a full
-   recording into memory — there is no streaming, bounded-memory path
-   yet, and no throughput/latency benchmark exists for this pipeline.
+3. **Multiplicity correction is declared and available, but not automatic
+   for every downstream cohort analysis.** Any aggregation beyond the
+   packaged run must declare and apply an appropriate correction.
+4. **Optional scientific and cloud backends remain environment-dependent.**
+   Tool admission reports capability and does not install packages, open
+   sockets, use credentials, or execute AWS/QPU code. Local adapters are
+   lazy and unavailable capabilities are structured rather than silently
+   attempted.
+5. **No biological confirmation is asserted.** The integration is a
+   solver-free/offline artifact and dashboard/API layer; no AWS, QPU, cloud,
+   external dataset, or biological execution was performed.
