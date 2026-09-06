@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 from tools.retrofit_inventory.models import KIND_TEXT
 from tools.retrofit_inventory.scanner import scan_repository_files
 from tools.retrofit_inventory.validators import (
