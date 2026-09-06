@@ -261,26 +261,86 @@ These are **warnings for Research**, not executed falsification results.
 
 ---
 
-## Next action (Research)
+## Next action (QA)
 
-Classify each **new or refreshed** matrix row (especially #215–#222):
-
-1. **Claim surface** — engineering-runtime vs scientific-interpretation.
-2. **Data mode** — synthetic / local-unknown / none (docs-only).
-3. **Merge reality** — no PR is merged unless GitHub `mergedAt` is set.
-4. **Stacked base** — keep #215→#211 (and related #220→#212) explicit.
-5. **Missing reports** — Antigravity and Grok implementation reports.
-6. **Bayesian method** — mark proxy-vs-formal; require correction /
-   formal likelihood validation before any empirical reading.
-7. **Memory figures** — keep RSS vs tracemalloc labels; mark author
-   tables unverified; independently verified numbers remain unavailable.
-8. **Adapters** — contracts (#212) vs unmerged adapters (#220); missing
-   ≠ supported.
-9. Hand a classified inventory to QA on the **existing #216 schema**.
-   Do **not** invent a second `evidence_schema.yaml`.
-
-Carried-forward `research_classification` blocks on older rows are from
-#216 @ `07841284`. Lead did not re-run Research and did not add
-scientific `PASS`.
+Research classification of new/refreshed rows **#215–#222** is complete
+on this #225 inventory. Hand a **schema delta only** to QA on the
+**existing #216 schema / compiler / `tests/release/**`**. Do **not**
+invent a second `evidence_schema.yaml`, compiler, validator, or queue.
 
 Exact merger instruction: **do not merge.**
+
+---
+
+## Research claim classification
+
+**Classifier:** research_and_tooling  
+**Classified at:** 2026-09-06  
+**Base Lead commit:** `96036f4b481ddcf2d3f5e12a1e45972010989e67`  
+**Inventory PR:** [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225)
+supersedes #216 **inventory docs only**.  
+**Schema / compiler authority:** remains [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216).
+No second evidence pack.  
+**Inventory ≠ evidence.** `empirical_pass_allowed: false` and
+`biological_evidence: false` on every classified row. No scientific
+`PASS` is claimed.
+
+All Lead warnings above still apply. Research restates them:
+
+1. **PRs are not merged unless GitHub metadata says merged.**
+   #210 / #211 / #212 / #215 / #219 / #222 (and the rest of the
+   #206–#222 wave) remain open (`mergedAt` null).
+2. **CI billing failure ≠ passing test result.** Jobs that did not
+   start because of payment / spending-limit are not green tests.
+3. **Proxy Bayes ≠ formal Bayes factors.** On-main `bayes_factor` and
+   #219 / branch-only contract language are proxy / SCIENTIFIC_REVIEW_REQUIRED.
+4. **Synthetic data cannot establish biological evidence.**
+5. **Process-memory: RSS vs tracemalloc.** Independently verified
+   numbers are **unavailable**. Do not collapse author #215 table
+   columns. #211 tracemalloc ≠ process RSS.
+6. **Missing adapters ≠ supported.** #212 is contracts only; #220 is
+   unmerged adapters stacked on #212 (`adapters_supported: false`).
+7. **Stacked PRs stay explicit:** **#215 → #211** and **#220 → #212**.
+8. **Hand to QA on the existing #216 schema (delta only).** Do not
+   fork schema, compiler, or `tests/release/**`.
+
+### Classified rows #215–#222
+
+| ID | PR | value_class | claim_class | claim_surface | data_mode | bayesian_warning | stacked_on | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `nts-pr-215` | [#215](https://github.com/ChristianV997/NeuroTopology-Sim/pull/215) | performance `[performance, engineering]` | unavailable | performance-telemetry | synthetic | false | **#211** | NOT MERGED. Billing ≠ pass. Telemetry ≠ scientific PASS ≠ biological evidence. RSS vs tracemalloc; independently verified numbers unavailable. |
+| `nts-pr-216` | [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216) | governance `[governance, tooling]` | none | superseded-inventory | none | false | — | Inventory docs superseded by #225. Schema/compiler stay #216. Not a second evidence pack. Inventory ≠ evidence. |
+| `nts-pr-217` | [#217](https://github.com/ChristianV997/NeuroTopology-Sim/pull/217) | tooling `[tooling, governance]` | unavailable | tooling-catalog | none | false | — | Catalog ≠ admission ≠ scientific evidence. Grok impl report missing → UNVERIFIED. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-218` | [#218](https://github.com/ChristianV997/NeuroTopology-Sim/pull/218) | engineering `[engineering, tooling]` | none | engineering-runtime | none | false | — | Tooling/reconciliation report ≠ evidence. NOT MERGED. Do not treat as integration proof. Billing ≠ pass. |
+| `nts-pr-219` | [#219](https://github.com/ChristianV997/NeuroTopology-Sim/pull/219) | scientific `[scientific, governance]` | proxy | scientific-interpretation | synthetic | **true** | — | NOT MERGED. Proxy Bayes ≠ formal K. SCIENTIFIC_REVIEW_REQUIRED. Author validation commands ≠ PASS. Synthetic ≠ biological evidence. Related to, not duplicate of, branch-only falsification contract. |
+| `nts-pr-220` | [#220](https://github.com/ChristianV997/NeuroTopology-Sim/pull/220) | interoperability `[interoperability, engineering]` | unavailable | interoperability-contracts | none | false | **#212** | Missing/unmerged adapters ≠ supported (`adapters_supported: false`). #212 is contracts only. Antigravity report missing. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-221` | [#221](https://github.com/ChristianV997/NeuroTopology-Sim/pull/221) | engineering | unavailable | missing-report | none | false | — | Test/path repairs ≠ scientific PASS. Antigravity report missing. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-222` | [#222](https://github.com/ChristianV997/NeuroTopology-Sim/pull/222) | engineering `[engineering, tooling]` | unavailable | engineering-runtime | none | false | — | Author-claimed 117 tests and disk/CUDA narrative unverified on GitHub Actions (jobs did not start — billing). CI billing ≠ pass. NOT MERGED. |
+
+### Carried-forward rows
+
+Carried-forward `research_classification` blocks on older rows
+(#184–#214, `nts-branch-scientific-falsification-contract`,
+`nts-branch-grok-tool-admission-research`, leftover
+`nts-blocked-disorder-modes-leftover-abba063`, and the unverified
+placeholder rows) still apply from #216 Research @ `07841284`.
+Research did not re-open those rows except to keep Lead status
+(#216 is `SUPERSEDED` for inventory docs). `bayesian_warning: true`
+remains on #208, #219, the branch-only falsification contract, and
+`nts-unverified-proxy-bayesian-likelihood`.
+
+### Scientific blockers (Research; warnings only)
+
+- No empirical `PASS` from this pack. `empirical_pass_allowed: false`.
+- No biological evidence from this pack. Synthetic ≠ biology.
+- Proxy Bayes ≠ formal Bayes factors. #219 and the branch-only
+  scientific-falsification-contract require scientific review.
+- Independently verified process-memory (RSS / tracemalloc) numbers:
+  unavailable.
+- Missing / unmerged adapters ≠ supported.
+- CI billing failure ≠ passing tests.
+- Inventory ≠ evidence. #225 is not a second schema/compiler.
+
+**Handoff:** QA applies a **delta** on the existing #216 schema only.
+
+**Merger: do not merge.**

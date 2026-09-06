@@ -68,22 +68,39 @@ stacked_prs:
     verified_base_oid: a21dcb2461cdf94da0b41a684a2ac1353153ab35
 
 # Carried-forward Research blocks on older rows are from PR #216 @ 07841284.
-# Lead did not re-run Research. New rows are pending_research.
+# Research classified new/refreshed rows #215–#222 on 2026-09-06.
+# Schema/compiler stay on #216. Inventory is not evidence.
 research_phase:
   phase: RESEARCH
   classified_at: "2026-09-06"
   classifier: research_and_tooling
-  carried_forward_from: pr-216@078412848d99a1cb7fa31666d24fdcca96d5ac4a
-  base_lead_commit: be80bdd5db85b417dd5f15a5445d6c6a6bfd3368
+  base_lead_commit: 96036f4b481ddcf2d3f5e12a1e45972010989e67
+  supersedes_inventory_docs_of_pr: 216
+  schema_compiler_authority_pr: 216
   inventory_is_not_evidence: true
   empirical_pass_from_this_pack: false
-  new_rows_pending_research: true
+  biological_evidence_from_this_pack: false
+  carried_forward_from: pr-216@078412848d99a1cb7fa31666d24fdcca96d5ac4a
+  new_rows_pending_research: false
+  classified_ids:
+    - nts-pr-215
+    - nts-pr-216
+    - nts-pr-217
+    - nts-pr-218
+    - nts-pr-219
+    - nts-pr-220
+    - nts-pr-221
+    - nts-pr-222
   required_warnings:
-    - "PRs #210, #211, #212 are NOT merged unless independently verified as merged."
-    - "scientific-falsification branch has no confirmed PR unless one is found."
-    - "Missing Antigravity/Grok implementation reports are unverified."
-    - "Synthetic data cannot establish a scientific PASS."
-    - "Current proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation."
+    - "PRs are not merged unless GitHub metadata says merged. #210/#211/#212/#215/#219/#222 etc. remain open."
+    - "CI billing failure is not a passing test result."
+    - "Proxy Bayes factors are not formal Bayes factors."
+    - "Synthetic data cannot establish biological evidence."
+    - "Process-memory numbers must identify RSS vs tracemalloc; independently verified numbers unavailable."
+    - "Missing adapters must not be described as supported."
+    - "#216 inventory docs superseded by #225; schema/compiler stay on #216 — no second authority."
+    - "#215→#211 and #220→#212 stacked keep explicit."
+    - "Hand to QA on existing #216 schema (delta only)."
 
 contributions:
   - id: nts-pr-205
@@ -963,9 +980,32 @@ contributions:
       - "Author RSS/tracemalloc table is unverified. Independently verified process-memory numbers: unavailable."
       - "Performance telemetry is not a scientific PASS."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: performance
+      value_classes: [performance, engineering]
+      claim_class: unavailable
+      claim_surface: performance-telemetry
+      data_mode: synthetic
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. Research must classify. STACKED on #211. RSS vs tracemalloc labels required. Inventory is not evidence."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on:
+        parent_pr: 211
+        note: "#215 → #211; retarget to main only after #211 merges"
+      memory_measurement:
+        independently_verified: unavailable
+        author_table: unverified
+        note: "Author PR body separates tracemalloc peak vs RSS delta vs process-lifetime peak RSS; do not collapse. #211 tracemalloc ≠ process RSS."
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. Draft; mergedAt is null."
+        - "STACKED on unmerged #211."
+        - "CI billing failure is not a passing test result."
+        - "Author RSS/tracemalloc table is unverified; independently verified process-memory numbers are unavailable."
+        - "Performance telemetry is not a scientific PASS and is not biological evidence."
+      research_notes: "NOT MERGED. Billing blocked ≠ pass. Performance telemetry ≠ scientific PASS ≠ biological evidence. STACKED on #211. Keep RSS vs tracemalloc separate."
 
   - id: nts-pr-216
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1028,9 +1068,26 @@ contributions:
       - "Inventory docs on this PR are superseded by the compilation branch."
       - "Schema/compiler/validators on this PR remain the single evidence-authority implementation. Do not fork."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: governance
+      value_classes: [governance, tooling]
+      claim_class: none
+      claim_surface: superseded-inventory
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Prior pack. Inventory superseded. Not a second compiler. Inventory is not evidence."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "Inventory docs superseded by #225."
+        - "Schema/compiler/tests/release/** remain #216 authority — no second evidence pack."
+        - "Inventory is not evidence."
+        - "CI billing failure is not a passing test result."
+      research_notes: "Inventory docs superseded by #225. Schema/compiler/`tests/release/**` remain #216 authority. Not a second evidence pack. Inventory ≠ evidence."
 
   - id: nts-pr-217
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1083,9 +1140,26 @@ contributions:
       - "Related to branch-only grok/tool-admission-research (different paths); not DUPLICATE."
       - "A capability catalog is not an admission decision and not scientific evidence."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: tooling
+      value_classes: [tooling, governance]
+      claim_class: unavailable
+      claim_surface: tooling-catalog
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. Research must classify. Catalog ≠ admission ≠ evidence."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. mergedAt is null."
+        - "Catalog is not an admission decision and not scientific evidence."
+        - "Grok implementation report is missing → UNVERIFIED."
+        - "CI billing failure is not a passing test result."
+      research_notes: "Catalog ≠ admission decision ≠ scientific evidence. Grok impl report missing → UNVERIFIED. NOT MERGED."
 
   - id: nts-pr-218
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1135,9 +1209,26 @@ contributions:
       - "NOT merged. Draft; mergedAt is null."
       - "Read-only reconciliation tooling is not scientific evidence."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: engineering
+      value_classes: [engineering, tooling]
+      claim_class: none
+      claim_surface: engineering-runtime
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. Research must classify. Tooling ≠ evidence."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. Draft; mergedAt is null."
+        - "Read-only reconciliation tooling is not scientific evidence."
+        - "Do not treat as integration proof."
+        - "CI billing failure is not a passing test result."
+      research_notes: "Tooling/reconciliation report ≠ evidence. NOT MERGED. Do not treat as integration proof."
 
   - id: nts-pr-219
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1191,10 +1282,27 @@ contributions:
       - "Proxy Bayes ≠ formal Bayes factors. Synthetic ≠ biological evidence."
       - "Related to branch-only scientific-falsification-contract (different files); not DUPLICATE."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: scientific
+      value_classes: [scientific, governance]
+      claim_class: proxy
+      claim_surface: scientific-interpretation
+      data_mode: synthetic
       empirical_pass_allowed: false
+      biological_evidence: false
       bayesian_warning: true
-      research_notes: "Lead inventory only. SCIENTIFIC_REVIEW_REQUIRED. Proxy ≠ formal K. Do not invent PASS."
+      bayesian_note: "Proxy Bayes ≠ formal marginal-likelihood K. SCIENTIFIC_REVIEW_REQUIRED. Author validation commands ≠ PASS. Related to but not duplicate of branch-only scientific-falsification-contract."
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. mergedAt is null."
+        - "Proxy Bayes factors are not formal Bayes factors."
+        - "Synthetic data cannot establish biological evidence."
+        - "Author validation commands are not a scientific PASS."
+        - "CI billing failure is not a passing test result."
+      research_notes: "NOT MERGED. Synthetic ≠ biological evidence. Proxy Bayes ≠ formal K. SCIENTIFIC_REVIEW_REQUIRED. Author validation commands ≠ PASS."
 
   - id: nts-pr-220
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1250,9 +1358,29 @@ contributions:
       - "Missing adapters ≠ supported. Unmerged adapter files ≠ supported."
       - "No Antigravity implementation report located."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: interoperability
+      value_classes: [interoperability, engineering]
+      claim_class: unavailable
+      claim_surface: interoperability-contracts
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. STACKED on #212. Missing adapters ≠ supported."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on:
+        parent_pr: 212
+        note: "#220 → #212; adapters stacked on contracts"
+      memory_measurement: null
+      adapters_supported: false
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. mergedAt is null."
+        - "STACKED on unmerged #212 (contracts only)."
+        - "Missing/unmerged adapters are not supported."
+        - "Antigravity implementation report is missing."
+        - "CI billing failure is not a passing test result."
+      research_notes: "Missing/unmerged adapters ≠ supported. #212 is contracts only. Antigravity report missing. NOT MERGED. STACKED on #212."
 
   - id: nts-pr-221
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1305,9 +1433,25 @@ contributions:
       - "No Antigravity implementation report located."
       - "Legacy test repairs are not scientific evidence."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: engineering
+      claim_class: unavailable
+      claim_surface: missing-report
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. Research must classify. Test repairs ≠ scientific PASS."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. mergedAt is null."
+        - "Test/path repairs are not a scientific PASS."
+        - "Antigravity implementation report is missing."
+        - "CI billing failure is not a passing test result."
+      research_notes: "Test/path repairs ≠ scientific PASS. Antigravity report missing. NOT MERGED."
 
   - id: nts-pr-222
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
@@ -1363,9 +1507,25 @@ contributions:
       - "Author-claimed 117 targeted tests / governance / isolated-runner smoke were not re-run."
       - "Author classification of #210/#211/#212 as pre-test disk exhaustion is consistent with sampled logs, but this PR's own Actions runs did not start."
     research_classification:
-      status: pending_research
+      status: classified
+      value_class: engineering
+      value_classes: [engineering, tooling]
+      claim_class: unavailable
+      claim_surface: engineering-runtime
+      data_mode: none
       empirical_pass_allowed: false
-      research_notes: "Lead inventory only. CI bootstrap claim unverified on GitHub because jobs did not start (billing)."
+      biological_evidence: false
+      bayesian_warning: false
+      bayesian_note: null
+      stacked_on: null
+      memory_measurement: null
+      adapters_supported: null
+      ci_billing_is_not_pass: true
+      methodological_limitations:
+        - "NOT MERGED. mergedAt is null."
+        - "Author-claimed 117 tests and disk/CUDA root-cause narrative are unverified on GitHub Actions."
+        - "Jobs did not start (billing). CI billing failure is not a passing test result."
+      research_notes: "Author-claimed 117 tests and disk/CUDA root-cause narrative unverified on GitHub Actions (jobs did not start — billing). CI billing ≠ pass. NOT MERGED."
 
   - id: nts-branch-scientific-falsification-contract
     repository: https://github.com/ChristianV997/NeuroTopology-Sim
