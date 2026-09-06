@@ -2,23 +2,70 @@ name: Ontology Claim Language
 
 on:
   pull_request:
+    branches: ["**"]
+  push:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   ontology-claim-language:
+    name: ontology-claim-language
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
+
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+          python-version: "3.12"
+
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
+      - name: Install validator dependency only
+        run: python -m pip install --no-cache-dir --disable-pip-version-check pyyaml
+
       - name: Run claim-language validator
         run: |
-          python tools/validate_ontology_claim_language.py --root . --scan-mode repo --baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json --json-out outputs/btc_icft/ontology_claim_language_validation.json --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+          python tools/validate_ontology_claim_language.py \
+            --root . \
+            --scan-mode repo \
+            --baseline contracts/btc_icft/ontology_claims/claim_language_baseline.json \
+            --json-out outputs/btc_icft/ontology_claim_language_validation.json \
+            --markdown-out outputs/btc_icft/ontology_claim_language_validation.md
+
+      - name: Capture validator diagnostics
+        if: failure()
+        run: |
+          {
+            echo "## runner diagnostics"
+            date -u
+            df -h
+            python -m pip cache info || true
+            du -sh "$RUNNER_TEMP" . 2>/dev/null || true
+          } | tee ontology-failure.txt
+
+      - name: Clean package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+
       - name: Upload validator report
         if: always()
         uses: actions/upload-artifact@v4
@@ -27,4 +74,5 @@ jobs:
           path: |
             outputs/btc_icft/ontology_claim_language_validation.json
             outputs/btc_icft/ontology_claim_language_validation.md
+            ontology-failure.txt
           if-no-files-found: warn
