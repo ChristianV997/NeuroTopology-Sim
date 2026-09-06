@@ -104,7 +104,13 @@ def _finite_float(value: Any) -> float | None:
 
 
 def _sidecar_metrics(payload: dict[str, Any]) -> dict[str, float]:
-    """Copy existing campaign summary floats only. Does not rescore."""
+    """Sidecar metric floats used for provenance and ``build_run_id``.
+
+    Copies existing per-summary campaign floats when finite, then adds
+    derived counts ``n_summaries``, ``n_pre_registered_effect_candidate``,
+    and ``n_pre_registered_not_supported`` from already-written campaign
+    labels. Does not rescore or change campaign thresholds.
+    """
     metrics: dict[str, float] = {}
     summaries = payload.get("summaries")
     if not isinstance(summaries, list):

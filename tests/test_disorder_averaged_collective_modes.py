@@ -272,6 +272,11 @@ def test_sidecar_matches_contract_stub(tmp_path):
     assert dumped["run_kind"] == contract["run_kind"]
     assert dumped["verdict"] in contract["allowed_verdicts"]
     assert dumped["verdict"] not in contract["forbidden_verdicts"]
+    identity_includes = " ".join(contract["identity"]["includes"])
+    assert "n_summaries" in identity_includes
+    assert "n_pre_registered_effect_candidate" in identity_includes
+    assert "n_pre_registered_not_supported" in identity_includes
+    assert "n_summaries" in dumped["metrics"]
 
 
 def test_campaign_and_sidecar_sources_have_no_network_calls():

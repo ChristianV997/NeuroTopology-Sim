@@ -96,7 +96,7 @@ This document defines runtime contracts for each `--mode` in `main.py` so caller
 `scripts/run_disorder_averaged_collective_modes.py` still writes `disorder_averaged_collective_modes.json` (`NeuroTopologySim.DisorderAveragedCollectiveModes.v1`). With `--write-run-record` it also writes a **sidecar** `RunRecord.json` in the same output directory.
 
 - The sidecar does **not** replace the campaign v1 JSON.
-- `run_id` is `runs.run_record.build_run_id` over campaign inputs and seeds (no wall-clock, no artifact paths).
+- `run_id` is `runs.run_record.build_run_id` over campaign inputs/seeds, existing per-summary floats, and derived label counts `n_summaries` / `n_pre_registered_effect_candidate` / `n_pre_registered_not_supported` (no wall-clock, no artifact paths).
 - Linkage: `artifacts.campaign_sha256` is the SHA-256 of the campaign JSON.
 - The sidecar is written atomically (`_atomic_json`) and includes `input` / `notes` / `guardrails` in addition to `RunRecordV1.to_dict()` (`schema_version` stays `0.1`).
 - Contract stub: `contracts/campaign/disorder_averaged_collective_modes_run_record.contract.json`.

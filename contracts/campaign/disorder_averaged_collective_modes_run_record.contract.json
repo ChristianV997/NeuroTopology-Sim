@@ -7,7 +7,14 @@
   "sidecar_schema_version": "0.1",
   "run_kind": "disorder_averaged_collective_modes",
   "identity": {
-    "run_id": "sha256[:16] via runs.run_record.build_run_id over campaign inputs, seed, and existing summary floats",
+    "run_id": "sha256[:16] via runs.run_record.build_run_id",
+    "includes": [
+      "campaign configuration inputs excluding IO and --write-run-record",
+      "seed and other scientific configuration fields",
+      "existing per-summary floats when finite (paired_disorder_samples, invalid_disorder_samples, mean_log_short_vs_long_null_adjusted_contrast, standard_error, exact_sign_flip_pvalue)",
+      "derived counts n_summaries, n_pre_registered_effect_candidate, n_pre_registered_not_supported",
+      "optional run_fingerprint of the same scientific configuration"
+    ],
     "excludes": ["created_at", "elapsed_s", "artifact_paths", "campaign_sha256", "wall_clock"]
   },
   "required_top_level_keys": [
