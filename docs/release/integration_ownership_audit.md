@@ -7,23 +7,27 @@
 **Evidence source:** `gh` + GitHub API (live). Disposable worktree from `origin/main`. Primary checkout left untouched.  
 **Owned files:** `configs/release/integration_ownership.yaml`, this log.  
 **Not created:** `scripts/validate_integration_ownership.py` (Release), `tests/release/test_integration_ownership.py` (QA).  
-**Not modified:** production scientific code, reconciliation tools, merge-gate, CI, adapters, topology, streaming, Bayesian, artifacts, datasets, credentials, packs `#216` / `#225` / `#237` / `#242`.
+**Not modified:** production scientific code, reconciliation tools, merge-gate, CI, adapters, topology, streaming, Bayesian, artifacts, datasets, credentials, packs `#216` / `#225` / `#237` / `#242`.  
+**Evidence authority:** Release owns those four packs. This inventory is not a second evidence compiler.
 
 This pack is an **audit inventory**. It is not a merger, not compiled evidence, and not a scientific verdict.
 
 **CURRENT_INTEGRATION_HEAD:** `af3ac584419148ddcfc57cb565c416eba6328725`
 
-**Merger:** Codex C is the sole merger. Do not merge. Do not close. Do not retarget PRs.
+**Merger:** Codex C is the sole merger. Do not merge. Do not close. Do not retarget PRs.  
+**Bots used:** Alfred + Lead.  
+**Alfred:** organization/ownership audit + duplicate decisions folded (done).
 
 ---
 
 ## Required decisions (read first)
 
-1. **Codex C is the sole merger.** This Lead pack records GitHub metadata. It does not merge, close, or retarget any PR.
-2. **This pack is audit-only.** Inventory rows are not evidence and cannot establish scientific `PASS`.
+1. **Codex C is the sole merger.** This Lead pack records GitHub metadata. It does not merge, close, or retarget any PR. Do not compete with Codex C.
+2. **This pack is audit-only.** Inventory rows are not evidence and cannot establish scientific `PASS`. **Release** is the sole evidence authority for packs `#216` / `#225` / `#237` / `#242`. No second evidence authority.
 3. **Synthetic is `NOT_SUPPORTED`.** Synthetic, invalid, incomplete-provenance, and proxy comparisons cannot produce empirical `PASS`.
 4. **Proxy Bayes ≠ formal.** On-main and integration Bayes-factor paths remain RSS / Gaussian-likelihood proxies. They are not formal marginal-likelihood `K`. Formal likelihood validation is still required before strong empirical interpretation.
 5. **`INTEGRATED_ONLY` ≠ merged into main.** Presence on `codex/integration-all-open-prs` (PR `#236`) or a GitHub merge into a **non-main** base is not a main-line merge. `VERIFIED` is used only when GitHub reports `merged=true` **and** the merge commit is on `origin/main`.
+6. **Live `#236` `headRefOid` is the only `CURRENT_INTEGRATION_HEAD`.** Reconfirmed `2026-09-07` via `gh`: still `af3ac584419148ddcfc57cb565c416eba6328725`. Open, not merged.
 
 ---
 
@@ -107,34 +111,59 @@ Companions already on `origin/main` and named by `#236` (`#209`, `#210`, `#212`,
 
 ---
 
-## Placeholders (null until supplied)
+## Alfred ownership graph (folded)
 
-| Slot | Value | Owner |
+Alfred’s lane is **organization / ownership audit + duplicate decisions only**. It is done. Lead recorded the graph; Lead does not merge.
+
+| Role | Who | Scope |
 | --- | --- | --- |
-| `alfred_ownership_graph` | `null` | Alfred |
-| `researchy_findings` | `null` | Researchy |
-| `nightly_findings` | `null` | Nightly |
-| `lingxi_findings` | `null` | Lingxi |
+| Human | Christian V. | Human owner |
+| Lead Developer | Lead | Work-order owner/assigner; record decisions; **no merge** |
+| Alfred | Alfred | Organization/ownership audit + duplicate decisions only (**done**) |
+| Integration | Integration | Contracts and dependency order; **reject competing queues** |
+| Research and Tooling | Research and Tooling | Official-source tooling, **this-repo** lane |
+| QA | QA | Reproduce/diff when a repair is boarded |
+| Release | Release | **Sole evidence authority** for packs `#216` / `#225` / `#237` / `#242` — no second evidence authority |
+| Codex C | Codex C | **Sole merger** — do not compete |
 
-Lead does not invent an Alfred graph or Researchy / Nightly / Lingxi classifications.
+`alfred_ownership_graph.status` is `recorded`. `CURRENT_INTEGRATION_HEAD` stays the live GitHub `#236` OID.
+
+### This-wave duplicate / NO ACT
+
+These are **not** GitHub merge statuses. They are Alfred duplicate-bot decisions so competing queues are not opened.
+
+| Bot | Decision | This wave |
+| --- | --- | --- |
+| Researchy (vs Research and Tooling) | **out** | NO ACT |
+| Nightly Audit Engineer | **out** | NO ACT |
+| Lingxi’s Engineer Bot | **out until Lead assigns post-audit** | NO ACT |
+| Chief of Staff | **digest later only** | NO ACT |
+| tinkabot | **out** | NO ACT |
+| New empty bots | **default zero** | NO ACT |
+
+`researchy_findings` / `nightly_findings` / `lingxi_findings` remain `null` because those bots do **not** act this wave. Do not wait on them for this pack.
 
 ---
 
 ## What later phases must not do from this pack
 
-- Release: do not invent `scripts/validate_integration_ownership.py` until handed this inventory and the Alfred graph.
-- QA: do not invent `tests/release/test_integration_ownership.py` yet.
+- Do not invent a second evidence authority beside Release for `#216` / `#225` / `#237` / `#242`.
+- Release: do not invent `scripts/validate_integration_ownership.py` in this Lead write set.
+- QA: reproduce/diff only when a repair is boarded; do not invent `tests/release/test_integration_ownership.py` here.
+- Integration: contracts/dependency order only; reject competing queues (Researchy / Nightly / Lingxi / tinkabot / empty bots).
 - Do not rewrite `#216` / `#225` / `#237` / `#242`.
 - Do not treat `#220` or `#215` as `VERIFIED` on `main` because GitHub `merged=true` on a **stacked** base.
 - Do not treat `#236` or `af3ac584…` as merged into `main`.
 - Do not promote synthetic or proxy-Bayes rows to empirical `PASS`.
+- Do not compete with Codex C on merge.
 
 ---
 
 ## Next
 
-**NEXT = wait Alfred, then Researchy.**
+**NEXT = Alfred folded; this-wave duplicates are NO ACT. Do not merge.**
 
-1. Alfred supplies `alfred_ownership_graph` (still `null`).
-2. Researchy (then Nightly / Lingxi) classify findings into the null slots.
-3. Codex C remains the only merger. **Do not merge this PR.**
+1. Alfred ownership graph is recorded (`status: recorded`).
+2. Researchy / Nightly / tinkabot / new empty bots are **out**. Lingxi waits for a Lead post-audit assignment. Chief of Staff is digest-later only.
+3. Integration may order contracts/dependencies; it must reject competing queues.
+4. Codex C remains the only merger. **Do not merge this PR.**

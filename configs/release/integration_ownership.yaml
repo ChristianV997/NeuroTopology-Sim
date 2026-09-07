@@ -3,6 +3,7 @@
 # Release later owns scripts/validate_integration_ownership.py (do not invent here).
 # QA later owns tests/release/test_integration_ownership.py (do not invent here).
 # Codex C is the sole merger. This pack records GitHub metadata only.
+# Alfred ownership audit folded 2026-09-07 (organization + duplicate decisions).
 #
 # INTEGRATED_ONLY means present on the #236 integration branch (or a
 # non-main GitHub merge target) and is NOT a claim that the work is on main.
@@ -77,6 +78,8 @@ required_warnings:
   - "Empty-step ~3s GitHub FAILURE is not a pytest PASS and is not BLOCKED_BY_TESTS."
   - "Author-claimed isolated 415/75/64/8/3/exit124 on #236 is unverified here."
   - "Do not modify packs #216, #225, #237, #242."
+  - "Release is the sole evidence authority for packs #216/#225/#237/#242. No second evidence authority."
+  - "Researchy, Nightly Audit Engineer, tinkabot, and new empty bots are this-wave NO ACT. Lingxi is out until Lead assigns post-audit. Chief of Staff is digest-later only."
 
 # Live origin/main at inspect time.
 origin_main:
@@ -184,11 +187,105 @@ status_check_rollup_236:
     - name: copilot-pull-request-reviewer
       conclusion: FAILURE
 
-# Placeholders — do not invent until those agents supply findings.
-alfred_ownership_graph: null
+# Alfred organization/ownership audit (done). Duplicate decisions are this-wave
+# NO ACT — not GitHub merge status and not a second evidence authority.
+bots_used:
+  - Lead
+  - Alfred
+
+ownership_decisions:
+  source: alfred_ownership_audit
+  folded_at: "2026-09-07"
+  folded_by: lead
+  current_integration_head_authority: github_live_pr_236_headRefOid
+  roles:
+    human:
+      name: Christian V.
+      scope: human_owner
+    lead_developer:
+      name: Lead
+      scope: work_order_owner_and_assigner
+      records_decisions: true
+      may_merge: false
+    alfred:
+      name: Alfred
+      scope: organization_and_ownership_audit_plus_duplicate_decisions_only
+      status: done
+    integration:
+      name: Integration
+      scope: contracts_and_dependency_order
+      reject_competing_queues: true
+    research_and_tooling:
+      name: Research and Tooling
+      scope: official_source_tooling_this_repo_lane
+    qa:
+      name: QA
+      scope: reproduce_and_diff_when_repair_boarded
+    release:
+      name: Release
+      scope: sole_evidence_authority
+      packs: [216, 225, 237, 242]
+      second_evidence_authority: false
+    codex_c:
+      name: Codex C
+      scope: sole_merger
+      compete: false
+      merger_instruction: do_not_merge
+
+alfred_ownership_graph:
+  status: recorded
+  source: alfred_ownership_audit
+  recorded_at: "2026-09-07"
+  recorder: lead
+  human: Christian V.
+  lead_developer: Lead
+  organization_auditor: Alfred
+  sole_merger: Codex_C
+  sole_evidence_authority: Release
+  evidence_packs_no_second_authority: [216, 225, 237, 242]
+  integration_rejects_competing_queues: true
+  notes:
+    - "Alfred audits organization/ownership and duplicate-bot decisions only."
+    - "Lead records; Lead does not merge."
+    - "Release owns evidence packs #216/#225/#237/#242. This inventory is not a second evidence authority."
+    - "CURRENT_INTEGRATION_HEAD remains the live GitHub #236 headRefOid."
+
+duplicate_decisions_this_wave:
+  policy: no_act
+  default_for_new_empty_bots: zero
+  bots:
+    - id: researchy
+      vs: Research and Tooling
+      decision: out
+      act_this_wave: false
+      reason: "Duplicate of Research and Tooling (official-source tooling, this-repo lane)."
+    - id: nightly_audit_engineer
+      decision: out
+      act_this_wave: false
+      reason: "Duplicate audit lane. Nightly findings are not consumed this wave."
+    - id: lingxi_engineer_bot
+      decision: out_until_lead_assigns_post_audit
+      act_this_wave: false
+      reason: "Out until Lead assigns after this audit. No competing queue."
+    - id: chief_of_staff
+      decision: digest_later_only
+      act_this_wave: false
+      reason: "Digest later only. Not an owner, merger, or evidence authority."
+    - id: tinkabot
+      decision: out
+      act_this_wave: false
+      reason: "Out this wave. Default zero for unused marketplace bots."
+  new_empty_bots:
+    decision: default_zero
+    act_this_wave: false
+
+# Explicitly not a findings slot. These bots do not act this wave.
 researchy_findings: null
 nightly_findings: null
 lingxi_findings: null
+researchy_findings_status: no_act_duplicate_out
+nightly_findings_status: no_act_duplicate_out
+lingxi_findings_status: no_act_until_lead_assigns_post_audit
 
 scientific_standing_warnings:
   synthetic: NOT_SUPPORTED
@@ -601,7 +698,9 @@ on_main_companions_verified:
     - {pr_number: 221, merge_commit: 62aa8fee786abf916ab0aa2b7e7b91c570fee119, status: VERIFIED}
 
 next_action: >
-  Wait for Alfred to supply the ownership graph (alfred_ownership_graph
-  remains null). Then wait for Researchy / Nightly / Lingxi findings
-  (placeholders remain null). Release/QA must not start validator or
-  tests until those handoffs. Codex C remains the sole merger. Do not merge.
+  Alfred ownership graph is recorded. Researchy, Nightly Audit Engineer,
+  tinkabot, and new empty bots are this-wave NO ACT. Lingxi stays out
+  until Lead assigns post-audit. Chief of Staff is digest-later only.
+  Integration owns contracts/dependency order and rejects competing
+  queues. Release remains sole evidence authority for #216/#225/#237/#242.
+  Codex C remains the sole merger. Do not merge.
