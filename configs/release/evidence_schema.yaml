@@ -1,0 +1,416 @@
+# Release evidence-bundle contract (QA).
+# Not compiled evidence. Not a scientific PASS.
+# Inventory documents and future compiler reports must satisfy this schema.
+# Release owns scripts/compile_repository_evidence.py (not in this write set).
+
+schema_version: "1.0.0"
+schema_delta: stacked_billing_adapters
+schema_id: nts-release-evidence-bundle
+kind: evidence_bundle_contract
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack_default: false
+scientific_pass_from_this_schema: never_claimed
+
+purpose: >
+  Field and hard-rule contract for Lead/Research contribution inventories
+  and for compiled reports the Release compiler will emit later. Loading
+  this file is not empirical evidence. Synthetic or proxy rows cannot
+  establish scientific PASS.
+
+# ---------------------------------------------------------------------------
+# Document envelopes
+# ---------------------------------------------------------------------------
+
+inventory:
+  description: Lead/Research contribution inventory (docs/release/agent_contribution_matrix.yaml).
+  required_envelope_keys:
+    - repository
+    - baseline_commit
+    - evidence_source
+    - inventory_is_not_evidence
+    - required_warnings
+    - contributions
+  recommended_envelope_keys:
+    - inventory_id
+    - phase
+    - inspected_at
+    - inspector
+    - merger_instruction
+    - research_phase
+  required_contribution_fields:
+    # Align with the live matrix + the mission report field list.
+    - id
+    - repository
+    - baseline_commit
+    - branch
+    - agent
+    - work_order
+    - final_commit
+    - merge_status
+    - verification_status
+    - evidence_source
+    - limitations
+    - research_classification
+  contribution_aliases:
+    pr: [pr, pr_number, pr_url]
+    changed_files: [changed_files, changed_file_summary]
+    tests: [tests]
+    test_results: [test_results, author_test_results]
+    artifacts: [artifacts]
+    scientific_assertions: [scientific_assertions]
+    open_questions: [open_questions]
+    next_action: [next_action]
+  research_phase_required_keys:
+    - inventory_is_not_evidence
+    - empirical_pass_from_this_pack
+    - required_warnings
+
+compiled_report:
+  description: >
+    Envelope the Release compiler must emit. QA tests the contract against
+    fixtures; the compiler script is out of this write set.
+  required_envelope_keys:
+    - schema_version
+    - kind
+    - repository
+    - baseline_commit
+    - inventory_is_not_evidence
+    - empirical_pass_from_this_pack
+    - required_warnings
+    - release_recommendation
+    - evidence_source
+    - contributions
+  required_contribution_fields:
+    - id
+    - repository
+    - baseline_commit
+    - branch
+    - agent
+    - work_order
+    - final_commit
+    - pr
+    - changed_files
+    - tests
+    - test_results
+    - artifacts
+    - scientific_assertions
+    - limitations
+    - open_questions
+    - next_action
+    - verification_status
+    - merge_status
+    - evidence_source
+  contribution_field_aliases:
+    pr: [pr, pr_number, pr_url]
+    changed_files: [changed_files, changed_file_summary]
+    test_results: [test_results, author_test_results]
+
+verification_status:
+  required_fields:
+    - existence
+    - merge_status
+    - scientific_pass
+    - author_test_results
+    - implementation_report
+
+research_classification:
+  required_fields:
+    - value_class
+    - claim_class
+    - data_mode
+    - empirical_pass_allowed
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+enums:
+  merge_status:
+    - merged
+    - open
+    - draft
+    - branch_only
+    - blocked
+    - unverified
+    - closed
+    - unknown
+  # Work-order / row status categories. These are NOT merge_status.
+  # VERIFIED_MERGED does not invent merge_status=merged.
+  status_category:
+    - VERIFIED_MERGED
+    - OPEN_REVIEW
+    - DRAFT_REVIEW
+    - BRANCH_ONLY
+    - CI_BLOCKED
+    - BILLING_BLOCKED
+    - SUPERSEDED
+    - DUPLICATE
+    - SCIENTIFIC_REVIEW_REQUIRED
+    - UNVERIFIED
+  stacked_relationship:
+    - STACKED
+  memory_kind:
+    - rss
+    - RSS
+    - tracemalloc
+    - unavailable
+  memory_availability:
+    - unavailable
+    - unverified
+    - verified
+  verification_existence:
+    - verified
+    - missing
+    - unverified
+    - unknown
+  verification_merge_status:
+    - verified
+    - unverified
+    - not_applicable
+    - unknown
+  scientific_pass:
+    - not_claimed
+    - claimed
+    - pass
+    - fail
+    - unsupported
+    - inconclusive
+  author_test_results:
+    - unverified
+    - verified
+    - verified_pass
+    - missing
+    - not_applicable
+    - claimed_unverified
+  implementation_report:
+    - not_located
+    - missing
+    - present
+    - unverified
+  claim_class:
+    - none
+    - synthetic
+    - proxy
+    - unsupported
+    - empirical
+    - unavailable
+  value_class:
+    - scientific
+    - engineering
+    - governance
+    - tooling
+    - performance
+    - interoperability
+  data_mode:
+    - none
+    - synthetic
+    - proxy
+    - empirical
+    - local-unknown
+    - unknown
+  release_recommendation:
+    - READY_FOR_REVIEW
+    - BLOCKED_BY_CI
+    - BLOCKED_BY_MISSING_BRANCHES
+    - BLOCKED_BY_SCIENTIFIC_VALIDATION
+    - READY_FOR_MERGE_REVIEW
+
+# ---------------------------------------------------------------------------
+# Numeric + secret rules
+# ---------------------------------------------------------------------------
+
+numeric_rules:
+  policy: finite_or_null
+  reject:
+    - NaN
+    - Infinity
+    - -Infinity
+    - Inf
+    - -Inf
+  named_numeric_fields:
+    - changed_file_count
+    - additions
+    - deletions
+
+secret_patterns:
+  description: Fail-closed if any string looks like a credential. Tests use fake shapes only.
+  patterns:
+    - id: openai_or_anthropic_key
+      regex: '\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{12,}\b'
+    - id: aws_access_key
+      regex: '\bAKIA[0-9A-Z]{16}\b'
+    - id: github_pat
+      regex: '\bghp_[A-Za-z0-9]{36}\b'
+    - id: github_fine_grained_pat
+      regex: '\bgithub_pat_[A-Za-z0-9_]{20,}\b'
+    - id: slack_token
+      regex: '\bxox[baprs]-[A-Za-z0-9-]{10,}\b'
+    - id: private_key
+      regex: '-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----'
+    - id: google_api_key
+      regex: '\bAIza[0-9A-Za-z_-]{35}\b'
+
+# ---------------------------------------------------------------------------
+# Hard rules (fail-closed; never warnings-as-success)
+# ---------------------------------------------------------------------------
+
+hard_rules:
+  - id: synthetic_not_scientific_pass
+    statement: >
+      claim_class synthetic, data_mode synthetic, or any synthetic label
+      MUST NOT allow scientific PASS, empirical_pass_allowed true, or
+      scientific_pass claimed/pass.
+  - id: unverified_author_tests_not_compiled_pass
+    statement: >
+      verification_status.author_test_results = unverified MUST NOT be
+      treated as compiled evidence or PASS.
+  - id: open_or_draft_not_merged
+    statement: >
+      An open or draft PR must not be recorded as merge_status merged.
+      merge_status=merged combined with is_draft=true is contradictory.
+  - id: prs_210_211_212_not_merged_unless_verified
+    statement: >
+      PRs #210, #211, #212 default to not merged. Recording them as
+      merged requires independent GitHub verification (merged_at set,
+      is_draft false, evidence_source github_api). The pack must carry
+      the required not-merged warning while they remain unverified.
+  - id: inventory_is_not_evidence_required
+    statement: inventory_is_not_evidence must be true on the pack.
+  - id: empirical_pass_false_for_weak_claims
+    statement: >
+      empirical_pass_from_this_pack and empirical_pass_allowed must be
+      false when claim_class is synthetic, proxy, or unsupported.
+  - id: no_duplicate_contribution_ids
+    statement: Contribution id values must be unique.
+  - id: no_duplicate_work_orders
+    statement: Non-null work_order values must be unique.
+  - id: no_duplicate_branches_in_compiled_report
+    statement: >
+      A compiled report may not list the same non-null branch on two
+      active (non-blocked, non-leftover) contribution records.
+      Inventories may repeat a branch (reused lanes, leftover remotes).
+  - id: numbers_finite_or_null
+    statement: Every numeric leaf must be finite or null. Reject NaN and Infinity.
+  - id: no_secrets
+    statement: No credential-shaped strings in any field.
+  - id: fail_closed
+    statement: >
+      Validators return an error list or raise. An empty list is the only
+      success signal. Notes must not be treated as success.
+  - id: billing_not_started_not_pass
+    statement: >
+      CI billing not-started, payment/spending-limit annotations, or jobs
+      that never ran MUST NOT be recorded as a passing test result.
+      github_checks billing_not_started / BILLING_BLOCKED cannot set
+      verification_status.author_test_results=verified_pass or test_results
+      PASS. Billing failure is not pytest pass.
+  - id: stacked_parent_required
+    statement: >
+      If a row is marked STACKED / stacked_on / stacked_base / base_pr,
+      a parent id (parent_pr or base_pr) must be present. #215→#211 and
+      #220→#212 are the canonical stacked pairs.
+  - id: stacked_merged_parent_open_contradiction
+    statement: >
+      A stacked child recorded as merge_status=merged while its parent is
+      still open or draft is a contradiction and must fail closed.
+  - id: process_memory_kind_or_unavailable
+    statement: >
+      If process-memory metrics are present, they must distinguish RSS vs
+      tracemalloc (kind/unit) or mark independently_verified unavailable.
+      Unlabeled memory numbers cannot be treated as verified.
+  - id: adapters_supported_false_not_described_supported
+    statement: >
+      adapters_supported=false must not be described as supported.
+      Missing or unmerged adapters are not supported.
+  - id: status_category_is_not_merge_status
+    statement: >
+      WO status categories (VERIFIED_MERGED, OPEN_REVIEW, DRAFT_REVIEW,
+      BRANCH_ONLY, CI_BLOCKED, BILLING_BLOCKED, SUPERSEDED, DUPLICATE,
+      SCIENTIFIC_REVIEW_REQUIRED, UNVERIFIED) are not merge_status values.
+      OPEN_REVIEW / DRAFT_REVIEW cannot be merge_status=merged.
+      VERIFIED_MERGED does not invent merge.
+
+watched_pr_numbers:
+  - 210
+  - 211
+  - 212
+
+required_warning_tokens:
+  prs_210_211_212_not_merged:
+    must_mention_prs: [210, 211, 212]
+    must_mention_any:
+      - "not merged"
+      - "NOT merged"
+      - "not-merged"
+      - "remain unmerged"
+
+pass_tokens:
+  - pass
+  - PASS
+  - scientific_pass
+
+non_empirical_claim_classes:
+  - synthetic
+  - proxy
+  - unsupported
+  - unavailable
+
+billing_not_pass:
+  description: >
+    Billing / payment / jobs-never-run annotations are not passing tests.
+  author_test_results_forbidden_when_billing:
+    - verified_pass
+    - pass
+    - PASS
+  detect:
+    status_category: BILLING_BLOCKED
+    github_checks_flags:
+      - billing_not_started
+      - jobs_never_run
+    text_tokens:
+      - billing_blocked
+      - billing_not_started
+      - payments failed
+      - spending limit
+      - job was not started
+      - jobs were not started
+      - jobs never run
+    not_billing_token: "not billing"
+
+stacked:
+  markers:
+    - STACKED
+    - stacked_on
+    - stacked_base
+    - base_pr
+  parent_id_fields:
+    - parent_pr
+    - base_pr
+    - parent_id
+  canonical_pairs:
+    - child_pr: 215
+      parent_pr: 211
+    - child_pr: 220
+      parent_pr: 212
+
+process_memory:
+  objects:
+    - process_memory
+    - memory_metrics
+    - memory_measurement
+  required_when_present: kind_or_unavailable
+  kinds:
+    - rss
+    - RSS
+    - tracemalloc
+  unavailable_tokens:
+    - unavailable
+    - unverified
+  reject_unlabeled_as_verified: true
+
+adapters:
+  flag: adapters_supported
+  forbidden_when_false:
+    - described_as_supported
+    - adapters_claim: supported
+    - adapters_status: supported
