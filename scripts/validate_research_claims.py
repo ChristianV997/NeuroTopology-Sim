@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 2
 
-    args.output.parent.mkdir(parents=True, exist_all=True) if False else args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(dumps_strict(report), encoding="utf-8")
 
     if not args.quiet:
