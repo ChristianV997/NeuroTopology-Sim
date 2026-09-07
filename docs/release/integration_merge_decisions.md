@@ -213,3 +213,20 @@ Additional entries are appended after each logical merge group and final validat
   integration PR and inspected source PRs. This is classified as
   infrastructure/billing blocked; no CI success is claimed, no merge is
   forced, and PR #236 remains open.
+
+### 2026-09-07 — requested release-validation rerun
+
+- Requested interoperability, provenance, cohort-manifest/statistics,
+  topology-adapter, falsification, CI diagnostics, merge-gate, release-report,
+  performance-policy, checkpoint/replay, platform, dashboard-isolation,
+  no-secret, and finite-JSON checks were executed.
+- The first release-report run exposed two real defects: Windows `cp1252`
+  stdout could not emit a Unicode report symbol, and a release test asserted
+  the obsolete 19-entry inventory while the current merger snapshot contains
+  27 contributions. Both were repaired without skips.
+- The requested validation set completed with `339 passed, 2 skipped`, plus
+  the separately recorded `142 passed, 1 skipped`
+  platform/performance/finite-JSON set. The two requested-set skips were
+  optional `ripser` capability checks; the platform-set skip was unavailable
+  Windows symlink privilege. The release suite then completed with `55
+  passed`; no assertion failure was converted to a skip.

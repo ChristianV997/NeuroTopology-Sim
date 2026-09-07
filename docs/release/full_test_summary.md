@@ -7,14 +7,16 @@
   passed`.
 - Streaming, interop, scientific semantics, cohort, TDA, integration, and
   reconciliation: `344 passed, 2 skipped`.
+- Release-report rerun: `55 passed` after repairing Windows UTF-8
+  stdout handling and updating the stale inventory-size assertion to the
+  current 27-entry merger snapshot.
 - YAML/config parse: `10 files passed`.
 - Earlier integration evidence: `66 passed, 1 Windows symlink-privilege skip`,
   `78 reconciliation passed`, and `242 targeted regressions passed`.
 
-The two skips are explicit environment classifications: missing optional
-`cripser` for the topology-only test file and unavailable Windows symlink
-creation privilege (`WinError 1314`). No assertion failure was converted into
-a skip.
+The skips are explicit environment classifications: missing optional
+`cripser`/`ripser` capabilities and unavailable Windows symlink creation
+privilege (`WinError 1314`). No assertion failure was converted into a skip.
 
 ## Full isolated runner
 

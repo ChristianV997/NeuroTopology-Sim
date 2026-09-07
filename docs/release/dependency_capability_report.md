@@ -7,8 +7,8 @@
 - Optional capability registries and TDA adapters use lazy imports; missing
   optional packages are reported as unavailable rather than auto-installed.
 - Observed optional/platform classifications: missing `torch`, missing
-  `cripser`, and Windows symlink privilege (`WinError 1314`). These are not
-  treated as passing scientific evidence.
+  `cripser`, missing `ripser`, and Windows symlink privilege (`WinError 1314`).
+  These are not treated as passing scientific evidence.
 - No package installation was performed by application code, and no hidden
   network request was added.
 - YAML parsing passed for 10 workflow/config files; the targeted CI,
