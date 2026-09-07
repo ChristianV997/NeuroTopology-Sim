@@ -46,11 +46,14 @@ def test_repeated_compile_is_byte_identical(manifest_factory):
 
 
 def test_omitted_now_only_changes_generated_at(manifest_factory):
+    # canonical_checksum is a hash of the whole record, so it necessarily
+    # changes whenever generated_at does -- both are excluded here.
     manifest = _rich_manifest(manifest_factory)
 
     record1 = compile_record(manifest)
     record2 = compile_record(manifest)
 
-    record1_no_ts = {k: v for k, v in record1.items() if k != "generated_at"}
-    record2_no_ts = {k: v for k, v in record2.items() if k != "generated_at"}
-    assert record1_no_ts == record2_no_ts
+    volatile = {"generated_at", "canonical_checksum"}
+    record1_stable = {k: v for k, v in record1.items() if k not in volatile}
+    record2_stable = {k: v for k, v in record2.items() if k not in volatile}
+    assert record1_stable == record2_stable

@@ -13,17 +13,22 @@ from pathlib import Path
 
 from tools.research_record.evidence_loader import LoadResult, load_evidence_file
 
-RECONCILIATION = "reconciliation"
+RECONCILIATION = "reconciliation"                # PR matrix
 AGENT_CONTRIBUTIONS = "agent_contributions"
 DASHBOARD_ISOLATION = "dashboard_isolation"
-TEST_RUNNER = "test_runner"
+TEST_RUNNER = "test_runner"                       # test summaries + CI classification
 PERFORMANCE_BENCHMARK = "performance_benchmark"
 MEMORY_EVIDENCE = "memory_evidence"
-DATASET_PROVENANCE = "dataset_provenance"
-COHORT_READINESS = "cohort_readiness"
-TOPOLOGY_VALIDATION = "topology_validation"
+DATASET_PROVENANCE = "dataset_provenance"          # provenance reports
+COHORT_READINESS = "cohort_readiness"              # empirical-readiness reports
+TOPOLOGY_VALIDATION = "topology_validation"        # topology summaries
 FALSIFICATION = "falsification"
 MERGE_GATE = "merge_gate"
+RELEASE_MANIFEST = "release_manifest"
+SCIENTIFIC_GATE_REPORTS = "scientific_gate_reports"
+BLOCKER_REPORTS = "blocker_reports"                # externally-reported blockers
+ARTIFACT_REFERENCES = "artifact_references"        # artifact paths (references only, never read)
+OPERATOR_NOTES = "operator_notes"
 
 # Canonical input-section keys and the top-level list key each one's JSON/
 # YAML/CSV body is expected to carry (None for a section whose contract is
@@ -40,6 +45,11 @@ SECTION_LIST_KEYS: dict[str, str | None] = {
     TOPOLOGY_VALIDATION: "checks",
     FALSIFICATION: "results",
     MERGE_GATE: "decisions",
+    RELEASE_MANIFEST: None,
+    SCIENTIFIC_GATE_REPORTS: "gates",
+    BLOCKER_REPORTS: "blockers",
+    ARTIFACT_REFERENCES: "artifacts",
+    OPERATOR_NOTES: "notes",
 }
 
 INPUT_SECTIONS: tuple[str, ...] = tuple(SECTION_LIST_KEYS)

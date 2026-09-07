@@ -371,3 +371,104 @@ def build_merge_gate(result: LoadResult) -> dict[str, Any]:
     decisions.sort(key=lambda d: d["pr_number"])
     section["decisions"] = decisions
     return section
+
+
+def build_release_manifest(result: LoadResult) -> dict[str, Any]:
+    """Flat passthrough of another tool's release-manifest output.
+    Owned by tools/release_manifest/** elsewhere -- this compiler only
+    reads its declared fields, never re-derives or second-guesses them."""
+    section = _base(result)
+    data = result.data if result.ok and isinstance(result.data, dict) else {}
+    entries_raw = data.get("entries")
+    entries = [e for e in entries_raw if isinstance(e, dict)] if isinstance(entries_raw, list) else []
+    section["schema_version"] = _str_or_none(data.get("schema_version"))
+    section["repo"] = _str_or_none(data.get("repo"))
+    section["commit"] = _str_or_none(data.get("commit"))
+    section["branch"] = _str_or_none(data.get("branch"))
+    section["generated_at"] = _str_or_none(data.get("generated_at"))
+    section["entries"] = entries
+    return section
+
+
+def build_scientific_gate_reports(result: LoadResult) -> dict[str, Any]:
+    section = _base(result)
+    gates = []
+    for item in _items(result, "gates"):
+        if not isinstance(item, dict) or "gate_id" not in item:
+            continue
+        gates.append(
+            {
+                "gate_id": str(item["gate_id"]),
+                "description": _str_or_none(item.get("description")),
+                "claim_class": normalize_claim_class(item.get("claim_class")),
+                "data_mode": normalize_data_mode(item.get("data_mode")),
+                "verdict": normalize_scientific_verdict(item.get("verdict")),
+                "notes": _str_or_none(item.get("notes")),
+            }
+        )
+    gates.sort(key=lambda g: g["gate_id"])
+    section["gates"] = gates
+    return section
+
+
+def build_blocker_reports(result: LoadResult) -> dict[str, Any]:
+    """Externally-reported blockers -- merged into ``unresolved_blockers``
+    alongside the ones this compiler derives itself, each tagged with its
+    origin so a reader can tell "someone reported this" from "this
+    compiler inferred this from the evidence it was given"."""
+    section = _base(result)
+    blockers = []
+    for item in _items(result, "blockers"):
+        if not isinstance(item, dict) or "blocker_id" not in item:
+            continue
+        blockers.append(
+            {
+                "blocker_id": str(item["blocker_id"]),
+                "description": _str_or_none(item.get("description")) or "(no description provided)",
+                "severity": item.get("severity") if item.get("severity") in ("low", "medium", "high", "critical") else "unknown",
+                "source": _str_or_none(item.get("source")),
+            }
+        )
+    blockers.sort(key=lambda b: b["blocker_id"])
+    section["blockers"] = blockers
+    return section
+
+
+def build_artifact_references(result: LoadResult) -> dict[str, Any]:
+    """Artifact path *references* only -- this compiler never opens, reads,
+    or hashes the referenced files themselves (rule: no automatic data
+    loading). ``path`` is recorded verbatim as declared."""
+    section = _base(result)
+    artifacts = []
+    for item in _items(result, "artifacts"):
+        if not isinstance(item, dict) or "path" not in item:
+            continue
+        artifacts.append(
+            {
+                "label": _str_or_none(item.get("label")) or str(item["path"]),
+                "path": str(item["path"]),
+                "kind": _str_or_none(item.get("kind")),
+                "notes": _str_or_none(item.get("notes")),
+            }
+        )
+    artifacts.sort(key=lambda a: a["path"])
+    section["artifacts"] = artifacts
+    return section
+
+
+def build_operator_notes(result: LoadResult) -> dict[str, Any]:
+    section = _base(result)
+    notes = []
+    for item in _items(result, "notes"):
+        if not isinstance(item, dict) or "note" not in item:
+            continue
+        notes.append(
+            {
+                "note": str(item["note"]),
+                "declared_epistemic_label": _str_or_none(item.get("epistemic_label")),
+                "author": _str_or_none(item.get("author")),
+            }
+        )
+    notes.sort(key=lambda n: n["note"])
+    section["notes"] = notes
+    return section

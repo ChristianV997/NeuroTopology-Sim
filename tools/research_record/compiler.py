@@ -9,11 +9,13 @@ for the full contract, its 15 strict rules, and their code locations.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tools.research_record import manifest as manifest_mod
+from tools.research_record import epistemic, manifest as manifest_mod
 from tools.research_record.graph import (
     build_dependency_edges,
     find_cycles,
@@ -25,20 +27,26 @@ from tools.research_record.graph import (
 from tools.research_record.guardrails import INCOMPLETE_EVIDENCE
 from tools.research_record.sections import (
     build_agent_contributions,
+    build_artifact_references,
     build_benchmark_summary,
+    build_blocker_reports,
     build_cohort_readiness,
     build_dashboard_isolation,
     build_dataset_provenance,
     build_falsification,
     build_merge_gate,
+    build_operator_notes,
     build_reconciliation,
+    build_release_manifest,
+    build_scientific_gate_reports,
     build_test_runner,
     build_topology_validation,
 )
-from tools.research_record.versions import COMPILER_VERSION, REPORT_SCHEMA_VERSION
+from tools.research_record.versions import COMPILER_VERSION, INPUT_CONTRACT_VERSION, REPORT_SCHEMA_VERSION
 
 _INFRA_STATUS_CATEGORIES = {"CI_BLOCKED", "BILLING_BLOCKED"}
 _WEAK_CLAIM_CLASSES = {"synthetic", "proxy", "unsupported"}
+_SCIENTIFIC_VERDICT_VALUES = {"PASS", "FAIL", "INCONCLUSIVE", "TIMEOUT", "unknown"}
 
 
 def _envelope(agent_contributions_result) -> dict[str, Any]:
@@ -150,6 +158,7 @@ def _merged_but_not_actually_merged_conflicts(pr_entries: list[dict[str, Any]]) 
 def _synthetic_and_proxy_pass_conflicts(
     falsification_results: list[dict[str, Any]],
     topology_checks: list[dict[str, Any]],
+    scientific_gates: list[dict[str, Any]],
     contributions: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Rules 4/5: a proxy Bayes factor is not formal evidence, and synthetic
@@ -174,6 +183,15 @@ def _synthetic_and_proxy_pass_conflicts(
                     "kind": "synthetic_pass_claim",
                     "id": check["name"],
                     "detail": f"topology check {check['name']!r} claims verdict=PASS with data_mode={check['data_mode']!r}, which cannot establish a scientific PASS",
+                }
+            )
+    for gate in scientific_gates:
+        if gate["claim_class"] in _WEAK_CLAIM_CLASSES and gate["verdict"] == "PASS":
+            conflicts.append(
+                {
+                    "kind": "synthetic_pass_claim",
+                    "id": gate["gate_id"],
+                    "detail": f"scientific gate {gate['gate_id']!r} claims verdict=PASS with claim_class={gate['claim_class']!r}, which cannot establish a scientific PASS",
                 }
             )
     for contribution in contributions:
@@ -387,6 +405,135 @@ def _scientific_limitations(
     return limitations
 
 
+def _classify_epistemic_items(
+    *,
+    falsification_results: list[dict[str, Any]],
+    topology_checks: list[dict[str, Any]],
+    scientific_gates: list[dict[str, Any]],
+    contributions: list[dict[str, Any]],
+    performance_benchmarks: list[dict[str, Any]],
+    memory_benchmarks: list[dict[str, Any]],
+    test_jobs: list[dict[str, Any]],
+    pr_entries: list[dict[str, Any]],
+    dashboard: dict[str, Any],
+    operator_notes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Classify every claim/fact this record carries into one of the nine
+    epistemic labels (epistemic.py). This is the single place that decides
+    the label -- nothing downstream re-derives it, so "never promote an
+    engineering PASS to a scientific PASS" holds by construction: engineering
+    fact / benchmark result items never carry a ``verdict`` field, so they
+    can never feed _scientific_verdict()."""
+    items: list[dict[str, Any]] = []
+
+    for r in falsification_results:
+        items.append(
+            {
+                "label": epistemic.classify_scientific_item(claim_class=r["claim_class"], data_mode=r["data_mode"], is_formal=r["is_formal_bayes_factor"]),
+                "source": "falsification",
+                "id": r["hypothesis_id"],
+                "summary": f"{r['hypothesis_id']}: {r['metric_display_label']} = {r['metric_value']}",
+                "verdict": r["verdict"],
+            }
+        )
+    for c in topology_checks:
+        # Topology checks carry only data_mode, not their own claim_class --
+        # map it onto the same vocabulary classify_scientific_item expects.
+        topology_claim_class = c["data_mode"] if c["data_mode"] in ("synthetic", "proxy", "empirical") else (
+            "unavailable" if c["data_mode"] in ("local-unknown", "unknown") else "none"
+        )
+        items.append(
+            {
+                "label": epistemic.classify_scientific_item(claim_class=topology_claim_class, data_mode=c["data_mode"], is_formal=False),
+                "source": "topology_validation",
+                "id": c["name"],
+                "summary": f"{c['name']} ({c['metric_family']}): {c['metric_value']} {c['unit'] or ''}".strip(),
+                "verdict": c["verdict"],
+            }
+        )
+    for g in scientific_gates:
+        items.append(
+            {
+                "label": epistemic.classify_scientific_item(claim_class=g["claim_class"], data_mode=g["data_mode"], is_formal=False),
+                "source": "scientific_gate_reports",
+                "id": g["gate_id"],
+                "summary": g["description"] or g["gate_id"],
+                "verdict": g["verdict"],
+            }
+        )
+    for c in contributions:
+        rc = c["research_classification"]
+        items.append(
+            {
+                "label": epistemic.classify_contribution(claim_class=rc["claim_class"], value_class=rc["value_class"]),
+                "source": "agent_contributions",
+                "id": c["id"],
+                "summary": c["title"] or c["id"],
+                "verdict": None,
+            }
+        )
+    for b in performance_benchmarks:
+        items.append({"label": epistemic.BENCHMARK_RESULT, "source": "performance_benchmark", "id": b["name"], "summary": f"{b['name']} = {b['value']} {b['unit'] or ''}".strip(), "verdict": None})
+    for b in memory_benchmarks:
+        items.append({"label": epistemic.BENCHMARK_RESULT, "source": "memory_evidence", "id": b["name"], "summary": f"{b['name']} = {b['value']} {b['unit'] or ''}".strip(), "verdict": None})
+    for j in test_jobs:
+        items.append({"label": epistemic.ENGINEERING_FACT, "source": "test_runner", "id": j["name"], "summary": f"job {j['name']!r} status={j['status']}", "verdict": None})
+    for p in pr_entries:
+        items.append({"label": epistemic.ENGINEERING_FACT, "source": "reconciliation", "id": str(p["pr_number"]), "summary": f"PR #{p['pr_number']} merge_status={p['merge_status']}", "verdict": None})
+    if dashboard["ok"] is not None:
+        items.append({"label": epistemic.ENGINEERING_FACT, "source": "dashboard_isolation", "id": "dashboard_isolation", "summary": f"dashboard isolation ok={dashboard['ok']}", "verdict": None})
+    for n in operator_notes:
+        items.append({"label": epistemic.classify_operator_note(n["declared_epistemic_label"]), "source": "operator_notes", "id": n["note"][:80], "summary": n["note"], "verdict": None})
+
+    items.sort(key=lambda i: (i["label"], i["source"], i["id"]))
+    return items
+
+
+def _scientific_verdict(items: list[dict[str, Any]]) -> str:
+    """Roll up a single top-level scientific verdict from only the items
+    labeled "formal statistical evidence" or "empirical observation" --
+    the only two labels rule 5 permits to ever say PASS/FAIL (never
+    "engineering fact"/"benchmark result", and never a synthetic/proxy/
+    unsupported/speculative claim)."""
+    eligible = [
+        i for i in items
+        if i["label"] in epistemic.SCIENTIFIC_VERDICT_ELIGIBLE_LABELS and i["verdict"] in ("PASS", "FAIL", "INCONCLUSIVE")
+    ]
+    if not eligible:
+        return "NOT_APPLICABLE"
+    if any(i["verdict"] == "FAIL" for i in eligible):
+        return "FAIL"
+    if any(i["verdict"] == "PASS" for i in eligible):
+        return "PASS"
+    return "INCONCLUSIVE"
+
+
+def _final_conclusions(*, engineering_label: str, scientific_verdict_value: str, final_recommendation: str, blocker_count: int) -> dict[str, Any]:
+    """Deliberately hedged: this section states engineering/process
+    conclusions only. It does not itself constitute scientific evidence,
+    and must never be read as one, regardless of what scientific_verdict
+    says -- scientific_verdict summarizes what the aggregated evidence
+    documents claim, not an independent finding by this compiler."""
+    return {
+        "engineering_conclusion": f"Engineering/process status: {engineering_label}; {blocker_count} unresolved blocker(s); release recommendation {final_recommendation}.",
+        "scientific_conclusion_caveat": (
+            "This record does not itself constitute scientific evidence. The scientific_verdict field above "
+            f"({scientific_verdict_value!r}) reflects only the declared threshold checks in the formal/empirical-labeled "
+            "source artifacts it aggregates; it is not an independent statistical finding and requires independent "
+            "scientific review before being treated as evidence of anything."
+        ),
+    }
+
+
+def _canonical_checksum(record_without_checksum: dict[str, Any]) -> str:
+    """A checksum of the record's own deterministic content (everything
+    except this field itself), so a consumer can verify the record was not
+    altered after compilation. Deterministic only when ``now`` was pinned;
+    otherwise generated_at makes each run's checksum unique by design."""
+    canonical = json.dumps(record_without_checksum, sort_keys=True, allow_nan=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _next_actions(
     conflicts: list[dict[str, Any]],
     cycles: list[list[int]],
@@ -482,6 +629,11 @@ def compile_record(
     topology_section = build_topology_validation(loaded[manifest_mod.TOPOLOGY_VALIDATION])
     falsification_section = build_falsification(loaded[manifest_mod.FALSIFICATION])
     merge_gate_section = build_merge_gate(loaded[manifest_mod.MERGE_GATE])
+    release_manifest_section = build_release_manifest(loaded[manifest_mod.RELEASE_MANIFEST])
+    scientific_gate_section = build_scientific_gate_reports(loaded[manifest_mod.SCIENTIFIC_GATE_REPORTS])
+    blocker_reports_section = build_blocker_reports(loaded[manifest_mod.BLOCKER_REPORTS])
+    artifact_references_section = build_artifact_references(loaded[manifest_mod.ARTIFACT_REFERENCES])
+    operator_notes_section = build_operator_notes(loaded[manifest_mod.OPERATOR_NOTES])
 
     edges = build_dependency_edges(pr_nodes)
     cycles = find_cycles(edges)
@@ -497,7 +649,7 @@ def compile_record(
     conflicts += _merger_summary_conflicts(reconciliation_section["pull_requests"], agent_contributions_section["contributions"])
     conflicts += _merged_but_not_actually_merged_conflicts(reconciliation_section["pull_requests"])
     synthetic_pass_conflicts = _synthetic_and_proxy_pass_conflicts(
-        falsification_section["results"], topology_section["checks"], agent_contributions_section["contributions"]
+        falsification_section["results"], topology_section["checks"], scientific_gate_section["gates"], agent_contributions_section["contributions"]
     )
     conflicts += synthetic_pass_conflicts
     conflicts += _billing_not_pass_conflicts(test_runner_section["jobs"], agent_contributions_section["contributions"])
@@ -561,6 +713,24 @@ def compile_record(
         unresolved_blockers.append(
             {"kind": "dashboard_isolation_violation", "id": "dashboard_isolation", "detail": f"{len(dashboard_section['violations'])} forbidden-import violation(s) found"}
         )
+    for b in blocker_reports_section["blockers"]:
+        unresolved_blockers.append(
+            {"kind": "reported_blocker", "id": b["blocker_id"], "severity": b["severity"], "source": b["source"], "detail": b["description"], "origin": "reported"}
+        )
+
+    epistemic_items = _classify_epistemic_items(
+        falsification_results=falsification_section["results"],
+        topology_checks=topology_section["checks"],
+        scientific_gates=scientific_gate_section["gates"],
+        contributions=agent_contributions_section["contributions"],
+        performance_benchmarks=performance_section["benchmarks"],
+        memory_benchmarks=memory_section["benchmarks"],
+        test_jobs=test_runner_section["jobs"],
+        pr_entries=reconciliation_section["pull_requests"],
+        dashboard=dashboard_section,
+        operator_notes=operator_notes_section["notes"],
+    )
+    scientific_verdict_value = _scientific_verdict(epistemic_items)
 
     final_recommendation = _final_release_recommendation(
         status=overall_status,
@@ -576,6 +746,9 @@ def compile_record(
     )
 
     next_actions = _next_actions(conflicts, cycles, stacked_violations, duplicate_violations, excluded)
+    next_actions += [f"Address reported blocker {b['blocker_id']!r} (severity={b['severity']}): {b['description']}." for b in blocker_reports_section["blockers"]]
+    next_actions = sorted(set(next_actions))
+
     limitations = _scientific_limitations(
         falsification_section["results"], topology_section["checks"], cohort_section["cohorts"], envelope["required_warnings"]
     )
@@ -583,8 +756,16 @@ def compile_record(
     failed_jobs = sorted(j["name"] for j in test_runner_section["jobs"] if j["status"] == "failed")
     failed_ci_prs = sorted(p["pr_number"] for p in reconciliation_section["pull_requests"] if p["ci_status"] == "failed")
 
+    final_conclusions = _final_conclusions(
+        engineering_label=engineering_status["label"],
+        scientific_verdict_value=scientific_verdict_value,
+        final_recommendation=final_recommendation,
+        blocker_count=len(unresolved_blockers),
+    )
+
     record: dict[str, Any] = {
         "report_schema_version": REPORT_SCHEMA_VERSION,
+        "input_contract_version": INPUT_CONTRACT_VERSION,
         "compiler_version": COMPILER_VERSION,
         "generated_at": generated_at,
         "status": overall_status,
@@ -635,9 +816,29 @@ def compile_record(
         "scientific_status": scientific_status,
         "unresolved_blockers": unresolved_blockers,
         "next_actions": next_actions,
+        "next_priorities": next_actions,
         "final_release_recommendation": final_recommendation,
         "recommended_merge_order": {"order": order, "excluded": {str(k): v for k, v in sorted(excluded.items())}},
         "merge_gate_decisions": merge_gate_section,
+        "release_manifest": release_manifest_section,
+        "scientific_gate_reports": scientific_gate_section,
+        "blocker_reports": blocker_reports_section,
+        "artifact_references": artifact_references_section,
+        "operator_notes": operator_notes_section,
+        "epistemic_classification": {
+            "items": epistemic_items,
+            "confirmed_engineering_facts": [i for i in epistemic_items if i["label"] == epistemic.ENGINEERING_FACT],
+            "benchmark_results": [i for i in epistemic_items if i["label"] == epistemic.BENCHMARK_RESULT],
+            "hypotheses": [i for i in epistemic_items if i["label"] == epistemic.HYPOTHESIS],
+            "speculation": [i for i in epistemic_items if i["label"] == epistemic.SPECULATION],
+            "unsupported_claims": [i for i in epistemic_items if i["label"] == epistemic.UNSUPPORTED_CLAIM],
+            "synthetic_demonstrations": [i for i in epistemic_items if i["label"] == epistemic.SYNTHETIC_DEMONSTRATION],
+            "empirical_observations": [i for i in epistemic_items if i["label"] == epistemic.EMPIRICAL_OBSERVATION],
+            "proxy_inferences": [i for i in epistemic_items if i["label"] == epistemic.PROXY_INFERENCE],
+            "formal_statistical_evidence": [i for i in epistemic_items if i["label"] == epistemic.FORMAL_STATISTICAL_EVIDENCE],
+        },
+        "scientific_verdict": scientific_verdict_value,
+        "final_conclusions": final_conclusions,
         "record_provenance": {
             "manifest_path": str(manifest_path),
             "source_checksums": {
@@ -645,4 +846,5 @@ def compile_record(
             },
         },
     }
+    record["canonical_checksum"] = _canonical_checksum(record)
     return record
