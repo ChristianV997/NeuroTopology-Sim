@@ -15,7 +15,9 @@ from typing import Any, Mapping
 from .calculator import compute_report_checksum
 from .models import (
     CohortStatisticsReport,
+    ConfidenceInterval,
     DescriptiveStats,
+    EffectSizeEstimates,
     ExclusionRecord,
     InferentialStats,
     MetricCohortStats,
@@ -128,7 +130,7 @@ def load_cohort_report(path_or_data: str | Path | Mapping[str, Any]) -> CohortSt
             )
             for e in m_data.get("exclusion_records", [])
         ]
-        c_a = m_data.get("condition_a_stats", {})
+        c_a = m_data.get("condition_a_summary") or m_data.get("condition_a_stats", {})
         cond_a = DescriptiveStats(
             n=c_a.get("n", 0),
             mean=c_a.get("mean"),
@@ -136,7 +138,7 @@ def load_cohort_report(path_or_data: str | Path | Mapping[str, Any]) -> CohortSt
             variance=c_a.get("variance"),
             standard_error=c_a.get("standard_error"),
         )
-        c_b = m_data.get("condition_b_stats", {})
+        c_b = m_data.get("condition_b_summary") or m_data.get("condition_b_stats", {})
         cond_b = DescriptiveStats(
             n=c_b.get("n", 0),
             mean=c_b.get("mean"),
@@ -144,7 +146,7 @@ def load_cohort_report(path_or_data: str | Path | Mapping[str, Any]) -> CohortSt
             variance=c_b.get("variance"),
             standard_error=c_b.get("standard_error"),
         )
-        diff_d = m_data.get("difference_stats", {})
+        diff_d = m_data.get("paired_differences") or m_data.get("difference_stats", {})
         ci_raw = diff_d.get("ci_95")
         ci_tuple = tuple(ci_raw) if isinstance(ci_raw, (list, tuple)) and len(ci_raw) == 2 else None
         diff_stats = PairedDifferenceStats(
@@ -158,37 +160,71 @@ def load_cohort_report(path_or_data: str | Path | Mapping[str, Any]) -> CohortSt
             rank_biserial_r=diff_d.get("rank_biserial_r"),
             ci_95=ci_tuple,  # type: ignore[arg-type]
         )
-        inf_d = m_data.get("inferential_stats", {})
-        inf_stats = InferentialStats(
-            test_name=inf_d.get("test_name", "wilcoxon_signed_rank"),
-            status=inf_d.get("status", "unavailable"),
-            statistic=inf_d.get("statistic"),
-            p_value=inf_d.get("p_value"),
-            p_adjusted=inf_d.get("p_adjusted"),
-            alternative=inf_d.get("alternative", "two-sided"),
-            zero_method=inf_d.get("zero_method", "pratt"),
-            zero_count=inf_d.get("zero_count", 0),
-            notes=inf_d.get("notes", ""),
+
+        eff_raw = m_data.get("effect_size_estimates", {})
+        effect_sizes = EffectSizeEstimates(
+            cohens_dz=eff_raw.get("cohens_dz", diff_stats.effect_size_dz),
+            rank_biserial_r=eff_raw.get("rank_biserial_r", diff_stats.rank_biserial_r),
+            method=eff_raw.get("method", "paired_cohens_dz_and_rank_biserial"),
+            effective_sample_size=eff_raw.get("effective_sample_size", m_data.get("valid_pairs_count", 0)),
+            label=eff_raw.get("label", "effect_estimate_not_formal_evidence"),
         )
+
+        ci_data = m_data.get("confidence_interval", {})
+        conf_int = ConfidenceInterval(
+            method=ci_data.get("method", "student_t_95"),
+            ci_95=tuple(ci_data["ci_95"]) if isinstance(ci_data.get("ci_95"), (list, tuple)) else ci_tuple,
+            lower=ci_data.get("lower"),
+            upper=ci_data.get("upper"),
+        )
+
+        inf_d = m_data.get("inferential_stats", {})
+        stat = m_data.get("wilcoxon_statistic") if m_data.get("wilcoxon_statistic") is not None else inf_d.get("statistic")
+        pval = m_data.get("wilcoxon_p_value") if m_data.get("wilcoxon_p_value") is not None else inf_d.get("p_value")
+
         metrics_map[m_name] = MetricCohortStats(
             metric_name=m_name,
+            effective_paired_sample_size=m_data.get("effective_paired_sample_size", m_data.get("valid_pairs_count", 0)),
             valid_pairs_count=m_data.get("valid_pairs_count", 0),
             excluded_pairs_count=m_data.get("excluded_pairs_count", 0),
             exclusion_records=exclusions,
-            condition_a_stats=cond_a,
-            condition_b_stats=cond_b,
-            difference_stats=diff_stats,
-            inferential_stats=inf_stats,
+            condition_a_summary=cond_a,
+            condition_b_summary=cond_b,
+            paired_differences=diff_stats,
+            wilcoxon_statistic=stat,
+            wilcoxon_p_value=pval,
+            tie_count=m_data.get("tie_count", 0),
+            zero_difference_count=m_data.get("zero_difference_count", inf_d.get("zero_count", 0)),
+            effect_size_estimates=effect_sizes,
+            confidence_interval=conf_int,
+            multiplicity_method=m_data.get("multiplicity_method", "holm"),
+            multiplicity_status=m_data.get("multiplicity_status", "none"),
+            p_adjusted=m_data.get("p_adjusted", inf_d.get("p_adjusted")),
+            status=m_data.get("status", inf_d.get("status", "available")),
+            notes=m_data.get("notes", inf_d.get("notes", "")),
         )
 
+    cond_labels = raw.get("condition_labels") or [
+        raw.get("condition_a_label", "condition_a"),
+        raw.get("condition_b_label", "condition_b"),
+    ]
+
     return CohortStatisticsReport(
-        schema=raw.get("schema", "NeuroTopologySim.CohortStatisticsReport.v1"),
-        dataset_id=raw.get("dataset_id"),
-        condition_a_label=raw.get("condition_a_label", "condition_a"),
-        condition_b_label=raw.get("condition_b_label", "condition_b"),
+        schema_version=raw.get("schema_version") or raw.get("schema", "NeuroTopologySim.CohortStatisticsReport.v2"),
+        cohort_identifier=raw.get("cohort_identifier") or raw.get("dataset_id"),
+        condition_labels=cond_labels,
+        pairing_key=raw.get("pairing_key", "subject_id"),
+        subjects_included=raw.get("subjects_included", []),
+        subjects_excluded=raw.get("subjects_excluded", []),
+        exclusion_reasons=raw.get("exclusion_reasons", {}),
+        effective_paired_sample_size=raw.get("effective_paired_sample_size", 0),
         total_subjects_evaluated=raw.get("total_subjects_evaluated", 0),
-        is_synthetic=raw.get("is_synthetic", False),
-        provenance_status=raw.get("provenance_status", "empirical"),
+        formal_bayes_factor=None,
+        scientific_pass=False,
+        evidence_class=raw.get("evidence_class", "descriptive_or_paired_statistics"),
+        synthetic_status=raw.get("synthetic_status") or ("synthetic_demo" if raw.get("is_synthetic") else "empirical"),
+        provenance=raw.get("provenance") or raw.get("provenance_status", "empirical"),
+        finite_value_status=raw.get("finite_value_status", "all_finite"),
         multiplicity_method=raw.get("multiplicity_method", "holm"),
         min_pairs=raw.get("min_pairs", 3),
         checksum=raw.get("checksum", ""),

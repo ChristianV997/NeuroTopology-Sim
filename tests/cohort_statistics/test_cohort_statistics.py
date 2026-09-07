@@ -1,15 +1,17 @@
 """Comprehensive unit and integration test suite for paired-cohort statistics.
 
 Validates:
-1. Exact Cohen's d_z and rank-biserial effect sizes.
-2. Non-parametric Wilcoxon signed-rank and zero-difference edge cases.
+1. Exact Cohen's d_z and rank-biserial effect sizes labeled as estimates.
+2. Non-parametric Wilcoxon signed-rank, ties, and zero-difference edge cases.
 3. SciPy absence graceful fallback (status='unavailable', null values).
 4. Insufficient pair threshold enforcement.
 5. Non-silent exclusion tracking for missing/corrupted arms or non-finite inputs.
-6. Multiplicity corrections (Holm, Bonferroni, FDR-BH) with None preservation.
+6. Multiplicity corrections (Holm, Bonferroni, FDR-BH) and multiplicity_unavailable state.
 7. Deterministic pair sorting and cryptographic SHA-256 checksum integrity.
 8. Strict RFC-8259 JSON serialization (no NaN/Inf).
-9. Provenance status tagging and scientific guardrails.
+9. Provenance status tagging, formal_bayes_factor=null, scientific_pass=false.
+10. Required metrics: beta-1 persistence, integrated persistence-landscape area,
+    persistence distance, spatial phase charge.
 """
 from __future__ import annotations
 
@@ -21,7 +23,9 @@ import pytest
 
 from analysis.cohort_statistics import (
     CohortStatisticsReport,
+    ConfidenceInterval,
     DescriptiveStats,
+    EffectSizeEstimates,
     ExclusionRecord,
     HypothesisAlternative,
     InferentialStats,
@@ -37,9 +41,11 @@ from analysis.cohort_statistics import (
     compute_paired_effect_size_dz,
     compute_rank_biserial_r,
     compute_report_checksum,
+    compute_ties_and_zeros,
     export_cohort_report_dict,
     load_cohort_input,
     load_cohort_report,
+    resolve_multiplicity,
     save_cohort_report,
     verify_report_checksum,
 )
@@ -138,6 +144,15 @@ def test_wilcoxon_signed_rank_and_zero_handling():
     assert 0.0 <= inf_valid.p_value <= 1.0
 
 
+def test_ties_and_zeros_counting():
+    diffs = [2.0, -2.0, 3.0, -3.0, 3.0, 0.0, 0.0]
+    ties, zeros = compute_ties_and_zeros(diffs)
+    # Non-zero absolute values: 2.0, 2.0, 3.0, 3.0, 3.0
+    # 2.0 appears 2 times, 3.0 appears 3 times -> total 5 tied values
+    assert ties == 5
+    assert zeros == 2
+
+
 def test_scipy_unavailable_fallback(monkeypatch):
     import analysis.cohort_statistics.calculator as calc_mod
 
@@ -214,21 +229,20 @@ def test_non_silent_exclusion_tracking():
     assert "sub-05" in excluded_subjects
     assert "unparseable" in excluded_subjects["sub-05"]
 
+    # Verify top-level lists
+    assert set(report.subjects_included) == {"sub-01", "sub-06", "sub-07"}
+    assert set(report.subjects_excluded) == {"sub-02", "sub-03", "sub-04", "sub-05"}
+    assert report.finite_value_status == "non_finite_values_excluded"
+
 
 def test_multiplicity_corrections():
-    # Test Holm, Bonferroni, FDR-BH
     p_raw = [0.01, None, 0.04, 0.02, 0.05]
 
     # Holm
     adj_holm = adjust_p_values(p_raw, method=MultiplicityMethod.HOLM)
     assert len(adj_holm) == 5
-    assert adj_holm[1] is None  # Preserves None at original index
+    assert adj_holm[1] is None
 
-    # Valid values adjusted: 4 tests (0.01, 0.02, 0.04, 0.05)
-    # Sorted: p(1)=0.01 * 4 = 0.04
-    #         p(2)=0.02 * 3 = 0.06
-    #         p(3)=0.04 * 2 = 0.08
-    #         p(4)=0.05 * 1 = 0.05 -> maxed to 0.08
     assert adj_holm[0] == pytest.approx(0.04)
     assert adj_holm[3] == pytest.approx(0.06)
     assert adj_holm[2] == pytest.approx(0.08)
@@ -237,8 +251,8 @@ def test_multiplicity_corrections():
     # Bonferroni
     adj_bonf = adjust_p_values(p_raw, method=MultiplicityMethod.BONFERRONI)
     assert adj_bonf[1] is None
-    assert adj_bonf[0] == pytest.approx(0.04)  # 0.01 * 4
-    assert adj_bonf[3] == pytest.approx(0.08)  # 0.02 * 4
+    assert adj_bonf[0] == pytest.approx(0.04)
+    assert adj_bonf[3] == pytest.approx(0.08)
 
     # FDR-BH
     adj_bh = adjust_p_values(p_raw, method=MultiplicityMethod.FDR_BH)
@@ -246,6 +260,110 @@ def test_multiplicity_corrections():
     for p in adj_bh:
         if p is not None:
             assert 0.0 <= p <= 1.0
+
+
+def test_multiplicity_unavailable_state():
+    p_raw = [0.01, 0.04, 0.02]
+
+    # Absent method returns explicit multiplicity_unavailable status and None adjusted p-values
+    adj, status = resolve_multiplicity(p_raw, method=None)
+    assert status == "multiplicity_unavailable"
+    assert all(p is None for p in adj)
+
+    adj2, status2 = resolve_multiplicity(p_raw, method="absent")
+    assert status2 == "multiplicity_unavailable"
+    assert all(p is None for p in adj2)
+
+
+def test_formal_bayes_factor_and_guardrails_null():
+    cohort = {
+        "sub-01": {"cond_a": {"m1": 10.0}, "cond_b": {"m1": 5.0}},
+        "sub-02": {"cond_a": {"m1": 12.0}, "cond_b": {"m1": 6.0}},
+        "sub-03": {"cond_a": {"m1": 8.0}, "cond_b": {"m1": 4.0}},
+    }
+    report = calculate_paired_cohort_report(cohort, condition_a_name="cond_a", condition_b_name="cond_b")
+
+    # Explicit guardrail assertions
+    assert report.formal_bayes_factor is None
+    assert report.scientific_pass is False
+    assert report.evidence_class == "descriptive_or_paired_statistics"
+    assert report.schema_version == "NeuroTopologySim.CohortStatisticsReport.v2"
+
+    report_dict = report.to_dict()
+    assert report_dict["formal_bayes_factor"] is None
+    assert report_dict["scientific_pass"] is False
+    assert report_dict["evidence_class"] == "descriptive_or_paired_statistics"
+
+
+def test_standard_manifest_metrics():
+    """Verify standard metrics: beta-1 persistence, landscape area, persistence distance, phase charge."""
+    cohort = {
+        "sub-01": {
+            "pre": {
+                "beta-1 persistence": 14.5,
+                "integrated persistence-landscape area": 3.2,
+                "persistence distance": 0.8,
+                "spatial phase charge": 1.1,
+            },
+            "post": {
+                "beta-1 persistence": 10.0,
+                "integrated persistence-landscape area": 2.1,
+                "persistence distance": 0.4,
+                "spatial phase charge": 0.5,
+            },
+        },
+        "sub-02": {
+            "pre": {
+                "beta-1 persistence": 15.0,
+                "integrated persistence-landscape area": 3.4,
+                "persistence distance": 0.9,
+                "spatial phase charge": 1.2,
+            },
+            "post": {
+                "beta-1 persistence": 10.5,
+                "integrated persistence-landscape area": 2.2,
+                "persistence distance": 0.5,
+                "spatial phase charge": 0.6,
+            },
+        },
+        "sub-03": {
+            "pre": {
+                "beta-1 persistence": 13.8,
+                "integrated persistence-landscape area": 3.0,
+                "persistence distance": 0.7,
+                "spatial phase charge": 1.0,
+            },
+            "post": {
+                "beta-1 persistence": 9.5,
+                "integrated persistence-landscape area": 2.0,
+                "persistence distance": 0.3,
+                "spatial phase charge": 0.4,
+            },
+        },
+    }
+
+    report = calculate_paired_cohort_report(
+        cohort,
+        condition_a_name="pre",
+        condition_b_name="post",
+        condition_labels=["pre", "post"],
+    )
+
+    expected = {
+        "beta-1 persistence",
+        "integrated persistence-landscape area",
+        "persistence distance",
+        "spatial phase charge",
+    }
+    assert set(report.metrics.keys()) == expected
+    assert report.condition_labels == ["pre", "post"]
+
+    for m_name in expected:
+        m = report.metrics[m_name]
+        assert m.valid_pairs_count == 3
+        assert m.paired_differences.mean is not None
+        assert m.paired_differences.mean > 0.0
+        assert m.effect_size_estimates.label == "effect_estimate_not_formal_evidence"
 
 
 def test_deterministic_ordering_and_checksum():
@@ -272,7 +390,7 @@ def test_deterministic_ordering_and_checksum():
     assert verify_report_checksum(dict1) is True
 
     # Tamper test
-    dict1["dataset_id"] = "tampered_dataset_id"
+    dict1["cohort_identifier"] = "tampered_dataset_id"
     assert verify_report_checksum(dict1) is False
 
 
@@ -290,8 +408,6 @@ def test_rfc8259_strict_json_finite_null_compliance(tmp_path):
     assert out_file.exists()
     content = out_file.read_text(encoding="utf-8")
 
-    # Strict check: standard JSON parser must not have NaN or Infinity
-    # json.loads rejects NaN when parse_constant fails or we inspect tokens
     assert "NaN" not in content
     assert "Infinity" not in content
 
@@ -299,6 +415,8 @@ def test_rfc8259_strict_json_finite_null_compliance(tmp_path):
     loaded_report = load_cohort_report(out_file)
     assert loaded_report.checksum == report.checksum
     assert len(loaded_report.metrics) == 1
+    assert loaded_report.formal_bayes_factor is None
+    assert loaded_report.scientific_pass is False
 
 
 def test_synthetic_provenance_marking():
@@ -316,6 +434,7 @@ def test_synthetic_provenance_marking():
     )
     assert report.is_synthetic is True
     assert report.provenance_status == "synthetic_demo"
+    assert report.synthetic_status == "synthetic_demo"
 
     # Verify guardrail note
     assert any("GUARDRAIL" in note for note in report.scientific_notes)
@@ -338,7 +457,7 @@ def test_cli_smoke(tmp_path, capsys):
         "--output", str(out_file),
         "--condition-a", "drug",
         "--condition-b", "placebo",
-        "--dataset-id", "ds-test",
+        "--cohort-id", "ds-test",
         "--correction", "holm",
     ])
     assert exit_code == 0

@@ -4,14 +4,16 @@ Implements:
 - Deterministic subject pairing with strict identifier sorting.
 - Explicit non-silent exclusion recording for missing/corrupt arms or non-finite values.
 - Within-subject paired difference statistics.
-- Paired effect size Cohen's d_z = mean(diff) / std(diff, ddof=1).
+- Paired effect size Cohen's d_z = mean(diff) / std(diff, ddof=1) labeled as effect estimate.
 - Non-parametric rank-biserial correlation r for Wilcoxon signed-rank.
-- Wilcoxon signed-rank test with explicit zero-difference handling and SciPy fallback.
-- Multiplicity correction propagation across evaluated metrics.
+- Exact tie and zero-difference count tracking.
+- Multiplicity correction with explicit 'multiplicity_unavailable' state.
+- Formal Bayes factor absence and scientific_pass=False guarantees.
 - Deterministic SHA-256 integrity checksumming.
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import math
@@ -24,7 +26,9 @@ except ImportError:
 
 from .models import (
     CohortStatisticsReport,
+    ConfidenceInterval,
     DescriptiveStats,
+    EffectSizeEstimates,
     ExclusionRecord,
     HypothesisAlternative,
     InferentialStats,
@@ -34,14 +38,13 @@ from .models import (
     ProvenanceStatus,
     _safe_dict,
 )
-from .multiplicity import adjust_p_values
+from .multiplicity import adjust_p_values, resolve_multiplicity
 
 
 def _student_t_crit_975(df: int) -> float:
     """Return two-sided 95% critical value t_0.975 for Student-t distribution."""
     if df <= 0:
         return 1.95996
-    # Exact lookup for small degrees of freedom
     t_table = {
         1: 12.7062, 2: 4.3027, 3: 3.1824, 4: 2.7764, 5: 2.5706,
         6: 2.4469, 7: 2.3646, 8: 2.3060, 9: 2.2622, 10: 2.2281,
@@ -57,7 +60,6 @@ def _student_t_crit_975(df: int) -> float:
             return float(sp_stats.t.ppf(0.975, df=df))
         except Exception:
             pass
-    # Asymptotic approximation for df > 20
     return 1.95996 + 2.372 / df + 2.82 / (df ** 2)
 
 
@@ -116,7 +118,6 @@ def compute_rank_biserial_r(diffs: Sequence[float]) -> float | None:
     if not non_zero:
         return 0.0 if finite_diffs else None
 
-    # Compute ranks of absolute differences with standard average tie resolution
     indexed_abs = sorted(enumerate(non_zero), key=lambda x: abs(x[1]))
     n = len(indexed_abs)
     ranks: list[float] = [0.0] * n
@@ -126,7 +127,6 @@ def compute_rank_biserial_r(diffs: Sequence[float]) -> float | None:
         j = i
         while j < n - 1 and abs(indexed_abs[j][1]) == abs(indexed_abs[j + 1][1]):
             j += 1
-        # Average rank for ties (1-based ranking)
         avg_rank = (i + 1 + j + 1) / 2.0
         for k in range(i, j + 1):
             orig_idx = indexed_abs[k][0]
@@ -143,8 +143,18 @@ def compute_rank_biserial_r(diffs: Sequence[float]) -> float | None:
     return (w_pos - w_neg) / w_tot
 
 
+def compute_ties_and_zeros(diffs: Sequence[float]) -> tuple[int, int]:
+    """Count ties in non-zero absolute differences and count of zero differences."""
+    finite_diffs = [d for d in diffs if math.isfinite(d)]
+    zeros = sum(1 for d in finite_diffs if d == 0.0)
+    non_zeros_abs = [abs(d) for d in finite_diffs if d != 0.0]
+    counts = collections.Counter(non_zeros_abs)
+    ties = sum(c for c in counts.values() if c > 1)
+    return ties, zeros
+
+
 def compute_paired_difference_stats(diffs: Sequence[float]) -> PairedDifferenceStats:
-    """Compute comprehensive difference and effect-size statistics for paired data."""
+    """Compute comprehensive difference statistics for paired data."""
     finite_diffs = [d for d in diffs if math.isfinite(d)]
     n = len(finite_diffs)
     if n == 0:
@@ -291,35 +301,33 @@ def calculate_paired_cohort_report(
     cohort_data: Mapping[str, Any],
     condition_a_name: str = "condition_a",
     condition_b_name: str = "condition_b",
+    condition_labels: Sequence[str] | None = None,
     metrics: Sequence[str] | None = None,
     dataset_id: str | None = None,
+    cohort_identifier: str | None = None,
+    pairing_key: str = "subject_id",
     alternative: HypothesisAlternative | str = HypothesisAlternative.TWO_SIDED,
-    multiplicity_method: MultiplicityMethod | str = MultiplicityMethod.HOLM,
+    multiplicity_method: MultiplicityMethod | str | None = MultiplicityMethod.HOLM,
     min_pairs: int = 3,
     is_synthetic: bool = False,
     provenance_status: ProvenanceStatus | str = ProvenanceStatus.EMPIRICAL,
     zero_method: str = "pratt",
     extra_notes: Sequence[str] | None = None,
 ) -> CohortStatisticsReport:
-    """Evaluate paired cohort statistics across specified metrics with full provenance and guardrails.
+    """Evaluate paired cohort statistics across specified metrics with full provenance and guardrails."""
+    cohort_id = cohort_identifier or dataset_id
 
-    Input cohort_data format:
-      dict mapping subject_id -> {
-          condition_a_name: {metric1: val, ..., "error": ""},
-          condition_b_name: {metric1: val, ..., "error": ""},
-      }
-    """
     if isinstance(alternative, str):
         try:
             alternative = HypothesisAlternative(alternative.lower())
         except ValueError:
             alternative = HypothesisAlternative.TWO_SIDED
 
-    if isinstance(multiplicity_method, str):
-        try:
-            multiplicity_method = MultiplicityMethod(multiplicity_method.lower())
-        except ValueError:
-            multiplicity_method = MultiplicityMethod.HOLM
+    # Preserve exact condition labels supplied by user/manifest
+    if condition_labels is not None:
+        effective_condition_labels = [str(c) for c in condition_labels]
+    else:
+        effective_condition_labels = [str(condition_a_name), str(condition_b_name)]
 
     if isinstance(provenance_status, str):
         try:
@@ -327,7 +335,6 @@ def calculate_paired_cohort_report(
         except ValueError:
             provenance_status = ProvenanceStatus.EMPIRICAL
 
-    # Deterministic sorting of subject IDs
     sorted_subject_ids = sorted(cohort_data.keys())
     total_subjects = len(sorted_subject_ids)
 
@@ -349,78 +356,92 @@ def calculate_paired_cohort_report(
     metric_p_values: list[float | None] = []
     metric_names_in_order: list[str] = []
 
+    global_included_subjects: set[str] = set()
+    global_excluded_subjects: set[str] = set()
+    global_exclusion_reasons: dict[str, list[str]] = collections.defaultdict(list)
+    has_non_finite_values = False
+
     for metric in sorted(metrics):
         metric_names_in_order.append(metric)
         clean_a_vals: list[float] = []
         clean_b_vals: list[float] = []
         diffs: list[float] = []
         exclusions: list[ExclusionRecord] = []
-
         seen_subjects: set[str] = set()
 
         for sub_id in sorted_subject_ids:
             if sub_id in seen_subjects:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason="duplicate_subject_id")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason="duplicate_subject_id")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append("duplicate_subject_id")
                 continue
             seen_subjects.add(sub_id)
 
             sub_val = cohort_data[sub_id]
             if not isinstance(sub_val, dict):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason="subject_record_not_dict")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason="subject_record_not_dict")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append("subject_record_not_dict")
                 continue
 
             # Check Condition A
             if condition_a_name not in sub_val:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"missing_{condition_a_name}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"missing_{condition_a_name}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"missing_{condition_a_name}")
                 continue
             arm_a = sub_val[condition_a_name]
             if not isinstance(arm_a, dict):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_a_name}_not_dict")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_a_name}_not_dict")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"{condition_a_name}_not_dict")
                 continue
             err_a = arm_a.get("error")
             if err_a:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_a_name}_error: {err_a}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_a_name}_error: {err_a}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"{condition_a_name}_error: {err_a}")
                 continue
 
             # Check Condition B
             if condition_b_name not in sub_val:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"missing_{condition_b_name}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"missing_{condition_b_name}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"missing_{condition_b_name}")
                 continue
             arm_b = sub_val[condition_b_name]
             if not isinstance(arm_b, dict):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_b_name}_not_dict")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_b_name}_not_dict")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"{condition_b_name}_not_dict")
                 continue
             err_b = arm_b.get("error")
             if err_b:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_b_name}_error: {err_b}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"{condition_b_name}_error: {err_b}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"{condition_b_name}_error: {err_b}")
                 continue
 
             # Check metric presence
             if metric not in arm_a:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"metric_missing_in_{condition_a_name}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"metric_missing_in_{condition_a_name}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"metric_missing_in_{condition_a_name}")
                 continue
             if metric not in arm_b:
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"metric_missing_in_{condition_b_name}")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"metric_missing_in_{condition_b_name}")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"metric_missing_in_{condition_b_name}")
                 continue
 
             raw_a = arm_a[metric]
@@ -429,36 +450,42 @@ def calculate_paired_cohort_report(
             try:
                 val_a = float(raw_a)
             except (ValueError, TypeError):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"unparseable_{condition_a_name}_val")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"unparseable_{condition_a_name}_val")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"unparseable_{condition_a_name}_val")
                 continue
 
             try:
                 val_b = float(raw_b)
             except (ValueError, TypeError):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"unparseable_{condition_b_name}_val")
-                )
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"unparseable_{condition_b_name}_val")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"unparseable_{condition_b_name}_val")
                 continue
 
             if not math.isfinite(val_a):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"non_finite_{condition_a_name}_val")
-                )
+                has_non_finite_values = True
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"non_finite_{condition_a_name}_val")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"non_finite_{condition_a_name}_val")
                 continue
 
             if not math.isfinite(val_b):
-                exclusions.append(
-                    ExclusionRecord(subject=sub_id, metric=metric, reason=f"non_finite_{condition_b_name}_val")
-                )
+                has_non_finite_values = True
+                rec = ExclusionRecord(subject=sub_id, metric=metric, reason=f"non_finite_{condition_b_name}_val")
+                exclusions.append(rec)
+                global_excluded_subjects.add(sub_id)
+                global_exclusion_reasons[sub_id].append(f"non_finite_{condition_b_name}_val")
                 continue
 
             clean_a_vals.append(val_a)
             clean_b_vals.append(val_b)
             diffs.append(val_a - val_b)
+            global_included_subjects.add(sub_id)
 
-        # Compute stats for metric
         desc_a = compute_descriptive_stats(clean_a_vals)
         desc_b = compute_descriptive_stats(clean_b_vals)
         diff_stats = compute_paired_difference_stats(diffs)
@@ -469,62 +496,89 @@ def calculate_paired_cohort_report(
             zero_method=zero_method,
         )
 
+        tie_count, zero_count = compute_ties_and_zeros(diffs)
+        effect_sizes = EffectSizeEstimates(
+            cohens_dz=diff_stats.effect_size_dz,
+            rank_biserial_r=diff_stats.rank_biserial_r,
+            method="paired_cohens_dz_and_rank_biserial",
+            effective_sample_size=len(diffs),
+            label="effect_estimate_not_formal_evidence",
+        )
+        conf_int = ConfidenceInterval(
+            method="student_t_95",
+            ci_95=diff_stats.ci_95,
+            lower=diff_stats.ci_95[0] if diff_stats.ci_95 else None,
+            upper=diff_stats.ci_95[1] if diff_stats.ci_95 else None,
+        )
+
         metric_p_values.append(inf_stats.p_value)
 
         metric_reports[metric] = MetricCohortStats(
             metric_name=metric,
+            effective_paired_sample_size=len(diffs),
             valid_pairs_count=len(diffs),
             excluded_pairs_count=len(exclusions),
             exclusion_records=exclusions,
-            condition_a_stats=desc_a,
-            condition_b_stats=desc_b,
-            difference_stats=diff_stats,
-            inferential_stats=inf_stats,
+            condition_a_summary=desc_a,
+            condition_b_summary=desc_b,
+            paired_differences=diff_stats,
+            wilcoxon_statistic=inf_stats.statistic,
+            wilcoxon_p_value=inf_stats.p_value,
+            tie_count=tie_count,
+            zero_difference_count=zero_count,
+            effect_size_estimates=effect_sizes,
+            confidence_interval=conf_int,
+            multiplicity_method=str(multiplicity_method) if multiplicity_method else "multiplicity_unavailable",
+            multiplicity_status="none",
+            p_adjusted=None,
+            status=inf_stats.status,
+            notes=inf_stats.notes,
         )
 
     # Multiplicity correction
-    adjusted_p_values = adjust_p_values(metric_p_values, method=multiplicity_method)
+    adjusted_p_values, mult_status = resolve_multiplicity(metric_p_values, method=multiplicity_method)
     for metric_name, adj_p in zip(metric_names_in_order, adjusted_p_values):
-        old_inf = metric_reports[metric_name].inferential_stats
-        # Update inferential stats with adjusted p-value
-        new_inf = InferentialStats(
-            test_name=old_inf.test_name,
-            status=old_inf.status,
-            statistic=old_inf.statistic,
-            p_value=old_inf.p_value,
-            p_adjusted=adj_p,
-            alternative=old_inf.alternative,
-            zero_method=old_inf.zero_method,
-            zero_count=old_inf.zero_count,
-            notes=old_inf.notes,
-        )
-        metric_reports[metric_name].inferential_stats = new_inf
+        metric_reports[metric_name].p_adjusted = adj_p
+        metric_reports[metric_name].multiplicity_status = mult_status
 
     scientific_notes = [
-        "Paired difference calculated as: condition_a - condition_b.",
-        "Paired effect size d_z computed as mean(diff) / std(diff, ddof=1).",
+        "Paired difference calculated strictly as: Condition A - Condition B.",
+        "Condition labels preserved exactly as declared in manifest without inferring behavioral state.",
+        "Paired effect size Cohen's d_z = mean(diff) / std(diff, ddof=1) is an effect estimate, not biological evidence.",
         "Rank-biserial correlation r reflects Wilcoxon signed-rank sum-of-ranks contrast (W+ - W-) / (W+ + W-).",
         "Multiple comparison correction applied across metrics without inflating hypothesis count for missing tests.",
-        "GUARDRAIL: Paired statistical significance does NOT establish biological proof, clinical efficacy, or ontology promotion.",
+        "GUARDRAIL: formal_bayes_factor is null, scientific_pass is false, and evidence_class is descriptive_or_paired_statistics.",
+        "GUARDRAIL: Paired statistical significance does NOT establish biological quantum coherence, consciousness claims, or TOE validation.",
     ]
     if extra_notes:
         scientific_notes.extend(extra_notes)
 
+    finite_status = "non_finite_values_excluded" if has_non_finite_values else "all_finite"
+    max_effective_sample = max([m.effective_paired_sample_size for m in metric_reports.values()], default=0)
+
     report = CohortStatisticsReport(
-        dataset_id=dataset_id,
-        condition_a_label=condition_a_name,
-        condition_b_label=condition_b_name,
+        schema_version="NeuroTopologySim.CohortStatisticsReport.v2",
+        cohort_identifier=cohort_id,
+        condition_labels=effective_condition_labels,
+        pairing_key=pairing_key,
+        subjects_included=sorted(global_included_subjects),
+        subjects_excluded=sorted(global_excluded_subjects),
+        exclusion_reasons=dict(sorted(global_exclusion_reasons.items())),
+        effective_paired_sample_size=max_effective_sample,
         total_subjects_evaluated=total_subjects,
-        is_synthetic=is_synthetic,
-        provenance_status=provenance_status.value,
-        multiplicity_method=multiplicity_method.value,
+        formal_bayes_factor=None,
+        scientific_pass=False,
+        evidence_class="descriptive_or_paired_statistics",
+        synthetic_status=ProvenanceStatus.SYNTHETIC_DEMO.value if is_synthetic or provenance_status == ProvenanceStatus.SYNTHETIC_DEMO else ProvenanceStatus.EMPIRICAL.value,
+        provenance=provenance_status.value,
+        finite_value_status=finite_status,
+        multiplicity_method=str(multiplicity_method) if multiplicity_method else "multiplicity_unavailable",
         min_pairs=min_pairs,
         checksum="",
         metrics=metric_reports,
         scientific_notes=scientific_notes,
     )
 
-    # Compute checksum
     report_dict = report.to_dict()
     checksum = compute_report_checksum(report_dict)
     report.checksum = checksum

@@ -4,6 +4,7 @@ Supports:
 - Holm-Bonferroni step-down (Family-Wise Error Rate)
 - Bonferroni single-step (FWER)
 - Benjamini-Hochberg step-up (False Discovery Rate)
+- Explicit multiplicity_unavailable handling when method is absent
 - Graceful preservation of None/unavailable test results.
 """
 from __future__ import annotations
@@ -13,20 +14,55 @@ from typing import Sequence
 from .models import MultiplicityMethod
 
 
+def resolve_multiplicity(
+    p_values: Sequence[float | None],
+    method: MultiplicityMethod | str | None = MultiplicityMethod.HOLM,
+) -> tuple[list[float | None], str]:
+    """Adjust p-values and return a tuple of (adjusted_p_values, multiplicity_status).
+
+    If method is absent, None, or 'multiplicity_unavailable', returns explicit
+    status 'multiplicity_unavailable' and all adjusted p-values as None.
+    """
+    if method is None or (isinstance(method, str) and method.lower() in ("absent", "unavailable", "multiplicity_unavailable")):
+        return [None] * len(p_values), "multiplicity_unavailable"
+
+    if isinstance(method, str):
+        try:
+            method = MultiplicityMethod(method.lower())
+        except ValueError:
+            return [None] * len(p_values), "multiplicity_unavailable"
+
+    if method == MultiplicityMethod.UNAVAILABLE:
+        return [None] * len(p_values), "multiplicity_unavailable"
+
+    if method == MultiplicityMethod.NONE:
+        return [p if p is not None else None for p in p_values], "none"
+
+    adjusted = adjust_p_values(p_values, method=method)
+    return adjusted, "corrected"
+
+
 def adjust_p_values(
     p_values: Sequence[float | None],
-    method: MultiplicityMethod | str = MultiplicityMethod.HOLM,
+    method: MultiplicityMethod | str | None = MultiplicityMethod.HOLM,
 ) -> list[float | None]:
     """Adjust a collection of p-values for multiple comparisons.
 
     Non-testable / unavailable p-values (None) are excluded from the comparison
     count m and preserved as None at their original positions.
+    If method is absent or unavailable, returns all None to avoid treating multiple tests as single.
     """
+    if method is None or (isinstance(method, str) and method.lower() in ("absent", "unavailable", "multiplicity_unavailable")):
+        return [None] * len(p_values)
+
     if isinstance(method, str):
         try:
             method = MultiplicityMethod(method.lower())
         except ValueError:
-            method = MultiplicityMethod.HOLM
+            return [None] * len(p_values)
+
+    if method == MultiplicityMethod.UNAVAILABLE:
+        return [None] * len(p_values)
 
     if method == MultiplicityMethod.NONE:
         return [p if p is not None else None for p in p_values]
@@ -55,7 +91,6 @@ def adjust_p_values(
 
     # Order valid p-values ascending: (p_val, original_valid_index)
     sorted_pairs = sorted(enumerate(valid_p), key=lambda item: item[1])
-    # sorted_pairs is [(rank_in_valid, p_val)]
     ranked_indices = [item[0] for item in sorted_pairs]
     sorted_p = [item[1] for item in sorted_pairs]
 

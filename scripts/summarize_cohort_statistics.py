@@ -5,7 +5,8 @@ Guarantees:
 - Deterministic subject pair matching.
 - Explicit non-silent exclusion recording.
 - Paired Cohen's d_z effect sizes and Wilcoxon signed-rank tests.
-- Multiplicity corrections across evaluated topological metrics.
+- Multiplicity corrections with explicit 'multiplicity_unavailable' state.
+- Explicit non-evidence guardrails: formal_bayes_factor=null, scientific_pass=false.
 - JSON output with strict finite/null guarantee and SHA-256 checksum.
 """
 from __future__ import annotations
@@ -50,12 +51,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--condition-a", "-a",
         default="condition_a",
-        help="Identifier/label for experimental condition A (e.g. drug, session_2).",
+        help="Identifier/label for experimental condition A (preserved exactly as supplied).",
     )
     parser.add_argument(
         "--condition-b", "-b",
         default="condition_b",
-        help="Identifier/label for reference condition B (e.g. placebo, session_1).",
+        help="Identifier/label for reference condition B (preserved exactly as supplied).",
     )
     parser.add_argument(
         "--metrics", "-m",
@@ -63,13 +64,19 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Comma-separated list of metrics to evaluate (default: all discovered).",
     )
     parser.add_argument(
-        "--dataset-id", "-d",
+        "--cohort-id", "--dataset-id", "-d",
+        dest="cohort_id",
         default=None,
-        help="Dataset identifier (e.g. ds005917, ds005620).",
+        help="Cohort or dataset identifier (e.g. ds005917, ds005620).",
+    )
+    parser.add_argument(
+        "--pairing-key",
+        default="subject_id",
+        help="Key identifier used for subject pairing (default: subject_id).",
     )
     parser.add_argument(
         "--correction", "-c",
-        choices=[m.value for m in MultiplicityMethod],
+        choices=[m.value for m in MultiplicityMethod] + ["absent", "unavailable"],
         default=MultiplicityMethod.HOLM.value,
         help="Multiple testing correction method.",
     )
@@ -136,7 +143,8 @@ def main(args: list[str] | None = None) -> int:
         condition_a_name=ns.condition_a,
         condition_b_name=ns.condition_b,
         metrics=metrics_list,
-        dataset_id=ns.dataset_id,
+        cohort_identifier=ns.cohort_id,
+        pairing_key=ns.pairing_key,
         alternative=ns.alternative,
         multiplicity_method=ns.correction,
         min_pairs=ns.min_pairs,
@@ -144,24 +152,28 @@ def main(args: list[str] | None = None) -> int:
         provenance_status=prov_status,
     )
 
-    print("=" * 80)
-    print(f"PAIRED COHORT STATISTICS REPORT: {report.dataset_id or 'Unnamed Dataset'}")
+    print("=" * 84)
+    print(f"PAIRED COHORT STATISTICS REPORT (v2): {report.cohort_identifier or 'Unnamed Cohort'}")
     print(f"Contrast: {report.condition_a_label} - {report.condition_b_label}")
-    print(f"Evaluated Subjects: {report.total_subjects_evaluated} | Provenance: {report.provenance_status}")
-    print(f"Multiplicity Correction: {report.multiplicity_method} | Min Pairs: {report.min_pairs}")
+    print(f"Evaluated Subjects: {report.total_subjects_evaluated} | Included: {len(report.subjects_included)} | Excluded: {len(report.subjects_excluded)}")
+    print(f"Effective Paired Sample Size: {report.effective_paired_sample_size}")
+    print(f"Multiplicity Method: {report.multiplicity_method}")
+    print(f"Evidence Class: {report.evidence_class} | Scientific Pass: {report.scientific_pass}")
+    print(f"Formal Bayes Factor: {report.formal_bayes_factor} | Finite Status: {report.finite_value_status}")
     print(f"Report Checksum (SHA-256): {report.checksum}")
-    print("=" * 80)
-    print(f"{'Metric':<24} | {'N':<4} | {'Mean Diff':<10} | {'d_z':<8} | {'r':<8} | {'p (raw)':<10} | {'p (adj)':<10}")
-    print("-" * 80)
+    print("=" * 84)
+    print(f"{'Metric':<24} | {'N':<4} | {'Diff Mean':<10} | {'d_z':<8} | {'r':<8} | {'Ties':<5} | {'p (raw)':<9} | {'p (adj)':<9}")
+    print("-" * 84)
 
     for m_name, m_stats in sorted(report.metrics.items()):
-        d_mean = f"{m_stats.difference_stats.mean:.4f}" if m_stats.difference_stats.mean is not None else "N/A"
-        dz = f"{m_stats.difference_stats.effect_size_dz:.3f}" if m_stats.difference_stats.effect_size_dz is not None else "N/A"
-        rb = f"{m_stats.difference_stats.rank_biserial_r:.3f}" if m_stats.difference_stats.rank_biserial_r is not None else "N/A"
-        p_val = f"{m_stats.inferential_stats.p_value:.4f}" if m_stats.inferential_stats.p_value is not None else "N/A"
-        p_adj = f"{m_stats.inferential_stats.p_adjusted:.4f}" if m_stats.inferential_stats.p_adjusted is not None else "N/A"
+        d_mean = f"{m_stats.paired_differences.mean:.4f}" if m_stats.paired_differences.mean is not None else "N/A"
+        dz = f"{m_stats.effect_size_estimates.cohens_dz:.3f}" if m_stats.effect_size_estimates.cohens_dz is not None else "N/A"
+        rb = f"{m_stats.effect_size_estimates.rank_biserial_r:.3f}" if m_stats.effect_size_estimates.rank_biserial_r is not None else "N/A"
+        ties = f"{m_stats.tie_count}"
+        p_val = f"{m_stats.wilcoxon_p_value:.4f}" if m_stats.wilcoxon_p_value is not None else "N/A"
+        p_adj = f"{m_stats.p_adjusted:.4f}" if m_stats.p_adjusted is not None else "N/A"
 
-        print(f"{m_name:<24} | {m_stats.valid_pairs_count:<4} | {d_mean:<10} | {dz:<8} | {rb:<8} | {p_val:<10} | {p_adj:<10}")
+        print(f"{m_name:<24} | {m_stats.valid_pairs_count:<4} | {d_mean:<10} | {dz:<8} | {rb:<8} | {ties:<5} | {p_val:<9} | {p_adj:<9}")
 
         if m_stats.excluded_pairs_count > 0:
             print(f"  └─ Excluded {m_stats.excluded_pairs_count} pairs:")
@@ -170,10 +182,10 @@ def main(args: list[str] | None = None) -> int:
             if len(m_stats.exclusion_records) > 5:
                 print(f"     • ... and {len(m_stats.exclusion_records) - 5} more")
 
-    print("-" * 80)
+    print("-" * 84)
     for note in report.scientific_notes:
         print(f"[NOTE] {note}")
-    print("=" * 80)
+    print("=" * 84)
 
     if ns.output:
         out_p = save_cohort_report(report, ns.output)
