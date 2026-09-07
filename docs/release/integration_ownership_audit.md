@@ -167,3 +167,53 @@ These are **not** GitHub merge statuses. They are Alfred duplicate-bot decisions
 2. Researchy / Nightly / tinkabot / new empty bots are **out**. Lingxi waits for a Lead post-audit assignment. Chief of Staff is digest-later only.
 3. Integration may order contracts/dependencies; it must reject competing queues.
 4. Codex C remains the only merger. **Do not merge this PR.**
+
+---
+
+## Research claim labeling
+
+**Phase:** RESEARCH (additive on Lead inventory).
+**Classifier:** Research and Tooling (`research_and_tooling`).
+**Classified:** 2026-09-07.
+**Base Lead commit:** `95e910a015f5a0256458a96fedc6137cfac1c35a`.
+**CURRENT_INTEGRATION_HEAD (unchanged):** `af3ac584419148ddcfc57cb565c416eba6328725`.
+**Researchy:** **NO ACT** this wave. Research and Tooling owns this labeling. Do not wait on Researchy findings.
+
+This section **does not** change Lead `status` values (`VERIFIED` / `INTEGRATED_ONLY` / `OPEN_REVIEW` / `UNVERIFIED` / etc.). It separates **engineering facts** (GitHub-supported) from **scientific claims**. The inventory is not evidence. `empirical_pass_from_this_pack: false`. Synthetic remains **`NOT_SUPPORTED`**. Proxy Bayes ≠ formal `K`. **`INTEGRATED_ONLY` ≠ merged into `main`.**
+
+Author body SHA `af3ac584277747ae29882d3f5a39af5c4a436f22` stays **`UNVERIFIED`** (HTTP 422). Live `#236` head is `af3ac5844191…`; `be277ecd` is intermediate.
+
+Alfred six-member graph and this-wave NO ACT list stay as Lead recorded.
+
+### Work-item labels
+
+| ID | `fact_kind` | scientific `claim_status` | `exceeds_evidence` | Note |
+| --- | --- | --- | --- | --- |
+| `nts-io-pr-236` | mixed | `NOT_SUPPORTED` | true | OPEN vs main; `BLOCKED_BY_CI` ~3s; 140 files; head `af3ac5844191`. Author isolated counts unverified. Body Final commit SHA UNVERIFIED if treated as live head. Synthetic `NOT_SUPPORTED`. |
+| `nts-io-pr-242` | mixed | none | false | Governance/engineering blocker triage. Cited head `be277ecd` stale. Inventory not evidence. Do not rewrite. |
+| `nts-io-pr-237` | governance | none | false | Retirement register. Inventory not evidence. Do not rewrite. |
+| `nts-io-pr-225` | governance | none | false | OPEN inventory supersede claim. `#216` still `VERIFIED` on main. Do not mark `#216` `SUPERSEDED`. Inventory not evidence. |
+| `nts-io-pr-216` | governance | none | false | `VERIFIED` on main is an engineering fact, not scientific `PASS`. Evidence pack — do not rewrite. |
+| `nts-io-pr-214` | engineering | none | false | `VERIFIED` EEG streaming. Not `PASS`. |
+| `nts-io-pr-220` | engineering | none | false | `INTEGRATED_ONLY` (merged to `#212` branch, not main). Adapters ≠ scientific `PASS`. |
+| `nts-io-pr-222` | engineering | none | false | OPEN CI work. ~3s FAILURE ≠ pytest. Not science. |
+| `nts-io-pr-227` | engineering | none | false | OPEN CI work. ~3s FAILURE ≠ `BLOCKED_BY_TESTS`. Not science. |
+| `nts-io-pr-219` | mixed | `proxy_not_formal` | true | `VERIFIED` on main (engineering). Proxy Bayes ≠ formal `K`. Exceeds evidence if treated as formal `K`. |
+| `nts-io-branch-scientific-falsification-contract` | mixed | `proxy_not_formal` | true | `UNVERIFIED` / `BRANCH_ONLY` + `INTEGRATED_ONLY` on `#236`. No PR. Not main merge. Proxy ≠ formal. |
+| `nts-io-pr-211` | engineering | `NOT_SUPPORTED` | true | `VERIFIED` performance stand-in / synthetic fixtures. Not `PASS`. |
+| `nts-io-pr-215` | engineering | none | false | `INTEGRATED_ONLY` (stacked). RSS/tracemalloc telemetry. Not `PASS`. Not main. |
+| `nts-io-pr-224` | engineering | none | false | OPEN stacked. Not `PASS`. |
+| `nts-io-sha-be277ecd-intermediate` | engineering | none | false | `INTEGRATED_ONLY`. Not current. Not main. |
+
+Context `#206` / `#207` / `#208`: engineering `OPEN_REVIEW`; not science.
+Companions `#209` / `#210` / `#212` / `#213` / `#217` / `#218` / `#221`: `VERIFIED` on main are engineering facts only; not scientific `PASS`.
+
+### Scientific claim issues (exceed evidence if promoted)
+
+See `scientific_claim_issues` in `configs/release/integration_ownership.yaml`. In short: isolated 415/75/64/8/3/exit124 unverified; body SHA `af3ac5842777…` UNVERIFIED as live head; synthetic as `PASS`; proxy Bayes as formal `K`; `VERIFIED` merge as scientific `PASS`; adapters as `PASS`; `INTEGRATED_ONLY` as main merge; empty-step ~3s FAILURE as `BLOCKED_BY_TESTS`; OPEN `#225` as `SUPERSEDED` of `#216`.
+
+### Hand-off
+
+**NEXT_ACTION = QA.** Reproduce/diff the two owned files only. Do not invent `scripts/validate_integration_ownership.py` or `tests/release/test_integration_ownership.py` unless a repair is boarded. Do not rewrite packs `#216` / `#225` / `#237` / `#242`.
+
+**Researchy NO ACT.** Merger: **do not merge.** Never close/retarget PRs. Codex C remains the sole merger.

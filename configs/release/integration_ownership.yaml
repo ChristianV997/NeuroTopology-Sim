@@ -1,4 +1,5 @@
 # Lead-phase integration ownership inventory (audit-only).
+# Research claim labeling added 2026-09-07 (Research and Tooling). Researchy NO ACT.
 # Not a validator. Not a merger. Not compiled evidence. Not a scientific PASS.
 # Release later owns scripts/validate_integration_ownership.py (do not invent here).
 # QA later owns tests/release/test_integration_ownership.py (do not invent here).
@@ -81,6 +82,30 @@ required_warnings:
   - "Release is the sole evidence authority for packs #216/#225/#237/#242. No second evidence authority."
   - "Researchy, Nightly Audit Engineer, tinkabot, and new empty bots are this-wave NO ACT. Lingxi is out until Lead assigns post-audit. Chief of Staff is digest-later only."
 
+# Research labeling (Phase 2). Additive. Lead status values are unchanged.
+# Engineering facts ≠ scientific claims. Inventory is not evidence.
+research_phase:
+  phase: RESEARCH
+  classified_at: "2026-09-07"
+  classifier: research_and_tooling
+  base_lead_commit: 95e910a015f5a0256458a96fedc6137cfac1c35a
+  current_integration_head: af3ac584419148ddcfc57cb565c416eba6328725
+  researchy_acted: false
+  inventory_is_not_evidence: true
+  empirical_pass_from_this_pack: false
+  synthetic_status: NOT_SUPPORTED
+  proxy_bayes_equals_formal: false
+  required_warnings:
+    - "Engineering facts ≠ scientific claims."
+    - "INTEGRATED_ONLY ≠ merged into main."
+    - "Synthetic remains NOT_SUPPORTED; never invent PASS."
+    - "Proxy Bayes ≠ formal K."
+    - "Author isolated 415/75/64/8/3/exit124 unverified."
+    - "Empty-step ~3s CI FAILURE ≠ BLOCKED_BY_TESTS."
+    - "Live #236 head is af3ac5844191…; be277ecd intermediate; body SHA af3ac5842777… UNVERIFIED."
+    - "Researchy NO ACT this wave — Research and Tooling owns this labeling."
+    - "Do not merge. Never close/retarget PRs."
+
 # Live origin/main at inspect time.
 origin_main:
   oid: 62aa8fee786abf916ab0aa2b7e7b91c570fee119
@@ -135,6 +160,18 @@ reported_vs_live_heads:
         - "PR #242 body CURRENT_INTEGRATION_HEAD (stale vs live)"
         - "configs/release/blocker_registry.yaml on grok-bot/release-blocker-triage"
       evidence: "gh pr view 236 --json commits: oid is the parent of af3ac584419148ddcfc57cb565c416eba6328725. GitHub does not report this SHA merged into main."
+      research_claim_label:
+        status: labeled
+        fact_kind: engineering
+        engineering_facts:
+          - "Parent of live #236 head. INTEGRATED_ONLY on #236 history. Not current. Not on origin/main."
+        scientific_claims:
+          present: false
+          claim_status: none
+          exceeds_evidence: false
+          notes: "Intermediate SHA. INTEGRATED_ONLY ≠ merged into main. Not science."
+        evidence_tooling_label: inventory_not_evidence
+        integrated_only_is_not_main_merge: true
     - oid_prefix: af3ac584
       matching_live_full_oid: af3ac584419148ddcfc57cb565c416eba6328725
       role: current_prefix_of_live_head
@@ -142,6 +179,18 @@ reported_vs_live_heads:
       on_pr_236_history: true
       on_origin_main: false
       note: "Short prefix af3ac584 matches the LIVE head only. It is not a second commit and is not merged into main."
+      research_claim_label:
+        status: labeled
+        fact_kind: engineering
+        engineering_facts:
+          - "Short prefix of live head af3ac584419148ddcfc57cb565c416eba6328725 only. Not a second commit. Not merged into main."
+        scientific_claims:
+          present: false
+          claim_status: none
+          exceeds_evidence: false
+          notes: "Prefix of CURRENT_INTEGRATION_HEAD. Not science."
+        evidence_tooling_label: inventory_not_evidence
+        integrated_only_is_not_main_merge: n_a
     - oid: af3ac584277747ae29882d3f5a39af5c4a436f22
       role: author_body_claim_not_found
       status: UNVERIFIED
@@ -150,6 +199,19 @@ reported_vs_live_heads:
       github_api: "HTTP 422 No commit found"
       source: "PR #236 body Final commit line"
       note: "Do not treat this SHA as current, intermediate, or merged. Prefix collision with live af3ac5844191… only."
+      research_claim_label:
+        status: labeled
+        fact_kind: engineering
+        engineering_facts:
+          - "Cited as Final commit on PR #236 body. GitHub API HTTP 422 No commit found."
+          - "Not on #236 history. Not on origin/main. Prefix collision with live af3ac5844191 only."
+        scientific_claims:
+          present: true
+          claim_status: unavailable
+          exceeds_evidence: true
+          notes: "UNVERIFIED body SHA exceeds evidence if treated as live CURRENT_INTEGRATION_HEAD or as a scientific/validation commit."
+        evidence_tooling_label: inventory_not_evidence
+        integrated_only_is_not_main_merge: n_a
 
 status_check_rollup_236:
   source: gh_pr_view_statusCheckRollup_and_check_runs
@@ -292,6 +354,63 @@ scientific_standing_warnings:
   proxy_bayes_equals_formal: false
   empirical_pass_from_this_pack: false
 
+# Statements that would exceed evidence if promoted. Labeling only — not a verdict.
+scientific_claim_issues:
+  - id: pr236-author-isolated-counts
+    work_items: [nts-io-pr-236]
+    statement: "Author-claimed isolated run 415 files / 75 batches / 64 passed / 8 failed / 3 timed out / exit 124."
+    if_promoted: "Would treat unverified #236 body counts as empirical results."
+    claim_status: unavailable
+    exceeds_evidence: true
+  - id: pr236-body-sha-as-live-head
+    work_items: [nts-io-pr-236]
+    statement: "PR #236 body Final commit SHA af3ac584277747ae29882d3f5a39af5c4a436f22."
+    if_promoted: "Would treat an HTTP 422 UNVERIFIED SHA as live CURRENT_INTEGRATION_HEAD."
+    claim_status: unavailable
+    exceeds_evidence: true
+  - id: synthetic-as-pass
+    work_items: [nts-io-pr-236, nts-io-pr-211]
+    statement: "Synthetic or stand-in results as empirical PASS."
+    if_promoted: "Synthetic remains NOT_SUPPORTED; never invent PASS."
+    claim_status: NOT_SUPPORTED
+    exceeds_evidence: true
+  - id: proxy-bayes-as-formal-k
+    work_items: [nts-io-pr-219, nts-io-branch-scientific-falsification-contract]
+    statement: "On-main / integration Bayes-factor paths as formal marginal-likelihood K."
+    if_promoted: "Proxy Bayes ≠ formal K. Exceeds evidence if treated as formal K."
+    claim_status: proxy_not_formal
+    exceeds_evidence: true
+  - id: verified-merge-as-scientific-pass
+    work_items: [nts-io-pr-216, nts-io-pr-214, nts-io-pr-219, nts-io-pr-211]
+    statement: "Lead VERIFIED (merged into main) as scientific PASS."
+    if_promoted: "VERIFIED is a GitHub merge-into-main engineering fact, not a scientific PASS."
+    claim_status: none
+    exceeds_evidence: true
+  - id: adapters-as-scientific-pass
+    work_items: [nts-io-pr-220]
+    statement: "Native signal adapters as scientific PASS."
+    if_promoted: "Adapters are engineering interoperability, not a scientific PASS."
+    claim_status: none
+    exceeds_evidence: true
+  - id: integrated-only-as-main-merge
+    work_items: [nts-io-pr-220, nts-io-pr-215, nts-io-pr-224, nts-io-sha-be277ecd-intermediate, nts-io-branch-scientific-falsification-contract]
+    statement: "INTEGRATED_ONLY presence as merged into main."
+    if_promoted: "INTEGRATED_ONLY ≠ merged into main."
+    claim_status: none
+    exceeds_evidence: true
+  - id: empty-step-ci-as-blocked-by-tests
+    work_items: [nts-io-pr-236, nts-io-pr-227, nts-io-pr-224, nts-io-pr-242]
+    statement: "Empty-step ~3s GitHub FAILURE as BLOCKED_BY_TESTS or pytest PASS."
+    if_promoted: "Empty-step ~3s CI FAILURE ≠ BLOCKED_BY_TESTS and is not a pytest-node log."
+    claim_status: none
+    exceeds_evidence: true
+  - id: pr225-supersede-pr216
+    work_items: [nts-io-pr-225, nts-io-pr-216]
+    statement: "OPEN #225 inventory supersede of merged #216."
+    if_promoted: "Would mark #216 SUPERSEDED contrary to GitHub merged=true on main. Do not mark #216 SUPERSEDED."
+    claim_status: none
+    exceeds_evidence: true
+
 # ---------------------------------------------------------------------------
 # Work items (GitHub-supported status only; else UNVERIFIED / NEEDS_HUMAN_REVIEW)
 # ---------------------------------------------------------------------------
@@ -318,6 +437,21 @@ work_items:
       - "INTEGRATED_ONLY does not apply to the integration PR itself; it is still OPEN vs main."
       - "Author isolated-run counts unverified. Do not invent PASS."
     do_not_modify_this_pack: false
+    research_claim_label:
+      status: labeled
+      fact_kind: mixed
+      engineering_facts:
+        - "GitHub: OPEN vs main, not draft, merged=false, mergedAt=null."
+        - "ci_status BLOCKED_BY_CI: 9 COMPLETED/FAILURE ~3s + 1 SKIPPED on live head."
+        - "changed_files 140; commits 98; live headRefOid af3ac584419148ddcfc57cb565c416eba6328725."
+        - "Live head is not an ancestor of origin/main."
+      scientific_claims:
+        present: true
+        claim_status: NOT_SUPPORTED
+        exceeds_evidence: true
+        notes: "Author isolated 415/75/64/8/3/exit124 unverified. Synthetic remains NOT_SUPPORTED. Body Final commit SHA af3ac584277747ae29882d3f5a39af5c4a436f22 is UNVERIFIED (HTTP 422) and exceeds evidence if treated as live head."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-242
     title: "Release blocker triage for PR #236 (Release CLI wrap; do not merge)"
@@ -343,6 +477,20 @@ work_items:
       - "This Lead pack does not rewrite #242."
       - "Its CURRENT_INTEGRATION_HEAD=be277ecd is intermediate, not live."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: mixed
+      engineering_facts:
+        - "GitHub: OPEN draft, merged=false. Blocker triage pack on grok-bot/release-blocker-triage."
+        - "ci_status BLOCKED_BY_CI: required checks FAILURE ~3s on pack head fade6527."
+        - "Cited CURRENT_INTEGRATION_HEAD be277ecd is intermediate/stale vs live af3ac5844191."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Governance/engineering blocker triage pack. This inventory is not evidence. Do not rewrite pack #242."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-237
     title: "PR retirement register — Lead + Research + QA + Release CLI (do not merge)"
@@ -367,6 +515,20 @@ work_items:
       - "core-tests ran long enough that a log exists; this Lead did not classify pytest vs infra. Not BLOCKED_BY_TESTS."
       - "This Lead pack does not rewrite #237. No retirement is finalized."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: governance
+      engineering_facts:
+        - "GitHub: OPEN, not draft, merged=false."
+        - "ci_status BLOCKED_BY_CI; core-tests FAILURE after ~46m unread as pytest vs infra."
+        - "PR #236 body names #237 as do-not-merge retirement inventory."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Retirement register is governance inventory, not scientific PASS. This inventory is not evidence. Do not rewrite pack #237."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-225
     title: "release-evidence-compilation superseding #216 inventory"
@@ -392,6 +554,20 @@ work_items:
       - "Author title claims inventory supersede of #216. GitHub still shows #216 MERGED into main and #225 OPEN."
       - "Do not mark #216 SUPERSEDED. That would contradict GitHub merge metadata."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: governance
+      engineering_facts:
+        - "GitHub: OPEN vs main, merged=false. Inventory-docs PR still open."
+        - "Also present on #236 history (c8f8a694) — that presence is INTEGRATED_ONLY on #236, not a main merge."
+        - "#216 remains MERGED into main (VERIFIED). Do not mark #216 SUPERSEDED."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "OPEN inventory supersede claim is governance/documentation, not a GitHub un-merge of #216 and not scientific PASS. This inventory is not evidence. Do not rewrite."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-216
     title: "Evidence-bundle release: Lead, Research, QA, Release compiler (do not merge)"
@@ -416,6 +592,19 @@ work_items:
       - "#225 / #236 author text says #216 inventory docs are superseded. That is not a GitHub un-merge."
       - "This Lead pack does not rewrite #216."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: governance
+      engineering_facts:
+        - "GitHub: merged=true into main at 2026-09-06T22:32:36Z; merge commit a91913c is on origin/main."
+        - "Lead status VERIFIED is a merge-into-main engineering/governance fact."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "VERIFIED on main is not a scientific PASS. Evidence pack — do not rewrite."
+      evidence_tooling_label: evidence_pack_do_not_rewrite
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-214
     title: "feat(eeg): memory-bounded provenance-rich streaming pipeline and preprocessing"
@@ -437,6 +626,19 @@ work_items:
     limitations:
       - "Merged engineering/streaming path. Not a scientific PASS."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: merged=true into main; merge commit 3970b0a is on origin/main."
+        - "Lead status VERIFIED EEG streaming/preprocessing path. Pair #214/#220."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Merged engineering/streaming path. Not a scientific PASS."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-220
     title: "Implement native signal interoperability adapters"
@@ -464,6 +666,20 @@ work_items:
       - "GitHub merged into the #212 branch after #212 had already landed on main. That is not merge-into-main."
       - "INTEGRATED_ONLY ≠ merged into main."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: merged=true into base codex/interop-signal-contracts (#212 branch), not main."
+        - "merge commit 8094f5d is not an ancestor of origin/main."
+        - "Also present on #236 history. Lead status INTEGRATED_ONLY."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Native signal adapters are engineering interoperability. Adapters ≠ scientific PASS."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-222
     title: "Fix bounded isolated CI execution and dependency bootstrap"
@@ -488,6 +704,20 @@ work_items:
     limitations:
       - "Required-check rollup not present on the fetched check_runs page. Do not invent BLOCKED_BY_CI or BLOCKED_BY_TESTS."
     do_not_modify_this_pack: false
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN vs main, merged=false. Pair #222/#227."
+        - "Fetched check_runs page: copilot SUCCESS only; required-check rollup absent → CI UNVERIFIED."
+        - "Also on #236 history."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "OPEN CI/bootstrap work. Not science. Empty-step ~3s FAILURE elsewhere in the pair is not pytest and is not BLOCKED_BY_TESTS."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-227
     title: "CI: partition profiles and bound installation reliability"
@@ -515,6 +745,20 @@ work_items:
       - "~3s FAILURE is not classified as BLOCKED_BY_TESTS."
       - "INTEGRATED_ONLY on #236 ≠ merged into main."
     do_not_modify_this_pack: false
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN; base is #213 branch (already MERGED to main). Pair #222/#227."
+        - "ci_status BLOCKED_BY_CI: required/image/e2e jobs FAILURE ~3s; Production root image SKIPPED."
+        - "#236 history includes ea2d30ff Merge PR #227."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "OPEN CI install-reliability work. Empty-step ~3s FAILURE ≠ pytest and ≠ BLOCKED_BY_TESTS. Not science."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-219
     title: "Harden Bayesian falsification evidence contract"
@@ -537,6 +781,19 @@ work_items:
       - "This is the Bayes-hardening PR. It is not the branch-only scientific-falsification-contract tip."
       - "Landed proxy/formal split docs do not make proxy Bayes a formal K. Proxy Bayes ≠ formal."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: mixed
+      engineering_facts:
+        - "GitHub: merged=true into main; merge commit 93b98cf is on origin/main."
+        - "Lead status VERIFIED for the Bayes-hardening PR (docs/contract), not the branch-only falsification tip."
+      scientific_claims:
+        present: true
+        claim_status: proxy_not_formal
+        exceeds_evidence: true
+        notes: "Landed proxy/formal split docs do not make proxy Bayes a formal K. Exceeds evidence if treated as formal K or scientific PASS."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-branch-scientific-falsification-contract
     title: "Harden scientific falsification contracts (branch-only)"
@@ -561,6 +818,19 @@ work_items:
       - "INTEGRATED_ONLY on #236 is author/history presence, not a main merge."
       - "Lead did not scientifically validate the branch tip."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: mixed
+      engineering_facts:
+        - "GitHub branch tip 111d4fc; gh pr list --head empty (no PR). Lead status UNVERIFIED."
+        - "integration_presence INTEGRATED_ONLY on #236 history (26cd42e7). Not an ancestor of origin/main as this branch."
+      scientific_claims:
+        present: true
+        claim_status: proxy_not_formal
+        exceeds_evidence: true
+        notes: "Branch-only scientific-falsification-contract. Lead did not scientifically validate the tip. Proxy Bayes ≠ formal K. No PR. INTEGRATED_ONLY on #236 ≠ main merge. Not a scientific PASS."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-211
     title: "perf: bounded streaming utilities + allocation-reduced PITNN NumPy kernel"
@@ -582,6 +852,19 @@ work_items:
     limitations:
       - "Performance stand-in / synthetic fixtures. Not a scientific PASS."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: merged=true into main; merge commit a661d0a is on origin/main."
+        - "Lead status VERIFIED. Chain root #211→#215→#224. Performance utilities / allocation-reduced kernel."
+      scientific_claims:
+        present: true
+        claim_status: NOT_SUPPORTED
+        exceeds_evidence: true
+        notes: "Performance stand-in / synthetic fixtures. VERIFIED merge is not a scientific PASS. Synthetic remains NOT_SUPPORTED."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
   - id: nts-io-pr-215
     title: "perf: process-memory (RSS) telemetry + benchmark to cross-check tracemalloc"
@@ -609,6 +892,20 @@ work_items:
       - "Stacked merge into #211's branch after #211 already landed on main is not merge-into-main."
       - "INTEGRATED_ONLY ≠ merged into main."
     do_not_modify_this_pack: true
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: merged=true into cursor/streaming-performance-benchmarks (#211 branch), not main."
+        - "merge commit 1feb71c is not an ancestor of origin/main. Stacked on #211."
+        - "RSS/tracemalloc telemetry path. Also on #236 history. Lead status INTEGRATED_ONLY."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "RSS/tracemalloc telemetry is engineering. Not a scientific PASS. INTEGRATED_ONLY ≠ merged into main."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-pr-224
     title: "feat: deterministic adaptive chunk-size planner for bounded streaming"
@@ -636,6 +933,19 @@ work_items:
       - "Stacked child remains OPEN. Parent #215 is INTEGRATED_ONLY (not on main)."
       - "INTEGRATED_ONLY on #236 ≠ merged into main."
     do_not_modify_this_pack: false
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN; base still #215 branch. Stacked child of INTEGRATED_ONLY #215."
+        - "ci_status BLOCKED_BY_CI: required checks FAILURE ~3s. Also on #236 history."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "OPEN stacked streaming planner. Not a scientific PASS. INTEGRATED_ONLY on #236 ≠ merged into main."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
   - id: nts-io-sha-be277ecd-intermediate
     title: "Reported integration head be277ecd (now intermediate)"
@@ -654,6 +964,19 @@ work_items:
     limitations:
       - "INTEGRATED_ONLY-candidate only. Never call this merged into main."
     do_not_modify_this_pack: false
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "Present in gh pr view 236 commits; parent of live head af3ac584419148ddcfc57cb565c416eba6328725."
+        - "Lead status INTEGRATED_ONLY. Role: intermediate. Not current. Not an ancestor of origin/main."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Intermediate SHA only. Not CURRENT_INTEGRATION_HEAD. INTEGRATED_ONLY ≠ merged into main. Not science."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: true
 
 # Context rows named by #236 body but not in the required seed list as primary
 # owners. Recorded so later phases do not rediscover them as missing.
@@ -666,6 +989,18 @@ context_unmerged_named_by_236:
     merged_at: null
     status: OPEN_REVIEW
     evidence: "gh: OPEN, mergedAt=null, head 52118e74"
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN, mergedAt=null, head 52118e74. Named leftover on the #236 body."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Context OPEN_REVIEW engineering fact. Not science."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
   - id: nts-io-pr-207
     pr_number: 207
     pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/207
@@ -674,6 +1009,18 @@ context_unmerged_named_by_236:
     merged_at: null
     status: OPEN_REVIEW
     evidence: "gh: OPEN, mergedAt=null, head a0038fd0"
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN, mergedAt=null, head a0038fd0. Named leftover on the #236 body."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Context OPEN_REVIEW engineering fact. Not science."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
   - id: nts-io-pr-208
     pr_number: 208
     pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/208
@@ -682,12 +1029,36 @@ context_unmerged_named_by_236:
     merged_at: null
     status: OPEN_REVIEW
     evidence: "gh: OPEN, mergedAt=null, head 6211f85a"
+    research_claim_label:
+      status: labeled
+      fact_kind: engineering
+      engineering_facts:
+        - "GitHub: OPEN, mergedAt=null, head 6211f85a. Named leftover on the #236 body."
+      scientific_claims:
+        present: false
+        claim_status: none
+        exceeds_evidence: false
+        notes: "Context OPEN_REVIEW engineering fact. Not science."
+      evidence_tooling_label: inventory_not_evidence
+      integrated_only_is_not_main_merge: n_a
 
 on_main_companions_verified:
   description: >
     These PRs are independently VERIFIED on origin/main and are named by
     #236 as integrated sources. Recorded as companions, not as this pack's
     write set.
+  research_claim_label:
+    status: labeled
+    fact_kind: engineering
+    engineering_facts:
+      - "GitHub: #209/#210/#212/#213/#217/#218/#221 merged into origin/main; Lead companion status VERIFIED."
+    scientific_claims:
+      present: false
+      claim_status: none
+      exceeds_evidence: false
+      notes: "Companions VERIFIED on main are engineering merge facts only, not a scientific PASS."
+    evidence_tooling_label: inventory_not_evidence
+    integrated_only_is_not_main_merge: n_a
   items:
     - {pr_number: 209, merge_commit: d8e7b7ba7c52b5d678ce0bf0269d94bd835a9cb5, status: VERIFIED}
     - {pr_number: 210, merge_commit: 91d19215640d890a51d19d8562d318ef2f3dbf37, status: VERIFIED}
@@ -698,9 +1069,13 @@ on_main_companions_verified:
     - {pr_number: 221, merge_commit: 62aa8fee786abf916ab0aa2b7e7b91c570fee119, status: VERIFIED}
 
 next_action: >
-  Alfred ownership graph is recorded. Researchy, Nightly Audit Engineer,
-  tinkabot, and new empty bots are this-wave NO ACT. Lingxi stays out
-  until Lead assigns post-audit. Chief of Staff is digest-later only.
-  Integration owns contracts/dependency order and rejects competing
-  queues. Release remains sole evidence authority for #216/#225/#237/#242.
-  Codex C remains the sole merger. Do not merge.
+  Research claim labeling is recorded (Research and Tooling). Researchy
+  NO ACT this wave. Hand to QA to reproduce/diff the two owned files
+  only — do not invent tests/release/test_integration_ownership.py unless
+  a repair is boarded. Alfred ownership graph stays recorded. Researchy,
+  Nightly Audit Engineer, tinkabot, and new empty bots remain this-wave
+  NO ACT. Lingxi stays out until Lead assigns post-audit. Chief of Staff
+  is digest-later only. Integration owns contracts/dependency order and
+  rejects competing queues. Release remains sole evidence authority for
+  #216/#225/#237/#242. Codex C remains the sole merger. Do not merge.
+  Never close/retarget PRs.
