@@ -17,3 +17,10 @@ Status: `INCONCLUSIVE / NOT RELEASE-READY`
 
 The synthetic artifact smoke returned `NOT_SUPPORTED` and finite numeric
 fields. No biological confirmation or physical proof is asserted.
+
+The new null-calibration, cohort-statistics, claim-auditor, and cohort-topology
+layers are descriptive/readiness or governance evidence only. They do not
+promote synthetic observations to empirical evidence, do not label graph
+beta-1 as spatial charge, and do not make a biological claim. A real paired
+cohort with complete provenance and an independently reviewed claim contract
+is still absent.

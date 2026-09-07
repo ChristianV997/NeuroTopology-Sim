@@ -230,3 +230,41 @@ Additional entries are appended after each logical merge group and final validat
   optional `ripser` capability checks; the platform-set skip was unavailable
   Windows symlink privilege. The release suite then completed with `55
   passed`; no assertion failure was converted to a skip.
+
+### 2026-09-07 — Batch 2 live audit and integration decisions
+
+- Live PR #236 was verified open at `af3ac584419148ddcfc57cb565c416eba6328725`;
+  `origin/main` was `62aa8fee786abf916ab0aa2b7e7b91c570fee119`. The latter is
+  an ancestor of the integration branch, so no main-sync merge was needed.
+- Live GitHub state supersedes old handoffs: #209–#221 are merged into main,
+  including #216. Therefore #216 is not classified as superseded by #225;
+  #225 is an open, explicit-do-not-merge inventory duplicate whose docs were
+  not reintroduced as a second release authority.
+- #249 and #257 have the same five-file effective CI repair. #257’s newer
+  head (`16e7d4c0…`) was selected; #249 (`49be8441…`) was excluded as a
+  duplicate. #222/#227 remain the earlier CI lineage and are not claimed as
+  main-merged.
+- #254 was merged into the integration branch with a manual conflict
+  resolution. Its isolated process groups, graceful/forced tree termination,
+  and concurrent stdout/stderr draining were retained; existing heavy-test
+  singleton scheduling, compatibility helpers, and report-directory output
+  were preserved. A real report-initialization regression was found and fixed.
+- #240, #246, #247, #248, #250, #251, #258, #259, #260, #261, #263, #264,
+  and #266 were additive and passed focused local suites. #262 was excluded
+  because its effective implementation duplicates #246. #239, #241, #243,
+  #244, #252, #253, #255, #256, #267, #268, and #269 remain review-only or
+  unintegrated; no draft was silently treated as validated release code.
+- #263 exposed four real stacked-diff fixture failures. The fixture was
+  repaired by adding the missing dependent branch and remote ref; the repair
+  is included in the integration branch and was not converted to a skip.
+- Mandatory conflict decisions remain explicit: #214 versus #220 keeps the
+  lazy native-adapter layer over the streaming contract; #211→#215→#224→#232
+  remains the streaming dependency order; #219 remains authoritative over
+  branch-only Bayesian work; #229 remains the provenance contract over typed
+  readers (#240); #238 is the adapter base with #250 hardening; #218 remains
+  the reconciliation source for #255 state-lock work; #230 remains the
+  performance policy with #258 as evidence normalization; and #241 is not a
+  substitute for #254’s isolated test-runner repair.
+- The branch contains 282 effective changed paths relative to `origin/main`.
+  No datasets, binary trajectories, credentials, or generated plots were
+  added. The primary dirty checkout was not modified.

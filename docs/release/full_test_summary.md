@@ -52,3 +52,17 @@ The complete batch-level evidence is retained at
 `%TEMP%\\nts-integration-final-20260906\\batch_summary.json` on the validation
 host. CI remains separately infrastructure-blocked; local evidence does not
 claim CI success.
+
+## Batch 2 focused validation
+
+- Provenance/platform/cohort statistics: `48 passed`.
+- Cohort topology/TDA: `41 passed`.
+- Research/release artifacts: `117 passed`.
+- Interop/admission/CI: `61 passed, 1 skipped`; the skip is an optional
+  capability check.
+- Null calibration/performance evidence: `31 passed`.
+- Reconciliation after #263 initially reported four real stacked-fixture
+  failures; the fixture was repaired and the focused stacked-diff cases passed.
+
+These focused results do not replace the non-green full isolated run and do
+not imply GitHub CI success.

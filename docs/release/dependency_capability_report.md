@@ -13,3 +13,8 @@
   network request was added.
 - YAML parsing passed for 10 workflow/config files; the targeted CI,
   governance, tooling, and provenance group passed 93 tests.
+- Batch 2 focused validation added provenance readers, platform compatibility,
+  cohort statistics, cohort topology, TDA hardening, research claims/records,
+  release manifest, admission, interop, null calibration, and performance
+  evidence suites. Missing optional packages remain explicit capabilities, not
+  successful validation.

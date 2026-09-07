@@ -10,3 +10,6 @@ Status: `PASS` for the checked integration surface.
   tested offline integration paths.
 - Integration and reconciliation suites passed; the synthetic bridge emitted
   `NOT_SUPPORTED` rather than an empirical verdict.
+- The added cohort, research-record, release-manifest, and admission tooling
+  is offline metadata/reporting code; dashboard isolation still shows no solver
+  import or execution route.
