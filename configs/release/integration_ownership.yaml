@@ -1,0 +1,607 @@
+# Lead-phase integration ownership inventory (audit-only).
+# Not a validator. Not a merger. Not compiled evidence. Not a scientific PASS.
+# Release later owns scripts/validate_integration_ownership.py (do not invent here).
+# QA later owns tests/release/test_integration_ownership.py (do not invent here).
+# Codex C is the sole merger. This pack records GitHub metadata only.
+#
+# INTEGRATED_ONLY means present on the #236 integration branch (or a
+# non-main GitHub merge target) and is NOT a claim that the work is on main.
+# VERIFIED is used only when GitHub reports merged=true AND the merge
+# commit is on origin/main.
+# Synthetic remains NOT_SUPPORTED. Proxy Bayes ≠ formal Bayes factors.
+
+schema_id: nts-integration-ownership
+schema_version: "0.1.0"
+kind: integration_ownership_inventory
+phase: LEAD
+inspector: lead
+inspected_at: "2026-09-07"
+evidence_source: github_api
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+scientific_pass_from_this_pack: never_claimed
+pack_role: audit_only
+sole_merger: Codex_C
+merger_instruction: do_not_merge
+never_close_prs: true
+never_retarget_prs: true
+
+owned_paths:
+  - configs/release/integration_ownership.yaml
+  - docs/release/integration_ownership_audit.md
+
+explicitly_not_owned:
+  - scripts/validate_integration_ownership.py  # Release (not created)
+  - tests/release/test_integration_ownership.py  # QA (not created)
+  - configs/release/blocker_registry.yaml  # pack #242
+  - docs/release/current_blocker_triage.md  # pack #242
+  - retirement pack #237
+  - evidence packs #216 / #225
+  - production scientific code
+  - reconciliation tools
+  - merge-gate
+  - CI / adapters / topology / streaming / Bayesian
+  - artifacts / datasets / credentials
+
+allowed_statuses:
+  - VERIFIED
+  - INTEGRATED_ONLY
+  - OPEN_REVIEW
+  - BLOCKED_BY_CI
+  - BLOCKED_BY_TESTS
+  - BLOCKED_BY_SCIENCE
+  - DUPLICATE
+  - SUPERSEDED
+  - NEEDS_HUMAN_REVIEW
+  - UNVERIFIED
+
+status_rules:
+  VERIFIED: "GitHub merged=true AND merge commit is an ancestor of origin/main."
+  INTEGRATED_ONLY: "Present on PR #236 / a non-main GitHub merge target. Not merged into main."
+  OPEN_REVIEW: "GitHub state=OPEN (draft or ready). mergedAt is null."
+  BLOCKED_BY_CI: "GitHub check rollup has COMPLETED/FAILURE. Empty-step ~3s FAILURE is not pytest."
+  BLOCKED_BY_TESTS: "Reserved for independently read pytest-node failures. Unused in this Lead seed."
+  BLOCKED_BY_SCIENCE: "Reserved for GitHub-supported scientific-review holds. Unused as a merge claim here."
+  DUPLICATE: "Reserved. Unused — no GitHub duplicate-close evidence in this seed."
+  SUPERSEDED: "Reserved for GitHub-supported supersede. #225 author-claim vs merged #216 is not this."
+  NEEDS_HUMAN_REVIEW: "GitHub metadata is incomplete or contradictory without a human read."
+  UNVERIFIED: "Existence or merge fact not independently confirmed from GitHub."
+
+required_warnings:
+  - "Codex C is the sole merger. This pack is audit-only. Do not merge. Do not close. Do not retarget."
+  - "CURRENT_INTEGRATION_HEAD is the live PR #236 headRefOid only."
+  - "INTEGRATED_ONLY ≠ merged into main."
+  - "Synthetic results remain NOT_SUPPORTED; never invent PASS."
+  - "On-main / integration Bayes factor paths are proxy (RSS/Gaussian likelihood). Proxy Bayes ≠ formal K."
+  - "Empty-step ~3s GitHub FAILURE is not a pytest PASS and is not BLOCKED_BY_TESTS."
+  - "Author-claimed isolated 415/75/64/8/3/exit124 on #236 is unverified here."
+  - "Do not modify packs #216, #225, #237, #242."
+
+# Live origin/main at inspect time.
+origin_main:
+  oid: 62aa8fee786abf916ab0aa2b7e7b91c570fee119
+  headline: "fix(legacy-tests): repair timeout and path validation failures (#221)"
+
+# ---------------------------------------------------------------------------
+# Live integration head (PR #236). Only this OID is CURRENT.
+# ---------------------------------------------------------------------------
+CURRENT_INTEGRATION_HEAD: af3ac584419148ddcfc57cb565c416eba6328725
+
+current_integration:
+  pr_number: 236
+  pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236
+  title: "Integration: merge validated open PR groups"
+  github_state: OPEN
+  is_draft: false
+  merged: false
+  merged_at: null
+  mergeable: MERGEABLE
+  merge_state_status: UNSTABLE
+  head_ref_name: codex/integration-all-open-prs
+  head_ref_oid: af3ac584419148ddcfc57cb565c416eba6328725
+  head_headline: "Complete release validation evidence"
+  base_ref_name: main
+  base_ref_oid: 62aa8fee786abf916ab0aa2b7e7b91c570fee119
+  changed_files: 140
+  commits: 98
+  additions: 18527
+  deletions: 1460
+  created_at: "2026-09-06T22:23:00Z"
+  updated_at: "2026-09-07T04:24:48Z"
+  on_origin_main: false
+  status: OPEN_REVIEW
+  ci_status: BLOCKED_BY_CI
+  notes:
+    - "GitHub: OPEN, not draft, merged=false, mergedAt=null. Not on origin/main."
+    - "Check rollup on live head: 9 COMPLETED/FAILURE + 1 SKIPPED (Production root image), jobs ~3s."
+    - "Combined commit status API: state=pending, total_count=0."
+    - "Author body still cites Final commit af3ac584277747ae29882d3f5a39af5c4a436f22 — that SHA is not on GitHub (HTTP 422)."
+
+reported_vs_live_heads:
+  live_oid: af3ac584419148ddcfc57cb565c416eba6328725
+  reported:
+    - oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+      role: intermediate
+      status: INTEGRATED_ONLY
+      on_pr_236_history: true
+      on_origin_main: false
+      parent_of_live_head: true
+      headline: "Merge remote-tracking branch origin/codex/integration-all-open-prs"
+      cited_as_current_by:
+        - "PR #242 body CURRENT_INTEGRATION_HEAD (stale vs live)"
+        - "configs/release/blocker_registry.yaml on grok-bot/release-blocker-triage"
+      evidence: "gh pr view 236 --json commits: oid is the parent of af3ac584419148ddcfc57cb565c416eba6328725. GitHub does not report this SHA merged into main."
+    - oid_prefix: af3ac584
+      matching_live_full_oid: af3ac584419148ddcfc57cb565c416eba6328725
+      role: current_prefix_of_live_head
+      status: OPEN_REVIEW
+      on_pr_236_history: true
+      on_origin_main: false
+      note: "Short prefix af3ac584 matches the LIVE head only. It is not a second commit and is not merged into main."
+    - oid: af3ac584277747ae29882d3f5a39af5c4a436f22
+      role: author_body_claim_not_found
+      status: UNVERIFIED
+      on_pr_236_history: false
+      on_origin_main: false
+      github_api: "HTTP 422 No commit found"
+      source: "PR #236 body Final commit line"
+      note: "Do not treat this SHA as current, intermediate, or merged. Prefix collision with live af3ac5844191… only."
+
+status_check_rollup_236:
+  source: gh_pr_view_statusCheckRollup_and_check_runs
+  head_sha: af3ac584419148ddcfc57cb565c416eba6328725
+  inspected_at: "2026-09-07"
+  combined_commit_status:
+    state: pending
+    total_count: 0
+  summary: "9 FAILURE + 1 SKIPPED; wall times ~3s; not a pytest-node log."
+  checks:
+    - name: "Python 3.11 — offline tests"
+      conclusion: FAILURE
+    - name: "DS005620 E2E Mock Run"
+      conclusion: FAILURE
+    - name: "Root sim engine CPU/base image"
+      conclusion: FAILURE
+    - name: ontology-claim-language
+      conclusion: FAILURE
+    - name: core-tests
+      conclusion: FAILURE
+      started_at: "2026-09-07T04:24:11Z"
+      completed_at: "2026-09-07T04:24:14Z"
+    - name: "Cross-system smoke"
+      conclusion: FAILURE
+    - name: "Python 3.12 — offline tests"
+      conclusion: FAILURE
+    - name: "Awareness Studio image"
+      conclusion: FAILURE
+    - name: awareness-tests
+      conclusion: FAILURE
+      started_at: "2026-09-07T04:24:11Z"
+      completed_at: "2026-09-07T04:24:14Z"
+    - name: "Production root image (manual opt-in)"
+      conclusion: SKIPPED
+    - name: copilot-pull-request-reviewer
+      conclusion: FAILURE
+
+# Placeholders — do not invent until those agents supply findings.
+alfred_ownership_graph: null
+researchy_findings: null
+nightly_findings: null
+lingxi_findings: null
+
+scientific_standing_warnings:
+  synthetic: NOT_SUPPORTED
+  proxy_bayes_equals_formal: false
+  empirical_pass_from_this_pack: false
+
+# ---------------------------------------------------------------------------
+# Work items (GitHub-supported status only; else UNVERIFIED / NEEDS_HUMAN_REVIEW)
+# ---------------------------------------------------------------------------
+work_items:
+  - id: nts-io-pr-236
+    title: "Integration: merge validated open PR groups"
+    pr_number: 236
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236
+    branch: codex/integration-all-open-prs
+    head_ref_oid: af3ac584419148ddcfc57cb565c416eba6328725
+    base_ref_name: main
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 140
+    status: OPEN_REVIEW
+    ci_status: BLOCKED_BY_CI
+    on_origin_main: false
+    evidence:
+      - "gh pr view 236: state=OPEN, isDraft=false, mergedAt=null, mergeStateStatus=UNSTABLE"
+      - "headRefOid af3ac584419148ddcfc57cb565c416eba6328725 is not an ancestor of origin/main"
+    limitations:
+      - "INTEGRATED_ONLY does not apply to the integration PR itself; it is still OPEN vs main."
+      - "Author isolated-run counts unverified. Do not invent PASS."
+    do_not_modify_this_pack: false
+
+  - id: nts-io-pr-242
+    title: "Release blocker triage for PR #236 (Release CLI wrap; do not merge)"
+    pr_number: 242
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/242
+    branch: grok-bot/release-blocker-triage
+    head_ref_oid: fade6527036e0f15d3d56d0afde5c8285908a3f2
+    base_ref_name: main
+    github_state: OPEN
+    is_draft: true
+    merged: false
+    merged_at: null
+    changed_files: 13
+    status: OPEN_REVIEW
+    ci_status: BLOCKED_BY_CI
+    on_origin_main: false
+    cited_integration_head: be277ecdac301d49dca27ef9612ebe6c560245ad
+    cited_integration_head_role: stale_vs_live
+    evidence:
+      - "gh: draft=true, state=OPEN, merged=false"
+      - "check_runs on head: core-tests / awareness-tests / ontology / smoke / copilot all FAILURE in ~3s"
+    limitations:
+      - "This Lead pack does not rewrite #242."
+      - "Its CURRENT_INTEGRATION_HEAD=be277ecd is intermediate, not live."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-237
+    title: "PR retirement register — Lead + Research + QA + Release CLI (do not merge)"
+    pr_number: 237
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/237
+    branch: grok-bot/pr-retirement-register
+    head_ref_oid: 629f87dc322948f60f0f7c7e449db36a1daffac1
+    base_ref_name: main
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 13
+    status: OPEN_REVIEW
+    ci_status: BLOCKED_BY_CI
+    on_origin_main: false
+    evidence:
+      - "gh: state=OPEN, draft=false, merged=false"
+      - "PR #236 body: #237 is an explicit do-not-merge retirement inventory"
+      - "check_runs: awareness-tests SUCCESS; core-tests FAILURE (~46m); smoke/ontology FAILURE (~8–13s); copilot SUCCESS"
+    limitations:
+      - "core-tests ran long enough that a log exists; this Lead did not classify pytest vs infra. Not BLOCKED_BY_TESTS."
+      - "This Lead pack does not rewrite #237. No retirement is finalized."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-225
+    title: "release-evidence-compilation superseding #216 inventory"
+    pr_number: 225
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/225
+    branch: cursor/release-evidence-compilation-9077
+    head_ref_oid: 238163e3182e5fd60e5a6ce4019f753549ab6bf2
+    base_ref_name: main
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 3
+    status: OPEN_REVIEW
+    ci_status: UNVERIFIED
+    on_origin_main: false
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: state=OPEN, merged=false, mergedAt=null"
+      - "Latest check_runs page: copilot-pull-request-reviewer SUCCESS only — required-check rollup not present on that snapshot"
+      - "#236 history includes merge of origin/pr/225 (c8f8a694) — INTEGRATED_ONLY on #236, not merged to main"
+    limitations:
+      - "Author title claims inventory supersede of #216. GitHub still shows #216 MERGED into main and #225 OPEN."
+      - "Do not mark #216 SUPERSEDED. That would contradict GitHub merge metadata."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-216
+    title: "Evidence-bundle release: Lead, Research, QA, Release compiler (do not merge)"
+    pr_number: 216
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/216
+    branch: grok-bot/evidence-bundle-release
+    head_ref_oid: 9c862d90e1996a21e42bc84dc9d737e2d5663a25
+    base_ref_name: main
+    github_state: MERGED
+    is_draft: false
+    merged: true
+    merged_at: "2026-09-06T22:32:36Z"
+    merge_commit: a91913cfd27ce7aa475e60dfbbed92da05fb7681
+    changed_files: 24
+    status: VERIFIED
+    on_origin_main: true
+    author_claimed_inventory_supersede_by: 225
+    evidence:
+      - "gh: merged=true, mergedAt=2026-09-06T22:32:36Z, mergeCommit a91913c on origin/main"
+      - "git log origin/main --oneline includes a91913c … (#216)"
+    limitations:
+      - "#225 / #236 author text says #216 inventory docs are superseded. That is not a GitHub un-merge."
+      - "This Lead pack does not rewrite #216."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-214
+    title: "feat(eeg): memory-bounded provenance-rich streaming pipeline and preprocessing"
+    pr_number: 214
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/214
+    branch: antigravity/mne-scipy-streaming-eeg
+    head_ref_oid: 8aed328fa23af07737882566d6b60aaca74ac4fb
+    base_ref_name: main
+    github_state: MERGED
+    merged: true
+    merged_at: "2026-09-06T22:32:02Z"
+    merge_commit: 3970b0a949eb05eebdd84eb9ca112e478721ddbc
+    changed_files: 8
+    status: VERIFIED
+    on_origin_main: true
+    pair: "#214/#220"
+    evidence:
+      - "gh: merged=true into main; mergeCommit 3970b0a is on origin/main"
+    limitations:
+      - "Merged engineering/streaming path. Not a scientific PASS."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-220
+    title: "Implement native signal interoperability adapters"
+    pr_number: 220
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/220
+    branch: antigravity/native-signal-adapters
+    head_ref_oid: 5bd26dc56a84ea47ff16ab45f1bc758dab6d835c
+    base_ref_name: codex/interop-signal-contracts
+    github_state: MERGED
+    merged: true
+    merged_at: "2026-09-06T22:33:38Z"
+    merge_commit: 8094f5d9dec5ba3dd24d5339e88ee3591387802f
+    changed_files: 11
+    status: INTEGRATED_ONLY
+    on_origin_main: false
+    stacked_on: 212
+    pair: "#214/#220"
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: merged=true but baseRefName=codex/interop-signal-contracts (not main)"
+      - "git merge-base --is-ancestor 8094f5d origin/main → false"
+      - "git merge-base --is-ancestor 5bd26dc origin/main → false"
+      - "#236 commits include merge of origin/pr/220"
+    limitations:
+      - "GitHub merged into the #212 branch after #212 had already landed on main. That is not merge-into-main."
+      - "INTEGRATED_ONLY ≠ merged into main."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-222
+    title: "Fix bounded isolated CI execution and dependency bootstrap"
+    pr_number: 222
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/222
+    branch: codex/ci-root-cause-and-green
+    head_ref_oid: 4f5f7154eaf70e7c4af11c1658b839164d6a3381
+    base_ref_name: main
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 11
+    status: OPEN_REVIEW
+    ci_status: UNVERIFIED
+    on_origin_main: false
+    pair: "#222/#227"
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: state=OPEN, merged=false"
+      - "Latest check_runs page: copilot-pull-request-reviewer SUCCESS only"
+    limitations:
+      - "Required-check rollup not present on the fetched check_runs page. Do not invent BLOCKED_BY_CI or BLOCKED_BY_TESTS."
+    do_not_modify_this_pack: false
+
+  - id: nts-io-pr-227
+    title: "CI: partition profiles and bound installation reliability"
+    pr_number: 227
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/227
+    branch: codex/ci-install-reliability
+    head_ref_oid: f1796a0bd675c5ba12f0176e3e5af60bda2c72d3
+    base_ref_name: antigravity/test-isolation-dependency-profiles
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 11
+    status: OPEN_REVIEW
+    ci_status: BLOCKED_BY_CI
+    on_origin_main: false
+    stacked_on: 213
+    pair: "#222/#227"
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: state=OPEN, merged=false, base is #213 branch (itself MERGED to main)"
+      - "check_runs: required/image/e2e jobs COMPLETED/FAILURE in ~3s; Production root image SKIPPED"
+      - "#236 history includes ea2d30ff Merge PR #227"
+    limitations:
+      - "~3s FAILURE is not classified as BLOCKED_BY_TESTS."
+      - "INTEGRATED_ONLY on #236 ≠ merged into main."
+    do_not_modify_this_pack: false
+
+  - id: nts-io-pr-219
+    title: "Harden Bayesian falsification evidence contract"
+    pr_number: 219
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/219
+    branch: codex/bayes-falsification-hardening
+    head_ref_oid: a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb
+    base_ref_name: main
+    github_state: MERGED
+    merged: true
+    merged_at: "2026-09-06T22:33:28Z"
+    merge_commit: 93b98cfd773f688c0ad3d5808225a4f7c6068078
+    changed_files: 3
+    status: VERIFIED
+    on_origin_main: true
+    pair: "#219 / falsification branch"
+    evidence:
+      - "gh: merged=true into main; mergeCommit 93b98cf is origin/main history"
+    limitations:
+      - "This is the Bayes-hardening PR. It is not the branch-only scientific-falsification-contract tip."
+      - "Landed proxy/formal split docs do not make proxy Bayes a formal K. Proxy Bayes ≠ formal."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-branch-scientific-falsification-contract
+    title: "Harden scientific falsification contracts (branch-only)"
+    pr_number: null
+    pr_url: null
+    branch: codex/scientific-falsification-contract
+    head_ref_oid: 111d4fc008a1cf967243631367104e0561014e4a
+    github_state: BRANCH_ONLY
+    merged: false
+    merged_at: null
+    status: UNVERIFIED
+    integration_presence: INTEGRATED_ONLY
+    on_origin_main: false
+    pair: "#219 / falsification branch"
+    evidence:
+      - "gh api branches/codex/scientific-falsification-contract → sha 111d4fc"
+      - "gh pr list --head codex/scientific-falsification-contract --state all → []"
+      - "#236 commit history includes merge of origin/branch/scientific-falsification-contract (26cd42e7) and later Bayes reconciliation commits"
+      - "PR #236 body: topology-only portion retained; #219 remains authoritative for Bayesian"
+    limitations:
+      - "No GitHub PR. Do not cite as merged into main."
+      - "INTEGRATED_ONLY on #236 is author/history presence, not a main merge."
+      - "Lead did not scientifically validate the branch tip."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-211
+    title: "perf: bounded streaming utilities + allocation-reduced PITNN NumPy kernel"
+    pr_number: 211
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/211
+    branch: cursor/streaming-performance-benchmarks
+    head_ref_oid: 54c246943e7c3ba8171066eec24c67a1408b2956
+    base_ref_name: main
+    github_state: MERGED
+    merged: true
+    merged_at: "2026-09-06T22:31:13Z"
+    merge_commit: a661d0a7620ff1312703d4ac7870e57b093fad53
+    changed_files: 8
+    status: VERIFIED
+    on_origin_main: true
+    chain: "#211→#215→#224"
+    evidence:
+      - "gh: merged=true into main; mergeCommit a661d0a on origin/main"
+    limitations:
+      - "Performance stand-in / synthetic fixtures. Not a scientific PASS."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-215
+    title: "perf: process-memory (RSS) telemetry + benchmark to cross-check tracemalloc"
+    pr_number: 215
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/215
+    branch: cursor/rss-memory-telemetry
+    head_ref_oid: 0dadb61b1d5de190225909ce98953e93768a4766
+    base_ref_name: cursor/streaming-performance-benchmarks
+    github_state: MERGED
+    merged: true
+    merged_at: "2026-09-06T22:32:22Z"
+    merge_commit: 1feb71c90e8443bf3081b46ebf1c12bf538c7df7
+    changed_files: 4
+    status: INTEGRATED_ONLY
+    on_origin_main: false
+    stacked_on: 211
+    chain: "#211→#215→#224"
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: merged=true but baseRefName=cursor/streaming-performance-benchmarks (not main)"
+      - "git merge-base --is-ancestor 1feb71c origin/main → false"
+      - "git merge-base --is-ancestor 0dadb61 origin/main → false"
+      - "#236 history includes merge of origin/pr/215"
+    limitations:
+      - "Stacked merge into #211's branch after #211 already landed on main is not merge-into-main."
+      - "INTEGRATED_ONLY ≠ merged into main."
+    do_not_modify_this_pack: true
+
+  - id: nts-io-pr-224
+    title: "feat: deterministic adaptive chunk-size planner for bounded streaming"
+    pr_number: 224
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/224
+    branch: cursor/adaptive-streaming-budget
+    head_ref_oid: 507625f1bf876b530f62a207670a31fec9902ee7
+    base_ref_name: cursor/rss-memory-telemetry
+    github_state: OPEN
+    is_draft: false
+    merged: false
+    merged_at: null
+    changed_files: 4
+    status: OPEN_REVIEW
+    ci_status: BLOCKED_BY_CI
+    on_origin_main: false
+    stacked_on: 215
+    chain: "#211→#215→#224"
+    also_on_pr_236_history: true
+    evidence:
+      - "gh: state=OPEN, merged=false, base still #215 branch"
+      - "check_runs: required checks FAILURE in ~3s (2026-09-06T06:07Z); later copilot SUCCESS"
+      - "#236 history includes merge of origin/pr/224"
+    limitations:
+      - "Stacked child remains OPEN. Parent #215 is INTEGRATED_ONLY (not on main)."
+      - "INTEGRATED_ONLY on #236 ≠ merged into main."
+    do_not_modify_this_pack: false
+
+  - id: nts-io-sha-be277ecd-intermediate
+    title: "Reported integration head be277ecd (now intermediate)"
+    pr_number: 236
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236
+    head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+    github_state: OPEN
+    merged: false
+    status: INTEGRATED_ONLY
+    role: intermediate
+    on_origin_main: false
+    parent_of_live_head: true
+    evidence:
+      - "Present in gh pr view 236 commits; parent of live af3ac5844191…"
+      - "Not an ancestor of origin/main (OID not even in the main worktree object set)"
+    limitations:
+      - "INTEGRATED_ONLY-candidate only. Never call this merged into main."
+    do_not_modify_this_pack: false
+
+# Context rows named by #236 body but not in the required seed list as primary
+# owners. Recorded so later phases do not rediscover them as missing.
+context_unmerged_named_by_236:
+  - id: nts-io-pr-206
+    pr_number: 206
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/206
+    github_state: OPEN
+    merged: false
+    merged_at: null
+    status: OPEN_REVIEW
+    evidence: "gh: OPEN, mergedAt=null, head 52118e74"
+  - id: nts-io-pr-207
+    pr_number: 207
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/207
+    github_state: OPEN
+    merged: false
+    merged_at: null
+    status: OPEN_REVIEW
+    evidence: "gh: OPEN, mergedAt=null, head a0038fd0"
+  - id: nts-io-pr-208
+    pr_number: 208
+    pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/208
+    github_state: OPEN
+    merged: false
+    merged_at: null
+    status: OPEN_REVIEW
+    evidence: "gh: OPEN, mergedAt=null, head 6211f85a"
+
+on_main_companions_verified:
+  description: >
+    These PRs are independently VERIFIED on origin/main and are named by
+    #236 as integrated sources. Recorded as companions, not as this pack's
+    write set.
+  items:
+    - {pr_number: 209, merge_commit: d8e7b7ba7c52b5d678ce0bf0269d94bd835a9cb5, status: VERIFIED}
+    - {pr_number: 210, merge_commit: 91d19215640d890a51d19d8562d318ef2f3dbf37, status: VERIFIED}
+    - {pr_number: 212, merge_commit: 2f76650153a057ac44870ba8eab54881456a599d, status: VERIFIED}
+    - {pr_number: 213, merge_commit: 1707a258c537a292a7aa3be20a4141c1b5637804, status: VERIFIED}
+    - {pr_number: 217, merge_commit: 668f274c7980e9a1f85ce31b411120bc11367c04, status: VERIFIED}
+    - {pr_number: 218, merge_commit: cc4235ed4c88a90b08d719cd3d7d7b84620a3fdf, status: VERIFIED}
+    - {pr_number: 221, merge_commit: 62aa8fee786abf916ab0aa2b7e7b91c570fee119, status: VERIFIED}
+
+next_action: >
+  Wait for Alfred to supply the ownership graph (alfred_ownership_graph
+  remains null). Then wait for Researchy / Nightly / Lingxi findings
+  (placeholders remain null). Release/QA must not start validator or
+  tests until those handoffs. Codex C remains the sole merger. Do not merge.
