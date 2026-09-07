@@ -361,6 +361,8 @@ def run_benchmark(
     """Run the four-model ladder with locked nested validation."""
     try:
         dataset.validate()
+        if not dataset.synthetic and not bool(dataset.provenance.get("complete", False)):
+            return _failure_report(dataset, ForecastStatus.INSUFFICIENT_DATA, "complete provenance is required for non-synthetic forecast evidence")
         split = locked_split(
             dataset.subjects, dataset.sessions, dataset.timestamps, split_strategy,
             test_subjects=test_subjects, test_sessions=test_sessions, cutoff=cutoff,

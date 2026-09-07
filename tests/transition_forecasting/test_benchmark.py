@@ -115,6 +115,14 @@ def test_missing_respiration_is_reported_not_imputed_as_validation_success():
     assert "respiration" in report.results[0].missingness["missing_controls"]
 
 
+def test_incomplete_provenance_cannot_be_reported_as_formal_evidence():
+    dataset = make_dataset(synthetic=False)
+    dataset.provenance = {"dataset_id": "local-incomplete", "complete": False}
+    report = run_benchmark(dataset)
+    assert report.status == ForecastStatus.INSUFFICIENT_DATA.value
+    assert all(result.status != ForecastStatus.FORMAL_FORECAST_EVIDENCE.value for result in report.results)
+
+
 def test_missing_optional_dependency_does_not_trigger_network_or_false_pass():
     report = run_benchmark(make_dataset("triadic", missing_respiration=True))
     assert report.status == ForecastStatus.SYNTHETIC_DEMO_ONLY.value
