@@ -63,6 +63,13 @@ def git_fixture_repo(tmp_path: Path) -> Path:
     (repo / "shared" / "a.py").write_text("value = 1\n", encoding="utf-8")
     _git(repo, "add", "shared/a.py")
     _git(repo, "commit", "-q", "-m", "feature-a: add shared/a.py")
+
+    # stacked-on-feature-a: a dependent PR whose own diff is separate from
+    # feature-a, while its raw diff against main intentionally includes both.
+    _git(repo, "checkout", "-q", "-b", "stacked-on-feature-a")
+    (repo / "stacked_only.py").write_text("stacked = True\n", encoding="utf-8")
+    _git(repo, "add", "stacked_only.py")
+    _git(repo, "commit", "-q", "-m", "stacked-on-feature-a: add stacked_only.py")
     _git(repo, "checkout", "-q", "main")
 
     # feature-b (also touches shared/a.py, for overlap testing)
@@ -93,7 +100,10 @@ def git_fixture_repo(tmp_path: Path) -> Path:
 
     # Simulate "origin/*" remote-tracking refs the tool actually looks up,
     # without a real remote: a plain ref copy under refs/remotes/origin/.
-    for branch in ("main", "feature-a", "feature-b", "already-merged", "with-artifact"):
+    for branch in (
+        "main", "feature-a", "stacked-on-feature-a", "feature-b",
+        "already-merged", "with-artifact",
+    ):
         _git(repo, "update-ref", f"refs/remotes/origin/{branch}", f"refs/heads/{branch}")
 
     return repo
