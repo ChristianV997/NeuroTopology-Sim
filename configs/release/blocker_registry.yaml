@@ -1,5 +1,5 @@
 # Lead-phase release blocker inventory (NOT compiled evidence).
-# Research classifies. Integration orders remediation later.
+# Research classified 2026-09-07 (research_and_tooling). Integration orders remediation later.
 # QA/Release own schema validator + tests (not invented here).
 # Inventory is not a scientific PASS. Synthetic remains NOT_SUPPORTED.
 # Merger: do not merge. Never close PRs.
@@ -22,6 +22,27 @@ marketplace_bot_added:
   name: Alfred
   scope: governance_only
   other_marketplace_bots: []
+
+research_phase:
+  phase: RESEARCH
+  classified_at: "2026-09-07"
+  classifier: research_and_tooling
+  base_lead_commit: fa1a16819fb2462630b6925fc2313efaf8ac52eb
+  current_integration_head: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+  inventory_is_not_evidence: true
+  empirical_pass_from_this_pack: false
+  scientific_pass_from_this_pack: never_claimed
+  synthetic_status: NOT_SUPPORTED
+  marketplace_bot_added: Alfred
+  required_warnings:
+    - "Synthetic results remain NOT_SUPPORTED; never invent PASS."
+    - "Author-claimed isolated 415/75/64/8/3/exit124 are unverified; not compiled evidence."
+    - "CI billing-not-started / empty-step FAILURE ≠ pytest PASS."
+    - "Proxy Bayes ≠ formal Bayes factors."
+    - "Dashboard author-documented PASS is unverified until QA re-runs."
+    - "#216 is MERGED on GitHub; #225 remains OPEN supersede claim (docs/inventory) — no second-authority rewrite."
+    - "Do not merge. Never close PRs."
 
 owned_paths:
   - configs/release/blocker_registry.yaml
@@ -215,6 +236,17 @@ blockers:
     scientific_impact: none
     release_impact: BLOCKS_REQUIRED_CHECKS
     notes: "Lead did not treat empty-step FAILURE conclusions as code-level test failures."
+    research_classification:
+      status: classified
+      class: infrastructure
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: billing_not_started
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Copilot review on current head is billing/spending-limit not-started, not a pytest log."
+        - "Required Checks completed with empty steps; billing-not-started ≠ PASS."
+      research_notes: "Copilot plus empty-step jobs on be277ecd are billing/spending-limit blocks. Billing-not-started is not pytest PASS and is not a scientific claim."
 
   - id: nts-rb-ci-workflow-failure-236-rollup
     category: CI_WORKFLOW_FAILURE
@@ -233,6 +265,17 @@ blockers:
     scientific_impact: none
     release_impact: BLOCKS_REQUIRED_CHECKS
     notes: "Surface failure only. Root cause unread from logs because logs were not stored."
+    research_classification:
+      status: classified
+      class: infrastructure
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: true_ci_unread
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Surface rollup is FAILURE; job logs are BlobNotFound or empty steps."
+        - "Prerequisite is billing restoration; unread logs cannot be compiled as true CI."
+      research_notes: "Nine rollup FAILURE conclusions with BlobNotFound/empty steps remain true_ci_unread until logs exist. Do not invent green CI. Billing is the prerequisite, not a pytest PASS."
 
   - id: nts-rb-disk-exhaustion-source-prs
     category: DISK_EXHAUSTION
@@ -250,6 +293,17 @@ blockers:
     scientific_impact: none
     release_impact: HOLDS_CI_DIAGNOSIS
     notes: "Prefer unavailable over fabricating current-head disk-full."
+    research_classification:
+      status: classified
+      class: infrastructure
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: historical_only
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "ENOSPC (Errno 28) was observed on prior source PRs, not on be277ecd current-head logs."
+        - "Current-head jobs have empty steps and BlobNotFound logs; disk exhaustion is unavailable for this head."
+      research_notes: "Historical ENOSPC on source PRs is not copied onto be277ecd. Current-head disk evidence is unavailable; do not treat prior-wave Errno 28 as a live CI result."
 
   - id: nts-rb-isolated-test-failures-author-claim
     category: TEST_FAILURE
@@ -267,6 +321,17 @@ blockers:
     scientific_impact: none
     release_impact: HOLDS_RELEASE_RECOMMENDATION
     notes: "Work-order 6-failure figure was not on the live body; live author claim is 8 failed."
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: false
+      methodological_limitations:
+        - "Live author claim is 8 failed (not the work-order 6); this pack did not re-run the isolated runner."
+        - "Author-claimed isolated counts are unverified and are not compiled evidence."
+      research_notes: "Live author isolated-run claim is 8 failed, not the work-order 6. Counts remain unverified. They are not PASS and not independently compiled evidence."
 
   - id: nts-rb-isolated-timeouts-author-claim
     category: TIMEOUT
@@ -284,6 +349,17 @@ blockers:
     scientific_impact: none
     release_impact: HOLDS_RELEASE_RECOMMENDATION
     notes: "Work-order 4-timeout figure was not on the live body; live author claim is 3 timed out."
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: false
+      methodological_limitations:
+        - "Live author claim is 3 timeouts with exit 124 (not the work-order 4); not independently timed here."
+        - "Timeouts are unresolved execution-time blockers, not skips and not PASS."
+      research_notes: "Live author isolated-run claim is 3 timeouts (not work-order 4) with exit 124. Timeouts are not skips and not PASS. Author counts remain unverified."
 
   - id: nts-rb-optional-deps-torch-cripser
     category: OPTIONAL_DEPENDENCY
@@ -301,6 +377,16 @@ blockers:
     scientific_impact: none
     release_impact: ENVIRONMENT_CLASSIFICATION
     notes: "Lead did not install torch or cripser and did not re-collect those tests."
+    research_classification:
+      status: classified
+      class: optional-dependency
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Missing torch/cripser produces skip or unavailable collection, not a scientific result."
+      research_notes: "Missing torch/cripser is skip/unavailable. Optional-absent is not scientific PASS and is not a silent green."
 
   - id: nts-rb-windows-symlink-privilege
     category: WINDOWS_PLATFORM
@@ -317,6 +403,17 @@ blockers:
     scientific_impact: none
     release_impact: PLATFORM_CLASSIFICATION
     notes: "This Lead environment is Linux; Windows privilege was not reproduced here."
+    research_classification:
+      status: classified
+      class: platform
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "WinError 1314 privilege skip is a Windows platform condition, not a scientific PASS."
+        - "Lead Linux environment did not reproduce the privilege skip."
+      research_notes: "WinError 1314 privilege skip is not PASS. Lead Linux did not reproduce it. Keep as platform classification until a privilege-capable Windows image revalidates."
 
   - id: nts-rb-scientific-review-synthetic-not-supported
     category: SCIENTIFIC_REVIEW
@@ -334,6 +431,18 @@ blockers:
     scientific_impact: NOT_SUPPORTED
     release_impact: BLOCKS_SCIENTIFIC_RELEASE_CLAIM
     notes: "Synthetic results remain NOT_SUPPORTED. Never invent PASS."
+    research_classification:
+      status: classified
+      class: scientific
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: NOT_SUPPORTED
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "K > 100 is the only empirical PASS gate; synthetic/proxy/incomplete-provenance cannot PASS."
+        - "RSS/AICc/BIC proxy comparisons are not formal Bayes factors."
+        - "Author scientific_gate_report status is INCONCLUSIVE / NOT RELEASE-READY; this pack does not invent PASS."
+      research_notes: "Synthetic remains NOT_SUPPORTED. K>100 is the only empirical PASS gate; synthetic, proxy, and incomplete-provenance cannot PASS. RSS/AICc/BIC proxy is not a formal Bayes factor. Author scientific_gate_report is INCONCLUSIVE / NOT RELEASE-READY. Unsupported claims are not evidence."
 
   - id: nts-rb-provenance-incomplete-empirical-gate
     category: PROVENANCE_INCOMPLETE
@@ -351,6 +460,17 @@ blockers:
     scientific_impact: NOT_SUPPORTED
     release_impact: BLOCKS_EMPIRICAL_CLAIM
     notes: "Standing gate, not a newly measured missing-file inventory."
+    research_classification:
+      status: classified
+      class: scientific
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: NOT_SUPPORTED
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Incomplete provenance cannot produce empirical PASS."
+        - "No label inference; no AWS/QPU/downloads are claimed in this pack."
+      research_notes: "Incomplete provenance cannot produce empirical PASS. This pack infers no labels and claims no AWS/QPU/downloads. Standing gate only; not a newly measured missing-file inventory."
 
   - id: nts-rb-stacked-206-208-unmerged
     category: STACKED_PR_UNRESOLVED
@@ -370,6 +490,16 @@ blockers:
     scientific_impact: none
     release_impact: PROCESS_HOLD
     notes: "Merger: do not merge. Never close PRs."
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Live GitHub still shows #206/#207/#208 OPEN; this pack does not merge or close them."
+      research_notes: "PRs #206, #207, and #208 remain OPEN. Leave them open. Do not merge or close from this pack. Not a scientific PASS."
 
   - id: nts-rb-stacked-post-integration-239-240
     category: STACKED_PR_UNRESOLVED
@@ -388,6 +518,20 @@ blockers:
     scientific_impact: none
     release_impact: PROCESS_HOLD
     notes: "Post-snapshot open work. Not a second rewrite of #216/#225/#237 packs."
+    research_classification:
+      status: classified
+      class: engineering
+      classes:
+        - engineering
+        - documentation
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Overlap of #239/#240 with be277ecd was not independently diffed (unavailable)."
+        - "#239 compiler claim must not become a second evidence authority without Integration review."
+      research_notes: "PRs #239 and #240 remain OPEN and are post-#236 list. Overlap with be277ecd is unavailable (not diffed). Do not merge. #239 documentation/compiler claim is not a second evidence authority without Integration review."
 
   - id: nts-rb-duplicate-216-225-supersede
     category: DUPLICATE_OR_SUPERSEDED
@@ -407,6 +551,18 @@ blockers:
     scientific_impact: none
     release_impact: PROCESS_HOLD
     notes: "Inventory/retirement packs are not scientific PASS."
+    research_classification:
+      status: classified
+      class: documentation
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Live GitHub: #216 MERGED (2026-09-06); #225 remains OPEN titled as superseding #216 inventory."
+        - "This pack does not rewrite #216/#225 evidence packs or the #237 retirement pack."
+        - "Inventory is not evidence; no second-authority rewrite."
+      research_notes: "Live GitHub shows #216 MERGED (2026-09-06) and #225 still OPEN titled as superseding #216 inventory. Reconcile as a docs/inventory supersede claim versus already-merged schema/compiler authority on #216. Do not rewrite those packs or #237; leave #237 OPEN. Inventory is not evidence."
 
   - id: nts-rb-dashboard-isolation-unverified
     category: DASHBOARD_ISOLATION
@@ -427,6 +583,17 @@ blockers:
     author_documented_status: PASS
     lead_verification_status: unavailable
     notes: "Recorded because head docs assert PASS; Lead verification remains unavailable."
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: false
+      methodological_limitations:
+        - "Author-documented dashboard isolation PASS was not independently re-run."
+        - "Keep unavailable until QA re-runs; do not invent PASS."
+      research_notes: "Author-documented dashboard isolation PASS is unverified. Keep unavailable until QA re-runs. Do not invent PASS from head docs."
 
   - id: nts-rb-memory-evidence-unavailable
     category: MEMORY_EVIDENCE
@@ -446,6 +613,17 @@ blockers:
     memory_kind: unavailable
     independently_verified: false
     notes: "Prefer null/unavailable over fabrication."
+    research_classification:
+      status: classified
+      class: engineering
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: none
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
+      methodological_limitations:
+        - "Independent RSS vs tracemalloc measurements on be277ecd are unavailable."
+        - "Unlabeled memory numbers cannot be treated as verified."
+      research_notes: "RSS versus tracemalloc is independently unavailable on be277ecd. Prefer null/unavailable. Unlabeled memory is not verified evidence."
 
 categories_with_no_seeded_open_blocker:
   CURRENT_HEAD_MISMATCH: "Live headRefOid equals expected be277ecdac301d49dca27ef9612ebe6c560245ad. No open mismatch blocker."
@@ -457,3 +635,10 @@ next_action_research: >
   Keep synthetic/proxy as NOT_SUPPORTED. Do not invent the Integration
   remediation queue or the QA/Release schema validator. Do not merge. Never
   close PRs.
+
+next_action_qa: >
+  Research classification is recorded on all 14 seeded blockers. QA owns
+  schema and tests (scripts/validate_release_blockers.py,
+  tests/release/test_blocker_registry.py). No validator is invented in this
+  pack. Keep synthetic NOT_SUPPORTED. Do not invent an Integration
+  remediation queue. Do not merge. Never close PRs.

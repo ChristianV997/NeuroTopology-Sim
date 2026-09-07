@@ -153,3 +153,42 @@ This pack does **not** invent the Integration remediation queue.
 3. Reconcile live **#216 merged** vs still-open **#225** supersede text without rewriting those packs or **#237**.
 4. Hand classified blockers to QA for the schema/tests Release will validate. Do **not** invent `validate_release_blockers.py` here.
 5. Integration (later) orders remediation. Merger: **do not merge. Never close PRs.**
+
+---
+
+## Research classification
+
+- **Phase:** Research (`research_and_tooling`) on 2026-09-07, on Lead commit `fa1a16819fb2462630b6925fc2313efaf8ac52eb`.
+- **This section classifies Lead rows.** It does not rewrite Lead evidence and is not compiled evidence.
+- **CURRENT_HEAD_MISMATCH** is still **absent**. Live `CURRENT_INTEGRATION_HEAD` remains `be277ecdac301d49dca27ef9612ebe6c560245ad`.
+- **Synthetic** remains **`NOT_SUPPORTED`**. Never invent `PASS`.
+- **Author isolated counts** 415/75/64/8/3/exit124 remain **unverified**; not compiled evidence.
+- **Marketplace bot added:** **Alfred** (governance only).
+- `empirical_pass_from_this_pack` remains **false**. `treats_unsupported_claim_as_evidence` is **false** on every row.
+
+| blocker id | class | scientific_claim_status | billing_vs_true_ci | one-line note |
+| --- | --- | --- | --- | --- |
+| `nts-rb-billing-236-current-head` | infrastructure | none | billing_not_started | Copilot + empty-step jobs; billing ≠ PASS. |
+| `nts-rb-ci-workflow-failure-236-rollup` | infrastructure | none | true_ci_unread | Surface FAILURE; BlobNotFound/empty steps; unread until logs exist. |
+| `nts-rb-disk-exhaustion-source-prs` | infrastructure | none | historical_only | Prior-source ENOSPC; unavailable on `be277ecd` — do not copy onto current head. |
+| `nts-rb-isolated-test-failures-author-claim` | engineering | none | not_applicable | Live author 8 failed (not work-order 6); unverified; not PASS. |
+| `nts-rb-isolated-timeouts-author-claim` | engineering | none | not_applicable | Live author 3 timeouts (not work-order 4); exit 124; not skips; not PASS. |
+| `nts-rb-optional-deps-torch-cripser` | optional-dependency | none | not_applicable | Missing torch/cripser = skip/unavailable; not scientific PASS. |
+| `nts-rb-windows-symlink-privilege` | platform | none | not_applicable | WinError 1314 privilege skip ≠ PASS; Lead Linux did not reproduce. |
+| `nts-rb-scientific-review-synthetic-not-supported` | scientific | NOT_SUPPORTED | not_applicable | K>100 only empirical PASS gate; synthetic/proxy cannot PASS. |
+| `nts-rb-provenance-incomplete-empirical-gate` | scientific | NOT_SUPPORTED | not_applicable | Incomplete provenance cannot produce empirical PASS; no label inference. |
+| `nts-rb-stacked-206-208-unmerged` | engineering | none | not_applicable | #206/#207/#208 still OPEN; leave open; do not merge/close from this pack. |
+| `nts-rb-stacked-post-integration-239-240` | engineering (+ documentation) | none | not_applicable | #239/#240 OPEN post-#236; overlap with `be277ecd` unavailable; do not merge. |
+| `nts-rb-duplicate-216-225-supersede` | documentation | none | not_applicable | #216 MERGED vs #225 OPEN inventory supersede; no second-authority rewrite. |
+| `nts-rb-dashboard-isolation-unverified` | engineering | none | not_applicable | Author-doc PASS unverified; keep unavailable until QA re-runs. |
+| `nts-rb-memory-evidence-unavailable` | engineering | none | not_applicable | RSS vs tracemalloc independently unavailable on `be277ecd`. |
+
+**#216 / #225 reconciliation (docs/inventory only):** Live GitHub shows **#216 MERGED** (2026-09-06) and **#225 still OPEN**, titled as superseding #216 inventory. That is a docs/inventory supersede claim versus already-merged schema/compiler authority on #216. This pack does **not** rewrite those evidence packs or the **#237** retirement pack. Leave **#237 OPEN**. Inventory ≠ evidence. No second-authority rewrite.
+
+CI billing-not-started / empty-step FAILURE ≠ pytest PASS. Proxy Bayes ≠ formal Bayes factors. Dashboard author-documented PASS is unverified until QA re-runs.
+
+### Hand-off (QA)
+
+QA owns schema and tests (`scripts/validate_release_blockers.py`, `tests/release/test_blocker_registry.py`). **No validator is invented here.** Do not invent an Integration remediation queue.
+
+**Merger: do not merge. Never close PRs.**
