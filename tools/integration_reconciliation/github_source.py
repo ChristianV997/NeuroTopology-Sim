@@ -75,7 +75,28 @@ def find_pr_by_number(snapshot: dict[str, Any], number: int) -> Optional[dict[st
     return None
 
 
-def checks_all_passing(checks: Optional[dict[str, str]]) -> Optional[bool]:
+def normalize_checks(checks: Optional[dict[str, Any]]) -> dict[str, dict[str, Optional[str]]]:
+    """Normalize legacy flat conclusions and rich check evidence."""
+    if not checks:
+        return {}
+    normalized: dict[str, dict[str, Optional[str]]] = {}
+    for name, value in checks.items():
+        if isinstance(value, dict):
+            normalized[name] = {
+                "status": value.get("status", "completed"),
+                "conclusion": value.get("conclusion"),
+                "failure_signature": value.get("failure_signature"),
+            }
+        else:
+            normalized[name] = {
+                "status": "completed",
+                "conclusion": str(value),
+                "failure_signature": None,
+            }
+    return normalized
+
+
+def checks_all_passing(checks: Optional[dict[str, Any]]) -> Optional[bool]:
     """None when there is no check data at all; False if any recorded
     conclusion is not "success" (covers "failure", "cancelled", "timed_out",
     a still-pending job reported as e.g. "neutral"/"skipped" is treated as
@@ -84,7 +105,11 @@ def checks_all_passing(checks: Optional[dict[str, str]]) -> Optional[bool]:
     exactly "success"."""
     if not checks:
         return None
-    return all(conclusion == "success" for conclusion in checks.values())
+    normalized = normalize_checks(checks)
+    return all(
+        fields.get("conclusion") == "success"
+        for fields in normalized.values()
+    )
 
 
 def mergeable_from_state(mergeable_state: Optional[str]) -> Optional[bool]:
