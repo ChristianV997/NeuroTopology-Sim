@@ -25,4 +25,4 @@ COPY . .
 
 # Keep this image aligned with the required CPU/base contract. Optional
 # MNE/GUDHI/Cripser/Torch/Cloud/QPU suites have separate explicit profiles.
-CMD ["python", "scripts/run_tests_isolated.py", "--batch-size", "8", "--timeout-s", "120", "--report", "/tmp/core-test-report.json", "tests/test_run_record.py", "tests/test_run_records.py", "tests/test_benchmarks_registry.py", "tests/test_pipeline_job_schema.py", "tests/test_transitions_governance.py", "tests/test_transitions_features.py", "tests/btc_icft/test_report_guardrails.py", "tests/btc_icft/test_ontology_schema.py", "tests/runner/test_runner_isolation.py"]
+CMD ["python", "scripts/run_tests_isolated.py", "--batch-size", "1", "--timeout-s", "120", "--report", "/tmp/core-test-report.json", "tests/test_run_record.py", "tests/test_run_records.py", "tests/test_benchmarks_registry.py", "tests/test_pipeline_job_schema.py", "tests/test_transitions_governance.py", "tests/test_transitions_features.py", "tests/btc_icft/test_report_guardrails.py", "tests/btc_icft/test_ontology_schema.py", "tests/runner/test_runner_isolation.py"]

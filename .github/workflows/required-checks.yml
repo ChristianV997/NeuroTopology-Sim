@@ -54,7 +54,7 @@ jobs:
         # module-level cripser gate and belongs to the explicit research job.
         run: >
           python scripts/run_tests_isolated.py
-          --batch-size 8
+          --batch-size 1
           --timeout-s 120
           --report outputs/required_core_test_report.json
           tests/test_run_record.py
