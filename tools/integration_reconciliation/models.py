@@ -69,6 +69,45 @@ class PRFacts:
     head_sha: Evidence
     base_sha: Evidence
     checks: Evidence  # Evidence wrapping dict[str, str] (name -> conclusion) or None
+    head_ref: Evidence = field(default_factory=lambda: Evidence(None, "not populated"))
+    base_ref: Evidence = field(default_factory=lambda: Evidence(None, "not populated"))
+    body_excerpt: Evidence = field(default_factory=lambda: Evidence(None, "not populated"))
+
+
+@dataclass(frozen=True)
+class CurrentStatus:
+    lifecycle_state: Evidence
+    checks_status: Evidence
+    mergeability: Evidence
+    billing_blocked: Evidence
+    superseded: Evidence
+    duplicate: Evidence
+    scientific_review_required: Evidence
+
+    def to_dict(self) -> dict:
+        return {
+            "lifecycle_state": self.lifecycle_state.to_dict(),
+            "checks_status": self.checks_status.to_dict(),
+            "mergeability": self.mergeability.to_dict(),
+            "billing_blocked": self.billing_blocked.to_dict(),
+            "superseded": self.superseded.to_dict(),
+            "duplicate": self.duplicate.to_dict(),
+            "scientific_review_required": self.scientific_review_required.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class StackInfo:
+    is_stacked: Evidence
+    base_work_order_id: Evidence
+    dependents: Evidence
+
+    def to_dict(self) -> dict:
+        return {
+            "is_stacked": self.is_stacked.to_dict(),
+            "base_work_order_id": self.base_work_order_id.to_dict(),
+            "dependents": self.dependents.to_dict(),
+        }
 
 
 @dataclass
@@ -78,9 +117,13 @@ class ReconciliationEntry:
     pr: PRFacts
     stages: dict[str, Evidence] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    current_status: Optional[CurrentStatus] = None
+    stack: Optional[StackInfo] = None
+    scientific_gate_hints: Optional[dict] = None
+    effective_changed_files: Optional[Evidence] = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "work_order_id": self.work_order.work_order_id,
             "description": self.work_order.description,
             "expected_branch": self.work_order.expected_branch,
@@ -103,10 +146,22 @@ class ReconciliationEntry:
                 "head_sha": self.pr.head_sha.to_dict(),
                 "base_sha": self.pr.base_sha.to_dict(),
                 "checks": self.pr.checks.to_dict(),
+                "head_ref": self.pr.head_ref.to_dict(),
+                "base_ref": self.pr.base_ref.to_dict(),
+                "body_excerpt": self.pr.body_excerpt.to_dict(),
             },
             "stages": {name: evidence.to_dict() for name, evidence in self.stages.items()},
             "notes": list(self.notes),
         }
+        if self.current_status is not None:
+            result["current_status"] = self.current_status.to_dict()
+        if self.stack is not None:
+            result["stack"] = self.stack.to_dict()
+        if self.scientific_gate_hints is not None:
+            result["scientific_gate_hints"] = self.scientific_gate_hints
+        if self.effective_changed_files is not None:
+            result["effective_changed_files"] = self.effective_changed_files.to_dict()
+        return result
 
 
 @dataclass
@@ -119,6 +174,8 @@ class ReconciliationReport:
     common_check_failures: list[dict[str, Any]] = field(default_factory=list)
     dashboard_isolation: Optional[dict] = None
     artifact_commit_findings: dict[str, list[str]] = field(default_factory=dict)
+    possible_duplicates: list[dict] = field(default_factory=list)
+    superseded_work: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -128,6 +185,8 @@ class ReconciliationReport:
             "entries": [entry.to_dict() for entry in self.entries],
             "file_overlaps": {key: list(value) for key, value in sorted(self.file_overlaps.items())},
             "common_check_failures": list(self.common_check_failures),
+            "possible_duplicates": list(self.possible_duplicates),
+            "superseded_work": list(self.superseded_work),
             "dashboard_isolation": self.dashboard_isolation,
             "artifact_commit_findings": {
                 key: list(value) for key, value in sorted(self.artifact_commit_findings.items())
