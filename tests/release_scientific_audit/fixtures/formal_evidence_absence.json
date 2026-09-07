@@ -1,0 +1,102 @@
+{
+  "capability_snapshot": {
+    "capabilities": {
+      "numpy": true,
+      "scipy": true
+    },
+    "required_for_release": [
+      "numpy"
+    ]
+  },
+  "ci_status": {
+    "checks": {
+      "awareness-tests": "passing",
+      "core-tests": "passing"
+    }
+  },
+  "dashboard_isolation_claim": {
+    "claim_source": "docs/release/dashboard_isolation_report.md",
+    "claimed_ok": true
+  },
+  "falsification_payloads": [
+    {
+      "bayes_factor": 3.2,
+      "component": "pitnn_pipeline",
+      "data_mode": "empirical_local",
+      "effective_sample_size": 16,
+      "evidence_kind": null,
+      "null_control_present": true,
+      "numeric_fields": [
+        3.2
+      ],
+      "threshold": 100.0,
+      "verdict": "NOT_SUPPORTED"
+    }
+  ],
+  "merge_matrix": [
+    {
+      "decision": "Integrated",
+      "pr_or_group": "#300",
+      "reason": "Additive tooling change, no scientific claims"
+    }
+  ],
+  "performance_claims": [
+    {
+      "described_as_scientific_evidence": false,
+      "is_finite": true,
+      "label": "streaming_bench",
+      "metric": "peak_memory_MB",
+      "value": 12.5
+    }
+  ],
+  "provenance_records": [
+    {
+      "checksum": "abc123",
+      "component": "eeg_pipeline",
+      "dataset_id": "ds000001",
+      "effective_sample_size": 16,
+      "sample_size": 128,
+      "seed": 42,
+      "source_kind": "empirical_local"
+    }
+  ],
+  "scientific_gate_report": {
+    "bayes_factor_evidence_kind": null,
+    "classical_baseline_is_real_wilson_cowan": null,
+    "classical_baseline_label": "classical_harmonic_baseline",
+    "graph_beta1_separated_from_spatial": true,
+    "invalid_or_incomplete_provenance_can_pass": false,
+    "k_gate_is_only_pass_condition": true,
+    "k_gate_threshold": 100.0,
+    "multiplicity_correction_applied": true,
+    "multiplicity_relevant": true,
+    "null_control_status": "present",
+    "overall_status_label": "CLEAN / RELEASE-READY",
+    "paired_cohort_readiness": "VALID_PAIRED_COHORT",
+    "synthetic_can_pass": false
+  },
+  "test_summary": {
+    "failed": 0,
+    "failed_ids": [],
+    "passed": 100,
+    "timed_out": 0,
+    "timed_out_ids": [],
+    "total_batches": 10,
+    "total_files": 100
+  },
+  "topology_summaries": [
+    {
+      "fields": {
+        "Qabs_mean": 2.0,
+        "Qz_mean": 1.0
+      },
+      "namespace": "spatial_topology"
+    },
+    {
+      "fields": {
+        "beta1": 2
+      },
+      "namespace": "graph_topology"
+    }
+  ]
+}
