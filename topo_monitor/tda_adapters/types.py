@@ -15,6 +15,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
+import numpy as np
+
 
 class BackendName(str, enum.Enum):
     RIPSER = "ripser"
@@ -54,6 +56,24 @@ def sanitize_float(val: Any) -> float | None:
         return f
     except (TypeError, ValueError):
         return None
+
+
+def sanitize_value(val: Any) -> Any:
+    """Recursively convert NaN, Inf, and numpy types to standard JSON-safe null/primitives."""
+    if val is None:
+        return None
+    if isinstance(val, (float, np.floating)):
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    if isinstance(val, (int, np.integer)):
+        return int(val)
+    if isinstance(val, dict):
+        return {str(k): sanitize_value(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple)):
+        return [sanitize_value(v) for v in val]
+    return val
 
 
 @dataclass(frozen=True)
@@ -133,6 +153,17 @@ class TDAConfig:
     track_memory: bool = True
     node_order: list[int] | None = None
 
+    def __post_init__(self) -> None:
+        if self.max_edge_length is not None:
+            if not np.isfinite(self.max_edge_length) or self.max_edge_length < 0.0:
+                raise ValueError(f"max_edge_length must be finite and non-negative, got {self.max_edge_length}")
+        if self.max_dimension < 0:
+            raise ValueError(f"max_dimension must be >= 0, got {self.max_dimension}")
+        if self.landscape_layers < 1:
+            raise ValueError(f"landscape_layers must be >= 1, got {self.landscape_layers}")
+        if self.landscape_resolution < 2:
+            raise ValueError(f"landscape_resolution must be >= 2, got {self.landscape_resolution}")
+
 
 def compute_deterministic_checksum(
     backend: str,
@@ -205,7 +236,7 @@ class TDAPersistenceResult:
             "landscape": clean_landscape,
             "landscape_grid": clean_grid,
             "landscape_integrated_area": sanitize_float(self.landscape_integrated_area),
-            "metadata": self.metadata,
+            "metadata": sanitize_value(self.metadata) or {},
         }
 
     def to_json(self, indent: int | None = 2) -> str:

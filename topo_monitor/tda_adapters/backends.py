@@ -80,12 +80,15 @@ class RipserBackend(BaseTDABackend):
         is_dm = (input_kind == InputKind.DISTANCE_MATRIX)
         thresh = config.max_edge_length if config.max_edge_length is not None else np.inf
 
-        res = ripser(
-            data,
-            distance_matrix=is_dm,
-            maxdim=config.max_dimension,
-            thresh=thresh,
-        )
+        try:
+            res = ripser(
+                data,
+                distance_matrix=is_dm,
+                maxdim=config.max_dimension,
+                thresh=thresh,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Backend '{self.name}' computation failed: {exc}") from exc
 
         dgms = res.get("dgms", [])
         b0_intervals: list[PersistenceInterval] = []
@@ -167,14 +170,17 @@ class GudhiBackend(BaseTDABackend):
 
         thresh = config.max_edge_length if config.max_edge_length is not None else float("inf")
 
-        if input_kind == InputKind.DISTANCE_MATRIX:
-            rips = gudhi.RipsComplex(distance_matrix=data, max_edge_length=thresh)
-        else:
-            rips = gudhi.RipsComplex(points=data, max_edge_length=thresh)
+        try:
+            if input_kind == InputKind.DISTANCE_MATRIX:
+                rips = gudhi.RipsComplex(distance_matrix=data, max_edge_length=thresh)
+            else:
+                rips = gudhi.RipsComplex(points=data, max_edge_length=thresh)
 
-        st = rips.create_simplex_tree(max_dimension=config.max_dimension + 1)
-        st.compute_persistence()
-        persistence_list = st.persistence()
+            st = rips.create_simplex_tree(max_dimension=config.max_dimension + 1)
+            st.compute_persistence()
+            persistence_list = st.persistence()
+        except Exception as exc:
+            raise RuntimeError(f"Backend '{self.name}' computation failed: {exc}") from exc
 
         b0_intervals: list[PersistenceInterval] = []
         b1_intervals: list[PersistenceInterval] = []
@@ -249,12 +255,15 @@ class RipserPlusPlusBackend(BaseTDABackend):
 
         thresh = config.max_edge_length if config.max_edge_length is not None else -1.0
         # ripserplusplus accepts point clouds or distance matrices depending on bindings
-        raw = ripserplusplus.run(
-            data,
-            dim=config.max_dimension,
-            threshold=thresh,
-            metric="precomputed" if input_kind == InputKind.DISTANCE_MATRIX else "euclidean",
-        )
+        try:
+            raw = ripserplusplus.run(
+                data,
+                dim=config.max_dimension,
+                threshold=thresh,
+                metric="precomputed" if input_kind == InputKind.DISTANCE_MATRIX else "euclidean",
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Backend '{self.name}' computation failed: {exc}") from exc
 
         b0_intervals: list[PersistenceInterval] = []
         b1_intervals: list[PersistenceInterval] = []
@@ -328,14 +337,17 @@ class GiottoTDABackend(BaseTDABackend):
         metric = "precomputed" if input_kind == InputKind.DISTANCE_MATRIX else "euclidean"
         max_edge = config.max_edge_length if config.max_edge_length is not None else np.inf
 
-        vr = VietorisRipsPersistence(
-            metric=metric,
-            max_edge_length=max_edge,
-            homology_dimensions=list(range(config.max_dimension + 1)),
-        )
+        try:
+            vr = VietorisRipsPersistence(
+                metric=metric,
+                max_edge_length=max_edge,
+                homology_dimensions=list(range(config.max_dimension + 1)),
+            )
 
-        batch_input = data[None, :, :]
-        dgms = vr.fit_transform(batch_input)[0]  # (K, 3) where [birth, death, dim]
+            batch_input = data[None, :, :]
+            dgms = vr.fit_transform(batch_input)[0]  # (K, 3) where [birth, death, dim]
+        except Exception as exc:
+            raise RuntimeError(f"Backend '{self.name}' computation failed: {exc}") from exc
 
         b0_intervals: list[PersistenceInterval] = []
         b1_intervals: list[PersistenceInterval] = []

@@ -60,6 +60,8 @@ class DeterministicFallbackBackend(BaseTDABackend):
         config: TDAConfig,
     ) -> tuple[list[PersistenceInterval], list[PersistenceInterval], list[PersistencePair], tuple[float, float | None]]:
         n = data.shape[0]
+        if n < 2:
+            raise ValueError(f"Deterministic fallback requires at least 2 points/nodes, got N={n}.")
         if n > self.MAX_POINTS_BOUND:
             raise ValueError(
                 f"Deterministic fallback backend is restricted to bounded fixtures (N <= {self.MAX_POINTS_BOUND}), "
@@ -70,6 +72,8 @@ class DeterministicFallbackBackend(BaseTDABackend):
             dist_mat = squareform(pdist(data, metric="euclidean"))
         else:
             dist_mat = data.copy()
+            np.fill_diagonal(dist_mat, 0.0)
+            dist_mat = np.maximum(dist_mat, 0.0)
 
         max_thresh = config.max_edge_length
         if max_thresh is None:

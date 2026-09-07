@@ -36,6 +36,8 @@ def stream_point_cloud_generator(
 
     if cfg.window_size < 2:
         raise ValueError(f"window_size must be >= 2, got {cfg.window_size}")
+    if cfg.max_allowed_points_per_window < 2:
+        raise ValueError(f"max_allowed_points_per_window must be >= 2, got {cfg.max_allowed_points_per_window}")
     if cfg.window_size > cfg.max_allowed_points_per_window:
         raise ValueError(
             f"window_size ({cfg.window_size}) exceeds memory limit "
