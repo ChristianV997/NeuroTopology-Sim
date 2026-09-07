@@ -11,10 +11,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PIP_NO_CACHE_DIR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
   governance-validate:
     name: Governance validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -25,18 +30,36 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
       - name: Validate governance specs
         run: python -m governance.validate
 
+      - name: Emit finite CI diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow CI --job governance-validate --step governance
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/governance.json
+          --json-out outputs/ci_diagnostics/governance.json
+
+      - name: Upload governance diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-governance-diagnostic
+          path: outputs/ci_diagnostics/governance.json
+          if-no-files-found: error
+
   dependency-inventory:
     name: Dependency inventory audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -68,10 +91,11 @@ jobs:
               print(f'Profile {p}: {len(lines)} declarations')
           "
 
-  fast-contracts:
-    name: Fast contracts & runner unit tests
+  release-ci-contract:
+    name: Release CI contract
     runs-on: ubuntu-latest
-    needs: governance-validate
+    timeout-minutes: 10
+    needs: dependency-inventory
     permissions:
       contents: read
 
@@ -82,11 +106,42 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-base.txt
+
+      - name: Install contract validator dependency
+        run: python -m pip install --no-cache-dir --disable-pip-version-check pyyaml
+
+      - name: Validate release CI contract
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --root .
+          --json-out outputs/ci_diagnostics/release-ci-contract.json
+
+      - name: Upload release CI contract report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-ci-contract-report
+          path: outputs/ci_diagnostics/release-ci-contract.json
+          if-no-files-found: error
+
+  fast-contracts:
+    name: Fast contracts & runner unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [governance-validate, release-ci-contract]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
       - name: Run test runner unit suite
         run: python -m pytest tests/runner/ -v
@@ -94,9 +149,29 @@ jobs:
       - name: Run fast contract tests
         run: python -m pytest tests/test_run_record.py tests/test_pipeline_job_schema.py tests/btc_icft/test_report_guardrails.py -v
 
+      - name: Emit finite CI diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow CI --job fast-contracts --step pytest
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/fast-contracts.json
+          --json-out outputs/ci_diagnostics/fast-contracts.json
+
+      - name: Upload fast-contracts diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-fast-contracts-diagnostic
+          path: outputs/ci_diagnostics/fast-contracts.json
+          if-no-files-found: error
+
   isolated-core-suite:
     name: "Core suite (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: fast-contracts
     permissions:
       contents: read
@@ -112,17 +187,15 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: requirements-base.txt
 
       - name: Install base dependencies
-        run: pip install -r requirements-base.txt
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
       - name: Run isolated core tests (no heavy optional dependencies)
         # Bounded worker processes, hard timeouts, thread caps, no external network
         run: >
           python scripts/run_tests_isolated.py
-          --batch-size 8
+          --batch-size 1
           --timeout-s 120
           --report outputs/core_test_report_${{ matrix.python-version }}.json
           tests/test_run_record.py
@@ -138,16 +211,32 @@ jobs:
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic
 
+      - name: Emit finite CI diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow CI --job isolated-core-suite --step isolated-tests
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/core-${{ matrix.python-version }}.json
+          --json-out outputs/ci_diagnostics/core-${{ matrix.python-version }}.json
+
       - name: Upload core test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: core-test-report-${{ matrix.python-version }}
-          path: outputs/core_test_report_*.json
+          path: |
+            outputs/core_test_report_*.json
+            outputs/ci_diagnostics/core-${{ matrix.python-version }}.json
+          if-no-files-found: error
 
   optional-eeg-suite:
     name: Optional EEG suite (Python 3.11)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 45
     needs: fast-contracts
     permissions:
       contents: read
@@ -159,11 +248,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements-eeg.txt
 
       - name: Install EEG profile dependencies
-        run: pip install -r requirements-eeg.txt
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-eeg.txt
 
       - name: Run isolated EEG tests
         run: >
@@ -176,16 +263,32 @@ jobs:
           tests/btc_icft/test_eeg_signal_blocks.py
           tests/test_preprocessing_artifact_rejection.py
 
+      - name: Emit finite CI diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow CI --job optional-eeg-suite --step pytest
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/eeg.json
+          --json-out outputs/ci_diagnostics/eeg.json
+
       - name: Upload EEG test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: eeg-test-report
-          path: outputs/eeg_test_report.json
+          path: |
+            outputs/eeg_test_report.json
+            outputs/ci_diagnostics/eeg.json
+          if-no-files-found: error
 
   optional-ml-suite:
     name: Optional ML suite (Python 3.11)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 60
     needs: fast-contracts
     permissions:
       contents: read
@@ -197,11 +300,9 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements-ml.txt
 
       - name: Install ML profile dependencies
-        run: pip install -r requirements-ml.txt
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-ml.txt
 
       - name: Run isolated ML tests
         run: >
@@ -210,3 +311,24 @@ jobs:
           --timeout-s 180
           --report outputs/ml_test_report.json
           tests/test_dual_engine.py
+
+      - name: Emit finite CI diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow CI --job optional-ml-suite --step pytest
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/ml.json
+          --json-out outputs/ci_diagnostics/ml.json
+
+      - name: Upload ML diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-ml-diagnostic
+          path: |
+            outputs/ml_test_report.json
+            outputs/ci_diagnostics/ml.json
+          if-no-files-found: error

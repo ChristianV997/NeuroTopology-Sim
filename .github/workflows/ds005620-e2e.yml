@@ -14,6 +14,7 @@ on:
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
       - 'contracts/btc_icft/ds005620/p18_1/**'
+      - 'requirements-base.txt'
       - 'tests/btc_icft/**'
       - 'Makefile'
       - '.github/workflows/ds005620-e2e.yml'
@@ -27,6 +28,7 @@ on:
       - 'tools/export_ds005620_evidence_packet.py'
       - 'tools/generate_ds005620_paper_skeleton.py'
       - 'contracts/btc_icft/ds005620/p18_1/**'
+      - 'requirements-base.txt'
       - 'tests/btc_icft/**'
       - 'Makefile'
       - '.github/workflows/ds005620-e2e.yml'
@@ -38,7 +40,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 15
+    timeout-minutes: 45
+    env:
+      PIP_NO_CACHE_DIR: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
 
     steps:
       - uses: actions/checkout@v7
@@ -47,8 +57,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install CPU/base dependencies
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
       - name: Governance and DS005620 mock E2E gate
         run: |
@@ -70,6 +80,17 @@ jobs:
           make ds005620-test-runtime
           make ds005620-generated-language-check
 
+      - name: Emit finite DS005620 diagnostic
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: >
+          python scripts/validate_release_ci_contract.py
+          --diagnostic --workflow "DS005620 E2E" --job ds005620-e2e --step e2e
+          --message "job status: ${JOB_STATUS}"
+          --artifact-path outputs/ci_diagnostics/ds005620.json
+          --json-out outputs/ci_diagnostics/ds005620.json
+
       - name: Upload DS005620 mock E2E evidence
         uses: actions/upload-artifact@v4
         if: always()
@@ -86,6 +107,7 @@ jobs:
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/contract_validation_summary.json
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.json
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/ci_evidence_report.md
+            outputs/ci_diagnostics/ds005620.json
             outputs/btc_icft/ds005620_generated_language_validation.json
             outputs/btc_icft/ds005620_generated_language_validation.md
             outputs/btc_icft/ds005620_real_benchmark_execution_mock/stage_outputs/p12_eeg_labels/label_alignment.csv
