@@ -688,6 +688,24 @@ def build_ml_decoding_report(
     """
     from analysis.ml_decoding import build_decoding_report
 
+    # A real-mode extraction returns an explicit zero row with warnings when
+    # its source file cannot be read.  Those rows are useful for reporting the
+    # missing-data condition, but they are not observations: feeding their
+    # zeros into a classifier can manufacture a perfectly reproducible signal
+    # and needlessly launch a large permutation test.  Keep ML decoding
+    # fail-closed and require signal-derived, non-degenerate topology rows.
+    eligible_rows = [
+        r for r in rows
+        if not r.warnings and r.n_triangles > 0 and r.n_valid_triangles > 0
+    ]
+    if not eligible_rows:
+        return {
+            "status": "not_applicable",
+            "reason": "no signal-derived, non-degenerate topology rows available",
+            "n_rows_total": len(rows),
+            "n_rows_excluded": len(rows),
+        }
+
     by_id = {str(m.get("row_id")): m for m in m_rows}
     extra_by_row: dict[str, dict] = {}
     for report_results in extra_feature_reports or []:
@@ -701,7 +719,7 @@ def build_ml_decoding_report(
 
     feature_dicts: list[dict] = []
     labels: list = []
-    for r in rows:
+    for r in eligible_rows:
         m = by_id.get(r.row_id)
         if m is None:
             continue
@@ -714,7 +732,14 @@ def build_ml_decoding_report(
         labels.append(group_val)
 
     if not feature_dicts:
-        return {"status": "not_applicable", "reason": f"no rows with a non-null {group_col!r} value", "group_col": group_col}
+        return {
+            "status": "not_applicable",
+            "reason": f"no rows with a non-null {group_col!r} value",
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+        }
 
     groups = sorted({str(g) for g in labels})
     if len(groups) != 2:
