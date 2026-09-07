@@ -513,12 +513,17 @@ def classify_falsification_status(k_value: Any, *, threshold: float = PASS_THRES
         return "INCONCLUSIVE"
     if multiplicity_status in {"unknown", "missing", "invalid"}:
         return "INCONCLUSIVE"
+    # A regression/RSS comparison is a proxy by construction.  Once the
+    # input contract itself is valid, absence of formal controls must not
+    # relabel that non-evidence as an ambiguous failure: it is explicitly
+    # unsupported for a scientific PASS verdict.  Formal evidence still
+    # requires the control gate below.
+    if not str(method).startswith("formal_marginal_likelihood"):
+        return "NOT_SUPPORTED"
     if controls_pass is None:
         controls_pass = _controls_pass(controls)
     if controls_pass is not True:
         return "INCONCLUSIVE" if controls_pass is None else "NOT_SUPPORTED"
-    if not str(method).startswith("formal_marginal_likelihood"):
-        return "NOT_SUPPORTED"
     k = _finite(k_value)
     if k is None or k < 0:
         return "INCONCLUSIVE"
@@ -655,7 +660,7 @@ def compare_models(signal: np.ndarray, inversion: dict, *, topological_l1_penalt
     evidence_eligible = bool(not signal_static and topological_active)
     control_status = dict(controls or {"status": "not_run"})
     status_input = dict(evidence)
-    status_input.update({"data_mode": data_mode, "provenance_status": validation["provenance_status"], "effective_sample_count": validation["effective_sample_count"], "multiplicity_correction_status": validation["multiplicity_status"], "controls": control_status, "evidence_eligible": evidence_eligible, "validation": validation, "model_comparison_supported": True})
+    status_input.update({"data_mode": data_mode, "data_status": validation["data_mode"], "provenance_status": validation["provenance_status"], "effective_sample_count": validation["effective_sample_count"], "multiplicity_correction_status": validation["multiplicity_status"], "controls": control_status, "evidence_eligible": evidence_eligible, "validation": validation, "model_comparison_supported": True})
     status = classify_falsification_status(status_input, threshold=PASS_THRESHOLD, controls_pass=control_status.get("passed") if "passed" in control_status else None)
     return _consumer_semantics({"status": status, "verdict": status, "method": evidence["method"], "formal": False, "k_value": evidence.get("k_value"), "bayes_factor": _finite_or_zero(evidence.get("k_value")), "log_bayes_factor": evidence.get("log_bayes_factor"), "threshold": PASS_THRESHOLD, "data_mode": validation["data_mode"], "provenance_status": validation["provenance_status"], "provenance": dict(provenance or {}), "provenance_completeness": validation["provenance_completeness"], "sample_count": validation["sample_count"], "feature_count": validation["feature_count"], "effective_sample_count": validation["effective_sample_count"], "model_parameter_counts": {"pitnn": q_parameters, "classical_wilson_cowan_proxy": c_parameters}, "likelihood_method": "gaussian_regression_proxy", "null_control_status": control_status, "multiplicity_correction_status": validation["multiplicity_status"], "preregistration_status": validation["preregistration_status"], "selected_evidence_metric": selected_evidence_metric, "uncertainty": evidence.get("uncertainty"), "controls": control_status, "warnings": evidence.get("warnings", []) + ["No biological confirmation is asserted"], "errors": evidence.get("errors", []), "validation": validation, "model_comparison_supported": True, "signal_static": signal_static, "evidence_eligible": evidence_eligible, "topology_metrics": separate_topology_metrics(inversion), "topology_metric_semantics": {"graph_beta1": "graph cycle rank; not spatial charge", "spatial_winding_q": "coordinate-dependent spatial winding; not graph beta-1", "scalar_chirality": "local vector-triple-product observable; not winding"}, "pitnn": {"rss": rss_q, "aic": evidence["aic"]["model"], "aicc": evidence["aicc"]["model"], "bic": evidence["bic"]["model"], "topological_l1_penalty": float(topological_l1_penalty), "topological_weight": float(beta_q[-1]), "topological_feature_static": topology_static, "topological_feature_active": topological_active, "active_parameters": active_q, "parameter_count": q_parameters}, "classical_wilson_cowan": {"rss": rss_c, "aic": evidence["aic"]["null"], "aicc": evidence["aicc"]["null"], "bic": evidence["bic"]["null"], "parameter_count": c_parameters, "model_type": "wilson_cowan_proxy_regression", "likelihood_status": "not_implemented"}})
 

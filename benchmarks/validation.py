@@ -10,7 +10,7 @@ copies, mirroring how `transitions.governance` reuses
 """
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES
@@ -160,7 +160,17 @@ def validate_artifact_record(record: Any, *, repo_root: Path = _REPO_ROOT) -> li
     external = bool(getattr(record, "external", False))
     path_value = getattr(record, "path", None)
     if path_value:
-        if not external and Path(path_value).is_absolute():
+        # Registry paths are repository-relative POSIX strings even when the
+        # validator runs on Windows.  Check both grammars so a POSIX absolute
+        # path such as `/absolute/path.json` cannot evade rule 10 merely
+        # because the host uses Windows path semantics.
+        path_text = str(path_value)
+        is_absolute = (
+            Path(path_text).is_absolute()
+            or PurePosixPath(path_text).is_absolute()
+            or PureWindowsPath(path_text).is_absolute()
+        )
+        if not external and is_absolute:
             errors.append(
                 f"path '{path_value}' must be a relative repository path unless external=True (rule 10)"
             )

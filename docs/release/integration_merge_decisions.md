@@ -152,3 +152,64 @@ Additional entries are appended after each logical merge group and final validat
   infrastructure unavailable, not as a local scientific failure. No GitHub
   Actions billing entitlement was required or exercised, and no AWS/QPU/cloud
   execution or credentialed operation was attempted.
+
+### 2026-09-06 — live post-wave PR audit and extension
+
+- The live GitHub inventory contained PRs #223–#238 in addition to the earlier
+  inventory. The integration branch was extended only after fetching and
+  inspecting each current head/base, changed-file list, draft state, body, and
+  check status.
+- Accepted additive groups, merged in dependency order:
+  - #223 capability snapshot sidecar after #217;
+  - #224 adaptive streaming after #211/#215, then #232 checkpoint/replay;
+  - #226 consumer-safe Bayesian semantics after #219, then #234 artifact
+    consumer migration;
+  - #228 merge-gate policy after reconciliation;
+  - #229 dataset provenance;
+  - #230 performance-regression policy;
+  - #227 CI install reliability after #213/#222, with six workflow conflicts
+    manually reconciled in favor of CPU/base profiles, bounded pip temp space,
+    diagnostics, and the existing core/EEG/ML test jobs;
+  - #231 CI evidence preflight;
+  - #233 interoperability conformance;
+  - #235 paired-cohort manifest/readiness;
+  - #238 optional TDA adapters;
+  - #225 release-state classification, superseding #216's release inventory.
+- PR #237 remains intentionally excluded because its own body says “do not
+  merge”; it is an inventory input, not production or release authority.
+- PRs #206, #207, and #208 remain unmerged for draft/review-only or
+  out-of-graph scope. The branch-only `grok/tool-admission-research` ref was
+  not recreated. No duplicate Bayesian implementation was retained: #219 is
+  authoritative, with #226 and #234 layered at consumer boundaries.
+- Validation of the extension: CI/governance/tooling/provenance group `93
+  passed`; streaming/interop/scientific/cohort/TDA/integration group `344
+  passed, 2 skipped`; YAML parsing passed for 10 files. The skips are explicit
+  optional/platform classifications, not converted failures.
+- GitHub checks for every newly inspected PR and the integration PR fail before
+  steps/logs are available. No CI success is claimed; the branch remains open
+  for review and infrastructure diagnosis.
+
+### 2026-09-06 — post-run classification and focused repairs
+
+- The mandated isolated run discovered 415 files in 75 bounded batches and
+  returned `64 passed, 8 failed, 3 timed out` with exit code 124. These results
+  remain recorded as local evidence; the full run is not represented as green.
+- Fixed genuine compatibility defects at integration boundaries: propagated
+  explicit source mode/provenance and declared single-test multiplicity in the
+  empirical and MEG callers; made valid proxy comparisons explicitly
+  `NOT_SUPPORTED`; made benchmark absolute-path rejection portable across
+  POSIX and Windows path grammars; and serialized BIDS artifact paths with
+  forward slashes.
+- Verified repairs with `32 passed`, including empirical, MEG, falsification
+  semantics, benchmark, batch-runner, and MNE-BIDS tests. The broad validation
+  group remains `344 passed, 2 skipped`; the CI/governance/tooling/provenance
+  group remains `93 passed`.
+- The remaining optional/platform cases are explicitly classified: absent
+  `torch`, absent `cripser`, and unavailable Windows symlink privilege
+  (`WinError 1314`). Only the privilege-specific symlink case is skipped; no
+  real assertion failure is converted into a skip. Remaining bounded timeout
+  groups are unresolved and keep the scientific/release status inconclusive.
+- GitHub Actions checks still terminate before steps or logs for the
+  integration PR and inspected source PRs. This is classified as
+  infrastructure/billing blocked; no CI success is claimed, no merge is
+  forced, and PR #236 remains open.
