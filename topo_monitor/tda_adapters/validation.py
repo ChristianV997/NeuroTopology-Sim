@@ -21,6 +21,10 @@ FORBIDDEN_SPATIAL_LABELS = {
     "vortex_charge",
     "phase_winding",
     "winding_number",
+    "topological_charge",
+    "spatial_winding",
+    "phase_vortex_charge",
+    "spatial_vortex",
 }
 
 
@@ -42,7 +46,9 @@ def assert_not_spatial_charge(label: str, context: str = "") -> None:
 
 
 def validate_point_cloud(points: np.ndarray | Sequence[Sequence[float]]) -> np.ndarray:
-    """Validate that points form a finite (N, D) point cloud with N >= 2, D >= 1."""
+    """Validate that points form a finite, real-valued (N, D) point cloud with N >= 2, D >= 1."""
+    if np.iscomplexobj(points):
+        raise ValueError("Point cloud must be real-valued, got complex input")
     arr = np.asarray(points, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError(f"Point cloud must be 2-dimensional (samples, dimensions), got ndim={arr.ndim}")
@@ -57,7 +63,11 @@ def validate_point_cloud(points: np.ndarray | Sequence[Sequence[float]]) -> np.n
 
 
 def validate_distance_matrix(matrix: np.ndarray | Sequence[Sequence[float]], atol: float = 1e-6) -> np.ndarray:
-    """Validate that matrix is a finite, symmetric, non-negative square distance matrix with zero diagonal."""
+    """Validate that matrix is a finite, real, symmetric, non-negative square distance matrix with zero diagonal."""
+    if atol < 0:
+        raise ValueError(f"atol must be non-negative, got {atol}")
+    if np.iscomplexobj(matrix):
+        raise ValueError("Distance matrix must be real-valued, got complex input")
     arr = np.asarray(matrix, dtype=np.float64)
     if arr.ndim != 2:
         raise ValueError(f"Distance matrix must be 2-dimensional, got ndim={arr.ndim}")

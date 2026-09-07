@@ -90,10 +90,20 @@ def verify_reordering_invariance(
     res_orig = adapter.compute(valid_data, kind, config)
     res_reord = adapter.compute(reordered, kind, config)
 
-    orig_b0 = [(iv.birth, iv.death) for iv in res_orig.beta_0_intervals]
-    reord_b0 = [(iv.birth, iv.death) for iv in res_reord.beta_0_intervals]
-    orig_b1 = [(iv.birth, iv.death) for iv in res_orig.beta_1_intervals]
-    reord_b1 = [(iv.birth, iv.death) for iv in res_reord.beta_1_intervals]
+    def _to_comparable(intervals: Sequence[PersistenceInterval]) -> list[tuple[float, float | None]]:
+        res = []
+        for iv in intervals:
+            b = round(float(iv.birth), 6)
+            d = round(float(iv.death), 6) if iv.death is not None else None
+            res.append((b, d))
+        # Sort by birth, then None-last for death
+        res.sort(key=lambda item: (item[0], item[1] if item[1] is not None else float("inf")))
+        return res
+
+    orig_b0 = _to_comparable(res_orig.beta_0_intervals)
+    reord_b0 = _to_comparable(res_reord.beta_0_intervals)
+    orig_b1 = _to_comparable(res_orig.beta_1_intervals)
+    reord_b1 = _to_comparable(res_reord.beta_1_intervals)
 
     if len(orig_b0) != len(reord_b0) or len(orig_b1) != len(reord_b1):
         return False
@@ -112,6 +122,11 @@ def verify_reordering_invariance(
         if (d1 is None) != (d2 is None):
             return False
         if d1 is not None and not np.isclose(d1, d2, atol=1e-5):
+            return False
+
+    # Also verify landscape area invariance if computed
+    if res_orig.landscape_integrated_area is not None and res_reord.landscape_integrated_area is not None:
+        if not np.isclose(res_orig.landscape_integrated_area, res_reord.landscape_integrated_area, atol=1e-4):
             return False
 
     return True
