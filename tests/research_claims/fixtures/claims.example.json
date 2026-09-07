@@ -1,0 +1,21 @@
+{
+  "claims": [
+    {
+      "claim_id": "ENG-001",
+      "text": "The claim-audit CLI writes claim_audit.json from a local claims file and does not call network services.",
+      "claim_category": "engineering_fact",
+      "evidence_class": "engineering_fact",
+      "provenance_reference": "scripts/validate_research_claims.py",
+      "data_origin": "repository_source",
+      "empirical_synthetic_status": "not_applicable",
+      "proxy_formal_status": "not_applicable",
+      "test_reference": "tests/research_claims/test_research_claim_auditor.py",
+      "required_controls": ["no_network", "deterministic_output"],
+      "falsifiability_condition": "Fail if the CLI requires a network socket or mutates the input claims file.",
+      "allowed_language": ["engineering validation", "local CLI"],
+      "prohibited_language": ["proves consciousness", "biological confirmation"],
+      "reviewer_state": "accepted",
+      "last_reviewed": "2026-09-06"
+    }
+  ]
+}
