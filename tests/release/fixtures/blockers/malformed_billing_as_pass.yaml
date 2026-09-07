@@ -1,0 +1,39 @@
+# BILLING_OR_RUNNER_BLOCK / billing_not_started treated as pytest PASS. Must fail closed.
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+scientific_pass_from_this_pack: never_claimed
+allowed_categories:
+  - BILLING_OR_RUNNER_BLOCK
+current_integration:
+  pr_number: 236
+  merged: false
+  state: OPEN
+  draft: false
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+blockers:
+  - id: fixture-billing-as-pass
+    category: BILLING_OR_RUNNER_BLOCK
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 fixture"
+    exact_evidence:
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/pull/236 billing-not-started"
+    reproducibility: unknown
+    owner_role: infrastructure
+    recommended_action: do_not_treat_billing_as_pass
+    scientific_impact: none
+    release_impact: BLOCKS_REQUIRED_CHECKS
+    test_results: PASS
+    pytest_pass: true
+    research_classification:
+      status: classified
+      class: infrastructure
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: PASS
+      billing_vs_true_ci: billing_not_started
+      author_claim_independently_verified: null
