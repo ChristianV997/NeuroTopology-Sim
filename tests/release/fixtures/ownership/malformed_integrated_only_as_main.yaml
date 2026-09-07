@@ -1,0 +1,33 @@
+# INTEGRATED_ONLY treated as merged into main. Must fail closed.
+kind: integration_ownership_inventory
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+sole_merger: Codex_C
+allowed_statuses:
+  - VERIFIED
+  - INTEGRATED_ONLY
+  - OPEN_REVIEW
+  - BLOCKED_BY_CI
+  - BLOCKED_BY_TESTS
+  - BLOCKED_BY_SCIENCE
+  - DUPLICATE
+  - SUPERSEDED
+  - NEEDS_HUMAN_REVIEW
+  - UNVERIFIED
+CURRENT_INTEGRATION_HEAD: af3ac584419148ddcfc57cb565c416eba6328725
+current_integration:
+  pr_number: 236
+  merged: false
+  on_origin_main: false
+  head_ref_oid: af3ac584419148ddcfc57cb565c416eba6328725
+  github_state: OPEN
+  status: OPEN_REVIEW
+work_items:
+  - id: fixture-integrated-only-as-main
+    pr_number: 220
+    title: "INTEGRATED_ONLY stacked adapters labeled as on main"
+    github_state: MERGED
+    merged: true
+    on_origin_main: true
+    base_ref_name: main
+    status: INTEGRATED_ONLY

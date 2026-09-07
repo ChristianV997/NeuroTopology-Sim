@@ -1,0 +1,47 @@
+# Researchy acting as Research. Must fail closed. Researchy NO ACT this wave.
+kind: integration_ownership_inventory
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+sole_merger: Codex_C
+allowed_statuses:
+  - VERIFIED
+  - INTEGRATED_ONLY
+  - OPEN_REVIEW
+  - BLOCKED_BY_CI
+  - BLOCKED_BY_TESTS
+  - BLOCKED_BY_SCIENCE
+  - DUPLICATE
+  - SUPERSEDED
+  - NEEDS_HUMAN_REVIEW
+  - UNVERIFIED
+CURRENT_INTEGRATION_HEAD: af3ac584419148ddcfc57cb565c416eba6328725
+current_integration:
+  pr_number: 236
+  merged: false
+  on_origin_main: false
+  head_ref_oid: af3ac584419148ddcfc57cb565c416eba6328725
+  github_state: OPEN
+  status: OPEN_REVIEW
+research_phase:
+  phase: RESEARCH
+  classifier: researchy
+  researchy_acted: true
+  inventory_is_not_evidence: true
+  empirical_pass_from_this_pack: false
+  synthetic_status: NOT_SUPPORTED
+ownership_decisions:
+  roles:
+    lead_developer:
+      name: Lead
+      scope: work_order_owner_and_assigner
+      may_merge: false
+    research_and_tooling:
+      name: Researchy
+      scope: official_source_tooling_this_repo_lane
+work_items:
+  - id: fixture-researchy-as-research
+    status: OPEN_REVIEW
+    merged: false
+    on_origin_main: false
+    research_claim_label:
+      status: labeled
