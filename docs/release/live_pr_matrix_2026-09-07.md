@@ -35,5 +35,5 @@ commits or branch existence.
 | #266–#269 | #266 integrated-only release manifest; #267–#269 unintegrated draft release/platform/performance/preregistration work. |
 
 PR #236 is the open final integration PR. The complete changed-file ownership
-snapshot is in `changed_file_ownership.md`; 282 effective paths were present
+snapshot is in `changed_file_ownership.md`; 283 effective paths were present
 relative to `origin/main` before the final release-artifact updates.

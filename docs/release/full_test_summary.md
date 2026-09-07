@@ -66,3 +66,20 @@ claim CI success.
 
 These focused results do not replace the non-green full isolated run and do
 not imply GitHub CI success.
+
+## Final mandated isolated run — 2026-09-07
+
+Exact command:
+
+`python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120`
+
+- Discovery: `459` files in `81` bounded fresh-process batches.
+- Result: `73 passed, 4 failed, 4 timed out`; exit code `1`; duration about
+  `2970s`.
+- Batch 36 (`tests/test_cross_modal_fusion.py`) is an absent-`torch` optional
+  dependency collection failure. Batch 74 (`tests/test_topology.py`) is the
+  absent-`cripser` no-tests-collected condition. Both remain non-green runner
+  outcomes and are classified explicitly; neither is represented as a pass.
+- The remaining ordinary failure and timeout batches remain unresolved local
+  execution evidence. They are not scientific evidence, and the run is not a
+  release pass.

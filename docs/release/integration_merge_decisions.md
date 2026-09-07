@@ -265,6 +265,21 @@ Additional entries are appended after each logical merge group and final validat
   the reconciliation source for #255 state-lock work; #230 remains the
   performance policy with #258 as evidence normalization; and #241 is not a
   substitute for #254’s isolated test-runner repair.
-- The branch contains 282 effective changed paths relative to `origin/main`.
+- The branch contains 283 effective changed paths relative to `origin/main`.
   No datasets, binary trajectories, credentials, or generated plots were
   added. The primary dirty checkout was not modified.
+
+### 2026-09-07 — final mandated local run
+
+- The exact required command
+  `python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120`
+  completed `459 files / 81 batches`: `73 passed, 4 failed, 4 timed out`,
+  exit code `1`. This is preserved as non-green local evidence.
+- The isolated runner explicitly surfaced the absent-`torch` collection
+  failure in `tests/test_cross_modal_fusion.py` and the absent-`cripser`
+  no-tests-collected result for `tests/test_topology.py`; neither was
+  converted into a skip or pass. Remaining failures/timeouts remain unresolved
+  execution blockers.
+- PR #236 was pushed at `c8b96eb` and remains open. GitHub required checks
+  still fail before job steps with the billing/runner infrastructure condition;
+  main was not merged.

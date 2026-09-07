@@ -7,8 +7,8 @@
    merged until mandatory checks can start, complete, and pass.
 3. The mandated full isolated run has preserved local failures/timeouts from
    the prior evidence (`64 passed, 8 failed, 3 timed out`, exit 124). The
-   current focused run also found and repaired four real stacked-fixture
-   failures. A clean full run remains required for release.
+   final mandated run completed `73 passed, 4 failed, 4 timed out` with exit
+   code 1. A clean full run remains required for release.
 4. Optional `torch`, `cripser`, and `ripser` capability checks and Windows
    symlink privilege (`WinError 1314`) are environment-dependent. Only those
    capability cases are classified as skips; real assertion failures remain
