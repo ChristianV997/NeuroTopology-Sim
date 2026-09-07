@@ -1,0 +1,459 @@
+# Lead-phase release blocker inventory (NOT compiled evidence).
+# Research classifies. Integration orders remediation later.
+# QA/Release own schema validator + tests (not invented here).
+# Inventory is not a scientific PASS. Synthetic remains NOT_SUPPORTED.
+# Merger: do not merge. Never close PRs.
+
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+phase: LEAD
+inspector: lead
+inspected_at: "2026-09-07"
+evidence_source: github_api
+repository: https://github.com/ChristianV997/NeuroTopology-Sim
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: false
+scientific_pass_from_this_pack: never_claimed
+merger_instruction: do_not_merge
+never_close_prs: true
+
+marketplace_bot_added:
+  name: Alfred
+  scope: governance_only
+  other_marketplace_bots: []
+
+owned_paths:
+  - configs/release/blocker_registry.yaml
+  - docs/release/current_blocker_triage.md
+
+explicitly_not_owned:
+  - scripts/validate_release_blockers.py  # Release
+  - tests/release/test_blocker_registry.py  # QA
+  - docs/release/agent_contribution_matrix.yaml  # evidence pack #216/#225
+  - docs/release/current_state.md  # evidence pack #216/#225
+  - retirement pack #237
+
+current_integration:
+  pr_number: 236
+  pr_url: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236
+  title: "Integration: merge validated open PR groups"
+  draft: false
+  merged: false
+  state: OPEN
+  mergeable_state: unstable
+  head_ref_name: codex/integration-all-open-prs
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  base_ref_name: main
+  base_ref_oid: 62aa8fee786abf916ab0aa2b7e7b91c570fee119
+  changed_files: 138
+  commits: 97
+  additions: 18499
+  deletions: 1459
+  current_head_role: current
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+
+# Intermediate commits on #236 are history only. Only head_ref_oid is current.
+intermediate_commits_not_current:
+  - oid: e8aa212cf73729ff1850e47bb54c888056360a66
+    role: intermediate
+    headline: "Merge remote-tracking branch origin/pr/235"
+  - oid: b48034e636b7ad3a79884f25a3144a8cbb86463d
+    role: intermediate
+    headline: "Merge remote-tracking branch origin/pr/238"
+  - oid: c8f8a694a93188cd06edc6c831db3a6e4080a9e9
+    role: intermediate
+    headline: "Merge remote-tracking branch origin/pr/225"
+  - oid: ea2d30ff4ee89aee0ce3c35bfe6b16a0215df8ac
+    role: intermediate
+    headline: "Merge PR #227 CI install reliability"
+  - oid: 4f6519439368dd26cbaa783b1b6d78d6bfb3d6e6
+    role: intermediate
+    headline: "Merge remote-tracking branch origin/pr/231"
+  - oid: 4ed560cac57c2193b538fcce48d12aa65e25ee76
+    role: intermediate
+    headline: "Merge origin/main into codex/integration-all-open-prs (conflict resolution)"
+  - oid: ad3540ca7f3934488320f59b5911bf6de40a963e
+    role: intermediate
+    headline: "Finalize integration evidence and release gate"
+  - oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+    role: current
+    headline: "Merge remote-tracking branch origin/codex/integration-all-open-prs (docs/release conflicts)"
+
+# Live statusCheckRollup on current head (gh pr view --json statusCheckRollup).
+# Combined commit status API: state=pending, total_count=0 (no classic statuses).
+status_check_rollup:
+  source: gh_pr_view_statusCheckRollup
+  head_sha: be277ecdac301d49dca27ef9612ebe6c560245ad
+  combined_commit_status:
+    state: pending
+    total_count: 0
+    statuses: []
+  checks:
+    - name: "Python 3.11 — offline tests"
+      workflow: "Awareness Studio"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 4
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674319/job/101581897423
+    - name: "DS005620 E2E Mock Run"
+      workflow: "DS005620 E2E"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 3
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674306/job/101581896947
+    - name: "Root sim engine CPU/base image"
+      workflow: "Docker build"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 3
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674324/job/101581897112
+    - name: "ontology-claim-language"
+      workflow: "Ontology Claim Language"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 4
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674307/job/101581897171
+    - name: core-tests
+      workflow: "Required Checks"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 3
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674302/job/101581897255
+    - name: "Cross-system smoke"
+      workflow: Smoke
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 2
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674416/job/101581897483
+    - name: "Python 3.12 — offline tests"
+      workflow: "Awareness Studio"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 3
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674319/job/101581897252
+    - name: "Awareness Studio image"
+      workflow: "Docker build"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 3
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674324/job/101581897193
+    - name: awareness-tests
+      workflow: "Required Checks"
+      status: COMPLETED
+      conclusion: FAILURE
+      duration_s: 4
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674302/job/101581897030
+    - name: "Production root image (manual opt-in)"
+      workflow: "Docker build"
+      status: COMPLETED
+      conclusion: SKIPPED
+      duration_s: null
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674324/job/101581897734
+  additional_check_runs_not_in_rollup:
+    - name: copilot-pull-request-reviewer
+      status: COMPLETED
+      conclusion: FAILURE
+      details_url: https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068677884/job/101581908296
+
+# Author-claimed isolated-run numbers from live PR #236 body / head docs.
+# This Lead run did not re-execute the isolated runner. Do not treat as PASS.
+author_claimed_isolated_run:
+  independently_verified: false
+  source_urls:
+    - https://github.com/ChristianV997/NeuroTopology-Sim/pull/236
+    - https://github.com/ChristianV997/NeuroTopology-Sim/blob/be277ecdac301d49dca27ef9612ebe6c560245ad/docs/release/full_test_summary.md
+  test_files: 415
+  batches: 75
+  passed: 64
+  failed: 8
+  timed_out: 3
+  exit_code: 124
+  work_order_cited_counts:
+    test_files: 401
+    batches: 63
+    failures: 6
+    timeouts: 4
+    found_on_live_pr_body: false
+    note: "Work-order 401/63/6/4 was not present on the live PR #236 body. Lead records live 415/75/8/3 only as author claims."
+
+allowed_categories:
+  - CURRENT_HEAD_MISMATCH
+  - CI_WORKFLOW_FAILURE
+  - BILLING_OR_RUNNER_BLOCK
+  - DISK_EXHAUSTION
+  - TEST_FAILURE
+  - TIMEOUT
+  - OPTIONAL_DEPENDENCY
+  - WINDOWS_PLATFORM
+  - SCIENTIFIC_REVIEW
+  - PROVENANCE_INCOMPLETE
+  - STACKED_PR_UNRESOLVED
+  - DUPLICATE_OR_SUPERSEDED
+  - DASHBOARD_ISOLATION
+  - MEMORY_EVIDENCE
+  - UNKNOWN
+
+blockers:
+  - id: nts-rb-billing-236-current-head
+    category: BILLING_OR_RUNNER_BLOCK
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 / codex/integration-all-open-prs @ be277ecdac301d49dca27ef9612ebe6c560245ad"
+    exact_evidence:
+      - "Copilot review on current head: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236#pullrequestreview-5127101733 (commit_id be277ecdac301d49dca27ef9612ebe6c560245ad) body: \"The job was not started because recent GitHub Actions payments have failed or your spending limit needs to be increased.\""
+      - "Same billing text on earlier head 3b36cb5fb15cd1b5a8fc2ea1ceb9319e3cbe3d44: https://github.com/ChristianV997/NeuroTopology-Sim/pull/236#pullrequestreview-5126799493"
+      - "Required Checks jobs core-tests / awareness-tests: status completed, conclusion failure, steps=[] (https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/34068674302)."
+      - "Job log fetch for 101581897255 returned Azure BlobNotFound / HTTP 404 (no usable log body)."
+      - "PR body: \"GitHub Actions for this PR and the inspected source PRs currently terminate before usable steps/logs. This is infrastructure/billing-blocked, not CI success.\" https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+      - "Head doc: https://github.com/ChristianV997/NeuroTopology-Sim/blob/be277ecdac301d49dca27ef9612ebe6c560245ad/docs/release/unresolved_blockers.md item 1."
+    reproducibility: unknown
+    owner_role: infrastructure
+    prerequisite: null
+    recommended_action: "Restore GitHub Actions billing/spending limit so required jobs can start and emit logs. Billing-not-started must not be recorded as pytest PASS. Integration later orders any CI retry."
+    scientific_impact: none
+    release_impact: BLOCKS_REQUIRED_CHECKS
+    notes: "Lead did not treat empty-step FAILURE conclusions as code-level test failures."
+
+  - id: nts-rb-ci-workflow-failure-236-rollup
+    category: CI_WORKFLOW_FAILURE
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 / be277ecdac301d49dca27ef9612ebe6c560245ad"
+    exact_evidence:
+      - "statusCheckRollup on https://github.com/ChristianV997/NeuroTopology-Sim/pull/236: 9 COMPLETED/FAILURE, 1 COMPLETED/SKIPPED (Production root image manual opt-in)."
+      - "Failed names: Python 3.11 — offline tests; DS005620 E2E Mock Run; Root sim engine CPU/base image; ontology-claim-language; core-tests; Cross-system smoke; Python 3.12 — offline tests; Awareness Studio image; awareness-tests."
+      - "Check-run output title/summary/text for core-tests job 101581897255: all null."
+      - "Elapsed wall times ~2–4s from startedAt/completedAt. Unstarted (no steps) is not the same as a pytest-node failure."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: nts-rb-billing-236-current-head
+    recommended_action: "Research: classify rollup FAILURE as billing-not-started vs true workflow defect after logs exist. Do not invent a green CI result from this snapshot."
+    scientific_impact: none
+    release_impact: BLOCKS_REQUIRED_CHECKS
+    notes: "Surface failure only. Root cause unread from logs because logs were not stored."
+
+  - id: nts-rb-disk-exhaustion-source-prs
+    category: DISK_EXHAUSTION
+    severity: medium
+    status: open
+    affected_pr_or_branch: "historical source PRs #206/#208/#210/#211/#212 (not re-observed on #236 current-head logs)"
+    exact_evidence:
+      - "On-main inventory docs/release/current_state.md CI notes: PR #206 job 101243532368 Errno 28 during pip install; #208 job 101252966226; #210 job 101412547695; #211 job 101412998793; #212 job 101413702579 (runner warning then Errno 28)."
+      - "Those job IDs are prior-wave evidence. Lead did not re-read those logs in this run."
+      - "Current #236 head jobs have empty steps and BlobNotFound logs; disk exhaustion is therefore unavailable as a current-head classification."
+    reproducibility: unknown
+    owner_role: infrastructure
+    prerequisite: nts-rb-billing-236-current-head
+    recommended_action: "After billing allows jobs to run, inspect install-phase logs for Errno 28 vs pytest. Do not copy historical ENOSPC onto be277ecd without a current log."
+    scientific_impact: none
+    release_impact: HOLDS_CI_DIAGNOSIS
+    notes: "Prefer unavailable over fabricating current-head disk-full."
+
+  - id: nts-rb-isolated-test-failures-author-claim
+    category: TEST_FAILURE
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 author local isolated run (unverified by this Lead)"
+    exact_evidence:
+      - "Live PR body: \"Mandated isolated run: 415 files / 75 bounded batches; 64 passed, 8 failed, 3 timed out; exit 124. These outcomes remain recorded and are not represented as green.\" https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+      - "Head doc https://github.com/ChristianV997/NeuroTopology-Sim/blob/be277ecdac301d49dca27ef9612ebe6c560245ad/docs/release/full_test_summary.md: same 415/75/64/8/3/124; batch_summary.json retained on validation host %TEMP%\\nts-integration-final-20260906 (not fetched here)."
+      - "This Lead run did not execute scripts/run_tests_isolated.py and did not obtain batch_summary.json."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: null
+    recommended_action: "QA independently re-run the isolated runner on current head before treating failure counts as compiled evidence. Author counts are not PASS and not independently verified."
+    scientific_impact: none
+    release_impact: HOLDS_RELEASE_RECOMMENDATION
+    notes: "Work-order 6-failure figure was not on the live body; live author claim is 8 failed."
+
+  - id: nts-rb-isolated-timeouts-author-claim
+    category: TIMEOUT
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 author local isolated run (unverified by this Lead)"
+    exact_evidence:
+      - "Live PR body: 3 timed out; exit 124. https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+      - "Head full_test_summary.md: \"Timeouts: bounded heavy suites remain in test_t_real_cli_stats_wiring.py, the reconciliation group, the PITNN/pipeline group, and one mixed research group. They are unresolved execution-time blockers, not skips.\""
+      - "Named file-level timeout durations: unavailable (not independently timed here)."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: null
+    recommended_action: "QA re-run with the documented --batch-size 8 --timeout-s 120 contract and classify remaining timeouts. Do not convert timeouts into skips or PASS."
+    scientific_impact: none
+    release_impact: HOLDS_RELEASE_RECOMMENDATION
+    notes: "Work-order 4-timeout figure was not on the live body; live author claim is 3 timed out."
+
+  - id: nts-rb-optional-deps-torch-cripser
+    category: OPTIONAL_DEPENDENCY
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PR #236 author local isolated run / head docs"
+    exact_evidence:
+      - "PR body: \"Optional dependencies are classified explicitly (`torch`, `cripser`).\" https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+      - "full_test_summary.md: tests/test_cross_modal_fusion.py could not collect because torch is absent; tests/test_topology.py had only the optional cripser path skipped."
+      - "dependency_capability_report.md on head: missing torch / cripser are not treated as passing scientific evidence."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: null
+    recommended_action: "Keep missing optional packages as unavailable/skip classifications. Do not treat optional-absent as scientific PASS or as a silent green."
+    scientific_impact: none
+    release_impact: ENVIRONMENT_CLASSIFICATION
+    notes: "Lead did not install torch or cripser and did not re-collect those tests."
+
+  - id: nts-rb-windows-symlink-privilege
+    category: WINDOWS_PLATFORM
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PR #236 author local validation host (Windows privilege)"
+    exact_evidence:
+      - "PR body: \"Windows symlink creation is skipped only when `WinError 1314` privilege is unavailable.\" https://github.com/ChristianV997/NeuroTopology-Sim/pull/236"
+      - "full_test_summary.md: symlink escape test hit Windows WinError 1314; two skips include that privilege skip."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: null
+    recommended_action: "Revalidate symlink tests on a privilege-capable Windows image or keep the explicit skip. Privilege skip is not a scientific PASS."
+    scientific_impact: none
+    release_impact: PLATFORM_CLASSIFICATION
+    notes: "This Lead environment is Linux; Windows privilege was not reproduced here."
+
+  - id: nts-rb-scientific-review-synthetic-not-supported
+    category: SCIENTIFIC_REVIEW
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 / integration scientific gate (author docs on be277ecd)"
+    exact_evidence:
+      - "PR body: \"Synthetic, invalid, incomplete-provenance, and proxy comparisons cannot produce empirical PASS; the strict `K > 100` gate and topology metric separation remain intact.\""
+      - "https://github.com/ChristianV997/NeuroTopology-Sim/blob/be277ecdac301d49dca27ef9612ebe6c560245ad/docs/release/scientific_gate_report.md Status: INCONCLUSIVE / NOT RELEASE-READY. Synthetic artifact smoke returned NOT_SUPPORTED. RSS/AICc/BIC remain proxy, not formal Bayes factors."
+      - "This Lead pack does not execute K, does not rerun synthetic smoke, and does not invent PASS."
+    reproducibility: unknown
+    owner_role: research
+    prerequisite: null
+    recommended_action: "Research: keep synthetic/proxy rows as NOT_SUPPORTED. Do not promote author-claimed pytest counts or synthetic fixtures to empirical PASS. Formal likelihood validation remains required before strong Bayesian interpretation."
+    scientific_impact: NOT_SUPPORTED
+    release_impact: BLOCKS_SCIENTIFIC_RELEASE_CLAIM
+    notes: "Synthetic results remain NOT_SUPPORTED. Never invent PASS."
+
+  - id: nts-rb-provenance-incomplete-empirical-gate
+    category: PROVENANCE_INCOMPLETE
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PR #236 scientific gate / dataset provenance contract (author docs)"
+    exact_evidence:
+      - "scientific_gate_report.md: incomplete-provenance data cannot pass; paired-cohort readiness reports NO_DATA / INSUFFICIENT_PAIRS / VALID_PAIRED_COHORT / MALFORMED_COHORT and does not manufacture subjects or infer labels."
+      - "PR body: no datasets, binary trajectories, credentials, generated plots, AWS/QPU/cloud runs, or live downloads were added or used."
+      - "Independent provenance completeness audit of current-head artifacts: unavailable in this Lead run."
+    reproducibility: unknown
+    owner_role: research
+    prerequisite: nts-rb-scientific-review-synthetic-not-supported
+    recommended_action: "Research: treat incomplete provenance as unable to produce empirical PASS. Do not infer labels or fabricate cohort targets."
+    scientific_impact: NOT_SUPPORTED
+    release_impact: BLOCKS_EMPIRICAL_CLAIM
+    notes: "Standing gate, not a newly measured missing-file inventory."
+
+  - id: nts-rb-stacked-206-208-unmerged
+    category: STACKED_PR_UNRESOLVED
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PRs #206, #207, #208 remain unmerged (live gh)"
+    exact_evidence:
+      - "PR #236 body: \"#206, #207, and #208 remain unmerged as draft/review-only or outside the validated dependency graph.\""
+      - "Live gh 2026-09-07: #206 OPEN mergedAt=null head 52118e741a20897e7f28a41cf7491d2af0d73107 url https://github.com/ChristianV997/NeuroTopology-Sim/pull/206 (isDraft=false at inspect time; body still groups it as review-only)."
+      - "Live gh: #207 OPEN mergedAt=null https://github.com/ChristianV997/NeuroTopology-Sim/pull/207"
+      - "Live gh: #208 OPEN mergedAt=null https://github.com/ChristianV997/NeuroTopology-Sim/pull/208"
+      - "Canonical stacked pairs #215→#211 and #220→#212 are MERGED on GitHub as of this inspect (#215 mergedAt 2026-09-06T22:32:22Z; #220 mergedAt 2026-09-06T22:33:38Z; #211/#212 also MERGED). Lead does not invent them as still-unresolved stacked parents."
+    reproducibility: unknown
+    owner_role: integration
+    prerequisite: null
+    recommended_action: "Leave #206/#207/#208 open unless independently reviewed. Do not merge or close them from this Lead pack. Integration orders any later inclusion."
+    scientific_impact: none
+    release_impact: PROCESS_HOLD
+    notes: "Merger: do not merge. Never close PRs."
+
+  - id: nts-rb-stacked-post-integration-239-240
+    category: STACKED_PR_UNRESOLVED
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PRs #239 and #240 (open after #236 integration list)"
+    exact_evidence:
+      - "PR #236 integrated list does not include #239 or #240."
+      - "Live gh: #239 OPEN https://github.com/ChristianV997/NeuroTopology-Sim/pull/239 title \"Add unified research-state and evidence-report compiler\" head claude/research-state-report-compiler."
+      - "Live gh: #240 OPEN https://github.com/ChristianV997/NeuroTopology-Sim/pull/240 title \"Add lazy local FIF/EDF/VHDR/BIDS provenance readers\" head grok/typed-provenance-readers."
+      - "Overlap with #236 current head: not independently diffed here (unavailable)."
+    reproducibility: unknown
+    owner_role: integration
+    prerequisite: null
+    recommended_action: "Research/Integration: classify whether #239/#240 stack on or diverge from be277ecd. Do not merge them from this pack."
+    scientific_impact: none
+    release_impact: PROCESS_HOLD
+    notes: "Post-snapshot open work. Not a second rewrite of #216/#225/#237 packs."
+
+  - id: nts-rb-duplicate-216-225-supersede
+    category: DUPLICATE_OR_SUPERSEDED
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PRs #216 (live MERGED) and #225 (live OPEN supersede claim); #237 retirement register remains OPEN"
+    exact_evidence:
+      - "PR #236 body: \"#216 is superseded by #225. #237 is an explicit lead-only retirement inventory whose body says not to merge or close it.\""
+      - "Live gh: #216 MERGED mergedAt=2026-09-06T22:32:36Z https://github.com/ChristianV997/NeuroTopology-Sim/pull/216 head grok-bot/evidence-bundle-release @ 9c862d90e1996a21e42bc84dc9d737e2d5663a25"
+      - "Live gh: #225 OPEN mergedAt=null https://github.com/ChristianV997/NeuroTopology-Sim/pull/225 title \"release-evidence-compilation superseding #216 inventory\" @ 238163e3182e5fd60e5a6ce4019f753549ab6bf2"
+      - "Live gh: #237 OPEN mergedAt=null https://github.com/ChristianV997/NeuroTopology-Sim/pull/237 body: \"No retirement is finalized. Do not merge. Do not close any PR.\""
+      - "This Lead pack does not rewrite #216/#225 evidence docs or the #237 retirement pack."
+    reproducibility: unknown
+    owner_role: research
+    prerequisite: null
+    recommended_action: "Research: reconcile live merge of #216 with the still-open #225 supersede claim. Cite GitHub; do not produce a second-authority rewrite of those packs. Leave #237 open."
+    scientific_impact: none
+    release_impact: PROCESS_HOLD
+    notes: "Inventory/retirement packs are not scientific PASS."
+
+  - id: nts-rb-dashboard-isolation-unverified
+    category: DASHBOARD_ISOLATION
+    severity: medium
+    status: open
+    affected_pr_or_branch: "PR #236 head docs (author-documented; not re-run here)"
+    exact_evidence:
+      - "Head https://github.com/ChristianV997/NeuroTopology-Sim/blob/be277ecdac301d49dca27ef9612ebe6c560245ad/docs/release/dashboard_isolation_report.md Status: `PASS` for the checked integration surface. Claims no dashboard route imports or executes a solver."
+      - "This Lead run did not re-execute the AST isolation scan and did not independently confirm PASS."
+      - "No contradictory gh check named dashboard-isolation was present on statusCheckRollup."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: nts-rb-billing-236-current-head
+    recommended_action: "QA: independently re-run dashboard isolation. Author-documented PASS is not compiled evidence until verified. If unverifiable, keep unavailable — do not invent PASS."
+    scientific_impact: none
+    release_impact: HOLDS_ISOLATION_VERIFICATION
+    independently_verified: false
+    author_documented_status: PASS
+    lead_verification_status: unavailable
+    notes: "Recorded because head docs assert PASS; Lead verification remains unavailable."
+
+  - id: nts-rb-memory-evidence-unavailable
+    category: MEMORY_EVIDENCE
+    severity: low
+    status: open
+    affected_pr_or_branch: "PR #236 current head (RSS vs tracemalloc numbers)"
+    exact_evidence:
+      - "PR #215 (stacked on #211; now MERGED) added RSS + tracemalloc telemetry: https://github.com/ChristianV997/NeuroTopology-Sim/pull/215 commit 0dadb61b1d5de190225909ce98953e93768a4766."
+      - "Independent RSS/tracemalloc measurements for isolated-run batches on be277ecd: unavailable (not measured in this Lead run)."
+      - "No numeric peak-RSS or tracemalloc values are copied here."
+    reproducibility: unknown
+    owner_role: qa
+    prerequisite: null
+    recommended_action: "QA: if process-memory metrics are compiled, require kind RSS vs tracemalloc or mark unavailable. Unlabeled memory numbers cannot be treated as verified."
+    scientific_impact: none
+    release_impact: EVIDENCE_GAP
+    memory_kind: unavailable
+    independently_verified: false
+    notes: "Prefer null/unavailable over fabrication."
+
+categories_with_no_seeded_open_blocker:
+  CURRENT_HEAD_MISMATCH: "Live headRefOid equals expected be277ecdac301d49dca27ef9612ebe6c560245ad. No open mismatch blocker."
+  UNKNOWN: "Unused. Unread current-head CI logs are classified under BILLING_OR_RUNNER_BLOCK + CI_WORKFLOW_FAILURE rather than UNKNOWN."
+
+next_action_research: >
+  Classify each seeded blocker (engineering vs scientific surface, billing vs
+  true CI, author-claimed isolated counts vs independently runnable evidence).
+  Keep synthetic/proxy as NOT_SUPPORTED. Do not invent the Integration
+  remediation queue or the QA/Release schema validator. Do not merge. Never
+  close PRs.
