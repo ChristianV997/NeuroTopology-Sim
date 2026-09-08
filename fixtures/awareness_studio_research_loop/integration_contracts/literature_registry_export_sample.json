@@ -1,0 +1,67 @@
+{
+  "_provenance": "Shape modeled on the real, already-on-main tools/awareness_studio_research/models.py (PR #276, read-only) -- ids/checksums computed with the same algorithms as tools/awareness_studio_research/checksum.py so this fixture is representative of an actual export, not an invented shape.",
+  "sources": [
+    {
+      "source_id": "a2ff0df614df1f95",
+      "title": "Decentering and Metacognitive Distance in Meditation",
+      "doi": "10.1234/decentering.2025",
+      "source_checksum": "6e3b4d82e252fbcf7b33194efb63d50ca2603b20e15347ffd10daecf575e8e9",
+      "evidence_tier": "T1_verified_primary",
+      "verification_status": "verified",
+      "status": "active",
+      "limitations": ["small sample size", "cross-sectional design"]
+    },
+    {
+      "source_id": "75faa296c1a9f3b4",
+      "title": "Disputed Preprint on Consciousness Correlates",
+      "doi": null,
+      "source_checksum": "8777b999e56627488eba0256dbb661f504ad617a22f1ba24dfbbadbede8c3c2",
+      "evidence_tier": "T4_disputed",
+      "verification_status": "disputed",
+      "status": "disputed",
+      "limitations": ["claimed identifier could not be found in independent verification"]
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "09a209356c1a0f6b",
+      "source_id": "a2ff0df614df1f95",
+      "claim_text": "Decentering training correlates with reduced rumination scores.",
+      "claim_class": "correlational",
+      "claim_status": "empirical",
+      "linked_hypothesis": "HYP-DECENTERING-QZ-001"
+    },
+    {
+      "claim_id": "ed063986dab1b86f",
+      "source_id": "75faa296c1a9f3b4",
+      "claim_text": "Preliminary EEG signal changes were observed during meditation sessions.",
+      "claim_class": "descriptive",
+      "claim_status": "speculative",
+      "linked_hypothesis": "HYP-DECENTERING-QZ-001"
+    }
+  ],
+  "hypothesis_links": [
+    {
+      "hypothesis_id": "HYP-DECENTERING-QZ-001",
+      "claim_ids": ["09a209356c1a0f6b", "ed063986dab1b86f"],
+      "relationship": "supports"
+    }
+  ],
+  "experiment_links": [],
+  "evidence_updates": [
+    {
+      "update_id": "claim:09a209356c1a0f6b:v1",
+      "entity_type": "claim",
+      "entity_id": "09a209356c1a0f6b",
+      "update_type": "created",
+      "reason": "initial ingestion"
+    },
+    {
+      "update_id": "hypothesis_link:HYP-DECENTERING-QZ-001:v1",
+      "entity_type": "hypothesis_link",
+      "entity_id": "HYP-DECENTERING-QZ-001",
+      "update_type": "created",
+      "reason": "linked claims 09a209356c1a0f6b and ed063986dab1b86f"
+    }
+  ]
+}
