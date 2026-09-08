@@ -45,55 +45,6 @@ def to_markdown(report: ReconciliationReport) -> str:
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
 
-    if any(entry.current_status is not None for entry in report.entries):
-        lines.append("## Current status")
-        lines.append(
-            "| Work order | lifecycle | checks | mergeability | billing blocked | "
-            "superseded | duplicate | scientific review | stacked on |"
-        )
-        lines.append("|---|---|---|---|---|---|---|---|---|")
-        for entry in report.entries:
-            status = entry.current_status
-            if status is None:
-                continue
-            stack = entry.stack
-            stacked_on = (
-                stack.base_work_order_id.value if stack is not None and stack.is_stacked.value else "—"
-            )
-            lines.append(
-                "| " + " | ".join([
-                    entry.work_order.description,
-                    str(status.lifecycle_state.value or "unknown"),
-                    str(status.checks_status.value or "unknown"),
-                    str(status.mergeability.value or "unknown"),
-                    _mark(status.billing_blocked.value),
-                    _mark(status.superseded.value),
-                    _mark(status.duplicate.value),
-                    _mark(status.scientific_review_required.value),
-                    str(stacked_on or "—"),
-                ]) + " |"
-            )
-        lines.append("")
-
-    if report.possible_duplicates:
-        lines.append("## Possible duplicates")
-        for finding in report.possible_duplicates:
-            lines.append(
-                f"- `{finding['work_order_a']}` vs `{finding['work_order_b']}`: "
-                f"{finding['jaccard_similarity']*100:.0f}% file overlap "
-                f"({', '.join(finding['shared_files'])})"
-            )
-        lines.append("")
-
-    if report.superseded_work:
-        lines.append("## Superseded work")
-        for finding in report.superseded_work:
-            lines.append(
-                f"- `{finding['superseded_work_order']}` is superseded by "
-                f"`{finding['superseded_by_work_order']}` ({finding['evidence']})"
-            )
-        lines.append("")
-
     if report.file_overlaps:
         lines.append("## File overlaps")
         for pair, files in sorted(report.file_overlaps.items()):

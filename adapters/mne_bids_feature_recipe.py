@@ -471,7 +471,7 @@ def extract_from_bids_raw(spec: FeatureRecipeSpecV1) -> _ExtractionResult:
                 "source_value": source_features[feature_name],
                 "target_value": target_features[feature_name],
                 "feature_definition": spec.feature_definitions[feature_name],
-                "artifact_path": str(raw_path.relative_to(bids_root)),
+                "artifact_path": raw_path.relative_to(bids_root).as_posix(),
             })
 
         subjects_used.append(subject_id)

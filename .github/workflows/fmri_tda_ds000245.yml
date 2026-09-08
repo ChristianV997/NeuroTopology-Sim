@@ -33,6 +33,9 @@ permissions:
 env:
   DATASET: ds000245
   T_R: "2.5"
+  PIP_NO_CACHE_DIR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  AWS_EC2_METADATA_DISABLED: "true"
 
 jobs:
   # ---- Fan-out: one job per group, each pulls only its subjects' BOLD from OpenNeuro S3 ----
@@ -57,6 +60,13 @@ jobs:
             echo "Group ${{ matrix.group }} not in requested set -- skipping."
           fi
 
+      - name: Prepare bounded pip temp directory
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
       - uses: actions/setup-python@v7
         if: steps.gate.outputs.run == 'true'
         with:
@@ -65,8 +75,7 @@ jobs:
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
         run: |
-          python -m pip install --upgrade pip
-          pip install nibabel nilearn ripser networkx statsmodels scikit-learn scipy numpy pandas
+          python -m pip install --no-cache-dir --disable-pip-version-check nibabel nilearn ripser networkx statsmodels scikit-learn scipy numpy pandas
 
       - name: Download ds000245 BOLD for ${{ matrix.group }} from OpenNeuro S3
         if: steps.gate.outputs.run == 'true'
@@ -108,6 +117,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Clean package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+
   # ---- Aggregate: merge the per-group subject files -> cohort stats + rendered summary ----
   aggregate:
     name: Aggregate cohort + group statistics
@@ -122,8 +137,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
       - name: Install minimal deps
-        run: pip install numpy scipy
+        run: python -m pip install --no-cache-dir --disable-pip-version-check numpy scipy
 
       - name: Download all per-group artifacts
         uses: actions/download-artifact@v4
@@ -158,3 +179,9 @@ jobs:
             outputs/fmri_tda/summary.md
           if-no-files-found: error
           retention-days: 90
+
+      - name: Clean package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi

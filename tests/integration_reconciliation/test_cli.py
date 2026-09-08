@@ -65,4 +65,4 @@ def test_cli_accepts_a_github_snapshot_file(git_fixture_repo, tmp_path):
     # test only proves the snapshot file is accepted and parsed without
     # error; PR-matching semantics are covered by test_reconcile.py against
     # a work-order tuple built for the fixture repo's own branches.
-    assert len(payload["entries"]) == 12
+    assert len(payload["entries"]) == 8

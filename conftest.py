@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Generator
 
+import numpy as np
 import pytest
 
 # Add the repo root so that bare ``from core.topology import ...`` imports work
@@ -32,29 +33,38 @@ _subprocess_run = subprocess.run
 _subprocess_check_call = subprocess.check_call
 _subprocess_check_output = subprocess.check_output
 _subprocess_popen = subprocess.Popen
+_TEST_SUBPROCESS_TIMEOUT_S = 120
+
+
+def _with_test_timeout(keyword: dict[str, Any]) -> dict[str, Any]:
+    if keyword.get("timeout") is None:
+        keyword["timeout"] = _TEST_SUBPROCESS_TIMEOUT_S
+    return keyword
 
 
 def _run_with_make_compat(args: Any, *positional: Any, **keyword: Any) -> Any:
-    return _subprocess_run(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_run(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _check_call_with_make_compat(args: Any, *positional: Any, **keyword: Any) -> Any:
-    return _subprocess_check_call(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_check_call(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _check_output_with_make_compat(args: Any, *positional: Any, **keyword: Any) -> Any:
-    return _subprocess_check_output(_rewrite_windows_make(args), *positional, **keyword)
+    return _subprocess_check_output(_rewrite_windows_make(args), *positional, **_with_test_timeout(keyword))
 
 
 def _popen_with_make_compat(args: Any, *positional: Any, **keyword: Any) -> Any:
     return _subprocess_popen(_rewrite_windows_make(args), *positional, **keyword)
 
 
-# Only patch on Windows, where the make-compat rewrite actually does something.
+# Keep the real Popen class because third-party libraries reference it in type
+# annotations. The convenience helpers are bounded on every platform; only
+# Windows needs the Popen wrapper for make compatibility.
+subprocess.run = _run_with_make_compat
+subprocess.check_call = _check_call_with_make_compat
+subprocess.check_output = _check_output_with_make_compat
 if os.name == "nt":
-    subprocess.run = _run_with_make_compat
-    subprocess.check_call = _check_call_with_make_compat
-    subprocess.check_output = _check_output_with_make_compat
     subprocess.Popen = _popen_with_make_compat
 
 # Keep native BLAS/OpenMP/MKL thread pools strictly bounded to 1 per test worker
@@ -88,6 +98,24 @@ def deterministic_seed(request: pytest.FixtureRequest) -> Generator[int, None, N
 
 
 @pytest.fixture(autouse=True)
+def isolate_test_process_state() -> Generator[None, None, None]:
+    """Restore RNG/display state and collect native-backed Python cycles."""
+    python_random_state = random.getstate()
+    numpy_random_state = np.random.get_state()
+    torch = sys.modules.get("torch")
+    torch_random_state = torch.get_rng_state() if torch is not None else None
+    yield
+    pyplot = sys.modules.get("matplotlib.pyplot")
+    if pyplot is not None:
+        pyplot.close("all")
+    random.setstate(python_random_state)
+    np.random.set_state(numpy_random_state)
+    if torch is not None and torch_random_state is not None:
+        torch.set_rng_state(torch_random_state)
+    gc.collect()
+
+
+@pytest.fixture(autouse=True)
 def block_unauthorized_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """Enforce strict offline discipline: prevent network requests unless test is marked with @pytest.mark.network."""
     if "network" in request.keywords:
@@ -111,7 +139,7 @@ def block_unauthorized_network(request: pytest.FixtureRequest, monkeypatch: pyte
 
 @pytest.fixture(autouse=True)
 def collect_numpy_garbage() -> Generator[None, None, None]:
-    """Release cyclic Python objects and native buffers after each test."""
+    """Release cyclic Python objects after each test."""
     yield
     gc.collect()
 

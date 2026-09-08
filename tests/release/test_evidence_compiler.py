@@ -139,7 +139,9 @@ def test_real_matrix_passes_structural_validation():
     errors = validate_inventory(doc)
     assert errors == [], errors
     assert MATRIX_PATH.is_file()
-    assert len(doc["contributions"]) == 19
+    # The final merger snapshot carries the original release-wave records plus
+    # the additional verification/blocked records in the current inventory.
+    assert len(doc["contributions"]) == 27
     assert doc["inventory_is_not_evidence"] is True
     assert doc["research_phase"]["empirical_pass_from_this_pack"] is False
     assert doc["research_phase"]["inventory_is_not_evidence"] is True

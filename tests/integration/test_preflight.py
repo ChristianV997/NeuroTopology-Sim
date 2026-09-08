@@ -18,7 +18,12 @@ def test_symlinked_input_path_is_rejected(tmp_path):
     real = tmp_path / "real.csv"
     real.write_text("1,2,3\n")
     link = tmp_path / "link.csv"
-    link.symlink_to(real)
+    try:
+        link.symlink_to(real)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires a privilege unavailable in this runner")
+        raise
     errors = preflight.validate_paths(link, tmp_path / "out")
     assert any("symlink" in e for e in errors)
 

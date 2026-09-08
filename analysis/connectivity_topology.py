@@ -184,11 +184,11 @@ def compute_granger_causality_matrix(signals: np.ndarray, maxlag: int = 5) -> di
 
 
 def compute_beta1(plv: np.ndarray, threshold: float = 0.5) -> int:
-    """First Betti number (count of persistent H1 loop features) via REAL
-    persistent homology (`ripser`), not a graph-theory cyclomatic-number proxy.
+    """Graph ``beta_1`` (persistent H1 loop features) via real persistent
+    homology (`ripser`), not a graph-theory cyclomatic-number proxy.
 
     PLV in [0, 1] is a similarity; `ripser` needs a distance matrix, so this
-    uses 1-PLV. `beta1` at a given `threshold` counts H1 features whose
+    uses 1-PLV. ``graph_beta1`` at a given ``threshold`` counts H1 features whose
     persistence interval [birth, death) contains the corresponding distance
     `1-threshold` -- i.e. loops alive at that similarity cutoff, not just
     "ever born" during the filtration.
@@ -246,3 +246,163 @@ def compute_spectral_dimension(plv: np.ndarray, threshold: float = 0.5) -> float
         warnings.simplefilter("ignore")
         slope = np.polyfit(np.log(ev), np.log(k), 1)[0]
     return float(2.0 * slope)
+
+
+# ---------------------------------------------------------------------------
+# Explicit metric names and deterministic null controls
+# ---------------------------------------------------------------------------
+
+def compute_graph_beta1(plv: np.ndarray, threshold: float = 0.5) -> int:
+    """Return graph-derived H1 only; this is never spatial winding or charge."""
+    return compute_beta1(plv, threshold=threshold)
+
+
+def topology_metric_record(
+    *,
+    graph_beta1: int | None = None,
+    spatial_winding_q: float | None = None,
+    spin_chain_winding: float | None = None,
+    scalar_chirality: float | None = None,
+    defect_density: float | None = None,
+    persistence_landscape_area: float | None = None,
+    provenance: dict | None = None,
+) -> dict:
+    """Build a topology payload with intentionally non-interchangeable fields.
+
+    ``None`` means the quantity was not measured. In particular, this helper
+    never derives a spatial charge from a graph cycle count or channel order.
+    """
+    values = {
+        "graph_beta1": graph_beta1,
+        "spatial_winding_q": spatial_winding_q,
+        "spin_chain_winding": spin_chain_winding,
+        "scalar_chirality": scalar_chirality,
+        "defect_density": defect_density,
+        "persistence_landscape_area": persistence_landscape_area,
+    }
+    if graph_beta1 is not None and (isinstance(graph_beta1, bool) or int(graph_beta1) < 0):
+        raise ValueError("graph_beta1 must be a non-negative integer")
+    for name, value in values.items():
+        if value is not None and not np.isfinite(float(value)):
+            raise ValueError(f"{name} must be finite when supplied")
+    return {
+        "metric_names": list(values),
+        "metrics": values,
+        "provenance": dict(provenance or {}),
+        "separation": {
+            "graph_beta1_is_spatial_charge": False,
+            "spatial_winding_requires_coordinates": True,
+        },
+    }
+
+
+def _validate_control_signals(signals: np.ndarray) -> np.ndarray:
+    values = np.asarray(signals, dtype=float)
+    if values.ndim != 2 or not values.size or not np.all(np.isfinite(values)):
+        raise ValueError("signals must be a finite (channels, samples) array")
+    return values
+
+
+def phase_randomization(signals: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Phase-randomize each channel while retaining its Fourier magnitudes."""
+    values = _validate_control_signals(signals)
+    rng = np.random.default_rng(seed)
+    spectrum = np.fft.rfft(values, axis=1)
+    if spectrum.shape[1] > 2:
+        phases = rng.uniform(-np.pi, np.pi, size=(values.shape[0], spectrum.shape[1] - 2))
+        spectrum[:, 1:-1] = np.abs(spectrum[:, 1:-1]) * np.exp(1j * phases)
+    return np.asarray(np.fft.irfft(spectrum, n=values.shape[1], axis=1), dtype=float)
+
+
+def channel_shuffling(signals: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Shuffle channel identities with a deterministic seed."""
+    values = _validate_control_signals(signals)
+    return values[np.random.default_rng(seed).permutation(values.shape[0])]
+
+
+def time_reversal(signals: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Reverse time without changing channel identities.
+
+    ``seed`` is accepted for a uniform control API and recorded by the bundle;
+    this null is deterministic without consuming randomness.
+    """
+    int(seed)  # validate that recorded control seeds remain integral
+    return _validate_control_signals(signals)[:, ::-1].copy()
+
+
+def coordinate_shuffling(coordinates: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Shuffle observed coordinates as a coordinate-label null."""
+    values = np.asarray(coordinates, dtype=float)
+    if values.ndim != 2 or values.shape[1] not in (2, 3) or not np.all(np.isfinite(values)):
+        raise ValueError("coordinates must be finite with shape (n,2) or (n,3)")
+    return values[np.random.default_rng(seed).permutation(values.shape[0])]
+
+
+def block_permutation(signals: np.ndarray, block_size: int, seed: int = 0) -> np.ndarray:
+    """Permute contiguous time blocks, preserving within-block structure."""
+    values = _validate_control_signals(signals)
+    if int(block_size) < 1:
+        raise ValueError("block_size must be positive")
+    blocks = [values[:, start : start + int(block_size)] for start in range(0, values.shape[1], int(block_size))]
+    order = np.random.default_rng(seed).permutation(len(blocks))
+    return np.concatenate([blocks[index] for index in order], axis=1)
+
+
+def stationary_null(signals: np.ndarray, seed: int = 0) -> np.ndarray:
+    """Create a stationary circular-shift null with one deterministic offset/channel."""
+    values = _validate_control_signals(signals)
+    rng = np.random.default_rng(seed)
+    offsets = rng.integers(0, values.shape[1], size=values.shape[0])
+    return np.stack([np.roll(row, int(offset)) for row, offset in zip(values, offsets)], axis=0)
+
+
+def generate_null_controls(
+    signals: np.ndarray,
+    *,
+    coordinates: np.ndarray | None = None,
+    block_size: int | None = None,
+    seed: int = 0,
+) -> dict[str, dict[str, object]]:
+    """Return deterministic null arrays with method and seed provenance."""
+    values = _validate_control_signals(signals)
+    size = int(block_size or max(1, values.shape[1] // 8))
+    controls: dict[str, dict[str, object]] = {
+        "phase_randomization": {
+            "values": phase_randomization(values, seed=seed),
+            "method": "fft_phase_randomization",
+            "seed": int(seed),
+        },
+        "channel_shuffling": {
+            "values": channel_shuffling(values, seed=seed),
+            "method": "permutation_of_channel_identity",
+            "seed": int(seed),
+        },
+        "time_reversal": {
+            "values": time_reversal(values, seed=seed),
+            "method": "reverse_time_axis",
+            "seed": int(seed),
+        },
+        "block_permutation": {
+            "values": block_permutation(values, size, seed=seed),
+            "method": "contiguous_block_permutation",
+            "seed": int(seed),
+            "block_size": size,
+        },
+        "stationary_null": {
+            "values": stationary_null(values, seed=seed),
+            "method": "independent_circular_shift",
+            "seed": int(seed),
+        },
+    }
+    if coordinates is not None:
+        controls["coordinate_shuffling"] = {
+            "coordinates": coordinate_shuffling(coordinates, seed=seed),
+            "method": "coordinate_label_permutation",
+            "seed": int(seed),
+        }
+    return controls
+
+
+# Descriptive aliases for callers using the terminology from the contract.
+shuffle_channels = channel_shuffling
+shuffle_coordinates = coordinate_shuffling

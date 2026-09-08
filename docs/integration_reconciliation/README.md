@@ -1,19 +1,5 @@
 # Integration Reconciliation
 
-> **Round 2 update (PR #218 continuation):** added stacked-PR awareness
-> (`stacking.py`), richer current-status fields (`checks_status`,
-> `mergeability`, `billing_blocked`, `superseded`, `duplicate`,
-> `scientific_review_required` -- `models.CurrentStatus`), CI-failure-mode
-> interpretation (`ci_interpretation.py`, distinguishing an actual test
-> failure from an infrastructure block from a billing block from a
-> not-yet-run job), scientific-claim text hints (`scientific_gates.py`),
-> and duplicate/superseded detection (`duplicate_detection.py`). See
-> "Round 2 findings" below for what the updated dry-run found against the
-> real repository, including a real bug this round's own development
-> caught and fixed (see "A bug this round's fixture caught").
-
-
-
 Branch: `claude/integration-reconciliation`. Owns exclusively:
 `tools/integration_reconciliation/**`,
 `scripts/verify_integration_reconciliation.py`,
@@ -172,94 +158,6 @@ overlapping public API differently). Those questions require reading
 each branch's diff, which is a code-review task, not a reconciliation
 task — this tool's job is to make "reported vs. actual" precise, not to
 replace review.
-
-## Round 2 findings (2026-09-06, PR #218 continuation)
-
-Fresh snapshot: `tests/integration_reconciliation/fixtures/real_repo_snapshot_2026-09-06-round2.json`,
-covering the 10 PRs named in the updated "known open work" (#209–#215,
-#217, #219, #222) plus the two still-branch-only reports.
-
-**Stacked PRs found (requirement 1):** two real stacks exist on the
-remote, both self-declared in their own PR bodies:
-- **PR #215** (process-memory-telemetry) is stacked on **PR #211**
-  (streaming-performance) — its base branch is
-  `cursor/streaming-performance-benchmarks`, not `main`.
-- **PR #220** (not in the tracked work-order set this round, discovered
-  in passing) is stacked on **PR #212** — base branch
-  `codex/interop-signal-contracts`.
-
-`stacking.py` computes each stacked work order's *effective* diff against
-its immediate base rather than `main`, so its own real contribution is
-never double-counted with its base's files — verified end-to-end against
-a git fixture reproducing this exact shape
-(`tests/integration_reconciliation/test_stacking.py`,
-`test_reconcile_stacking.py`).
-
-**A bug this round's fixture caught, before it shipped:** the first
-version of `duplicate_detection.detect_superseded` checked plain git
-ancestry between every pair of present branches with no awareness of
-stacking. Run against the real PR #211/#215 stack, it reported
-*"streaming-performance is superseded by process-memory-telemetry"* —
-wrong: a stacked PR's branch is *always* a git descendant of its base's
-branch by construction, so that ancestry relationship is deliberate
-lineage, not evidence of supersession. The same blind-spot also made the
-raw (non-effective) file-overlap check report #211 and #215 as sharing 8
-"overlapping" files, when in truth #215's real diff is just its own 4 new
-files. Both are now fixed: `detect_superseded` excludes known stacked
-pairs from its candidate set, and `file_overlaps` is computed from
-*effective* diffs. Regression tests:
-`test_no_superseded_flagged_for_a_legitimate_stack`,
-`test_file_overlaps_use_effective_diffs_not_raw_stacked_diffs`.
-
-**Real (non-stacking-related) file overlaps found — genuine conflict
-candidates, requirement 3:**
-- **`bayesian-hardening` (PR #219) and `scientific-falsification-contract`
-  (no PR)** both touch `sim/pitnn/bayesian_falsification.py`. PR #219's
-  description explicitly targets the exact false-PASS gate defect this
-  reconciliation effort's earlier scientific review found (see "Scientific
-  gate checks" below) — the un-PR'd branch may be independent, overlapping
-  work on the same fix.
-- **`ci-test-infrastructure` (PR #222) and
-  `test-isolation-dependency-profiles` (PR #213)** both touch
-  `.github/workflows/ci.yml`, `.github/workflows/required-checks.yml`,
-  `conftest.py`, `pytest.ini`, `scripts/run_tests_isolated.py` — two
-  independent CI-infrastructure rewrites over the same files. Both would
-  need reconciling against each other before either merges.
-
-**CI interpretation (requirement 5) — the shared failure now has a
-confirmed root cause, not just a correlation.** A real job log
-(`core-tests`, PR #210, job 101412547695, fetched via
-`get_job_logs`) ends with:
-
-```
-ERROR: Could not install packages due to an OSError: [Errno 28] No space left on device
-##[error]Process completed with exit code 1.
-```
-
-`ci_interpretation.classify_check` recognizes this exact message and
-classifies the check `infrastructure_blocked`, not `failing` — a bare
-`conclusion: "failure"` with no such evidence is still reported as a real
-test failure, never silently downgraded. PR #222's own description
-independently reaches the same conclusion ("disk exhaustion from
-CUDA/NVIDIA-heavy packages... before test execution"), which corroborates
-the classification from a second, independent source. Notably, **PR
-#222's own CI (fetched after its creation) is still all-failing** — its
-fix has not yet been observed green; this reconciliation does not assume
-a PR's stated fix works until its own checks confirm it.
-
-**Scientific gate hints (requirement 4):** `scientific_gates.py`'s
-text-hint check was validated against PR #219's real description as a
-deliberate negative case — its careful "distinguish...proxies from
-formal...Bayes factors" / "synthetic...unable to produce PASS" language
-does *not* trip the `unqualified_bayes_factor_claim` or
-`synthetic_pass_claim_risk` hints (see
-`test_pr219_style_text_does_not_trip_the_bayes_factor_hint`), confirming
-the heuristic rewards rather than penalizes exactly the disclosure
-language this ecosystem's own scientific rules ask for.
-
-**Duplicates/superseded (requirement 3), final result:** zero genuine
-duplicates and zero genuine superseded branches found among the 10 PRs,
-once stacking is correctly excluded.
 
 ## Test commands
 

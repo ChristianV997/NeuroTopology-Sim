@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -110,9 +111,10 @@ def test_child_crash(tmp_path):
     # plus a real abort subprocess when available.
     assert classify_exit(139, False) == CaseStatus.CHILD_CRASH
     assert classify_exit(-9, False) == CaseStatus.CHILD_CRASH
+    crash_code = "import sys; sys.exit(139)" if os.name == "nt" else "import os; os.abort()"
     spec = CaseSpec(
         case_id="abort-case",
-        command=[sys.executable, "-c", "import os; os.abort()"],
+        command=[sys.executable, "-c", crash_code],
         timeout_s=10,
     )
     result = run_case_with_retries(spec, timeout_s=10, max_retries=0, work_dir=tmp_path / "logs")
@@ -122,9 +124,10 @@ def test_child_crash(tmp_path):
 
 def test_retry_limit(tmp_path):
     # Always crash → retries exhausted, never infinite.
+    crash_code = "import sys; sys.exit(139)" if os.name == "nt" else "import os; os.abort()"
     spec = CaseSpec(
         case_id="retry-crash",
-        command=[sys.executable, "-c", "import os; os.abort()"],
+        command=[sys.executable, "-c", crash_code],
         timeout_s=10,
         max_retries=2,
     )

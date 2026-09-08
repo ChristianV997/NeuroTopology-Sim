@@ -1,58 +1,102 @@
 name: Docker build
 
-# Builds both container images and runs each environment's test suite
-# inside its own built image -- proving the Dockerfile is a faithful,
-# reproducible stand-in for the documented local setup in CLAUDE.md.
-# Not run in the sandboxed dev environment these Dockerfiles were authored
-# in: that environment's egress policy blocks Docker Hub base-image pulls
-# (production.cloudfront.docker.com), so this workflow is this repo's
-# actual verification point for both images, not a redundant check.
+# The automatic root image is a CPU/base-profile image. The production-root
+# Dockerfile installs every optional profile and is available only through an
+# explicit manual dispatch so it cannot exhaust ordinary CI runners.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths:
-      - "Dockerfile"
-      - ".dockerignore"
-      - "requirements.txt"
+      - "docker/ci/core.Dockerfile"
+      - "requirements-base.txt"
+      - "scripts/run_tests_isolated.py"
+      - "tests/test_run_record.py"
+      - "tests/test_run_records.py"
+      - "tests/test_benchmarks_registry.py"
+      - "tests/test_pipeline_job_schema.py"
+      - "tests/test_transitions_governance.py"
+      - "tests/test_transitions_features.py"
+      - "tests/btc_icft/test_report_guardrails.py"
+      - "tests/btc_icft/test_ontology_schema.py"
+      - "tests/runner/**"
       - "apps/awareness_studio/Dockerfile"
       - "apps/awareness_studio/pyproject.toml"
+      - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   pull_request:
     branches: ["**"]
     paths:
-      - "Dockerfile"
-      - ".dockerignore"
-      - "requirements.txt"
+      - "docker/ci/core.Dockerfile"
+      - "requirements-base.txt"
+      - "scripts/run_tests_isolated.py"
+      - "tests/test_run_record.py"
+      - "tests/test_run_records.py"
+      - "tests/test_benchmarks_registry.py"
+      - "tests/test_pipeline_job_schema.py"
+      - "tests/test_transitions_governance.py"
+      - "tests/test_transitions_features.py"
+      - "tests/btc_icft/test_report_guardrails.py"
+      - "tests/btc_icft/test_ontology_schema.py"
+      - "tests/runner/**"
       - "apps/awareness_studio/Dockerfile"
       - "apps/awareness_studio/pyproject.toml"
+      - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   workflow_dispatch:
+    inputs:
+      run_full_root:
+        description: "Build the production-root Dockerfile with all optional profiles"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   root-sim-engine:
-    name: Root sim engine image
+    name: Root sim engine CPU/base image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build image
-        run: docker build -t neurotopology-sim:root .
+      - name: Build CPU/base image
+        run: docker build --progress=plain -f docker/ci/core.Dockerfile -t neurotopology-sim:core-cpu .
 
-      - name: Run test suite inside container
-        run: docker run --rm neurotopology-sim:root
+      - name: Run CPU/base test suite inside container
+        run: docker run --rm neurotopology-sim:core-cpu
 
   awareness-studio:
     name: Awareness Studio image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build image
-        run: docker build -t awareness-studio:latest -f apps/awareness_studio/Dockerfile apps/awareness_studio
+      - name: Build Awareness image
+        run: docker build --progress=plain -t awareness-studio:latest -f apps/awareness_studio/Dockerfile apps/awareness_studio
 
-      - name: Run test suite inside container
+      - name: Run Awareness test suite inside container
         run: docker run --rm awareness-studio:latest
+
+  production-root-image:
+    name: Production root image (manual opt-in)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_root == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build production root image
+        run: docker build --progress=plain -f Dockerfile -t neurotopology-sim:production-root .
+
+      - name: Run production root test suite inside container
+        run: docker run --rm neurotopology-sim:production-root

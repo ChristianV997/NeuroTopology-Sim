@@ -941,6 +941,12 @@ def emit_report(
 
     if not should_write:
         chunks = [text for _, text in payloads]
+        # Report output is UTF-8. Windows may expose a legacy cp1252 stdout;
+        # a Unicode symbol in valid JSON/Markdown must not cause a CLI error.
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
         sys.stdout.write("\n".join(chunk.rstrip("\n") for chunk in chunks) + "\n")
         return written
 

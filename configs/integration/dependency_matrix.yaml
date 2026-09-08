@@ -1,207 +1,136 @@
-# Conflict and compatibility matrix for the ecosystem integration.
-#
-# Produced by: claude/ecosystem-integration
-# Base commit: 62637a4b9c82c0c258bfc49e28dee1af757b1c25 (origin/main)
-# Method: `git fetch origin --prune` followed by exhaustive enumeration of
-#   every remote branch (`git branch -r`, 154 branches total) and an exact
-#   `git rev-parse --verify origin/<name>` check for each of the seven
-#   branch names named in the integration mission. No branch was assumed
-#   present without this check; no branch's implementation was recreated
-#   in its absence, per the mission's explicit instruction.
-#
-# Result: none of the seven expected dependency branches exist on the
-# `ChristianV997/NeuroTopology-Sim` remote as of this fetch. There is no
-# `codex/`, `antigravity/`, `cursor/streaming-performance-benchmarks`,
-# `grok/`, or `grok-bot/` namespace on the remote at all (confirmed via
-# `git branch -r | grep -iE 'grok|antigravity'`, zero matches). This is
-# recorded as seven blockers below rather than treated as "nothing to do":
-# the assembled pipeline in this PR is built to consume these adapters
-# through the same public-adapter seams they were expected to fill, so a
-# future PR that actually opens one of these branches can slot in without
-# reshaping tools/integration_bridge/**.
-
+# Post-merge dependency and compatibility matrix for the integration branch.
+# The original PR #210 scaffold was reconciled against the actual integration
+# branch after all accepted dependency groups were validated.
 schema: "NTS.IntegrationDependencyMatrix.v1"
 generated_at: "2026-09-06"
 base_commit: "62637a4b9c82c0c258bfc49e28dee1af757b1c25"
 base_branch: "main"
+integration_branch: "codex/integration-all-open-prs"
 
 dependency_branches:
   - name: codex/interop-signal-contracts
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin (git rev-parse --verify failed;
-      confirmed absent from the full 154-branch remote enumeration).
-    expected_contract: >
-      A shared interop schema for signal payloads crossing adapter
-      boundaries (sample-rate, channel, units, provenance fields), to be
-      consumed instead of each downstream adapter inventing its own ad hoc
-      dict shape.
-    integration_stance: >
-      tools/integration_bridge/run_plan.py defines a minimal internal
-      SignalHandle contract (dataclass: array, sample_rate_hz, channels,
-      units, source_kind, provenance) as a local placeholder occupying the
-      same seam. When this branch lands, its schema should replace the
-      local placeholder; run_plan.py's `SignalHandle` is intentionally the
-      only place that shape is defined, so the swap is a one-file change.
+    source_pr: 212
+    status: integrated
+    commit_hash: "a21dcb2461cdf94da0b41a684a2ac1353153ab35"
+    expected_contract: "Strict signal chunks, recording manifests, adapter capabilities, and quality metadata."
+    integrated_paths: [shared/interop, tests/interop, docs/signal_interop_contract.md]
+    integration_stance: "Merged before native signal adapters; optional imports remain lazy and offline-safe."
 
   - name: codex/scientific-falsification-contract
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin (same verification as above).
-    expected_contract: >
-      A formalized, versioned falsification-verdict contract (PASS /
-      NOT_SUPPORTED / INCONCLUSIVE / ERROR) shared across `sim/pitnn/`,
-      `physics/exact_dynamics/`, and any new adapters, replacing the
-      per-module ad hoc verdict strings found during audit (see
-      docs/integration_acceptance.md, "Remaining scientific limitations").
-    integration_stance: >
-      tools/integration_bridge/quality_gate.py defines its own
-      `STATUS_VALUES = {"PASS", "NOT_SUPPORTED", "INCONCLUSIVE", "ERROR"}`
-      enum and a `classify_status()` function as the integration layer's
-      single point of normalization: every result produced or consumed
-      by scripts/assemble_ecosystem_run.py is mapped through this
-      function before being written to a RunRecordV1 or QualityReport.
-      Existing upstream modules' native verdict strings (e.g.
-      sim.pitnn.bayesian_falsification's "PASS"/"NOT_SUPPORTED",
-      physics.exact_dynamics.evaluate's "FALSIFIED: NOISE_DOMINANT"/
-      "INCONCLUSIVE") are read and translated, never edited in place.
+    source: branch-only
+    status: integrated-partial
+    commit_hash: "111d4fc008a1cf967243631367104e0561014e4a"
+    expected_contract: "Separate graph beta-1, spatial winding, and scalar/topological charge semantics."
+    integrated_paths: [analysis/connectivity_topology.py, topo_monitor, docs/scientific_falsification_contract.md, tests/science_contracts]
+    integration_stance: "Topology-contract additions retained; overlapping Bayesian implementation was superseded by PR #219."
 
   - name: antigravity/mne-scipy-streaming-eeg
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin (same verification as above). No
-      `antigravity/*` namespace exists anywhere in the remote.
-    expected_contract: >
-      A streaming (chunked, bounded-memory) MNE/scipy EEG ingestion
-      adapter, to be consumed by the `ingest` stage in place of loading
-      a full recording into memory at once.
-    integration_stance: >
-      The `ingest` stage in scripts/assemble_ecosystem_run.py falls back
-      to the existing batch adapters already on `main`:
-      `sim.pitnn.ingest_empirical.ingest_empirical` /
-      `ingest_conditions` (local CSV/NPY/FIF/EDF only, no network — see
-      those functions' own docstrings). This is a real functional
-      fallback, not a stub: it is the canonical ingestion path this repo
-      already ships. The `ingest` stage is factored so the batch call is
-      isolated behind a single `_load_signal()` helper in
-      scripts/assemble_ecosystem_run.py; swapping in a streaming adapter
-      later means replacing that one helper's body, not the surrounding
-      pipeline.
-    capability_gate: >
-      `mne` is an optional dependency (see requirements.txt) and is NOT
-      installed in the environment this PR was validated in
-      (`importlib.util.find_spec("mne")` returns None here). The
-      `.fif`/`.edf` ingestion path in `ingest_empirical.ingest_empirical`
-      already raises a clear `RuntimeError` when `mne` is absent; this
-      integration adds no new MNE dependency and is fully exercised by
-      its own tests with `mne` absent.
+    source_pr: 214
+    status: integrated
+    commit_hash: "8aed328fa23af07737882566d6b60aaca74ac4fb"
+    expected_contract: "Memory-bounded, provenance-rich MNE/SciPy EEG streaming and preprocessing."
+    integrated_paths: [sciencer_d/btc_icft/io, validation/analytic_phase.py, tests/eeg]
+    integration_stance: "Merged after signal contracts; no download, network, solver, or cloud execution was performed."
 
   - name: antigravity/test-isolation-dependency-profiles
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin (same verification as above).
-    expected_contract: >
-      Declarative per-test "dependency profiles" (e.g. "requires: mne,
-      ripser") consumed by `scripts/run_tests_isolated.py`'s batching, so
-      CI can skip whole profiles cleanly instead of relying on scattered
-      `pytest.importorskip` calls.
-    integration_stance: >
-      tools/integration_bridge/capabilities.py implements a local,
-      narrowly-scoped equivalent (`detect_capabilities()`) that reports
-      which optional packages this pipeline itself depends on
-      (numpy, scipy, pyyaml, mne, ripser, gudhi, boto3, statsmodels) as a
-      dict of {name: bool}, used only by this integration's own preflight
-      and tests. It does not attempt to retrofit the repository-wide test
-      runner's batching strategy — that is squarely `scripts/
-      run_tests_isolated.py`, outside this PR's ownership boundary
-      (tools/integration_bridge/**, scripts/assemble_ecosystem_run.py,
-      configs/integration/**, docs/integration_acceptance.md,
-      tests/integration/**), and is left for the real branch.
+    source_pr: 213
+    status: integrated-reconciled
+    commit_hash: "f23c7ef74b133d65c355d7c4e7778d63a08cc8eb"
+    expected_contract: "Modular dependency profiles and deterministic isolated test execution."
+    integrated_paths: [requirements-base.txt, requirements-eeg.txt, requirements-live.txt, requirements-ml.txt, requirements-nwb.txt, requirements-quantum.txt, requirements-research.txt, scripts/run_tests_isolated.py]
+    integration_stance: "Profile foundation retained; overlapping runner/CI behavior was reconciled with PR #222."
 
   - name: cursor/streaming-performance-benchmarks
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin. The `cursor/` namespace does have
-      three unrelated branches on this remote
-      (cursor/disorder-modes-runrecord-sidecar-v1-04d8,
-      cursor/pitnn-perf-opt-52dc, cursor/setup-dev-environment-52dc); none
-      of them is named `cursor/streaming-performance-benchmarks` and none
-      was inspected or merged from under the assumption that it might be
-      the intended branch renamed — that would be recreating an
-      implementation under a guess, which this integration does not do.
-    expected_contract: >
-      Throughput/latency benchmarks for the streaming ingestion path.
-    integration_stance: >
-      No benchmark harness is added by this PR. `docs/
-      integration_acceptance.md` records this as an open item for the
-      real branch; `scripts/assemble_ecosystem_run.py` reports wall-clock
-      duration per stage in its QualityReport-compatible output (a
-      pre-existing-style timing field, not a benchmark suite) so a future
-      benchmark branch has a real baseline to compare against.
+    source_pr: 211
+    status: integrated
+    commit_hash: "54c246943e7c3ba8171066eec24c67a1408b2956"
+    expected_contract: "Bounded streaming utilities, allocation-reduced PITNN kernel, and benchmark protocol."
+    integrated_paths: [tools/streaming/bounded.py, sim/pitnn/kernels_fast.py, tests/performance]
+    integration_stance: "Merged before stacked RSS telemetry PR #215."
+
+  - name: cursor/rss-memory-telemetry
+    source_pr: 215
+    status: integrated-stacked
+    commit_hash: "0dadb61b1d5de190225909ce98953e93768a4766"
+    expected_contract: "Process RSS telemetry cross-checking Python tracemalloc observations."
+    integrated_paths: [tools/streaming/memory_telemetry.py, scripts/benchmark_process_memory.py, tests/performance/test_process_memory.py]
+    integration_stance: "Merged only after PR #211 was present; no memory claim is treated as empirical evidence by itself."
 
   - name: grok/tool-admission-research
     status: unavailable
     commit_hash: null
-    blocker: >
-      Branch does not exist on origin. No `grok/` namespace exists
-      anywhere in the remote's 154 branches.
-    expected_contract: >
-      Research/governance notes on which external tools/adapters are
-      admissible for live invocation (tool-admission policy).
-    integration_stance: >
-      Out of scope for this PR. `scripts/assemble_ecosystem_run.py`
-      refuses live/network mode by default regardless of this branch's
-      absence (see the `preflight` stage and the "No hidden network"
-      guardrail below) — the integration's own default posture does not
-      depend on this branch existing.
+    expected_contract: "Tool-admission research branch named by PR #210."
+    blocker: "The exact branch name was not present in the fetched remote refs."
+    integration_stance: "Not reconstructed or substituted under a guessed branch name."
+
+  - name: grok/tool-registry-admission
+    source_pr: 217
+    status: integrated
+    commit_hash: "ffc8f6df66f6a28d88a4ca81659e421ee767e1c4"
+    expected_contract: "Offline optional-backend capability registry and admission layer."
+    integrated_paths: [configs/tools/optional_backends.yaml, shared/tooling, tests/tooling]
+    integration_stance: "Merged as the actual registry branch; probes do not install packages, use credentials, or open sockets."
 
   - name: grok-bot/retrofit-inventory
-    status: unavailable
-    commit_hash: null
-    blocker: >
-      Branch does not exist on origin. No `grok-bot/` namespace exists
-      anywhere in the remote's 154 branches.
-    expected_contract: >
-      An inventory of legacy modules eligible for retrofit/removal.
-    integration_stance: >
-      Out of scope for this PR; no retrofit inventory is fabricated.
+    source_pr: 209
+    status: integrated
+    commit_hash: "3a3cf3dfd60416876914bb90f8604ab9e9e8d360"
+    expected_contract: "Offline retrofit inventory scanner, validators, reports, and CLI."
+    integrated_paths: [configs/retrofit_inventory, tools/retrofit_inventory, scripts/build_retrofit_inventory.py, tests/retrofit_inventory]
+    integration_stance: "Merged after guardrail tests; inventory is not scientific evidence and online mode remains refused."
 
-# ---------------------------------------------------------------------------
-# Existing (already-on-main) public adapters this integration consumes,
-# listed explicitly so overlap with any future dependency-branch merge is
-# auditable at a glance.
-# ---------------------------------------------------------------------------
+  - name: codex/bayes-falsification-hardening
+    source_pr: 219
+    status: integrated-authoritative
+    commit_hash: "a7dd8e24b1d3f84aa0ad478b74bdacae5b8831bb"
+    expected_contract: "Fail-closed falsification evidence, explicit proxy/formal distinction, and provenance/multiplicity gates."
+    integrated_paths: [sim/pitnn/bayesian_falsification.py, tests/test_bayesian_falsification_hardening.py]
+    integration_stance: "Authoritative Bayesian implementation; superseded the overlapping branch-only file."
+
 consumed_public_adapters:
   - module: runs.run_record
     symbols: [RunRecordV1, build_run_id, read_json, write_json]
-    role: "Canonical run artifact contract (guardrail: RunRecordV1 remains canonical)."
-  - module: governance.spec
-    symbols: [HypothesisSpec]
-    role: "Governance input contract (guardrail: HypothesisSpec remains the governance input)."
-  - module: governance.io
-    symbols: [load_spec]
-    role: "Optional HypothesisSpec loading when --spec is supplied to assemble_ecosystem_run.py."
+    role: "Canonical run artifact contract."
   - module: governance.validate
     symbols: [validate_spec, ValidationError]
-    role: "Hard governance gate re-used unmodified, never re-implemented."
-  - module: sim.pitnn.ingest_empirical
-    symbols: [ingest_empirical, ingest_conditions, empirical_to_macro_signal]
-    role: "Canonical local (non-streaming) ingestion adapter; see antigravity/mne-scipy-streaming-eeg above for the deferred streaming replacement."
+    role: "Hard governance gate reused without reimplementation."
+  - module: shared.interop.contracts
+    symbols: [SignalChunk, RecordingManifest, AdapterCapability, QualityReport]
+    role: "Canonical signal interoperability contracts."
+  - module: shared.interop.adapters
+    symbols: [NumpyAdapter, MNEAdapter, EDFAdapter, BrainVisionAdapter]
+    role: "Lazy optional signal adapters; missing packages produce structured capability results."
+  - module: tools.streaming
+    symbols: [bounded_stream, iter_chunks, iter_windows]
+    role: "Memory-bounded streaming utilities; no data dropping or silent down-casting."
+  - module: sciencer_d.btc_icft.io.eeg_mne_adapter
+    symbols: [iter_mne_signal_chunks]
+    role: "Provenance-rich MNE/SciPy EEG streaming path."
   - module: sim.pitnn.bayesian_falsification
-    symbols: [compare_models]
-    role: "Bayesian falsification gate, invoked unmodified; its own K>100 semantics are not altered by this integration."
+    symbols: [compare_models, bayes_factor_proxy_from_rss, bayes_factor_from_marginal_likelihoods]
+    role: "Fail-closed falsification; RSS/AICc/BIC proxies never establish formal PASS."
   - module: core.topology
     symbols: [compute_Qz, compute_Qabs_slice, compute_f_dress]
-    role: "Spatial winding / spatial charge metrics (guardrail: must remain separate from graph beta_1)."
+    role: "Spatial winding/charge metrics, kept distinct from graph beta-1."
   - module: analysis.connectivity_topology
-    symbols: [compute_beta1]
-    role: "Graph beta_1 (real persistent homology via ripser; optional dependency)."
+    symbols: [compute_beta1, compute_graph_beta1]
+    role: "Graph beta-1 only; never a spatial charge alias."
 
-overlapping_paths: []  # No dependency branch exists, so no file-level overlap is possible this round.
+overlapping_paths:
+  - paths: [.github/workflows/ci.yml, .github/workflows/required-checks.yml, conftest.py, pytest.ini, scripts/run_tests_isolated.py]
+    owners: [PR#213, PR#222]
+    resolution: "Profile foundation from #213 retained; #222 bounded CI/runner behavior integrated selectively."
+  - paths: [sim/pitnn/bayesian_falsification.py]
+    owners: [branch-only, PR#219]
+    resolution: "Branch-only topology files retained; PR #219 implementation selected and compatibility-tested."
 
-conflicts_found: []  # None: nothing to conflict with in this round.
+stacked_groups:
+  - base: PR#211
+    stacked: PR#215
+  - base: PR#212
+    stacked: PR#220
+
+conflicts_found:
+  - "PR #219 versus branch-only Bayesian implementation; resolved in favor of #219 with compatibility fields and tests retained."
+  - "PR #213 versus #222 CI/runner overlap; reconciled file-by-file without silent file drops."
+  - "Windows symlink privilege prevented one integration test from creating its fixture; test skips only for WinError 1314."

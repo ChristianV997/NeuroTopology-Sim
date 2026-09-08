@@ -1,0 +1,37 @@
+{
+  "merge_matrix": [
+    {"pr_or_group": "#300", "decision": "Integrated", "reason": "Additive tooling change, no scientific claims"}
+  ],
+  "scientific_gate_report": {
+    "k_gate_threshold": 100.0,
+    "k_gate_is_only_pass_condition": true,
+    "synthetic_can_pass": false,
+    "invalid_or_incomplete_provenance_can_pass": false,
+    "bayes_factor_evidence_kind": "formal",
+    "classical_baseline_label": "classical_harmonic_baseline",
+    "classical_baseline_is_real_wilson_cowan": null,
+    "graph_beta1_separated_from_spatial": true,
+    "null_control_status": "present",
+    "multiplicity_correction_applied": true,
+    "multiplicity_relevant": true,
+    "paired_cohort_readiness": "VALID_PAIRED_COHORT",
+    "overall_status_label": "CLEAN / RELEASE-READY"
+  },
+  "provenance_records": [
+    {"component": "eeg_pipeline", "source_kind": "empirical_local", "dataset_id": "ds000001", "seed": 42, "checksum": "abc123", "sample_size": 128, "effective_sample_size": 16}
+  ],
+  "falsification_payloads": [
+    {"component": "eeg_pipeline", "verdict": "NOT_SUPPORTED", "bayes_factor": 3.2, "threshold": 100.0, "evidence_kind": "formal", "data_mode": "empirical_local", "null_control_present": true, "effective_sample_size": 16, "numeric_fields": [3.2, 0.1]}
+  ],
+  "topology_summaries": [
+    {"namespace": "spatial_topology", "fields": {"Qz_mean": 1.0, "Qabs_mean": 2.0}},
+    {"namespace": "graph_topology", "fields": {"beta1": 2}}
+  ],
+  "capability_snapshot": {"capabilities": {"numpy": true, "scipy": true}, "required_for_release": ["numpy"]},
+  "test_summary": {"total_files": 100, "total_batches": 10, "passed": 100, "failed": 0, "timed_out": 0, "failed_ids": [], "timed_out_ids": []},
+  "ci_status": {"checks": {"core-tests": "passing", "awareness-tests": "passing"}},
+  "performance_claims": [
+    {"label": "streaming_bench", "metric": "peak_memory_MB", "value": 12.5, "is_finite": true, "described_as_scientific_evidence": false}
+  ],
+  "dashboard_isolation_claim": {"claimed_ok": true, "claim_source": "docs/release/dashboard_isolation_report.md"}
+}

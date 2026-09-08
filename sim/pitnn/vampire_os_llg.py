@@ -36,6 +36,23 @@ class OpenSystemLLGSimulator:
         self.ciss_scale = float(ciss_scale)
         self.S = np.zeros((self.num_spins, 3), dtype=float)
         self.S[:, 2] = 1.0
+        # The compatibility ``step`` API is used by a 100,000-step stability
+        # audit.  Keep its scratch arrays and immutable coefficients on the
+        # simulator so that the audit does not spend most of its time
+        # allocating short-lived NumPy arrays.
+        shape = self.S.shape
+        self._config = LLGConfig(
+            n_spins=self.num_spins, exchange=self.exchange, dmi=self.dmi
+        )
+        self._axis = np.array([0.0, 0.0, 1.0])
+        self._field = np.empty(shape, dtype=float)
+        self._predictor = np.empty(shape, dtype=float)
+        self._precession = np.empty(shape, dtype=float)
+        self._damping = np.empty(shape, dtype=float)
+        self._derivative = np.empty(shape, dtype=float)
+        self._predictor_precession = np.empty(shape, dtype=float)
+        self._predictor_damping = np.empty(shape, dtype=float)
+        self._predictor_derivative = np.empty(shape, dtype=float)
 
     def compute_effective_field(self, H_ext: np.ndarray) -> np.ndarray:
         """Return external plus nearest-neighbour exchange/DMI field."""
@@ -58,21 +75,37 @@ class OpenSystemLLGSimulator:
     def step(self, H_ext: np.ndarray) -> np.ndarray:
         """Advance one explicit Heun step and project each spin to S²."""
         gamma = 1.76e11
-        H_total = self.compute_effective_field(H_ext) + self.get_thermal_noise()
+        external = np.asarray(H_ext, dtype=float)
+        if external.shape != self.S.shape:
+            raise ValueError(f"H_ext must have shape {self.S.shape}")
+        _effective_field_into(self.S, self._config, self._field)
+        self._field += external
+        self._field += self.get_thermal_noise()
         factor = -gamma / (1.0 + self.alpha ** 2)
-        precession = np.cross(self.S, H_total)
-        damping = np.cross(self.S, precession)
-        derivative = factor * (precession + self.alpha * damping) + self.get_ciss_torque()
-        predictor = self.S + derivative * self.dt
-        predictor /= np.linalg.norm(predictor, axis=1, keepdims=True)
-        predictor_field = np.asarray(H_ext, dtype=float) + _effective_field(
-            predictor, LLGConfig(n_spins=self.num_spins, exchange=self.exchange, dmi=self.dmi)
-        ) + self.get_thermal_noise()
-        predictor_precession = np.cross(predictor, predictor_field)
-        predictor_damping = np.cross(predictor, predictor_precession)
-        predictor_derivative = factor * (predictor_precession + self.alpha * predictor_damping)
-        predictor_derivative += self.ciss_scale * np.cross(predictor, np.array([0.0, 0.0, 1.0]))
-        self.S += 0.5 * (derivative + predictor_derivative) * self.dt
+        _cross_into(self.S, self._field, self._precession)
+        _cross_into(self.S, self._precession, self._damping)
+        np.multiply(self._damping, self.alpha, out=self._damping)
+        np.add(self._precession, self._damping, out=self._derivative)
+        np.multiply(self._derivative, factor, out=self._derivative)
+        _cross_into(self.S, self._axis, self._predictor_derivative)
+        self._derivative += self.ciss_scale * self._predictor_derivative
+        np.multiply(self._derivative, self.dt, out=self._predictor)
+        self._predictor += self.S
+        self._predictor /= np.linalg.norm(self._predictor, axis=1, keepdims=True)
+        _effective_field_into(self._predictor, self._config, self._field)
+        self._field += external
+        self._field += self.get_thermal_noise()
+        _cross_into(self._predictor, self._field, self._predictor_precession)
+        _cross_into(self._predictor, self._predictor_precession, self._predictor_damping)
+        np.multiply(self._predictor_damping, self.alpha, out=self._predictor_damping)
+        np.add(self._predictor_precession, self._predictor_damping,
+               out=self._predictor_derivative)
+        np.multiply(self._predictor_derivative, factor, out=self._predictor_derivative)
+        _cross_into(self._predictor, self._axis, self._damping)
+        self._predictor_derivative += self.ciss_scale * self._damping
+        self._derivative += self._predictor_derivative
+        self._derivative *= 0.5 * self.dt
+        self.S += self._derivative
         self.S /= np.linalg.norm(self.S, axis=1, keepdims=True)
         return self.S
 
@@ -92,13 +125,26 @@ class LLGConfig:
 
 def _effective_field(spins: np.ndarray, cfg: LLGConfig) -> np.ndarray:
     field = np.zeros_like(spins)
+    _effective_field_into(spins, cfg, field)
+    return field
+
+
+def _cross_into(left: np.ndarray, right: np.ndarray, target: np.ndarray) -> None:
+    """Compute a batch cross product without allocating a result array."""
+    target[:, 0] = left[:, 1] * right[..., 2] - left[:, 2] * right[..., 1]
+    target[:, 1] = left[:, 2] * right[..., 0] - left[:, 0] * right[..., 2]
+    target[:, 2] = left[:, 0] * right[..., 1] - left[:, 1] * right[..., 0]
+
+
+def _effective_field_into(spins: np.ndarray, cfg: LLGConfig, field: np.ndarray) -> None:
+    """Fill ``field`` with the nearest-neighbour exchange/DMI field."""
+    field.fill(0.0)
     field[1:-1] += cfg.exchange * (spins[:-2] + spins[2:])
     field[0] += cfg.exchange * spins[1]
     field[-1] += cfg.exchange * spins[-2]
     # Discrete chiral DMI field around the lattice axis.
     field[1:-1, 1] += cfg.dmi * (spins[2:, 2] - spins[:-2, 2])
     field[1:-1, 2] -= cfg.dmi * (spins[2:, 1] - spins[:-2, 1])
-    return field
 
 
 def _rhs(spins: np.ndarray, cfg: LLGConfig, rng: np.random.Generator) -> np.ndarray:
