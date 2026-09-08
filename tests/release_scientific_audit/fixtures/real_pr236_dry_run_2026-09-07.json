@@ -1,0 +1,61 @@
+{
+  "_note": "Reconstructed from the real docs/release/*.md prose on origin/codex/integration-all-open-prs (PR #236, head be277ecdac301d49dca27ef9612ebe6c560245ad) as of 2026-09-07, since those docs are free-text, not this schema. Every field traces to a specific quoted sentence in one of: docs/release/merge_matrix.md, scientific_gate_report.md, full_test_summary.md, unresolved_blockers.md, dashboard_isolation_report.md, dependency_capability_report.md. NOT independently re-derived from live code execution.",
+  "merge_matrix": [
+    {"pr_or_group": "#209-#222 (named work-order window)", "decision": "Integrated", "reason": "Validated foundational, streaming, interop, scientific, tooling, and CI groups."},
+    {"pr_or_group": "#227", "decision": "Integrated with manual conflict resolution", "reason": "CPU/base dependency policy and bounded installation adopted; existing useful jobs preserved."},
+    {"pr_or_group": "codex/scientific-falsification-contract", "decision": "Partially integrated", "reason": "Topology-contract additions retained; overlapping Bayesian implementation rejected in favor of #219."},
+    {"pr_or_group": "#216", "decision": "Superseded", "reason": "Release inventory superseded by #225."}
+  ],
+  "scientific_gate_report": {
+    "k_gate_threshold": 100.0,
+    "k_gate_is_only_pass_condition": true,
+    "synthetic_can_pass": false,
+    "invalid_or_incomplete_provenance_can_pass": false,
+    "bayes_factor_evidence_kind": "proxy",
+    "classical_baseline_label": "classical_wilson_cowan (proxy-labeled per docs/release/scientific_gate_report.md)",
+    "classical_baseline_is_real_wilson_cowan": false,
+    "graph_beta1_separated_from_spatial": true,
+    "null_control_status": null,
+    "multiplicity_correction_applied": null,
+    "multiplicity_relevant": false,
+    "paired_cohort_readiness": "VALID_PAIRED_COHORT",
+    "overall_status_label": "INCONCLUSIVE / NOT RELEASE-READY"
+  },
+  "provenance_records": [],
+  "falsification_payloads": [
+    {"component": "synthetic_bridge_smoke", "verdict": "NOT_SUPPORTED", "bayes_factor": null, "evidence_kind": "proxy", "data_mode": "synthetic_demo", "null_control_present": null, "numeric_fields": []}
+  ],
+  "topology_summaries": [
+    {"namespace": "spatial_topology", "fields": {}},
+    {"namespace": "graph_topology", "fields": {}},
+    {"namespace": "scalar_chirality", "fields": {}}
+  ],
+  "capability_snapshot": {
+    "capabilities": {"torch": false, "cripser": false},
+    "required_for_release": ["torch", "cripser"]
+  },
+  "test_summary": {
+    "total_files": 415,
+    "total_batches": 75,
+    "passed": 64,
+    "failed": 8,
+    "timed_out": 3,
+    "failed_ids": [],
+    "timed_out_ids": [
+      "tests/test_t_real_cli_stats_wiring.py",
+      "reconciliation group (unspecified file list)",
+      "PITNN/pipeline group (unspecified file list)"
+    ]
+  },
+  "ci_status": {
+    "checks": {
+      "required-checks (GitHub Actions)": "infrastructure_blocked"
+    }
+  },
+  "performance_claims": [],
+  "dashboard_isolation_claim": {
+    "claimed_ok": true,
+    "claim_source": "docs/release/dashboard_isolation_report.md"
+  },
+  "dashboard_src_path": "apps/awareness_studio/src"
+}
