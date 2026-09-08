@@ -1,178 +1,195 @@
 #!/usr/bin/env python3
-"""CLI for computing paired-cohort descriptive and non-parametric statistics.
+"""CLI utility to summarize paired-cohort statistics and effect sizes for NeuroTopology-Sim.
 
-Usage:
-    python scripts/summarize_cohort_statistics.py \
-      --input cohort_metrics.json \
-      --output cohort_statistics.json \
-      --correction holm
+Guarantees:
+- Deterministic subject pair matching.
+- Explicit non-silent exclusion recording.
+- Paired Cohen's d_z effect sizes and Wilcoxon signed-rank tests.
+- Multiplicity corrections with explicit 'multiplicity_unavailable' state.
+- Explicit non-evidence guardrails: formal_bayes_factor=null, scientific_pass=false.
+- JSON output with strict finite/null guarantee and SHA-256 checksum.
 """
 from __future__ import annotations
 
 import argparse
-import csv
-import json
-from pathlib import Path
 import sys
-from typing import Any
+from pathlib import Path
 
-# Ensure repository root is on sys.path
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Add repo root to sys.path
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from analysis.cohort_statistics import (
-    CohortStatisticsReport,
+    calculate_paired_cohort_report,
+    load_cohort_input,
+    load_cohort_report,
+    save_cohort_report,
+    verify_report_checksum,
+)
+from analysis.cohort_statistics.models import (
     HypothesisAlternative,
     MultiplicityMethod,
     ProvenanceStatus,
-    build_cohort_statistics_report,
-    export_report_csv,
-    export_report_json,
 )
 
 
-def load_input_data(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Loads metrics records and metadata from JSON or CSV file."""
-    if not path.is_file():
-        raise FileNotFoundError(f"Input file not found: {path}")
-
-    suffix = path.suffix.lower()
-    meta: dict[str, Any] = {}
-    records: list[dict[str, Any]] = []
-
-    if suffix == ".json":
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(raw, list):
-            records = raw
-        elif isinstance(raw, dict):
-            meta = {k: v for k, v in raw.items() if k != "records"}
-            if "records" in raw and isinstance(raw["records"], list):
-                records = raw["records"]
-            elif "per_subject" in raw and isinstance(raw["per_subject"], list):
-                # Compatible with run_cohort_eeg_topology output structure
-                records = raw["per_subject"]
-            elif "paired_records" in raw and isinstance(raw["paired_records"], list):
-                # Compatible with paired_cohort_manifest output structure
-                for p in raw["paired_records"]:
-                    subj = p.get("pairing_key", {}).get("subject", "unknown")
-                    rec_a = p.get("condition_a_record", {})
-                    rec_b = p.get("condition_b_record", {})
-                    # If metrics embedded or summary metrics
-                    records.append({
-                        "subject": subj,
-                        "condition_a_metrics": rec_a.get("metrics", {}),
-                        "condition_b_metrics": rec_b.get("metrics", {}),
-                    })
-            else:
-                # Dict of subject -> {condition_a: ..., condition_b: ...}
-                for subj, data in raw.items():
-                    if isinstance(data, dict):
-                        records.append({"subject": subj, **data})
-    elif suffix == ".csv":
-        with path.open("r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                records.append(dict(row))
-    else:
-        raise ValueError(f"Unsupported input file format: {suffix}. Expected .json or .csv.")
-
-    return records, meta
-
-
-def run_summary(args: argparse.Namespace) -> CohortStatisticsReport:
-    input_path = Path(args.input)
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    records, meta = load_input_data(input_path)
-
-    cond_a = args.condition_a or meta.get("condition_a", meta.get("condition_a_label", "awake"))
-    cond_b = args.condition_b or meta.get("condition_b", meta.get("condition_b_label", "sed2"))
-    is_synth = args.is_synthetic or meta.get("is_synthetic", False)
-    prov = args.provenance_status or meta.get("provenance_status", ProvenanceStatus.EMPIRICAL.value)
-    dataset_id = args.dataset_id or meta.get("dataset_id")
-
-    metrics_filter = [m.strip() for m in args.metrics.split(",") if m.strip()] if args.metrics else None
-
-    report = build_cohort_statistics_report(
-        records,
-        condition_a_label=cond_a,
-        condition_b_label=cond_b,
-        metrics=metrics_filter,
-        multiplicity_method=args.correction,
-        alternative=args.alternative,
-        min_pairs=args.min_pairs,
-        is_synthetic=is_synth,
-        provenance_status=prov,
-        dataset_id=dataset_id,
+def parse_args(args: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compute and summarize paired-cohort statistics and effect sizes."
     )
-
-    export_report_json(report, output_path)
-
-    if args.csv_output:
-        csv_path = Path(args.csv_output)
-        csv_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report_csv(report, csv_path)
-
-    return report
-
-
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description="Compute paired-cohort descriptive moments, Wilcoxon tests, and multiplicity corrections."
+    parser.add_argument(
+        "--input", "-i",
+        required=True,
+        help="Path to input cohort metrics JSON file.",
     )
-    p.add_argument("--input", "-i", type=Path, required=True, help="Input metrics JSON or CSV file.")
-    p.add_argument("--output", "-o", type=Path, required=True, help="Output statistics JSON file.")
-    p.add_argument(
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Path to output statistics report JSON file.",
+    )
+    parser.add_argument(
+        "--condition-a", "-a",
+        default="condition_a",
+        help="Identifier/label for experimental condition A (preserved exactly as supplied).",
+    )
+    parser.add_argument(
+        "--condition-b", "-b",
+        default="condition_b",
+        help="Identifier/label for reference condition B (preserved exactly as supplied).",
+    )
+    parser.add_argument(
+        "--metrics", "-m",
+        default=None,
+        help="Comma-separated list of metrics to evaluate (default: all discovered).",
+    )
+    parser.add_argument(
+        "--cohort-id", "--dataset-id", "-d",
+        dest="cohort_id",
+        default=None,
+        help="Cohort or dataset identifier (e.g. ds005917, ds005620).",
+    )
+    parser.add_argument(
+        "--pairing-key",
+        default="subject_id",
+        help="Key identifier used for subject pairing (default: subject_id).",
+    )
+    parser.add_argument(
         "--correction", "-c",
-        type=str,
-        default="holm",
-        choices=["holm", "bonferroni", "fdr_bh", "none"],
-        help="Multiplicity correction method across evaluated metrics (default: holm).",
+        choices=[m.value for m in MultiplicityMethod] + ["absent", "unavailable"],
+        default=MultiplicityMethod.HOLM.value,
+        help="Multiple testing correction method.",
     )
-    p.add_argument(
-        "--alternative", "-a",
-        type=str,
-        default="two-sided",
-        choices=["two-sided", "greater", "less"],
-        help="Alternative hypothesis direction for Wilcoxon signed-rank test (default: two-sided).",
+    parser.add_argument(
+        "--alternative",
+        choices=[a.value for a in HypothesisAlternative],
+        default=HypothesisAlternative.TWO_SIDED.value,
+        help="Alternative hypothesis directionality.",
     )
-    p.add_argument("--min-pairs", type=int, default=2, help="Minimum valid pairs for inferential testing (default: 2).")
-    p.add_argument("--metrics", type=str, default=None, help="Comma-separated subset of metrics to evaluate.")
-    p.add_argument("--condition-a", type=str, default=None, help="Label for condition A (e.g. awake).")
-    p.add_argument("--condition-b", type=str, default=None, help="Label for condition B (e.g. sed2).")
-    p.add_argument("--csv-output", type=Path, default=None, help="Optional output path for tabular summary CSV.")
-    p.add_argument("--is-synthetic", action="store_true", help="Explicitly mark inputs as synthetic fixtures.")
-    p.add_argument("--provenance-status", type=str, default=None, choices=["empirical", "synthetic_fixture", "incomplete_provenance"])
-    p.add_argument("--dataset-id", type=str, default=None, help="Dataset identifier (e.g. ds005620).")
-    p.add_argument("--strict", action="store_true", help="Exit non-zero if any test errors occur or if no valid pairs exist.")
-    return p
+    parser.add_argument(
+        "--min-pairs",
+        type=int,
+        default=3,
+        help="Minimum required valid pairs for inferential testing.",
+    )
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Explicitly mark dataset provenance as synthetic demo.",
+    )
+    parser.add_argument(
+        "--provenance",
+        choices=[p.value for p in ProvenanceStatus],
+        default=ProvenanceStatus.EMPIRICAL.value,
+        help="Explicit provenance status flag.",
+    )
+    parser.add_argument(
+        "--verify-checksum",
+        action="store_true",
+        help="Verify the integrity checksum of an existing report JSON.",
+    )
+    return parser.parse_args(args)
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+def main(args: list[str] | None = None) -> int:
+    ns = parse_args(args)
 
-    report = run_summary(args)
+    if ns.verify_checksum:
+        input_path = Path(ns.input)
+        if not input_path.exists():
+            print(f"Error: input file {input_path} not found.", file=sys.stderr)
+            return 1
+        import json
+        data = json.loads(input_path.read_text(encoding="utf-8"))
+        valid = verify_report_checksum(data)
+        if valid:
+            print(f"Checksum verified successfully: {data.get('checksum')}")
+            return 0
+        else:
+            print(f"Checksum mismatch or missing in {input_path}.", file=sys.stderr)
+            return 1
 
-    print(json.dumps({
-        "status": "completed",
-        "dataset_id": report.dataset_id,
-        "total_subjects": report.total_subjects_evaluated,
-        "metrics_evaluated": list(report.metrics.keys()),
-        "multiplicity_method": report.multiplicity_method,
-        "checksum": report.checksum,
-    }, indent=2))
+    input_data = load_cohort_input(ns.input)
 
-    if args.strict:
-        for m_name, m in report.metrics.items():
-            if m.inferential_stats.status == "execution_error":
-                sys.stderr.write(f"Strict failure: metric '{m_name}' execution error: {m.inferential_stats.notes}\n")
-                return 2
-        if not report.metrics:
-            sys.stderr.write("Strict failure: no metrics evaluated.\n")
-            return 2
+    metrics_list = [m.strip() for m in ns.metrics.split(",")] if ns.metrics else None
+    prov_status = (
+        ProvenanceStatus.SYNTHETIC_DEMO.value
+        if ns.synthetic
+        else ns.provenance
+    )
+
+    report = calculate_paired_cohort_report(
+        cohort_data=input_data,
+        condition_a_name=ns.condition_a,
+        condition_b_name=ns.condition_b,
+        metrics=metrics_list,
+        cohort_identifier=ns.cohort_id,
+        pairing_key=ns.pairing_key,
+        alternative=ns.alternative,
+        multiplicity_method=ns.correction,
+        min_pairs=ns.min_pairs,
+        is_synthetic=ns.synthetic or prov_status == ProvenanceStatus.SYNTHETIC_DEMO.value,
+        provenance_status=prov_status,
+    )
+
+    print("=" * 84)
+    print(f"PAIRED COHORT STATISTICS REPORT (v2): {report.cohort_identifier or 'Unnamed Cohort'}")
+    print(f"Contrast: {report.condition_a_label} - {report.condition_b_label}")
+    print(f"Evaluated Subjects: {report.total_subjects_evaluated} | Included: {len(report.subjects_included)} | Excluded: {len(report.subjects_excluded)}")
+    print(f"Effective Paired Sample Size: {report.effective_paired_sample_size}")
+    print(f"Multiplicity Method: {report.multiplicity_method}")
+    print(f"Evidence Class: {report.evidence_class} | Scientific Pass: {report.scientific_pass}")
+    print(f"Formal Bayes Factor: {report.formal_bayes_factor} | Finite Status: {report.finite_value_status}")
+    print(f"Report Checksum (SHA-256): {report.checksum}")
+    print("=" * 84)
+    print(f"{'Metric':<24} | {'N':<4} | {'Diff Mean':<10} | {'d_z':<8} | {'r':<8} | {'Ties':<5} | {'p (raw)':<9} | {'p (adj)':<9}")
+    print("-" * 84)
+
+    for m_name, m_stats in sorted(report.metrics.items()):
+        d_mean = f"{m_stats.paired_differences.mean:.4f}" if m_stats.paired_differences.mean is not None else "N/A"
+        dz = f"{m_stats.effect_size_estimates.cohens_dz:.3f}" if m_stats.effect_size_estimates.cohens_dz is not None else "N/A"
+        rb = f"{m_stats.effect_size_estimates.rank_biserial_r:.3f}" if m_stats.effect_size_estimates.rank_biserial_r is not None else "N/A"
+        ties = f"{m_stats.tie_count}"
+        p_val = f"{m_stats.wilcoxon_p_value:.4f}" if m_stats.wilcoxon_p_value is not None else "N/A"
+        p_adj = f"{m_stats.p_adjusted:.4f}" if m_stats.p_adjusted is not None else "N/A"
+
+        print(f"{m_name:<24} | {m_stats.valid_pairs_count:<4} | {d_mean:<10} | {dz:<8} | {rb:<8} | {ties:<5} | {p_val:<9} | {p_adj:<9}")
+
+        if m_stats.excluded_pairs_count > 0:
+            print(f"  └─ Excluded {m_stats.excluded_pairs_count} pairs:")
+            for excl in m_stats.exclusion_records[:5]:
+                print(f"     • {excl.subject}: {excl.reason}")
+            if len(m_stats.exclusion_records) > 5:
+                print(f"     • ... and {len(m_stats.exclusion_records) - 5} more")
+
+    print("-" * 84)
+    for note in report.scientific_notes:
+        print(f"[NOTE] {note}")
+    print("=" * 84)
+
+    if ns.output:
+        out_p = save_cohort_report(report, ns.output)
+        print(f"\nWrote full report artifact to: {out_p}")
 
     return 0
 

@@ -1,223 +1,233 @@
-"""Deterministic serialization and report builder for paired-cohort statistics."""
+"""Serialization, validation, and I/O handlers for paired cohort statistics reports.
+
+Enforces:
+- Strict JSON specification compliance (no NaN/Inf; mapped to null).
+- Safe atomic persistence with UTF-8 encoding.
+- Checksum recalculation and tamper verification.
+- Input loading from multiple structured cohort formats.
+"""
 from __future__ import annotations
 
-import csv
-import hashlib
-import io
 import json
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
-from .calculator import evaluate_metric_cohort
+from .calculator import compute_report_checksum
 from .models import (
     CohortStatisticsReport,
-    HypothesisAlternative,
+    ConfidenceInterval,
+    DescriptiveStats,
+    EffectSizeEstimates,
+    ExclusionRecord,
     InferentialStats,
-    MultiplicityMethod,
-    ProvenanceStatus,
+    MetricCohortStats,
+    PairedDifferenceStats,
+    _safe_dict,
 )
-from .multiplicity import adjust_p_values
 
 
-def compute_report_checksum(payload: dict[str, Any]) -> str:
-    """Computes deterministic SHA-256 block hash of canonical report payload."""
-    canonical_copy = dict(payload)
-    canonical_copy["checksum"] = ""
-    canonical_json = json.dumps(canonical_copy, sort_keys=True, indent=2, allow_nan=False)
-    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+def load_cohort_input(path_or_data: str | Path | Mapping[str, Any]) -> dict[str, Any]:
+    """Load and normalize cohort metric input data from file path or dictionary.
 
-
-def build_cohort_statistics_report(
-    input_records: Sequence[Mapping[str, Any]],
-    *,
-    condition_a_label: str = "condition_a",
-    condition_b_label: str = "condition_b",
-    metrics: Sequence[str] | None = None,
-    multiplicity_method: str | MultiplicityMethod = MultiplicityMethod.HOLM,
-    alternative: str | HypothesisAlternative = HypothesisAlternative.TWO_SIDED,
-    min_pairs: int = 2,
-    is_synthetic: bool = False,
-    provenance_status: str | ProvenanceStatus = ProvenanceStatus.EMPIRICAL,
-    dataset_id: str | None = None,
-) -> CohortStatisticsReport:
-    """Builds comprehensive paired-cohort statistics report with multiplicity adjustments."""
-    method_val = multiplicity_method.value if isinstance(multiplicity_method, MultiplicityMethod) else str(multiplicity_method)
-    alt_val = alternative.value if isinstance(alternative, HypothesisAlternative) else str(alternative)
-    prov_val = provenance_status.value if isinstance(provenance_status, ProvenanceStatus) else str(provenance_status)
-
-    # Deterministically sort input records by subject
-    sorted_records = sorted(input_records, key=lambda r: str(r.get("subject", "")))
-    unique_subjects = {str(r.get("subject", "")) for r in sorted_records if r.get("subject")}
-
-    # Discover metrics if not provided
-    if metrics is None:
-        found_metrics: set[str] = set()
-        for r in sorted_records:
-            a_mets = r.get("condition_a_metrics", {})
-            b_mets = r.get("condition_b_metrics", {})
-            if isinstance(a_mets, dict):
-                found_metrics.update(a_mets.keys())
-            if isinstance(b_mets, dict):
-                found_metrics.update(b_mets.keys())
-        target_metrics = sorted(list(found_metrics))
+    Supports:
+    - Path to JSON file.
+    - Dict mapping subject_id -> {arm_a: {...}, arm_b: {...}}
+    - Dict with top-level 'cohort' or 'subjects' key.
+    - Dict with 'pairs' list.
+    """
+    if isinstance(path_or_data, (str, Path)):
+        path = Path(path_or_data)
+        if not path.exists():
+            raise FileNotFoundError(f"Cohort input file not found: {path}")
+        raw_text = path.read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    elif isinstance(path_or_data, Mapping):
+        data = dict(path_or_data)
     else:
-        target_metrics = list(metrics)
+        raise TypeError(f"Expected path or mapping, got {type(path_or_data)}")
 
-    metric_stats_map = {}
-    raw_p_values = {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Cohort data must be a JSON object, got {type(data)}")
 
-    for metric in target_metrics:
-        pair_list = []
-        for r in sorted_records:
-            subj = str(r.get("subject", "unknown"))
-            a_val = None
-            b_val = None
+    # Unpack nested structures if present
+    if "cohort" in data and isinstance(data["cohort"], dict):
+        return data["cohort"]
+    if "subjects" in data and isinstance(data["subjects"], dict):
+        return data["subjects"]
+    if "pairs" in data and isinstance(data["pairs"], list):
+        normalized: dict[str, Any] = {}
+        for item in data["pairs"]:
+            if isinstance(item, dict) and "subject" in item:
+                sub_id = str(item["subject"])
+                normalized[sub_id] = item
+        return normalized
 
-            # Handle direct dictionary metric nesting
-            if "condition_a_metrics" in r and isinstance(r["condition_a_metrics"], dict):
-                a_val = r["condition_a_metrics"].get(metric)
-            elif "condition_a" in r and isinstance(r["condition_a"], dict):
-                a_val = r["condition_a"].get(metric)
+    return data
 
-            if "condition_b_metrics" in r and isinstance(r["condition_b_metrics"], dict):
-                b_val = r["condition_b_metrics"].get(metric)
-            elif "condition_b" in r and isinstance(r["condition_b"], dict):
-                b_val = r["condition_b"].get(metric)
 
-            pair_list.append({
-                "subject": subj,
-                "condition_a": a_val,
-                "condition_b": b_val,
-            })
+def export_cohort_report_dict(report: CohortStatisticsReport) -> dict[str, Any]:
+    """Export CohortStatisticsReport to a sanitized dictionary guaranteed free of NaN/Inf."""
+    return report.to_dict()
 
-        evaluated = evaluate_metric_cohort(
-            metric_name=metric,
-            subject_pairs=pair_list,
-            alternative=alt_val,
-            min_pairs=min_pairs,
+
+def save_cohort_report(
+    report: CohortStatisticsReport,
+    output_path: str | Path,
+    indent: int = 2,
+) -> Path:
+    """Save report to JSON file with strict allow_nan=False enforcement."""
+    out_p = Path(output_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+
+    report_dict = export_cohort_report_dict(report)
+
+    # allow_nan=False guarantees standard RFC-8259 JSON compliance
+    json_str = json.dumps(report_dict, indent=indent, allow_nan=False)
+
+    # Atomic write pattern
+    temp_p = out_p.with_suffix(f"{out_p.suffix}.tmp")
+    try:
+        temp_p.write_text(json_str, encoding="utf-8")
+        temp_p.replace(out_p)
+    finally:
+        if temp_p.exists():
+            try:
+                temp_p.unlink()
+            except OSError:
+                pass
+
+    return out_p
+
+
+def verify_report_checksum(report_dict: dict[str, Any]) -> bool:
+    """Verify whether report dictionary checksum matches calculated SHA-256 digest."""
+    reported_checksum = report_dict.get("checksum", "")
+    if not reported_checksum:
+        return False
+    expected_checksum = compute_report_checksum(report_dict)
+    return reported_checksum == expected_checksum
+
+
+def load_cohort_report(path_or_data: str | Path | Mapping[str, Any]) -> CohortStatisticsReport:
+    """Reconstruct a CohortStatisticsReport object from file path or dictionary."""
+    if isinstance(path_or_data, (str, Path)):
+        raw_text = Path(path_or_data).read_text(encoding="utf-8")
+        raw = json.loads(raw_text)
+    elif isinstance(path_or_data, Mapping):
+        raw = dict(path_or_data)
+    else:
+        raise TypeError(f"Expected path or mapping, got {type(path_or_data)}")
+
+    raw_metrics = raw.get("metrics", {})
+    metrics_map: dict[str, MetricCohortStats] = {}
+
+    for m_name, m_data in raw_metrics.items():
+        exclusions = [
+            ExclusionRecord(
+                subject=e.get("subject", ""),
+                metric=e.get("metric", m_name),
+                reason=e.get("reason", ""),
+            )
+            for e in m_data.get("exclusion_records", [])
+        ]
+        c_a = m_data.get("condition_a_summary") or m_data.get("condition_a_stats", {})
+        cond_a = DescriptiveStats(
+            n=c_a.get("n", 0),
+            mean=c_a.get("mean"),
+            median=c_a.get("median"),
+            variance=c_a.get("variance"),
+            standard_error=c_a.get("standard_error"),
         )
-        metric_stats_map[metric] = evaluated
-        raw_p_values[metric] = evaluated.inferential_stats.p_value
-
-    # Apply multiplicity correction
-    adjusted_p_values = adjust_p_values(raw_p_values, method=method_val)
-
-    # Update inferential stats with adjusted p-values
-    for metric, evaluated in metric_stats_map.items():
-        inf = evaluated.inferential_stats
-        evaluated.inferential_stats = InferentialStats(
-            test_name=inf.test_name,
-            status=inf.status,
-            statistic=inf.statistic,
-            p_value=inf.p_value,
-            p_adjusted=adjusted_p_values.get(metric),
-            alternative=inf.alternative,
-            zero_method=inf.zero_method,
-            notes=inf.notes,
+        c_b = m_data.get("condition_b_summary") or m_data.get("condition_b_stats", {})
+        cond_b = DescriptiveStats(
+            n=c_b.get("n", 0),
+            mean=c_b.get("mean"),
+            median=c_b.get("median"),
+            variance=c_b.get("variance"),
+            standard_error=c_b.get("standard_error"),
+        )
+        diff_d = m_data.get("paired_differences") or m_data.get("difference_stats", {})
+        ci_raw = diff_d.get("ci_95")
+        ci_tuple = tuple(ci_raw) if isinstance(ci_raw, (list, tuple)) and len(ci_raw) == 2 else None
+        diff_stats = PairedDifferenceStats(
+            values=diff_d.get("values", []),
+            mean=diff_d.get("mean"),
+            median=diff_d.get("median"),
+            variance=diff_d.get("variance"),
+            standard_error=diff_d.get("standard_error"),
+            median_difference=diff_d.get("median_difference"),
+            effect_size_dz=diff_d.get("effect_size_dz"),
+            rank_biserial_r=diff_d.get("rank_biserial_r"),
+            ci_95=ci_tuple,  # type: ignore[arg-type]
         )
 
-    scientific_notes = [
-        "Descriptive moments and differences characterize the observed cohort distribution; inferential tests (Wilcoxon) evaluate within-subject paired differences.",
-        "beta_1 represents 1D persistent topological homology; it is distinct from physical montage spatial topological charge.",
-        "Zero-difference handling uses the 'wilcox' method; all-zero paired difference cases report p=1.0 explicitly.",
-        "Significance is never inferred from uncomputed, missing, or underpowered tests.",
-        "No formal Bayes factor is produced or claimed by this descriptive/non-parametric statistics layer.",
+        eff_raw = m_data.get("effect_size_estimates", {})
+        effect_sizes = EffectSizeEstimates(
+            cohens_dz=eff_raw.get("cohens_dz", diff_stats.effect_size_dz),
+            rank_biserial_r=eff_raw.get("rank_biserial_r", diff_stats.rank_biserial_r),
+            method=eff_raw.get("method", "paired_cohens_dz_and_rank_biserial"),
+            effective_sample_size=eff_raw.get("effective_sample_size", m_data.get("valid_pairs_count", 0)),
+            label=eff_raw.get("label", "effect_estimate_not_formal_evidence"),
+        )
+
+        ci_data = m_data.get("confidence_interval", {})
+        conf_int = ConfidenceInterval(
+            method=ci_data.get("method", "student_t_95"),
+            ci_95=tuple(ci_data["ci_95"]) if isinstance(ci_data.get("ci_95"), (list, tuple)) else ci_tuple,
+            lower=ci_data.get("lower"),
+            upper=ci_data.get("upper"),
+        )
+
+        inf_d = m_data.get("inferential_stats", {})
+        stat = m_data.get("wilcoxon_statistic") if m_data.get("wilcoxon_statistic") is not None else inf_d.get("statistic")
+        pval = m_data.get("wilcoxon_p_value") if m_data.get("wilcoxon_p_value") is not None else inf_d.get("p_value")
+
+        metrics_map[m_name] = MetricCohortStats(
+            metric_name=m_name,
+            effective_paired_sample_size=m_data.get("effective_paired_sample_size", m_data.get("valid_pairs_count", 0)),
+            valid_pairs_count=m_data.get("valid_pairs_count", 0),
+            excluded_pairs_count=m_data.get("excluded_pairs_count", 0),
+            exclusion_records=exclusions,
+            condition_a_summary=cond_a,
+            condition_b_summary=cond_b,
+            paired_differences=diff_stats,
+            wilcoxon_statistic=stat,
+            wilcoxon_p_value=pval,
+            tie_count=m_data.get("tie_count", 0),
+            zero_difference_count=m_data.get("zero_difference_count", inf_d.get("zero_count", 0)),
+            effect_size_estimates=effect_sizes,
+            confidence_interval=conf_int,
+            multiplicity_method=m_data.get("multiplicity_method", "holm"),
+            multiplicity_status=m_data.get("multiplicity_status", "none"),
+            p_adjusted=m_data.get("p_adjusted", inf_d.get("p_adjusted")),
+            status=m_data.get("status", inf_d.get("status", "available")),
+            notes=m_data.get("notes", inf_d.get("notes", "")),
+        )
+
+    cond_labels = raw.get("condition_labels") or [
+        raw.get("condition_a_label", "condition_a"),
+        raw.get("condition_b_label", "condition_b"),
     ]
 
-    report = CohortStatisticsReport(
-        schema="NeuroTopologySim.CohortStatisticsReport.v1",
-        dataset_id=dataset_id,
-        condition_a_label=condition_a_label,
-        condition_b_label=condition_b_label,
-        total_subjects_evaluated=len(unique_subjects),
-        is_synthetic=is_synthetic,
-        provenance_status=prov_val,
-        multiplicity_method=method_val,
-        min_pairs=min_pairs,
-        checksum="",
-        metrics=metric_stats_map,
-        scientific_notes=scientific_notes,
+    return CohortStatisticsReport(
+        schema_version=raw.get("schema_version") or raw.get("schema", "NeuroTopologySim.CohortStatisticsReport.v2"),
+        cohort_identifier=raw.get("cohort_identifier") or raw.get("dataset_id"),
+        condition_labels=cond_labels,
+        pairing_key=raw.get("pairing_key", "subject_id"),
+        subjects_included=raw.get("subjects_included", []),
+        subjects_excluded=raw.get("subjects_excluded", []),
+        exclusion_reasons=raw.get("exclusion_reasons", {}),
+        effective_paired_sample_size=raw.get("effective_paired_sample_size", 0),
+        total_subjects_evaluated=raw.get("total_subjects_evaluated", 0),
+        formal_bayes_factor=None,
+        scientific_pass=False,
+        evidence_class=raw.get("evidence_class", "descriptive_or_paired_statistics"),
+        synthetic_status=raw.get("synthetic_status") or ("synthetic_demo" if raw.get("is_synthetic") else "empirical"),
+        provenance=raw.get("provenance") or raw.get("provenance_status", "empirical"),
+        finite_value_status=raw.get("finite_value_status", "all_finite"),
+        multiplicity_method=raw.get("multiplicity_method", "holm"),
+        min_pairs=raw.get("min_pairs", 3),
+        checksum=raw.get("checksum", ""),
+        metrics=metrics_map,
+        scientific_notes=raw.get("scientific_notes", []),
     )
-
-    # Compute deterministic SHA-256
-    report.checksum = compute_report_checksum(report.to_dict())
-    return report
-
-
-def export_report_json(report: CohortStatisticsReport, path: str | Path | None = None) -> str:
-    """Serializes report to deterministic JSON with allow_nan=False."""
-    payload = report.to_dict()
-    text = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
-    if path is not None:
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text, encoding="utf-8")
-    return text
-
-
-def export_report_csv(report: CohortStatisticsReport, path: str | Path | None = None) -> str:
-    """Exports tabular summary of metrics and paired differences to CSV."""
-    headers = [
-        "metric",
-        "valid_pairs",
-        "excluded_pairs",
-        "mean_a",
-        "median_a",
-        "var_a",
-        "se_a",
-        "mean_b",
-        "median_b",
-        "var_b",
-        "se_b",
-        "mean_diff",
-        "median_diff",
-        "cohens_d_z",
-        "ci95_lower",
-        "ci95_upper",
-        "wilcoxon_stat",
-        "p_value",
-        "p_adjusted",
-        "test_status",
-    ]
-    rows = []
-    for metric_name, m in sorted(report.metrics.items()):
-        ci_lower = f"{m.difference_stats.ci_95[0]:.6g}" if m.difference_stats.ci_95 else ""
-        ci_upper = f"{m.difference_stats.ci_95[1]:.6g}" if m.difference_stats.ci_95 else ""
-
-        def _fmt(val: float | None) -> str:
-            return "" if val is None else f"{val:.6g}"
-
-        rows.append({
-            "metric": metric_name,
-            "valid_pairs": str(m.valid_pairs_count),
-            "excluded_pairs": str(m.excluded_pairs_count),
-            "mean_a": _fmt(m.condition_a_stats.mean),
-            "median_a": _fmt(m.condition_a_stats.median),
-            "var_a": _fmt(m.condition_a_stats.variance),
-            "se_a": _fmt(m.condition_a_stats.standard_error),
-            "mean_b": _fmt(m.condition_b_stats.mean),
-            "median_b": _fmt(m.condition_b_stats.median),
-            "var_b": _fmt(m.condition_b_stats.variance),
-            "se_b": _fmt(m.condition_b_stats.standard_error),
-            "mean_diff": _fmt(m.difference_stats.mean),
-            "median_diff": _fmt(m.difference_stats.median_difference),
-            "cohens_d_z": _fmt(m.difference_stats.cohens_d_z),
-            "ci95_lower": ci_lower,
-            "ci95_upper": ci_upper,
-            "wilcoxon_stat": _fmt(m.inferential_stats.statistic),
-            "p_value": _fmt(m.inferential_stats.p_value),
-            "p_adjusted": _fmt(m.inferential_stats.p_adjusted),
-            "test_status": m.inferential_stats.status,
-        })
-
-    buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=headers, lineterminator="\n")
-    writer.writeheader()
-    writer.writerows(rows)
-    csv_text = buf.getvalue()
-
-    if path is not None:
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(csv_text, encoding="utf-8")
-    return csv_text

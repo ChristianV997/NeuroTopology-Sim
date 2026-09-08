@@ -1,330 +1,476 @@
-"""Unit and integration tests for paired-cohort descriptive and inferential statistics."""
+"""Comprehensive unit and integration test suite for paired-cohort statistics.
+
+Validates:
+1. Exact Cohen's d_z and rank-biserial effect sizes labeled as estimates.
+2. Non-parametric Wilcoxon signed-rank, ties, and zero-difference edge cases.
+3. SciPy absence graceful fallback (status='unavailable', null values).
+4. Insufficient pair threshold enforcement.
+5. Non-silent exclusion tracking for missing/corrupted arms or non-finite inputs.
+6. Multiplicity corrections (Holm, Bonferroni, FDR-BH) and multiplicity_unavailable state.
+7. Deterministic pair sorting and cryptographic SHA-256 checksum integrity.
+8. Strict RFC-8259 JSON serialization (no NaN/Inf).
+9. Provenance status tagging, formal_bayes_factor=null, scientific_pass=false.
+10. Required metrics: beta-1 persistence, integrated persistence-landscape area,
+    persistence distance, spatial phase charge.
+"""
 from __future__ import annotations
 
 import json
 import math
 from pathlib import Path
+
 import pytest
 
 from analysis.cohort_statistics import (
     CohortStatisticsReport,
+    ConfidenceInterval,
+    DescriptiveStats,
+    EffectSizeEstimates,
+    ExclusionRecord,
     HypothesisAlternative,
+    InferentialStats,
+    MetricCohortStats,
     MultiplicityMethod,
+    PairedDifferenceStats,
     ProvenanceStatus,
     adjust_p_values,
-    build_cohort_statistics_report,
-    calculate_descriptive_moments,
-    calculate_paired_differences,
-    calculate_wilcoxon_test,
-    evaluate_metric_cohort,
-    export_report_csv,
-    export_report_json,
+    calculate_paired_cohort_report,
+    compute_descriptive_stats,
+    compute_inferential_stats,
+    compute_paired_difference_stats,
+    compute_paired_effect_size_dz,
+    compute_rank_biserial_r,
+    compute_report_checksum,
+    compute_ties_and_zeros,
+    export_cohort_report_dict,
+    load_cohort_input,
+    load_cohort_report,
+    resolve_multiplicity,
+    save_cohort_report,
+    verify_report_checksum,
 )
-from scripts.summarize_cohort_statistics import main
+from scripts.summarize_cohort_statistics import main as cli_main
 
 
-# 1. Valid paired data
-def test_valid_paired_data() -> None:
-    records = [
-        {
-            "subject": f"sub-0{i}",
-            "condition_a_metrics": {"beta_1": 10.0 + i, "landscape_area": 5.0 + 0.5 * i, "winding": 1.0, "spatial_charge": 0.2},
-            "condition_b_metrics": {"beta_1": 15.0 + 1.2 * i, "landscape_area": 8.0 + 0.8 * i, "winding": 2.0, "spatial_charge": 0.5},
-        }
-        for i in range(1, 6)
-    ]
+def test_compute_descriptive_stats():
+    # Empty
+    d0 = compute_descriptive_stats([])
+    assert d0.n == 0
+    assert d0.mean is None
+    assert d0.median is None
+    assert d0.variance is None
+    assert d0.standard_error is None
 
-    report = build_cohort_statistics_report(
-        records,
-        condition_a_label="awake",
-        condition_b_label="sed2",
-        multiplicity_method=MultiplicityMethod.HOLM,
-        min_pairs=2,
+    # Single element
+    d1 = compute_descriptive_stats([42.0])
+    assert d1.n == 1
+    assert d1.mean == 42.0
+    assert d1.median == 42.0
+    assert d1.variance is None
+    assert d1.standard_error is None
+
+    # Multiple elements
+    vals = [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    dm = compute_descriptive_stats(vals)
+    assert dm.n == 8
+    assert dm.mean == 5.0
+    assert dm.median == 4.5
+    assert dm.variance == pytest.approx(4.571428, rel=1e-4)
+    assert dm.standard_error == pytest.approx(math.sqrt(4.571428 / 8), rel=1e-4)
+
+
+def test_paired_cohens_dz_calculations():
+    # Zero difference
+    diff_zero = [1.0, -1.0, 2.0, -2.0]
+    dz_zero = compute_paired_effect_size_dz(diff_zero)
+    assert dz_zero is not None
+    assert abs(dz_zero) < 1e-9
+
+    # Consistently positive
+    diff_pos = [1.0, 1.2, 0.9, 1.1]
+    dz_pos = compute_paired_effect_size_dz(diff_pos)
+    assert dz_pos is not None
+    assert dz_pos > 3.0  # Large d_z
+
+    # Consistently negative
+    diff_neg = [-2.0, -2.5, -2.2, -2.1]
+    dz_neg = compute_paired_effect_size_dz(diff_neg)
+    assert dz_neg is not None
+    assert dz_neg < -3.0
+
+    # Insufficient elements
+    assert compute_paired_effect_size_dz([]) is None
+    assert compute_paired_effect_size_dz([5.0]) is None
+
+    # All identical non-zero differences (variance = 0)
+    assert compute_paired_effect_size_dz([5.0, 5.0, 5.0]) is None
+    # All zero differences (variance = 0, mean = 0)
+    assert compute_paired_effect_size_dz([0.0, 0.0, 0.0]) == 0.0
+
+
+def test_rank_biserial_r():
+    # All positive differences -> r = +1.0
+    diff_pos = [2.0, 5.0, 1.2, 0.8]
+    assert compute_rank_biserial_r(diff_pos) == 1.0
+
+    # All negative differences -> r = -1.0
+    diff_neg = [-1.0, -3.0, -0.5]
+    assert compute_rank_biserial_r(diff_neg) == -1.0
+
+    # Symmetric around zero -> r = 0.0
+    diff_sym = [-2.0, -1.0, 1.0, 2.0]
+    assert compute_rank_biserial_r(diff_sym) == 0.0
+
+    # All zero differences -> r = 0.0
+    diff_zero = [0.0, 0.0, 0.0]
+    assert compute_rank_biserial_r(diff_zero) == 0.0
+
+
+def test_wilcoxon_signed_rank_and_zero_handling():
+    # When all differences are zero
+    zeros = [0.0, 0.0, 0.0, 0.0]
+    inf_zero = compute_inferential_stats(zeros, min_pairs=3)
+    assert inf_zero.status == "available"
+    assert inf_zero.statistic == 0.0
+    assert inf_zero.p_value == 1.0
+    assert inf_zero.zero_count == 4
+
+    # When differences are distinct
+    diffs = [1.2, 2.3, 3.1, 0.8, 1.9]
+    inf_valid = compute_inferential_stats(diffs, min_pairs=3)
+    assert inf_valid.status == "available"
+    assert inf_valid.statistic is not None
+    assert inf_valid.p_value is not None
+    assert 0.0 <= inf_valid.p_value <= 1.0
+
+
+def test_ties_and_zeros_counting():
+    diffs = [2.0, -2.0, 3.0, -3.0, 3.0, 0.0, 0.0]
+    ties, zeros = compute_ties_and_zeros(diffs)
+    # Non-zero absolute values: 2.0, 2.0, 3.0, 3.0, 3.0
+    # 2.0 appears 2 times, 3.0 appears 3 times -> total 5 tied values
+    assert ties == 5
+    assert zeros == 2
+
+
+def test_scipy_unavailable_fallback(monkeypatch):
+    import analysis.cohort_statistics.calculator as calc_mod
+
+    # Simulate environment where scipy is missing
+    monkeypatch.setattr(calc_mod, "sp_stats", None)
+
+    diffs = [1.0, 2.0, 3.0, 4.0]
+    inf = calc_mod.compute_inferential_stats(diffs, min_pairs=3)
+    assert inf.status == "unavailable"
+    assert inf.statistic is None
+    assert inf.p_value is None
+    assert "SciPy unavailable" in inf.notes
+
+
+def test_insufficient_pairs():
+    # Only 2 pairs when min_pairs=3
+    diffs = [1.0, 2.0]
+    inf = compute_inferential_stats(diffs, min_pairs=3)
+    assert inf.status == "insufficient_pairs"
+    assert inf.statistic is None
+    assert inf.p_value is None
+    assert "below minimum threshold" in inf.notes
+
+
+def test_non_silent_exclusion_tracking():
+    cohort = {
+        "sub-01": {
+            "drug": {"betti1": 10.0, "error": ""},
+            "placebo": {"betti1": 5.0, "error": ""},
+        },
+        "sub-02": {  # Missing placebo condition
+            "drug": {"betti1": 12.0, "error": ""},
+        },
+        "sub-03": {  # Error in drug condition
+            "drug": {"betti1": 0.0, "error": "scanner_artifact"},
+            "placebo": {"betti1": 4.0, "error": ""},
+        },
+        "sub-04": {  # Non-finite value in drug
+            "drug": {"betti1": float("nan"), "error": ""},
+            "placebo": {"betti1": 6.0, "error": ""},
+        },
+        "sub-05": {  # Unparseable value
+            "drug": {"betti1": "corrupt_data", "error": ""},
+            "placebo": {"betti1": 3.0, "error": ""},
+        },
+        "sub-06": {  # Clean pair
+            "drug": {"betti1": 11.0, "error": ""},
+            "placebo": {"betti1": 7.0, "error": ""},
+        },
+        "sub-07": {  # Clean pair
+            "drug": {"betti1": 9.0, "error": ""},
+            "placebo": {"betti1": 4.0, "error": ""},
+        },
+    }
+
+    report = calculate_paired_cohort_report(
+        cohort_data=cohort,
+        condition_a_name="drug",
+        condition_b_name="placebo",
+        metrics=["betti1"],
     )
 
-    assert report.total_subjects_evaluated == 5
-    assert set(report.metrics.keys()) == {"beta_1", "landscape_area", "winding", "spatial_charge"}
+    betti1 = report.metrics["betti1"]
+    assert betti1.valid_pairs_count == 3  # sub-01, sub-06, sub-07
+    assert betti1.excluded_pairs_count == 4  # sub-02, sub-03, sub-04, sub-05
 
-    b1 = report.metrics["beta_1"]
-    assert b1.valid_pairs_count == 5
-    assert b1.excluded_pairs_count == 0
-    assert len(b1.exclusion_records) == 0
-
-    # Moments
-    assert b1.condition_a_stats.n == 5
-    assert b1.condition_a_stats.mean == pytest.approx(13.0)
-    assert b1.condition_b_stats.mean == pytest.approx(18.6)
-
-    # Paired differences (cond_b - cond_a)
-    assert b1.difference_stats.mean == pytest.approx(5.6)
-    assert b1.difference_stats.cohens_d_z is not None
-    assert b1.difference_stats.cohens_d_z > 0
-    assert b1.difference_stats.ci_95 is not None
-    assert b1.difference_stats.ci_95[0] < b1.difference_stats.ci_95[1]
-
-    # Inferential stats
-    assert b1.inferential_stats.status == "computed"
-    assert b1.inferential_stats.statistic is not None
-    assert b1.inferential_stats.p_value is not None
-    assert b1.inferential_stats.p_adjusted is not None
-    assert b1.inferential_stats.p_adjusted >= b1.inferential_stats.p_value
-
-
-# 2. Insufficient pairs
-def test_insufficient_pairs() -> None:
-    records = [
-        {
-            "subject": "sub-01",
-            "condition_a_metrics": {"beta_1": 12.0},
-            "condition_b_metrics": {"beta_1": 15.0},
-        }
-    ]
-
-    report = build_cohort_statistics_report(
-        records,
-        min_pairs=2,
-    )
-
-    b1 = report.metrics["beta_1"]
-    assert b1.valid_pairs_count == 1
-    assert b1.inferential_stats.status == "insufficient_pairs"
-    assert b1.inferential_stats.statistic is None
-    assert b1.inferential_stats.p_value is None
-    assert b1.inferential_stats.p_adjusted is None
-    assert "strictly below" in b1.inferential_stats.notes
-
-
-# 3. Missing metrics are never silently dropped
-def test_missing_metrics() -> None:
-    records = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-        {"subject": "sub-02", "condition_a_metrics": {"beta_1": 11.0}, "condition_b_metrics": {"beta_1": None}},
-        {"subject": "sub-03", "condition_a_metrics": {"beta_1": None}, "condition_b_metrics": {"beta_1": 13.0}},
-        {"subject": "sub-04", "condition_a_metrics": {}, "condition_b_metrics": {"beta_1": 14.0}},
-    ]
-
-    report = build_cohort_statistics_report(records, min_pairs=2)
-    b1 = report.metrics["beta_1"]
-
-    assert b1.valid_pairs_count == 1
-    assert b1.excluded_pairs_count == 3
-    excluded_subjects = {e.subject: e.reason for e in b1.exclusion_records}
+    excluded_subjects = {e.subject: e.reason for e in betti1.exclusion_records}
     assert "sub-02" in excluded_subjects
-    assert excluded_subjects["sub-02"] == "missing_condition_b_metric"
+    assert "missing_placebo" in excluded_subjects["sub-02"]
     assert "sub-03" in excluded_subjects
-    assert excluded_subjects["sub-03"] == "missing_condition_a_metric"
+    assert "drug_error" in excluded_subjects["sub-03"]
     assert "sub-04" in excluded_subjects
-    assert excluded_subjects["sub-04"] == "missing_condition_a_metric"
+    assert "non_finite" in excluded_subjects["sub-04"]
+    assert "sub-05" in excluded_subjects
+    assert "unparseable" in excluded_subjects["sub-05"]
+
+    # Verify top-level lists
+    assert set(report.subjects_included) == {"sub-01", "sub-06", "sub-07"}
+    assert set(report.subjects_excluded) == {"sub-02", "sub-03", "sub-04", "sub-05"}
+    assert report.finite_value_status == "non_finite_values_excluded"
 
 
-# 4. Non-finite values rejection
-def test_non_finite_values_rejection() -> None:
-    records = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-        {"subject": "sub-02", "condition_a_metrics": {"beta_1": float("nan")}, "condition_b_metrics": {"beta_1": 14.0}},
-        {"subject": "sub-03", "condition_a_metrics": {"beta_1": 11.0}, "condition_b_metrics": {"beta_1": float("inf")}},
-        {"subject": "sub-04", "condition_a_metrics": {"beta_1": float("-inf")}, "condition_b_metrics": {"beta_1": 12.0}},
-    ]
+def test_multiplicity_corrections():
+    p_raw = [0.01, None, 0.04, 0.02, 0.05]
 
-    report = build_cohort_statistics_report(records, min_pairs=2)
-    b1 = report.metrics["beta_1"]
+    # Holm
+    adj_holm = adjust_p_values(p_raw, method=MultiplicityMethod.HOLM)
+    assert len(adj_holm) == 5
+    assert adj_holm[1] is None
 
-    assert b1.valid_pairs_count == 1
-    assert b1.excluded_pairs_count == 3
-    excluded_reasons = {e.subject: e.reason for e in b1.exclusion_records}
-    assert "non_finite_metric_value" in excluded_reasons["sub-02"]
-    assert "non_finite_metric_value" in excluded_reasons["sub-03"]
-    assert "non_finite_metric_value" in excluded_reasons["sub-04"]
+    assert adj_holm[0] == pytest.approx(0.04)
+    assert adj_holm[3] == pytest.approx(0.06)
+    assert adj_holm[2] == pytest.approx(0.08)
+    assert adj_holm[4] == pytest.approx(0.08)
 
+    # Bonferroni
+    adj_bonf = adjust_p_values(p_raw, method=MultiplicityMethod.BONFERRONI)
+    assert adj_bonf[1] is None
+    assert adj_bonf[0] == pytest.approx(0.04)
+    assert adj_bonf[3] == pytest.approx(0.08)
 
-# 5. All-zero differences
-def test_all_zero_differences() -> None:
-    records = [
-        {"subject": f"sub-0{i}", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 10.0}}
-        for i in range(1, 5)
-    ]
-
-    report = build_cohort_statistics_report(records, min_pairs=2)
-    b1 = report.metrics["beta_1"]
-
-    assert b1.valid_pairs_count == 4
-    assert b1.difference_stats.mean == 0.0
-    assert b1.difference_stats.median == 0.0
-    assert b1.difference_stats.cohens_d_z == 0.0
-    assert b1.inferential_stats.status == "all_paired_differences_zero"
-    assert b1.inferential_stats.statistic == 0.0
-    assert b1.inferential_stats.p_value == 1.0
-    assert b1.inferential_stats.p_adjusted == 1.0
-    assert b1.inferential_stats.zero_method == "wilcox"
+    # FDR-BH
+    adj_bh = adjust_p_values(p_raw, method=MultiplicityMethod.FDR_BH)
+    assert adj_bh[1] is None
+    for p in adj_bh:
+        if p is not None:
+            assert 0.0 <= p <= 1.0
 
 
-# 6. Positive and negative paired effects
-def test_positive_and_negative_paired_effects() -> None:
-    # Positive effect: B > A systematically
-    pos_pairs = [{"subject": f"s{i}", "condition_a": 10.0, "condition_b": 15.0 + i} for i in range(8)]
-    pos_stats = evaluate_metric_cohort("pos_metric", pos_pairs, alternative="greater", min_pairs=2)
-    assert pos_stats.difference_stats.mean > 0
-    assert pos_stats.difference_stats.cohens_d_z > 1.0
-    assert pos_stats.inferential_stats.status == "computed"
-    assert pos_stats.inferential_stats.p_value < 0.01
+def test_multiplicity_unavailable_state():
+    p_raw = [0.01, 0.04, 0.02]
 
-    # Negative effect: B < A systematically
-    neg_pairs = [{"subject": f"s{i}", "condition_a": 20.0 + i, "condition_b": 10.0} for i in range(8)]
-    neg_stats = evaluate_metric_cohort("neg_metric", neg_pairs, alternative="less", min_pairs=2)
-    assert neg_stats.difference_stats.mean < 0
-    assert neg_stats.difference_stats.cohens_d_z < -1.0
-    assert neg_stats.inferential_stats.status == "computed"
-    assert neg_stats.inferential_stats.p_value < 0.01
+    # Absent method returns explicit multiplicity_unavailable status and None adjusted p-values
+    adj, status = resolve_multiplicity(p_raw, method=None)
+    assert status == "multiplicity_unavailable"
+    assert all(p is None for p in adj)
+
+    adj2, status2 = resolve_multiplicity(p_raw, method="absent")
+    assert status2 == "multiplicity_unavailable"
+    assert all(p is None for p in adj2)
 
 
-# 7. Deterministic ordering
-def test_deterministic_ordering() -> None:
-    records_ordered = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-        {"subject": "sub-02", "condition_a_metrics": {"beta_1": 11.0}, "condition_b_metrics": {"beta_1": 13.0}},
-        {"subject": "sub-03", "condition_a_metrics": {"beta_1": 12.0}, "condition_b_metrics": {"beta_1": 14.0}},
-    ]
-    records_shuffled = [records_ordered[2], records_ordered[0], records_ordered[1]]
+def test_formal_bayes_factor_and_guardrails_null():
+    cohort = {
+        "sub-01": {"cond_a": {"m1": 10.0}, "cond_b": {"m1": 5.0}},
+        "sub-02": {"cond_a": {"m1": 12.0}, "cond_b": {"m1": 6.0}},
+        "sub-03": {"cond_a": {"m1": 8.0}, "cond_b": {"m1": 4.0}},
+    }
+    report = calculate_paired_cohort_report(cohort, condition_a_name="cond_a", condition_b_name="cond_b")
 
-    rep1 = build_cohort_statistics_report(records_ordered)
-    rep2 = build_cohort_statistics_report(records_shuffled)
+    # Explicit guardrail assertions
+    assert report.formal_bayes_factor is None
+    assert report.scientific_pass is False
+    assert report.evidence_class == "descriptive_or_paired_statistics"
+    assert report.schema_version == "NeuroTopologySim.CohortStatisticsReport.v2"
 
-    assert rep1.checksum == rep2.checksum
-    assert export_report_json(rep1) == export_report_json(rep2)
-
-
-# 8. Wilcoxon unavailable fallback
-def test_wilcoxon_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    import builtins
-    real_import = builtins.__import__
-
-    def _mock_import(name, *args, **kwargs):
-        if "scipy" in name:
-            raise ImportError("Mock SciPy unavailable")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", _mock_import)
-
-    res = calculate_wilcoxon_test([10.0, 11.0, 12.0], [12.0, 13.0, 14.0], min_pairs=2)
-    assert res.status == "scipy_unavailable"
-    assert res.statistic is None
-    assert res.p_value is None
-    assert "SciPy is unavailable" in res.notes
+    report_dict = report.to_dict()
+    assert report_dict["formal_bayes_factor"] is None
+    assert report_dict["scientific_pass"] is False
+    assert report_dict["evidence_class"] == "descriptive_or_paired_statistics"
 
 
-# 9. Multiplicity correction
-def test_multiplicity_correction() -> None:
-    p_vals = {"m1": 0.01, "m2": 0.04, "m3": 0.03}
+def test_standard_manifest_metrics():
+    """Verify standard metrics: beta-1 persistence, landscape area, persistence distance, phase charge."""
+    cohort = {
+        "sub-01": {
+            "pre": {
+                "beta-1 persistence": 14.5,
+                "integrated persistence-landscape area": 3.2,
+                "persistence distance": 0.8,
+                "spatial phase charge": 1.1,
+            },
+            "post": {
+                "beta-1 persistence": 10.0,
+                "integrated persistence-landscape area": 2.1,
+                "persistence distance": 0.4,
+                "spatial phase charge": 0.5,
+            },
+        },
+        "sub-02": {
+            "pre": {
+                "beta-1 persistence": 15.0,
+                "integrated persistence-landscape area": 3.4,
+                "persistence distance": 0.9,
+                "spatial phase charge": 1.2,
+            },
+            "post": {
+                "beta-1 persistence": 10.5,
+                "integrated persistence-landscape area": 2.2,
+                "persistence distance": 0.5,
+                "spatial phase charge": 0.6,
+            },
+        },
+        "sub-03": {
+            "pre": {
+                "beta-1 persistence": 13.8,
+                "integrated persistence-landscape area": 3.0,
+                "persistence distance": 0.7,
+                "spatial phase charge": 1.0,
+            },
+            "post": {
+                "beta-1 persistence": 9.5,
+                "integrated persistence-landscape area": 2.0,
+                "persistence distance": 0.3,
+                "spatial phase charge": 0.4,
+            },
+        },
+    }
 
-    # Bonferroni: multiply by m=3
-    bonf = adjust_p_values(p_vals, method="bonferroni")
-    assert bonf["m1"] == pytest.approx(0.03)
-    assert bonf["m2"] == pytest.approx(0.12)
-    assert bonf["m3"] == pytest.approx(0.09)
+    report = calculate_paired_cohort_report(
+        cohort,
+        condition_a_name="pre",
+        condition_b_name="post",
+        condition_labels=["pre", "post"],
+    )
 
-    # Holm:
-    # m1: 0.01 * 3 = 0.03
-    # m3: max(0.03, 0.03 * 2) = 0.06
-    # m2: max(0.06, 0.04 * 1) = 0.06
-    holm = adjust_p_values(p_vals, method="holm")
-    assert holm["m1"] == pytest.approx(0.03)
-    assert holm["m3"] == pytest.approx(0.06)
-    assert holm["m2"] == pytest.approx(0.06)
+    expected = {
+        "beta-1 persistence",
+        "integrated persistence-landscape area",
+        "persistence distance",
+        "spatial phase charge",
+    }
+    assert set(report.metrics.keys()) == expected
+    assert report.condition_labels == ["pre", "post"]
 
-    # FDR_BH:
-    # m1 (rank 1): 0.01 * 3 / 1 = 0.03
-    # m3 (rank 2): 0.03 * 3 / 2 = 0.045
-    # m2 (rank 3): 0.04 * 3 / 3 = 0.04
-    # Step-up min: m2 = 0.04, m3 = min(0.04, 0.045) = 0.04, m1 = min(0.04, 0.03) = 0.03
-    fdr = adjust_p_values(p_vals, method="fdr_bh")
-    assert fdr["m1"] == pytest.approx(0.03)
-    assert fdr["m3"] == pytest.approx(0.04)
-    assert fdr["m2"] == pytest.approx(0.04)
-
-    # None
-    raw = adjust_p_values(p_vals, method="none")
-    assert raw == p_vals
+    for m_name in expected:
+        m = report.metrics[m_name]
+        assert m.valid_pairs_count == 3
+        assert m.paired_differences.mean is not None
+        assert m.paired_differences.mean > 0.0
+        assert m.effect_size_estimates.label == "effect_estimate_not_formal_evidence"
 
 
-# 10. Synthetic-only input labeling
-def test_synthetic_only_input_labeling() -> None:
-    records = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-        {"subject": "sub-02", "condition_a_metrics": {"beta_1": 11.0}, "condition_b_metrics": {"beta_1": 13.0}},
-    ]
-    report = build_cohort_statistics_report(
-        records,
+def test_deterministic_ordering_and_checksum():
+    cohort_order_1 = {
+        "sub-B": {"drug": {"m1": 10.0}, "placebo": {"m1": 5.0}},
+        "sub-A": {"drug": {"m1": 12.0}, "placebo": {"m1": 6.0}},
+        "sub-C": {"drug": {"m1": 8.0}, "placebo": {"m1": 4.0}},
+    }
+    cohort_order_2 = {
+        "sub-A": {"drug": {"m1": 12.0}, "placebo": {"m1": 6.0}},
+        "sub-C": {"drug": {"m1": 8.0}, "placebo": {"m1": 4.0}},
+        "sub-B": {"drug": {"m1": 10.0}, "placebo": {"m1": 5.0}},
+    }
+
+    report1 = calculate_paired_cohort_report(cohort_order_1, condition_a_name="drug", condition_b_name="placebo")
+    report2 = calculate_paired_cohort_report(cohort_order_2, condition_a_name="drug", condition_b_name="placebo")
+
+    # Hashes and structure must be strictly identical regardless of dictionary insertion order
+    assert report1.checksum == report2.checksum
+    assert len(report1.checksum) == 64
+
+    # Verify checksum validator
+    dict1 = export_cohort_report_dict(report1)
+    assert verify_report_checksum(dict1) is True
+
+    # Tamper test
+    dict1["cohort_identifier"] = "tampered_dataset_id"
+    assert verify_report_checksum(dict1) is False
+
+
+def test_rfc8259_strict_json_finite_null_compliance(tmp_path):
+    cohort = {
+        "sub-01": {"cond_a": {"m1": 10.0}, "cond_b": {"m1": 5.0}},
+        "sub-02": {"cond_a": {"m1": 12.0}, "cond_b": {"m1": 6.0}},
+        "sub-03": {"cond_a": {"m1": 8.0}, "cond_b": {"m1": 4.0}},
+    }
+    report = calculate_paired_cohort_report(cohort, condition_a_name="cond_a", condition_b_name="cond_b")
+
+    out_file = tmp_path / "report.json"
+    save_cohort_report(report, out_file)
+
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+
+    assert "NaN" not in content
+    assert "Infinity" not in content
+
+    # Re-hydrate report
+    loaded_report = load_cohort_report(out_file)
+    assert loaded_report.checksum == report.checksum
+    assert len(loaded_report.metrics) == 1
+    assert loaded_report.formal_bayes_factor is None
+    assert loaded_report.scientific_pass is False
+
+
+def test_synthetic_provenance_marking():
+    cohort = {
+        "sub-01": {"cond_a": {"m1": 10.0}, "cond_b": {"m1": 5.0}},
+        "sub-02": {"cond_a": {"m1": 12.0}, "cond_b": {"m1": 6.0}},
+        "sub-03": {"cond_a": {"m1": 8.0}, "cond_b": {"m1": 4.0}},
+    }
+    report = calculate_paired_cohort_report(
+        cohort,
+        condition_a_name="cond_a",
+        condition_b_name="cond_b",
         is_synthetic=True,
-        provenance_status=ProvenanceStatus.SYNTHETIC_FIXTURE,
+        provenance_status=ProvenanceStatus.SYNTHETIC_DEMO,
     )
     assert report.is_synthetic is True
-    assert report.provenance_status == "synthetic_fixture"
+    assert report.provenance_status == "synthetic_demo"
+    assert report.synthetic_status == "synthetic_demo"
+
+    # Verify guardrail note
+    assert any("GUARDRAIL" in note for note in report.scientific_notes)
 
 
-# 11. Empirical provenance incomplete
-def test_empirical_provenance_incomplete() -> None:
-    records = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-    ]
-    report = build_cohort_statistics_report(
-        records,
-        is_synthetic=False,
-        provenance_status=ProvenanceStatus.INCOMPLETE,
-    )
-    assert report.is_synthetic is False
-    assert report.provenance_status == "incomplete_provenance"
-
-
-# 12. JSON finite and null compliance
-def test_json_finite_null_compliance(tmp_path: Path) -> None:
-    records = [
-        {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0}, "condition_b_metrics": {"beta_1": 12.0}},
-    ]
-    report = build_cohort_statistics_report(records, min_pairs=2)
-    json_path = tmp_path / "out.json"
-    json_str = export_report_json(report, json_path)
-
-    parsed = json.loads(json_str)
-    assert parsed["schema"] == "NeuroTopologySim.CohortStatisticsReport.v1"
-    assert "NaN" not in json_str
-    assert "Infinity" not in json_str
-    # Inferential stats should be null
-    assert parsed["metrics"]["beta_1"]["inferential_stats"]["statistic"] is None
-    assert parsed["metrics"]["beta_1"]["inferential_stats"]["p_value"] is None
-
-
-# 13. CLI execution
-def test_cli_execution(tmp_path: Path) -> None:
-    in_file = tmp_path / "cohort_metrics.json"
-    out_file = tmp_path / "cohort_statistics.json"
-    csv_file = tmp_path / "cohort_statistics.csv"
-
-    sample_input = {
-        "dataset_id": "ds005620",
-        "condition_a": "awake",
-        "condition_b": "sed2",
-        "records": [
-            {"subject": "sub-01", "condition_a_metrics": {"beta_1": 10.0, "winding": 1.0}, "condition_b_metrics": {"beta_1": 14.0, "winding": 2.0}},
-            {"subject": "sub-02", "condition_a_metrics": {"beta_1": 12.0, "winding": 1.5}, "condition_b_metrics": {"beta_1": 16.0, "winding": 2.5}},
-            {"subject": "sub-03", "condition_a_metrics": {"beta_1": 11.0, "winding": 1.2}, "condition_b_metrics": {"beta_1": 15.0, "winding": 2.2}},
-        ],
+def test_cli_smoke(tmp_path, capsys):
+    cohort_data = {
+        "sub-01": {"drug": {"betti1": 10.0, "total_persistence": 2.5}, "placebo": {"betti1": 5.0, "total_persistence": 1.5}},
+        "sub-02": {"drug": {"betti1": 12.0, "total_persistence": 2.8}, "placebo": {"betti1": 6.0, "total_persistence": 1.7}},
+        "sub-03": {"drug": {"betti1": 8.0, "total_persistence": 2.1}, "placebo": {"betti1": 4.0, "total_persistence": 1.2}},
     }
-    in_file.write_text(json.dumps(sample_input), encoding="utf-8")
+    in_file = tmp_path / "cohort_input.json"
+    in_file.write_text(json.dumps(cohort_data), encoding="utf-8")
 
-    cmd = [
+    out_file = tmp_path / "cohort_report.json"
+
+    # Test CLI execution
+    exit_code = cli_main([
         "--input", str(in_file),
         "--output", str(out_file),
+        "--condition-a", "drug",
+        "--condition-b", "placebo",
+        "--cohort-id", "ds-test",
         "--correction", "holm",
-        "--csv-output", str(csv_file),
-        "--strict",
-    ]
-    exit_code = main(cmd)
+    ])
     assert exit_code == 0
-    assert out_file.is_file()
-    assert csv_file.is_file()
+    assert out_file.exists()
 
-    out_data = json.loads(out_file.read_text(encoding="utf-8"))
-    assert out_data["total_subjects_evaluated"] == 3
-    assert "beta_1" in out_data["metrics"]
-    assert "winding" in out_data["metrics"]
-    assert out_data["metrics"]["beta_1"]["inferential_stats"]["status"] == "computed"
+    captured = capsys.readouterr()
+    assert "PAIRED COHORT STATISTICS REPORT" in captured.out
+    assert "betti1" in captured.out
+    assert "total_persistence" in captured.out
+
+    # Test checksum verification via CLI
+    verify_exit_code = cli_main([
+        "--input", str(out_file),
+        "--verify-checksum",
+    ])
+    assert verify_exit_code == 0

@@ -1,162 +1,177 @@
-# Paired-Cohort Descriptive and Non-Parametric Statistics Layer
+# Paired-Cohort Statistics and Effect-Size Validation
 
-## 1. Overview and Scientific Motivation
+## 1. Overview
 
-In topological data analysis (TDA) and empirical electrophysiology cohorts (e.g. comparing `awake` vs. `sed2` or pre- vs. post-intervention states), downstream falsification pipelines require a standardized, typed statistical layer to quantify within-subject condition shifts across key topological and physical metrics:
-- **$\beta_1$ Graph Persistence**: Betti-1 homology counting 1-dimensional topological cycles in functional or phase synchronization graphs.
-- **Persistence Landscape Area**: Integrated norm of the persistence landscape measuring topological signal magnitude.
-- **Winding Number / Phase Curvature**: Topological phase trajectory winding across multi-channel cycles.
-- **Spatial Topological Charge ($Q_{\text{spatial}}$)**: Defect charge computed using 3D sensor montage geometry.
+Within-subject experimental paradigms (such as crossover trials, pre-post interventions, or paired condition comparisons) generate repeated measures from the same biological or computational units. Analyzing repeated-measures designs using independent two-sample formulas (such as two-sample Student's $t$-tests or two-sample pooled Cohen's $d$) conflates inter-subject baseline variance with true intra-subject treatment shifts, biasing standard errors and distorting effect-size estimations.
 
-This module provides descriptive moments, paired difference distributions, effect size estimations, confidence intervals, non-parametric hypothesis testing (Wilcoxon signed-rank test), and family-wise multiplicity adjustments.
+The `analysis.cohort_statistics` package provides a typed, deterministic, and verifiable within-subject paired statistics and effect-size validation framework for `NeuroTopology-Sim`.
 
----
+### Key Capabilities
 
-## 2. Mathematical Framework
-
-### Descriptive Moments
-For a sample of $N$ valid paired observations $(A_i, B_i)$ ($i = 1, \dots, N$):
-- **Mean**: $\bar{x} = \frac{1}{N} \sum_{i=1}^N x_i$
-- **Median**: $\text{med}(x) = \text{quantile}(x, 0.5)$
-- **Sample Variance**: $s^2 = \frac{1}{N - 1} \sum_{i=1}^N (x_i - \bar{x})^2$ ($N \ge 2$, with $ddof=1$)
-- **Standard Error of the Mean**: $\text{SE} = \frac{s}{\sqrt{N}}$
-
-### Paired Differences and Effect Size
-The within-subject paired difference is defined as:
-$$d_i = B_i - A_i$$
-
-- **Mean Difference**: $\bar{d} = \frac{1}{N} \sum_{i=1}^N d_i = \bar{B} - \bar{A}$
-- **Median Difference**: $\text{med}(d) = \text{quantile}(d, 0.5)$
-- **Sample Standard Deviation of Differences**: $s_d = \sqrt{\frac{1}{N - 1} \sum_{i=1}^N (d_i - \bar{d})^2}$
-- **Standard Error of Differences**: $\text{SE}_d = \frac{s_d}{\sqrt{N}}$
-- **Paired Cohen's $d_z$**:
-  $$d_z = \frac{\bar{d}}{s_d} \quad (s_d > 0)$$
-- **95% Confidence Interval for Mean Difference**:
-  $$\text{CI}_{95\%} = \left[ \bar{d} - t_{0.975, N-1} \cdot \text{SE}_d, \; \bar{d} + t_{0.975, N-1} \cdot \text{SE}_d \right]$$
-
-### Non-Parametric Hypothesis Testing: Wilcoxon Signed-Rank Test
-When $N \ge \text{min\_pairs}$ (default: 2) and differences are not all zero, the non-parametric Wilcoxon signed-rank test is evaluated:
-- **Null Hypothesis ($H_0$)**: The distribution of within-subject differences $d_i = B_i - A_i$ is symmetric around zero.
-- **Alternative Hypotheses ($H_1$)**:
-  - `two-sided`: The distribution of differences is not symmetric around zero.
-  - `greater`: Condition B systematically exceeds Condition A ($d_i > 0$).
-  - `less`: Condition B is systematically less than Condition A ($d_i < 0$).
-- **Zero-Difference Handling**: Explicitly governed by `zero_method="wilcox"`. If all differences are identically zero ($d_i = 0$ for all $i$), the status is reported as `all_paired_differences_zero` with $W = 0.0$ and $p = 1.0$.
-
-### Multiplicity Corrections
-When evaluating multiple topological metrics simultaneously, p-values are adjusted across the family of $m$ tests:
-1. **Holm-Bonferroni (`holm`, default)**: Step-down procedure controlling the family-wise error rate (FWER) without requiring independent tests. For sorted $p_{(1)} \le \dots \le p_{(m)}$:
-   $$p^{\text{adj}}_{(i)} = \min\left(1.0, \; \max_{j \le i} \left( (m - j + 1) \cdot p_{(j)} \right)\right)$$
-2. **Bonferroni (`bonferroni`)**: Single-step FWER control:
-   $$p^{\text{adj}}_i = \min\left(1.0, \; m \cdot p_i\right)$$
-3. **Benjamini-Hochberg (`fdr_bh`)**: Controls the false discovery rate (FDR) under positive dependence:
-   $$p^{\text{adj}}_{(i)} = \min\left(1.0, \; \min_{j \ge i} \left( \frac{m}{j} \cdot p_{(j)} \right)\right)$$
-4. **None (`none`)**: Reports unadjusted raw p-values.
+- **Versioned Schema (v2)**: Formal schema `NeuroTopologySim.CohortStatisticsReport.v2` with explicit included/excluded subject lists, exclusion reasons, tie counts, zero-difference counts, confidence intervals, and effect estimates.
+- **Exact Condition Labels**: Preserves exact condition labels as supplied in manifests or CLI arguments without inferring awake, sedated, meditation, or task identity from filenames.
+- **Exact Pairing Guarantees**: Deterministic subject identifier sorting and bijective condition matching ($A_i$ and $B_i$ for each subject $i$).
+- **Non-Silent Exclusions**: Explicit recording of every exclusion with machine-readable reasons (`missing_condition`, `non_finite_val`, `unparseable_val`, `condition_error`, `duplicate_subject_id`). Insufficient or missing data are never silently dropped.
+- **Scientifically Grounded Effect Sizes**: Implements paired Cohen's $d_z$ ($d_z = \bar{d} / s_d$) and rank-biserial correlation $r = (W^+ - W^-) / (W^+ + W^-)$, labeled explicitly as effect estimates rather than formal biological evidence.
+- **Multiple Testing Corrections**: Holm-Bonferroni step-down, Bonferroni, and Benjamini-Hochberg False Discovery Rate (FDR-BH), correctly excluding non-testable metrics from the hypothesis count $m$ while preserving exact positional alignment. If correction is absent or unavailable, returns an explicit `multiplicity_unavailable` state.
+- **Strict RFC-8259 JSON Compliance**: Guaranteed omission of non-finite literals (`NaN`, `Infinity`, `-Infinity`); unavailable numerical estimates are strictly serialized as JSON `null`.
+- **Tamper-Evident Integrity Checksums**: SHA-256 checksum computed over canonical metric payloads to detect mutation or data drift.
+- **Strict Scientific Guardrails**: Explicit non-evidence fields:
+  - `formal_bayes_factor = null`
+  - `scientific_pass = false`
+  - `evidence_class = "descriptive_or_paired_statistics"`
 
 ---
 
-## 3. Scientific Rules & Guardrails
+## 2. Mathematical Foundations
 
-1. **Significance Separation**: Descriptive moments describe the sample distribution; inferential tests require statistical power ($N \ge \text{min\_pairs}$) and SciPy. Significance is **never inferred** from a missing or underpowered test.
-2. **No Subject Fabrication**: Insufficient paired cohorts are reported explicitly; synthetic pairs are **never substituted** for empirical subjects.
-3. **No Silent Drops**: Any subject with missing or non-finite metric values is logged in `exclusion_records` with exact subject identifier and rejection reason.
-4. **Finite Input Enforcement**: Non-finite numbers (`NaN`, `Inf`, `-Inf`) are rejected and excluded with `non_finite_metric_value` provenance.
-5. **Topological Metric Demarcation**: $\beta_1$ represents 1D persistent graph homology; it must **never be equated** with physical spatial topological charge ($Q_{\text{spatial}}$), which requires physical 3D montage electrode coordinates.
-6. **No Formal Bayes Factor Claim**: This module computes descriptive and frequentist non-parametric statistics; it does not produce formal Bayes factors or bypass the repository's Bayesian falsification engine.
-7. **Strict JSON Null Compliance**: Unavailable values serialize strictly to JSON `null` (never `"NaN"`, `"Infinity"`, or fabricated sentinel values).
+### 2.1 Paired Differences
+For subjects $i \in \{1, \dots, n\}$ with measurements under Condition $A$ ($x_{A,i}$) and Condition $B$ ($x_{B,i}$):
+
+$$d_i = x_{A,i} - x_{B,i}$$
+
+Mean paired difference:
+$$\bar{d} = \frac{1}{n} \sum_{i=1}^{n} d_i$$
+
+Sample standard deviation of differences ($ddof = 1$):
+$$s_d = \sqrt{\frac{1}{n - 1} \sum_{i=1}^{n} (d_i - \bar{d})^2}$$
+
+Standard error of the mean difference:
+$$SE_d = \frac{s_d}{\sqrt{n}}$$
+
+### 2.2 Paired Effect Size (Cohen's $d_z$)
+For repeated-measures designs, the appropriate standardized mean difference is Cohen's $d_z$:
+
+$$d_z = \frac{\bar{d}}{s_d}$$
+
+> [!IMPORTANT]
+> The independent-samples pooled standard deviation formula $s_{\text{pooled}} = \sqrt{\frac{(n_A - 1)s_A^2 + (n_B - 1)s_B^2}{n_A + n_B - 2}}$ does NOT account for within-subject covariance $\text{Cov}(A, B)$ and is mathematically invalid for paired contrasts.
+> Cohen's $d_z$ is an effect estimate and does NOT constitute formal biological proof.
+
+### 2.3 Non-Parametric Rank-Biserial Correlation ($r$)
+For non-parametric comparisons via the Wilcoxon signed-rank test, the rank-biserial correlation expresses the standardized direction and strength of difference ranks:
+
+$$r = \frac{W^+ - W^-}{W^+ + W^-}$$
+
+Where:
+- $W^+$ is the sum of ranks for positive differences ($d_i > 0$).
+- $W^-$ is the sum of ranks for negative differences ($d_i < 0$).
+- Ties among absolute differences are handled by average rank assignment.
+- When all paired differences are zero, $r$ is explicitly set to $0.0$.
+- Rank-biserial correlation is bounded in $[-1.0, 1.0]$.
+
+### 2.4 Wilcoxon Signed-Rank Test & Zero-Difference Handling
+The inferential test uses the Wilcoxon signed-rank test. By default, zero differences ($d_i = 0$) are processed using the Pratt method (`zero_method="pratt"`), which includes zero differences in the ranking procedure before discarding their rank sum. When all paired differences in a cohort are zero:
+- `status = "available"`
+- `statistic = 0.0`
+- `p_value = 1.0`
+- `zero_difference_count = n`
+
+If SciPy is absent from the execution environment, the inferential test exits gracefully:
+- `status = "unavailable"`
+- `wilcoxon_statistic = null`
+- `wilcoxon_p_value = null`
+- `notes = "SciPy unavailable in execution environment; inferential test deferred."`
 
 ---
 
-## 4. CLI Reference
+## 3. Multiple Testing Adjustments
 
-### Command Syntax
+When assessing multiple topological metrics (e.g. `beta-1 persistence`, `integrated persistence-landscape area`, `persistence distance`, `spatial phase charge`), raw $p$-values are adjusted using:
+
+1. **Holm-Bonferroni (`holm`)** [Default]: Step-down method controlling Family-Wise Error Rate (FWER) without requiring subset independence.
+2. **Bonferroni (`bonferroni`)**: Single-step FWER control.
+3. **Benjamini-Hochberg (`fdr_bh`)**: Step-up False Discovery Rate control.
+4. **Unavailable (`multiplicity_unavailable`)**: If the correction method is omitted or unavailable, the output records `multiplicity_status = "multiplicity_unavailable"` and `p_adjusted = null` rather than silently treating the analysis as a single test.
+
+---
+
+## 4. Software Architecture and API
+
+The package is organized under `analysis/cohort_statistics/`:
+
+```
+analysis/cohort_statistics/
+├── __init__.py           # Public API facade
+├── models.py             # Typed dataclasses (v2), enums, finite serializer
+├── multiplicity.py       # P-value adjustments and unavailable state
+├── calculator.py         # Descriptive, difference, and inferential math
+└── serialization.py      # I/O, RFC-8259 JSON validation, SHA-256 integrity
+```
+
+### Python API Usage
+
+```python
+from analysis.cohort_statistics import (
+    calculate_paired_cohort_report,
+    save_cohort_report,
+    MultiplicityMethod,
+    HypothesisAlternative,
+)
+
+cohort_data = {
+    "sub-001": {
+        "pre": {"beta-1 persistence": 14.5, "spatial phase charge": 1.1},
+        "post": {"beta-1 persistence": 10.0, "spatial phase charge": 0.5},
+    },
+    "sub-002": {
+        "pre": {"beta-1 persistence": 15.0, "spatial phase charge": 1.2},
+        "post": {"beta-1 persistence": 10.5, "spatial phase charge": 0.6},
+    },
+    "sub-003": {
+        "pre": {"beta-1 persistence": 13.8, "spatial phase charge": 1.0},
+        "post": {"beta-1 persistence": 9.5, "spatial phase charge": 0.4},
+    },
+}
+
+report = calculate_paired_cohort_report(
+    cohort_data=cohort_data,
+    condition_a_name="pre",
+    condition_b_name="post",
+    cohort_identifier="ds005917",
+    multiplicity_method=MultiplicityMethod.HOLM,
+    alternative=HypothesisAlternative.TWO_SIDED,
+    min_pairs=3,
+)
+
+# Persist report with SHA-256 checksum and RFC-8259 compliance
+save_cohort_report(report, "outputs/cohort_statistics_report.json")
+```
+
+---
+
+## 5. Command-Line Interface
+
+The command-line interface is located at `scripts/summarize_cohort_statistics.py`:
+
 ```bash
 python scripts/summarize_cohort_statistics.py \
-  --input cohort_metrics.json \
-  --output cohort_statistics.json \
-  --correction holm \
-  --alternative two-sided \
-  --min-pairs 2
+    --input outputs/cohort_input.json \
+    --output outputs/cohort_statistics_report.json \
+    --condition-a pre \
+    --condition-b post \
+    --cohort-id ds005917 \
+    --correction holm \
+    --min-pairs 3
 ```
 
-### CLI Arguments
+To verify the SHA-256 cryptographic checksum of an existing report:
 
-| Flag | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--input`, `-i` | Path | Required | Path to input metrics JSON or CSV. |
-| `--output`, `-o` | Path | Required | Path to output statistics JSON. |
-| `--correction`, `-c` | str | `holm` | Multiplicity method (`holm`, `bonferroni`, `fdr_bh`, `none`). |
-| `--alternative`, `-a` | str | `two-sided` | Hypothesis direction (`two-sided`, `greater`, `less`). |
-| `--min-pairs` | int | `2` | Minimum valid pairs threshold for inferential tests. |
-| `--metrics` | str | `None` | Optional comma-separated list of metrics to restrict evaluation to. |
-| `--csv-output` | Path | `None` | Optional path for tabular summary CSV. |
-| `--is-synthetic` | flag | `False` | Declares that input data originates from synthetic fixtures. |
-| `--provenance-status` | str | `empirical` | Origin label (`empirical`, `synthetic_fixture`, `incomplete_provenance`). |
-| `--strict` | flag | `False` | Exits non-zero (code 2) if execution errors occur or no valid pairs exist. |
+```bash
+python scripts/summarize_cohort_statistics.py \
+    --input outputs/cohort_statistics_report.json \
+    --verify-checksum
+```
 
 ---
 
-## 5. Output Artifact Schema
+## 6. Scientific Guardrails & Separation
 
-### JSON Schema (`cohort_statistics.json`)
-```json
-{
-  "schema": "NeuroTopologySim.CohortStatisticsReport.v1",
-  "dataset_id": "ds005620",
-  "condition_a_label": "awake",
-  "condition_b_label": "sed2",
-  "total_subjects_evaluated": 16,
-  "is_synthetic": false,
-  "provenance_status": "empirical",
-  "multiplicity_method": "holm",
-  "min_pairs": 2,
-  "checksum": "d5a8...",
-  "metrics": {
-    "beta_1": {
-      "metric_name": "beta_1",
-      "valid_pairs_count": 16,
-      "excluded_pairs_count": 0,
-      "exclusion_records": [],
-      "condition_a_stats": {
-        "n": 16,
-        "mean": 14.25,
-        "median": 14.0,
-        "variance": 3.13,
-        "standard_error": 0.44
-      },
-      "condition_b_stats": {
-        "n": 16,
-        "mean": 18.50,
-        "median": 18.0,
-        "variance": 4.26,
-        "standard_error": 0.51
-      },
-      "difference_stats": {
-        "values": [4.0, 4.5, 3.8, ...],
-        "mean": 4.25,
-        "median": 4.1,
-        "variance": 1.20,
-        "standard_error": 0.27,
-        "median_difference": 4.1,
-        "cohens_d_z": 3.88,
-        "ci_95": [3.67, 4.83]
-      },
-      "inferential_stats": {
-        "test_name": "Wilcoxon signed-rank test",
-        "status": "computed",
-        "statistic": 0.0,
-        "p_value": 0.00048,
-        "p_adjusted": 0.00192,
-        "alternative": "two-sided",
-        "zero_method": "wilcox",
-        "notes": "Computed non-parametric test (two-sided, zero_method=wilcox)."
-      }
-    }
-  },
-  "scientific_notes": [...]
-}
-```
+All statistical outputs adhere strictly to repository governance boundaries:
 
-### CSV Summary (`cohort_statistics.csv`)
-Columns:
-`metric,valid_pairs,excluded_pairs,mean_a,median_a,var_a,se_a,mean_b,median_b,var_b,se_b,mean_diff,median_diff,cohens_d_z,ci95_lower,ci95_upper,wilcoxon_stat,p_value,p_adjusted,test_status`
+1. **No Biological Proof Claims**: Paired statistical significance indicates only rejection of the null hypothesis under the model assumptions; it does NOT constitute biological proof of quantum coherence, consciousness, or clinical efficacy.
+2. **No Clinical Claims**: The software must not be used to formulate medical or diagnostic assertions.
+3. **No Formal Bayes Factors**: Outputs explicitly enforce `formal_bayes_factor = null`, `scientific_pass = false`, and `evidence_class = "descriptive_or_paired_statistics"`.
+4. **Metric Separation**: Graph 1-Betti numbers ($\beta_1$), spatial winding, topological charge, and scalar chirality are computed and reported as independent physical/topological dimensions. They are never conflated or merged into composite "master" scalars.
+5. **Bayesian Gate Independence**: This module does not compute Bayes factors and does not modify the falsification gate ($K > 100$).
+6. **Deterministic Auditability**: Every report includes a verifiable SHA-256 checksum and exact records for all excluded subject pairs.

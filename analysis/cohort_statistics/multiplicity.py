@@ -1,68 +1,121 @@
-"""Multiple testing corrections for paired-cohort statistical testing."""
+"""Multiple hypothesis testing corrections for cohort metric comparisons.
+
+Supports:
+- Holm-Bonferroni step-down (Family-Wise Error Rate)
+- Bonferroni single-step (FWER)
+- Benjamini-Hochberg step-up (False Discovery Rate)
+- Explicit multiplicity_unavailable handling when method is absent
+- Graceful preservation of None/unavailable test results.
+"""
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Sequence
+
 from .models import MultiplicityMethod
 
 
-def adjust_p_values(
-    p_values: Mapping[str, float | None],
-    method: str | MultiplicityMethod = MultiplicityMethod.HOLM,
-) -> dict[str, float | None]:
-    """Applies multiple comparison correction across family of tested metrics.
+def resolve_multiplicity(
+    p_values: Sequence[float | None],
+    method: MultiplicityMethod | str | None = MultiplicityMethod.HOLM,
+) -> tuple[list[float | None], str]:
+    """Adjust p-values and return a tuple of (adjusted_p_values, multiplicity_status).
 
-    Preserves exact nulls for uncomputed or invalid tests. Supported methods:
-    - holm (Holm-Bonferroni step-down)
-    - bonferroni (Single-step Bonferroni)
-    - fdr_bh (Benjamini-Hochberg False Discovery Rate)
-    - none (Unadjusted raw p-values)
+    If method is absent, None, or 'multiplicity_unavailable', returns explicit
+    status 'multiplicity_unavailable' and all adjusted p-values as None.
     """
-    method_str = method.value if isinstance(method, MultiplicityMethod) else str(method).lower()
-    adjusted: dict[str, float | None] = {k: None for k in p_values}
+    if method is None or (isinstance(method, str) and method.lower() in ("absent", "unavailable", "multiplicity_unavailable")):
+        return [None] * len(p_values), "multiplicity_unavailable"
 
-    # Extract valid, finite p-values in deterministic key order
-    valid_items = [(k, float(v)) for k, v in sorted(p_values.items()) if v is not None]
-    m = len(valid_items)
+    if isinstance(method, str):
+        try:
+            method = MultiplicityMethod(method.lower())
+        except ValueError:
+            return [None] * len(p_values), "multiplicity_unavailable"
+
+    if method == MultiplicityMethod.UNAVAILABLE:
+        return [None] * len(p_values), "multiplicity_unavailable"
+
+    if method == MultiplicityMethod.NONE:
+        return [p if p is not None else None for p in p_values], "none"
+
+    adjusted = adjust_p_values(p_values, method=method)
+    return adjusted, "corrected"
+
+
+def adjust_p_values(
+    p_values: Sequence[float | None],
+    method: MultiplicityMethod | str | None = MultiplicityMethod.HOLM,
+) -> list[float | None]:
+    """Adjust a collection of p-values for multiple comparisons.
+
+    Non-testable / unavailable p-values (None) are excluded from the comparison
+    count m and preserved as None at their original positions.
+    If method is absent or unavailable, returns all None to avoid treating multiple tests as single.
+    """
+    if method is None or (isinstance(method, str) and method.lower() in ("absent", "unavailable", "multiplicity_unavailable")):
+        return [None] * len(p_values)
+
+    if isinstance(method, str):
+        try:
+            method = MultiplicityMethod(method.lower())
+        except ValueError:
+            return [None] * len(p_values)
+
+    if method == MultiplicityMethod.UNAVAILABLE:
+        return [None] * len(p_values)
+
+    if method == MultiplicityMethod.NONE:
+        return [p if p is not None else None for p in p_values]
+
+    # Filter valid p-values while preserving original indices
+    valid_indices: list[int] = []
+    valid_p: list[float] = []
+    for idx, p in enumerate(p_values):
+        if p is not None and 0.0 <= p <= 1.0:
+            valid_indices.append(idx)
+            valid_p.append(float(p))
+
+    m = len(valid_p)
+    out: list[float | None] = [None] * len(p_values)
 
     if m == 0:
-        return adjusted
+        return out
+    if m == 1:
+        out[valid_indices[0]] = valid_p[0]
+        return out
 
-    if method_str == MultiplicityMethod.NONE.value or method_str == "none":
-        for k, v in valid_items:
-            adjusted[k] = min(1.0, max(0.0, v))
-        return adjusted
+    if method == MultiplicityMethod.BONFERRONI:
+        for orig_idx, p in zip(valid_indices, valid_p):
+            out[orig_idx] = min(1.0, p * m)
+        return out
 
-    if method_str == MultiplicityMethod.BONFERRONI.value or method_str == "bonferroni":
-        for k, v in valid_items:
-            adjusted[k] = min(1.0, max(0.0, v * m))
-        return adjusted
+    # Order valid p-values ascending: (p_val, original_valid_index)
+    sorted_pairs = sorted(enumerate(valid_p), key=lambda item: item[1])
+    ranked_indices = [item[0] for item in sorted_pairs]
+    sorted_p = [item[1] for item in sorted_pairs]
 
-    if method_str == MultiplicityMethod.HOLM.value or method_str == "holm":
-        # Sort by p-value ascending, tie-breaking by key name for determinism
-        sorted_by_p = sorted(valid_items, key=lambda item: (item[1], item[0]))
-        running_max = 0.0
-        for i, (k, p) in enumerate(sorted_by_p):
-            rank = i + 1
-            cand = (m - rank + 1) * p
-            running_max = max(running_max, cand)
-            adjusted[k] = min(1.0, max(0.0, running_max))
-        return adjusted
+    adjusted_sorted = [0.0] * m
 
-    if method_str == MultiplicityMethod.FDR_BH.value or method_str == "fdr_bh":
-        # Sort by p-value ascending
-        sorted_by_p = sorted(valid_items, key=lambda item: (item[1], item[0]))
-        # Step-up adjustment from highest to lowest rank
-        adj_values = [0.0] * m
-        running_min = 1.0
-        for i in range(m - 1, -1, -1):
-            k, p = sorted_by_p[i]
-            rank = i + 1
-            cand = (p * m) / rank
-            running_min = min(running_min, cand)
-            adj_values[i] = min(1.0, max(0.0, running_min))
+    if method == MultiplicityMethod.HOLM:
+        # Step-down: p_(k) * (m - k + 1), enforce non-decreasing
+        cum_max = 0.0
+        for k, p in enumerate(sorted_p):
+            multiplier = m - k
+            adj = min(1.0, p * multiplier)
+            cum_max = max(cum_max, adj)
+            adjusted_sorted[k] = cum_max
 
-        for (k, _), adj_p in zip(sorted_by_p, adj_values):
-            adjusted[k] = adj_p
-        return adjusted
+    elif method == MultiplicityMethod.FDR_BH:
+        # Step-up: p_(k) * m / (k + 1), enforce non-increasing backwards
+        cum_min = 1.0
+        temp_adj = [min(1.0, p * m / (k + 1)) for k, p in enumerate(sorted_p)]
+        for k in range(m - 1, -1, -1):
+            cum_min = min(cum_min, temp_adj[k])
+            adjusted_sorted[k] = cum_min
 
-    raise ValueError(f"Unsupported multiplicity correction method: {method_str}")
+    # Map back to original list positions
+    for rank_idx, adj_p in zip(ranked_indices, adjusted_sorted):
+        orig_pos = valid_indices[rank_idx]
+        out[orig_pos] = float(adj_p)
+
+    return out
