@@ -1,0 +1,40 @@
+# Synthetic / scientific row labeled PASS. Must fail closed.
+schema_id: nts-release-blocker-registry
+schema_version: "0.1.0"
+kind: blocker_registry
+inventory_is_not_evidence: true
+empirical_pass_from_this_pack: true
+scientific_pass_from_this_pack: PASS
+allowed_categories:
+  - SCIENTIFIC_REVIEW
+current_integration:
+  pr_number: 236
+  merged: false
+  state: OPEN
+  draft: false
+  head_ref_oid: be277ecdac301d49dca27ef9612ebe6c560245ad
+  expected_head_from_work_order: be277ecdac301d49dca27ef9612ebe6c560245ad
+  current_head_mismatch: false
+research_phase:
+  synthetic_status: PASS
+  empirical_pass_from_this_pack: true
+blockers:
+  - id: fixture-synthetic-pass
+    category: SCIENTIFIC_REVIEW
+    severity: high
+    status: open
+    affected_pr_or_branch: "PR #236 synthetic fixture"
+    exact_evidence:
+      - "tests/release/fixtures/blockers/malformed_synthetic_pass.yaml"
+    reproducibility: unknown
+    owner_role: research
+    recommended_action: refuse_scientific_pass
+    scientific_impact: PASS
+    release_impact: BLOCKS_SCIENTIFIC_RELEASE_CLAIM
+    research_classification:
+      status: classified
+      class: scientific
+      treats_unsupported_claim_as_evidence: false
+      scientific_claim_status: PASS
+      billing_vs_true_ci: not_applicable
+      author_claim_independently_verified: null
