@@ -519,8 +519,13 @@ def _windows_runner_records(cap: Capability, timeout_s: int) -> List[AcceptanceR
             "    assert True\n",
             encoding="utf-8",
         )
-        fres = execute(build_runner_argv([str(flood)], timeout_s=timeout_s, extra=["-s"]),
-                       timeout_s=timeout_s + 30)
+        flood_timeout_s = max(timeout_s, 10)
+        fres = execute(
+                       build_runner_argv(
+                           [str(flood)], timeout_s=flood_timeout_s,
+                           extra=["--pytest-arg=-s"],
+                       ),
+                       timeout_s=flood_timeout_s + 30)
         records.append(_record(
             cap, "output_flood_draining_runner", "windows_runner",
             expected="runner_drains_flood",

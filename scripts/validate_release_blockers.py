@@ -335,6 +335,11 @@ def emit_report(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # Reports intentionally preserve Unicode claim/triage symbols.  Windows
+    # subprocesses can otherwise inherit the legacy ``charmap`` stream and
+    # fail before emitting a valid report.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="strict")
     args = parse_args(argv)
     registry = Path(args.registry) if args.registry else REGISTRY_PATH
     if not registry.is_absolute():

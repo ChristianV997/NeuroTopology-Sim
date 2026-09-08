@@ -134,6 +134,12 @@ def run_case_once(
         }
         if os.name != "nt":
             popen_kwargs["start_new_session"] = True
+        else:
+            # Abort/crash probes must remain headless on Windows.  Without
+            # this flag the CRT may surface a modal error dialog, leaving the
+            # pipe reader waiting until the per-case timeout instead of
+            # reporting CHILD_CRASH and honoring the retry budget.
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         proc = subprocess.Popen(**popen_kwargs)
         try:
             stdout_text, stderr_text = proc.communicate(timeout=timeout_s)

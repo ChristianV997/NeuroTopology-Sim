@@ -481,6 +481,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--report", type=Path, default=None, help="Path to write JSON telemetry report")
     parser.add_argument("--report-dir", type=Path, default=None, help="Directory for per-batch logs and batch_summary.json")
     parser.add_argument("--marker", "-m", type=str, default=None, help="Pytest marker expression (e.g. 'not slow')")
+    parser.add_argument(
+        "--pytest-arg",
+        action="append",
+        default=[],
+        metavar="ARG",
+        help="Additional argument passed to each pytest worker (repeatable)",
+    )
     parser.add_argument("--fail-fast", action="store_true", help="Halt execution on first failing batch")
     parser.add_argument("files", nargs="*", type=Path, help="Explicit test files; defaults to discovery")
 
@@ -489,6 +496,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     extra_args: List[str] = []
     if args.marker:
         extra_args.extend(["-m", args.marker])
+    extra_args.extend(args.pytest_arg)
 
     files = args.files or discover(args.root)
     if not files:
