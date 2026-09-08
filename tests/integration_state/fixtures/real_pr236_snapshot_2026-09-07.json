@@ -1,0 +1,15 @@
+{
+  "_note": "Hand-fetched via mcp__github__pull_request_read against ChristianV997/NeuroTopology-Sim PR #236 on 2026-09-07. body is the real PR description text (trimmed of the integration/validation prose not needed for this tool); head_sha and merged are the real API fields, NOT parsed from body text.",
+  "number": 236,
+  "state": "open",
+  "draft": false,
+  "merged": false,
+  "head_ref": "codex/integration-all-open-prs",
+  "head_sha": "af3ac584419148ddcfc57cb565c416eba6328725",
+  "base_ref": "main",
+  "base_sha": "62aa8fee786abf916ab0aa2b7e7b91c570fee119",
+  "body": "Final integration merger handoff. Integrated in dependency order: #209, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #224, #232, #226, #234, #228, #229, #230, #227, #231, #233, #235, #238, and #225. Final commit: `af3ac584277747ae29882d3f5a39af5c4a436f22`",
+  "checks": {
+    "required-checks": {"status": "completed", "conclusion": "failure", "failure_signature": "GitHub Actions checks currently fail before usable steps/logs (infrastructure/billing-blocked, not CI success)"}
+  }
+}
