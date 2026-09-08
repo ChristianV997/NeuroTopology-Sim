@@ -283,3 +283,26 @@ Additional entries are appended after each logical merge group and final validat
 - PR #236 was pushed at `c8b96eb` and remains open. GitHub required checks
   still fail before job steps with the billing/runner infrastructure condition;
   main was not merged.
+
+### 2026-09-07 — consolidated open-PR pass
+
+- The live open-PR set was re-fetched and reassessed. Distinct useful work
+  integrated into this lane includes #206, #207, #208, #225, #239, #241,
+  #242, #243, #244, #248, #252, #253, #255, #262, #264, and #267–#283,
+  in addition to the previously integrated #223–#240 and #245–#261 lineage.
+- #279's export conflict was resolved by retaining both triadic-connectivity
+  and directed-hypergraph APIs with non-colliding schema names. The resulting
+  higher-order suite passed.
+- Local validation found and repaired three portability defects: Windows UTF-8
+  release-blocker output, Windows benchmark crash probes, and the runner
+  acceptance harness's unsupported pytest passthrough/too-short flood timeout.
+  The process-isolated benchmark child also needed to add the repository root
+  to `sys.path` when launched by absolute path. Its focused suite is now
+  `15 passed, 1 skipped`; cohort-statistics validation is `19 passed`.
+- #262 was retained as a real cohort-statistics refinement and merged with its
+  edge-case tests. #222, #249, and #271 are broad aggregate CI rewrites whose
+  deletions/replacements are already superseded by the narrower reconciled
+  CI lineage; they are not merged wholesale. #237 and #256 explicitly say
+  do-not-merge and remain audit inputs only. #265 introduces live AWS/daemon/
+  autonomous orchestration paths and is excluded from the scientific release
+  lane.
