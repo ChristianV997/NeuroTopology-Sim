@@ -519,7 +519,10 @@ def _windows_runner_records(cap: Capability, timeout_s: int) -> List[AcceptanceR
             "    assert True\n",
             encoding="utf-8",
         )
-        flood_timeout_s = max(timeout_s, 10)
+        # A 5 MiB uncaptured flood can be slow on Windows/Python startup even
+        # when the pipe-draining behavior is correct. Keep the scenario bounded
+        # but leave enough headroom to avoid a timing-dependent false failure.
+        flood_timeout_s = max(timeout_s, 30)
         fres = execute(
                        build_runner_argv(
                            [str(flood)], timeout_s=flood_timeout_s,
