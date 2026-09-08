@@ -1,7 +1,7 @@
 """Bounded streaming recording reader across electrophysiology and array formats.
 
 Ensures recordings are streamed window-by-window without materializing full cohorts
-into system memory.
+or full recording matrices into memory.
 """
 from __future__ import annotations
 
@@ -134,34 +134,64 @@ class RecordingStreamer:
 
     def iter_windows(
         self,
-        window_samples: int = 1024,
         *,
+        window_samples: int = 1024,
+        window_duration_s: float | None = None,
         step_samples: int | None = None,
+        step_duration_s: float | None = None,
+        channel_limit: int | None = None,
+        sample_limit: int | None = None,
+        max_points_per_window: int | None = None,
         max_windows: int | None = None,
     ) -> Iterator[tuple[int, np.ndarray, bool]]:
         """Yields bounded windows `(window_index, window_data, is_finite)`.
 
-        Each window is shape `(channels, window_samples)`.
-        Memory is bounded to the active window.
+        Each window is shape `(channels, window_samples)` with channel_limit applied.
+        Memory is strictly bounded to the active window.
         """
-        if window_samples < 8:
-            raise ValueError(f"window_samples must be >= 8, got {window_samples}")
-
-        step = step_samples if step_samples is not None else window_samples
         meta = self.get_metadata()
+
+        if window_duration_s is not None:
+            effective_window_samples = int(round(window_duration_s * meta.sampling_rate_hz))
+        else:
+            effective_window_samples = window_samples
+
+        if max_points_per_window is not None:
+            effective_window_samples = min(effective_window_samples, max_points_per_window)
+
+        if effective_window_samples < 8:
+            raise ValueError(f"effective window samples must be >= 8, got {effective_window_samples}")
+
+        if step_duration_s is not None:
+            effective_step = int(round(step_duration_s * meta.sampling_rate_hz))
+        elif step_samples is not None:
+            effective_step = step_samples
+        else:
+            effective_step = effective_window_samples
+
+        if effective_step < 1:
+            raise ValueError(f"effective step must be >= 1, got {effective_step}")
+
         ext = self.path.suffix.lower()
         windows_yielded = 0
+        total_samples_streamed = 0
+
+        effective_sample_count = meta.sample_count
+        if sample_limit is not None:
+            effective_sample_count = min(effective_sample_count, sample_limit)
 
         if ext == ".npy":
             arr = np.load(self.path, mmap_mode="r")
-            n_samples = meta.sample_count
-            for start in range(0, n_samples - window_samples + 1, step):
+            for start in range(0, effective_sample_count - effective_window_samples + 1, effective_step):
                 if max_windows is not None and windows_yielded >= max_windows:
                     break
-                chunk = np.asarray(arr[:, start : start + window_samples], dtype=np.float64)
+                chunk = np.asarray(arr[:, start : start + effective_window_samples], dtype=np.float64)
+                if channel_limit is not None and channel_limit < chunk.shape[0]:
+                    chunk = chunk[:channel_limit, :]
                 is_finite = bool(np.all(np.isfinite(chunk)))
                 yield windows_yielded, chunk, is_finite
                 windows_yielded += 1
+                total_samples_streamed += effective_window_samples
             return
 
         if ext == ".csv":
@@ -182,23 +212,29 @@ class RecordingStreamer:
                     next(reader, None)
 
                 buffer: list[list[float]] = []
+                samples_read = 0
                 for row in reader:
                     if not row:
                         continue
+                    if sample_limit is not None and samples_read >= sample_limit:
+                        break
                     try:
                         vals = [float(v) for v in row]
                     except ValueError:
                         vals = [np.nan] * len(row)
                     buffer.append(vals)
+                    samples_read += 1
 
-                    if len(buffer) == window_samples:
+                    if len(buffer) == effective_window_samples:
                         if max_windows is not None and windows_yielded >= max_windows:
                             break
                         chunk = np.asarray(buffer, dtype=np.float64).T
+                        if channel_limit is not None and channel_limit < chunk.shape[0]:
+                            chunk = chunk[:channel_limit, :]
                         is_finite = bool(np.all(np.isfinite(chunk)))
                         yield windows_yielded, chunk, is_finite
                         windows_yielded += 1
-                        buffer = buffer[step:]
+                        buffer = buffer[effective_step:]
             return
 
         if ext in (".vhdr", ".edf", ".fif", ".bdf"):
@@ -206,14 +242,16 @@ class RecordingStreamer:
 
             stream = read_local_raw(self.path, preload=False)
             raw = stream.raw
-            total_samples = int(raw.n_times)
+            total_samples = min(int(raw.n_times), effective_sample_count)
 
-            for start in range(0, total_samples - window_samples + 1, step):
+            for start in range(0, total_samples - effective_window_samples + 1, effective_step):
                 if max_windows is not None and windows_yielded >= max_windows:
                     break
-                stop = start + window_samples
+                stop = start + effective_window_samples
                 data = raw.get_data(start=start, stop=stop)
                 chunk = np.asarray(data, dtype=np.float64)
+                if channel_limit is not None and channel_limit < chunk.shape[0]:
+                    chunk = chunk[:channel_limit, :]
                 is_finite = bool(np.all(np.isfinite(chunk)))
                 yield windows_yielded, chunk, is_finite
                 windows_yielded += 1
