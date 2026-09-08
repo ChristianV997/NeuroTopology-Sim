@@ -306,3 +306,11 @@ Additional entries are appended after each logical merge group and final validat
   do-not-merge and remain audit inputs only. #265 introduces live AWS/daemon/
   autonomous orchestration paths and is excluded from the scientific release
   lane.
+
+- A final live sweep found #284–#291 after the earlier queue was closed. All
+  eight were scoped, non-live higher-order extensions and were integrated in
+  the follow-up PR #292: campaign falsification, source resolution,
+  adversarial validation, literature audit, runtime benchmarking, spectral and
+  triadic adapters, and empirical forecasting execution. Their focused suites
+  passed `77` and `26` tests respectively. No PR remained open after the
+  follow-up merge.
