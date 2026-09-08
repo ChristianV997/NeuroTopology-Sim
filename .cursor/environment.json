@@ -1,0 +1,17 @@
+{
+  "name": "NeuroTopology-Sim",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "awareness-studio-web",
+      "command": "cd apps/awareness_studio && PYTHONPATH=src INDEX_BACKEND=bm25 .venv/bin/uvicorn awareness_studio.web.app:app --host 0.0.0.0 --port 8000",
+      "description": "Awareness Studio FastAPI Control Panel + RAG chat API on :8000 (offline BM25; set OPENAI_API_KEY/ANTHROPIC_API_KEY in apps/awareness_studio/.env for live LLM chat)."
+    }
+  ],
+  "ports": [
+    {
+      "name": "awareness-studio-web",
+      "port": 8000
+    }
+  ]
+}
