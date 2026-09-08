@@ -1,112 +1,163 @@
-# Current state — evidence-bundle-release Lead inventory + Research classification
+# Current state — release-evidence-compilation Lead inventory
 
-**Inventory date:** 2026-09-06  
+**Inventory date:** 2026-09-06T06:06:55Z  
 **Repository:** https://github.com/ChristianV997/NeuroTopology-Sim  
 **Live `origin/main` SHA (refreshed):** `62637a4b9c82c0c258bfc49e28dee1af757b1c25`  
 **Main tip:** merge of PR #205 (`Merge pull request #205 …`)  
-**Inspector:** Lead phase, disposable worktree from `origin/main`  
-**Evidence source:** GitHub API / `gh` (live). Caller handoff used only for the dirty-checkout prohibition and the required scientific warnings below.  
-**Scope:** Lead inventory only. No schema, no compiler, no production solvers, no CI edits, no MarketOS.  
-**Research addendum:** claim classification appended below (2026-09-06, classifier `research_and_tooling`, base Lead commit `be80bdd5`). Still no schema/compiler.
+**Inspector:** Lead phase only, disposable worktree from `origin/main`  
+**Evidence source:** GitHub API / `gh` (live), including check-run annotations  
+**Scope:** Lead inventory refresh. No schema, no compiler, no validators,
+no production solvers, no CI edits, no adapters, no MarketOS.  
+**This PR:** [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225)
+(`cursor/release-evidence-compilation-9077`)  
+**Supersede:** draft PR #216 inventory docs only
+(`grok-bot/evidence-bundle-release` FINAL `07841284`). Do **not** open a
+second evidence authority. #216 is `SUPERSEDED` for inventory docs by
+#225. Schema / compiler / `tests/release/**` stay on #216.
 
 This document is a **snapshot of contribution location and merge status**.
 It is not a test report and not a scientific verdict.
 
+**Inventory ≠ evidence.**
+
 ---
 
-## Required warnings (read first)
+## Required explicit statements (read first)
 
-1. **PRs #210, #211, and #212 are NOT merged.** Independently confirmed on
-   GitHub on 2026-09-06: `#210` draft/open, `#211` draft/open, `#212`
-   open (not draft). `mergedAt` is null on all three. Do not treat them
-   as landed on `main`.
-2. **`codex/scientific-falsification-contract` has no confirmed PR.**
-   Branch exists at `111d4fc008a1cf967243631367104e0561014e4a` (ahead of
-   `main` by 1 commit, behind 0). `gh pr list --head
-   codex/scientific-falsification-contract` returned an empty list.
-3. **Missing Antigravity / Grok implementation reports = unverified.**
-   `gh search issues` and PR search found no implementation-report
-   artifacts for Antigravity or Grok lanes. Branch/PR existence is not a
-   substitute for those reports.
-4. **Synthetic data cannot establish scientific `PASS`.** On-main docs
-   (`docs/empirical_falsification_phase1.md`) and campaign sidecar PR
-   text already treat synthetic fixtures as `NOT_SUPPORTED`. Inventory
-   rows that mention author-claimed pytest counts are engineering notes,
-   not empirical evidence.
-5. **Proxy Bayesian method requires correction / formal likelihood
-   validation** before any strong empirical interpretation. On `main`,
+1. **PRs are not merged unless GitHub says merged.** Independently
+   confirmed on 2026-09-06: every PR in the #206–#222 wave has
+   `state=OPEN` and `mergedAt=null`. That includes #210, #211, #212,
+   #215, #216, #219, and #222. `mergeable=MERGEABLE` only means Git can
+   apply the diff. It is not a QA or scientific sign-off.
+2. **CI billing failure ≠ passing tests.** Check-run annotations on
+   #209 and #213–#222 read: *“The job was not started because recent
+   account payments have failed or your spending limit needs to be
+   increased.”* Those jobs have empty step lists (~3–6 s). That is
+   `BILLING_BLOCKED`. It does **not** mean tests passed, and it does
+   **not** mean the diff is green.
+3. **Disk-full CI failure ≠ passing tests.** Independently read
+   `core-tests` logs for #206, #208, #210, #211, and #212 show jobs that
+   **did start** and then failed during `pip install` (`OSError: [Errno
+   28] No space left on device`, or annotation “Process completed with
+   exit code 1” after the install step). That is `CI_BLOCKED`
+   (environment / disk). Pytest was skipped. Not a compiled scientific
+   result.
+4. **Proxy Bayes ≠ formal Bayes factors.** On `main`,
    `sim/pitnn/bayesian_falsification.py` states that `bayes_factor` is a
-   “descriptive Bayes-factor proxy” (Gaussian residual likelihood ratio /
-   RSS). The unmerged falsification-contract branch draft further
-   separates formal marginal-likelihood `K` from `bayes_factor_proxy_from_rss`.
-   Lead does not validate that branch scientifically.
+   “descriptive Bayes-factor proxy” (Gaussian residual likelihood ratio
+   / RSS). Do not treat on-main `bayes_factor` or author-claimed `K`
+   language as a formal marginal-likelihood Bayes factor.
+5. **Synthetic ≠ biological evidence.** Synthetic fixtures, lattice
+   campaigns, and performance stand-in workloads cannot establish
+   scientific `PASS` or biological evidence.
+6. **Process-memory numbers must say RSS vs tracemalloc when known;
+   else unavailable.** Lead did not re-run #211 or #215 benchmarks.
+   Independently verified process-memory numbers: **unavailable**.
+   Author-claimed numbers in the #215 PR body (unverified) must stay
+   labeled: `tracemalloc` peak vs RSS delta vs process-lifetime peak
+   RSS. Do not collapse them into one “memory” figure.
+7. **Missing adapters ≠ supported.** #212 is contracts + lazy registry
+   only (not merged). #220 adds adapter files but is **not merged** and
+   is stacked on #212. Absence or presence of adapter files is not a
+   support claim.
+8. **This branch supersedes #216 inventory docs; do not open a second
+   evidence authority.** QA schema, Release compiler, and
+   `tests/release/**` stay on #216. This Lead pack does not copy or
+   rewrite them.
 
 **Merger: do not merge this inventory PR. Do not mark ready.**
 
 ---
 
-## MERGED
+## STACKED_PRS
 
-These PRs are independently verified merged on GitHub. They are listed
-because they define the live `main` baseline or the already-landed
-evidence / disorder-modes substrate that later unmerged work attaches to.
+| Child | Parent | Relationship | Verified how |
+| --- | --- | --- | --- |
+| **#215 → #211** | #215 `cursor/rss-memory-telemetry` @ `0dadb61b` | **STACKED** | GitHub: #215 `baseRefName=cursor/streaming-performance-benchmarks`, `baseRefOid=54c246943e7c3ba8171066eec24c67a1408b2956` (exact #211 head). PR body: “Stacked on #211.” |
+| #220 → #212 | #220 `antigravity/native-signal-adapters` @ `5bd26dc5` | STACKED (related) | GitHub: #220 `baseRefName=codex/interop-signal-contracts`, `baseRefOid=a21dcb2461cdf94da0b41a684a2ac1353153ab35` (exact #212 head). |
 
-| ID | PR | Merge commit | Head | Notes |
-| --- | --- | --- | --- | --- |
-| `nts-pr-205` | [#205](https://github.com/ChristianV997/NeuroTopology-Sim/pull/205) | `62637a4b9c82c0c258bfc49e28dee1af757b1c25` | `351c8c31f8d2bc28dae908a7c3cb2f6f7cf63f52` | Current `main` tip. OSS trend scout + integration opportunity registry. Branch name `claude/consciousness-transitions-tests-ggx7ph` is a reused lane, not a transitions-science claim. |
-| `nts-pr-189` | [#189](https://github.com/ChristianV997/NeuroTopology-Sim/pull/189) | `60503e5e282d62e4b74deffe567dc2c16448fd8f` | `ff3e71272ff5ea720db1082bbaac11a258ecb977` | Evidence Report Generator v1 (`reports/`). Landed 2026-08-11. |
-| `nts-pr-188` | [#188](https://github.com/ChristianV997/NeuroTopology-Sim/pull/188) | `2cd7ee0919ee760cc0ab17b3167ef212e69be5e0` | `619d9aa058f573ea5e1f15544d1b3aa2a9ec2fb3` | `evidence/` governed EvidenceBundle layer. Landed 2026-08-11. |
-| `nts-pr-184` | [#184](https://github.com/ChristianV997/NeuroTopology-Sim/pull/184) | `1031a9399680f9d388d2652c68672b78e744d08b` | `abba063fddffb4a6cbabefe3f8dd2816863a6d8e` | Disorder-averaged collective-modes campaign. Landed 2026-08-04. The leftover remote branch of the same name is **not** new unmerged work (see BLOCKED). |
-
-PRs #185–#204 are also merged onto the same `main` line (2026-08-11 /
-2026-08-12 wave: transitions, phase-space, adapters, report pipeline,
-benchmark packs, CI audit). They are **not** re-inventoried row-by-row
-here. Presence on `main` was verified by `origin/main` = `#205` merge
-and by `gh pr list --state merged`. That list is substrate, not new
-evidence.
-
-No merged PR in this snapshot is treated as a scientific `PASS`.
+No other PR in #206–#222 targets another open PR branch.
 
 ---
 
-## OPEN / DRAFT
+## Branch-only: `scientific-falsification-contract`
 
-All of the following are independently verified **not merged**
-(`state=OPEN`, `mergedAt=null`). GitHub reports `mergeable=MERGEABLE`
-and `mergeStateStatus=UNSTABLE` on every one (checks red). `MERGEABLE`
-here means Git can merge the diff; it is **not** a QA or scientific
-sign-off.
+| Field | Value |
+| --- | --- |
+| Branch | `codex/scientific-falsification-contract` |
+| Tip | `111d4fc008a1cf967243631367104e0561014e4a` |
+| vs `main` | ahead 1 / behind 0 |
+| PR? | **No.** `gh pr list --head ChristianV997:codex/scientific-falsification-contract` returned `[]`. |
+| Status | `BRANCH_ONLY` + `SCIENTIFIC_REVIEW_REQUIRED` |
 
-### Named by the work order (#208–#212)
+Related but **not** a PR for that branch: open #219
+(`codex/bayes-falsification-hardening` @ `a7dd8e24`) also edits
+`sim/pitnn/bayesian_falsification.py` with a different file set. Not
+marked `DUPLICATE`. Both need scientific review. Neither is merged.
 
-| ID | PR | Draft? | Branch | Final commit | Mergeable note |
-| --- | --- | --- | --- | --- | --- |
-| `nts-pr-208` | [#208](https://github.com/ChristianV997/NeuroTopology-Sim/pull/208) | draft | `cursor/disorder-modes-runrecord-sidecar-v1-04d8` | `5c2bfe045158cf788a658cda6f43121e91e053c7` | MERGEABLE / UNSTABLE. Work order `NTS-SLICE-A-RUNRECORD-SIDECAR-01`. Opt-in `RunRecordV1` sidecar. Author text: sidecar verdict `NOT_SUPPORTED` or `INCONCLUSIVE` only. |
-| `nts-pr-209` | [#209](https://github.com/ChristianV997/NeuroTopology-Sim/pull/209) | draft | `grok-bot/retrofit-inventory` | `3a3cf3dfd60416876914bb90f8604ab9e9e8d360` | MERGEABLE / UNSTABLE. Retrofit inventory Phases 1–5 (scanner, registry, validators, reports, CLI). Author text: inventory is not scientific evidence; reports never emit scientific `PASS`. |
-| `nts-pr-210` | [#210](https://github.com/ChristianV997/NeuroTopology-Sim/pull/210) | draft | `claude/ecosystem-integration` | `2d46f863bfcc142de34dd052719be5d838ec42a1` | **NOT MERGED.** MERGEABLE / UNSTABLE. Scaffold only. PR body claimed seven dependency branches were absent **at authoring time** (2026-09-06T02:10Z). Those branches **do exist now** (see OPEN rows and BRANCH_ONLY). Treat the PR-body absence claim as stale vs this snapshot. |
-| `nts-pr-211` | [#211](https://github.com/ChristianV997/NeuroTopology-Sim/pull/211) | draft | `cursor/streaming-performance-benchmarks` | `54c246943e7c3ba8171066eec24c67a1408b2956` | **NOT MERGED.** MERGEABLE / UNSTABLE. Bounded streaming + PITNN NumPy Heun fallback. Author-claimed pytest/benchmark numbers are **unverified** here. |
-| `nts-pr-212` | [#212](https://github.com/ChristianV997/NeuroTopology-Sim/pull/212) | no (open) | `codex/interop-signal-contracts` | `a21dcb2461cdf94da0b41a684a2ac1353153ab35` | **NOT MERGED.** MERGEABLE / UNSTABLE. Signal interop contracts + lazy registry. |
+---
+
+## MERGED (verified on GitHub)
+
+These PRs are independently verified merged. They define the live `main`
+baseline. They are **not** a scientific `PASS`.
+
+| ID | PR | Merge commit / head | Status | Notes |
+| --- | --- | --- | --- | --- |
+| `nts-pr-205` | [#205](https://github.com/ChristianV997/NeuroTopology-Sim/pull/205) | merge `62637a4b` / head `351c8c31` | `VERIFIED_MERGED` | Current `main` tip. OSS trend scout. Reused Claude lane name. |
+| `nts-pr-189` | [#189](https://github.com/ChristianV997/NeuroTopology-Sim/pull/189) | merge `60503e5e` / head `ff3e7127` | `VERIFIED_MERGED` | Evidence Report Generator v1. Landed 2026-08-11. |
+| `nts-pr-188` | [#188](https://github.com/ChristianV997/NeuroTopology-Sim/pull/188) | merge `2cd7ee09` / head `619d9aa0` | `VERIFIED_MERGED` | `evidence/` governed EvidenceBundle layer. |
+| `nts-pr-184` | [#184](https://github.com/ChristianV997/NeuroTopology-Sim/pull/184) | merge `1031a939` / head `abba063f` | `VERIFIED_MERGED` | Disorder-averaged collective-modes campaign. Leftover remote of the same name is **not** new work. |
+
+PRs #185–#204 are also merged onto the same `main` line (2026-08-11 /
+2026-08-12 wave). They are **not** re-inventoried row-by-row. Presence
+on `main` was verified by `origin/main` = #205 merge and by
+`gh pr list --state merged`. Substrate, not new evidence.
+
+---
+
+## OPEN / DRAFT (all `mergedAt=null`)
+
+GitHub reports `mergeable=MERGEABLE` and `mergeStateStatus=UNSTABLE` on
+every row below. Checks are red. None is behind live `main`
+(`baseRefOid=62637a4b` except stacked PRs, whose bases are other open
+heads).
+
+### Named work-order window (#209–#219, #222) plus related #220 / #221
+
+| ID | PR | Draft? | Head | Base SHA | Status | Check rollup (latest name→conclusion) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `nts-pr-209` | [#209](https://github.com/ChristianV997/NeuroTopology-Sim/pull/209) Phase 1–5 retrofit inventory | draft | `grok-bot/retrofit-inventory` @ `3a3cf3df` | `62637a4b` (`main`) | `DRAFT_REVIEW`, `BILLING_BLOCKED` | ontology/core/smoke/awareness: FAILURE (jobs not started; billing annotation) |
+| `nts-pr-210` | [#210](https://github.com/ChristianV997/NeuroTopology-Sim/pull/210) Ecosystem integration scaffold | draft | `claude/ecosystem-integration` @ `2d46f863` | `62637a4b` | `DRAFT_REVIEW`, `CI_BLOCKED` | awareness SUCCESS; core/ontology/smoke FAILURE (job started; disk/install) |
+| `nts-pr-211` | [#211](https://github.com/ChristianV997/NeuroTopology-Sim/pull/211) Bounded streaming + PITNN NumPy kernel | draft | `cursor/streaming-performance-benchmarks` @ `54c24694` | `62637a4b` | `DRAFT_REVIEW`, `CI_BLOCKED` | awareness + Awareness Studio 3.11/3.12 SUCCESS; core/ontology/smoke FAILURE (Errno 28 during pip) |
+| `nts-pr-212` | [#212](https://github.com/ChristianV997/NeuroTopology-Sim/pull/212) Native signal interop **contracts** | no | `codex/interop-signal-contracts` @ `a21dcb24` | `62637a4b` | `OPEN_REVIEW`, `CI_BLOCKED` | awareness SUCCESS; core/ontology/smoke FAILURE (install exit 1). Contracts ≠ adapters supported. |
+| `nts-pr-213` | [#213](https://github.com/ChristianV997/NeuroTopology-Sim/pull/213) Test isolation / dependency profiles | no | `antigravity/test-isolation-dependency-profiles` @ `f23c7ef7` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled required/docker/E2E FAILURE; billing annotation. No Antigravity implementation report. |
+| `nts-pr-214` | [#214](https://github.com/ChristianV997/NeuroTopology-Sim/pull/214) EEG streaming / preprocessing | no | `antigravity/mne-scipy-streaming-eeg` @ `8aed328f` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled FAILURE; billing annotation. No Antigravity implementation report. |
+| `nts-pr-215` | [#215](https://github.com/ChristianV997/NeuroTopology-Sim/pull/215) Process-memory **RSS** telemetry | draft | `cursor/rss-memory-telemetry` @ `0dadb61b` | **#211** `54c24694` | `DRAFT_REVIEW`, `BILLING_BLOCKED` | **STACKED on #211.** All sampled FAILURE; billing annotation. Memory numbers: see below. |
+| `nts-pr-216` | [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216) Evidence-bundle release (Lead/Research/QA/Release) | draft | `grok-bot/evidence-bundle-release` @ `07841284` | `62637a4b` | `SUPERSEDED`, `DRAFT_REVIEW`, `BILLING_BLOCKED` | Inventory docs superseded by **#225**. Schema/compiler stay on #216. Do not fork. |
+| `nts-pr-217` | [#217](https://github.com/ChristianV997/NeuroTopology-Sim/pull/217) Optional backend capability registry | no | `grok/tool-registry-admission` @ `ffc8f6df` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | All sampled FAILURE; billing annotation. No Grok implementation report. |
+| `nts-pr-218` | [#218](https://github.com/ChristianV997/NeuroTopology-Sim/pull/218) Read-only integration reconciliation | draft | `claude/integration-reconciliation` @ `746da4df` | `62637a4b` | `DRAFT_REVIEW`, `BILLING_BLOCKED` | All sampled FAILURE; billing annotation. Tooling only. |
+| `nts-pr-219` | [#219](https://github.com/ChristianV997/NeuroTopology-Sim/pull/219) Harden Bayesian falsification evidence contract | no | `codex/bayes-falsification-hardening` @ `a7dd8e24` | `62637a4b` | `OPEN_REVIEW`, `SCIENTIFIC_REVIEW_REQUIRED`, `BILLING_BLOCKED` | All sampled FAILURE; billing annotation. Proxy vs formal K language is **not** a scientific PASS. |
+| `nts-pr-220` | [#220](https://github.com/ChristianV997/NeuroTopology-Sim/pull/220) Native signal interop **adapters** | no | `antigravity/native-signal-adapters` @ `5bd26dc5` | **#212** `a21dcb24` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | **STACKED on #212.** Missing/unmerged adapters ≠ supported. Billing annotation. |
+| `nts-pr-221` | [#221](https://github.com/ChristianV997/NeuroTopology-Sim/pull/221) Legacy timeout / path validation repair | no | `antigravity/legacy-timeout-repair` @ `a9aba515` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED`, `UNVERIFIED` | Billing annotation. No Antigravity implementation report. |
+| `nts-pr-222` | [#222](https://github.com/ChristianV997/NeuroTopology-Sim/pull/222) Bounded isolated CI + dependency bootstrap | no | `codex/ci-root-cause-and-green` @ `14bce7f7` | `62637a4b` | `OPEN_REVIEW`, `BILLING_BLOCKED` | Author text classifies #210/#211/#212 failures as pre-test disk/CUDA install. This PR’s own checks did **not start** (billing). Author-claimed 117 tests: unverified. |
 
 ### Other live open PRs on the same `62637a4` baseline
 
-| ID | PR | Draft? | Branch | Final commit | Mergeable note |
+| ID | PR | Draft? | Head | Status | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `nts-pr-206` | [#206](https://github.com/ChristianV997/NeuroTopology-Sim/pull/206) | draft | `cursor/setup-dev-environment-52dc` | `52118e741a20897e7f28a41cf7491d2af0d73107` | MERGEABLE / UNSTABLE. Cloud Agent env config only. |
-| `nts-pr-207` | [#207](https://github.com/ChristianV997/NeuroTopology-Sim/pull/207) | draft | `cursor/pitnn-perf-opt-52dc` | `a0038fd0fe368fbb2f22b5b93104736bccbe9c6e` | MERGEABLE / UNSTABLE. Lindblad RK4 buffer reuse. Overlaps numerically with `#211` (different file: `tryptophan_lindblad.py` vs `kernels_fast.py`). |
-| `nts-pr-213` | [#213](https://github.com/ChristianV997/NeuroTopology-Sim/pull/213) | no (open) | `antigravity/test-isolation-dependency-profiles` | `f23c7ef74b133d65c355d7c4e7778d63a08cc8eb` | MERGEABLE / UNSTABLE. No Antigravity implementation report located. Edits CI/requirements — out of this Lead write set; recorded only. |
-| `nts-pr-214` | [#214](https://github.com/ChristianV997/NeuroTopology-Sim/pull/214) | no (open) | `antigravity/mne-scipy-streaming-eeg` | `8aed328fa23af07737882566d6b60aaca74ac4fb` | MERGEABLE / UNSTABLE. No Antigravity implementation report located. Touches EEG adapters / `validation/analytic_phase.py`. |
-
-Every listed open PR’s first unique commit parent is `62637a4b` (live
-`main`). None is behind `main`.
+| `nts-pr-206` | [#206](https://github.com/ChristianV997/NeuroTopology-Sim/pull/206) | draft | `cursor/setup-dev-environment-52dc` @ `52118e74` | `DRAFT_REVIEW`, `CI_BLOCKED` | Env config only. awareness SUCCESS; core failed after start (install). |
+| `nts-pr-207` | [#207](https://github.com/ChristianV997/NeuroTopology-Sim/pull/207) | draft | `cursor/pitnn-perf-opt-52dc` @ `a0038fd0` | `DRAFT_REVIEW`, `CI_BLOCKED` | Lindblad RK4 buffer reuse. Author speedup table unverified. Overlaps #211 only at different PITNN files. |
+| `nts-pr-208` | [#208](https://github.com/ChristianV997/NeuroTopology-Sim/pull/208) | draft | `cursor/disorder-modes-runrecord-sidecar-v1-04d8` @ `5c2bfe04` | `DRAFT_REVIEW`, `CI_BLOCKED`, `SCIENTIFIC_REVIEW_REQUIRED` | Opt-in `RunRecordV1` sidecar. Author: sidecar verdict `NOT_SUPPORTED` / `INCONCLUSIVE` only; no K computed. Synthetic ≠ biology. |
 
 ---
 
 ## BRANCH_ONLY
 
-| ID | Branch | Tip | vs `main` | PR |
-| --- | --- | --- | --- | --- |
-| `nts-branch-scientific-falsification-contract` | `codex/scientific-falsification-contract` | `111d4fc008a1cf967243631367104e0561014e4a` | ahead 1 / behind 0 | **none** (`gh pr list --head` empty) |
-| `nts-branch-grok-tool-admission-research` | `grok/tool-admission-research` | `1dac04d62912bcb32245cfad20315d3363b41220` | ahead 5 / behind 0 | **none** |
+| ID | Branch | Tip | vs `main` | PR | Status |
+| --- | --- | --- | --- | --- | --- |
+| `nts-branch-scientific-falsification-contract` | `codex/scientific-falsification-contract` | `111d4fc0` | ahead 1 / behind 0 | **none** | `BRANCH_ONLY`, `SCIENTIFIC_REVIEW_REQUIRED` |
+| `nts-branch-grok-tool-admission-research` | `grok/tool-admission-research` | `1dac04d6` | ahead 5 / behind 0 | **none** | `BRANCH_ONLY`, `UNVERIFIED` |
 
 `scientific-falsification-contract` changed files (GitHub compare, not
 scientifically reviewed here):
@@ -119,51 +170,67 @@ scientifically reviewed here):
 - `topo_monitor/graph_persistence.py`
 - `topo_monitor/spatial_phase.py`
 
-`grok/tool-admission-research` is an offline tool-admission registry /
-review-notes branch. No Grok implementation report was found. Do not
-treat the catalog as an admission decision or as evidence.
+Related open PR #219 uses a different path set
+(`docs/scientific_falsification/README.md`,
+`sim/pitnn/bayesian_falsification.py`,
+`tests/test_bayesian_falsification_hardening.py`). Parallel work, not
+`DUPLICATE`.
+
+---
+
+## SUPERSEDED / DUPLICATE
+
+| ID | What | Status |
+| --- | --- | --- |
+| `nts-pr-216` | Draft evidence-bundle pack FINAL `07841284` | **`SUPERSEDED`** for **inventory docs** by [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225). Schema / compiler / `tests/release/**` are **not** superseded and must not be re-implemented. |
+| — | Exact duplicate PRs in this snapshot | **None verified.** Related pairs that are **not** `DUPLICATE`: #219 ↔ branch-only falsification contract; #217 ↔ `grok/tool-admission-research`; #213 ↔ #222 (both touch isolation/CI); #212 ↔ #220 (contracts vs stacked adapters). |
 
 ---
 
 ## BLOCKED
 
-| ID | What | Why blocked for this Lead run |
+| ID | What | Why |
 | --- | --- | --- |
-| `nts-blocked-disorder-modes-leftover-abba063` | Remote `codex/disorder-averaged-collective-modes` still points at `abba063fddffb4a6cbabefe3f8dd2816863a6d8e` | Caller forbade touching that dirty primary checkout / leftover branch. GitHub shows the commit **already merged** as PR #184. Compare vs current `main` is `diverged` (ahead 1 / behind 51) because the remote branch was not deleted and `main` moved on. Lead did **not** inspect any dirty working tree. New sidecar work is PR #208, not this leftover tip. |
-| GitHub Required Checks on the September open-PR wave | `core-tests` / `ontology-claim-language` / `Cross-system smoke` red | Independently sampled job logs for `#206`, `#208`, `#210`, `#211`, `#212` show `OSError: [Errno 28] No space left on device` during `pip install -r requirements.txt` **before pytest**. That is an environment/disk failure, not a compiled scientific result. Jobs for `#209`, `#213`, `#214` failed in ~3s with empty step lists — root cause **unread**. Awareness-tests passed on several PRs (`#206`–`#208`, `#210`–`#212`) and failed immediately on `#209`, `#213`, `#214`. |
+| `nts-blocked-disorder-modes-leftover-abba063` | Remote `codex/disorder-averaged-collective-modes` still at `abba063f` | Caller forbade touching that leftover / dirty primary checkout. GitHub: commit already merged as PR #184. Compare vs current `main` is diverged (ahead 1 / behind 51) because the remote was not deleted. New sidecar work is #208. |
+| Billing wall on #209, #213–#222 | Required Checks / smoke / (where present) Awareness Studio + E2E | Jobs **not started**. Annotation is account payment / spending-limit. `BILLING_BLOCKED` ≠ test pass or test fail. |
+| Disk / install wall on #206, #208, #210, #211, #212 | `core-tests` (and typically ontology + smoke) | Jobs **started**; install died (`Errno 28` on sampled #210/#211 logs; exit 1 annotation on #206/#208/#212). Pytest skipped. `CI_BLOCKED` ≠ test pass. |
+| #222 vs that disk wall | Author claims a CPU-only bootstrap fix | This PR’s own GitHub checks did not start (billing). The fix is **unverified** on GitHub Actions. |
 
-Lead does not rerun CI, does not slim `requirements.txt`, and does not
-declare those red checks as caused-by-current-change.
+---
+
+## Process-memory (RSS vs tracemalloc)
+
+Lead did **not** re-run benchmarks. Independently verified numbers:
+**unavailable**.
+
+Author-claimed figures in the **#215** PR body (unverified; do not
+compile as evidence):
+
+| Workload (author text) | tracemalloc peak | RSS delta | peak RSS (lifetime) |
+| --- | --- | --- | --- |
+| streaming_full | 51.2 MB (`tracemalloc`) | ~0 MB (`RSS`) | 212.3 MB (`RSS`, process-lifetime) |
+| streaming_bounded (2048) | 1.12 MB (`tracemalloc`) | ~0 MB (`RSS`) | 212.3 MB (`RSS`, process-lifetime) |
+| streaming_bounded (16384) | 8.46 MB (`tracemalloc`) | ~0 MB (`RSS`) | 212.3 MB (`RSS`, process-lifetime) |
+| kernel numpy / numba | 21.5 KB (`tracemalloc`) | — | 212.3 MB (`RSS`, process-lifetime) |
+
+Author text also says: RSS deltas ~0 because allocator arenas retain
+freed pages; peak RSS is a process-lifetime high-water mark; tests do
+not gate on absolute wall-clock or noisy RSS deltas; providers return
+`None` when unavailable. **#211** reported `tracemalloc` only (Python
+allocations). Do not treat #211 tracemalloc peaks as process RSS.
 
 ---
 
 ## UNVERIFIED
 
-| ID | Item | Why unverified |
+| ID | Item | Why |
 | --- | --- | --- |
-| `nts-unverified-antigravity-implementation-reports` | Antigravity lane reports for `#213` / `#214` | No issue, gist, or PR-attached implementation report found via `gh` search. |
-| `nts-unverified-grok-implementation-reports` | Grok / grok-bot lane reports for `grok/tool-admission-research` and `#209` | Same: no implementation report found. PR `#209` text is not a substitute report. |
-| `nts-unverified-proxy-bayesian-likelihood` | Formal Bayes factor / likelihood | On-main method is a proxy. Unmerged contract branch is unpublished (no PR). No formal likelihood validation was independently performed in this Lead run. |
-| Author-claimed test counts | pytest / benchmark numbers in PR bodies (`#206`–`#214`, `#209` in particular) | Not re-run here. Do not copy them into a compiled evidence bundle as verified results. |
-| Scientific `PASS` | Any empirical or topology-as-proof claim | None independently verified. None should be inferred from inventory. |
-
----
-
-## CI notes (readable failures only)
-
-Independently read `core-tests` failed logs:
-
-- PR #206 job `101243532368`: `Errno 28` during root `pip install`.
-- PR #208 job `101252966226`: `Errno 28` during root `pip install`.
-- PR #210 job `101412547695`: `Errno 28` during root `pip install`.
-- PR #211 job `101412998793`: `Errno 28` during root `pip install`.
-- PR #212 job `101413702579`: runner warning “61 MB” then `Errno 28`.
-
-Not a pytest-node failure in those sampled logs. This does **not** prove
-the PR diffs would pass tests.
-
-`#209` / `#213` / `#214`: checks `fail` in 2–6 seconds; Actions job
-payloads have `steps: []` and no log body. Classification: **unread**.
+| `nts-unverified-antigravity-implementation-reports` | Antigravity reports for #213, #214, #220, #221 | `gh` issue/PR search found no implementation-report artifacts. Branch/PR existence is not a substitute. |
+| `nts-unverified-grok-implementation-reports` | Grok / grok-bot reports for #209, #217, and `grok/tool-admission-research` | Same: no report found. |
+| `nts-unverified-proxy-bayesian-likelihood` | Formal Bayes factor / likelihood | On-main method is a proxy. Branch-only contract and open #219 are unpublished as merged validation. |
+| Author-claimed test / timing / memory tables | PR bodies (#206–#222, especially #209, #211, #215, #222) | Not re-run here. Do not copy into a compiled evidence bundle as verified results. |
+| Scientific `PASS` | Any empirical or topology-as-proof claim | None independently verified. Inventory ≠ evidence. |
+| Adapter support | Native MNE/EDF/BrainVision/NumPy adapters | #220 not merged; #212 is contracts only. Missing adapters ≠ supported. |
 
 ---
 
@@ -172,35 +239,34 @@ payloads have `steps: []` and no log body. Classification: **unread**.
 These are **warnings for Research**, not executed falsification results.
 
 - Do not compile scientific `PASS` from synthetic fixtures, author-claimed
-  pytest, or performance stand-in workloads (`#211` states its benchmark
+  pytest, or performance stand-in workloads (#211 states its benchmark
   is not a scientific computation).
-- Do not treat `#209` retrofit inventory output as evidence
-  (`scientific_claim_status` is author-described as always `not_evidence`).
-- Do not treat `#208` sidecar `RunRecord.json` as campaign replacement or
+- Do not treat #209 retrofit inventory output as evidence
+  (author: `scientific_claim_status` always `not_evidence`).
+- Do not treat #208 sidecar `RunRecord.json` as campaign replacement or
   as `PASS` (author: `PASS` reserved for Bayes factor `K > 100`; this
   lattice campaign does not compute `K`).
 - Do not interpret on-main `bayes_factor` as a formal marginal-likelihood
-  Bayes factor.
-- Do not assume `#210` consumed the seven dependency branches — its own
-  body says it did not; those branches appeared later the same day.
-- `#213` / `#214` lack implementation reports → keep unverified.
-- `scientific-falsification-contract` is branch-only; do not cite it as a
-  merged contract.
+  Bayes factor. Proxy Bayes ≠ formal Bayes factors.
+- Do not cite `scientific-falsification-contract` as a merged contract
+  (no PR).
+- Do not treat #219 author validation commands as a scientific PASS.
+- Do not assume #210 consumed later dependency branches.
+- #213 / #214 / #220 / #221 lack implementation reports → keep
+  `UNVERIFIED`.
+- #215 author RSS / tracemalloc table is not independently verified.
+- #220 / missing adapters ≠ supported.
+- Do not invent a second evidence schema, compiler, validator, or queue
+  on this branch.
 
 ---
 
-## Next action (Research)
+## Next action (QA)
 
-Classify each matrix row:
-
-1. **Claim surface** — engineering-runtime vs scientific-interpretation.
-2. **Data mode** — synthetic / local-unknown / none (docs-only).
-3. **Merge reality** — especially `#210`, `#211`, `#212` remain unmerged.
-4. **Missing reports** — Antigravity and Grok implementation reports.
-5. **Bayesian method** — mark proxy-vs-formal; require correction /
-   formal likelihood validation before any empirical reading.
-6. Hand a classified inventory to QA for `evidence_schema.yaml`.
-   Do not invent the schema in this Lead pack.
+Research classification of new/refreshed rows **#215–#222** is complete
+on this #225 inventory. Hand a **schema delta only** to QA on the
+**existing #216 schema / compiler / `tests/release/**`**. Do **not**
+invent a second `evidence_schema.yaml`, compiler, validator, or queue.
 
 Exact merger instruction: **do not merge.**
 
@@ -208,67 +274,73 @@ Exact merger instruction: **do not merge.**
 
 ## Research claim classification
 
-Research phase landed 2026-09-06 on Lead inventory
-`be80bdd5db85b417dd5f15a5445d6c6a6bfd3368`. Every contribution row now
-has a `research_classification` block. Inventory remains **not
-evidence**. `empirical_pass_allowed` is `false` on every row.
-`empirical_pass_from_this_pack` is `false`. This pack does **not** add
-`configs/release/evidence_schema.yaml`,
-`scripts/compile_repository_evidence.py`, or
-`tests/release/test_evidence_compiler.py`.
+**Classifier:** research_and_tooling  
+**Classified at:** 2026-09-06  
+**Base Lead commit:** `96036f4b481ddcf2d3f5e12a1e45972010989e67`  
+**Inventory PR:** [#225](https://github.com/ChristianV997/NeuroTopology-Sim/pull/225)
+supersedes #216 **inventory docs only**.  
+**Schema / compiler authority:** remains [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216).
+No second evidence pack.  
+**Inventory ≠ evidence.** `empirical_pass_allowed: false` and
+`biological_evidence: false` on every classified row. No scientific
+`PASS` is claimed.
 
-### Required warnings (Research; verbatim)
+All Lead warnings above still apply. Research restates them:
 
-1. PRs #210, #211, #212 are NOT merged unless independently verified as merged.
-2. scientific-falsification branch has no confirmed PR unless one is found.
-3. Missing Antigravity/Grok implementation reports are unverified.
-4. Synthetic data cannot establish a scientific PASS.
-5. Current proxy Bayesian method requires correction / formal likelihood validation before strong empirical interpretation.
+1. **PRs are not merged unless GitHub metadata says merged.**
+   #210 / #211 / #212 / #215 / #219 / #222 (and the rest of the
+   #206–#222 wave) remain open (`mergedAt` null).
+2. **CI billing failure ≠ passing test result.** Jobs that did not
+   start because of payment / spending-limit are not green tests.
+3. **Proxy Bayes ≠ formal Bayes factors.** On-main `bayes_factor` and
+   #219 / branch-only contract language are proxy / SCIENTIFIC_REVIEW_REQUIRED.
+4. **Synthetic data cannot establish biological evidence.**
+5. **Process-memory: RSS vs tracemalloc.** Independently verified
+   numbers are **unavailable**. Do not collapse author #215 table
+   columns. #211 tracemalloc ≠ process RSS.
+6. **Missing adapters ≠ supported.** #212 is contracts only; #220 is
+   unmerged adapters stacked on #212 (`adapters_supported: false`).
+7. **Stacked PRs stay explicit:** **#215 → #211** and **#220 → #212**.
+8. **Hand to QA on the existing #216 schema (delta only).** Do not
+   fork schema, compiler, or `tests/release/**`.
 
-### Classification of all inventory rows
+### Classified rows #215–#222
 
-| ID | value_class | claim_class | bayesian_warning | Note |
-| --- | --- | --- | --- | --- |
-| `nts-pr-205` | tooling (+governance) | none | false | Engineering opportunity registry only; not scientific evidence. |
-| `nts-pr-189` | engineering (+governance) | none | false | Report formatter is not an empirical result. |
-| `nts-pr-188` | governance (+engineering) | none | false | Substrate for a later compiler; not a theory result. |
-| `nts-pr-184` | engineering (+scientific) | synthetic | false | Synthetic lattice campaign is not empirical biology; no K>100 PASS from this PR. |
-| `nts-pr-206` | tooling | none | false | Cloud Agent env config only; not scientific evidence. |
-| `nts-pr-207` | engineering | synthetic | false | Bit-identity/speedup unverified; not a scientific PASS. |
-| `nts-pr-208` | engineering (+governance) | synthetic | **true** | NOT MERGED; synthetic lattice sidecar is not empirical; no K computed. |
-| `nts-pr-209` | tooling (+governance) | none | false | Inventory is not evidence; never PASS; Grok impl report missing. |
-| `nts-pr-210` | engineering | unsupported | false | **NOT MERGED** (verified open draft). Scaffold does not prove integration; author absence-claim stale. |
-| `nts-pr-211` | engineering | synthetic | false | **NOT MERGED**. Performance stand-in, not scientific computation; synthetic ≠ PASS. |
-| `nts-pr-212` | governance (+engineering) | none | false | **NOT MERGED**. Contracts are not empirical results. |
-| `nts-pr-213` | engineering (+tooling) | unsupported | false | Antigravity implementation report missing → unverified. |
-| `nts-pr-214` | engineering (+tooling) | unsupported | false | Antigravity report missing; streaming/preprocessing ≠ empirical PASS. |
-| `nts-branch-scientific-falsification-contract` | scientific (+governance) | proxy | **true** | No confirmed PR. Do not cite as landed. Proxy vs formal K split. |
-| `nts-branch-grok-tool-admission-research` | tooling (+governance) | none | false | Catalog ≠ admission decision ≠ scientific evidence; Grok report missing. |
-| `nts-blocked-disorder-modes-leftover-abba063` | engineering | synthetic | false | Leftover tip of already-merged #184; not new work. |
-| `nts-unverified-antigravity-implementation-reports` | governance | unsupported | false | Missing Antigravity implementation reports remain unverified. |
-| `nts-unverified-grok-implementation-reports` | governance | unsupported | false | Missing Grok implementation reports remain unverified. |
-| `nts-unverified-proxy-bayesian-likelihood` | scientific | proxy | **true** | On-main `bayes_factor` is a descriptive proxy; needs formal likelihood validation. |
+| ID | PR | value_class | claim_class | claim_surface | data_mode | bayesian_warning | stacked_on | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `nts-pr-215` | [#215](https://github.com/ChristianV997/NeuroTopology-Sim/pull/215) | performance `[performance, engineering]` | unavailable | performance-telemetry | synthetic | false | **#211** | NOT MERGED. Billing ≠ pass. Telemetry ≠ scientific PASS ≠ biological evidence. RSS vs tracemalloc; independently verified numbers unavailable. |
+| `nts-pr-216` | [#216](https://github.com/ChristianV997/NeuroTopology-Sim/pull/216) | governance `[governance, tooling]` | none | superseded-inventory | none | false | — | Inventory docs superseded by #225. Schema/compiler stay #216. Not a second evidence pack. Inventory ≠ evidence. |
+| `nts-pr-217` | [#217](https://github.com/ChristianV997/NeuroTopology-Sim/pull/217) | tooling `[tooling, governance]` | unavailable | tooling-catalog | none | false | — | Catalog ≠ admission ≠ scientific evidence. Grok impl report missing → UNVERIFIED. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-218` | [#218](https://github.com/ChristianV997/NeuroTopology-Sim/pull/218) | engineering `[engineering, tooling]` | none | engineering-runtime | none | false | — | Tooling/reconciliation report ≠ evidence. NOT MERGED. Do not treat as integration proof. Billing ≠ pass. |
+| `nts-pr-219` | [#219](https://github.com/ChristianV997/NeuroTopology-Sim/pull/219) | scientific `[scientific, governance]` | proxy | scientific-interpretation | synthetic | **true** | — | NOT MERGED. Proxy Bayes ≠ formal K. SCIENTIFIC_REVIEW_REQUIRED. Author validation commands ≠ PASS. Synthetic ≠ biological evidence. Related to, not duplicate of, branch-only falsification contract. |
+| `nts-pr-220` | [#220](https://github.com/ChristianV997/NeuroTopology-Sim/pull/220) | interoperability `[interoperability, engineering]` | unavailable | interoperability-contracts | none | false | **#212** | Missing/unmerged adapters ≠ supported (`adapters_supported: false`). #212 is contracts only. Antigravity report missing. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-221` | [#221](https://github.com/ChristianV997/NeuroTopology-Sim/pull/221) | engineering | unavailable | missing-report | none | false | — | Test/path repairs ≠ scientific PASS. Antigravity report missing. NOT MERGED. Billing ≠ pass. |
+| `nts-pr-222` | [#222](https://github.com/ChristianV997/NeuroTopology-Sim/pull/222) | engineering `[engineering, tooling]` | unavailable | engineering-runtime | none | false | — | Author-claimed 117 tests and disk/CUDA narrative unverified on GitHub Actions (jobs did not start — billing). CI billing ≠ pass. NOT MERGED. |
 
-### Explicit limits (do not invent merge status)
+### Carried-forward rows
 
-- **#210 / #211 / #212 are NOT MERGED.** Lead merge_status remains
-  draft / draft / open. Research did not change those fields.
-- **`scientific-falsification` branch has no confirmed PR.** Branch-only
-  row `nts-branch-scientific-falsification-contract`. Do not cite as
-  landed.
-- **Antigravity / Grok implementation reports are unverified.**
-- **Synthetic data cannot establish a scientific PASS.**
-- **Proxy Bayes needs formal likelihood validation** before strong
-  empirical interpretation. `bayesian_warning: true` on `nts-pr-208`,
-  `nts-branch-scientific-falsification-contract`, and
-  `nts-unverified-proxy-bayesian-likelihood`.
+Carried-forward `research_classification` blocks on older rows
+(#184–#214, `nts-branch-scientific-falsification-contract`,
+`nts-branch-grok-tool-admission-research`, leftover
+`nts-blocked-disorder-modes-leftover-abba063`, and the unverified
+placeholder rows) still apply from #216 Research @ `07841284`.
+Research did not re-open those rows except to keep Lead status
+(#216 is `SUPERSEDED` for inventory docs). `bayesian_warning: true`
+remains on #208, #219, the branch-only falsification contract, and
+`nts-unverified-proxy-bayesian-likelihood`.
 
-### Hand off (QA)
+### Scientific blockers (Research; warnings only)
 
-QA may now own `configs/release/evidence_schema.yaml` and
-`tests/release/test_evidence_compiler.py`. Do **not** invent the schema
-in this Research pack. Schema must refuse scientific `PASS` from
-synthetic data and refuse unverified author-claimed test counts as
-compiled evidence.
+- No empirical `PASS` from this pack. `empirical_pass_allowed: false`.
+- No biological evidence from this pack. Synthetic ≠ biology.
+- Proxy Bayes ≠ formal Bayes factors. #219 and the branch-only
+  scientific-falsification-contract require scientific review.
+- Independently verified process-memory (RSS / tracemalloc) numbers:
+  unavailable.
+- Missing / unmerged adapters ≠ supported.
+- CI billing failure ≠ passing tests.
+- Inventory ≠ evidence. #225 is not a second schema/compiler.
+
+**Handoff:** QA applies a **delta** on the existing #216 schema only.
 
 **Merger: do not merge.**
