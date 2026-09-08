@@ -49,4 +49,10 @@ def render_csv_tables(record: dict[str, Any]) -> dict[str, str]:
         [[c["cohort_id"], c["n_subjects"], c["n_required"], c["paired"], c["data_mode"], c["ready"]] for c in cohorts],
     )
 
+    items = record["epistemic_classification"]["items"]
+    tables["epistemic_classification.csv"] = _write_csv(
+        ["label", "source", "id", "verdict"],
+        [[i["label"], i["source"], i["id"], i["verdict"]] for i in items],
+    )
+
     return tables

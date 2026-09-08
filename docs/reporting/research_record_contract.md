@@ -29,6 +29,20 @@ commit at face value), cohort readiness, and an explicit
 engineering-status/scientific-status split. A human should reconcile which
 of the three survives before any of them is merged to `main`.
 
+**Update:** a second, expanded instruction round targeted this exact
+branch (`claude/research-record-compiler`) and exact owned paths again,
+this time additionally forbidding `tools/release_manifest/**` and
+`tools/integration_state/**` (two more parallel, unmerged efforts this
+package must not touch or depend on). Rather than opening a fourth
+colliding package, this round's requirements were folded into this same
+branch as an additive extension: five new input sections (release
+manifest, scientific-gate reports, externally-reported blockers, artifact
+references, operator notes), the nine-label epistemic classification in
+`epistemic.py`, a top-level `scientific_verdict` rollup, and a
+`canonical_checksum`. Nothing existing was removed or renamed;
+`REPORT_SCHEMA_VERSION`/`INPUT_CONTRACT_VERSION` were bumped to `1.1.0`
+and `COMPILER_VERSION` to `0.2.0` to mark the additive change.
+
 ## What this compiler does
 
 A deterministic tool that reads local JSON/YAML/CSV evidence files already
@@ -43,11 +57,21 @@ tables.
   files named in its input manifest and nothing else.
 - Read-only with respect to every other evidence compiler in this repo:
   it does not modify `docs/release/**`, `tools/integration_reconciliation/**`,
+  `tools/release_manifest/**`, `tools/integration_state/**`,
   `configs/release/**`, `governance/merge_gate.py`, existing artifact
   compilers, the Bayesian falsification implementation, signal adapters,
-  streaming tools, CI workflows, dashboard routes, generated binary
-  artifacts, or datasets. It only reads whatever JSON/YAML/CSV files those
-  systems already produce, per the input contracts below.
+  topology algorithms, streaming tools, CI workflows, dashboard routes,
+  generated binary artifacts, or datasets. It only reads whatever
+  JSON/YAML/CSV files those systems already produce, per the input
+  contracts below. It never modifies files outside its owned paths,
+  including (explicitly preserved) `obsidian/15_DS005620_Post_Execution_Controls/Execution_Artifact_Audit.md`
+  and `outputs/command_center/mock_payloads/guardrails_status.json`.
+- No heavy scientific solvers. `tools/research_record/**` and
+  `scripts/build_research_record.py` import nothing from `mne`, `scipy`,
+  `torch`, `ripser`, `gudhi`, `boto3`, `botocore`, or `sklearn` — enforced
+  by a static AST import scan in `tests/research_record/test_no_heavy_imports.py`,
+  plus an isolated-subprocess run of the CLI in the same file. The
+  compiler works identically whether or not those packages are installed.
 - Enum vocabularies below intentionally reuse the ones already established
   in `configs/release/evidence_schema.yaml` (merge_status, status_category,
   claim_class, data_mode, verification_status fields, memory kind,
@@ -76,9 +100,18 @@ A manifest file (JSON or YAML) maps input-contract names to file paths
   "cohort_readiness": "evidence/cohort_readiness.json",
   "topology_validation": "evidence/topology_validation.json",
   "falsification": "evidence/falsification.json",
-  "merge_gate": "evidence/merge_gate.json"
+  "merge_gate": "evidence/merge_gate.json",
+  "release_manifest": "evidence/release_manifest.json",
+  "scientific_gate_reports": "evidence/scientific_gate_reports.json",
+  "blocker_reports": "evidence/blocker_reports.json",
+  "artifact_references": "evidence/artifact_references.json",
+  "operator_notes": "evidence/operator_notes.json"
 }
 ```
+
+`INPUT_CONTRACT_VERSION` (`tools/research_record/versions.py`) versions this
+manifest's set of accepted keys and their shapes; bump it whenever a
+section is added, removed, or reshaped.
 
 Every key is optional. A key that is absent, or whose target file cannot
 be read, parsed, or contains a non-finite numeric literal, produces a
@@ -149,6 +182,35 @@ The envelope's `evidence_source` and `baseline_commit` are also how
 
 **`merge_gate`** — `{"decisions": [{"pr_number", "decision": "allow"｜"block"｜"hold", "block_reason": "infrastructure"｜"billing"｜"scientific"｜null, "reason"}]}`.
 
+**`release_manifest`** (flat object; owned elsewhere by `tools/release_manifest/**`, read-only here) — `{"schema_version", "repo", "commit", "branch", "generated_at", "entries": [...]}`. Pure passthrough: this compiler records the declared fields verbatim and never re-derives or second-guesses them.
+
+**`scientific_gate_reports`** — `{"gates": [{"gate_id", "description", "claim_class", "data_mode", "verdict": "PASS"｜"FAIL"｜"INCONCLUSIVE"｜"TIMEOUT", "notes"}]}`. Same claim_class/data_mode/verdict vocabulary as `falsification`, and subject to the same `synthetic_pass_claim` guardrail (a gate cannot claim `verdict=PASS` from a `synthetic`/`proxy`/`unsupported` `claim_class`).
+
+**`blocker_reports`** — `{"blockers": [{"blocker_id", "description", "severity": "low"｜"medium"｜"high"｜"critical", "source"}]}`. Externally-reported blockers, merged into `unresolved_blockers` and `next_priorities` alongside the ones this compiler derives itself — each tagged `"origin": "reported"` so a reader can tell "someone reported this" from "this compiler inferred this."
+
+**`artifact_references`** — `{"artifacts": [{"label", "path", "kind", "notes"}]}`. Pure path *references*: this compiler never opens, reads, hashes, or checks the existence of the referenced file — only `reconciliation`/`agent_contributions`/etc.'s own declared files are ever read (rule: no automatic data loading). An entry missing `path` is skipped, not an error.
+
+**`operator_notes`** — `{"notes": [{"note", "epistemic_label", "author"}]}`. `epistemic_label` must be one of the nine exact labels (see "Epistemic labels" below) to be honored; an absent or invalid label defaults to `"unsupported claim"` — the most conservative bucket, since an unlabeled human assertion cannot be verified.
+
+## Epistemic labels
+
+`tools/research_record/epistemic.py` defines the nine labels every claim
+in this record is classified into, preserved exactly as specified
+(spaces, not underscores):
+
+> engineering fact · benchmark result · synthetic demonstration ·
+> empirical observation · proxy inference · formal statistical evidence ·
+> hypothesis · speculation · unsupported claim
+
+`compiler.py::_classify_epistemic_items` is the single place that assigns
+a label — nothing downstream re-derives one. Only `"formal statistical
+evidence"` and `"empirical observation"` items ever feed the top-level
+`scientific_verdict` rollup (`compiler.py::_scientific_verdict`);
+`"engineering fact"` and `"benchmark result"` items never carry a
+`verdict` at all, which is what makes "never promote an engineering PASS
+to a scientific PASS" hold structurally rather than by convention — see
+`tests/research_record/test_engineering_pass_not_scientific_pass.py`.
+
 ## Output contract
 
 `compile_record()` (in `tools/research_record/compiler.py`) returns one
@@ -162,13 +224,35 @@ dict whose top-level keys map directly onto the required sections:
 `performance_evidence`, `memory_evidence`, `provenance`,
 `cohort_readiness`, `topology_readiness`, `falsification_semantics`,
 `scientific_limitations`, `dashboard_isolation`, `engineering_status`,
-`scientific_status`, `unresolved_blockers`, `next_actions`,
-`final_release_recommendation`, `recommended_merge_order`,
-`merge_gate_decisions`. Plus metadata: `report_schema_version`,
-`compiler_version`, `generated_at`, `status` (`"complete"` or
-`"partial"`), `completeness`, `record_provenance` (manifest path +
-per-input sha256 checksums, explicitly scoped `"checksum_scope": "local"`
-— see rule 6).
+`scientific_status`, `unresolved_blockers`, `next_actions`
+(alias: `next_priorities`), `final_release_recommendation`,
+`recommended_merge_order`, `merge_gate_decisions`, `release_manifest`,
+`scientific_gate_reports`, `blocker_reports`, `artifact_references`,
+`operator_notes`, `epistemic_classification` (`items` plus one
+pre-filtered list per label: `confirmed_engineering_facts`,
+`benchmark_results`, `hypotheses`, `speculation`, `unsupported_claims`,
+`synthetic_demonstrations`, `empirical_observations`,
+`proxy_inferences`, `formal_statistical_evidence`), `scientific_verdict`
+(`"PASS"｜"FAIL"｜"INCONCLUSIVE"｜"NOT_APPLICABLE"`), `final_conclusions`
+(`engineering_conclusion` + `scientific_conclusion_caveat` — the latter
+explicitly states this record does not itself constitute scientific
+evidence). Plus metadata: `report_schema_version`,
+`input_contract_version`, `compiler_version`, `generated_at`, `status`
+(`"complete"` or `"partial"`), `completeness`, `record_provenance`
+(manifest path + per-input sha256 checksums, explicitly scoped
+`"checksum_scope": "local"` — see rule 6), and `canonical_checksum` (a
+sha256 of the record's own content, computed last and excluding itself —
+see "Canonical checksum" below).
+
+### Canonical checksum
+
+`compiler.py::_canonical_checksum` hashes `json.dumps(record, sort_keys=True,
+allow_nan=False)` **excluding** the `canonical_checksum` field itself
+(computed after everything else, then inserted), so a consumer can verify
+the record was not altered after compilation. It is deterministic only
+when `now`/`--now` is pinned — otherwise `generated_at` (which the
+checksum covers) makes each run's checksum unique by design, exactly
+like every other non-deterministic-unless-pinned field in this contract.
 
 `scripts/build_research_record.py` writes this dict as
 `research_record.json` (`json.dumps(..., indent=2, sort_keys=True,
@@ -196,6 +280,27 @@ binary plots or datasets (rule 15).
 14. **No solver imports.** Nothing here imports `sim.pitnn`, `core.topology`, `physics.exact_dynamics`, or any other scientific solver — evidence about their results arrives pre-computed, as JSON/YAML/CSV.
 15. **No generated datasets or binary artifacts may be committed.** Only JSON/Markdown/CSV text outputs are ever written by this package; none are committed as part of it.
 
+## Additional guardrails (expanded instruction round)
+
+These restate/extend the six "never promote" rules and five JSON
+requirements from the second instruction round in terms of the code above
+(most were already covered by rules 1–15; the two genuinely new ones are
+marked **new**):
+
+- Synthetic output is never promoted to empirical evidence (rule 5).
+- Proxy K is never promoted to a formal Bayes factor (rule 4).
+- Integration-only work is never promoted to merged work (rule 1, `open_pr_represented_as_merged`).
+- A readable file is never promoted to an independently validated dataset — `record_provenance.source_checksums[*].checksum_scope` is always `"local"` (rule 6).
+- A topology metric is never promoted to spatial charge — `metric_family` keeps `graph_beta_1` and `spatial_charge` separate (rule 7).
+- **(new)** An engineering PASS is never promoted to a scientific PASS — see "Epistemic labels" above and `test_engineering_pass_not_scientific_pass.py`.
+- Schema version: `report_schema_version` **and** `input_contract_version`.
+- Null for unavailable values (rule 9).
+- No NaN/Infinity (rule 10).
+- **(new)** Deterministic canonical checksum: `canonical_checksum` (see above).
+- Source provenance (rule 11).
+- **(new)** Explicit `scientific_verdict`: top-level field, rollup described above.
+- Explicit `merge_status`: every PR record's `merge_status` is a passed-through literal, never inferred (rules 1–2) — already a per-record field, not a new one.
+
 ## Determinism
 
 `compile_record(manifest_path, now=..., repo=..., origin_main_commit=...,
@@ -222,5 +327,17 @@ python -m scripts.build_research_record \
 
 - `REPORT_SCHEMA_VERSION` (`tools/research_record/versions.py`): bump on
   any change to the output JSON/Markdown/CSV shape.
+- `INPUT_CONTRACT_VERSION`: bump on any change to the set or shape of
+  accepted input sections.
 - `COMPILER_VERSION`: bump on any behavior change, including bug fixes,
   even when the output shape is unchanged.
+
+## This record is not scientific evidence
+
+Nothing in this document, the compiled record, or its Markdown rendering
+should be read as an independent scientific finding. `scientific_verdict`
+and every falsification/topology/gate result it aggregates reflect only
+the declared threshold checks in the source artifacts this compiler was
+given — this is a text-processing and classification tool, not a
+statistical or scientific analysis pipeline, and it runs no solver of any
+kind.

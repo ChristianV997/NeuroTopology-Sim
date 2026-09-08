@@ -39,9 +39,11 @@ def render_markdown(record: dict[str, Any]) -> str:
     lines.append(f"- origin/main commit: `{_fmt(record['origin_main_commit'])}`")
     lines.append(f"- Integration ref: {_fmt(head['integration_ref'])}, head `{_fmt(head['commit'])}` (verified: {_fmt(head['verified'])})")
     lines.append(f"- Status: **{record['status']}**")
-    lines.append(f"- Engineering status: **{record['engineering_status']['label']}** / Scientific status: **{record['scientific_status']['label']}**")
+    lines.append(f"- Engineering status: **{record['engineering_status']['label']}** / Scientific status: **{record['scientific_status']['label']}** / Scientific verdict: **{record['scientific_verdict']}**")
     lines.append(f"- Unresolved blockers: **{len(record['unresolved_blockers'])}**")
     lines.append(f"- Generated: `{record['generated_at']}`")
+    lines.append("")
+    lines.append(f"> {record['final_conclusions']['scientific_conclusion_caveat']}")
     lines.append("")
     if record["next_actions"]:
         lines.append("**Next actions:**")
@@ -54,14 +56,44 @@ def render_markdown(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append(f"_Report schema `{record['report_schema_version']}` · Compiler `{record['compiler_version']}`_")
+    lines.append(
+        f"_Report schema `{record['report_schema_version']}` · Input contract `{record['input_contract_version']}` · "
+        f"Compiler `{record['compiler_version']}` · Checksum `{record['canonical_checksum'][:12]}…`_"
+    )
     lines.append("")
 
-    lines.append("## Repository Identity / Commits")
+    lines.append("## Execution Timestamp and Source Commits")
     lines.append("")
+    lines.append(f"- Generated: `{record['generated_at']}`")
     lines.append(f"- Repo: {_fmt(record['repository_identity']['repo'])}")
     lines.append(f"- origin/main commit: `{_fmt(record['origin_main_commit'])}`")
+    lines.append(f"- Integration ref: {_fmt(head['integration_ref'])}, head `{_fmt(head['commit'])}` (verified: {_fmt(head['verified'])})")
     lines.append(f"- Integration head verification reason: {head['reason']}")
+    lines.append("")
+
+    lines.append("## Repository and Branch State")
+    lines.append("")
+    lines.append(f"- Status: **{record['status']}**")
+    for bucket, prs in record["pr_buckets"].items():
+        lines.append(f"- {bucket}: {prs}")
+    lines.append("")
+
+    lines.append("## Merged-to-Main Work")
+    lines.append("")
+    merged = [p for p in record["pr_state"]["pull_requests"] if p["merge_status"] == "merged"]
+    lines.append(_table(["PR", "Branch", "Ancestor of target"], [[p["pr_number"], _fmt(p["branch"]), _fmt(p["is_ancestor_of_target"])] for p in merged]))
+    lines.append("")
+
+    lines.append("## Integration-Only Work")
+    lines.append("")
+    integration_only = [p for p in record["pr_state"]["pull_requests"] if p["integration_status"] == "integrated_only"]
+    lines.append(_table(["PR", "Branch", "Merge status"], [[p["pr_number"], _fmt(p["branch"]), p["merge_status"]] for p in integration_only]))
+    lines.append("")
+
+    lines.append("## Open PRs")
+    lines.append("")
+    open_prs = [p for p in record["pr_state"]["pull_requests"] if p["merge_status"] == "open" and p["is_draft"] is not True]
+    lines.append(_table(["PR", "Branch", "CI"], [[p["pr_number"], _fmt(p["branch"]), p["ci_status"]] for p in open_prs]))
     lines.append("")
 
     lines.append("## Agent Contribution Table")
@@ -234,6 +266,26 @@ def render_markdown(record: dict[str, Any]) -> str:
     )
     lines.append("")
 
+    lines.append("## Scientific Gate Reports")
+    lines.append("")
+    lines.append(
+        _table(
+            ["Gate", "Claim class", "Data mode", "Verdict"],
+            [[g["gate_id"], g["claim_class"], g["data_mode"], g["verdict"]] for g in record["scientific_gate_reports"]["gates"]],
+        )
+    )
+    lines.append("")
+
+    lines.append("## Scientific Falsification Status")
+    lines.append("")
+    lines.append(f"**scientific_verdict: {record['scientific_verdict']}**")
+    lines.append("")
+    lines.append(
+        "_Only items labeled \"formal statistical evidence\" or \"empirical observation\" ever contribute to this "
+        "verdict; engineering facts and benchmark results never do._"
+    )
+    lines.append("")
+
     lines.append("## Scientific Limitations")
     lines.append("")
     for item in record["scientific_limitations"]:
@@ -252,21 +304,77 @@ def render_markdown(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"- Engineering status: **{record['engineering_status']['label']}**")
     lines.append(f"- Scientific status: **{record['scientific_status']['label']}**")
+    lines.append(f"- Scientific verdict: **{record['scientific_verdict']}**")
+    lines.append("")
+
+    epi = record["epistemic_classification"]
+
+    lines.append("## Confirmed Engineering Facts")
+    lines.append("")
+    lines.append(_table(["Source", "ID", "Summary"], [[i["source"], i["id"], i["summary"]] for i in epi["confirmed_engineering_facts"]]))
+    lines.append("")
+
+    lines.append("## Benchmark Results")
+    lines.append("")
+    lines.append(_table(["Source", "ID", "Summary"], [[i["source"], i["id"], i["summary"]] for i in epi["benchmark_results"]]))
+    lines.append("")
+
+    lines.append("## Hypotheses")
+    lines.append("")
+    lines.append(_table(["Source", "ID", "Summary"], [[i["source"], i["id"], i["summary"]] for i in epi["hypotheses"]]))
+    lines.append("")
+
+    lines.append("## Speculation")
+    lines.append("")
+    lines.append(_table(["Source", "ID", "Summary"], [[i["source"], i["id"], i["summary"]] for i in epi["speculation"]]))
+    lines.append("")
+
+    lines.append("## Unsupported Claims")
+    lines.append("")
+    lines.append(_table(["Source", "ID", "Summary"], [[i["source"], i["id"], i["summary"]] for i in epi["unsupported_claims"]]))
+    lines.append("")
+
+    lines.append("## Release Manifest")
+    lines.append("")
+    rm = record["release_manifest"]
+    lines.append(f"- schema_version: {_fmt(rm['schema_version'])}, repo: {_fmt(rm['repo'])}, commit: `{_fmt(rm['commit'])}`, branch: {_fmt(rm['branch'])}")
+    lines.append("")
+
+    lines.append("## Artifact References")
+    lines.append("")
+    lines.append(_table(["Label", "Path", "Kind"], [[a["label"], a["path"], _fmt(a["kind"])] for a in record["artifact_references"]["artifacts"]]))
+    lines.append("")
+
+    lines.append("## Operator Notes")
+    lines.append("")
+    lines.append(
+        _table(
+            ["Note", "Epistemic label"],
+            [[n["note"], n["declared_epistemic_label"] or "(unlabeled -> unsupported claim)"] for n in record["operator_notes"]["notes"]],
+        )
+    )
     lines.append("")
 
     lines.append("## Unresolved Blockers")
     lines.append("")
     if record["unresolved_blockers"]:
         for b in record["unresolved_blockers"]:
-            lines.append(f"- **{b['kind']}**: {b['detail']}")
+            lines.append(f"- **{b['kind']}**: {b.get('detail', '')}")
     else:
         lines.append("_none_")
     lines.append("")
 
-    lines.append("## Next Actions")
+    lines.append("## Final Conclusions")
     lines.append("")
-    if record["next_actions"]:
-        for i, action in enumerate(record["next_actions"], start=1):
+    lines.append(record["final_conclusions"]["engineering_conclusion"])
+    lines.append("")
+    lines.append(f"> {record['final_conclusions']['scientific_conclusion_caveat']}")
+    lines.append("")
+
+    lines.append("## Next Priorities")
+    lines.append("")
+    if record["next_priorities"]:
+        for i, action in enumerate(record["next_priorities"], start=1):
             lines.append(f"{i}. {action}")
     else:
         lines.append("_none_")
@@ -275,6 +383,8 @@ def render_markdown(record: dict[str, Any]) -> str:
     lines.append("## Final Release Recommendation")
     lines.append("")
     lines.append(f"**{record['final_release_recommendation']}**")
+    lines.append("")
+    lines.append(f"_Canonical checksum: `{record['canonical_checksum']}`_")
     lines.append("")
 
     return "\n".join(lines) + "\n"

@@ -27,6 +27,11 @@ DEFAULT_SECTIONS: dict[str, dict[str, Any]] = {
     "topology_validation": {"checks": []},
     "falsification": {"results": []},
     "merge_gate": {"decisions": []},
+    "release_manifest": {"schema_version": None, "repo": None, "commit": None, "branch": None, "generated_at": None, "entries": []},
+    "scientific_gate_reports": {"gates": []},
+    "blocker_reports": {"blockers": []},
+    "artifact_references": {"artifacts": []},
+    "operator_notes": {"notes": []},
 }
 
 _DEFAULT_EXTENSION = {
