@@ -23,7 +23,15 @@ import argparse
 import json
 import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List
+
+# When this file is launched by absolute path, Python puts only ``scripts/``
+# on ``sys.path``. Make the standalone child entrypoint importable without
+# requiring callers to set PYTHONPATH.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from tools.streaming.process_runner import (
     Outcome,
