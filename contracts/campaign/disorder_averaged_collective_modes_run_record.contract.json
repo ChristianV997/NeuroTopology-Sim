@@ -1,0 +1,47 @@
+{
+  "contract_id": "campaign.disorder_averaged_collective_modes.run_record_sidecar",
+  "version": "0.1",
+  "artifact": "RunRecord.json",
+  "companion_artifact": "disorder_averaged_collective_modes.json",
+  "companion_schema": "NeuroTopologySim.DisorderAveragedCollectiveModes.v1",
+  "sidecar_schema_version": "0.1",
+  "run_kind": "disorder_averaged_collective_modes",
+  "identity": {
+    "run_id": "sha256[:16] via runs.run_record.build_run_id",
+    "includes": [
+      "campaign configuration inputs excluding IO and --write-run-record",
+      "seed and other scientific configuration fields",
+      "existing per-summary floats when finite (paired_disorder_samples, invalid_disorder_samples, mean_log_short_vs_long_null_adjusted_contrast, standard_error, exact_sign_flip_pvalue)",
+      "derived counts n_summaries, n_pre_registered_effect_candidate, n_pre_registered_not_supported",
+      "optional run_fingerprint of the same scientific configuration"
+    ],
+    "excludes": ["created_at", "elapsed_s", "artifact_paths", "campaign_sha256", "wall_clock"]
+  },
+  "required_top_level_keys": [
+    "schema_version",
+    "run_id",
+    "run_kind",
+    "created_at",
+    "verdict",
+    "metrics",
+    "artifacts",
+    "source",
+    "input",
+    "notes",
+    "guardrails"
+  ],
+  "write_path": "atomic sibling of campaign JSON via _atomic_json; not RunRecordV1.write_json/to_dict alone",
+  "required_artifact_keys": [
+    "campaign_json",
+    "campaign_schema",
+    "campaign_sha256"
+  ],
+  "allowed_verdicts": ["NOT_SUPPORTED", "INCONCLUSIVE"],
+  "forbidden_verdicts": ["PASS"],
+  "scientific_notes": [
+    "Sidecar does not replace NeuroTopologySim.DisorderAveragedCollectiveModes.v1.",
+    "PASS is reserved for Bayes factor K > 100; this synthetic lattice campaign does not compute K and cannot emit PASS.",
+    "Missing or invalid paired disorder samples map to NOT_SUPPORTED or INCONCLUSIVE.",
+    "Synthetic lattice output is not empirical biology."
+  ]
+}
