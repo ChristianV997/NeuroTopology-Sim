@@ -1,0 +1,119 @@
+{
+  "_note": "Real-world identity data for the five source families named across this task series, gathered via WebSearch on 2026-09-07/08 (arxiv.org itself is blocked by this environment's egress proxy). Used by tests/awareness_studio_research/test_source_resolution.py and as a fixture for scripts/resolve_awareness_sources.py demos. Candidate lists are independently-observed identities, not assumed correct just because they were searched for.",
+  "families": [
+    {
+      "label": "triadic_functional_connectivity",
+      "claimed": {
+        "source_ref": "claimed:triadic_connectivity",
+        "title": "triadic functional connectivity",
+        "arxiv_id": "2609.03987"
+      },
+      "candidates": [
+        {
+          "source_ref": "candidate:arxiv:2609.03987",
+          "title": "High-Order Triadic Functional Connectivity in the Brain and Beyond",
+          "arxiv_id": "2609.03987",
+          "authors": ["Qiang Li", "Masoud Seraji", "Yu-Ping Wang", "Godfrey D Pearlson", "Vince D Calhoun"],
+          "publication_date": "2026-09-03",
+          "exists": true
+        }
+      ],
+      "expected_state": "confirmed_identity"
+    },
+    {
+      "label": "higher_order_spectra",
+      "claimed": {
+        "source_ref": "claimed:higher_order_spectra",
+        "title": "higher-order spectra",
+        "arxiv_id": "2609.03172"
+      },
+      "candidates": [
+        {
+          "source_ref": "candidate:arxiv:2609.03172",
+          "title": "Modulation Analysis with Higher-Order Spectra",
+          "arxiv_id": "2609.03172",
+          "authors": ["Christopher K. Kovach", "Sukhbinder Kumar"],
+          "exists": true
+        }
+      ],
+      "expected_state": "confirmed_identity"
+    },
+    {
+      "label": "slow_breathing",
+      "claimed": {
+        "source_ref": "claimed:slow_breathing",
+        "title": "slow breathing and inter-organ dynamics",
+        "doi": "10.1016/j.neuron.2026.04.044"
+      },
+      "candidates": [
+        {
+          "source_ref": "candidate:doi:10.1016/j.neuron.2026.04.044",
+          "title": "Slow breathing impacts inter-organ dynamics modulating brain function and risk behavior",
+          "doi": "10.1016/j.neuron.2026.04.044",
+          "authors": [
+            "Wenhao Huang", "Mine Schmidt", "Ignacio Rebollo", "Felix Molter", "Min Pu",
+            "Beatrix Keweloh", "Lok Yan Lam", "Peter N C Mohr", "Gabriele Bellucci",
+            "Stefan Roettger", "Soyoung Q Park"
+          ],
+          "publication_date": "2026-05",
+          "journal": "Neuron",
+          "exists": true
+        }
+      ],
+      "expected_state": "confirmed_identity"
+    },
+    {
+      "label": "discernment_nonjudgment",
+      "claimed": {
+        "source_ref": "claimed:discernment_nonjudgment",
+        "title": "discernment and nonjudgment",
+        "doi": "10.1007/s12671-026-02976-7"
+      },
+      "candidates": [
+        {
+          "source_ref": "candidate:doi:10.1007/s12671-026-02770-5",
+          "title": "Being Mindful with Discernment: Development and Validation of the Mindfulness-Discernment Scale (MDS)",
+          "doi": "10.1007/s12671-026-02770-5",
+          "journal": "Mindfulness",
+          "exists": true
+        }
+      ],
+      "operator_correction": {
+        "source_ref": "operator_correction:doi:10.1007/s12671-026-02770-5",
+        "title": "Being Mindful with Discernment: Development and Validation of the Mindfulness-Discernment Scale (MDS)",
+        "doi": "10.1007/s12671-026-02770-5",
+        "journal": "Mindfulness",
+        "exists": true
+      },
+      "expected_state_without_correction": "disputed_identity",
+      "expected_state_with_correction": "confirmed_identity",
+      "note": "The exact claimed DOI (10.1007/s12671-026-02976-7) does not resolve to any independently locatable record. The only candidate found shares the topic but not the DOI, so without a DOI/arXiv/checksum match it can only be disputed_identity, never silently accepted. An operator-provided correction naming the real DOI (10.1007/s12671-026-02770-5) is required to confirm identity -- resolution_events.jsonl retains both the original disputed attempt and the corrected confirmation, never overwriting the former."
+    },
+    {
+      "label": "buddhist_training_ecology",
+      "claimed": {
+        "source_ref": "claimed:buddhist_training_ecology",
+        "title": "Buddhist meditation training ecology",
+        "doi": "10.3389/fpsyg.2026.1938434"
+      },
+      "candidates": [
+        {
+          "source_ref": "candidate:doi:10.3389/fpsyg.2026.1711922",
+          "title": "Bridging traditions: a template analysis of Buddhist and Western psychological approaches to mindfulness",
+          "doi": "10.3389/fpsyg.2026.1711922",
+          "journal": "Frontiers in Psychology",
+          "exists": true
+        },
+        {
+          "source_ref": "candidate:doi:10.3389/fpsyg.2026.1815107",
+          "title": "Editorial: Deepening consciousness: what phenomenology, yogic, and Buddhist meditation can contribute from a psychological perspective",
+          "doi": "10.3389/fpsyg.2026.1815107",
+          "journal": "Frontiers in Psychology",
+          "exists": true
+        }
+      ],
+      "expected_state": "disputed_identity",
+      "note": "Neither candidate shares a DOI/arXiv/checksum match with the claim, and neither is a normalized-title match either -- both only share the same journal, which alone is a weak signal. Correctly resolves to disputed_identity (not ambiguous_identity, since neither candidate scores high enough to tie for a real match) and not confirmed. No operator correction has been supplied for this one; it remains genuinely disputed, and its claims stay 'unavailable'."
+    }
+  ]
+}
