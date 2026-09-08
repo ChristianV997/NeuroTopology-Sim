@@ -66,7 +66,7 @@ def validate_file(path: Path) -> dict[str, Any]:
 
     schema = data.get("schema_version", "")
 
-    if "CanonicalFeatureBundle" in schema or "bundle_id" in data:
+    if "FeatureBundle" in schema or "Bundle" in schema or "bundle_id" in data:
         result["type"] = "bundle"
         try:
             bundle = bundle_from_dict(data, validate=True)
@@ -78,7 +78,7 @@ def validate_file(path: Path) -> dict[str, Any]:
         except Exception as exc:
             result["errors"].append(f"Unexpected bundle error: {exc}")
 
-    elif "CanonicalFeatureRecord" in schema or "feature_family" in data:
+    elif "FeatureRecord" in schema or "Record" in schema or "feature_family" in data:
         result["type"] = "record"
         try:
             rec = record_from_dict(data, validate=True)

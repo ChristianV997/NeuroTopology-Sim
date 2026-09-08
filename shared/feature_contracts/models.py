@@ -1,6 +1,7 @@
 """Typed data models and schemas for canonical, provenance-rich feature contracts.
 
-Supports PSD, pairwise FC, triadic FC, higher-order spectra, physiology,
+Supports PSD, cross-spectrum, pairwise FC, triadic FC, bispectrum,
+trispectrum/modulogram, higher-order spectra, physiology (respiration, ECG/HRV),
 spatial phase topology, graph persistence, directed hypergraphs, and behavioral labels.
 """
 from __future__ import annotations
@@ -17,6 +18,10 @@ class FeatureFamily(str, Enum):
     CROSS_SPECTRUM = "cross_spectrum"
     PAIRWISE_FC = "pairwise_fc"
     TRIADIC_FC = "triadic_fc"
+    BISPECTRUM = "bispectrum"
+    TRISPECTRUM_MODULOGRAM = "trispectrum_modulogram"
+    TRISPECTRUM = "trispectrum"
+    MODULOGRAM = "modulogram"
     HIGHER_ORDER_SPECTRA = "higher_order_spectra"
     RESPIRATION = "respiration"
     ECG_HRV = "ecg_hrv"
@@ -77,9 +82,11 @@ class CanonicalFeatureRecord:
     feature_name: str
     mathematical_definition: str
     units: str
-    schema_version: str = "NeuroTopologySim.CanonicalFeatureRecord.v1"
+    schema_version: str = "FeatureRecord.v1"
     frequency_band: dict[str, Any] | None = None
+    frequency_axis: dict[str, Any] | None = None
     time_window: dict[str, Any] | None = None
+    time_axis: dict[str, Any] | None = None
     sampling_rate_hz: float | None = None
     channel_node_identity: list[str] = field(default_factory=list)
     coordinate_status: str = CoordinateStatus.MISSING.value
@@ -89,15 +96,39 @@ class CanonicalFeatureRecord:
     run: str | None = None
     condition_label: str | None = None
     provenance_checksum: str = ""
+    source_checksum: str = ""
     preprocessing: list[str] = field(default_factory=list)
     missingness: float | None = None
     uncertainty: dict[str, Any] | None = None
     is_synthetic: bool = False
+    synthetic_empirical_origin: str = "empirical"
     evidence_class: str = EvidenceClass.EMPIRICAL_FEATURE.value
     axes: list[str] = field(default_factory=list)
     shape: list[int] = field(default_factory=list)
     values: Any = None
     checksum: str = ""
+
+    def __post_init__(self) -> None:
+        # Align aliases
+        if self.frequency_axis is not None and self.frequency_band is None:
+            self.frequency_band = self.frequency_axis
+        elif self.frequency_band is not None and self.frequency_axis is None:
+            self.frequency_axis = self.frequency_band
+
+        if self.time_axis is not None and self.time_window is None:
+            self.time_window = self.time_axis
+        elif self.time_window is not None and self.time_axis is None:
+            self.time_axis = self.time_window
+
+        if self.source_checksum and not self.provenance_checksum:
+            self.provenance_checksum = self.source_checksum
+        elif self.provenance_checksum and not self.source_checksum:
+            self.source_checksum = self.provenance_checksum
+
+        if self.is_synthetic:
+            self.synthetic_empirical_origin = "synthetic"
+        elif self.synthetic_empirical_origin == "synthetic":
+            self.is_synthetic = True
 
     def to_dict(self) -> dict[str, Any]:
         """Serializes record to safe dictionary with null for missing values."""
@@ -107,8 +138,10 @@ class CanonicalFeatureRecord:
             "feature_name": self.feature_name,
             "mathematical_definition": self.mathematical_definition,
             "units": self.units,
-            "frequency_band": self.frequency_band,
-            "time_window": self.time_window,
+            "frequency_axis": self.frequency_axis or self.frequency_band,
+            "frequency_band": self.frequency_band or self.frequency_axis,
+            "time_axis": self.time_axis or self.time_window,
+            "time_window": self.time_window or self.time_axis,
             "sampling_rate_hz": self.sampling_rate_hz,
             "channel_node_identity": list(self.channel_node_identity),
             "coordinate_status": str(self.coordinate_status),
@@ -117,11 +150,13 @@ class CanonicalFeatureRecord:
             "session": self.session,
             "run": self.run,
             "condition_label": self.condition_label,
-            "provenance_checksum": self.provenance_checksum,
+            "source_checksum": self.source_checksum or self.provenance_checksum,
+            "provenance_checksum": self.provenance_checksum or self.source_checksum,
             "preprocessing": list(self.preprocessing),
             "missingness": self.missingness,
             "uncertainty": self.uncertainty,
             "is_synthetic": self.is_synthetic,
+            "synthetic_empirical_origin": self.synthetic_empirical_origin,
             "evidence_class": str(self.evidence_class),
             "axes": list(self.axes),
             "shape": list(self.shape),
@@ -130,19 +165,30 @@ class CanonicalFeatureRecord:
         })
 
 
+# Type alias for standard FeatureRecord specification
+FeatureRecord = CanonicalFeatureRecord
+
+
 @dataclass
 class CanonicalFeatureBundle:
     """Bundle collection of canonical feature records for a session or run."""
     bundle_id: str
     records: list[CanonicalFeatureRecord] = field(default_factory=list)
-    schema_version: str = "NeuroTopologySim.CanonicalFeatureBundle.v1"
+    schema_version: str = "FeatureBundle.v1"
     subject: str | None = None
     session: str | None = None
     run: str | None = None
     condition_label: str | None = None
     is_synthetic: bool = False
+    source_checksum: str = ""
     provenance_checksum: str = ""
     bundle_checksum: str = ""
+
+    def __post_init__(self) -> None:
+        if self.source_checksum and not self.provenance_checksum:
+            self.provenance_checksum = self.source_checksum
+        elif self.provenance_checksum and not self.source_checksum:
+            self.source_checksum = self.provenance_checksum
 
     def to_dict(self) -> dict[str, Any]:
         return _safe_dict({
@@ -153,10 +199,15 @@ class CanonicalFeatureBundle:
             "run": self.run,
             "condition_label": self.condition_label,
             "is_synthetic": self.is_synthetic,
-            "provenance_checksum": self.provenance_checksum,
+            "source_checksum": self.source_checksum or self.provenance_checksum,
+            "provenance_checksum": self.provenance_checksum or self.source_checksum,
             "records": [r.to_dict() for r in self.records],
             "bundle_checksum": self.bundle_checksum,
         })
+
+
+# Type alias for standard FeatureBundle specification
+FeatureBundle = CanonicalFeatureBundle
 
 
 def _safe_dict(val: Any) -> Any:

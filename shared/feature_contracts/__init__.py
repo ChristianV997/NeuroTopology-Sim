@@ -6,7 +6,9 @@ from .models import (
     CanonicalFeatureRecord,
     CoordinateStatus,
     EvidenceClass,
+    FeatureBundle,
     FeatureFamily,
+    FeatureRecord,
     FrequencyBand,
     TimeWindow,
 )
@@ -31,6 +33,8 @@ from .validators import (
 )
 
 __all__ = [
+    "FeatureRecord",
+    "FeatureBundle",
     "CanonicalFeatureRecord",
     "CanonicalFeatureBundle",
     "FeatureFamily",
