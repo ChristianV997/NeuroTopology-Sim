@@ -621,7 +621,7 @@ class TestAliasesAndMigrationWarnings:
             source_checksum="b" * 64,
         )
         validate_feature_record(rec)
-        assert rec.schema_version == "FeatureRecord.v1"
+        assert rec.schema_version == "NeuroTopologySim.CanonicalFeatureRecord.v1"
         assert rec.frequency_band == {"low_hz": 13.0, "high_hz": 30.0}
         assert rec.provenance_checksum == "b" * 64
 

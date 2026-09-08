@@ -88,6 +88,7 @@ def validate_feature_record(record: CanonicalFeatureRecord) -> None:
         "FeatureRecord.v1",
         "CanonicalFeatureRecord.v1",
         "NeuroTopologySim.CanonicalFeatureRecord.v1",
+        "FeatureRecord.v0_beta",
     )
     if not record.schema_version:
         warnings.warn(
@@ -95,11 +96,11 @@ def validate_feature_record(record: CanonicalFeatureRecord) -> None:
             UserWarning,
             stacklevel=2,
         )
-    elif not any(record.schema_version.startswith(v.split(".")[0]) for v in valid_versions):
+    elif record.schema_version not in valid_versions:
         raise FeatureContractValidationError(
             f"Unsupported schema_version: '{record.schema_version}'. Expected one of {valid_versions}."
         )
-    elif record.schema_version not in valid_versions:
+    elif record.schema_version == "FeatureRecord.v0_beta":
         warnings.warn(
             f"Non-standard schema_version '{record.schema_version}'. Recommended canonical version is 'FeatureRecord.v1'.",
             UserWarning,
@@ -316,7 +317,7 @@ def validate_feature_bundle(bundle: CanonicalFeatureBundle) -> None:
             UserWarning,
             stacklevel=2,
         )
-    elif not any(bundle.schema_version.startswith(v.split(".")[0]) for v in valid_bundle_versions):
+    elif bundle.schema_version not in valid_bundle_versions:
         raise FeatureContractValidationError(
             f"Unsupported bundle schema_version: '{bundle.schema_version}'."
         )

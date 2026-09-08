@@ -92,7 +92,7 @@ def record_from_dict(data: dict[str, Any], *, validate: bool = True) -> Canonica
     """Instantiates and optionally validates a CanonicalFeatureRecord from a dictionary."""
     is_synth = bool(data.get("is_synthetic", False)) or (data.get("synthetic_empirical_origin") == "synthetic")
     rec = CanonicalFeatureRecord(
-        schema_version=data.get("schema_version", "FeatureRecord.v1"),
+        schema_version=data.get("schema_version", "NeuroTopologySim.CanonicalFeatureRecord.v1"),
         feature_family=data["feature_family"],
         feature_name=data["feature_name"],
         mathematical_definition=data["mathematical_definition"],
@@ -131,7 +131,7 @@ def bundle_from_dict(data: dict[str, Any], *, validate: bool = True) -> Canonica
     """Instantiates and optionally validates a CanonicalFeatureBundle from a dictionary."""
     records = [record_from_dict(r, validate=validate) for r in data.get("records", [])]
     bundle = CanonicalFeatureBundle(
-        schema_version=data.get("schema_version", "FeatureBundle.v1"),
+        schema_version=data.get("schema_version", "NeuroTopologySim.CanonicalFeatureBundle.v1"),
         bundle_id=data["bundle_id"],
         subject=data.get("subject"),
         session=data.get("session"),

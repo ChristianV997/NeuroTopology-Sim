@@ -82,7 +82,9 @@ class CanonicalFeatureRecord:
     feature_name: str
     mathematical_definition: str
     units: str
-    schema_version: str = "FeatureRecord.v1"
+    # Preserve the established wire default; FeatureRecord.v1 is an explicit
+    # compatibility alias, not a silent replacement of the canonical name.
+    schema_version: str = "NeuroTopologySim.CanonicalFeatureRecord.v1"
     frequency_band: dict[str, Any] | None = None
     frequency_axis: dict[str, Any] | None = None
     time_window: dict[str, Any] | None = None
@@ -174,7 +176,7 @@ class CanonicalFeatureBundle:
     """Bundle collection of canonical feature records for a session or run."""
     bundle_id: str
     records: list[CanonicalFeatureRecord] = field(default_factory=list)
-    schema_version: str = "FeatureBundle.v1"
+    schema_version: str = "NeuroTopologySim.CanonicalFeatureBundle.v1"
     subject: str | None = None
     session: str | None = None
     run: str | None = None
