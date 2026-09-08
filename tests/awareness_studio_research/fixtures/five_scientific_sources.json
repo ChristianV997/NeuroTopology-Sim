@@ -1,0 +1,84 @@
+{
+  "_note": "Claimed identifiers exactly as given in the BATCH 2/2 task prompt (2026-09-07), plus 'confirmed' facts independently obtained via WebSearch that same day. Used by test_verification.py and the real-source ingestion in test_store_audit.py. Two of the five could not be independently confirmed -- recorded as disagreements, never silently accepted.",
+  "sources": [
+    {
+      "label": "triadic_connectivity",
+      "claimed": {
+        "arxiv_id": "2609.03987",
+        "title": "triadic functional connectivity"
+      },
+      "confirmed": {
+        "exists": true,
+        "arxiv_id": "2609.03987",
+        "title": "High-Order Triadic Functional Connectivity in the Brain and Beyond",
+        "authors": ["Qiang Li", "Masoud Seraji", "Yu-Ping Wang", "Godfrey D Pearlson", "Vince D Calhoun"],
+        "publication_date": "2026-09-03",
+        "url": "https://arxiv.org/abs/2609.03987",
+        "abstract": "Introduces a matrix-based entropy-functional method for estimating triadic (three-way) statistical dependencies among brain regions, applied to large-scale functional brain networks; resulting triadic networks reveal community structure complementary to pairwise functional connectivity.",
+        "evidence_tier": "T1_verified_primary"
+      },
+      "verdict": "confirmed_matches_prompt_topic"
+    },
+    {
+      "label": "higher_order_spectra",
+      "claimed": {
+        "arxiv_id": "2609.03172",
+        "title": "higher-order spectra"
+      },
+      "confirmed": {
+        "exists": true,
+        "arxiv_id": "2609.03172",
+        "title": "Modulation Analysis with Higher-Order Spectra",
+        "authors": ["Christopher K. Kovach", "Sukhbinder Kumar"],
+        "url": "https://arxiv.org/abs/2609.03172",
+        "abstract": "Explores spectral decompositions of higher-order cumulants (higher-order spectra) as an alternative to filtering/envelope-extraction for identifying modulation of spectral power in physiological signals, emphasizing the trispectrum viewed as the cross spectrum of the Wigner-Ville distribution.",
+        "evidence_tier": "T1_verified_primary"
+      },
+      "verdict": "confirmed_matches_prompt_topic"
+    },
+    {
+      "label": "slow_breathing_inter_organ",
+      "claimed": {
+        "doi": "10.1016/j.neuron.2026.04.044",
+        "title": "slow breathing and inter-organ dynamics"
+      },
+      "confirmed": {
+        "exists": true,
+        "doi": "10.1016/j.neuron.2026.04.044",
+        "title": "Slow breathing impacts inter-organ dynamics modulating brain function and risk behavior",
+        "authors": [
+          "Wenhao Huang", "Mine Schmidt", "Ignacio Rebollo", "Felix Molter", "Min Pu",
+          "Beatrix Keweloh", "Lok Yan Lam", "Peter N C Mohr", "Gabriele Bellucci",
+          "Stefan Röttger", "Soyoung Q Park"
+        ],
+        "publication_date": "2026-05",
+        "url": "https://www.cell.com/neuron/fulltext/S0896-6273(26)00339-9",
+        "abstract": "Instructed prolonged exhalation (a slow-breathing technique) increased risky choices, enhanced reward sensitivity, and elevated cardiac parasympathetic activity; greater parasympathetic upregulation tracked stronger reward-related fMRI responses in ventromedial prefrontal cortex and precuneus.",
+        "evidence_tier": "T1_verified_primary"
+      },
+      "verdict": "confirmed_matches_prompt_topic"
+    },
+    {
+      "label": "discernment_nonjudgment",
+      "claimed": {
+        "doi": "10.1007/s12671-026-02976-7",
+        "title": "discernment and nonjudgment"
+      },
+      "confirmed": {
+        "exists": false
+      },
+      "verdict": "disagreement: the exact claimed DOI 10.1007/s12671-026-02976-7 could not be independently located. A closely topic-matched Springer/Mindfulness article was found instead -- 'Being Mindful with Discernment: Development and Validation of the Mindfulness-Discernment Scale (MDS)' -- but at a DIFFERENT DOI, 10.1007/s12671-026-02770-5. This is recorded as a disagreement, not silently substituted or assumed correct."
+    },
+    {
+      "label": "buddhist_meditation_ecology",
+      "claimed": {
+        "doi": "10.3389/fpsyg.2026.1938434",
+        "title": "Buddhist meditation training ecology"
+      },
+      "confirmed": {
+        "exists": false
+      },
+      "verdict": "disagreement: the exact claimed DOI 10.3389/fpsyg.2026.1938434 could not be independently located in Frontiers in Psychology's 2026 volume via search; several adjacent 2026 Buddhist-meditation/mindfulness articles exist at other DOIs (e.g. 10.3389/fpsyg.2026.1711922, 10.3389/fpsyg.2026.1815107) but none match this exact identifier or an 'ecology' framing. Recorded as unconfirmed, not assumed correct."
+    }
+  ]
+}

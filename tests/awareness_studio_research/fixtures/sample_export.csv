@@ -1,0 +1,2 @@
+title,authors,doi,arxiv_id,url,publication_date,source_type,abstract,peer_review_status,license_or_access_status,limitations
+A Fixture CSV Paper About Null Model Methodology,A. Csv;B. Csv,10.9999/fixture.0002,,https://example.org/fixture2,2026-03-01,journal_article,A fixture abstract about surrogate/null-model methodology for validating functional connectivity findings.,peer_reviewed,open_access,single dataset;no replication

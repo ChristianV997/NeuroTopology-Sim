@@ -1,0 +1,26 @@
+{
+  "sources": [
+    {
+      "title": "A Fixture Paper About Decentering and Metacognitive Distance",
+      "authors": ["A. Researcher", "B. Researcher"],
+      "doi": "10.9999/fixture.0001",
+      "publication_date": "2026-01-15",
+      "source_type": "journal_article",
+      "abstract": "A fixture abstract describing decentering as metacognitive distancing from thought content during meditation practice.",
+      "peer_review_status": "peer_reviewed",
+      "license_or_access_status": "open_access",
+      "limitations": ["small sample size", "cross-sectional design"]
+    },
+    {
+      "title": "A Fixture Preprint About Hypergraph Forecasting",
+      "authors": ["C. Researcher"],
+      "arxiv_id": "9999.00001",
+      "publication_date": "2026-02-01",
+      "source_type": "preprint",
+      "abstract": "A fixture abstract about using hypergraph structures for forecasting higher-order network dynamics.",
+      "peer_review_status": "preprint_not_peer_reviewed",
+      "license_or_access_status": "arxiv_perpetual_license",
+      "limitations": ["not yet peer reviewed"]
+    }
+  ]
+}
