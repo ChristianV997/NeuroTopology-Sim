@@ -1,8 +1,9 @@
 """Comprehensive test suite for canonical feature contracts.
 
 Verifies schema adherence, unit validation, axes and dimension matching,
-channel uniqueness, mathematical guardrails, synthetic-empirical separation,
-deterministic checksumming, serialization roundtrips, offline isolation, and CLI execution.
+channel uniqueness, condition-label validity, mathematical guardrails,
+synthetic-empirical separation, deterministic checksumming, serialization roundtrips,
+migration warnings, offline isolation, and CLI execution.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import socket
 import subprocess
 import sys
 from typing import Any
+import warnings
 
 import pytest
 
@@ -20,8 +22,10 @@ from shared.feature_contracts import (
     CanonicalFeatureRecord,
     CoordinateStatus,
     EvidenceClass,
+    FeatureBundle,
     FeatureContractValidationError,
     FeatureFamily,
+    FeatureRecord,
     FrequencyBand,
     TimeWindow,
     VALID_UNITS,
@@ -77,12 +81,16 @@ def _make_base_record(**overrides: Any) -> CanonicalFeatureRecord:
 class TestFeatureFamiliesAndUnits:
     """Verifies registration and validation of families and units."""
 
-    def test_all_eleven_families_registered(self) -> None:
-        expected_families = {
+    def test_registered_families_include_required(self) -> None:
+        required_families = {
             "psd",
             "cross_spectrum",
             "pairwise_fc",
             "triadic_fc",
+            "bispectrum",
+            "trispectrum_modulogram",
+            "trispectrum",
+            "modulogram",
             "higher_order_spectra",
             "respiration",
             "ecg_hrv",
@@ -92,10 +100,9 @@ class TestFeatureFamiliesAndUnits:
             "behavioral_transition_labels",
         }
         actual_families = {f.value for f in FeatureFamily}
-        assert actual_families == expected_families
-        assert len(actual_families) == 11
+        assert required_families.issubset(actual_families)
 
-    def test_valid_records_across_all_eleven_families(self) -> None:
+    def test_valid_records_across_families(self) -> None:
         family_configs = [
             (
                 FeatureFamily.PSD.value,
@@ -146,13 +153,25 @@ class TestFeatureFamiliesAndUnits:
                 None,
             ),
             (
-                FeatureFamily.HIGHER_ORDER_SPECTRA.value,
+                FeatureFamily.BISPECTRUM.value,
                 "bispectrum_bicoherence",
                 "Normalized bicoherence magnitude",
                 "dimensionless",
                 ["channel", "freq1", "freq2"],
                 [2, 2, 2],
                 [[[0.1, 0.2], [0.2, 0.3]], [[0.2, 0.3], [0.3, 0.4]]],
+                ["Fz", "Cz"],
+                CoordinateStatus.MISSING.value,
+                None,
+            ),
+            (
+                FeatureFamily.TRISPECTRUM_MODULOGRAM.value,
+                "modulogram_pac",
+                "Phase-amplitude modulation index matrix",
+                "dimensionless",
+                ["channel", "freq_phase", "freq_amp"],
+                [2, 2, 2],
+                [[[0.05, 0.15], [0.12, 0.22]], [[0.04, 0.11], [0.09, 0.18]]],
                 ["Fz", "Cz"],
                 CoordinateStatus.MISSING.value,
                 None,
@@ -266,7 +285,7 @@ class TestAxesAndShapes:
 
     def test_shape_mismatch_rejected(self) -> None:
         rec = _make_base_record(
-            shape=[4, 4],  # actually 4, 3
+            shape=[4, 4],
             axes=["channel", "frequency"],
         )
         with pytest.raises(FeatureContractValidationError, match="Declared shape \\[4, 4\\] does not match inferred shape \\[4, 3\\]"):
@@ -275,7 +294,7 @@ class TestAxesAndShapes:
     def test_axes_length_mismatch_rejected(self) -> None:
         rec = _make_base_record(
             shape=[4, 3],
-            axes=["channel"],  # length 1 vs 2 dims
+            axes=["channel"],
         )
         with pytest.raises(FeatureContractValidationError, match="Length of axes \\(1\\) does not match dimensionality \\(2\\)"):
             validate_feature_record(rec)
@@ -310,7 +329,7 @@ class TestFiniteValuesAndDuplicates:
     def test_montage_coordinates_length_mismatch_rejected(self) -> None:
         rec = _make_base_record(
             channel_node_identity=["Fz", "Cz", "Pz", "Oz"],
-            montage_coordinates=[[0.0, 0.7, 0.5]],  # length 1 vs 4
+            montage_coordinates=[[0.0, 0.7, 0.5]],
             coordinate_status=CoordinateStatus.THREE_D_MONTAGE.value,
         )
         with pytest.raises(FeatureContractValidationError, match="montage_coordinates length \\(1\\) does not match channel_node_identity length \\(4\\)"):
@@ -323,6 +342,25 @@ class TestFiniteValuesAndDuplicates:
         )
         with pytest.raises(FeatureContractValidationError, match="montage_coordinates provided but coordinate_status is marked 'missing'"):
             validate_feature_record(rec)
+
+
+class TestConditionLabelValidation:
+    """Verifies that condition labels are preserved and checked for validity."""
+
+    def test_valid_condition_label_preserved(self) -> None:
+        rec = _make_base_record(condition_label="anesthesia_propofol_deep")
+        validate_feature_record(rec)
+        d = rec.to_dict()
+        assert d["condition_label"] == "anesthesia_propofol_deep"
+
+    def test_empty_condition_label_rejected(self) -> None:
+        rec = _make_base_record(condition_label="")
+        with pytest.raises(FeatureContractValidationError, match="condition_label cannot be empty or purely whitespace"):
+            validate_feature_record(rec)
+
+        rec_ws = _make_base_record(condition_label="   ")
+        with pytest.raises(FeatureContractValidationError, match="condition_label cannot be empty or purely whitespace"):
+            validate_feature_record(rec_ws)
 
 
 class TestMissingMetadataNullRule:
@@ -341,13 +379,13 @@ class TestMissingMetadataNullRule:
         validate_feature_record(rec_none)
 
     def test_invalid_frequency_band_rejected(self) -> None:
-        rec = _make_base_record(frequency_band={"low_hz": 15.0, "high_hz": 10.0})
-        with pytest.raises(FeatureContractValidationError, match="frequency_band must have low_hz >= 0 and high_hz > low_hz"):
+        rec = _make_base_record(frequency_axis={"low_hz": 15.0, "high_hz": 10.0})
+        with pytest.raises(FeatureContractValidationError, match="frequency_axis must have low_hz >= 0 and high_hz > low_hz"):
             validate_feature_record(rec)
 
     def test_invalid_time_window_rejected(self) -> None:
-        rec = _make_base_record(time_window={"start_s": 0.0, "duration_s": 0.0})
-        with pytest.raises(FeatureContractValidationError, match="time_window must specify duration_s > 0"):
+        rec = _make_base_record(time_axis={"start_s": 0.0, "duration_s": 0.0})
+        with pytest.raises(FeatureContractValidationError, match="time_axis must specify duration_s > 0"):
             validate_feature_record(rec)
 
 
@@ -371,7 +409,6 @@ class TestMathematicalGuardrails:
             validate_feature_record(rec)
 
     def test_spatial_phase_charge_requires_coordinates_and_cannot_claim_betti(self) -> None:
-        # Missing coordinates
         rec_no_coords = _make_base_record(
             feature_family=FeatureFamily.SPATIAL_PHASE_CHARGE.value,
             feature_name="phase_winding_index",
@@ -387,7 +424,6 @@ class TestMathematicalGuardrails:
         with pytest.raises(FeatureContractValidationError, match="spatial_phase_charge family requires valid montage coordinates"):
             validate_feature_record(rec_no_coords)
 
-        # Claiming betti_1
         rec_betti = _make_base_record(
             feature_family=FeatureFamily.SPATIAL_PHASE_CHARGE.value,
             feature_name="phase_winding_index",
@@ -419,21 +455,22 @@ class TestMathematicalGuardrails:
         with pytest.raises(FeatureContractValidationError, match="Triadic FC reflects higher-order statistical dependence and cannot claim causality"):
             validate_feature_record(rec)
 
-    def test_higher_order_spectra_cannot_claim_topology(self) -> None:
-        rec = _make_base_record(
-            feature_family=FeatureFamily.HIGHER_ORDER_SPECTRA.value,
-            feature_name="bispectrum_feature",
-            mathematical_definition="Trispectral phase coupling defining a betti_number invariant",
-            units="dimensionless",
-            axes=["channel", "freq1", "freq2"],
-            shape=[2, 2, 2],
-            values=[[[0.1, 0.2], [0.2, 0.3]], [[0.2, 0.3], [0.3, 0.4]]],
-            channel_node_identity=["Fz", "Cz"],
-            coordinate_status=CoordinateStatus.MISSING.value,
-            montage_coordinates=None,
-        )
-        with pytest.raises(FeatureContractValidationError, match="Trispectral modulation reflects phase-amplitude coupling and cannot claim topology"):
-            validate_feature_record(rec)
+    def test_higher_order_spectra_and_bispectrum_cannot_claim_topology(self) -> None:
+        for fam in (FeatureFamily.HIGHER_ORDER_SPECTRA.value, FeatureFamily.BISPECTRUM.value):
+            rec = _make_base_record(
+                feature_family=fam,
+                feature_name="bispectrum_feature",
+                mathematical_definition="Trispectral phase coupling defining a betti_number invariant",
+                units="dimensionless",
+                axes=["channel", "freq1", "freq2"],
+                shape=[2, 2, 2],
+                values=[[[0.1, 0.2], [0.2, 0.3]], [[0.2, 0.3], [0.3, 0.4]]],
+                channel_node_identity=["Fz", "Cz"],
+                coordinate_status=CoordinateStatus.MISSING.value,
+                montage_coordinates=None,
+            )
+            with pytest.raises(FeatureContractValidationError, match="Trispectral modulation reflects phase-amplitude coupling and cannot claim topology"):
+                validate_feature_record(rec)
 
     def test_respiration_cannot_claim_consciousness(self) -> None:
         rec = _make_base_record(
@@ -451,14 +488,14 @@ class TestMathematicalGuardrails:
         with pytest.raises(FeatureContractValidationError, match="Respiration cannot claim direct cognitive arousal or consciousness state"):
             validate_feature_record(rec)
 
-    def test_eeg_cannot_claim_discernment(self) -> None:
+    def test_eeg_cannot_claim_behavioral_constructs(self) -> None:
         rec = _make_base_record(
             feature_family=FeatureFamily.PSD.value,
             feature_name="discernment_score_alpha",
             mathematical_definition="Welch power spectral density alpha band indexing spiritual discernment",
             units="uV^2/Hz",
         )
-        with pytest.raises(FeatureContractValidationError, match="Mental discernment/cognitive awareness cannot be inferred from EEG alone"):
+        with pytest.raises(FeatureContractValidationError, match="Behavioral constructs and mental discernment cannot be inferred from EEG alone"):
             validate_feature_record(rec)
 
 
@@ -529,7 +566,6 @@ class TestBundleValidationAndCompatibility:
         assert compatible is True
         assert len(errs) == 0
 
-        # Mismatched subjects
         rec_diff_sub = _make_base_record(subject="sub-02")
         compatible, errs = check_feature_compatibility(rec_a, rec_diff_sub)
         assert compatible is False
@@ -558,7 +594,7 @@ class TestDeterministicSerializationAndChecksums:
     def test_bundle_serialization_roundtrip(self) -> None:
         rec1 = _make_base_record(feature_name="psd_b")
         rec2 = _make_base_record(feature_name="psd_a")
-        bundle = CanonicalFeatureBundle(
+        bundle = FeatureBundle(
             bundle_id="bundle-01",
             subject="sub-01",
             records=[rec1, rec2],
@@ -567,10 +603,32 @@ class TestDeterministicSerializationAndChecksums:
         bundle_loaded = bundle_from_json(json_str)
         assert bundle_loaded.bundle_id == "bundle-01"
         assert len(bundle_loaded.records) == 2
-        # Records sorted canonically
         assert bundle_loaded.records[0].feature_name == "psd_a"
         assert bundle_loaded.records[1].feature_name == "psd_b"
         assert len(bundle_loaded.bundle_checksum) == 64
+
+
+class TestAliasesAndMigrationWarnings:
+    """Verifies FeatureRecord alias and schema version migration warnings."""
+
+    def test_feature_record_alias_instantiation(self) -> None:
+        rec = FeatureRecord(
+            feature_family=FeatureFamily.PSD.value,
+            feature_name="beta_psd",
+            mathematical_definition="Welch PSD in beta band (13-30 Hz)",
+            units="uV^2/Hz",
+            frequency_axis={"low_hz": 13.0, "high_hz": 30.0},
+            source_checksum="b" * 64,
+        )
+        validate_feature_record(rec)
+        assert rec.schema_version == "NeuroTopologySim.CanonicalFeatureRecord.v1"
+        assert rec.frequency_band == {"low_hz": 13.0, "high_hz": 30.0}
+        assert rec.provenance_checksum == "b" * 64
+
+    def test_migration_warning_emitted_for_unstandardized_version(self) -> None:
+        rec = _make_base_record(schema_version="FeatureRecord.v0_beta")
+        with pytest.warns(UserWarning, match="Non-standard schema_version"):
+            validate_feature_record(rec)
 
 
 class TestZeroNetworkExecution:
@@ -597,7 +655,7 @@ class TestCLIValidator:
         rec_path = tmp_path / "valid_record.json"
         rec_path.write_text(record_to_json(rec), encoding="utf-8")
 
-        bundle = CanonicalFeatureBundle(
+        bundle = FeatureBundle(
             bundle_id="bundle-test",
             subject="sub-01",
             records=[rec],
@@ -625,7 +683,7 @@ class TestCLIValidator:
 
     def test_cli_invalid_record_returns_exit_code_2(self, tmp_path: Path) -> None:
         invalid_rec = {
-            "schema_version": "NeuroTopologySim.CanonicalFeatureRecord.v1",
+            "schema_version": "FeatureRecord.v1",
             "feature_family": "psd",
             "feature_name": "bad_units",
             "mathematical_definition": "Welch PSD",

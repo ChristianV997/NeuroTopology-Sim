@@ -8,6 +8,8 @@ from typing import Any, Sequence
 from .models import (
     CanonicalFeatureBundle,
     CanonicalFeatureRecord,
+    FeatureBundle,
+    FeatureRecord,
     _safe_dict,
 )
 from .validators import validate_feature_bundle, validate_feature_record
@@ -21,8 +23,10 @@ def canonical_sort_key(rec: CanonicalFeatureRecord) -> tuple[Any, ...]:
     cond = rec.condition_label or ""
     fam = rec.feature_family
     name = rec.feature_name
-    t_start = rec.time_window.get("start_s", 0.0) if rec.time_window else 0.0
-    f_low = rec.frequency_band.get("low_hz", 0.0) if rec.frequency_band else 0.0
+    win = rec.time_axis or rec.time_window or {}
+    band = rec.frequency_axis or rec.frequency_band or {}
+    t_start = win.get("start_s", 0.0)
+    f_low = band.get("low_hz", 0.0)
     return (sub, ses, run, cond, fam, name, t_start, f_low)
 
 
@@ -52,8 +56,8 @@ def compute_bundle_checksum(bundle: CanonicalFeatureBundle) -> str:
         r.get("condition_label") or "",
         r.get("feature_family", ""),
         r.get("feature_name", ""),
-        (r.get("time_window") or {}).get("start_s", 0.0),
-        (r.get("frequency_band") or {}).get("low_hz", 0.0),
+        (r.get("time_axis") or r.get("time_window") or {}).get("start_s", 0.0),
+        (r.get("frequency_axis") or r.get("frequency_band") or {}).get("low_hz", 0.0),
     ))
     d["records"] = sorted_records
     safe_data = _safe_dict(d)
@@ -73,7 +77,6 @@ def record_to_json(record: CanonicalFeatureRecord, *, validate: bool = True) -> 
 
 def bundle_to_json(bundle: CanonicalFeatureBundle, *, validate: bool = True) -> str:
     """Serializes a feature bundle to canonical, null-safe JSON string."""
-    # Ensure records are sorted and carry individual checksums
     bundle.records = canonical_sort_records(bundle.records)
     for r in bundle.records:
         r.checksum = compute_record_checksum(r)
@@ -87,14 +90,17 @@ def bundle_to_json(bundle: CanonicalFeatureBundle, *, validate: bool = True) -> 
 
 def record_from_dict(data: dict[str, Any], *, validate: bool = True) -> CanonicalFeatureRecord:
     """Instantiates and optionally validates a CanonicalFeatureRecord from a dictionary."""
+    is_synth = bool(data.get("is_synthetic", False)) or (data.get("synthetic_empirical_origin") == "synthetic")
     rec = CanonicalFeatureRecord(
         schema_version=data.get("schema_version", "NeuroTopologySim.CanonicalFeatureRecord.v1"),
         feature_family=data["feature_family"],
         feature_name=data["feature_name"],
         mathematical_definition=data["mathematical_definition"],
         units=data["units"],
-        frequency_band=data.get("frequency_band"),
-        time_window=data.get("time_window"),
+        frequency_band=data.get("frequency_band") or data.get("frequency_axis"),
+        frequency_axis=data.get("frequency_axis") or data.get("frequency_band"),
+        time_window=data.get("time_window") or data.get("time_axis"),
+        time_axis=data.get("time_axis") or data.get("time_window"),
         sampling_rate_hz=data.get("sampling_rate_hz"),
         channel_node_identity=list(data.get("channel_node_identity", [])),
         coordinate_status=data.get("coordinate_status", "missing"),
@@ -103,11 +109,13 @@ def record_from_dict(data: dict[str, Any], *, validate: bool = True) -> Canonica
         session=data.get("session"),
         run=data.get("run"),
         condition_label=data.get("condition_label"),
-        provenance_checksum=data.get("provenance_checksum", ""),
+        provenance_checksum=data.get("provenance_checksum") or data.get("source_checksum", ""),
+        source_checksum=data.get("source_checksum") or data.get("provenance_checksum", ""),
         preprocessing=list(data.get("preprocessing", [])),
         missingness=data.get("missingness"),
         uncertainty=data.get("uncertainty"),
-        is_synthetic=bool(data.get("is_synthetic", False)),
+        is_synthetic=is_synth,
+        synthetic_empirical_origin="synthetic" if is_synth else "empirical",
         evidence_class=data.get("evidence_class", "empirical_feature"),
         axes=list(data.get("axes", [])),
         shape=list(data.get("shape", [])),
@@ -130,7 +138,8 @@ def bundle_from_dict(data: dict[str, Any], *, validate: bool = True) -> Canonica
         run=data.get("run"),
         condition_label=data.get("condition_label"),
         is_synthetic=bool(data.get("is_synthetic", False)),
-        provenance_checksum=data.get("provenance_checksum", ""),
+        source_checksum=data.get("source_checksum") or data.get("provenance_checksum", ""),
+        provenance_checksum=data.get("provenance_checksum") or data.get("source_checksum", ""),
         bundle_checksum=data.get("bundle_checksum", ""),
         records=records,
     )
