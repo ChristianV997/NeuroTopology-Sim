@@ -34,16 +34,19 @@ per-step topology auditing. These diagnostic numbers identify the bottleneck;
 the committed benchmark command above is the authoritative reproducible
 baseline/candidate record and should be rerun on the review host.
 
-The committed run on host `CV` (Windows, Python 3.14.7, commit `618ca08`) used
-three timed repetitions per fresh child. Its measured result was:
+The committed run on host `CV` (Windows, Python 3.14.7, commit `7206ad6`) used
+five timed repetitions per fresh child. Its measured result was:
 
 | mode | seed | shape | backend | runtime | tracemalloc peak | child RSS | timeout | checksum | correctness |
 | --- | ---: | --- | --- | ---: | ---: | ---: | --- | --- | --- |
-| baseline | 17 | 512 × 150 | fast | 0.25646 s | 219,374 B | 122,392,576 B | false | 149.99999999978886 / `321235e9…` | true |
-| optimized | 17 | 512 × 150 | fast | 0.22942 s | 215,412 B | 122,122,240 B | false | 149.99999999978886 / `321235e9…` | true |
+| baseline | 17 | 512 × 150 | fast | 0.13155 s best / 0.16315 s mean | 219,348 B | 122,056,704 B | false | 149.99999999978886 / `321235e9…` | true |
+| optimized | 17 | 512 × 150 | fast | 0.12064 s best / 0.14588 s mean | 214,972 B | 122,081,280 B | false | 149.99999999978886 / `321235e9…` | true |
 
-The normalized pair decision was `pass` with runtime ratio `0.89455`,
-tracemalloc ratio `0.98194`, child-RSS ratio `0.99779`, and matching checksums.
+The normalized pair decision was `pass` with runtime ratio `0.91708`,
+tracemalloc ratio `0.98005`, child-RSS ratio `1.00020`, and matching checksums.
+For this five-repetition run, the best-sample runtime ratio was `0.91708` and
+the mean runtime fell by approximately 10.6%. The earlier three-repetition
+diagnostic was noisier; best/mean values are reported together for that reason.
 This is an operational performance verdict only; do not hand-edit it into a
 scientific verdict.
 
