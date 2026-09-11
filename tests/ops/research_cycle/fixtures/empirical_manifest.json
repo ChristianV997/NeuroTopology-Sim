@@ -1,0 +1,33 @@
+{
+  "schema": "NeuroTopologySim.EmpiricalSourceManifest.v1",
+  "scientific_status": "preregistration_only",
+  "evidence_claim_allowed": false,
+  "origin": "synthetic_demo",
+  "dataset_identifier": "rcop-fixture-demo",
+  "source_url": null,
+  "local_root": "tests/ops/research_cycle/fixtures",
+  "subject_identifiers": ["sub-demo-01", "sub-demo-02"],
+  "condition_labels": ["rest", "task"],
+  "pairing_key": "subject_id",
+  "expected_sampling_rate_hz": {"min": 100.0, "max": 1000.0},
+  "channel_count_range": {"min": 8, "max": 256},
+  "montage_requirement": "operator_supplied",
+  "minimum_paired_subject_count": 2,
+  "exclusion_rules": ["fixture_only"],
+  "primary_outcome_metrics": ["cli_exit_code"],
+  "secondary_outcomes": [],
+  "null_models": ["none"],
+  "multiplicity_correction": "not_applicable_fixture",
+  "stopping_rule": "single_offline_pass",
+  "missing_data_rule": "fixture_has_no_recordings",
+  "synthetic_data_policy": {
+    "policy": "synthetic_never_empirical",
+    "treat_as_empirical": false
+  },
+  "provenance_requirements": {
+    "checksum": "required",
+    "origin_label": "required",
+    "no_filename_condition_inference": true
+  },
+  "notes": "Synthetic operator-pack fixture. Not empirical evidence. Not a scientific PASS."
+}
