@@ -76,13 +76,16 @@ class PRFacts:
 
 @dataclass(frozen=True)
 class CurrentStatus:
-    lifecycle_state: Evidence
-    checks_status: Evidence
-    mergeability: Evidence
-    billing_blocked: Evidence
-    superseded: Evidence
-    duplicate: Evidence
-    scientific_review_required: Evidence
+    """Requirement-2 status fields, each an Evidence pair like everything
+    else in this report."""
+
+    lifecycle_state: Evidence   # "draft" | "open" | "closed" | "merged" | None
+    checks_status: Evidence    # "passing" | "failing" | "pending" | "not_run" | "mixed" | "infrastructure_blocked" | "billing_blocked" | None
+    mergeability: Evidence     # "mergeable" | "conflicting" | "unknown"
+    billing_blocked: Evidence  # bool
+    superseded: Evidence       # bool
+    duplicate: Evidence        # bool
+    scientific_review_required: Evidence  # bool
 
     def to_dict(self) -> dict:
         return {
@@ -100,7 +103,7 @@ class CurrentStatus:
 class StackInfo:
     is_stacked: Evidence
     base_work_order_id: Evidence
-    dependents: Evidence
+    dependents: Evidence  # tuple[str, ...] of work_order_ids stacked on this one
 
     def to_dict(self) -> dict:
         return {
