@@ -1,0 +1,54 @@
+{
+  "checksum": "65f5abd786f13bc9bace04962169a488631aa563fbb6707901aeabd1205c6d6f",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": []
+  },
+  "evidence_class": "synthetic_demo_only",
+  "parent_checksums": [
+    "0642e46aebe9dfa67b65d30f05ab7c98b2f497c929bc9b8d65e9f28c5c565b9e"
+  ],
+  "parent_ids": [
+    "hyp_fc_synthetic_001"
+  ],
+  "payload": {
+    "artifacts": {
+      "metrics": "metrics.json",
+      "summary": "summary.json"
+    },
+    "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+    "claim_type": "K",
+    "created_at": "2026-09-10T00:00:00+00:00",
+    "data_mode": "synthetic",
+    "dataset_id": "synthetic-fixture-cohort-001",
+    "dependencies": {
+      "python": "3.x"
+    },
+    "elapsed_s": 0.01,
+    "input": {
+      "n_steps": 1,
+      "seed": 7
+    },
+    "layer": "Topology",
+    "metrics": {
+      "fixture_metric": 0.25
+    },
+    "run_id": "run_synthetic_001",
+    "run_kind": "hypothesis",
+    "schema_version": "0.1",
+    "source": "local synthetic fixture",
+    "spec_id": "HYP-SYNTHETIC-001",
+    "synthetic": true,
+    "verdict": null
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "run_synthetic_001",
+  "schema_version": "NeuroTopologySim.SimulationRunManifest.v1",
+  "scientific_verdict": "NOT_APPLICABLE",
+  "stage": "simulation_run_manifest",
+  "status": "COMPLETE"
+}

@@ -74,10 +74,12 @@ def _pr_facts(work_order: WorkOrder, snapshot: dict[str, Any]) -> tuple[PRFacts,
             return Evidence(None, f"{source}: field {key!r} absent from snapshot")
         return Evidence(pr[key], source)
 
-    body = pr.get("body")
-    body_field = Evidence(body[:2000], source) if isinstance(body, str) else Evidence(
-        None, f"{source}: field 'body' absent from snapshot"
+    body_excerpt = pr.get("body")
+    body_field = (
+        Evidence(body_excerpt[:2000], source) if isinstance(body_excerpt, str)
+        else Evidence(None, f"{source}: field 'body' absent from snapshot")
     )
+
     return PRFacts(
         number=field("number"),
         state=field("state"),
@@ -91,40 +93,6 @@ def _pr_facts(work_order: WorkOrder, snapshot: dict[str, Any]) -> tuple[PRFacts,
         base_ref=field("base_ref"),
         body_excerpt=body_field,
     ), pr
-
-
-def _lifecycle_state(pr: PRFacts) -> Evidence:
-    if pr.number.value is None:
-        return Evidence(None, "no PR found")
-    if pr.merged.value is True:
-        return Evidence("merged", pr.merged.source)
-    if pr.state.value == "closed":
-        return Evidence("closed", pr.state.source)
-    if pr.draft.value is True:
-        return Evidence("draft", pr.draft.source)
-    if pr.state.value == "open":
-        return Evidence("open", pr.state.source)
-    return Evidence(None, "PR state/draft/merged fields insufficient to classify")
-
-
-def _checks_status(pr: PRFacts) -> Evidence:
-    if not pr.checks.value:
-        return Evidence("not_run", "no check data available")
-    normalized = github_source.normalize_checks(pr.checks.value)
-    summary = ci_interpretation.summarize(ci_interpretation.classify_all(normalized))
-    distinct = set(summary)
-    if len(distinct) == 1:
-        return Evidence(next(iter(distinct)), pr.checks.source)
-    return Evidence("mixed", f"{pr.checks.source} (mixed: {summary})")
-
-
-def _mergeability(pr: PRFacts) -> Evidence:
-    value = github_source.mergeable_from_state(pr.mergeable_state.value)
-    if value is True:
-        return Evidence("mergeable", pr.mergeable_state.source)
-    if value is False:
-        return Evidence("conflicting", pr.mergeable_state.source)
-    return Evidence("unknown", pr.mergeable_state.source)
 
 
 def _derive_stages(branch: BranchFacts, pr: PRFacts) -> dict[str, Evidence]:
@@ -142,6 +110,48 @@ def _derive_stages(branch: BranchFacts, pr: PRFacts) -> dict[str, Evidence]:
 
     stages["merged"] = Evidence(pr.merged.value, pr.merged.source)
     return stages
+
+
+def _lifecycle_state(pr: PRFacts) -> Evidence:
+    if pr.number.value is None:
+        return Evidence(None, "no PR found")
+    if pr.merged.value is True:
+        return Evidence("merged", pr.merged.source)
+    if pr.state.value == "closed":
+        return Evidence("closed", pr.state.source)
+    if pr.draft.value is True:
+        return Evidence("draft", pr.draft.source)
+    if pr.state.value == "open":
+        return Evidence("open", pr.state.source)
+    return Evidence(None, "PR state/draft/merged fields insufficient to classify")
+
+
+def _checks_status(pr: PRFacts) -> Evidence:
+    raw_checks = pr.checks.value
+    if not raw_checks:
+        return Evidence("not_run", "no check data available")
+    normalized = github_source.normalize_checks(raw_checks)
+    classifications = ci_interpretation.classify_all(normalized)
+    summary = ci_interpretation.summarize(classifications)
+    distinct = set(summary)
+    if len(distinct) == 1:
+        return Evidence(next(iter(distinct)), pr.checks.source)
+    # Precedence when checks disagree: surface the most actionable/urgent
+    # state first so a reviewer never mistakes a partially-blocked PR for
+    # a merely-pending one.
+    for priority in ("billing_blocked", "infrastructure_blocked", "failing", "pending", "passing", "not_run", "unknown"):
+        if priority in distinct:
+            return Evidence("mixed", f"{pr.checks.source} (mixed: {summary})")
+    return Evidence("mixed", f"{pr.checks.source} (mixed: {summary})")
+
+
+def _mergeability(pr: PRFacts) -> Evidence:
+    value = github_source.mergeable_from_state(pr.mergeable_state.value)
+    if value is True:
+        return Evidence("mergeable", pr.mergeable_state.source)
+    if value is False:
+        return Evidence("conflicting", pr.mergeable_state.source)
+    return Evidence("unknown", pr.mergeable_state.source)
 
 
 def _notes_for(work_order: WorkOrder, branch: BranchFacts, pr: PRFacts, stages: dict[str, Evidence]) -> list[str]:
@@ -204,6 +214,7 @@ def reconcile(
             work_order_branches[work_order.work_order_id] = work_order.expected_branch
         pr_base_by_work_order[work_order.work_order_id] = pr.base_ref.value
 
+    # ---- stacked-PR awareness ----
     target_branch_name = target_ref.rsplit("/", 1)[-1]
     stack_relationships = stacking.build_stack_relationships(
         work_order_branches, pr_base_by_work_order, target_branch_name
@@ -216,6 +227,7 @@ def reconcile(
             )
         else:
             effective_files_by_work_order[work_order_id] = changed_files_by_work_order.get(work_order_id)
+    # Work orders with no branch info at all keep whatever (None) they already had.
     for work_order in work_orders:
         effective_files_by_work_order.setdefault(
             work_order.work_order_id, changed_files_by_work_order.get(work_order.work_order_id)
@@ -227,114 +239,113 @@ def reconcile(
         if relationship.base_work_order_id is not None
     )
 
+    # ---- scientific gate hints + current status, per entry ----
     for entry in entries:
         work_order_id = entry.work_order.work_order_id
         relationship = stack_relationships.get(work_order_id)
         if relationship is not None:
             entry.stack = StackInfo(
                 is_stacked=Evidence(relationship.is_stacked, "PR base_ref vs. target_ref"),
-                base_work_order_id=Evidence(
-                    relationship.base_work_order_id,
-                    "matched via known work orders' branches",
-                ),
-                dependents=Evidence(
-                    list(relationship.dependents),
-                    "other work orders whose PR base_ref is this one's branch",
-                ),
+                base_work_order_id=Evidence(relationship.base_work_order_id, "matched via known work orders' branches"),
+                dependents=Evidence(list(relationship.dependents), "other work orders whose PR base_ref is this one's branch"),
             )
+
         effective_files = effective_files_by_work_order.get(work_order_id)
         entry.effective_changed_files = Evidence(
             list(effective_files) if effective_files is not None else None,
             "diff against immediate PR base (stacked) or target_ref (unstacked)",
         )
+
         raw_pr = raw_pr_by_work_order.get(work_order_id)
-        body_text = raw_pr.get("body") if isinstance(raw_pr, dict) else ""
-        hints = scientific_gates.evaluate_text(body_text)
+        body_text = raw_pr.get("body") if isinstance(raw_pr, dict) else None
+        hints = scientific_gates.evaluate_text(body_text or "")
         touches_science = scientific_gates.touches_scientific_paths(
             tuple(effective_files) if effective_files else None
         )
         hints_dict = hints.to_dict()
         hints_dict["touches_scientific_paths"] = touches_science
-        hints_dict["scientific_review_required"] = (
-            hints_dict["scientific_review_required"] or touches_science
-        )
+        hints_dict["scientific_review_required"] = hints_dict["scientific_review_required"] or touches_science
         entry.scientific_gate_hints = hints_dict
-        checks_status = _checks_status(entry.pr)
+
         entry.current_status = CurrentStatus(
             lifecycle_state=_lifecycle_state(entry.pr),
-            checks_status=checks_status,
+            checks_status=_checks_status(entry.pr),
             mergeability=_mergeability(entry.pr),
             billing_blocked=Evidence(
-                checks_status.value == "billing_blocked", "derived from checks_status"
+                _checks_status(entry.pr).value == "billing_blocked", "derived from checks_status"
             ),
-            superseded=Evidence(False, "computed after branch-pair ancestry scan"),
-            duplicate=Evidence(False, "computed after effective-diff scan"),
+            superseded=Evidence(False, "not yet computed"),  # filled in below
+            duplicate=Evidence(False, "not yet computed"),  # filled in below
             scientific_review_required=Evidence(
-                hints_dict["scientific_review_required"],
-                "scientific_gates text + path hints",
+                hints_dict["scientific_review_required"], "scientific_gates text + path hints"
             ),
         )
 
+    # ---- overlap (on EFFECTIVE diffs -- a stacked PR's raw diff against
+    # target_ref necessarily repeats its base PR's files, which is
+    # expected lineage, not an accidental conflict; the effective diff is
+    # each work order's own, non-double-counted contribution) ----
     file_overlaps = overlap.compute_overlaps(effective_files_by_work_order)
     common_check_failures = common_failures.detect_common_check_failures(checks_by_work_order)
 
     artifact_findings: dict[str, list[str]] = {}
-    for work_order_id, files in effective_files_by_work_order.items():
+    for work_order_id, files in changed_files_by_work_order.items():
         if files is None:
             continue
         suspects = artifact_check.find_suspect_artifacts(files)
         if suspects:
             artifact_findings[work_order_id] = suspects
 
+    # ---- duplicates (on EFFECTIVE diffs, so a stacked PR's tiny real diff
+    # is compared, not double-counted against its base) ----
     possible_duplicates = duplicate_detection.detect_possible_duplicates(
         effective_files_by_work_order, stacked_pairs=stacked_pairs
     )
-    duplicated_work_orders = {
-        finding["work_order_a"] for finding in possible_duplicates
-    } | {
+    duplicated_work_orders = {finding["work_order_a"] for finding in possible_duplicates} | {
         finding["work_order_b"] for finding in possible_duplicates
     }
+
+    # ---- superseded: direct branch-to-branch ancestry among present
+    # branches NOT already explained by a known, legitimate stack
+    # relationship (a stacked PR's branch is *always* a descendant of its
+    # base's branch by construction -- that is deliberate lineage, never
+    # evidence one supersedes the other) ----
     ancestry_by_pair: dict[tuple[str, str], Optional[bool]] = {}
     present = [wo for wo in work_orders if work_order_branches.get(wo.work_order_id)]
-    for index, work_order_a in enumerate(present):
-        for work_order_b in present[index + 1:]:
-            pair = (work_order_a.work_order_id, work_order_b.work_order_id)
+    for i, wo_a in enumerate(present):
+        for wo_b in present[i + 1:]:
+            pair = (wo_a.work_order_id, wo_b.work_order_id)
             if pair in stacked_pairs or (pair[1], pair[0]) in stacked_pairs:
                 continue
-            ancestry_by_pair[pair] = git_source.is_ancestor(
-                repo_path,
-                f"origin/{work_order_branches[work_order_a.work_order_id]}",
-                f"origin/{work_order_branches[work_order_b.work_order_id]}",
-            )
+            branch_a = f"origin/{work_order_branches[wo_a.work_order_id]}"
+            branch_b = f"origin/{work_order_branches[wo_b.work_order_id]}"
+            ancestry_by_pair[pair] = git_source.is_ancestor(repo_path, branch_a, branch_b)
     superseded_work = duplicate_detection.detect_superseded(ancestry_by_pair)
-    superseded_work_orders = {
-        finding["superseded_work_order"] for finding in superseded_work
-    }
+    superseded_work_orders = {finding["superseded_work_order"] for finding in superseded_work}
+
     for entry in entries:
         work_order_id = entry.work_order.work_order_id
-        if entry.current_status is None:
-            continue
-        entry.current_status = CurrentStatus(
-            lifecycle_state=entry.current_status.lifecycle_state,
-            checks_status=entry.current_status.checks_status,
-            mergeability=entry.current_status.mergeability,
-            billing_blocked=entry.current_status.billing_blocked,
-            superseded=Evidence(
-                work_order_id in superseded_work_orders,
-                "duplicate_detection.detect_superseded (git ancestry)",
-            ),
-            duplicate=Evidence(
-                work_order_id in duplicated_work_orders,
-                "duplicate_detection.detect_possible_duplicates (effective diffs)",
-            ),
-            scientific_review_required=entry.current_status.scientific_review_required,
-        )
+        if entry.current_status is not None:
+            entry.current_status = CurrentStatus(
+                lifecycle_state=entry.current_status.lifecycle_state,
+                checks_status=entry.current_status.checks_status,
+                mergeability=entry.current_status.mergeability,
+                billing_blocked=entry.current_status.billing_blocked,
+                superseded=Evidence(
+                    work_order_id in superseded_work_orders, "duplicate_detection.detect_superseded (git ancestry)"
+                ),
+                duplicate=Evidence(
+                    work_order_id in duplicated_work_orders,
+                    "duplicate_detection.detect_possible_duplicates (Jaccard similarity of effective diffs)",
+                ),
+                scientific_review_required=entry.current_status.scientific_review_required,
+            )
 
     dashboard_result = None
     if dashboard_src is not None:
         dashboard_result = dashboard_isolation.check_dashboard_isolation(dashboard_src)
 
-    base_commit = git_source._resolve_commit_once(repo_path, target_ref)
+    base_commit = git_source.resolve_commit(repo_path, target_ref)
 
     return ReconciliationReport(
         schema=REPORT_SCHEMA,

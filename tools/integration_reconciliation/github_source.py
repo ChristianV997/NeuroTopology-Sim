@@ -25,7 +25,15 @@ Snapshot schema (``NTS.GitHubReconciliationSnapshot.v1``)::
           "draft": true,
           "merged": false,
           "mergeable_state": "unstable",
-          "checks": {"core-tests": "failure", "awareness-tests": "success"}
+          "body": "full PR description text, used only for scientific-gate text hints",
+          "checks": {
+            "core-tests": "failure",
+            "awareness-tests": "success",
+            "ontology-claim-language": {
+              "status": "completed", "conclusion": "failure",
+              "failure_signature": "No space left on device"
+            }
+          }
         },
         ...
       ]
@@ -33,7 +41,13 @@ Snapshot schema (``NTS.GitHubReconciliationSnapshot.v1``)::
 
 Every field beyond ``number``/``head_ref`` is optional in a snapshot; a
 missing field surfaces as an explicit null with an "absent from snapshot"
-evidence note, never as a fabricated default.
+evidence note, never as a fabricated default. Each entry in ``checks`` may
+be either the legacy flat string form (a bare GitHub conclusion, e.g.
+``"success"``/``"failure"``) or the richer object form shown above
+(``status``/``conclusion``/optional ``failure_signature`` -- a short,
+evidenced excerpt such as a `get_job_logs` snippet, used by
+`ci_interpretation.py` to distinguish an infrastructure/billing block from
+an actual test failure). `normalize_checks()` below accepts either form.
 """
 from __future__ import annotations
 
@@ -76,7 +90,10 @@ def find_pr_by_number(snapshot: dict[str, Any], number: int) -> Optional[dict[st
 
 
 def normalize_checks(checks: Optional[dict[str, Any]]) -> dict[str, dict[str, Optional[str]]]:
-    """Normalize legacy flat conclusions and rich check evidence."""
+    """Accept either the legacy flat form ({name: "success"}) or the rich
+    object form ({name: {"status":..., "conclusion":..., "failure_signature":...}})
+    and always return the rich form, so downstream code (ci_interpretation.py)
+    has exactly one shape to handle."""
     if not checks:
         return {}
     normalized: dict[str, dict[str, Optional[str]]] = {}
@@ -88,28 +105,26 @@ def normalize_checks(checks: Optional[dict[str, Any]]) -> dict[str, dict[str, Op
                 "failure_signature": value.get("failure_signature"),
             }
         else:
-            normalized[name] = {
-                "status": "completed",
-                "conclusion": str(value),
-                "failure_signature": None,
-            }
+            # Legacy flat form: a bare conclusion string implies the check
+            # already completed.
+            normalized[name] = {"status": "completed", "conclusion": value, "failure_signature": None}
     return normalized
 
 
 def checks_all_passing(checks: Optional[dict[str, Any]]) -> Optional[bool]:
-    """None when there is no check data at all; False if any recorded
-    conclusion is not "success" (covers "failure", "cancelled", "timed_out",
-    a still-pending job reported as e.g. "neutral"/"skipped" is treated as
-    non-passing too, since "passing" must mean every recorded check
-    actually succeeded); True only when every recorded conclusion is
-    exactly "success"."""
+    """Return whether every recorded check has an exact ``success`` conclusion.
+
+    Both legacy flat snapshots and rich status objects are accepted. Missing
+    or non-success conclusions remain non-passing; infrastructure evidence is
+    classified separately and is never silently upgraded to a pass.
+    """
     if not checks:
         return None
-    normalized = normalize_checks(checks)
-    return all(
-        fields.get("conclusion") == "success"
-        for fields in normalized.values()
+    conclusions = (
+        value.get("conclusion") if isinstance(value, dict) else value
+        for value in checks.values()
     )
+    return all(conclusion == "success" for conclusion in conclusions)
 
 
 def mergeable_from_state(mergeable_state: Optional[str]) -> Optional[bool]:

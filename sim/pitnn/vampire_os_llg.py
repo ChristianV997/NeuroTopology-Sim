@@ -9,6 +9,7 @@ import numpy as np
 
 from .pitnn_constants import PITNNConstants
 from .topological_invariants import TopologicalInvariantTracker
+from tools.simulation_runtime.topology_metrics import audit_snapshot_reuse
 
 
 class OpenSystemLLGSimulator:
@@ -193,7 +194,7 @@ def simulate_os_llg(cfg: LLGConfig = LLGConfig(), constants: PITNNConstants | No
                               ciss_torque=cfg.ciss_torque, workspace=workspace)
         norm_error = max(norm_error, float(np.max(np.abs(np.linalg.norm(spins, axis=1) - 1.0))))
         magnetization.append(float(np.linalg.norm(np.mean(spins, axis=0))))
-        topology_trace.append(tracker.audit_snapshot(spins))
+        topology_trace.append(audit_snapshot_reuse(tracker, spins))
         if record_states:
             spins_history.append(spins.copy())
     baseline_rate = cfg.thermal_noise / max(cfg.damping, 1e-15)

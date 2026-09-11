@@ -1,0 +1,40 @@
+{
+  "plan_id": "HYP-fixture-clean-001",
+  "research_question": "Does increased triadic functional connectivity in region-set X correlate with sustained attention scores?",
+  "falsifiability_criteria": "If the correlation between triadic connectivity and sustained attention scores is not significant after multiplicity correction (p >= 0.05, FDR-corrected), the hypothesis is falsified.",
+  "primary_endpoint": "Pearson correlation between triadic connectivity index and sustained attention task score",
+  "secondary_endpoints": ["pairwise functional connectivity as a comparison baseline"],
+  "alternative_explanations": [
+    "head motion artifact could inflate connectivity estimates",
+    "practice effects on the attention task across sessions"
+  ],
+  "sources": [
+    {"title": "High-Order Triadic Functional Connectivity in the Brain and Beyond", "identifier": "arXiv:2609.03987", "verification_status": "verified"}
+  ],
+  "dataset_id": "ds002094",
+  "dataset_checksum": "sha256:9f3a1c2e7b8d4f5061a2c3e4d5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4",
+  "condition_labels": ["rest", "task"],
+  "condition_label_definitions": {
+    "rest": "eyes-closed resting state, no task instructions",
+    "task": "sustained attention task with visual targets"
+  },
+  "sample_size": 40,
+  "minimum_required_sample_size": 30,
+  "pairing_strategy": "within_subject",
+  "power_analysis": {"method": "simulation-based power analysis", "target_power": 0.8, "effect_size": 0.4, "alpha": 0.05},
+  "multiplicity_correction": "benjamini_hochberg_fdr",
+  "number_of_planned_tests": 3,
+  "null_model": {"method": "phase-randomized surrogate", "description": "Fourier phase randomization preserving power spectrum, 1000 surrogates"},
+  "leakage_controls": ["subject-level train/test split enforced before any preprocessing"],
+  "known_leakage_risks": ["repeated sessions from the same subject could leak subject identity across folds"],
+  "split_strategy": {"unit": "subject", "method": "5-fold grouped cross-validation by subject id"},
+  "preprocessing_steps": ["motion correction", "bandpass filter 0.01-0.1 Hz", "nuisance regression"],
+  "preprocessing_locked_before_analysis": true,
+  "measurement_limitations": ["fMRI temporal resolution limits detection of fast triadic dynamics"],
+  "compute_budget": {"estimated_hours": 120, "hardware": "single A100 GPU node"},
+  "reproducibility": {"seed": 42, "code_version": "git:abc1234", "environment_pinned": true},
+  "claim_language": "We hypothesize an association between triadic connectivity and sustained attention; this is a correlational, exploratory analysis.",
+  "evidence_class_declared": "empirical",
+  "replication_plan": "Pre-register and replicate on an independent held-out cohort (ds006644) before any confirmatory claim.",
+  "ethics_privacy": {"irb_status": "approved, protocol #2026-014", "privacy_measures": ["data de-identified before analysis", "access restricted to study team"]}
+}
