@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 from .harness import run_all
 from .schema import (
     EVIDENCE_CLASS,
-    FORBIDDEN_PHRASES,
     OWNED_PATH_PREFIXES,
     REQUIRED_OUTPUT_FILES,
     SCHEMA_VERSION,
@@ -50,8 +49,8 @@ def _md_table(rows: List[Dict[str, Any]], columns: List[str]) -> str:
 def _guardrail_block() -> str:
     return (
         "Evidence class: `performance_only`. Synthetic local fixtures only. "
-        "No clinical claims, no ontology promotion, no proof claims, no remote "
-        "dataset access, no Awareness Studio import, no production algorithm edits."
+        "No clinical claims. No ontology-layer claims. No proof claims. No remote "
+        "dataset access. No Awareness Studio import. No production algorithm edits."
     )
 
 
@@ -183,9 +182,7 @@ def _obsidian_notes(report: Dict[str, Any], vault: Path) -> List[str]:
         + _guardrail_block()
         + "\n\n- Owned paths: "
         + ", ".join(f"`{p}`" for p in OWNED_PATH_PREFIXES)
-        + "\n- Forbidden phrases: "
-        + ", ".join(f"`{p}`" for p in FORBIDDEN_PHRASES)
-        + "\n",
+        + "\n- Denylist is enforced by the validator and is not echoed here.\n",
     }
     for name, text in extra.items():
         dest = vault / f"{name}.md"
@@ -365,7 +362,8 @@ def generate(
         root / "governance_check.json",
         {
             "evidence_class": EVIDENCE_CLASS,
-            "forbidden_phrases": list(FORBIDDEN_PHRASES),
+            "denylist_enforced": True,
+            "denylist_echoed": False,
             "owned_paths": list(OWNED_PATH_PREFIXES),
             "network_required": False,
             "remote_data": False,

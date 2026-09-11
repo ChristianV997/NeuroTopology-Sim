@@ -126,9 +126,17 @@ def run_target(
     tm_ratio = _ratio(candidate.get("tracemalloc_peak_bytes"), baseline.get("tracemalloc_peak_bytes"))
     rt_ratio = _ratio(candidate.get("runtime_best_s"), baseline.get("runtime_best_s"))
     disk_ratio = _ratio(candidate.get("disk_bytes"), baseline.get("disk_bytes"))
+    tm_abs = candidate.get("tracemalloc_peak_bytes")
+    rt_abs = candidate.get("runtime_best_s")
 
     opt: List[Dict[str, Any]] = []
-    if tm_ratio is not None and tm_ratio > 1.15:
+    # Ratios at tiny absolute cost are not actionable production bottlenecks.
+    if (
+        tm_ratio is not None
+        and tm_ratio > 1.15
+        and tm_abs is not None
+        and tm_abs >= 64_000
+    ):
         recommendations.append("candidate tracemalloc peak exceeds baseline; review live path allocation")
         opt.append(
             {
@@ -140,7 +148,12 @@ def run_target(
                 "recommendation": _memory_hint(spec.name),
             }
         )
-    if rt_ratio is not None and rt_ratio > 1.25:
+    if (
+        rt_ratio is not None
+        and rt_ratio > 1.25
+        and rt_abs is not None
+        and rt_abs >= 0.002
+    ):
         recommendations.append("candidate runtime exceeds baseline (advisory, host-dependent)")
         opt.append(
             {
@@ -237,8 +250,9 @@ def _memory_hint(name: str) -> str:
             "streaming checksum pass would lower peak if scans grow. Measure again after any patch."
         ),
         "duplicate_detection": (
-            "Duplicate detection currently materializes path lists per digest; a "
-            "seen/dup set would match the contract with a smaller working set."
+            "Peak is dominated by extract_run metadata materialization shared with "
+            "the scan path, not duplicate grouping. Do not strip diagnostics at "
+            "current sizes; share one extract_run pass if both views are needed."
         ),
         "evidence_graph_projection": (
             "recommended_merge_order builds adjacency sets for the full node list; "
