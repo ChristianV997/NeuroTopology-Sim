@@ -260,12 +260,12 @@ class BoundedChunkCache:
         requested_items: Optional[Sequence[Tuple[str, int] | dict]] = None,
     ) -> TransferPlan:
         """Evaluate dry-run execution plan with zero network access.
-        
+
         Args:
             dataset_id: OpenNeuro dataset ID.
             requested_items: Sequence of (bids_path, chunk_index) or dicts with bids_path & chunk_index.
                              If None, evaluates all registered manifest items for dataset.
-                             
+
         Returns:
             TransferPlan with budget, disk space, and eviction requirements.
         """
@@ -384,14 +384,14 @@ class BoundedChunkCache:
         max_retries: int = 3,
     ) -> TransferResult:
         """Fetch a BIDS object or chunk into the cache.
-        
+
         Args:
             dataset_id: OpenNeuro dataset ID.
             bids_path: Validated BIDS relative path.
             chunk_index: Index of the chunk (0 for full file).
             allow_network: Explicit authorization for network downloads.
             max_retries: Retry limit for transient network errors.
-            
+
         Returns:
             TransferResult summarizing outcome, error classification, and metrics.
         """

@@ -1,8 +1,8 @@
 # Research-cycle wave 1 integration audit
 
-**Agent:** Codex D — Merger Agent  
-**Audit date:** 2026-09-11  
-**Authoritative base:** `origin/main` at `618ca081039759510d27a7a772cd47c95985600f`  
+**Agent:** Codex D — Merger Agent
+**Audit date:** 2026-09-11
+**Authoritative base:** `origin/main` at `618ca081039759510d27a7a772cd47c95985600f`
 **Integration branch:** `codex/research-cycle-wave1-integration-20260910`
 
 This is a live re-audit record. The earlier release documents under
