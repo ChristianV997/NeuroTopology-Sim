@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from tools.release_readiness.research_cycle_smoke.fixtures import all_scenarios, build_scenario
+from tools.release_readiness.research_cycle_smoke import guards
 from tools.release_readiness.research_cycle_smoke.report import dumps, write_reports
 from tools.release_readiness.research_cycle_smoke.runner import run_scenario, run_smoke_suite
 from tools.release_readiness.research_cycle_smoke.schema import ScenarioId
@@ -88,6 +89,15 @@ def test_no_network_guard(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", boom)
     payload = run_smoke_suite([ScenarioId.COMPLETE_VALID_ENGINEERING])
     assert payload["all_decisions_match"] is True
+
+
+def test_unavailable_resource_probe_is_explicit(monkeypatch):
+    monkeypatch.setattr(guards, "resource", None)
+    ok, notes = guards.bounded_resources_ok()
+    assert ok is True
+    assert notes == [
+        "resource_probe_unavailable: resource module is not available on this platform"
+    ]
 
 
 def test_write_reports(tmp_path: Path):
