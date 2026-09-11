@@ -1,0 +1,109 @@
+{
+  "checksum": "0642e46aebe9dfa67b65d30f05ab7c98b2f497c929bc9b8d65e9f28c5c565b9e",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": []
+  },
+  "evidence_class": "speculative_hypothesis",
+  "parent_checksums": [
+    "8279e4b1ccdaf2115cc0278414637460ab68d301eafe7a150a8a9032453c12dc"
+  ],
+  "parent_ids": [
+    "plan_audit_synthetic_001"
+  ],
+  "payload": {
+    "evidence": {},
+    "hypotheses": {
+      "hyp_fc_synthetic_001": {
+        "alternative_explanations": [
+          "fixture noise",
+          "label leakage"
+        ],
+        "analysis_plan": "fixture-only inspection; no solver execution",
+        "checksum": "",
+        "construct_definitions": {
+          "fixture_construct": "synthetic operational stand-in"
+        },
+        "contradictory_evidence_links": [],
+        "data_requirements": [
+          "synthetic-fixture-cohort-001"
+        ],
+        "epistemic_label": "speculative_hypothesis",
+        "evidence_links": [],
+        "falsification_criterion": "observed direction opposite the prediction on held-out synthetic splits",
+        "human_review_gate": {
+          "passed": false,
+          "review_notes": "",
+          "reviewer": null,
+          "timestamp": null
+        },
+        "hypothesis_id": "hyp_fc_synthetic_001",
+        "min_sample_size_or_power": {
+          "alpha": 0.05,
+          "n": 8,
+          "power": 0.8
+        },
+        "null_prediction": "no change under the synthetic null",
+        "operational_variables": {
+          "x": "synthetic_condition",
+          "y": "synthetic_metric"
+        },
+        "precise_claim": "In this synthetic fixture, a declared topological contrast is operationalized for contract tests only.",
+        "predicted_direction": "positive",
+        "preregistration_reference": "SYNTHETIC-PREREG-001",
+        "provenance": {
+          "owner": "integration-test",
+          "source_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_id": "lit_src_synthetic_001"
+        },
+        "revision_history": [],
+        "schema_version": "HypothesisRecord.v1",
+        "status": "preregistered",
+        "unresolved_questions": [
+          "synthetic fixtures cannot promote empirical claims"
+        ]
+      }
+    },
+    "plans": {
+      "plan_synthetic_001": {
+        "analysis_protocol": "inspect contracts; do not run a solver",
+        "checksum": "",
+        "data_source": "synthetic-fixture-cohort-001",
+        "design_type": "synthetic_surrogate_null",
+        "domain": "null_and_surrogate",
+        "hypothesis_id": "hyp_fc_synthetic_001",
+        "is_synthetic": true,
+        "plan_id": "plan_synthetic_001",
+        "power_analysis": {
+          "method": "declared_only",
+          "n": 8
+        },
+        "provenance": {
+          "source_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "source_id": "lit_src_synthetic_001"
+        },
+        "schema_version": "ExperimentPlan.v1",
+        "surrogate_method": "phase_randomization",
+        "target_sample_size": 8,
+        "variables": {
+          "dependent": "synthetic_metric",
+          "independent": "condition"
+        }
+      }
+    },
+    "predictions": {},
+    "registry_id": "rc-cycle-synthetic-001",
+    "revisions": [],
+    "schema_version": "ResearchCycleRegistry.v1"
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "hyp_fc_synthetic_001",
+  "schema_version": "ResearchCycleRegistry.v1",
+  "scientific_verdict": "NOT_APPLICABLE",
+  "stage": "hypothesis_experiment_manifest",
+  "status": "COMPLETE"
+}
