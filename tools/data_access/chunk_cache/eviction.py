@@ -50,11 +50,11 @@ class BoundedEvictionManager:
         manifest_records: Dict[Tuple[str, str, int], ManifestRecord],
     ) -> Tuple[int, List[ManifestRecord]]:
         """Evict unleased chunks in LRU order until target_bytes_to_reclaim is satisfied.
-        
+
         Args:
             target_bytes_to_reclaim: Number of bytes that must be freed.
             manifest_records: Mutable dictionary of manifest items.
-            
+
         Returns:
             Tuple of (total_bytes_evicted, list of evicted ManifestRecords).
         """
@@ -101,11 +101,11 @@ class BoundedEvictionManager:
 
     def cleanup_stale_partials(self, max_age_seconds: float = 0.0) -> Tuple[int, int]:
         """Scan and remove abandoned .part.* files strictly within cache_root.
-        
+
         Args:
             max_age_seconds: Minimum age in seconds before a partial is considered stale.
                             If 0.0, cleans up all partial files.
-                            
+
         Returns:
             Tuple of (removed_files_count, reclaimed_bytes).
         """

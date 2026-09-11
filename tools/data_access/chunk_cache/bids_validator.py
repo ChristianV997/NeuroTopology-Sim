@@ -58,14 +58,14 @@ def normalize_bids_relative_path(path_str: str | Path) -> str:
 
 def validate_bids_path(dataset_id: str, relative_path: str | Path) -> BIDSPathComponents:
     """Validate a BIDS relative path and extract structural entities.
-    
+
     Args:
         dataset_id: OpenNeuro dataset identifier (e.g. 'ds005620').
         relative_path: Relative path within dataset (e.g. 'sub-01/eeg/sub-01_task-rest_eeg.edf').
-        
+
     Returns:
         BIDSPathComponents containing parsed tokens.
-        
+
     Raises:
         BIDSValidationError: If path is structurally malformed or escapes containment.
     """
