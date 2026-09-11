@@ -79,4 +79,3 @@ isolation, no-network checks, and finite-JSON checks. Compile/import checks and
 GitHub checks for the open wave PRs are not usable release evidence: sampled
 jobs report `failure` with zero executed steps. They are classified as
 `BLOCKED_BY_INFRASTRUCTURE`, not as code-green or code-corrupt.
-
