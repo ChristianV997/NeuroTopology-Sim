@@ -1,0 +1,203 @@
+{
+  "schema_version": "ResearchCycleOperatorCatalog.v1",
+  "pack_id": "research_cycle_operator_pack",
+  "notes": [
+    "Each step invokes an existing CLI or a read-only builtin. Missing commands are NOT_AVAILABLE.",
+    "Infrastructure PASS is not a scientific PASS. Synthetic is not an empirical PASS."
+  ],
+  "steps": [
+    {
+      "id": "repository_state",
+      "order": 1,
+      "title": "Repository state inspection",
+      "kind": "builtin",
+      "builtin": "repository_state",
+      "timeout_s": 30,
+      "availability_probe": {"type": "git"},
+      "required_flags": [],
+      "wraps": ["git rev-parse HEAD", "git rev-parse --abbrev-ref HEAD", "git status --porcelain"],
+      "notes": "Read-only git. No merge, reset, push, or branch rewrite."
+    },
+    {
+      "id": "schema_validation",
+      "order": 2,
+      "title": "Governance schema validation",
+      "kind": "external",
+      "argv": ["{python}", "-m", "governance.validate"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "module", "module": "governance.validate"},
+      "required_flags": [],
+      "wraps": ["python -m governance.validate"],
+      "exit_map": {"0": "PASS", "1": "FAILURE"}
+    },
+    {
+      "id": "research_plan_audit",
+      "order": 3,
+      "title": "Research-plan / registry audit",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/validate_research_cycle.py", "--registry", "{registry}", "--json-output"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/validate_research_cycle.py"},
+      "required_flags": ["--registry"],
+      "wraps": ["scripts/validate_research_cycle.py"],
+      "exit_map": {"0": "PASS", "1": "FAILURE"}
+    },
+    {
+      "id": "claim_gate",
+      "order": 4,
+      "title": "Claim-gate validation",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/validate_research_claims.py", "--input", "{claims}", "--output", "{step_dir}/claim_audit.json", "--quiet"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/validate_research_claims.py"},
+      "required_flags": ["--input", "--output"],
+      "wraps": ["scripts/validate_research_claims.py"],
+      "exit_map": {"0": "PASS", "1": "FAILURE", "2": "FAILURE"}
+    },
+    {
+      "id": "artifact_manifest",
+      "order": 5,
+      "title": "Artifact / empirical-source manifest validation",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/validate_empirical_source_manifest.py", "--manifest", "{empirical_manifest}", "--output-json", "{step_dir}/empirical_manifest.json"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/validate_empirical_source_manifest.py"},
+      "required_flags": ["--manifest"],
+      "wraps": ["scripts/validate_empirical_source_manifest.py"],
+      "exit_map": {"0": "PASS", "2": "INCOMPLETE", "3": "INCOMPLETE"},
+      "notes": "UNAVAILABLE_SOURCE / SYNTHETIC_DEMO_ONLY from the wrapped CLI is INCOMPLETE, not a silent PASS."
+    },
+    {
+      "id": "evidence_graph",
+      "order": 6,
+      "title": "Evidence-graph / research-state compile",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/compile_research_state.py", "--manifest", "{research_state_manifest}", "--output-dir", "{step_dir}/research_state", "--formats", "json,markdown", "--now", "{now}"],
+      "timeout_s": 90,
+      "availability_probe": {"type": "script", "path": "scripts/compile_research_state.py"},
+      "required_flags": ["--manifest", "--output-dir"],
+      "wraps": ["scripts/compile_research_state.py", "tools.research_report.graph"],
+      "exit_map": {"0": "PASS", "2": "FAILURE"}
+    },
+    {
+      "id": "cache_policy",
+      "order": 7,
+      "title": "Cache-policy dry run",
+      "kind": "external",
+      "argv": ["{python}", "-m", "dataset_acquisition.export_plan", "--candidate-file", "{candidates}", "--candidate-id", "{candidate_id}", "--target-root", "{cache_target_root}", "--requested-action", "metadata_only", "--out", "{step_dir}/cache_policy_plan.json"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "module", "module": "dataset_acquisition.export_plan"},
+      "required_flags": ["--candidate-file", "--candidate-id", "--target-root"],
+      "declared_repo_paths_ok": true,
+      "wraps": ["python -m dataset_acquisition.export_plan"],
+      "exit_map": {"0": "PASS", "1": "FAILURE"},
+      "notes": "metadata_only. Never passes --execute, --allow-network, or --allow-raw-data."
+    },
+    {
+      "id": "simulation_campaign",
+      "order": 8,
+      "title": "Simulation-campaign dry run",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/run_benchmark_matrix.py", "--matrix", "{benchmark_matrix}", "--output", "{step_dir}/campaign", "--dry-run"],
+      "timeout_s": 90,
+      "availability_probe": {"type": "script", "path": "scripts/run_benchmark_matrix.py"},
+      "required_flags": ["--matrix", "--output", "--dry-run"],
+      "wraps": ["scripts/run_benchmark_matrix.py"],
+      "solver": false,
+      "exit_map": {"0": "PASS", "2": "FAILURE"},
+      "notes": "Always --dry-run. scripts/run_research_campaign.py is a solver and is not invoked."
+    },
+    {
+      "id": "release_evidence",
+      "order": 9,
+      "title": "Release-evidence evaluation",
+      "kind": "external",
+      "argv": ["{python}", "{repo_root}/scripts/evaluate_performance_release_evidence.py", "--input", "{performance_pair}", "--output-json", "{step_dir}/release_evidence.json", "--output-md", "{step_dir}/release_evidence.md"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/evaluate_performance_release_evidence.py"},
+      "required_flags": ["--input", "--output-json"],
+      "wraps": ["scripts/evaluate_performance_release_evidence.py"],
+      "exit_map": {"0": "PASS", "1": "FAILURE", "5": "INCOMPLETE"},
+      "notes": "Performance scaffolding only. EVIDENCE_READY is not a scientific PASS."
+    },
+    {
+      "id": "targeted_tests",
+      "order": 10,
+      "title": "Targeted research-cycle tests",
+      "kind": "external",
+      "argv": [
+        "{python}", "-m", "pytest", "-q", "--tb=line",
+        "tests/research_cycle/test_experiment_planners_and_serialization.py",
+        "tests/research_claims/test_research_claim_auditor.py",
+        "tests/release/test_validate_release_blockers_cli.py"
+      ],
+      "timeout_s": 180,
+      "availability_probe": {"type": "module", "module": "pytest"},
+      "required_flags": [],
+      "wraps": ["pytest (bounded subset)"],
+      "exit_map": {"0": "PASS", "1": "FAILURE", "2": "FAILURE", "5": "INCOMPLETE"},
+      "notes": "Never invokes scripts/run_tests_isolated.py or tests/runner."
+    },
+    {
+      "id": "finite_json_no_network",
+      "order": 11,
+      "title": "Finite-JSON and no-network checks",
+      "kind": "builtin",
+      "builtin": "finite_json_no_network",
+      "timeout_s": 30,
+      "availability_probe": {"type": "module", "module": "tools.streaming.memory_telemetry"},
+      "required_flags": [],
+      "wraps": ["tools.streaming.memory_telemetry.json_safe", "tools.streaming.memory_telemetry.dumps"],
+      "notes": "Scans --output-dir JSON for NaN/Infinity. Confirms proxy env is cleared."
+    }
+  ],
+  "optional_steps": [
+    {
+      "id": "release_blockers",
+      "order": 101,
+      "title": "Release blocker registry validation",
+      "kind": "external",
+      "optional": true,
+      "argv": ["{python}", "{repo_root}/scripts/validate_release_blockers.py", "--format", "both", "--output-dir", "{step_dir}"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/validate_release_blockers.py"},
+      "wraps": ["scripts/validate_release_blockers.py"],
+      "exit_map": {"0": "PASS", "1": "FAILURE"}
+    },
+    {
+      "id": "dataset_provenance",
+      "order": 102,
+      "title": "Dataset provenance declaration",
+      "kind": "external",
+      "optional": true,
+      "argv": ["{python}", "{repo_root}/scripts/validate_dataset_provenance.py", "--declaration", "{provenance}", "--output-json", "{step_dir}/provenance.json"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/validate_dataset_provenance.py"},
+      "wraps": ["scripts/validate_dataset_provenance.py"],
+      "exit_map": {"0": "PASS", "2": "INCOMPLETE", "3": "INCOMPLETE"}
+    },
+    {
+      "id": "local_ops_healthcheck",
+      "order": 103,
+      "title": "Local-ops healthcheck (wrap, do not rewrite)",
+      "kind": "external",
+      "optional": true,
+      "argv": ["{python}", "-m", "tools.local_ops.healthcheck", "--out", "{step_dir}/local_ops_healthcheck.json"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "module", "module": "tools.local_ops.healthcheck"},
+      "wraps": ["python -m tools.local_ops.healthcheck"],
+      "notes": "Does not invoke tools.local_ops.runner loop mode."
+    },
+    {
+      "id": "platform_compat",
+      "order": 104,
+      "title": "Platform compatibility audit",
+      "kind": "external",
+      "optional": true,
+      "argv": ["{python}", "{repo_root}/scripts/run_platform_compat_audit.py", "--output", "{step_dir}/platform_compat.json"],
+      "timeout_s": 60,
+      "availability_probe": {"type": "script", "path": "scripts/run_platform_compat_audit.py"},
+      "wraps": ["scripts/run_platform_compat_audit.py"]
+    }
+  ]
+}

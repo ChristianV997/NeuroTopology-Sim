@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "provenance_label": "research-cycle-operator-pack-smoke",
+  "defaults": {
+    "timeout_s": 30,
+    "max_retries": 0,
+    "optional_deps": []
+  },
+  "cases": [
+    {
+      "id": "rcop-dry-run-self-test",
+      "command": ["python", "-c", "print('rcop-campaign-dry-run-ok')"],
+      "timeout_s": 15,
+      "tags": ["smoke", "local", "dry_run"],
+      "config": {"purpose": "operator pack dry-run fixture", "solver": false}
+    }
+  ]
+}
