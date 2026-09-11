@@ -1,0 +1,13 @@
+{
+  "reconciliation": "reconciliation.json",
+  "capability_snapshot": "capability_snapshot.json",
+  "dataset_provenance": "dataset_provenance.json",
+  "falsification": "falsification.json",
+  "performance_benchmark": "performance_benchmark.json",
+  "memory_evidence": "memory_evidence.json",
+  "interoperability": "interoperability.json",
+  "topology_validation": "topology_validation.json",
+  "test_runner": "test_runner.json",
+  "merge_gate": "merge_gate.json",
+  "pr_retirement": "pr_retirement.json"
+}
