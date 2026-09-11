@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import socket
+import subprocess
 import sys
 from pathlib import Path
 import pytest
@@ -80,8 +81,21 @@ def test_no_network_access(monkeypatch, complete_manifest_data: dict):
 def test_no_heavy_imports():
     """Verify that awareness_studio.research_graph does not import heavyweight scientific/solver packages."""
     heavy_modules = ("torch", "scipy", "numpy", "cvxpy", "networkx", "z3", "sympy")
-    for mod in heavy_modules:
-        assert mod not in sys.modules, f"Heavy module '{mod}' should not be imported by research_graph!"
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import awareness_studio.research_graph; "
+            "mods=('torch','scipy','numpy','cvxpy','networkx','z3','sympy'); "
+            "found=','.join(m for m in mods if m in sys.modules); "
+            "print(found, end=''); raise SystemExit(1 if found else 0)",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert probe.returncode == 0, f"Heavy module(s) imported by research_graph: {probe.returncode} {probe.stderr}"
+    assert not probe.stdout.strip(), f"Heavy module(s) imported by research_graph: {probe.stdout.strip()}"
 
 
 def test_cli_end_to_end(tmp_path: Path, complete_manifest_data: dict):

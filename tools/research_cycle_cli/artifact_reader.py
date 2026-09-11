@@ -17,6 +17,10 @@ from typing import Any
 from tools.research_cycle_cli.guardrails import ARTIFACT_RUN_STATUSES, EVIDENCE_CLASSES, INVALID_JSON, Diagnostic
 
 
+def _reject_non_finite(token: str) -> Any:
+    raise ValueError(f"non-finite JSON token {token!r} is not permitted")
+
+
 @dataclass(frozen=True)
 class ArtifactReportSnapshot:
     ok: bool
@@ -72,8 +76,8 @@ def _read_one(path: Path, diagnostics: list[Diagnostic]) -> dict[str, Any] | Non
         diagnostics.append(Diagnostic(INVALID_JSON, source, f"could not read file: {exc}", None))
         return None
     try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
+        parsed = json.loads(text, parse_constant=_reject_non_finite)
+    except (json.JSONDecodeError, ValueError) as exc:
         diagnostics.append(Diagnostic(INVALID_JSON, source, f"not valid JSON: {exc}", None))
         return None
     return _normalize_report(parsed, source=source, diagnostics=diagnostics)

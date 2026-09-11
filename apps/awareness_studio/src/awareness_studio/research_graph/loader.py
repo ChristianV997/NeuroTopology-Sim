@@ -243,15 +243,24 @@ def load_from_dict(
             if not isinstance(val, dict) or "validation_id" not in val:
                 continue
             vid = str(val["validation_id"])
-            verdict = str(val.get("verdict", "PASS")).upper()
-            status = NodeStatus.SUPPORTED.value if verdict == "PASS" else NodeStatus.FALSIFIED.value
+            raw_verdict = val.get("verdict")
+            verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
+            if verdict == "PASS":
+                status = NodeStatus.SUPPORTED.value
+            elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+                status = NodeStatus.FALSIFIED.value
+            else:
+                # An absent or unrecognized verdict is an unresolved
+                # validation record, never an implicit scientific PASS.
+                status = NodeStatus.REVIEW_REQUIRED.value
+            evidence_class = _classify_evidence(val)
             builder.add_node(
                 GraphNode(
                     node_id=vid,
                     node_type=NodeType.VALIDATION.value,
                     label=f"Validation: {val.get('check_name', vid)}",
                     status=status,
-                    evidence_class=EvidenceClass.EMPIRICAL.value,
+                    evidence_class=evidence_class,
                     properties=val,
                 )
             )
@@ -262,7 +271,7 @@ def load_from_dict(
                 hid = str(val["hypothesis_id"])
                 if verdict == "PASS":
                     builder.link(EdgeType.SUPPORTS, vid, hid, label="validation_passed")
-                else:
+                elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
                     builder.link(EdgeType.CONTRADICTS, vid, hid, label="validation_failed")
 
     # 10. Theory Revisions

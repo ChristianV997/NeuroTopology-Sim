@@ -4,6 +4,7 @@ from __future__ import annotations
 from awareness_studio.research_graph import (
     DiagnosticCode,
     DiagnosticSeverity,
+    EdgeType,
     EvidenceClass,
     EvidenceGraphBuilder,
     GraphNode,
@@ -156,3 +157,14 @@ def test_evidence_class_filtering():
     assert "ev-empirical-1" in filtered_graph.nodes
     assert "ev-synthetic-1" not in filtered_graph.nodes
     assert "hyp-001" in filtered_graph.nodes  # Hypothesis retained as non-evidence node
+
+
+def test_missing_validation_verdict_is_not_promoted_to_pass():
+    graph = load_from_dict({
+        "validations": [{"validation_id": "val-missing", "hypothesis_id": "hyp-1"}],
+    })
+    node = graph.get_node("val-missing")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert not any(edge.source_id == "val-missing" and edge.edge_type == EdgeType.SUPPORTS.value for edge in graph.edges)

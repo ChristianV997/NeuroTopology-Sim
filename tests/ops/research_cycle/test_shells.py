@@ -8,6 +8,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+import pytest
 
 from ops.research_cycle.exit_codes import BLOCKED, NOT_AVAILABLE, PASS, INCOMPLETE
 
@@ -32,11 +33,13 @@ def test_powershell_script_is_not_posix():
     assert not text.startswith("#!/usr/bin/env bash")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX wrapper requires POSIX bash path semantics; use the PowerShell wrapper on Windows")
 def test_posix_syntax_bash_n():
     completed = subprocess.run(["bash", "-n", str(POSIX_SH)], capture_output=True, text=True, check=False)
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX wrapper requires POSIX bash path semantics; use the PowerShell wrapper on Windows")
 def test_posix_wrapper_requires_output_dir():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT)
@@ -51,6 +54,7 @@ def test_posix_wrapper_requires_output_dir():
     assert completed.returncode == BLOCKED
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX wrapper requires POSIX bash path semantics; use the PowerShell wrapper on Windows")
 def test_posix_wrapper_smoke(tmp_path: Path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT)

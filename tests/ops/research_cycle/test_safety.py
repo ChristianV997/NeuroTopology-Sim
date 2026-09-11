@@ -45,6 +45,15 @@ def test_write_outside_output_dir_blocked(tmp_path: Path):
             output_dir=out,
         )
 
+    leak.write_text("existing", encoding="utf-8")
+    with pytest.raises(SafetyError, match="outside"):
+        assert_allowed_command(
+            ["python", "tool.py", "--output", str(leak)],
+            allow_solver=False,
+            repo_root=tmp_path,
+            output_dir=out,
+        )
+
 
 def test_no_network_default_blocks_urls_and_allow_network():
     assert forbidden_reason(["python", "x.py", "--url", "https://example.com/data"]) is not None

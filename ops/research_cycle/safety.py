@@ -227,7 +227,6 @@ def classify_resolved_path(
             return None
         if resolved.exists():
             return None
-        # Absolute non-existent path outside output-dir would be a write leak.
         return f"refusing write path outside --output-dir: {resolved}"
     return None
 
@@ -239,6 +238,23 @@ def scan_argv_write_safety(
     output_dir: Path,
     declared_repo_paths_ok: bool = False,
 ) -> str | None:
+    # Validate the arguments that conventionally name write destinations even
+    # when the destination already exists. Generic existing absolute paths are
+    # retained as possible read-only repository inputs (for example ``git -C``);
+    # explicit output flags must never escape the declared output root.
+    output_flags = {"--output", "--out", "--output-json", "--output-md", "--output-summary", "--target-root"}
+    for index, token in enumerate(argv):
+        text = str(token)
+        flag, separator, value = text.partition("=")
+        if flag not in output_flags:
+            continue
+        if not separator and index + 1 < len(argv):
+            value = str(argv[index + 1])
+        if not value or value.startswith("-"):
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.is_absolute() and not is_inside(candidate, output_dir):
+            return f"refusing write path outside --output-dir: {candidate.resolve()}"
     for token in argv:
         reason = classify_resolved_path(
             str(token),
