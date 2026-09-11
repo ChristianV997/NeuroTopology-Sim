@@ -1,0 +1,40 @@
+{
+  "checksum": "8279e4b1ccdaf2115cc0278414637460ab68d301eafe7a150a8a9032453c12dc",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": []
+  },
+  "evidence_class": "research_plan_audit",
+  "parent_checksums": [
+    "58507146936f8b8ce9a3b9544be4b60dba187c09a8d6e393639eca5e0722fc8d"
+  ],
+  "parent_ids": [
+    "lit_src_synthetic_001"
+  ],
+  "payload": {
+    "criteria": [
+      {
+        "detail": "question declared",
+        "dimension": "falsifiable_question",
+        "score": 1.0,
+        "status": "pass"
+      }
+    ],
+    "evidence_class": "research_plan_audit",
+    "hard_blockers": [],
+    "missing_fields": [],
+    "overall_score": 0.8,
+    "overall_status": "READY_FOR_EXECUTION",
+    "plan_id": "plan_synthetic_001"
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "plan_audit_synthetic_001",
+  "schema_version": "NeuroTopologySim.ResearchPlanAudit.v1",
+  "scientific_verdict": "NOT_APPLICABLE",
+  "stage": "research_plan_audit",
+  "status": "COMPLETE"
+}

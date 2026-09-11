@@ -1,0 +1,49 @@
+{
+  "checksum": "9080f79a0d532af9465e4b9338c29fa298c7933eb1b85f51c892aa9489e2a6d1",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": [
+      "metrics.json"
+    ],
+    "upstream_failures": [
+      "artifact_synthetic_001:PARTIAL"
+    ]
+  },
+  "evidence_class": "synthetic_demo_only",
+  "parent_checksums": [
+    "3cc260298dce32cb36ff2da78dec10920e7769d98598e6902ff3ddb187842502"
+  ],
+  "parent_ids": [
+    "artifact_synthetic_001"
+  ],
+  "payload": {
+    "artifact_manifest_id": "artifact_synthetic_001",
+    "checks": {
+      "finite_json": true,
+      "network_accessed": false,
+      "solver_executed": false,
+      "synthetic_not_promoted": true
+    },
+    "claim_status": "synthetic",
+    "data_mode": "synthetic",
+    "report_id": "validation_synthetic_001",
+    "run_id": "run_synthetic_001",
+    "schema_version": "NeuroTopologySim.ValidationReport.v1",
+    "scientific_limitations": [
+      "Synthetic validation cannot become empirical evidence.",
+      "Proxy K is not formal Bayes."
+    ],
+    "source": "fixture",
+    "validation_status": "INCONCLUSIVE"
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "validation_synthetic_001",
+  "schema_version": "NeuroTopologySim.ValidationReport.v1",
+  "scientific_verdict": "INCONCLUSIVE",
+  "stage": "validation_report",
+  "status": "PARTIAL"
+}

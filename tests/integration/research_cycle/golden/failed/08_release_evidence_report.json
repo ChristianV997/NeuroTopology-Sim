@@ -1,0 +1,97 @@
+{
+  "checksum": "21c3662abd77500e461c7ef95a060ef0b3584e7b95136208dd3c9574b77d4ab4",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": [],
+    "upstream_failures": [
+      "egraph_synthetic_001:BLOCKED"
+    ]
+  },
+  "evidence_class": "performance_only",
+  "parent_checksums": [
+    "3ec290a53f7e203fe2ea643c4f037eceebf0eb3daf74efdcdf90c6203333b384"
+  ],
+  "parent_ids": [
+    "egraph_synthetic_001"
+  ],
+  "payload": {
+    "baseline": {
+      "backend": "fixture",
+      "benchmark_id": "research-cycle-fixture",
+      "branch": "main",
+      "checksum": 1.0,
+      "child_rss_bytes": null,
+      "chunk_size": 32,
+      "correctness_status": "ok",
+      "evidence_class": "performance_only",
+      "host": "fixture-host",
+      "input_shape": {
+        "channels": 8,
+        "dtype": "float64",
+        "samples": 128
+      },
+      "optional_dependency_state": null,
+      "platform": "linux",
+      "process_exit_status": 0,
+      "python_version": "3.12.3",
+      "raw_outcome": "not_scientific",
+      "repetitions": 3,
+      "runtime_s": 0.01,
+      "schema_version": "1.0",
+      "source_commit": "deadbeef",
+      "synthetic": true,
+      "timeout_status": false,
+      "tracemalloc_peak_bytes": 1000000
+    },
+    "candidate": {
+      "backend": "fixture",
+      "benchmark_id": "research-cycle-fixture",
+      "branch": "main",
+      "checksum": 1.0,
+      "child_rss_bytes": null,
+      "chunk_size": 32,
+      "correctness_status": "ok",
+      "evidence_class": "performance_only",
+      "host": "fixture-host",
+      "input_shape": {
+        "channels": 8,
+        "dtype": "float64",
+        "samples": 128
+      },
+      "optional_dependency_state": null,
+      "platform": "linux",
+      "process_exit_status": 0,
+      "python_version": "3.12.3",
+      "raw_outcome": "not_scientific",
+      "repetitions": 3,
+      "runtime_s": 0.01,
+      "schema_version": "1.0",
+      "source_commit": "deadbeef",
+      "synthetic": true,
+      "timeout_status": false,
+      "tracemalloc_peak_bytes": 1000000
+    },
+    "comparable": true,
+    "decision": "EVIDENCE_INCONCLUSIVE",
+    "evidence_class": "performance_only",
+    "reason_codes": [
+      "synthetic_performance_only"
+    ],
+    "reasons": [
+      "Synthetic fixtures are performance evidence only \u2014 never scientific evidence."
+    ],
+    "schema_version": "1.0",
+    "scientific_verdict": "NOT_APPLICABLE",
+    "synthetic": true
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "release_synthetic_001",
+  "schema_version": "1.0",
+  "scientific_verdict": "BLOCKED",
+  "stage": "release_evidence_report",
+  "status": "BLOCKED"
+}

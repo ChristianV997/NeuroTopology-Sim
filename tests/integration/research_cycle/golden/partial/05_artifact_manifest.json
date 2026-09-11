@@ -1,0 +1,46 @@
+{
+  "checksum": "3cc260298dce32cb36ff2da78dec10920e7769d98598e6902ff3ddb187842502",
+  "claim_scope": "Synthetic fixture chain for contract interoperability only. Not empirical evidence, not formal Bayes, not a scientific PASS.",
+  "cycle_id": "rc-cycle-synthetic-001",
+  "data_mode": "synthetic",
+  "diagnostics": {
+    "duplicates": [],
+    "errors": [],
+    "missing": [
+      "metrics.json"
+    ],
+    "upstream_failures": []
+  },
+  "evidence_class": "synthetic_demo_only",
+  "parent_checksums": [
+    "65f5abd786f13bc9bace04962169a488631aa563fbb6707901aeabd1205c6d6f"
+  ],
+  "parent_ids": [
+    "run_synthetic_001"
+  ],
+  "payload": {
+    "artifacts": [
+      {
+        "relative_path": "summary.json",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 32
+      }
+    ],
+    "check_artifacts": false,
+    "metadata": {
+      "data_mode": "synthetic",
+      "evidence_class": "synthetic_demo_only"
+    },
+    "missing_artifacts": [
+      "metrics.json"
+    ],
+    "run_id": "run_synthetic_001",
+    "schema": "NTS.IntegrationArtifactManifest.v1"
+  },
+  "pipeline_contract": "NeuroTopologySim.ResearchCyclePipeline.v1",
+  "record_id": "artifact_synthetic_001",
+  "schema_version": "NTS.IntegrationArtifactManifest.v1",
+  "scientific_verdict": "NOT_APPLICABLE",
+  "stage": "artifact_manifest",
+  "status": "PARTIAL"
+}
