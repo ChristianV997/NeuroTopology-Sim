@@ -1,7 +1,7 @@
 # Research-cycle wave 1 follow-up audit
 
-**Agent:** Codex D — Merger Agent  
-**Base:** `origin/main` at `9b7c1079cde25bc3c0b124df3bf8057e97a035a9`  
+**Agent:** Codex D — Merger Agent
+**Base:** `origin/main` at `9b7c1079cde25bc3c0b124df3bf8057e97a035a9`
 **Follow-up branch:** `codex/research-cycle-wave1-followup-20260911`
 
 Five PRs appeared after the first wave had already merged through PR #315.
@@ -30,4 +30,3 @@ them to fail later during report hashing.
 These changes remain operational/audit surfaces. They do not emit scientific
 PASS, causal claims, formal Bayes factors, or empirical promotion from
 synthetic/proxy/partial records.
-
