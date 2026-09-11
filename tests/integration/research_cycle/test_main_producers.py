@@ -15,6 +15,7 @@ from tests.integration.research_cycle.producers import (
     probe_release_evidence,
     probe_research_cycle,
     probe_run_record,
+    module_available,
 )
 
 
@@ -24,9 +25,9 @@ def test_pending_batch1_modules_are_listed_not_invented() -> None:
         component = item["component"]
         if component.startswith("tools.") or component.startswith("awareness_studio."):
             assert component in pending or component == "research-cycle evidence graph producer"
-    assert "tools.research_plan_quality" in pending
-    assert "tools.simulation_artifacts" in pending
-    assert "awareness_studio.research_cycle" in pending
+    assert ("awareness_studio.research_cycle" in pending) is (
+        not module_available("awareness_studio.research_cycle")
+    )
 
 
 def test_stage_contract_status_matches_main_availability() -> None:

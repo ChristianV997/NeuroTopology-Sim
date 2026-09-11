@@ -111,16 +111,20 @@ def normalize_checks(checks: Optional[dict[str, Any]]) -> dict[str, dict[str, Op
     return normalized
 
 
-def checks_all_passing(checks: Optional[dict[str, str]]) -> Optional[bool]:
-    """None when there is no check data at all; False if any recorded
-    conclusion is not "success" (covers "failure", "cancelled", "timed_out",
-    a still-pending job reported as e.g. "neutral"/"skipped" is treated as
-    non-passing too, since "passing" must mean every recorded check
-    actually succeeded); True only when every recorded conclusion is
-    exactly "success"."""
+def checks_all_passing(checks: Optional[dict[str, Any]]) -> Optional[bool]:
+    """Return whether every recorded check has an exact ``success`` conclusion.
+
+    Both legacy flat snapshots and rich status objects are accepted. Missing
+    or non-success conclusions remain non-passing; infrastructure evidence is
+    classified separately and is never silently upgraded to a pass.
+    """
     if not checks:
         return None
-    return all(conclusion == "success" for conclusion in checks.values())
+    conclusions = (
+        value.get("conclusion") if isinstance(value, dict) else value
+        for value in checks.values()
+    )
+    return all(conclusion == "success" for conclusion in conclusions)
 
 
 def mergeable_from_state(mergeable_state: Optional[str]) -> Optional[bool]:

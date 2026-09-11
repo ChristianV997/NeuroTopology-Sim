@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Any
 
 PENDING_MODULES = (
-    "tools.research_plan_quality",
-    "tools.simulation_artifacts",
     "awareness_studio.research_cycle",
 )
 

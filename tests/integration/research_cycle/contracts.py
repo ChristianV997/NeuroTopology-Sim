@@ -213,27 +213,6 @@ REQUIRED_ENVELOPE_FIELDS = (
 
 MISSING_PREREQUISITES: tuple[dict[str, Any], ...] = (
     {
-        "component": "tools.research_plan_quality",
-        "stage": "research_plan_audit",
-        "pr": 302,
-        "branch": "claude/research-plan-quality-rubric-20260910",
-        "reason": "Research-plan rubric evaluator is not on origin/main.",
-    },
-    {
-        "component": "tools.simulation_artifacts",
-        "stage": "simulation_run_manifest / artifact_manifest",
-        "pr": 304,
-        "branch": "codex/simulation-artifact-lineage-20260910",
-        "reason": "Simulation artifact lineage extractor is not on origin/main.",
-    },
-    {
-        "component": "awareness_studio.research_cycle",
-        "stage": "validation_report / hypothesis-experiment ledger",
-        "pr": 305,
-        "branch": "codex/research-cycle-ledger-20260910",
-        "reason": "Immutable Awareness Studio research-cycle ledger is not on origin/main.",
-    },
-    {
         "component": "research-cycle evidence graph producer",
         "stage": "evidence_graph",
         "pr": None,

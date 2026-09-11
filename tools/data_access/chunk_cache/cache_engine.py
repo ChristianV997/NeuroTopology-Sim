@@ -120,7 +120,11 @@ class BoundedChunkCache:
                 # Verify file presence if marked CACHED
                 if rec.status == CacheItemStatus.CACHED.value and rec.cached_path:
                     p = Path(rec.cached_path)
-                    if not p.exists():
+                    try:
+                        contained = p.resolve().is_relative_to(self.cache_root)
+                    except AttributeError:
+                        contained = os.path.commonpath([str(p.resolve()), str(self.cache_root)]) == str(self.cache_root)
+                    if not contained or not p.is_file():
                         rec.status = CacheItemStatus.UNCACHED.value
                         rec.cached_path = None
 
@@ -173,7 +177,11 @@ class BoundedChunkCache:
         for rec in self._records.values():
             if rec.status == CacheItemStatus.CACHED.value and rec.cached_path:
                 p = Path(rec.cached_path)
-                if p.exists():
+                try:
+                    contained = p.resolve().is_relative_to(self.cache_root)
+                except AttributeError:
+                    contained = os.path.commonpath([str(p.resolve()), str(self.cache_root)]) == str(self.cache_root)
+                if contained and p.is_file():
                     total += p.stat().st_size
                 else:
                     rec.status = CacheItemStatus.UNCACHED.value
@@ -420,18 +428,31 @@ class BoundedChunkCache:
         # 2. Check if already cached and intact
         target_path = self._get_target_path(dataset_id, norm_path, chunk_index)
         if rec.status == CacheItemStatus.CACHED.value and rec.cached_path and target_path.exists():
-            rec.last_accessed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            self._save_manifest()
-            return TransferResult(
-                success=True,
-                dataset_id=dataset_id,
-                bids_path=norm_path,
-                chunk_index=chunk_index,
-                bytes_transferred=target_path.stat().st_size,
-                cached_path=str(target_path),
-                checksum_verified=(rec.expected_checksum is not None and rec.actual_checksum == rec.expected_checksum),
-                attempts=0,
-            )
+            if rec.expected_checksum:
+                actual_checksum = compute_file_sha256(target_path)
+                if actual_checksum.lower() != rec.expected_checksum.lower():
+                    # A cached checksum mismatch is corruption, not a cache hit.
+                    # Clear the stale entry and continue through the normal
+                    # fail-closed/network admission path below.
+                    rec.status = CacheItemStatus.CORRUPTED.value
+                    rec.actual_checksum = actual_checksum
+                    rec.cached_path = None
+                    self._save_manifest()
+                else:
+                    rec.actual_checksum = actual_checksum
+            if rec.status != CacheItemStatus.CORRUPTED.value:
+                rec.last_accessed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                self._save_manifest()
+                return TransferResult(
+                    success=True,
+                    dataset_id=dataset_id,
+                    bids_path=norm_path,
+                    chunk_index=chunk_index,
+                    bytes_transferred=target_path.stat().st_size,
+                    cached_path=str(target_path),
+                    checksum_verified=(rec.expected_checksum is not None),
+                    attempts=0,
+                )
 
         # 3. Fail-closed network check
         if not allow_network:

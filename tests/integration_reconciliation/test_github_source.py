@@ -96,6 +96,13 @@ def test_checks_all_passing_false_for_non_success_non_failure_conclusion():
     assert github_source.checks_all_passing({"a": "neutral"}) is False
 
 
+def test_checks_all_passing_accepts_rich_check_objects():
+    assert github_source.checks_all_passing({
+        "a": {"status": "completed", "conclusion": "success"},
+        "b": {"status": "completed", "conclusion": "success"},
+    }) is True
+
+
 def test_mergeable_from_state_clean_is_true():
     assert github_source.mergeable_from_state("clean") is True
 
