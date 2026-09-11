@@ -1,0 +1,39 @@
+{
+  "claim_class": "descriptive_empirical",
+  "claim_id": "CLM-SUBJECT-OVERLAP",
+  "data_mode": "empirical",
+  "effect_size": {
+    "cohens_d": 0.42
+  },
+  "evidence_class": "descriptive_empirical",
+  "labels_verified": true,
+  "multiplicity_correction": null,
+  "n_tests": 1,
+  "network_access_requested": false,
+  "network_policy_approved": false,
+  "null_controls": [
+    "phase_randomization_surrogate"
+  ],
+  "provenance": {
+    "acquisition": "openneuro_download",
+    "checksum": "a645c40da744497f3483bd5a7303c91d12541edd3083aabb1df6cd96a5d37486",
+    "dataset_version": "v1.0.0",
+    "source_id": "ds005620"
+  },
+  "test_subjects": [
+    "sub-03",
+    "sub-04"
+  ],
+  "text": "Predictive model evaluated with overlapping train/test subjects.",
+  "train_subjects": [
+    "sub-01",
+    "sub-02",
+    "sub-03"
+  ],
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.24
+    ]
+  }
+}
