@@ -87,7 +87,8 @@ class SimulationReleaseBuilder:
             outcome_state = ExecutionOutcomeState.NOT_RUN
 
         prov_stage = stages.get("input_provenance") or {}
-        data_mode = str(prov_stage.get("data_mode", "unspecified")).lower()
+        raw_data_mode = prov_stage.get("data_mode")
+        data_mode = str(raw_data_mode).strip().lower() if raw_data_mode is not None else ""
         if data_mode == "synthetic":
             evidence_class = "synthetic_demo_only"
         elif data_mode == "proxy":
@@ -210,24 +211,24 @@ class SimulationReleaseBuilder:
         dataset_id = (
             (run_record or {}).get("dataset_id")
             or prov_dict.get("dataset_id")
-            or "unknown"
+            or None
         )
         source = (
             (run_record or {}).get("source")
             or prov_dict.get("source")
-            or "unknown"
+            or None
         )
         data_mode = (
             (run_record or {}).get("data_mode")
             or prov_dict.get("data_mode")
-            or "unknown"
+            or None
         )
         run_id = (
             (run_record or {}).get("run_id")
             or prov_dict.get("run_id")
             or (exec_manifest or {}).get("unit_id")
             or (exec_manifest or {}).get("workload_id")
-            or "unknown"
+            or None
         )
         stage_input_provenance = {
             "run_id": run_id,
@@ -262,9 +263,9 @@ class SimulationReleaseBuilder:
             (run_record or {}).get("git_commit")
             or (exec_manifest or {}).get("code_revision")
             or prov_dict.get("git_commit")
-            or "unknown"
+            or None
         )
-        repo = (run_record or {}).get("repo") or "NeuroTopology-Sim"
+        repo = (run_record or {}).get("repo") or None
         stage_code_revision = {
             "code_revision": code_rev,
             "repo": repo,
@@ -286,30 +287,36 @@ class SimulationReleaseBuilder:
 
         # Extract Stage 5: Execution Outcome
         raw_state = "NOT_RUN"
+        implicit_completion_error = None
         if exec_manifest and "state" in exec_manifest:
             raw_state = exec_manifest["state"]
         elif run_record and run_record.get("verdict"):
             v = str(run_record["verdict"]).upper()
-            if v in ("PASS", "COMPLETE"):
+            if v == "PASS":
                 raw_state = "PASS"
             elif v in ("PARTIAL", "FAILED", "TIMEOUT", "BLOCKED"):
                 raw_state = v
         elif lineage_report and lineage_report.get("status"):
             st = str(lineage_report["status"]).upper()
-            if st == "COMPLETE":
-                raw_state = "PASS"
-            elif st in ("PARTIAL", "FAILED", "BLOCKED"):
+            if st in ("PARTIAL", "FAILED", "BLOCKED"):
                 raw_state = st
+            elif st == "COMPLETE":
+                raw_state = "NOT_RUN"
+                implicit_completion_error = "lineage reported COMPLETE without an explicit PASS outcome"
 
         elapsed_s = (run_record or {}).get("elapsed_s") or (exec_manifest or {}).get("elapsed_s")
         exit_code = (exec_manifest or {}).get("exit_code")
-        error_msg = (exec_manifest or {}).get("error") or (exec_manifest or {}).get("stderr_tail")
+        error_msg = (
+            (exec_manifest or {}).get("error")
+            or (exec_manifest or {}).get("stderr_tail")
+            or implicit_completion_error
+        )
         stage_execution_outcome = {
             "state": raw_state,
             "exit_code": exit_code,
             "elapsed_s": elapsed_s,
             "error_message": error_msg,
-            "runner_id": (exec_manifest or {}).get("runner_id", "bounded_runner"),
+            "runner_id": (exec_manifest or {}).get("runner_id"),
         }
 
         # Extract Stage 6: Artifact Manifest
@@ -347,29 +354,28 @@ class SimulationReleaseBuilder:
         val_passed = False
         val_status = "UNVALIDATED"
         val_checks = {}
-        report_id = "val_unknown"
+        report_id = None
         if validation_doc:
             # Could be golden validation report or NTS.ValidationReport.v1
             payload = validation_doc.get("payload") or validation_doc
-            val_status = payload.get("validation_status") or validation_doc.get("status") or "COMPLETE"
+            val_status = payload.get("validation_status") or validation_doc.get("status") or "UNVALIDATED"
             val_checks = payload.get("checks") or {}
-            report_id = payload.get("report_id") or validation_doc.get("record_id") or "val_001"
+            report_id = payload.get("report_id") or validation_doc.get("record_id")
             if "passed" in payload:
                 val_passed = bool(payload["passed"])
             elif "passed" in validation_doc:
                 val_passed = bool(validation_doc["passed"])
-            else:
-                # Considered passed if status is not FAILED/BLOCKED and no negative check
-                not_failed = val_status not in ("FAILED", "BLOCKED")
-                no_net = not bool(val_checks.get("network_accessed", False))
-                val_passed = not_failed and no_net
         stage_validation = {
             "report_id": report_id,
             "passed": val_passed,
             "status": val_status,
             "checks": val_checks,
-            "finite_json_verified": val_checks.get("finite_json", True),
-            "zero_network_verified": not val_checks.get("network_accessed", False),
+            "finite_json_verified": val_checks.get("finite_json"),
+            "zero_network_verified": (
+                not val_checks["network_accessed"]
+                if "network_accessed" in val_checks
+                else None
+            ),
         }
 
         # Extract Stage 8: Evidence Review
@@ -385,7 +391,7 @@ class SimulationReleaseBuilder:
             op_ready = review_decision in ("EVIDENCE_READY_FOR_REVIEW", "SYNTHETIC_ONLY", "PROXY_ONLY")
 
         stage_evidence_review = {
-            "review_id": (review_doc or {}).get("record_id") or "rev_001",
+            "review_id": (review_doc or {}).get("record_id") or ((review_doc or {}).get("payload") or {}).get("record_id"),
             "decision": review_decision,
             "evidence_class": ev_class,
             "reason_codes": reason_codes,

@@ -343,12 +343,12 @@ def populate_run_directory(
     if val:
         val_doc = {
             "schema_version": "NeuroTopologySim.ValidationReport.v1",
-            "status": val.get("status", "COMPLETE"),
-            "passed": val.get("passed", True),
+            "status": val.get("status"),
+            "passed": val.get("passed", False),
             "payload": {
-                "report_id": val.get("report_id", "val_001"),
-                "passed": val.get("passed", True),
-                "validation_status": val.get("status", "COMPLETE"),
+                "report_id": val.get("report_id"),
+                "passed": val.get("passed", False),
+                "validation_status": val.get("status"),
                 "checks": val.get("checks", {"finite_json": True, "network_accessed": False}),
             },
         }
@@ -360,9 +360,9 @@ def populate_run_directory(
     if review:
         review_doc = {
             "schema_version": "1.0",
-            "record_id": review.get("review_id", "rev_001"),
-            "decision": review.get("decision", "EVIDENCE_READY_FOR_REVIEW"),
-            "evidence_class": review.get("evidence_class", "empirical_dataset"),
+            "record_id": review.get("review_id"),
+            "decision": review.get("decision"),
+            "evidence_class": review.get("evidence_class"),
             "reason_codes": review.get("reason_codes", []),
         }
         (target_dir / "release_evidence_report.json").write_text(

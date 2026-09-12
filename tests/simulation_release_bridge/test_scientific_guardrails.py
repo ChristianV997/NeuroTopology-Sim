@@ -35,6 +35,8 @@ def test_synthetic_confinement_to_demo_only():
 
     assert bundle.data_mode == "synthetic"
     assert bundle.evidence_class == "synthetic_demo_only"
+    assert bundle.promotion_status != "PROMOTED"
+    assert bundle.promotion_checksum is None
     assert "synthetic_demo_only" in bundle.to_json()
 
 
@@ -46,6 +48,8 @@ def test_proxy_confinement_to_proxy_only():
 
     assert bundle.data_mode == "proxy"
     assert bundle.evidence_class == "proxy_only"
+    assert bundle.promotion_status != "PROMOTED"
+    assert bundle.promotion_checksum is None
     assert "proxy_only" in bundle.to_json()
 
 

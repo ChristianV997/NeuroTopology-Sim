@@ -337,7 +337,29 @@ def validate_stages(
     if not validation_passed and outcome_state == ExecutionOutcomeState.PASS:
         warnings.append("execution outcome is PASS but validation report passed is False")
 
-    # 9. Determine promotion eligibility
+    # 9. Evidence review is an explicit release-stage contract.  An empty
+    # mapping must not be treated as a review, and synthetic/proxy runs must
+    # never become promotion-eligible merely because their engineering checks
+    # happen to pass.
+    review_id = str(review.get("review_id", "")).strip()
+    review_decision = str(review.get("decision", "")).strip()
+    evidence_class = str(review.get("evidence_class", "")).strip().lower()
+    if not review_id or review_id.lower() in PLACEHOLDER_STRINGS:
+        errors.append("evidence_review.review_id is required")
+        rejected_reasons.append("MISSING_EVIDENCE_REVIEW")
+    if not review_decision or review_decision.lower() in PLACEHOLDER_STRINGS:
+        errors.append("evidence_review.decision is required")
+        rejected_reasons.append("MISSING_EVIDENCE_REVIEW")
+    if not evidence_class or evidence_class in PLACEHOLDER_STRINGS:
+        errors.append("evidence_review.evidence_class is required")
+        rejected_reasons.append("MISSING_EVIDENCE_REVIEW")
+
+    data_mode = str(provenance.get("data_mode", "")).strip().lower()
+    if data_mode in {"synthetic", "proxy"} or evidence_class in {"synthetic_demo_only", "proxy_only", "performance_only"}:
+        warnings.append("non-empirical evidence is confined to engineering review and cannot be promoted")
+        rejected_reasons.append("NON_EMPIRICAL_EVIDENCE")
+
+    # 10. Determine promotion eligibility
     # Promotion requires:
     # - Chain is complete
     # - Zero fatal errors
@@ -348,6 +370,9 @@ def validate_stages(
         and len(errors) == 0
         and outcome_state == ExecutionOutcomeState.PASS
         and validation_passed
+        and bool(review.get("operational_ready", False))
+        and data_mode == "empirical"
+        and evidence_class == "empirical_dataset"
     )
 
     is_valid = len(errors) == 0

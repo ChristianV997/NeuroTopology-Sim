@@ -98,3 +98,26 @@ def test_fail_closed_when_canonical_runner_absent(monkeypatch: pytest.MonkeyPatc
     assert "MISSING_CANONICAL_RUNNER" in bundle.diagnostics["rejected"]
     assert bundle.promotion_status == ReleasePromotionStatus.BLOCKED.value
     assert bundle.promotion_checksum is None
+
+
+def test_empty_evidence_review_cannot_promote():
+    stages = create_complete_pass_stages()
+    stages["evidence_review"] = {}
+
+    bundle = SimulationReleaseBuilder("rc-test-no-review", require_canonical_runner=False).build_from_stages(stages)
+
+    assert "MISSING_EVIDENCE_REVIEW" in bundle.diagnostics["rejected"]
+    assert bundle.promotion_status == ReleasePromotionStatus.BLOCKED.value
+    assert bundle.promotion_checksum is None
+
+
+def test_implicit_complete_state_is_not_promoted():
+    stages = create_complete_pass_stages()
+    stages["execution_outcome"]["state"] = "COMPLETE"
+
+    bundle = SimulationReleaseBuilder("rc-test-complete", require_canonical_runner=False).build_from_stages(stages)
+
+    assert bundle.stages["execution_outcome"]["state"] == "COMPLETE"
+    assert any("invalid execution outcome state" in item for item in bundle.diagnostics["errors"])
+    assert bundle.promotion_status != ReleasePromotionStatus.PROMOTED.value
+    assert bundle.promotion_checksum is None
