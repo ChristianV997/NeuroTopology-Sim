@@ -12,6 +12,8 @@ from tools.data_access.policy_enforcement.policy import (
     APPROVED_METADATA_OPERATIONS,
     DEFAULT_POLICY,
     DataAccessPolicy,
+    POLICY_REGISTRATION_REQUIREMENTS,
+    PR346_BOUNDED_ADAPTER_REGISTRATIONS,
 )
 from tools.data_access.policy_enforcement.scanner import scan_file, scan_repository
 
@@ -42,6 +44,238 @@ def test_approved_metadata_and_bounded_patterns_are_allowlisted():
     assert scan_file(FIXTURES / "approved_bounded.py", repository_root=ROOT, policy=policy) == []
 
 
+def test_pr346_registration_uses_exact_paths_and_qualified_symbols():
+    assert POLICY_REGISTRATION_REQUIREMENTS["owner"] == "tools/data_access/policy_enforcement"
+    assert POLICY_REGISTRATION_REQUIREMENTS["schema_version"].endswith("Registration.v1")
+    registrations = {item["path"]: item for item in PR346_BOUNDED_ADAPTER_REGISTRATIONS}
+    assert set(registrations) == {
+        "validation/s3_fetchers.py",
+        "tools/stream_process_ds005917.py",
+        "tools/stream_process_ds006644.py",
+    }
+    assert registrations["validation/s3_fetchers.py"]["symbols"] == [
+        "BoundedS3ObjectStore.fetch_object",
+        "BoundedS3ObjectStore.read_text_metadata",
+    ]
+    assert registrations["validation/s3_fetchers.py"]["control_profile"] == "s3_store"
+    assert "explicit allow_network=False" in registrations["validation/s3_fetchers.py"]["requirements"]
+    assert "explicit source object identity" in registrations["validation/s3_fetchers.py"]["requirements"]
+    assert "head_object ContentLength expected size" in registrations["validation/s3_fetchers.py"]["requirements"]
+    assert "observable eviction" in registrations["validation/s3_fetchers.py"]["requirements"]
+
+
+def test_registered_s3_method_requires_structural_controls(tmp_path: Path):
+    source = '''
+class BoundedS3ObjectStore:
+    def __init__(self, client, max_cache_bytes):
+        self.client = client
+        self.max_cache_bytes = max_cache_bytes
+
+    def _contained(self, destination):
+        return destination
+
+    def _object_uri(self, bucket, key):
+        return "s3://" + bucket + "/" + key
+
+    def _evict_for(self, required, *, protected):
+        return None
+
+    def _head(self, bucket, key, *, allow_network):
+        metadata = self.client.head_object(Bucket=bucket, Key=key)
+        return {"size": metadata["ContentLength"], "checksum": metadata.get("ChecksumSHA256") or "unknown"}
+
+    def fetch_object(self, bucket, key, destination, *, allow_network=False):
+        source_uri = self._object_uri(bucket, key)
+        metadata = self._head(bucket, key, allow_network=allow_network)
+        destination = self._contained(destination)
+        self._evict_for(metadata["size"], protected=destination)
+        response = self.client.get_object(Bucket=bucket, Key=key, Range="bytes=0-1")
+        return response, metadata["checksum"]
+'''
+    path = tmp_path / "validation" / "s3_fetchers.py"
+    path.parent.mkdir()
+    path.write_text(source, encoding="utf-8")
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "validation/s3_fetchers.py",
+                "symbols": ["BoundedS3ObjectStore.fetch_object"],
+                "access_class": "manifest_first_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "s3_store",
+            },
+        ),
+    )
+    assert scan_file(path, repository_root=tmp_path, policy=policy) == []
+
+
+def test_same_basename_in_unregistered_class_is_not_approved(tmp_path: Path):
+    path = tmp_path / "validation" / "s3_fetchers.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+class OtherStore:
+    def fetch_object(self, bucket, key, destination, *, allow_network=False):
+        return self.client.get_object(Bucket=bucket, Key=key)
+""",
+        encoding="utf-8",
+    )
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "validation/s3_fetchers.py",
+                "symbols": ["BoundedS3ObjectStore.fetch_object"],
+                "access_class": "manifest_first_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "s3_store",
+            },
+        ),
+    )
+    rules = _rules(scan_file(path, repository_root=tmp_path, policy=policy))
+    assert "UNBOUNDED_REMOTE_MATERIALIZATION" in rules
+    assert "MISSING_CHECKSUM" in rules
+    assert "MISSING_EVICTION" in rules
+
+
+def test_delegated_pr346_wrapper_requires_explicit_bounds_and_opt_in(tmp_path: Path):
+    path = tmp_path / "tools" / "stream_process_ds005917.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+def download_bold(subject, destination, *, allow_network=False, max_cache_bytes=1024, chunk_size=128):
+    store = BoundedS3ObjectStore(client, destination, max_cache_bytes=max_cache_bytes, chunk_size=chunk_size)
+    return store.fetch_object("bucket", subject, destination, allow_network=allow_network)
+""",
+        encoding="utf-8",
+    )
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "tools/stream_process_ds005917.py",
+                "symbols": ["download_bold"],
+                "access_class": "delegated_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "delegated_s3_wrapper",
+            },
+        ),
+    )
+    assert scan_file(path, repository_root=tmp_path, policy=policy) == []
+
+
+def test_delegated_metadata_wrapper_accepts_metadata_byte_bound(tmp_path: Path):
+    path = tmp_path / "tools" / "stream_process_ds005917.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+def load_mdd_complete_subjects(*, metadata_cache_root=None, allow_network=False):
+    store = BoundedS3ObjectStore(client, metadata_cache_root, metadata_max_bytes=4096)
+    return store.read_text_metadata("bucket", "participants.tsv", allow_network=allow_network)
+""",
+        encoding="utf-8",
+    )
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "tools/stream_process_ds005917.py",
+                "symbols": ["load_mdd_complete_subjects"],
+                "access_class": "delegated_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "delegated_s3_wrapper",
+            },
+        ),
+    )
+    assert scan_file(path, repository_root=tmp_path, policy=policy) == []
+
+
+def test_registered_method_without_checksum_or_eviction_is_not_approved(tmp_path: Path):
+    path = tmp_path / "validation" / "s3_fetchers.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+class BoundedS3ObjectStore:
+    def fetch_object(self, bucket, key, destination, *, allow_network=False):
+        response = self.client.get_object(Bucket=bucket, Key=key, Range="bytes=0-1")
+        return response
+""",
+        encoding="utf-8",
+    )
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "validation/s3_fetchers.py",
+                "symbols": ["BoundedS3ObjectStore.fetch_object"],
+                "access_class": "manifest_first_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "s3_store",
+            },
+        ),
+    )
+    findings = scan_file(path, repository_root=tmp_path, policy=policy)
+    rules = _rules(findings)
+    assert "MISSING_CHECKSUM" in rules
+    assert "MISSING_EVICTION" in rules
+
+
+def test_registered_s3_symbol_cannot_hide_full_object_call(tmp_path: Path):
+    path = tmp_path / "validation" / "s3_fetchers.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+class BoundedS3ObjectStore:
+    def _object_uri(self, bucket, key):
+        return "s3://" + bucket + "/" + key
+
+    def _contained(self, destination):
+        return destination
+
+    def _evict_for(self, required, *, protected):
+        return None
+
+    def _head(self, bucket, key, *, allow_network):
+        metadata = self.client.head_object(Bucket=bucket, Key=key)
+        return {"size": metadata["ContentLength"], "checksum": metadata.get("ChecksumSHA256") or "unknown"}
+
+    def fetch_object(self, bucket, key, destination, *, allow_network=False):
+        source_uri = self._object_uri(bucket, key)
+        metadata = self._head(bucket, key, allow_network=allow_network)
+        destination = self._contained(destination)
+        self._evict_for(metadata["size"], protected=destination)
+        self.client.download_file(bucket, key, str(destination))
+        return source_uri, metadata["checksum"]
+""",
+        encoding="utf-8",
+    )
+    policy = DataAccessPolicy(
+        approved_adapters=(
+            {
+                "path": "validation/s3_fetchers.py",
+                "symbols": ["BoundedS3ObjectStore.fetch_object"],
+                "access_class": "manifest_first_bounded_s3_range",
+                "registration": "test",
+                "control_profile": "s3_store",
+            },
+        ),
+    )
+    rules = _rules(scan_file(path, repository_root=tmp_path, policy=policy))
+    assert "UNBOUNDED_REMOTE_MATERIALIZATION" in rules
+
+
+def test_path_only_allowlist_does_not_approve_unrelated_http_caller(tmp_path: Path):
+    path = tmp_path / "validation" / "s3_fetchers.py"
+    path.parent.mkdir()
+    path.write_text(
+        """
+import urllib.request
+
+def unrelated_reader(url):
+    return urllib.request.urlopen(url, timeout=1)
+""",
+        encoding="utf-8",
+    )
+    findings = scan_file(path, repository_root=tmp_path)
+    assert any(item.rule == "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL" for item in findings)
+
+
 def test_rejected_download_patterns_report_exact_lines_and_remediation():
     findings = scan_file(FIXTURES / "rejected_downloads.py", repository_root=ROOT)
     rules = _rules(findings)
@@ -63,6 +297,13 @@ def test_missing_runtime_controls_fail_closed():
     findings = scan_file(FIXTURES / "rejected_controls.py", repository_root=ROOT)
     rules = _rules(findings)
     assert {"OUTPUT_ROOT_ESCAPE", "MISSING_CACHE_BOUND", "MISSING_CHECKSUM", "MISSING_EVICTION", "NETWORK_ENABLED_BY_DEFAULT"} <= rules
+
+
+def test_missing_checksum_is_explicitly_unknown_not_approved():
+    findings = scan_file(FIXTURES / "rejected_controls.py", repository_root=ROOT)
+    checksum = next(item for item in findings if item.rule == "MISSING_CHECKSUM")
+    assert checksum.approved is False
+    assert "unknown" in checksum.remediation.lower()
 
 
 def test_dandi_lazy_reader_and_manifest_metadata_are_explicitly_allowlisted():
