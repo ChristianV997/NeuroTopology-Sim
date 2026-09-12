@@ -46,6 +46,13 @@ unapproved `urllib`/`requests` retrieval, unbounded `get_object`/response reads,
 and other unbounded remote materialization. Each report includes severity and
 remediation. A parse failure is critical and fails closed.
 
+The scanner also reports missing controls on unapproved transfer functions:
+`MISSING_CACHE_BOUND`, `MISSING_CHECKSUM`, and `MISSING_EVICTION`. It reports
+`OUTPUT_ROOT_ESCAPE` for literal parent traversal and
+`NETWORK_ENABLED_BY_DEFAULT` for network/download switches whose default is
+enabled. These are static indicators; a clean scan does not replace runtime
+path containment, checksum verification, or manifest review.
+
 Run an audit without network access:
 
 ```text
@@ -64,6 +71,12 @@ repository still contains legacy direct readers and transfer paths, including
 streaming/base-runner and older OpenNeuro scripts. This task does not modify
 those callers. The audit must therefore remain blocked until each finding is
 reviewed and migrated or receives a recorded exception.
+
+The DANDI NWB reader is an explicit exception to the generic remote-reader
+rules: `resolve_asset_blobs` is metadata-only for the published assets
+manifest, while `open_nwb_lazy` and `read_nwb_eeg_window` are bounded lazy
+readers. Their allowlist entry records the required range-read, window, and
+provenance conditions; it does not authorize full-object download.
 
 ## Containment
 

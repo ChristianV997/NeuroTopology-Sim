@@ -55,6 +55,20 @@ APPROVED_METADATA_OPERATIONS: tuple[dict[str, Any], ...] = (
         "symbols": ["HTTPTransferAdapter.fetch_object_metadata"],
         "operations": ["HTTP HEAD", "Content-Length/ETag metadata only"],
     },
+    {
+        "path": "data/dandi_nwb_ingest.py",
+        "symbols": ["resolve_asset_blobs"],
+        "operations": ["DANDI assets.yaml manifest metadata", "no NWB object body transfer"],
+    },
+)
+
+APPROVED_LAZY_READERS: tuple[dict[str, Any], ...] = (
+    {
+        "path": "data/dandi_nwb_ingest.py",
+        "symbols": ["open_nwb_lazy", "read_nwb_eeg_window"],
+        "access_class": "lazy_remote_reader",
+        "requirements": ["remfile range reads", "bounded EEG window", "explicit manifest/provenance"],
+    },
 )
 
 
@@ -77,12 +91,14 @@ class DataAccessPolicy:
     full_dataset_download_policy: str = "reject"
     approved_adapters: tuple[dict[str, Any], ...] = APPROVED_ACQUISITION_ADAPTERS
     approved_metadata_operations: tuple[dict[str, Any], ...] = APPROVED_METADATA_OPERATIONS
+    approved_lazy_readers: tuple[dict[str, Any], ...] = APPROVED_LAZY_READERS
     reviewed_exceptions: Mapping[str, Mapping[str, str]] = None  # type: ignore[assignment]
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["approved_adapters"] = [dict(item) for item in self.approved_adapters]
         data["approved_metadata_operations"] = [dict(item) for item in self.approved_metadata_operations]
+        data["approved_lazy_readers"] = [dict(item) for item in self.approved_lazy_readers]
         data["reviewed_exceptions"] = {
             str(path): dict(value) for path, value in (self.reviewed_exceptions or {}).items()
         }
