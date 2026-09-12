@@ -20,6 +20,7 @@ from typing import Any, Iterable, Iterator, Mapping, Optional, Protocol, runtime
 
 MAX_WINDOW_BYTES = 64 * 1024 * 1024
 MAX_WINDOW_SAMPLES = 10_000_000
+MAX_METADATA_BYTES = 8 * 1024 * 1024
 _DANDI_BUCKET = "dandiarchive"
 
 
@@ -74,9 +75,22 @@ def resolve_asset_blobs(
     client = boto3.client("s3", config=Config(signature_version=UNSIGNED, max_pool_connections=4))
     key = f"dandisets/{dandiset_id}/{version}/assets.yaml"
     try:
-        response = client.get_object(Bucket=_DANDI_BUCKET, Key=key)
+        head = client.head_object(Bucket=_DANDI_BUCKET, Key=key)
+        content_length = head.get("ContentLength")
+        if not isinstance(content_length, int) or content_length < 0:
+            raise IngestionContractError("DANDI assets metadata size is unknown")
+        if content_length > MAX_METADATA_BYTES:
+            raise IngestionContractError("DANDI assets metadata exceeds the declared bound")
+        response = client.get_object(
+            Bucket=_DANDI_BUCKET,
+            Key=key,
+            Range=f"bytes=0-{MAX_METADATA_BYTES - 1}",
+        )
         try:
-            assets = yaml.safe_load(response["Body"].read()) or []
+            metadata_bytes = response["Body"].read(MAX_METADATA_BYTES + 1)
+            if not isinstance(metadata_bytes, (bytes, bytearray)) or len(metadata_bytes) > MAX_METADATA_BYTES:
+                raise IngestionContractError("DANDI assets metadata exceeded the declared bound")
+            assets = yaml.safe_load(bytes(metadata_bytes)) or []
         finally:
             response["Body"].close()
     finally:
@@ -359,6 +373,8 @@ def _managed_source(source: WindowSource) -> Iterator[WindowSource]:
 
 def _payload_bytes(payload: bytes | Iterable[bytes]) -> bytes:
     if isinstance(payload, bytes):
+        if len(payload) > MAX_WINDOW_BYTES:
+            raise IngestionContractError("source exceeded bounded payload limit")
         return payload
     chunks: list[bytes] = []
     total = 0

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
+import re
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -275,6 +275,42 @@ class MockTransferAdapter(TransferAdapter):
         )
 
 
+def _copy_bounded_http_response(response: object, output: object, chunk_range: ChunkRange) -> int:
+    """Copy exactly one server-confirmed byte range, never an unbounded body."""
+    expected_bytes = chunk_range.byte_count
+    status = getattr(response, "status", None)
+    if status != 206:
+        raise ValueError(f"server did not honor ranged request (HTTP {status})")
+
+    headers = getattr(response, "headers", {})
+    content_range = headers.get("Content-Range")
+    match = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+)", str(content_range or ""))
+    if match is None:
+        raise ValueError("ranged response is missing a valid Content-Range header")
+    start, end, total = (int(value) for value in match.groups())
+    if start != chunk_range.start_byte or end != chunk_range.end_byte:
+        raise ValueError("server returned a byte range different from the requested range")
+    if chunk_range.total_file_size is not None and total != chunk_range.total_file_size:
+        raise ValueError("server Content-Range total disagrees with the manifest")
+
+    content_length = headers.get("Content-Length")
+    if content_length is None or int(content_length) != expected_bytes:
+        raise ValueError("ranged response Content-Length disagrees with the requested range")
+
+    total_read = 0
+    while total_read <= expected_bytes:
+        block = response.read(min(1024 * 1024, expected_bytes - total_read + 1))
+        if not block:
+            break
+        output.write(block)
+        total_read += len(block)
+        if total_read > expected_bytes:
+            raise ValueError("ranged response body exceeded the requested range")
+    if total_read != expected_bytes:
+        raise ValueError(f"ranged response returned {total_read} bytes; expected {expected_bytes}")
+    return total_read
+
+
 class HTTPTransferAdapter(TransferAdapter):
     """Direct HTTP/HTTPS ranged download adapter."""
 
@@ -328,6 +364,18 @@ class HTTPTransferAdapter(TransferAdapter):
                 attempts=0,
             )
 
+        if chunk_range is None or chunk_range.byte_count <= 0:
+            return TransferResult(
+                success=False,
+                dataset_id="",
+                bids_path=target_path.name,
+                chunk_index=0,
+                bytes_transferred=0,
+                error_code=CacheErrorCode.NETWORK_ERROR.value,
+                error_message="HTTP transfer requires a non-empty bounded byte range",
+                attempts=0,
+            )
+
         import urllib.request
         target_path.parent.mkdir(parents=True, exist_ok=True)
         part_path = target_path.with_name(f"{target_path.name}.part.{uuid.uuid4().hex[:8]}")
@@ -342,7 +390,7 @@ class HTTPTransferAdapter(TransferAdapter):
             req = urllib.request.Request(source_uri, headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=20) as resp, part_path.open("wb") as out:
-                    shutil.copyfileobj(resp, out)
+                    _copy_bounded_http_response(resp, out, chunk_range)
 
                 actual_sha = compute_file_sha256(part_path)
                 checksum_verified = False
@@ -370,6 +418,18 @@ class HTTPTransferAdapter(TransferAdapter):
                     bytes_transferred=target_path.stat().st_size,
                     cached_path=str(target_path),
                     checksum_verified=checksum_verified,
+                    attempts=attempts,
+                )
+            except ValueError as exc:
+                part_path.unlink(missing_ok=True)
+                return TransferResult(
+                    success=False,
+                    dataset_id="",
+                    bids_path=target_path.name,
+                    chunk_index=0,
+                    bytes_transferred=0,
+                    error_code=CacheErrorCode.NETWORK_ERROR.value,
+                    error_message=str(exc),
                     attempts=attempts,
                 )
             except urllib.error.HTTPError as exc:

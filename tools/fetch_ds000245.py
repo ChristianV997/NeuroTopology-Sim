@@ -72,6 +72,8 @@ class BoundedObjectRequest:
             raise BoundedAccessError("chunk_sha256 must be a 64-character SHA-256 digest")
         if self.chunk_range.start_byte < 0 or self.chunk_range.end_byte < self.chunk_range.start_byte:
             raise BoundedAccessError("chunk_range must be a non-empty ascending byte range")
+        if self.chunk_range.total_file_size is not None and self.chunk_range.total_file_size != self.expected_size_bytes:
+            raise BoundedAccessError("chunk_range total_file_size disagrees with expected_size_bytes")
         if self.chunk_range.end_byte >= self.expected_size_bytes:
             raise BoundedAccessError("chunk_range exceeds expected object size")
         if self.chunk_range.byte_count > _MAX_CHUNK_BYTES:
@@ -187,7 +189,7 @@ def _register(cache: BoundedChunkCache, items: list[BoundedObjectRequest]) -> No
 def _plan_with_cache(cache: BoundedChunkCache, items: list[BoundedObjectRequest]) -> dict[str, Any]:
     """Produce a cache-budget, sha256, and eviction plan without network access."""
     plans = [cache.plan(item.dataset_id, [(item.normalized_bids_path, item.chunk_index)]) for item in items]
-    executable = all(item.is_executable for item in plans)
+    executable = all(item.is_executable and request.chunk_sha256 is not None for item, request in zip(plans, items))
     return {
         "schema_version": "NeuroTopology.BoundedOpenNeuroRequest.v1",
         "network_accessed": False,
@@ -202,10 +204,10 @@ def _plan_with_cache(cache: BoundedChunkCache, items: list[BoundedObjectRequest]
                 "cache_bytes_used": item.cache_bytes_used,
                 "cache_bytes_max": item.cache_bytes_max,
                 "eviction_required_bytes": item.eviction_required_bytes,
-                "rejection_reason": item.rejection_reason,
+                "rejection_reason": item.rejection_reason if request.chunk_sha256 is not None else "chunk_sha256 is required",
                 "is_executable": item.is_executable,
             }
-            for item in plans
+        for item, request in zip(plans, items)
         ],
     }
 
@@ -275,6 +277,8 @@ def fetch(
     if requests is None:
         raise BoundedAccessError("explicit BoundedObjectRequest ranges are required")
     items = list(requests)
+    if any(item.chunk_sha256 is None for item in items):
+        raise BoundedAccessError("chunk_sha256 is required for bounded transfer; missing checksum blocks execution")
     cache = _cache_for(items, transfer_adapter=transfer_adapter)
     _register(cache, items)
     summary = _plan_with_cache(cache, items)
