@@ -14,6 +14,7 @@ elsewhere and are labelled `synthetic_proxy`. This module never fabricates signa
 """
 from __future__ import annotations
 
+from collections import OrderedDict as _OrderedDict
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -76,25 +77,50 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                 )
             )
     except Exception:  # pragma: no cover - defensive fallback
-        for fpath in sorted(root_path.rglob("*")):
-            if fpath.suffix.lower() in _EEG_EXTS and fpath.is_file():
-                rel = fpath.relative_to(root_path).as_posix()
-                ents = {k: v for k, v in (part.split("-", 1) for part in fpath.stem.split("_") if "-" in part)}
-                records.append(
-                    BIDSEEGRecord(
-                        path=str(fpath),
-                        relative_path=rel,
-                        subject_id=(f"sub-{ents['sub']}" if "sub" in ents else None),
-                        session_id=(f"ses-{ents['ses']}" if "ses" in ents else None),
-                        task_label=ents.get("task"),
-                        run_id=ents.get("run"),
-                        acq_label=ents.get("acq"),
-                        extension=fpath.suffix.lower(),
-                        provenance="real_bids",
-                        is_eeg_candidate=True,
-                    )
+        for fpath in _iter_eeg_candidate_files(root_path):
+            rel = fpath.relative_to(root_path).as_posix()
+            ents = {k: v for k, v in (part.split("-", 1) for part in fpath.stem.split("_") if "-" in part)}
+            records.append(
+                BIDSEEGRecord(
+                    path=str(fpath),
+                    relative_path=rel,
+                    subject_id=(f"sub-{ents['sub']}" if "sub" in ents else None),
+                    session_id=(f"ses-{ents['ses']}" if "ses" in ents else None),
+                    task_label=ents.get("task"),
+                    run_id=ents.get("run"),
+                    acq_label=ents.get("acq"),
+                    extension=fpath.suffix.lower(),
+                    provenance="real_bids",
+                    is_eeg_candidate=True,
                 )
+            )
     return records
+
+
+def _iter_eeg_candidate_files(root_path: Path):
+    """Yield EEG files without walking every non-EEG object in the tree.
+
+    Prefer BIDS `eeg/` directories. Only if none exist, glob by known EEG
+    extensions — never an unbounded star glob of every file in the tree.
+    """
+    eeg_dirs = list(root_path.glob("sub-*/eeg")) + list(root_path.glob("sub-*/ses-*/eeg"))
+    found = False
+    if eeg_dirs:
+        for directory in sorted(eeg_dirs):
+            if not directory.is_dir():
+                continue
+            for fpath in sorted(directory.iterdir()):
+                if fpath.is_file() and fpath.suffix.lower() in _EEG_EXTS:
+                    found = True
+                    yield fpath
+        if found:
+            return
+    seen: set[Path] = set()
+    for ext in _EEG_EXTS:
+        for fpath in sorted(root_path.rglob(f"*{ext}")):
+            if fpath.is_file() and fpath not in seen:
+                seen.add(fpath)
+                yield fpath
 
 
 def inventory_from_records(dataset_id: str, records: list[BIDSEEGRecord]) -> dict:
@@ -143,11 +169,8 @@ def _read_raw(path: str):
 # nothing here changes the numbers, only how many times the header is parsed.
 #
 # CALLERS MUST NOT MUTATE a cached raw. The only in-place mutation in this module
-# is preprocess_raw() in read_window_signal's `preprocess is not None` branch,
-# which deliberately uses the UNCACHED _read_raw so it never corrupts a shared
-# instance.
-from collections import OrderedDict as _OrderedDict  # noqa: E402
-
+# is preprocess_raw() on a dedicated maxsize-1 preprocess cache populated via
+# UNCACHED `_read_raw`, so it never corrupts a shared `_RAW_CACHE` instance.
 _RAW_CACHE: "_OrderedDict[tuple, object]" = _OrderedDict()
 _RAW_CACHE_MAXSIZE = 4
 _WINDOW_CACHE: "_OrderedDict[tuple, np.ndarray]" = _OrderedDict()
@@ -155,6 +178,41 @@ _WINDOW_CACHE: "_OrderedDict[tuple, np.ndarray]" = _OrderedDict()
 # bounded sample cache so a subject stays disk-bounded without retaining a
 # whole recording in memory.
 _WINDOW_CACHE_MAXSIZE = 64
+# At most one fully-preprocessed (preload=True) recording. Filtering the full
+# continuous file before windowing is the edge-effect contract; caching that
+# object avoids repeating the same full-recording filter per window without
+# mutating the shared preload=False `_RAW_CACHE` instances.
+_PREPROCESS_CACHE: "_OrderedDict[tuple, object]" = _OrderedDict()
+_PREPROCESS_CACHE_MAXSIZE = 1
+
+
+def _close_raw(raw) -> None:
+    closer = getattr(raw, "close", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:
+            pass
+
+
+def _file_identity(path: str) -> tuple[str, int, int] | None:
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return None
+    return (str(path), int(st.st_mtime_ns), int(st.st_size))
+
+
+def _preprocess_cache_key(preprocess: dict | None) -> tuple:
+    if not preprocess:
+        return ()
+    return tuple(sorted((str(key), repr(value)) for key, value in preprocess.items()))
+
+
+def _evict_raw_lru(cache: "_OrderedDict[tuple, object]", maxsize: int) -> None:
+    while len(cache) > maxsize:
+        _, evicted = cache.popitem(last=False)
+        _close_raw(evicted)
 
 
 def _read_raw_cached(path: str):
@@ -170,18 +228,58 @@ def _read_raw_cached(path: str):
     raw = _read_raw(path)
     _RAW_CACHE[key] = raw
     _RAW_CACHE.move_to_end(key)
-    while len(_RAW_CACHE) > _RAW_CACHE_MAXSIZE:
-        _RAW_CACHE.popitem(last=False)
+    _evict_raw_lru(_RAW_CACHE, _RAW_CACHE_MAXSIZE)
+    return raw
+
+
+def _read_preprocessed_raw(path: str, preprocess: dict):
+    """Filter a FRESH raw (never `_read_raw_cached`) and reuse it within bound.
+
+    `preprocess_raw` mutates in place on the full recording. A dedicated
+    maxsize-1 cache keeps that contract while avoiding N full-file filters
+    for N windows of the same file.
+    """
+    ident = _file_identity(path)
+    key = (*ident, _preprocess_cache_key(preprocess)) if ident is not None else None
+    if key is not None:
+        cached = _PREPROCESS_CACHE.get(key)
+        if cached is not None:
+            _PREPROCESS_CACHE.move_to_end(key)
+            return cached
+    raw = _read_raw(path)
+    from data.preprocessing import preprocess_raw
+
+    preprocess_raw(raw, **preprocess)
+    if key is not None:
+        _PREPROCESS_CACHE[key] = raw
+        _PREPROCESS_CACHE.move_to_end(key)
+        _evict_raw_lru(_PREPROCESS_CACHE, _PREPROCESS_CACHE_MAXSIZE)
     return raw
 
 
 def clear_raw_cache() -> None:
-    """Drop all cached raws (frees the handful of parsed headers). Optional --
-    the cache is bounded and holds preload=False raws (no signal data), so this
-    is only needed to release file handles deterministically (e.g. right before
-    deleting a subject's raw files in the streaming loop)."""
+    """Drop cached raws, preprocessed recordings, and window samples.
+
+    Closes MNE file handles so the streaming loop can delete subject
+    directories (especially on Windows) after the final consumer.
+    """
+    for raw in list(_RAW_CACHE.values()):
+        _close_raw(raw)
     _RAW_CACHE.clear()
+    for raw in list(_PREPROCESS_CACHE.values()):
+        _close_raw(raw)
+    _PREPROCESS_CACHE.clear()
     _WINDOW_CACHE.clear()
+
+
+def release_recording(path: str) -> None:
+    """Release cached objects for one recording after its final consumer."""
+    path_s = str(path)
+    for cache in (_RAW_CACHE, _PREPROCESS_CACHE):
+        for key in [k for k in cache if k and k[0] == path_s]:
+            _close_raw(cache.pop(key))
+    for key in [k for k in _WINDOW_CACHE if k and k[0] == path_s]:
+        _WINDOW_CACHE.pop(key, None)
 
 
 def get_sample_rate(path: str) -> float:
@@ -248,13 +346,28 @@ def read_window_signal(
     `None` preserves this function's exact prior behavior (no filtering at
     all); every currently-published number was computed with `preprocess=None`.
     """
-    if preprocess is not None:
-        # Mutating path: preprocess_raw filters the raw in place, so it must NOT
-        # share a cached instance -- read a fresh, uncached raw here.
-        raw = _read_raw(path)
-        from data.preprocessing import preprocess_raw
+    ident = _file_identity(path)
+    cache_key = None
+    if ident is not None:
+        # Key by seconds so a cache hit does not require loading/filtering
+        # the recording just to recover sfreq. Pick reduction stays outside
+        # the cache (same as before): the stored array is (n_ch, n_samp).
+        cache_key = (
+            *ident,
+            float(window_start_s),
+            float(window_end_s),
+            max_channels or 0,
+            _preprocess_cache_key(preprocess),
+        )
+        cached = _WINDOW_CACHE.get(cache_key)
+        if cached is not None:
+            _WINDOW_CACHE.move_to_end(cache_key)
+            return _reduce_window_pick(cached, pick)
 
-        preprocess_raw(raw, **preprocess)
+    if preprocess is not None:
+        # Mutating path: never share `_RAW_CACHE` instances. A dedicated
+        # preprocess cache (maxsize 1) still calls `_read_raw` on miss.
+        raw = _read_preprocessed_raw(path, preprocess)
     else:
         # Non-mutating path: reuse the per-recording cached raw (byte-identical;
         # only get_data/pick_types/info reads happen below).
@@ -286,37 +399,21 @@ def read_window_signal(
         ) from exc
     if max_channels:
         picks = picks[:max_channels]
-    try:
-        st = Path(path).stat()
-        preprocess_key = (
-            tuple(sorted((str(key), repr(value)) for key, value in preprocess.items()))
-            if preprocess is not None
-            else ()
-        )
-        cache_key = (
-            str(path), st.st_mtime_ns, st.st_size, start, stop,
-            max_channels or 0,
-            preprocess_key,
-        )
-    except OSError:
-        cache_key = None
-
-    data = _WINDOW_CACHE.get(cache_key) if cache_key is not None else None
-    if data is not None:
+    data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
+    if data.ndim == 1:
+        data = data[None, :]
+    data = np.asarray(data, dtype=float)
+    if cache_key is not None:
+        _WINDOW_CACHE[cache_key] = data
         _WINDOW_CACHE.move_to_end(cache_key)
-        data = data.copy()
-    else:
-        data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
-        if data.ndim == 1:
-            data = data[None, :]
-        data = np.asarray(data, dtype=float)
-        if cache_key is not None:
-            _WINDOW_CACHE[cache_key] = data.copy()
-            _WINDOW_CACHE.move_to_end(cache_key)
-            while len(_WINDOW_CACHE) > _WINDOW_CACHE_MAXSIZE:
-                _WINDOW_CACHE.popitem(last=False)
+        while len(_WINDOW_CACHE) > _WINDOW_CACHE_MAXSIZE:
+            _WINDOW_CACHE.popitem(last=False)
+    return _reduce_window_pick(data, pick)
+
+
+def _reduce_window_pick(data: np.ndarray, pick: str) -> np.ndarray:
     if pick == "all":
-        return np.asarray(data, dtype=float)
+        return np.array(data, dtype=float, copy=True)
     if pick == "first":
         sig = data[0]
     else:

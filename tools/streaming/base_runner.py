@@ -33,6 +33,10 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+# Explicit bound for the dataset-metadata AWS CLI sync. Missing timeouts on
+# this subprocess previously let a hung `aws s3 sync` stall an entire run.
+S3_METADATA_SYNC_TIMEOUT_S = 300.0
+
 
 def _aws_command() -> list[str]:
     """Resolve AWS CLI across POSIX shells and Windows subprocesses.
@@ -85,13 +89,26 @@ def list_s3_task_labels(bucket: str, dataset_id: str, max_subjects: int = 3) -> 
     from botocore.config import Config
 
     s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    subjects = list_s3_subjects(bucket, f"{dataset_id}/")[:max_subjects]
+    # Stop after `max_subjects` prefixes. Listing every subject in the bucket
+    # just to slice the first N is a redundant metadata scan: BIDS task
+    # entities are shared, and S3 CommonPrefixes are lexicographic.
+    prefix = f"{dataset_id}/"
+    subjects: list[str] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix, Delimiter="/"):
+        for p in page.get("CommonPrefixes", []):
+            name = p["Prefix"].rstrip("/").split("/")[-1]
+            if name.startswith("sub-"):
+                subjects.append(name)
+                if len(subjects) >= max_subjects:
+                    break
+        if len(subjects) >= max_subjects:
+            break
     task_re = re.compile(r"task-([A-Za-z0-9]+)")
     tasks: set[str] = set()
-    paginator = s3.get_paginator("list_objects_v2")
     for subject in subjects:
         for page in paginator.paginate(Bucket=bucket, Prefix=f"{dataset_id}/{subject}/"):
-            for obj in page.get("Contents", []):
+            for obj in page.get("Contents", []) or []:
                 m = task_re.search(obj["Key"])
                 if m:
                     tasks.add(m.group(1))
@@ -214,6 +231,8 @@ def sync_s3_subject(
         os.replace(partial, target)
 
     def _download_batch(batch: list[dict]) -> None:
+        if not batch:
+            return
         with ThreadPoolExecutor(max_workers=12, thread_name_prefix="s3-subject") as pool:
             futures = [pool.submit(download, obj) for obj in batch]
             for future in as_completed(futures):
@@ -225,13 +244,24 @@ def sync_s3_subject(
 
 
 def sync_s3_dataset_metadata(
-    bucket: str, dataset_id: str, dest_root: Path, extra_includes: list[str] | None = None
+    bucket: str,
+    dataset_id: str,
+    dest_root: Path,
+    extra_includes: list[str] | None = None,
+    timeout_s: float | None = S3_METADATA_SYNC_TIMEOUT_S,
 ) -> None:
     """Top-level BIDS files needed for inspection (participants.tsv etc), synced once.
 
     `extra_includes` lets a caller pull additional dataset-level files (e.g.
     ds001787's behavioral zip) into the same single sync call.
+    `timeout_s` bounds the AWS CLI subprocess (default
+    `S3_METADATA_SYNC_TIMEOUT_S`). A missing/``None`` override retains the
+    finite default; metadata acquisition is never intentionally unbounded.
     """
+    if timeout_s is None:
+        timeout_s = S3_METADATA_SYNC_TIMEOUT_S
+    if timeout_s <= 0:
+        raise ValueError("timeout_s must be finite and positive")
     cmd = _aws_command() + [
         "s3", "sync", "--no-sign-request", "--only-show-errors",
         f"s3://{bucket}/{dataset_id}", str(dest_root),
@@ -241,7 +271,12 @@ def sync_s3_dataset_metadata(
     for inc in extra_includes or []:
         cmd += ["--include", inc]
     cmd += ["--exclude", "sub-*/*"]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"s3 dataset metadata sync exceeded {timeout_s}s for {dataset_id}"
+        ) from exc
 
 
 def write_rows_csv(path: Path, rows: list[dict], write_empty_marker: bool = False) -> None:
@@ -266,18 +301,75 @@ def write_rows_csv(path: Path, rows: list[dict], write_empty_marker: bool = Fals
             w.writerow(row)
 
 
+def _read_json_object(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON with fsync + os.replace so a crash cannot truncate dest."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    encoded = json.dumps(payload, indent=2)
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write(encoded)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+
+
+def _recover_json_manifest(path: Path) -> dict | None:
+    """Prefer the dest file; if it is missing/corrupt, recover a complete tmp."""
+    data = _read_json_object(path) if path.exists() else None
+    if data is not None:
+        return data
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    recovered = _read_json_object(tmp) if tmp.exists() else None
+    if recovered is None:
+        return None
+    try:
+        os.replace(tmp, path)
+    except OSError:
+        return recovered
+    return recovered
+
+
 def load_manifest(path: Path) -> dict:
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return {"processed_subjects": {}, "failed_subjects": {}}
+    data = _recover_json_manifest(path)
+    if data is None:
+        return {"processed_subjects": {}, "failed_subjects": {}}
+    data.setdefault("processed_subjects", {})
+    data.setdefault("failed_subjects", {})
+    return data
 
 
 def save_manifest(path: Path, manifest: dict) -> None:
     # Replace atomically so an interrupted write cannot leave a valid-looking
     # but truncated checkpoint and force the whole run to be repeated.
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    _atomic_write_json(path, manifest)
+
+
+def _is_valid_work_unit(result: object) -> bool:
+    """True when a manifest entry is a completed success and must not be rerun.
+
+    Missing entries and `{"error": ...}` records are invalid: resume retries
+    those units without touching already-valid results.
+    """
+    if not isinstance(result, dict) or not result:
+        return False
+    if result.get("error"):
+        return False
+    for key in ("status", "state", "outcome"):
+        value = str(result.get(key, "")).strip().upper()
+        if value in {"FAILED", "FAILURE", "ERROR", "PARTIAL", "INCOMPLETE", "BLOCKED", "TIMEOUT", "NOT_RUN"}:
+            return False
+    if result.get("success") is False or result.get("complete") is False or result.get("ok") is False:
+        return False
+    return True
 
 
 def run_manifest_loop(
@@ -308,14 +400,19 @@ def run_manifest_loop(
     """
     out_path.mkdir(parents=True, exist_ok=True)
     manifest_path = out_path / "manifest.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"processed": {}}
+    recovered = _recover_json_manifest(manifest_path)
+    manifest = recovered if recovered is not None else {"processed": {}}
     manifest.setdefault("processed", {})
 
-    todo = [it for it in items if key_fn(it) not in manifest["processed"]]
+    # Resume skips only *valid* work units. Error dicts are retried so a
+    # transient failure does not permanently burn the item; successful
+    # results are never re-executed.
+    todo = [it for it in items if not _is_valid_work_unit(manifest["processed"].get(key_fn(it)))]
     if limit is not None:
         todo = todo[:limit]
 
-    print(f"{len(items)} items total, {len(manifest['processed'])} done, {len(todo)} to process this run.")
+    n_valid = sum(1 for value in manifest["processed"].values() if _is_valid_work_unit(value))
+    print(f"{len(items)} items total, {n_valid} done, {len(todo)} to process this run.")
     for item in todo:
         key = key_fn(item)
         print(f"--- {label_fn(item) if label_fn else key} ---")
@@ -326,7 +423,7 @@ def run_manifest_loop(
             result = {"error": str(exc)}
             print(f"  ERROR: {exc}", file=sys.stderr)
         manifest["processed"][key] = result
-        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        save_manifest(manifest_path, manifest)
 
     return manifest
 
@@ -355,7 +452,10 @@ def run_streaming_loop(
     manifest_path = out_path / "manifest.json"
     manifest = load_manifest(manifest_path)
 
-    todo = [s for s in all_subjects if s not in manifest["processed_subjects"]]
+    todo = [
+        s for s in all_subjects
+        if not _is_valid_work_unit(manifest["processed_subjects"].get(s))
+    ]
     if limit:
         todo = todo[:limit]
 
@@ -367,6 +467,7 @@ def run_streaming_loop(
             subject_root = sync_subject_fn(subject, work_path)
             stats = process_fn(subject_root, subject, out_path)
             manifest["processed_subjects"][subject] = stats
+            manifest["failed_subjects"].pop(subject, None)
             print(f"  done: {stats}")
         except Exception as e:  # keep going: one bad subject shouldn't kill the run
             print(f"  FAILED: {e}", file=sys.stderr)
