@@ -1,0 +1,58 @@
+{
+  "schema_version": "NeuroTopology.DataAccessMigrationManifest.v1",
+  "as_of_date": "2026-09-11",
+  "metadata": {
+    "cohort": "unsafe_approval_test",
+    "description": "Manifest containing prohibited rules, wildcards, and permanent exceptions"
+  },
+  "entries": [
+    {
+      "file": "scripts/fetch_real_datasets.py",
+      "symbol_or_line": "10",
+      "rule": "UNAUTHORIZED_OPENNEURO_DOWNLOAD",
+      "owner": "@rogue",
+      "migration_reference": "RFC-BAD-01",
+      "status": "reviewed temporary exception",
+      "severity": "critical",
+      "reviewer": "lenient-reviewer",
+      "expires_at": "2026-12-31",
+      "justification": "Attempted exception for prohibited full-dataset download."
+    },
+    {
+      "file": "scripts/escape_path.py",
+      "symbol_or_line": "50",
+      "rule": "OUTPUT_ROOT_ESCAPE",
+      "owner": "@rogue",
+      "migration_reference": "RFC-BAD-02",
+      "status": "reviewed temporary exception",
+      "severity": "error",
+      "reviewer": "lenient-reviewer",
+      "expires_at": "2026-12-31",
+      "justification": "Attempted exception for prohibited root escape."
+    },
+    {
+      "file": "scripts/*.py",
+      "symbol_or_line": "*",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@rogue",
+      "migration_reference": "RFC-BAD-03",
+      "status": "reviewed temporary exception",
+      "severity": "error",
+      "reviewer": "lenient-reviewer",
+      "expires_at": "2026-12-31",
+      "justification": "Attempted wildcard exception across entire directory."
+    },
+    {
+      "file": "tools/downloader.py",
+      "symbol_or_line": "20",
+      "rule": "NETWORK_ENABLED_BY_DEFAULT",
+      "owner": "@rogue",
+      "migration_reference": "RFC-BAD-04",
+      "status": "reviewed temporary exception",
+      "severity": "critical",
+      "reviewer": "lenient-reviewer",
+      "expires_at": "permanent",
+      "justification": "Attempted permanent exception."
+    }
+  ]
+}

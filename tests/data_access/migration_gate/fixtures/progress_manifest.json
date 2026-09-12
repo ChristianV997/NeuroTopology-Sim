@@ -1,0 +1,52 @@
+{
+  "schema_version": "NeuroTopology.DataAccessMigrationManifest.v1",
+  "as_of_date": "2026-09-11",
+  "metadata": {
+    "cohort": "migration_progress_cohort",
+    "description": "Progress manifest tracking incremental migration across milestones"
+  },
+  "entries": [
+    {
+      "file": "tools/streaming/base_runner.py",
+      "symbol_or_line": "120",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@stream-team",
+      "migration_reference": "PR #220",
+      "status": "safely migrated",
+      "severity": "error",
+      "notes": "Replaced with approved metadata reader."
+    },
+    {
+      "file": "data/dandi_nwb_ingest.py",
+      "symbol_or_line": "85",
+      "rule": "UNBOUNDED_REMOTE_MATERIALIZATION",
+      "owner": "@dandi-team",
+      "migration_reference": "PR #224",
+      "status": "safely migrated",
+      "severity": "error",
+      "notes": "Bounded window slice reader implemented and allowlisted."
+    },
+    {
+      "file": "scripts/eeg_topology_ds005620.py",
+      "symbol_or_line": "112",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@antigravity-c",
+      "migration_reference": "RFC-008",
+      "status": "unmigrated",
+      "severity": "error",
+      "notes": "Awaiting Phase 2 migration."
+    },
+    {
+      "file": "scripts/fetch_real_datasets.py",
+      "symbol_or_line": "45",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@christianv",
+      "migration_reference": "PR #235",
+      "status": "reviewed temporary exception",
+      "severity": "error",
+      "reviewer": "security-lead",
+      "expires_at": "2026-11-30",
+      "justification": "Time-bounded transition window while chunk cache adapter is promoted."
+    }
+  ]
+}

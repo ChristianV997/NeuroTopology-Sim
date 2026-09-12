@@ -1,0 +1,53 @@
+{
+  "schema_version": "NeuroTopology.DataAccessMigrationManifest.v1",
+  "as_of_date": "2026-09-11",
+  "metadata": {
+    "cohort": "clean_tracking_baseline",
+    "description": "Clean manifest with valid tracked entries and valid temporary exceptions"
+  },
+  "entries": [
+    {
+      "file": "scripts/fetch_real_datasets.py",
+      "symbol_or_line": "45",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@christianv",
+      "migration_reference": "PR #235",
+      "status": "reviewed temporary exception",
+      "severity": "error",
+      "reviewer": "security-lead",
+      "expires_at": "2026-12-31",
+      "justification": "Temporary legacy metadata endpoint awaiting chunk-cache migration.",
+      "notes": "Bounded to HTTP HEAD metadata probe."
+    },
+    {
+      "file": "scripts/eeg_topology_ds005620.py",
+      "symbol_or_line": "112",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@antigravity-c",
+      "migration_reference": "RFC-008",
+      "status": "unmigrated",
+      "severity": "error",
+      "notes": "Scheduled for sprint 2 migration to approved chunk cache."
+    },
+    {
+      "file": "data/legacy_adapter.py",
+      "symbol_or_line": "30",
+      "rule": "MISSING_EVICTION",
+      "owner": "@operator",
+      "migration_reference": "PR #190",
+      "status": "safely migrated",
+      "severity": "warning",
+      "notes": "Migrated to ChunkCacheEngine with lease-aware eviction."
+    },
+    {
+      "file": "tests/fixtures/synthetic_stream.py",
+      "symbol_or_line": "15",
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "owner": "@qa",
+      "migration_reference": "TEST-001",
+      "status": "not applicable",
+      "severity": "warning",
+      "justification": "Local hermetic test fixture using mock loopback socket; no external network."
+    }
+  ]
+}
