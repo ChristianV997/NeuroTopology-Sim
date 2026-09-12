@@ -78,3 +78,20 @@ comparisons only.
 No clinical claims. No ontology promotion. No proof claims. No real-data
 execution. No live APIs in tests. No API keys in tests. No Q/Qabs/fdress proof
 framing. No TOE or consciousness claims.
+
+## Host run (synthetic, `performance_only`)
+
+Recorded against live `origin/main` `ad1d480828b23bf9daf7272d8747302dcca138b7`
+plus isolated PR heads. size=64, repetitions=1, max_workers=1. RSS available
+(advisory). Budgets unset. 34/35 `ok`; `pr_331` `manifest_recovery` is
+`partial_state` (pre-fsync `load_manifest` does not recover a truncated dest).
+
+Retry overhead is ~0.031 s on every tree (two synthetic transient failures +
+backoff). Same-surface cache occupancy is 64 bytes after one mock object; second
+fetch `attempts=0` (no duplicate work). Checksum-mismatch probes fail closed on
+all five trees.
+
+No optimization candidate exceeded the evidence floors (runtime ≥ 50 ms and
+ratio > 1.25 vs current_main on the same surface). Eviction wall times differ
+by a few milliseconds and stay below that floor.
+
