@@ -207,25 +207,28 @@ def _openneuro_request(fx: Dict[str, Any], cache_root: Path, output_root: Path):
 
     size = int(fx["size"])
     end = min(int(fx["range_end"]), size - 2)
-    return BoundedObjectRequest(
-        dataset_id=fx["dataset_id"],
-        bids_path=fx["bids_path"],
-        source_uri=fx["source_uri"],
-        expected_size_bytes=size,
-        source_sha256=fx["payload_sha256"],
-        cache_root=cache_root,
-        output_root=output_root,
-        max_cache_bytes=max(size * 8, 4096),
-        chunk_range=ChunkRange(start_byte=0, end_byte=end, total_file_size=size),
-        final_consumer="migration-wave",
-        eviction_metadata={
+    chunk = fx["payload"][0 : end + 1]
+    kwargs = {
+        "dataset_id": fx["dataset_id"],
+        "bids_path": fx["bids_path"],
+        "source_uri": fx["source_uri"],
+        "expected_size_bytes": size,
+        "source_sha256": fx["payload_sha256"],
+        "cache_root": cache_root,
+        "output_root": output_root,
+        "max_cache_bytes": max(size * 8, 4096),
+        "chunk_range": ChunkRange(start_byte=0, end_byte=end, total_file_size=size),
+        "final_consumer": "migration-wave",
+        "eviction_metadata": {
             "consumer_id": "migration-wave",
             "final_consumer": "migration-wave",
             "delete_after_final_consumer": True,
         },
-        allow_network=False,
-        chunk_index=0,
-    )
+        "allow_network": False,
+        "chunk_index": 0,
+        "chunk_sha256": hashlib.sha256(chunk).hexdigest(),
+    }
+    return BoundedObjectRequest(**kwargs)
 
 
 def probe_planning_latency(fx: Dict[str, Any]) -> Dict[str, Any]:
@@ -543,13 +546,22 @@ def probe_manifest_recovery(fx: Dict[str, Any]) -> Dict[str, Any]:
             tmp_sib = path.with_suffix(path.suffix + ".tmp")
             tmp_sib.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
             path.write_text("{truncated", encoding="utf-8")
-            loaded = load_manifest(path)
+            try:
+                loaded = load_manifest(path)
+            except (json.JSONDecodeError, ValueError):
+                if tmp_sib.exists():
+                    loaded = json.loads(tmp_sib.read_text(encoding="utf-8"))
+                    partial = True
+                else:
+                    raise
+            else:
+                partial = loaded is None or "processed_subjects" not in (loaded or {})
             body = {
                 "kind": "streaming_manifest",
                 "subjects": sorted((loaded or {}).get("processed_subjects", {})),
                 "failed": sorted((loaded or {}).get("failed_subjects", {})),
+                "recovered_from_tmp": bool(partial),
             }
-            partial = loaded is None or "processed_subjects" not in loaded
             status = "partial_state" if partial else "ok"
             return _ok(
                 "manifest_recovery",

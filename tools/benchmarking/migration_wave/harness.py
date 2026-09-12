@@ -232,6 +232,15 @@ def _regressions(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if name == "current_main":
                 continue
             det = row.get("deterministic") or {}
+            if row.get("status") == "partial_state" and baseline.get("status") == TargetStatus.OK.value:
+                found.append(
+                    {
+                        "variant": name,
+                        "target": target,
+                        "kind": "partial_state",
+                        "detail": "variant did not fully recover truncated checkpoint state that current_main recovered",
+                    }
+                )
             if (
                 row.get("status") == TargetStatus.OK.value
                 and baseline.get("status") == TargetStatus.OK.value
