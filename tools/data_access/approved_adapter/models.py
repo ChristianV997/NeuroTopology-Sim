@@ -53,7 +53,12 @@ class AdapterErrorCode(str, enum.Enum):
     """Granular error classification for approved acquisition."""
     NETWORK_DISABLED = "NETWORK_DISABLED"
     FULL_OBJECT_REJECTED = "FULL_OBJECT_REJECTED"
+    FULL_DATASET_REJECTED = "FULL_DATASET_REJECTED"
     UNKNOWN_SIZE_REJECTED = "UNKNOWN_SIZE_REJECTED"
+    MISSING_CACHE_BUDGET = "MISSING_CACHE_BUDGET"
+    MISSING_EVICTION_POLICY = "MISSING_EVICTION_POLICY"
+    MISSING_CHECKSUM_POLICY = "MISSING_CHECKSUM_POLICY"
+    UNRESTRICTED_PATH_REJECTED = "UNRESTRICTED_PATH_REJECTED"
     LICENSE_RESTRICTED = "LICENSE_RESTRICTED"
     CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
     DISK_EXHAUSTION = "DISK_EXHAUSTION"
@@ -122,7 +127,7 @@ class BoundedAcquisitionRequest:
     min_headroom_bytes: int = 50 * 1024 * 1024  # 50 MB default
     eviction_policy: str = EvictionPolicy.DELETE_ON_FINAL_CONSUMER.value
     allow_network: bool = False
-    allow_full_object: bool = False
+    _test_only_allow_full_object: bool = False  # Strictly test-only; rejected in production
     license_state: str = LicenseAccessState.UNKNOWN_BLOCKED.value
     declared_consumers: list[str] = field(default_factory=list)
 

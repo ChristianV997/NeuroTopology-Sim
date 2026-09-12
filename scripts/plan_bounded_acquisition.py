@@ -126,7 +126,6 @@ def _build_request_from_args(args: argparse.Namespace) -> BoundedAcquisitionRequ
             min_headroom_bytes=data.get("min_headroom_bytes", 50 * 1024 * 1024),
             eviction_policy=data.get("eviction_policy", EvictionPolicy.DELETE_ON_FINAL_CONSUMER.value),
             allow_network=data.get("allow_network", False),
-            allow_full_object=data.get("allow_full_object", False),
             license_state=data.get("license_state", LicenseAccessState.UNKNOWN_BLOCKED.value),
             declared_consumers=data.get("declared_consumers", []),
         )
@@ -148,7 +147,6 @@ def _build_request_from_args(args: argparse.Namespace) -> BoundedAcquisitionRequ
         min_headroom_bytes=min_headroom_bytes,
         eviction_policy=args.eviction_policy or EvictionPolicy.DELETE_ON_FINAL_CONSUMER.value,
         allow_network=bool(getattr(args, "allow_network", False)),
-        allow_full_object=bool(getattr(args, "allow_full_object", False)),
         license_state=args.license_state or LicenseAccessState.UNKNOWN_BLOCKED.value,
         declared_consumers=list(getattr(args, "consumer_id", []) or []),
     )
@@ -294,11 +292,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="Checksum verification policy.",
         )
         p.add_argument("--expected-checksum", help="Expected SHA-256 digest of the chunk or file.")
-        p.add_argument(
-            "--allow-full-object",
-            action="store_true",
-            help="Explicitly allow full object acquisition (normally rejected).",
-        )
         p.add_argument(
             "--eviction-policy",
             choices=[ep.value for ep in EvictionPolicy],

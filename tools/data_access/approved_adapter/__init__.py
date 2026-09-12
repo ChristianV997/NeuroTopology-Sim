@@ -35,9 +35,16 @@ from tools.data_access.approved_adapter.models import (
     finite_value,
     verify_plan_checksum,
 )
+from tools.data_access.approved_adapter.policy_registration import (
+    APPROVED_ADAPTER_REGISTRATION_SCHEMA,
+    APPROVED_BOUNDED_ADAPTER_POLICY_RECORD,
+    get_approved_adapter_policy_record,
+)
 
 __all__ = [
     "APPROVED_ACQUISITION_SCHEMA",
+    "APPROVED_ADAPTER_REGISTRATION_SCHEMA",
+    "APPROVED_BOUNDED_ADAPTER_POLICY_RECORD",
     "APPROVED_LICENSES",
     "AcquisitionContractError",
     "AdapterErrorCode",
@@ -53,6 +60,7 @@ __all__ = [
     "SourceCatalogType",
     "canonical_hash",
     "finite_value",
+    "get_approved_adapter_policy_record",
     "scan_legacy_callers",
     "verify_plan_checksum",
 ]

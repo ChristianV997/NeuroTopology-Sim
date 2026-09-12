@@ -64,8 +64,10 @@ The `plan()` method evaluates request feasibility with **zero network data-byte 
 ### 2.2 Rejection of Unknown Sizes
 Requests where `expected_size_bytes` is `0`, negative, or omitted are rejected with `UNKNOWN_SIZE_REJECTED`. Size must always be pre-negotiated from manifest metadata.
 
-### 2.3 Rejection of Full Objects by Default
-Full-object requests (where `start_byte == 0` and `end_byte >= expected_size_bytes - 1`) are rejected with `FULL_OBJECT_REJECTED` unless `allow_full_object=True` is explicitly passed.
+### 2.3 Strict Rejection of Full Objects and Full Datasets
+- **Full Objects**: Full-object requests (where `start_byte == 0` and `end_byte >= expected_size_bytes - 1`, or 1-byte files covering `[0, 0]`) are **strictly rejected** in production with `FULL_OBJECT_REJECTED`. There is no production escape hatch. In test suites only, internal mocking can specify `_test_only_allow_full_object=True`, which is ignored unless the environment variable `NEUROTOPOLOGY_ALLOW_TEST_FULL_OBJECT=1` is explicitly set.
+- **Full Datasets & Wildcards**: Any request targeting wildcard patterns (`*`, `**/*`, `sub-*`, `?`, `[a-z]`) or dataset-level/directory-level identifiers (`.`, empty path) is **strictly rejected** with `FULL_DATASET_REJECTED`.
+- **Unrestricted Path Escapes**: Paths containing directory traversal (`..`), absolute roots (`/`), or drive letters (`C:`) are **strictly rejected** with `UNRESTRICTED_PATH_REJECTED`.
 
 ### 2.4 Mandatory License Access Gating
 Requests must specify an explicit `license_state`. Only open licenses (`open_cc0`, `open_cc_by`, `open_access`) are approved for automated acquisition. Unspecified, restricted, or unknown licenses are rejected with `LICENSE_RESTRICTED`.
@@ -79,8 +81,9 @@ When a chunk is acquired with declared pipeline consumers (e.g., `["filter_step"
 2. Each consumer calls `consume(dataset_id, object_path, consumer_id)`.
 3. When the final declared consumer completes, the lease is released and the file is immediately unlinked from disk, setting its status in the manifest to `EVICTED`.
 
-### 2.7 Strict RFC 8259 Finite JSON
+### 2.7 Strict RFC 8259 Finite JSON & Machine-Readable Policy Registration
 All serializations use `finite_value()`, which explicitly rejects `NaN`, `Infinity`, and `-Infinity`, preserving exact integer and null fidelity.
+Furthermore, the adapter exports machine-readable policy metadata via `adapter.get_policy_registration()` and `get_approved_adapter_policy_record()`, guaranteeing compliance with downstream policy enforcement without direct coupling.
 
 ---
 
@@ -88,15 +91,20 @@ All serializations use `finite_value()`, which explicitly rejects `NaN`, `Infini
 
 | Error Code | Trigger Condition |
 | :--- | :--- |
-| `NETWORK_DISABLED` | `allow_network=False` during an acquisition attempt. |
-| `FULL_OBJECT_REJECTED` | Request covers the full file without `allow_full_object=True`. |
+| `FULL_DATASET_REJECTED` | Request path contains wildcard characters (`*`, `?`, `[]`) or dataset-level target (`.`). |
+| `FULL_OBJECT_REJECTED` | Request covers the full file range `[0, expected_size - 1]`. |
+| `UNRESTRICTED_PATH_REJECTED` | Path contains directory traversal (`..`), leading slashes, or drive letters. |
 | `UNKNOWN_SIZE_REJECTED` | `expected_size_bytes` is missing, 0, or negative. |
+| `MISSING_CACHE_BUDGET` | `cache_budget_bytes` is missing, 0, or negative. |
+| `MISSING_EVICTION_POLICY` | `eviction_policy` is missing or not a recognized `EvictionPolicy`. |
+| `MISSING_CHECKSUM_POLICY` | `checksum_policy` is missing or not a recognized `ChecksumPolicy`. |
+| `NETWORK_DISABLED` | `allow_network=False` during an acquisition attempt. |
 | `LICENSE_RESTRICTED` | `license_state` is not in `{open_cc0, open_cc_by, open_access}`. |
 | `CHECKSUM_MISMATCH` | Actual SHA-256 of downloaded chunk does not match `expected_checksum`. |
 | `DISK_EXHAUSTION` | Free disk space minus headroom reserve is insufficient. |
 | `CACHE_BUDGET_EXCEEDED` | Requested chunk size exceeds maximum configured cache budget. |
 | `ACTIVE_LEASE_LOCKED` | Item cannot be modified/evicted due to active consumer lease lock. |
-| `INVALID_SOURCE_PATH` | Path contains directory traversal (`..`) or empty components. |
+| `INVALID_SOURCE_PATH` | Path contains invalid or empty components. |
 | `INCOMPLETE_METADATA` | Required request fields are empty or invalid. |
 | `TRANSIENT_RETRY_EXHAUSTED` | Network resets or dropouts exceeded `max_retries`. |
 

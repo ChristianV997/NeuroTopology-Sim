@@ -120,8 +120,8 @@ def test_unknown_size_rejected(temp_cache_dir):
     assert any("UNKNOWN_SIZE_REJECTED" in r for r in plan.rejection_reasons)
 
 
-def test_full_object_rejected_by_default(temp_cache_dir):
-    """Full-object range requests without allow_full_object=True must be rejected."""
+def test_full_object_rejected_by_default(temp_cache_dir, monkeypatch):
+    """Full-object range requests must be rejected unless test-only override and env var are both active."""
     adapter = ApprovedAcquisitionAdapter(cache_root=temp_cache_dir)
     req = BoundedAcquisitionRequest(
         dataset_id="ds004504",
@@ -131,18 +131,27 @@ def test_full_object_rejected_by_default(temp_cache_dir):
         start_byte=0,
         end_byte=99,  # Covers full 100 bytes
         license_state=LicenseAccessState.OPEN_CC0.value,
-        allow_full_object=False,
+        _test_only_allow_full_object=False,
     )
 
+    # 1. Default: rejected
     plan = adapter.plan(req)
     assert plan.is_executable is False
     assert any("FULL_OBJECT_REJECTED" in r for r in plan.rejection_reasons)
 
-    # When allow_full_object is explicitly True, it passes
-    req.allow_full_object = True
+    # 2. Even if _test_only_allow_full_object is True, without env var it is rejected
+    req._test_only_allow_full_object = True
+    monkeypatch.delenv("NEUROTOPOLOGY_ALLOW_TEST_FULL_OBJECT", raising=False)
     plan2 = adapter.plan(req)
-    assert plan2.is_executable is True
-    assert len(plan2.rejection_reasons) == 0
+    assert plan2.is_executable is False
+    assert any("FULL_OBJECT_REJECTED" in r for r in plan2.rejection_reasons)
+
+    # 3. Only when both _test_only_allow_full_object is True AND env var is '1', it passes
+    monkeypatch.setenv("NEUROTOPOLOGY_ALLOW_TEST_FULL_OBJECT", "1")
+    plan3 = adapter.plan(req)
+    assert plan3.is_executable is True
+    assert len(plan3.rejection_reasons) == 0
+
 
 
 def test_license_gating(temp_cache_dir):

@@ -16,6 +16,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import shutil
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -32,6 +33,11 @@ from tools.data_access.approved_adapter.models import (
     SourceCatalogType,
     canonical_hash,
     finite_value,
+)
+from tools.data_access.approved_adapter.policy_registration import (
+    APPROVED_ADAPTER_REGISTRATION_SCHEMA,
+    APPROVED_BOUNDED_ADAPTER_POLICY_RECORD,
+    get_approved_adapter_policy_record,
 )
 from tools.data_access.chunk_cache import (
     BoundedChunkCache,
@@ -103,13 +109,22 @@ class ApprovedAcquisitionAdapter:
     # -------------------------------------------------------------------------
 
     def _normalize_object_path(self, catalog_type: str, object_path: str) -> str:
-        """Sanitize and normalize relative object path avoiding directory traversal."""
-        cleaned = object_path.replace("\\", "/").strip().lstrip("/")
+        """Sanitize and normalize relative object path avoiding directory traversal and root escape."""
+        raw = str(object_path or "").strip()
+        if not raw or raw in {"*", "**", "**/*", ".", "/", "all"}:
+            raise AcquisitionContractError(f"Target object path cannot be empty or wildcard dataset selector: '{object_path}'")
+        if any(c in raw for c in ["*", "?", "[", "]"]):
+            raise AcquisitionContractError(f"Target object path cannot contain wildcards: '{object_path}'")
+
+        cleaned = raw.replace("\\", "/")
+        if re.match(r"^[a-zA-Z]:", raw) or raw.startswith("/") or raw.startswith("\\"):
+            raise AcquisitionContractError(f"Absolute paths prohibited; must be contained relative path: '{object_path}'")
+
         parts = [p for p in cleaned.split("/") if p and p != "."]
         if any(p == ".." for p in parts):
-            raise AcquisitionContractError(f"Directory traversal detected in object path: {object_path}")
+            raise AcquisitionContractError(f"Directory traversal detected in object path: '{object_path}'")
         if not parts:
-            raise AcquisitionContractError(f"Invalid or empty object path: {object_path}")
+            raise AcquisitionContractError(f"Invalid or empty object path: '{object_path}'")
         return "/".join(parts)
 
     def _make_chunk_key(self, dataset_id: str, object_path: str, chunk_index: int = 0) -> Tuple[str, str, int]:
@@ -125,8 +140,10 @@ class ApprovedAcquisitionAdapter:
 
         Performs zero network data transfers. Verifies:
         - Metadata completeness.
+        - Absolute rejection of full-dataset and full-object requests in production.
         - Non-zero expected size.
-        - Range boundedness (rejection of full-object requests unless explicitly overridden).
+        - Mandatory cache budget, eviction policy, and checksum policy.
+        - Contained relative object path.
         - Approved open-access license state.
         - Cache storage budget and disk headroom limits.
         """
@@ -140,11 +157,19 @@ class ApprovedAcquisitionAdapter:
         if not request.source_uri or not request.source_uri.strip():
             rejection_reasons.append(f"{AdapterErrorCode.INCOMPLETE_METADATA.value}: source_uri must not be empty.")
 
+        # Full-dataset rejection
+        raw_obj = str(request.object_path or "").strip()
+        if raw_obj in {"*", "**", "**/*", ".", "/", "all"} or any(c in raw_obj for c in ["*", "?"]):
+            rejection_reasons.append(
+                f"{AdapterErrorCode.FULL_DATASET_REJECTED.value}: "
+                f"Full-dataset acquisition plans are strictly prohibited. Target must specify an exact individual object path."
+            )
+
         norm_path = ""
         try:
             norm_path = self._normalize_object_path(request.catalog_type, request.object_path)
         except Exception as exc:
-            rejection_reasons.append(f"{AdapterErrorCode.INVALID_SOURCE_PATH.value}: {exc}")
+            rejection_reasons.append(f"{AdapterErrorCode.UNRESTRICTED_PATH_REJECTED.value}: {exc}")
 
         # 2. Unknown size check
         if request.expected_size_bytes is None or request.expected_size_bytes <= 0:
@@ -167,17 +192,45 @@ class ApprovedAcquisitionAdapter:
         else:
             requested_bytes = request.end_byte - request.start_byte + 1
 
-        # 4. Full-object rejection policy
+        # 4. Strict full-object rejection policy (no production escape hatch)
         if request.expected_size_bytes and request.expected_size_bytes > 0:
             is_full_range = (request.start_byte == 0 and request.end_byte >= (request.expected_size_bytes - 1))
-            if is_full_range and not request.allow_full_object:
-                rejection_reasons.append(
-                    f"{AdapterErrorCode.FULL_OBJECT_REJECTED.value}: "
-                    f"Full-object acquisition is rejected by default for data conservation. "
-                    f"Set allow_full_object=True to explicitly authorize full object transfer."
+            if is_full_range:
+                test_override = (
+                    getattr(request, "_test_only_allow_full_object", False)
+                    and os.environ.get("NEUROTOPOLOGY_ALLOW_TEST_FULL_OBJECT") == "1"
                 )
+                if not test_override:
+                    rejection_reasons.append(
+                        f"{AdapterErrorCode.FULL_OBJECT_REJECTED.value}: "
+                        f"Full-object acquisition is strictly prohibited by repository policy. "
+                        f"No production API can bypass this requirement. Bounded byte-range slicing is mandatory."
+                    )
 
-        # 5. License access state check
+        # 5. Missing cache budget check
+        if request.cache_budget_bytes is None or request.cache_budget_bytes <= 0:
+            rejection_reasons.append(
+                f"{AdapterErrorCode.MISSING_CACHE_BUDGET.value}: "
+                f"cache_budget_bytes must be explicitly specified and > 0 (got {request.cache_budget_bytes})."
+            )
+
+        # 6. Missing eviction policy check
+        valid_eviction_policies = {e.value for e in EvictionPolicy}
+        if not request.eviction_policy or request.eviction_policy not in valid_eviction_policies:
+            rejection_reasons.append(
+                f"{AdapterErrorCode.MISSING_EVICTION_POLICY.value}: "
+                f"eviction_policy must be one of {sorted(list(valid_eviction_policies))} (got '{request.eviction_policy}')."
+            )
+
+        # 7. Missing checksum policy check
+        valid_checksum_policies = {c.value for c in ChecksumPolicy}
+        if not request.checksum_policy or request.checksum_policy not in valid_checksum_policies:
+            rejection_reasons.append(
+                f"{AdapterErrorCode.MISSING_CHECKSUM_POLICY.value}: "
+                f"checksum_policy must be one of {sorted(list(valid_checksum_policies))} (got '{request.checksum_policy}')."
+            )
+
+        # 8. License access state check
         license_approved = request.license_state in APPROVED_LICENSES
         if not license_approved:
             rejection_reasons.append(
@@ -186,7 +239,7 @@ class ApprovedAcquisitionAdapter:
                 f"Must be one of: {sorted(list(APPROVED_LICENSES))}."
             )
 
-        # 6. Capacity and disk headroom checks
+        # 9. Capacity and disk headroom checks
         self.cache._recalculate_current_usage()
         current_used = self.cache.budget.current_bytes
         budget_max = request.cache_budget_bytes or self.cache.budget.max_cache_bytes
@@ -519,3 +572,7 @@ class ApprovedAcquisitionAdapter:
     def cleanup_stale_partials(self, max_age_seconds: float = 0.0) -> Tuple[int, int]:
         """Scan and remove abandoned partial files within cache root."""
         return self.cache.cleanup_stale_partials(max_age_seconds=max_age_seconds)
+
+    def get_policy_registration(self) -> Dict[str, Any]:
+        """Return machine-readable registration metadata for policy enforcement."""
+        return get_approved_adapter_policy_record()
