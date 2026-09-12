@@ -57,6 +57,20 @@ def test_cli_in_process_json(capsys):
     assert rc in (0, 1)
 
 
+def test_cli_json_with_output_skips_stdout_dump(tmp_path, capsys):
+    dest = tmp_path / "report.json"
+    rc = cli.main(
+        ["--size", "8", "--repetitions", "1", "--json", "--output", str(dest)]
+    )
+    out = capsys.readouterr().out
+    packed = json.loads(dest.read_text(encoding="utf-8"))
+    assert packed["schema"] == "post_merge_pipeline/v1"
+    assert packed["num_targets"] == 8
+    assert "schema=post_merge_pipeline/v1" in out
+    assert out.strip().splitlines()[0].startswith("schema=")
+    assert rc in (0, 1)
+
+
 def test_cli_generate_validate(tmp_path):
     out = tmp_path / "cli-pack"
     rc = cli.main(["generate", "--out", str(out), "--size", "8", "--repetitions", "1"])

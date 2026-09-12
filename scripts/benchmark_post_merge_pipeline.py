@@ -210,15 +210,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     text = dumps(report)
     if args.output:
         _write_atomic(args.output, text)
-    if args.json:
+    summary = (
+        f"schema={report['schema']} targets={report['num_targets']} "
+        f"summary={report.get('summary')} "
+        f"all_equivalent={report.get('all_equivalent')} "
+        f"all_within_budget={report.get('all_within_budget')}"
+    )
+    if args.json and not args.output:
+        # Full JSON only when the caller did not already persist a file.
+        # Printing a large report plus --output can overflow captured stdout.
         print(text)
     else:
-        print(
-            f"schema={report['schema']} targets={report['num_targets']} "
-            f"summary={report.get('summary')} "
-            f"all_equivalent={report.get('all_equivalent')} "
-            f"all_within_budget={report.get('all_within_budget')}"
-        )
+        if args.output:
+            print(f"{summary} output={args.output}")
+        else:
+            print(summary)
         for row in report.get("results") or []:
             det = row.get("deterministic") or {}
             print(f"  {str(row.get('target')):40s} {str(row.get('status')):18s} match={det.get('checksum_match')}")
