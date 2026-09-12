@@ -1,0 +1,16 @@
+{
+  "source_id": "fixture-preprint-0001",
+  "identifier": "2609.03987",
+  "identifier_type": "arxiv",
+  "title": "High-Order Triadic Functional Connectivity in the Brain and Beyond",
+  "authors": ["Qiang Li", "Vince D Calhoun"],
+  "venue": null,
+  "publication_type": "preprint",
+  "publication_date": "2026-09-03",
+  "source_url": "https://arxiv.org/abs/2609.03987",
+  "content_checksum": null,
+  "excerpt_hash": null,
+  "citation_relations": [],
+  "review_status": "unreviewed",
+  "evidence_class": "hypothesis"
+}

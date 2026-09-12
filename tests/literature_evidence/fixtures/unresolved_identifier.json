@@ -1,0 +1,16 @@
+{
+  "source_id": "fixture-unresolved-0001",
+  "identifier": "not-a-real-doi-just-a-label",
+  "identifier_type": "doi",
+  "title": "Buddhist meditation training ecology",
+  "authors": [],
+  "venue": "Frontiers in Psychology",
+  "publication_type": "peer_reviewed_journal_article",
+  "publication_date": "2026",
+  "source_url": null,
+  "content_checksum": null,
+  "excerpt_hash": null,
+  "citation_relations": [],
+  "review_status": "review_required",
+  "evidence_class": "review_required"
+}
