@@ -90,30 +90,37 @@ def _relative(path: Path, root: Path) -> str:
         return path.resolve().as_posix()
 
 
-def _allowlisted(path: str, function: str | None, operation: str, policy: DataAccessPolicy) -> bool:
+def _allowlisted(
+    path: str,
+    function: str | None,
+    operation: str,
+    policy: DataAccessPolicy,
+    *,
+    qualified_function: str | None = None,
+) -> bool:
+    candidates = {value for value in (function, qualified_function) if value}
     for item in policy.approved_adapters:
         if path == item.get("path"):
             symbols = item.get("symbols", [])
-            if not symbols or function is None or any(function == str(symbol).split(".")[-1] for symbol in symbols):
+            # Match an explicitly declared short symbol or its complete
+            # enclosing symbol.  Do not split a qualified declaration and
+            # thereby authorize an unrelated method with the same basename.
+            if not symbols or bool(candidates.intersection(str(symbol) for symbol in symbols)):
                 return operation in {"bounded", "metadata"}
     for item in policy.approved_metadata_operations:
         if path != item.get("path"):
             continue
         symbols = item.get("symbols", [])
         symbol = item.get("symbol")
-        if (symbol and function == symbol) or (symbols and function in symbols):
+        if (symbol and symbol in candidates) or (symbols and bool(candidates.intersection(str(item) for item in symbols))):
             return operation == "metadata"
     for item in policy.approved_lazy_readers:
         if path != item.get("path"):
             continue
         symbols = item.get("symbols", [])
-        if symbols and function in symbols:
+        if symbols and bool(candidates.intersection(str(item) for item in symbols)):
             return operation == "lazy"
     return False
-
-
-def _path_allowlisted(path: str, policy: DataAccessPolicy) -> bool:
-    return any(path == item.get("path") for item in (*policy.approved_adapters, *policy.approved_metadata_operations, *policy.approved_lazy_readers))
 
 
 def _exception_for(path: str, rule: str, policy: DataAccessPolicy) -> bool:
@@ -155,6 +162,191 @@ def _function_name(node: ast.AST, parents: Mapping[int, ast.AST]) -> str | None:
             return current.name
         current = parents.get(id(current))
     return None
+
+
+def _enclosing_symbol_name(node: ast.AST, parents: Mapping[int, ast.AST]) -> str | None:
+    """Return the exact class/function symbol containing ``node``.
+
+    For example, a call inside ``BoundedS3ObjectStore.fetch_object`` is
+    represented as that qualified symbol, not merely ``fetch_object``.  This
+    prevents a registration for one adapter method from approving another
+    method in the same file.
+    """
+    names: list[str] = []
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names.append(node.name)
+    current = parents.get(id(node))
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.append(current.name)
+        current = parents.get(id(current))
+    return ".".join(reversed(names)) or None
+
+
+def _enclosing_class(node: ast.AST, parents: Mapping[int, ast.AST]) -> ast.ClassDef | None:
+    current = parents.get(id(node))
+    while current is not None:
+        if isinstance(current, ast.ClassDef):
+            return current
+        current = parents.get(id(current))
+    return None
+
+
+def _scope_nodes(
+    node: ast.AST,
+    parents: Mapping[int, ast.AST],
+    function_node: ast.FunctionDef | ast.AsyncFunctionDef | None,
+) -> list[ast.AST]:
+    """Use the method's class scope for adapter methods, otherwise its function."""
+    class_node = _enclosing_class(node, parents)
+    if class_node is not None:
+        return [class_node]
+    return [function_node] if function_node is not None else [node]
+
+
+def _ast_text(scope: Iterable[ast.AST]) -> str:
+    """Collect executable AST identifiers/constants, excluding comments."""
+    values: list[str] = []
+    for root in scope:
+        for node in ast.walk(root):
+            if isinstance(node, ast.Name):
+                values.append(node.id)
+            elif isinstance(node, ast.Attribute):
+                values.append(node.attr)
+            elif isinstance(node, ast.keyword) and node.arg is not None:
+                values.append(node.arg)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                values.append(node.value)
+    return " ".join(values).lower()
+
+
+def _has_false_network_default(function_node: ast.FunctionDef | ast.AsyncFunctionDef | None) -> bool:
+    if function_node is None:
+        return False
+    positional = list(function_node.args.posonlyargs) + list(function_node.args.args)
+    positional_defaults = dict(zip(positional[-len(function_node.args.defaults):], function_node.args.defaults)) if function_node.args.defaults else {}
+    for argument in (*positional, *function_node.args.kwonlyargs):
+        if argument.arg.lower() not in {"allow_network", "network_enabled", "download_enabled", "network"}:
+            continue
+        default = positional_defaults.get(argument) if argument in positional_defaults else dict(zip(function_node.args.kwonlyargs, function_node.args.kw_defaults)).get(argument)
+        return isinstance(default, ast.Constant) and default.value is False
+    return False
+
+
+def _has_call(scope: Iterable[ast.AST], *, function_name: str, keyword: str | None = None) -> bool:
+    for root in scope:
+        for node in ast.walk(root):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != function_name:
+                continue
+            if keyword is None or any(item.arg == keyword for item in node.keywords):
+                return True
+    return False
+
+
+def _calls(scope: Iterable[ast.AST], *, function_name: str) -> list[ast.Call]:
+    calls: list[ast.Call] = []
+    for root in scope:
+        for node in ast.walk(root):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == function_name:
+                calls.append(node)
+    return calls
+
+
+def _registration_for(path: str, qualified_function: str | None, policy: DataAccessPolicy) -> Mapping[str, Any] | None:
+    if not qualified_function:
+        return None
+    for item in policy.approved_adapters:
+        if path != item.get("path"):
+            continue
+        if qualified_function in {str(symbol) for symbol in item.get("symbols", [])} and item.get("registration"):
+            return item
+    return None
+
+
+def _registration_findings(
+    node: ast.AST,
+    *,
+    registration: Mapping[str, Any],
+    function_node: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    parents: Mapping[int, ast.AST],
+    add: Any,
+) -> None:
+    """Validate registered adapter controls using executable AST structure."""
+    profile = registration.get("control_profile")
+    scope = _scope_nodes(node, parents, function_node)
+    text = _ast_text(scope)
+
+    def require(condition: bool, rule: str, remediation: str) -> None:
+        if not condition:
+            add(node, rule, "error", "policy_control", remediation)
+
+    require(
+        _has_false_network_default(function_node),
+        "NETWORK_ENABLED_BY_DEFAULT",
+        "Registered bounded adapters must expose allow_network=False and require explicit opt-in.",
+    )
+    if profile == "s3_store":
+        get_object_calls = _calls(scope, function_name="get_object")
+        require(
+            bool(get_object_calls) and all(any(item.arg == "Range" for item in call.keywords) for call in get_object_calls),
+            "UNAUTHORIZED_BOUNDED_TRANSFER",
+            "Every registered S3 data read must pass an explicit Range keyword; full-object calls are rejected.",
+        )
+        require(
+            _has_call(scope, function_name="head_object") and "contentlength" in text and _has_call(scope, function_name="_object_uri"),
+            "MISSING_EXPECTED_OBJECT_IDENTITY",
+            "Bind the explicit source object identity and read size from head_object ContentLength before transfer.",
+        )
+        require(
+            any(token in text for token in ("checksum", "sha256", "sha-256", "etag", "digest")) and "unknown" in text,
+            "MISSING_CHECKSUM",
+            "Represent checksum verification or explicit checksum unknown state.",
+        )
+        require(
+            any(token in text for token in ("max_cache_bytes", "cache_budget", "metadata_max_bytes")),
+            "MISSING_CACHE_BOUND",
+            "Declare an explicit cache or metadata byte budget.",
+        )
+        require(
+            _has_call(scope, function_name="_evict_for") or any(token in text for token in ("eviction", "lru")),
+            "MISSING_EVICTION",
+            "Declare observable bounded-cache eviction.",
+        )
+        require(
+            _has_call(scope, function_name="_contained") or "is_relative_to" in text or "commonpath" in text,
+            "OUTPUT_ROOT_ESCAPE",
+            "Contain output paths under the explicit cache/output root.",
+        )
+        require(
+            not any(_calls(scope, function_name=name) for name in ("download_file", "download_fileobj", "copyfileobj")),
+            "UNBOUNDED_REMOTE_MATERIALIZATION",
+            "Registered S3 adapters must not use full-object or unbounded copy helpers.",
+        )
+    elif profile == "delegated_s3_wrapper":
+        metadata_wrapper = function_node is not None and function_node.name in {
+            "load_mdd_complete_subjects",
+            "load_group_labels",
+        }
+        explicit_bound = (
+            "metadata_max_bytes" in text
+            if metadata_wrapper
+            else "max_cache_bytes" in text and "chunk_size" in text
+        )
+        require(
+            explicit_bound,
+            "MISSING_CACHE_BOUND",
+            "Delegated callers must pass explicit cache/chunk bounds, or metadata_max_bytes for bounded metadata.",
+        )
+        require(
+            "boundeds3objectstore" in text and ("fetch_object" in text or "read_text_metadata" in text),
+            "UNAUTHORIZED_BOUNDED_TRANSFER",
+            "Delegated callers must use the registered BoundedS3ObjectStore methods.",
+        )
+        require(
+            not any(_calls(scope, function_name=name) for name in ("download_file", "download_fileobj", "get_object", "copyfileobj")),
+            "UNAUTHORIZED_BOTO3_FULL_OBJECT",
+            "Delegated callers must not bypass the bounded S3 adapter with direct transfer calls.",
+        )
 
 
 def _function_node(node: ast.AST, parents: Mapping[int, ast.AST]) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
@@ -298,6 +490,7 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
 
     for node in ast.walk(tree):
         function = _function_name(node, parents)
+        qualified_function = _enclosing_symbol_name(node, parents)
         function_node = _function_node(node, parents)
         function_source = _function_source(function_node, source_lines)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -313,6 +506,15 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
             for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
                 if argument.arg.lower() in {"allow_network", "network_enabled", "download_enabled", "network"} and isinstance(default, ast.Constant) and default.value is True:
                     add(node, "NETWORK_ENABLED_BY_DEFAULT", "critical", "network_policy", "Make network/data access opt-in with a default of False.", source_text=ast.get_source_segment(source, node))
+            registration = _registration_for(relative, qualified_function, policy)
+            if registration is not None:
+                _registration_findings(
+                    node,
+                    registration=registration,
+                    function_node=node,
+                    parents=parents,
+                    add=add,
+                )
             continue
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and isinstance(node.right, ast.Constant) and node.right.value == "..":
             add(node, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", source_text=ast.get_source_segment(source, node))
@@ -321,7 +523,29 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             modules = [alias.name for alias in node.names]
             direct_http = any(module == "requests" or module.startswith(("urllib", "httpx")) for module in modules)
-            if direct_http and not _path_allowlisted(relative, policy) and not _allowlisted(relative, function, "metadata", policy):
+            # Imports are not themselves data access.  If a retrieval call is
+            # made, its enclosing symbol is checked below.  In particular, do
+            # not use a filename-only exemption for a module containing one
+            # approved function.
+            if direct_http and function is not None and not _allowlisted(
+                relative,
+                function,
+                "metadata",
+                policy,
+                qualified_function=qualified_function,
+            ) and not _allowlisted(
+                relative,
+                function,
+                "bounded",
+                policy,
+                qualified_function=qualified_function,
+            ) and not _allowlisted(
+                relative,
+                function,
+                "lazy",
+                policy,
+                qualified_function=qualified_function,
+            ):
                 add(node, "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL", "error", "remote_reader", "Use an approved metadata-only or bounded adapter with explicit network opt-in.", source_text="import " + ", ".join(modules))
         if not isinstance(node, ast.Call):
             continue
@@ -330,9 +554,9 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
             argument_text = " ".join(_constant_text(argument) for argument in node.args)
             text = " ".join(part for part in (text, argument_text, ast.get_source_segment(source, node) or "") if part)
         lowered = text.lower()
-        approved_metadata = _allowlisted(relative, function, "metadata", policy)
-        approved_bounded = _allowlisted(relative, function, "bounded", policy)
-        approved_lazy = _allowlisted(relative, function, "lazy", policy)
+        approved_metadata = _allowlisted(relative, function, "metadata", policy, qualified_function=qualified_function)
+        approved_bounded = _allowlisted(relative, function, "bounded", policy, qualified_function=qualified_function)
+        approved_lazy = _allowlisted(relative, function, "lazy", policy, qualified_function=qualified_function)
         func_name = ""
         qualified_name = ""
         if isinstance(node.func, ast.Name):
