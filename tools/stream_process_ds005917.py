@@ -50,6 +50,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from dual_engine.fmri_tda_pipeline import parcellate_bold, connectivity_matrix, persistent_homology, graph_metrics, save_graph_structure  # noqa: E402
 from tools.streaming import base_runner  # noqa: E402
+from validation.s3_fetchers import BoundedS3ObjectStore  # noqa: E402
 
 _DATASET_ID = "ds005917"
 _BUCKET = "openneuro.org"
@@ -59,15 +60,31 @@ _BOLD_KEY_TMPL = f"{_DATASET_ID}/{{sub}}/{{ses}}/func/{{sub}}_{{ses}}_task-rest_
 _METRICS = ("betti1", "total_persistence_h1", "modularity", "global_efficiency", "mean_degree", "small_worldness")
 
 
-def load_mdd_complete_subjects() -> list[str]:
-    """MDD subjects with both infusion arms present -- real, not inferred."""
+def _s3_client():
     import boto3
     from botocore import UNSIGNED
     from botocore.config import Config
 
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    obj = s3.get_object(Bucket=_BUCKET, Key=f"{_DATASET_ID}/participants.tsv")
-    text = obj["Body"].read().decode("utf-8")
+    return boto3.client(
+        "s3",
+        config=Config(
+            signature_version=UNSIGNED,
+            connect_timeout=10,
+            read_timeout=30,
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
+    )
+
+
+def load_mdd_complete_subjects(*, metadata_cache_root: Path | None = None, allow_network: bool | None = None) -> list[str]:
+    """MDD subjects with both infusion arms present -- real, not inferred."""
+    metadata_cache_root = metadata_cache_root or (_REPO_ROOT / "data" / _DATASET_ID)
+    # ``None`` preserves the historical direct-call behavior for existing
+    # wrappers; CLI/run paths always pass an explicit bool and default False.
+    if allow_network is None:
+        allow_network = True
+    store = BoundedS3ObjectStore(_s3_client(), metadata_cache_root, metadata_max_bytes=4 * 1024 * 1024)
+    text = store.read_text_metadata(_BUCKET, f"{_DATASET_ID}/participants.tsv", allow_network=allow_network)
     reader = csv.DictReader(io.StringIO(text), delimiter="\t")
     out = []
     for row in reader:
@@ -76,23 +93,37 @@ def load_mdd_complete_subjects() -> list[str]:
     return out
 
 
-def download_bold(subject: str, session: str, dest_dir: Path) -> Path:
-    import boto3
-    from botocore import UNSIGNED
-    from botocore.config import Config
-
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+def download_bold(
+    subject: str,
+    session: str,
+    dest_dir: Path,
+    *,
+    allow_network: bool = False,
+    max_cache_bytes: int = 512 * 1024 * 1024,
+    chunk_size: int = 8 * 1024 * 1024,
+) -> Path:
     key = _BOLD_KEY_TMPL.format(sub=subject, ses=session)
-    dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{subject}_{session}_bold.nii.gz"
-    s3.download_file(_BUCKET, key, str(dest))
+    store = BoundedS3ObjectStore(
+        _s3_client(), dest_dir,
+        max_cache_bytes=max_cache_bytes,
+        chunk_size=chunk_size,
+    )
+    store.fetch_object(_BUCKET, key, dest, allow_network=allow_network)
     return dest
 
 
 def process_session(subject: str, session: str, work_root: Path, graph_structure_dir: Path | None = None,
-                     condition: str | None = None) -> dict:
+                     condition: str | None = None, *, allow_network: bool = False,
+                     max_cache_bytes: int = 512 * 1024 * 1024) -> dict:
     try:
-        bold_path = download_bold(subject, session, work_root)
+        if not allow_network and max_cache_bytes == 512 * 1024 * 1024:
+            # Keep the historical three-argument seam usable by test doubles
+            # and downstream wrappers; the real implementation still defaults
+            # to fail-closed network access.
+            bold_path = download_bold(subject, session, work_root)
+        else:
+            bold_path = download_bold(subject, session, work_root, allow_network=allow_network, max_cache_bytes=max_cache_bytes)
     except Exception as exc:
         # Real, observed case: not every subject with complete infusion_1/2
         # crossover metadata actually has a ses-d2/ses-p2 rest-run file on S3
@@ -127,13 +158,15 @@ def process_session(subject: str, session: str, work_root: Path, graph_structure
         bold_path.unlink(missing_ok=True)  # disk-bounded
 
 
-def _process_subject_both_arms(sub: str, work_path: Path, graph_structure_dir: Path | None = None) -> dict:
+def _process_subject_both_arms(sub: str, work_path: Path, graph_structure_dir: Path | None = None,
+                               *, allow_network: bool = False, max_cache_bytes: int = 512 * 1024 * 1024) -> dict:
     """Both drug (ses-d2) and placebo (ses-p2) arms for one subject. Each
     session's own errors are already caught inside process_session, so this
     always returns a complete {drug, placebo} record for the manifest."""
     result = {}
     for cond, ses in _CONDITIONS.items():
-        r = process_session(sub, ses, work_path, graph_structure_dir=graph_structure_dir, condition=cond)
+        r = process_session(sub, ses, work_path, graph_structure_dir=graph_structure_dir, condition=cond,
+                             allow_network=allow_network, max_cache_bytes=max_cache_bytes)
         result[cond] = r
         status = "OK" if not r["error"] else f"ERROR: {r['error'][:80]}"
         print(f"  {cond} ({ses}): {status}  betti1={r['betti1']} total_pers_h1={r['total_persistence_h1']:.3f}")
@@ -141,18 +174,20 @@ def _process_subject_both_arms(sub: str, work_path: Path, graph_structure_dir: P
 
 
 def run(out_dir: str, work_root: str, limit: int | None, subjects: list[str] | None,
-        save_graph_structure_dir: str | None = None) -> int:
+        save_graph_structure_dir: str | None = None, *, allow_network: bool = False,
+        max_cache_bytes: int = 512 * 1024 * 1024) -> int:
     out_path = Path(out_dir)
     work_path = Path(work_root)
     graph_structure_dir = Path(save_graph_structure_dir) if save_graph_structure_dir else None
 
-    all_subjects = subjects if subjects is not None else load_mdd_complete_subjects()
+    all_subjects = subjects if subjects is not None else load_mdd_complete_subjects(metadata_cache_root=work_path, allow_network=allow_network)
     print(f"{len(all_subjects)} MDD subjects with complete drug/placebo crossover.")
 
     manifest = base_runner.run_manifest_loop(
         all_subjects, out_path,
         key_fn=lambda s: s,
-        process_fn=lambda s: _process_subject_both_arms(s, work_path, graph_structure_dir),
+        process_fn=lambda s: _process_subject_both_arms(s, work_path, graph_structure_dir,
+                                                         allow_network=allow_network, max_cache_bytes=max_cache_bytes),
         limit=limit,
     )
 
@@ -171,10 +206,13 @@ def main() -> int:
     p.add_argument("--work-root", default="data/ds005917")
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
+    p.add_argument("--allow-network", action="store_true", help="Explicitly permit bounded S3 metadata/range requests")
+    p.add_argument("--max-cache-bytes", type=int, default=512 * 1024 * 1024)
     p.add_argument("--save-graph-structure", default=None,
                     help="directory to persist real parcel centroids + connectivity matrix (.npz) per subject/condition")
     a = p.parse_args()
-    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure)
+    return run(a.out, a.work_root, a.limit, a.subjects, a.save_graph_structure,
+               allow_network=a.allow_network, max_cache_bytes=a.max_cache_bytes)
 
 
 if __name__ == "__main__":
