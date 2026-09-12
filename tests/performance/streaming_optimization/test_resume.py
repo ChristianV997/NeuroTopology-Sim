@@ -45,12 +45,14 @@ def test_streaming_loop_retries_failed_and_clears_failure_on_success(tmp_path):
     out_path = tmp_path / "out"
     work_path = tmp_path / "work"
     sync_calls = []
+    fail_once = {"done": False}
 
     def sync_fn(subject, dest):
         sync_calls.append(subject)
         root = dest / subject
         root.mkdir(parents=True, exist_ok=True)
-        if subject == "sub-bad" and sync_calls.count("sub-bad") == 1:
+        if subject == "sub-bad" and not fail_once["done"]:
+            fail_once["done"] = True
             raise RuntimeError("first fail")
         return root
 

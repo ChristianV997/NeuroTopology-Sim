@@ -108,25 +108,41 @@ Regression tests compare:
 
 and assert they are **not** interchangeable. The ingest path must keep (1).
 
-## Measured improvements (same host, after change)
+## Measured improvements and regressions (same host, after change)
 
-See the post-change JSON written during validation
-(`/opt/cursor/artifacts/streaming_opt_optimized.json` when present).
-Structural improvements that do not depend on wall-clock:
+Paired files: `/opt/cursor/artifacts/streaming_opt_baseline.json` and
+`streaming_opt_optimized.json`. `evidence_class=performance_only`.
+RSS was not sampled (`rss_bytes: null`).
+
+Structural (not wall-clock):
 
 | Probe | Baseline | After |
 | --- | --- | --- |
 | subprocess timeout | missing | 300 s |
 | manifest fsync + replace | no fsync; item loop `write_text` | fsync + `os.replace` |
-| preprocess `_read_raw` for 3 windows | 3 | 1 |
+| preprocess `_read_raw` for 3 windows of one file | 3 | 1 |
 | failed item resume | never retried | retried |
 | task-label subject listing | all prefixes | first `max_subjects` |
 | empty download pool | spawned | skipped |
-| fallback `rglob("*")` | yes | no |
+| fallback unbounded star glob | yes | no |
+| preprocess cache occupancy after 12 windows | 0 | 1 |
 
-Wall-clock preprocess 12-window time is expected to drop because the
-full-recording filter runs once instead of twelve times. Claim that number
-only from the paired measurement files; do not invent a speedup.
+Wall-clock on this 40 s / 8 ch synthetic EDF (one process, one host):
+
+| Probe | Baseline | After | Notes |
+| --- | --- | --- | --- |
+| 12-window preprocess read | 1.897027 s | 1.753058 s | ~8 %; FIR setup dominates this tiny fixture |
+| 12-window non-preprocess read | 0.022180 s | 0.022664 s | within noise; no speedup claimed |
+| fallback discovery (400 junk files) | 0.002202 s | 0.000681 s | small absolute time |
+| 200 `save_manifest` writes | 0.026994 s | 0.357468 s | **regression**: fsync durability cost |
+| 80-item manifest loop | 0.051194 s | 0.265765 s | **regression**: per-item fsync |
+| preprocess tracemalloc peak | 30460560 B | 30249998 B | within noise |
+
+Do not generalize the ~8 % preprocess wall-clock drop to long recordings
+without measuring those recordings. The count of full-recording filters
+(12 → 1) is the portable improvement. The fsync regressions are intentional
+reliability cost on checkpoint-only microbenchmarks; a real `process_fn`
+dominates that overhead.
 
 ## Guardrails
 

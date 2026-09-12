@@ -12,15 +12,18 @@ def test_no_api_keys_in_optimization_tree():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent
-    forbidden = ("AKIA", "sk-", "api_key", "OPENAI", "ANTHROPIC")
+    needle_a = "BEGIN" + " PRIVATE KEY"
+    needle_b = "aws_secret" + "_access_key"
+    needle_c = "sk-ant-"
     for path in root.rglob("*"):
         if path.suffix not in {".py", ".json", ".md"}:
             continue
+        if path.name == "test_no_network.py":
+            continue
         text = path.read_text(encoding="utf-8")
-        for token in ("BEGIN PRIVATE KEY", "aws_secret_access_key"):
-            assert token not in text
-        # Allow the substring in comments that forbid keys, not live secrets.
-        assert "sk-ant-" not in text
+        assert needle_a not in text
+        assert needle_b not in text
+        assert needle_c not in text
 
 
 def test_local_helpers_do_not_open_sockets(monkeypatch, tmp_path):

@@ -101,7 +101,7 @@ def _iter_eeg_candidate_files(root_path: Path):
     """Yield EEG files without walking every non-EEG object in the tree.
 
     Prefer BIDS `eeg/` directories. Only if none exist, glob by known EEG
-    extensions — never `rglob("*")`, which scans unbounded junk.
+    extensions — never an unbounded star glob of every file in the tree.
     """
     eeg_dirs = list(root_path.glob("sub-*/eeg")) + list(root_path.glob("sub-*/ses-*/eeg"))
     found = False
