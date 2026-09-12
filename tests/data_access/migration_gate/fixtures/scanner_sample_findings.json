@@ -1,0 +1,35 @@
+{
+  "schema_version": "NeuroTopology.DataAccessPolicyAudit.v1",
+  "repository_root": ".",
+  "scanned_files": [
+    "scripts/fetch_real_datasets.py",
+    "scripts/eeg_topology_ds005620.py"
+  ],
+  "scanned_file_count": 2,
+  "findings": [
+    {
+      "file": "scripts/fetch_real_datasets.py",
+      "line": 45,
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "severity": "error",
+      "category": "remote_reader",
+      "remediation": "Use an approved metadata-only or bounded adapter with explicit network opt-in.",
+      "approved": false,
+      "source": "urllib.request.urlopen(url)"
+    },
+    {
+      "file": "scripts/eeg_topology_ds005620.py",
+      "line": 112,
+      "rule": "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL",
+      "severity": "error",
+      "category": "remote_reader",
+      "remediation": "Use an approved metadata-only or bounded adapter with explicit network opt-in.",
+      "approved": false,
+      "source": "requests.get(endpoint)"
+    }
+  ],
+  "finding_count": 2,
+  "legacy_violation_count": 2,
+  "compliant": false,
+  "network_calls_performed": false
+}
