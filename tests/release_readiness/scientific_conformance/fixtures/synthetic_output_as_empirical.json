@@ -1,0 +1,30 @@
+{
+  "claim_class": "descriptive_empirical",
+  "claim_id": "CLM-SYNTHETIC-EMPIRICAL",
+  "data_mode": "synthetic",
+  "effect_size": {
+    "cohens_d": 0.42
+  },
+  "evidence_class": "descriptive_empirical",
+  "labels_verified": true,
+  "multiplicity_correction": null,
+  "n_tests": 1,
+  "network_access_requested": false,
+  "network_policy_approved": false,
+  "null_controls": [
+    "phase_randomization_surrogate"
+  ],
+  "provenance": {
+    "acquisition": "openneuro_download",
+    "checksum": "a645c40da744497f3483bd5a7303c91d12541edd3083aabb1df6cd96a5d37486",
+    "dataset_version": "v1.0.0",
+    "source_id": "ds005620"
+  },
+  "text": "Synthetic simulation output is reported as an empirical finding.",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.24
+    ]
+  }
+}

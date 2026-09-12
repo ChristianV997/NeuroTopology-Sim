@@ -1,0 +1,30 @@
+{
+  "claim_class": "descriptive_empirical",
+  "claim_id": "CLM-MISSING-CHECKSUM",
+  "data_mode": "empirical",
+  "effect_size": {
+    "cohens_d": 0.42
+  },
+  "evidence_class": "descriptive_empirical",
+  "labels_verified": true,
+  "multiplicity_correction": null,
+  "n_tests": 1,
+  "network_access_requested": false,
+  "network_policy_approved": false,
+  "null_controls": [
+    "phase_randomization_surrogate"
+  ],
+  "provenance": {
+    "acquisition": "openneuro_download",
+    "checksum": null,
+    "dataset_version": "v1.0.0",
+    "source_id": "ds005620"
+  },
+  "text": "Provenance is declared but the checksum field itself is absent.",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.24
+    ]
+  }
+}

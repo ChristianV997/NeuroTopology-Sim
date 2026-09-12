@@ -1,0 +1,9 @@
+{
+  "run_id": "RUN-COMPLETE-CONFORMANCE-1",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "source": "synthetic_conformance_fixture",
+  "data_mode": "synthetic",
+  "synthetic": true,
+  "status": "completed",
+  "claim_scope": "release_readiness_conformance_fixture"
+}
