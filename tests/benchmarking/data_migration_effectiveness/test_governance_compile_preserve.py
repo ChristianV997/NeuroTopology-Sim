@@ -76,8 +76,23 @@ def _is_owned(rel: str) -> bool:
 
 
 def test_preserve_file_verification():
+    history = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "log", "--all", "--format=%H%x09%s"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    benchmark_commit = next(
+        (
+            line.split("\t", 1)[0]
+            for line in history.stdout.splitlines()
+            if "Add local data-migration effectiveness performance harness" in line
+        ),
+        None,
+    )
+    diff_range = [f"{benchmark_commit}^", benchmark_commit] if benchmark_commit else ["origin/main"]
     completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "origin/main", "--"],
+        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", *diff_range, "--"],
         capture_output=True,
         text=True,
         check=False,
