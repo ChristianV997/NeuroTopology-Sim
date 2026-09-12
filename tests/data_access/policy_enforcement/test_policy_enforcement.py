@@ -88,8 +88,10 @@ class BoundedS3ObjectStore:
         source_uri = self._object_uri(bucket, key)
         metadata = self._head(bucket, key, allow_network=allow_network)
         destination = self._contained(destination)
+        part_path = destination.with_name("payload.part")
         self._evict_for(metadata["size"], protected=destination)
         response = self.client.get_object(Bucket=bucket, Key=key, Range="bytes=0-1")
+        os.replace(part_path, destination)
         return response, metadata["checksum"]
 '''
     path = tmp_path / "validation" / "s3_fetchers.py"
