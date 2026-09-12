@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-09-01T00:00:00+00:00",
+  "data_mode": "synthetic",
+  "dataset_id": "ds-preflight-demo-001",
+  "run_id": "run-nonfinite-0001",
+  "source": "local_pipeline",
+  "status": "completed"
+}
