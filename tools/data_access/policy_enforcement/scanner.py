@@ -318,6 +318,11 @@ def _registration_findings(
             "Contain output paths under the explicit cache/output root.",
         )
         require(
+            "part_path" in text and _has_call(scope, function_name="replace"),
+            "MISSING_PARTIAL_STAGING",
+            "Stage remote bytes in a partial path and atomically replace the final path only after validation.",
+        )
+        require(
             not any(_calls(scope, function_name=name) for name in ("download_file", "download_fileobj", "copyfileobj")),
             "UNBOUNDED_REMOTE_MATERIALIZATION",
             "Registered S3 adapters must not use full-object or unbounded copy helpers.",
