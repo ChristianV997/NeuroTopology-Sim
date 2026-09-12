@@ -3,6 +3,7 @@
 from .paths import PathContainment, check_path_containment
 from .policy import (
     APPROVED_ACQUISITION_ADAPTERS,
+    APPROVED_LAZY_READERS,
     APPROVED_METADATA_OPERATIONS,
     DEFAULT_POLICY,
     DataAccessPolicy,
@@ -17,6 +18,7 @@ from .scanner import (
 
 __all__ = [
     "APPROVED_ACQUISITION_ADAPTERS",
+    "APPROVED_LAZY_READERS",
     "APPROVED_METADATA_OPERATIONS",
     "DEFAULT_POLICY",
     "DataAccessPolicy",

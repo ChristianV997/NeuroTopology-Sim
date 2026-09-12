@@ -15,8 +15,8 @@ from .policy import DEFAULT_POLICY, DataAccessPolicy
 
 SCHEMA_VERSION = "NeuroTopology.DataAccessPolicyAudit.v1"
 
-_DEFAULT_PRODUCTION_ROOTS = ("tools", "scripts", "dataset_acquisition", "adapters", "pipelines")
-_EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", "tests", "docs", "generated_artifacts"}
+_DEFAULT_PRODUCTION_ROOTS = (".",)
+_EXCLUDED_PARTS = {".git", "__pycache__", ".pytest_cache", ".serena", ".venv", "venv", "node_modules", "dist", "build", "tests", "docs", "generated_artifacts"}
 _SELF_PATHS = {"tools/data_access/policy_enforcement", "scripts/validate_data_access_policy.py"}
 
 
@@ -103,11 +103,17 @@ def _allowlisted(path: str, function: str | None, operation: str, policy: DataAc
         symbol = item.get("symbol")
         if (symbol and function == symbol) or (symbols and function in symbols):
             return operation == "metadata"
+    for item in policy.approved_lazy_readers:
+        if path != item.get("path"):
+            continue
+        symbols = item.get("symbols", [])
+        if symbols and function in symbols:
+            return operation == "lazy"
     return False
 
 
 def _path_allowlisted(path: str, policy: DataAccessPolicy) -> bool:
-    return any(path == item.get("path") for item in (*policy.approved_adapters, *policy.approved_metadata_operations))
+    return any(path == item.get("path") for item in (*policy.approved_adapters, *policy.approved_metadata_operations, *policy.approved_lazy_readers))
 
 
 def _exception_for(path: str, rule: str, policy: DataAccessPolicy) -> bool:
@@ -151,6 +157,60 @@ def _function_name(node: ast.AST, parents: Mapping[int, ast.AST]) -> str | None:
     return None
 
 
+def _function_node(node: ast.AST, parents: Mapping[int, ast.AST]) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    current = parents.get(id(node))
+    while current is not None:
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return current
+        current = parents.get(id(current))
+    return None
+
+
+def _function_source(function_node: ast.FunctionDef | ast.AsyncFunctionDef | None, source_lines: list[str]) -> str:
+    if function_node is None:
+        return ""
+    start = max(0, function_node.lineno - 1)
+    end = min(len(source_lines), getattr(function_node, "end_lineno", function_node.lineno))
+    return "\n".join(source_lines[start:end])
+
+
+def _contains_marker(text: str, markers: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in markers)
+
+
+def _unsafe_control_findings(
+    node: ast.Call,
+    *,
+    function_source: str,
+    function: str | None,
+    function_node: ast.FunctionDef | ast.AsyncFunctionDef | None,
+    approved: bool,
+    add: Any,
+) -> None:
+    """Report absent runtime controls on unapproved transfer/materialization code.
+
+    This is intentionally conservative.  The scanner cannot prove that a
+    runtime path is safe; it can only make missing declarations fail closed.
+    """
+    if approved:
+        return
+    func_name = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id if isinstance(node.func, ast.Name) else ""
+    function_lower = (function or "").lower()
+    transfer_like = func_name in {"download_file", "download_fileobj", "get_object", "copyfileobj"} or any(
+        token in function_lower for token in ("download", "fetch", "transfer", "material", "sync", "cache")
+    )
+    if not transfer_like:
+        return
+    anchor = function_node or node
+    if not _contains_marker(function_source, ("range", "byte_range", "max_bytes", "chunk", "cache_budget", "memory_budget", "size_limit")):
+        add(anchor, "MISSING_CACHE_BOUND", "error", "policy_control", "Declare an explicit byte/cache bound before remote bytes can be materialized.", source_text=None)
+    if not _contains_marker(function_source, ("checksum", "sha256", "sha-256", "etag", "digest")):
+        add(anchor, "MISSING_CHECKSUM", "error", "policy_control", "Require a source checksum or record checksum availability as unknown; never fabricate one.", source_text=None)
+    if not _contains_marker(function_source, ("evict", "eviction", "lru", "cache_policy")):
+        add(anchor, "MISSING_EVICTION", "warning", "policy_control", "Declare observable bounded-cache eviction and preserve active leases.", source_text=None)
+
+
 def _finding(
     path: str,
     line: int,
@@ -185,6 +245,10 @@ def _scan_source_patterns(source: str, path: str, policy: DataAccessPolicy) -> l
         if path.lower().endswith((".sh", ".ps1", ".bat", ".cmd")):
             code_context = True
         if not code_context:
+            # A parent traversal in executable source is still a policy
+            # concern even when it is not part of a shell command.
+            if re.search(r"(?:[\"']\.\.[\"']|\.\.[\\/])", line) and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
+                findings.append(PolicyFinding(path, line_number, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", False, line.strip()))
             continue
         normalized = re.sub(r"[\[\],\"'()]", " ", line)
         normalized = re.sub(r"\s+", " ", normalized).strip()
@@ -193,6 +257,9 @@ def _scan_source_patterns(source: str, path: str, policy: DataAccessPolicy) -> l
             if match and (line_number, rule) not in emitted and not _exception_for(path, rule, policy):
                 emitted.add((line_number, rule))
                 findings.append(PolicyFinding(path, line_number, rule, severity, category, remediation, False, line.strip()))
+        if re.search(r"(?:[\"']\.\.[\"']|\.\.[\\/])", line) and (line_number, "OUTPUT_ROOT_ESCAPE") not in emitted and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
+            emitted.add((line_number, "OUTPUT_ROOT_ESCAPE"))
+            findings.append(PolicyFinding(path, line_number, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", False, line.strip()))
     return findings
 
 
@@ -217,6 +284,7 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
         return findings
 
     parents = _parents(tree)
+    source_lines = source.splitlines()
     seen = {(item.line, item.rule) for item in findings}
 
     def add(node: ast.AST, rule: str, severity: str, category: str, remediation: str, *, approved: bool = False, source_text: str | None = None) -> None:
@@ -230,6 +298,26 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
 
     for node in ast.walk(tree):
         function = _function_name(node, parents)
+        function_node = _function_node(node, parents)
+        function_source = _function_source(function_node, source_lines)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defaults = list(node.args.defaults)
+            positional = list(node.args.posonlyargs) + list(node.args.args)
+            first_default = len(positional) - len(defaults)
+            for index, argument in enumerate(positional):
+                if index < first_default or argument.arg.lower() not in {"allow_network", "network_enabled", "download_enabled", "network"}:
+                    continue
+                default = defaults[index - first_default]
+                if isinstance(default, ast.Constant) and default.value is True:
+                    add(node, "NETWORK_ENABLED_BY_DEFAULT", "critical", "network_policy", "Make network/data access opt-in with a default of False.", source_text=ast.get_source_segment(source, node))
+            for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
+                if argument.arg.lower() in {"allow_network", "network_enabled", "download_enabled", "network"} and isinstance(default, ast.Constant) and default.value is True:
+                    add(node, "NETWORK_ENABLED_BY_DEFAULT", "critical", "network_policy", "Make network/data access opt-in with a default of False.", source_text=ast.get_source_segment(source, node))
+            continue
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div) and isinstance(node.right, ast.Constant) and node.right.value == "..":
+            add(node, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", source_text=ast.get_source_segment(source, node))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"join", "joinpath"} and any(isinstance(argument, ast.Constant) and argument.value == ".." for argument in node.args):
+            add(node, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", source_text=ast.get_source_segment(source, node))
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             modules = [alias.name for alias in node.names]
             direct_http = any(module == "requests" or module.startswith(("urllib", "httpx")) for module in modules)
@@ -244,6 +332,7 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
         lowered = text.lower()
         approved_metadata = _allowlisted(relative, function, "metadata", policy)
         approved_bounded = _allowlisted(relative, function, "bounded", policy)
+        approved_lazy = _allowlisted(relative, function, "lazy", policy)
         func_name = ""
         qualified_name = ""
         if isinstance(node.func, ast.Name):
@@ -252,22 +341,31 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
             qualified_name = _qualified_name(node.func)
+        if func_name == "add_argument" and any(token in lowered for token in ("network", "download")):
+            default_true = any(keyword.arg == "default" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True for keyword in node.keywords)
+            if default_true:
+                add(node, "NETWORK_ENABLED_BY_DEFAULT", "critical", "network_policy", "Make network/data access opt-in with a default of False.", source_text=ast.get_source_segment(source, node))
+        if func_name == "getenv" and len(node.args) >= 2:
+            key = _constant_text(node.args[0]).lower()
+            default = _constant_text(node.args[1]).lower()
+            if any(token in key for token in ("network", "download")) and default in {"1", "true", "yes", "on"}:
+                add(node, "NETWORK_ENABLED_BY_DEFAULT", "critical", "network_policy", "Make network/data access opt-in with a default of False.", source_text=ast.get_source_segment(source, node))
         http_call = func_name == "urlopen" or qualified_name.lower().startswith(("urllib.", "requests.", "httpx."))
         if http_call:
-            if not approved_metadata and not approved_bounded:
+            if not approved_metadata and not approved_bounded and not approved_lazy:
                 add(node, "UNAUTHORIZED_DIRECT_HTTP_RETRIEVAL", "error", "remote_reader", "Use an approved metadata-only or bounded adapter with explicit network opt-in.", source_text=ast.get_source_segment(source, node))
         if func_name in {"download_file", "download_fileobj"}:
             if not approved_bounded:
                 add(node, "UNAUTHORIZED_BOTO3_FULL_OBJECT", "critical", "full_dataset_download", "Replace direct full-object boto3 transfer with an approved bounded adapter.", source_text=ast.get_source_segment(source, node))
         if func_name == "get_object":
             has_range = any(keyword.arg == "Range" for keyword in node.keywords)
-            if not has_range or not approved_bounded:
+            if not approved_metadata and not approved_lazy and (not has_range or not approved_bounded):
                 add(node, "UNBOUNDED_REMOTE_MATERIALIZATION" if not has_range else "UNAUTHORIZED_BOUNDED_TRANSFER", "critical" if not has_range else "error", "full_dataset_download" if not has_range else "remote_reader", "Declare a byte range, manifest size, checksum, and approved adapter before reading object bytes.", source_text=ast.get_source_segment(source, node))
         if func_name == "copyfileobj" and not approved_bounded:
             add(node, "UNBOUNDED_REMOTE_MATERIALIZATION", "error", "unbounded_materialization", "Read bounded chunks into a partial file and verify completion before rename.", source_text=ast.get_source_segment(source, node))
         receiver = _qualified_name(node.func.value) if isinstance(node.func, ast.Attribute) else ""
         remote_receiver = receiver.rsplit(".", 1)[-1].lower() in {"response", "resp", "body", "stream", "remote", "payload"}
-        if func_name == "read" and remote_receiver and not node.args and not approved_metadata and not approved_bounded:
+        if func_name == "read" and remote_receiver and not node.args and not approved_metadata and not approved_bounded and not approved_lazy:
             add(node, "UNBOUNDED_REMOTE_MATERIALIZATION", "error", "unbounded_materialization", "Read bounded chunks into a partial file and verify completion before rename.", source_text=ast.get_source_segment(source, node))
         if func_name in {"run", "Popen", "call", "check_call", "check_output", "system"} and any(token in lowered for token in ("openneuro download", "aws s3 cp", "aws s3 sync", " wget ", " curl ")):
             if "openneuro download" in lowered:
@@ -276,6 +374,15 @@ def scan_file(path: str | Path, *, repository_root: str | Path, policy: DataAcce
                 add(node, "UNAUTHORIZED_AWS_FULL_TRANSFER", "critical", "full_dataset_download", "Use the approved chunk-cache adapter; do not execute aws s3 cp/sync for data.", source_text=ast.get_source_segment(source, node))
             else:
                 add(node, "UNAUTHORIZED_SHELL_TRANSFER", "critical", "full_dataset_download", "Do not launch download shells; use the manifest-first bounded adapter.", source_text=ast.get_source_segment(source, node))
+        if isinstance(node, ast.Call):
+            _unsafe_control_findings(
+                node,
+                function_source=function_source,
+                function=function,
+                function_node=function_node,
+                approved=approved_metadata or approved_bounded or approved_lazy,
+                add=add,
+            )
 
     return sorted(findings, key=lambda item: (item.file, item.line, item.rule))
 

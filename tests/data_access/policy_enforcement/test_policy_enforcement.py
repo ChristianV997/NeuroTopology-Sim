@@ -59,6 +59,17 @@ def test_openneuro_download_is_critical_and_unapproved():
     assert finding.approved is False
 
 
+def test_missing_runtime_controls_fail_closed():
+    findings = scan_file(FIXTURES / "rejected_controls.py", repository_root=ROOT)
+    rules = _rules(findings)
+    assert {"OUTPUT_ROOT_ESCAPE", "MISSING_CACHE_BOUND", "MISSING_CHECKSUM", "MISSING_EVICTION", "NETWORK_ENABLED_BY_DEFAULT"} <= rules
+
+
+def test_dandi_lazy_reader_and_manifest_metadata_are_explicitly_allowlisted():
+    findings = scan_file(ROOT / "data" / "dandi_nwb_ingest.py", repository_root=ROOT)
+    assert findings == []
+
+
 def test_shell_entrypoint_patterns_are_scanned_without_execution(tmp_path):
     shell = tmp_path / "legacy.sh"
     shell.write_text("aws s3 sync s3://bucket/data ./data\ncurl https://example.invalid/data\n", encoding="utf-8")
@@ -114,6 +125,7 @@ def test_policy_represents_safe_runtime_requirements():
     assert "eviction" in data["eviction_policy"]
     assert APPROVED_ACQUISITION_ADAPTERS
     assert APPROVED_METADATA_OPERATIONS
+    assert data["approved_lazy_readers"]
 
 
 def test_windows_and_posix_path_containment():
