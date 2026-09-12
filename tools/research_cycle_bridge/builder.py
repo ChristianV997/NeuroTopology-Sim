@@ -86,9 +86,13 @@ def build_research_cycle_bridge(
     diagnostics = adapted["diagnostics"]
     artifacts_manifest = adapted["artifact_manifest"]
 
-    run_id = prov.get("run_id") or "run_unspecified"
+    run_id = prov.get("run_id") or "unavailable"
     eff_cycle_id = cycle_id or f"rc-cycle-{run_id}"
     eff_dataset_id = dataset_id or prov.get("dataset_id") or "dataset_unspecified"
+    if not prov.get("run_id"):
+        diagnostics.setdefault("missing", []).append("provenance.run_id")
+    if not (dataset_id or prov.get("dataset_id")):
+        diagnostics.setdefault("missing", []).append("provenance.dataset_id")
 
     # 1. Source dataset stage
     ds_payload = _load_json_or_dict(source_dataset) or {
@@ -120,16 +124,17 @@ def build_research_cycle_bridge(
         "metrics": {},
     }
     # Read metrics artifact if present
-    run_dir_path = Path(artifacts_manifest.get("run_directory", ""))
-    if run_dir_path.is_dir():
+    run_dir_value = artifacts_manifest.get("run_directory") if isinstance(artifacts_manifest, Mapping) else None
+    run_dir_path = Path(run_dir_value) if isinstance(run_dir_value, str) and run_dir_value.strip() else None
+    if run_dir_path is not None and run_dir_path.is_dir():
         metrics_file = run_dir_path / "metrics.json"
         if metrics_file.is_file():
             try:
                 metrics_data = json.loads(metrics_file.read_text(encoding="utf-8"))
                 if isinstance(metrics_data, Mapping):
                     sim_run_payload["metrics"] = {k: finite_value(v) for k, v in metrics_data.items()}
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+                diagnostics.setdefault("errors", []).append(f"metrics.json unreadable: {exc}")
         summary_file = run_dir_path / "summary.json"
         if summary_file.is_file():
             try:
@@ -138,8 +143,8 @@ def build_research_cycle_bridge(
                     for k in ("loss", "accuracy", "peak_memory_mb", "runtime_s"):
                         if k in summary_data and k not in sim_run_payload["metrics"]:
                             sim_run_payload["metrics"][k] = finite_value(summary_data[k])
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+                diagnostics.setdefault("errors", []).append(f"summary.json unreadable: {exc}")
 
     sim_checksum = canonical_hash(sim_run_payload)
     sim_node_id = f"run_{run_id}"
@@ -152,18 +157,20 @@ def build_research_cycle_bridge(
     val_report_payload = None
     val_node_id = f"val_{run_id}"
     val_checksum = ""
-    if run_dir_path.is_dir():
+    if run_dir_path is not None and run_dir_path.is_dir():
         val_file = run_dir_path / "validation_report.json"
         if val_file.is_file():
             try:
                 val_report_payload = json.loads(val_file.read_text(encoding="utf-8"))
-            except Exception:
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError, TypeError) as exc:
+                diagnostics.setdefault("errors", []).append(f"validation_report.json unreadable: {exc}")
                 val_report_payload = None
     if val_report_payload is None:
         val_report_payload = {
             "validation_id": val_node_id,
-            "status": "complete" if status == "COMPLETE" else "inconclusive",
-            "checks_passed": status == "COMPLETE",
+            "status": "inconclusive",
+            "checks_passed": False,
+            "missing": True,
         }
     val_checksum = canonical_hash(val_report_payload)
 

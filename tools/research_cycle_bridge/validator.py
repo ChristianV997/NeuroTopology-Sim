@@ -23,7 +23,17 @@ from tools.research_cycle_bridge.models import (
 )
 
 _URL_PATTERN = re.compile(r"^(?:https?|s3|gs|ftp)://", re.I)
-_PROHIBITED_PROVENANCE_VALUES = {"unknown", "none", "null", "undefined", ""}
+_PROHIBITED_PROVENANCE_VALUES = {
+    "unknown",
+    "none",
+    "null",
+    "undefined",
+    "unavailable",
+    "unspecified",
+    "run_unspecified",
+    "run_unknown",
+    "",
+}
 
 
 class BridgeValidationError(ValueError):

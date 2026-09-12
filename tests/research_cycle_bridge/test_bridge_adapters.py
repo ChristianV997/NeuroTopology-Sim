@@ -45,7 +45,9 @@ def test_release_evidence_evaluator_compatibility(tmp_path: Path) -> None:
     # Invoke the canonical evaluator
     report = evaluate_research_cycle_release(bundle, adapter_hint="generic")
     assert report.schema_version == "1.0"
-    assert report.decision in (DecisionState.SYNTHETIC_ONLY, DecisionState.EVIDENCE_READY_FOR_REVIEW)
+    # The fixture omits a seed, so the bridge must remain operationally
+    # incomplete rather than fabricating one merely to reach SYNTHETIC_ONLY.
+    assert report.decision == DecisionState.EVIDENCE_INCOMPLETE
     assert report.synthetic_flag is True
 
 

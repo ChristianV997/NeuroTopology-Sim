@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tools.research_cycle_bridge.builder import build_research_cycle_bridge
+from tools.research_cycle_bridge.adapters import adapt_bridge_to_claims, adapt_bridge_to_release_bundle
 from tools.research_cycle_bridge.models import (
     BRIDGE_SCHEMA_VERSION,
     ResearchCycleBridgeRecord,
@@ -139,6 +140,36 @@ def test_missing_provenance_rejected(tmp_path: Path) -> None:
 
     errors = validate_bridge_record(bridge)
     assert any("Provenance field" in err for err in errors)
+
+
+def test_missing_data_mode_never_becomes_empirical(tmp_path: Path) -> None:
+    run_dir = tmp_path / "missing_mode_run"
+    _write_json(
+        run_dir / "RunRecord.json",
+        {
+            "run_id": "run_missing_mode",
+            "created_at": "2026-09-11T00:00:00Z",
+            "source": "local_fixture",
+            "git_commit": "abc123",
+        },
+    )
+    _write_json(run_dir / "summary.json", {"status": "complete"})
+    bridge = build_research_cycle_bridge(run_dir)
+    assert bridge.data_mode == "unavailable"
+    assert bridge.empirical is False
+    assert bridge.status == "INCOMPLETE"
+    assert bridge.diagnostics["missing"]
+    assert adapt_bridge_to_claims(bridge.to_dict())[0]["claim_category"] == "unsupported_claim"
+
+
+def test_missing_validation_is_not_synthesized_as_pass(tmp_path: Path) -> None:
+    run_dir = _create_run_dir(tmp_path, name="without_validation")
+    (run_dir / "validation_report.json").unlink()
+    bridge = build_research_cycle_bridge(run_dir)
+    assert bridge.validation_report["checks_passed"] is False
+    bundle = adapt_bridge_to_release_bundle(bridge.to_dict())
+    assert bundle["validation_report_present"] is False
+    assert bundle["validation_status"] is None
 
 
 def test_network_url_in_provenance_rejected(tmp_path: Path) -> None:
