@@ -130,6 +130,8 @@ def download_eeg(
         eviction_metadata=eviction_metadata,
         chunk_sha256=chunk_sha256,
     )
+    if request.chunk_sha256 is None:
+        raise BoundedAccessError("chunk_sha256 is required for bounded transfer; missing checksum blocks execution")
     cache = BoundedChunkCache(
         request.cache_root,
         max_cache_bytes=request.max_cache_bytes,
