@@ -26,7 +26,11 @@ from .models import (
 
 EVENT_SCHEMA_VERSION = "awareness-studio-research-cycle-event.v1"
 EVENT_TYPES = frozenset(
-    {"cycle_created", "cycle_finalized", "cycle_revision", *RECORD_TYPES.keys()}
+    {
+        "cycle_created", "cycle_finalized", "cycle_revision", "orchestrator_stage",
+        "execution_outcome", "planning_artifact", "validation_outcome",
+        "evidence_graph_update", "release_review", *RECORD_TYPES.keys(),
+    }
 )
 _UNSET = object()
 
@@ -229,6 +233,8 @@ class ResearchCycleLedger:
         selected_id = cycle_id or stable_id("cycle", {"parent_cycle_id": parent_cycle_id, "metadata": metadata})
         if not isinstance(selected_id, str) or not selected_id:
             raise LedgerError("cycle_id is required")
+        if any(character in selected_id for character in ("/", "\\", " ")):
+            raise LedgerError("cycle_id must be a stable path-free identifier")
         with self._transaction() as connection:
             existing = connection.execute("SELECT * FROM cycles WHERE cycle_id = ?", (selected_id,)).fetchone()
             if existing is not None:
@@ -321,8 +327,10 @@ class ResearchCycleLedger:
                     if self._event_hash(event.event_id, event.cycle_id, event.sequence, event.event_type, event.producer, event.status, event.payload, event.previous_hash) != event.event_hash:
                         raise LedgerError(f"event hash broken for {event.event_id}")
                     previous = event.event_hash
-                for row in connection.execute("SELECT payload_json FROM records WHERE cycle_id = ?", (current,)):
-                    record_from_dict(json.loads(row[0]))
+                for row in connection.execute("SELECT payload_json,record_hash FROM records WHERE cycle_id = ?", (current,)):
+                    record = record_from_dict(json.loads(row[0]))
+                    if record.checksum != row[1]:
+                        raise LedgerError(f"record hash broken for {record.record_id}")
         return True
 
     def export_json(self, cycle_id: str, path: str | Path | None = None) -> str:
