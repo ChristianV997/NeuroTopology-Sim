@@ -41,6 +41,7 @@ VALID_STATUSES = frozenset(
         "INCONCLUSIVE",
         "BLOCKED",
         "FAILED",
+        "NOT_IMPLEMENTED",
         "REVIEW_REQUIRED",
         "FINALIZED",
     }
@@ -483,8 +484,15 @@ def record_from_dict(value: Mapping[str, Any]) -> RecordMixin:
         raise ResearchCycleError(f"unknown record_type: {record_type!r}")
     if not isinstance(checksum, str) or checksum != sha256_json({"record_type": record_type, **data}):
         raise ResearchCycleError("record checksum is missing or invalid")
-    data.pop("record_id", None)
     cls = RECORD_TYPES[record_type]
+    id_fields = {
+        "source_snapshot": "snapshot_id", "evidence_record": "evidence_id", "claim": "claim_id",
+        "hypothesis": "hypothesis_id", "experiment_spec": "experiment_id", "run_record": "run_record_id",
+        "artifact_manifest": "artifact_manifest_id", "validation_report": "validation_report_id", "theory_revision": "revision_id",
+    }
+    if data.get("record_id") != data.get(id_fields[record_type]):
+        raise ResearchCycleError("record_id does not match the typed record identifier")
+    data.pop("record_id", None)
     names = {item.name for item in fields(cls)}
     data = {key: item for key, item in data.items() if key in names}
     if "evidence_class" in data:

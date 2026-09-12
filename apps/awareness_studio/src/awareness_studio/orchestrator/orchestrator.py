@@ -24,6 +24,17 @@ from typing import Any, Dict, List, Optional
 
 from .event_log import EventLog
 from .event_model import EventEnvelope, PIPELINE_STAGES
+from awareness_studio.research_cycle import (
+    Claim,
+    EvidenceClass,
+    EvidenceRecord,
+    ExperimentSpec as LedgerExperimentSpec,
+    Hypothesis as LedgerHypothesis,
+    ResearchCycleLedger,
+    SourceSnapshot,
+    sha256_json,
+    stable_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +47,7 @@ class OrchestratorConfig:
     seed: int = 42
     run_cards_dir: Optional[Path] = None   # where to look for *.run.json
     out_base_dir: Optional[Path] = None    # defaults to outputs/orchestrator/
+    ledger_path: Optional[Path] = None     # defaults to <run>/research_cycle.sqlite3
 
 
 @dataclass
@@ -55,6 +67,9 @@ class OrchestratorResult:
     dry_run: bool
     artifacts: Dict[str, Path] = field(default_factory=dict)
     error: Optional[str] = None
+    execution_state: str = "REVIEW_REQUIRED"
+    scientific_evidence: bool = False
+    ledger_path: Optional[Path] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -65,6 +80,9 @@ class OrchestratorResult:
             "dry_run": self.dry_run,
             "artifacts": {k: str(v) for k, v in self.artifacts.items()},
             "error": self.error,
+            "execution_state": self.execution_state,
+            "scientific_evidence": self.scientific_evidence,
+            "ledger_path": str(self.ledger_path) if self.ledger_path else None,
         }
 
 
@@ -87,6 +105,7 @@ class Orchestrator:
                 seed=cfg.seed,
                 run_cards_dir=cfg.run_cards_dir,
                 out_base_dir=cfg.out_base_dir,
+                ledger_path=cfg.ledger_path,
             )
 
         now = _now or datetime.now(timezone.utc)
@@ -98,6 +117,11 @@ class Orchestrator:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         log = EventLog(out_dir)
+        ledger_path = cfg.ledger_path or (out_dir / "research_cycle.sqlite3")
+        ledger = ResearchCycleLedger(ledger_path)
+        ledger_metadata = {"seed": cfg.seed, "dry_run": cfg.dry_run, "run_cards_dir": str(cfg.run_cards_dir) if cfg.run_cards_dir else None}
+        ledger.create_cycle(run_id, metadata=ledger_metadata, producer="awareness_studio.orchestrator")
+        self._seed_research_cycle(ledger, run_id, cfg, ledger_metadata)
         stages_completed: List[str] = []
         stages_failed: List[str] = []
         artifacts: Dict[str, Path] = {}
@@ -118,12 +142,20 @@ class Orchestrator:
         for stage in PIPELINE_STAGES:
             fn = stage_fns[stage]
             t0 = time.monotonic()
+            ledger.append_event(
+                run_id,
+                "orchestrator_stage",
+                producer="awareness_studio.orchestrator",
+                status="IN_PROGRESS",
+                payload={"stage": stage, "dry_run": cfg.dry_run},
+            )
             log.append(EventEnvelope.make(run_id, stage, "start", _now=now))
             try:
                 result = fn(run_id, cfg, out_dir, context, _now=now)
                 dur = (time.monotonic() - t0) * 1000
                 context[stage] = result
                 artifacts.update(result.get("artifacts", {}))
+                self._record_stage_result(ledger, run_id, stage, result, cfg, context)
                 log.append(EventEnvelope.make(
                     run_id, stage, "ok",
                     payload={k: str(v) if isinstance(v, Path) else v
@@ -132,6 +164,13 @@ class Orchestrator:
                     _now=now,
                 ))
                 stages_completed.append(stage)
+                ledger.append_event(
+                    run_id,
+                    "orchestrator_stage",
+                    producer="awareness_studio.orchestrator",
+                    status="COMPLETED",
+                    payload={"stage": stage, "result": self._ledger_safe(result)},
+                )
             except Exception as exc:
                 dur = (time.monotonic() - t0) * 1000
                 logger.exception("[orchestrator] stage %s failed", stage)
@@ -142,9 +181,17 @@ class Orchestrator:
                     _now=now,
                 ))
                 stages_failed.append(stage)
+                ledger.append_event(
+                    run_id,
+                    "orchestrator_stage",
+                    producer="awareness_studio.orchestrator",
+                    status="FAILED",
+                    payload={"stage": stage, "reason": str(exc)},
+                )
                 break
 
         artifacts["events_jsonl"] = log.path
+        artifacts["research_cycle_sqlite"] = ledger_path
         return OrchestratorResult(
             run_id=run_id,
             out_dir=out_dir,
@@ -152,7 +199,65 @@ class Orchestrator:
             stages_failed=stages_failed,
             dry_run=cfg.dry_run,
             artifacts=artifacts,
+            execution_state="REVIEW_REQUIRED" if cfg.dry_run else "NOT_IMPLEMENTED",
+            scientific_evidence=False,
+            ledger_path=ledger_path,
         )
+
+    @staticmethod
+    def _ledger_safe(value: Any) -> Any:
+        if isinstance(value, Path):
+            return value.as_posix()
+        if isinstance(value, dict):
+            return {str(key): Orchestrator._ledger_safe(item) for key, item in value.items() if key != "artifacts"}
+        if isinstance(value, list):
+            return [Orchestrator._ledger_safe(item) for item in value]
+        return value
+
+    def _seed_research_cycle(self, ledger: ResearchCycleLedger, run_id: str, cfg: OrchestratorConfig, metadata: Dict[str, Any]) -> None:
+        limitations = ("Planning/interface evidence only; no scientific execution or conclusion is established.",)
+        snapshot_id = stable_id("snapshot", {"cycle_id": run_id, "metadata": metadata})
+        source_hash = sha256_json({"cycle_id": run_id, "metadata": metadata})
+        ledger.append_record(run_id, SourceSnapshot(snapshot_id, run_id, "awareness_studio://orchestrator-config", source_hash, "planning", EvidenceClass.ENGINEERING_FACT, "Orchestrator configuration and planning only.", limitations, metadata={"synthetic_demo": False, "network_access": False}), producer="awareness_studio.orchestrator")
+        evidence_id = stable_id("evidence", {"cycle_id": run_id, "snapshot_id": snapshot_id})
+        ledger.append_record(run_id, EvidenceRecord(evidence_id, run_id, (snapshot_id,), "A research cycle was configured for planning; no measurement was executed.", "planning", EvidenceClass.ENGINEERING_FACT, "Planning/interface behavior only.", limitations, {"scientific_evidence": False}, (snapshot_id,)), producer="awareness_studio.orchestrator")
+        claim_id = stable_id("claim", {"cycle_id": run_id, "evidence_id": evidence_id})
+        ledger.append_record(run_id, Claim(claim_id, run_id, "The configured pipeline can be represented as a reviewable plan.", (evidence_id,), EvidenceClass.ENGINEERING_FACT, "Software planning behavior only; not a claim about biology or experiment outcomes.", limitations, parent_ids=(evidence_id,)), producer="awareness_studio.orchestrator")
+
+    def _record_stage_result(self, ledger: ResearchCycleLedger, run_id: str, stage: str, result: Dict[str, Any], cfg: OrchestratorConfig, context: Dict[str, Any]) -> None:
+        """Project stage outputs into the canonical ledger without promoting them.
+
+        Missing solver, run, artifact, and validation nodes are represented by
+        explicit blocked/review events.  No placeholder checksum or fabricated
+        RunRecord is created for work that did not execute.
+        """
+        producer = "awareness_studio.orchestrator"
+        limitations = ("Planning/interface evidence only; no scientific execution or conclusion is established.",)
+        records = ledger.records(run_id)
+        record_by_type = {record.record_type: record for record in records}
+        claim = record_by_type.get("claim")
+        if stage == "propose_hypotheses" and claim is not None:
+            for item in result.get("hypotheses", []):
+                hypothesis_id = stable_id("hypothesis", {"cycle_id": run_id, "h_id": item.get("h_id"), "text": item.get("text")})
+                ledger.append_record(run_id, LedgerHypothesis(hypothesis_id, run_id, str(item.get("text", "")), (claim.record_id,), claim_scope="Hypothesis proposal only; not an empirical result.", scientific_limitations=limitations, parent_ids=(claim.record_id,)), producer=producer)
+        elif stage == "plan_experiments":
+            hypotheses = {item.get("h_id"): item for item in context.get("propose_hypotheses", {}).get("hypotheses", [])}
+            for item in result.get("experiment_specs", []):
+                source_hypothesis = hypotheses.get(item.get("hypothesis"), {})
+                hypothesis_id = stable_id("hypothesis", {"cycle_id": run_id, "h_id": item.get("hypothesis"), "text": source_hypothesis.get("text")})
+                experiment_id = stable_id("experiment", {"cycle_id": run_id, "spec": item})
+                ledger.append_record(run_id, LedgerExperimentSpec(experiment_id, run_id, (hypothesis_id,), str(item.get("mode", "undeclared")), item.get("params", {}), claim_scope="Experiment planning only; no execution result.", scientific_limitations=limitations, parent_ids=(hypothesis_id,)), producer=producer)
+        elif stage == "execute":
+            status = "BLOCKED" if cfg.dry_run else "NOT_IMPLEMENTED"
+            ledger.append_event(run_id, "execution_outcome", producer=producer, status=status, payload={"execution_state": "PLANNING_ONLY" if cfg.dry_run else "NOT_IMPLEMENTED", "scientific_evidence": False, "results": result.get("results", []), "reason": "No solver was invoked; no RunRecordV1 was fabricated."})
+        elif stage == "digest":
+            paths = {key: str(value) for key, value in result.get("artifacts", {}).items()}
+            ledger.append_event(run_id, "planning_artifact", producer=producer, status="REVIEW_REQUIRED", payload={"planning_only": True, "scientific_evidence": False, "artifact_paths": paths, "reason": "These are interface/report artifacts, not scientific measurements."})
+            ledger.append_event(run_id, "evidence_graph_update", producer=producer, status="REVIEW_REQUIRED", payload={"planning_only": True, "scientific_evidence": False, "reason": "Graph contains proposed hypotheses only."})
+        elif stage == "validate":
+            ledger.append_event(run_id, "validation_outcome", producer=producer, status="REVIEW_REQUIRED" if cfg.dry_run else "NOT_IMPLEMENTED", payload={"validation_status": "REVIEW_REQUIRED" if cfg.dry_run else "NOT_IMPLEMENTED", "scientific_evidence": False, "checks": result.get("checks", []), "reason": "Planning output cannot validate scientific execution."})
+        elif stage == "ops_update":
+            ledger.append_event(run_id, "release_review", producer=producer, status="REVIEW_REQUIRED", payload={"release_state": "REVIEW_REQUIRED", "execution_allowed": False, "scientific_evidence": False, "reason": "No autonomous release or claim promotion is permitted."})
 
     # ── Stage implementations ─────────────────────────────────────────────────
 
@@ -183,12 +288,16 @@ class Orchestrator:
                 "text": "Vedana (sensation tone) modulates tanha (craving) via gain-control dynamics.",
                 "confidence": "medium",
                 "source": "template",
+                "proposal_only": True,
+                "mutates_claims": False,
             },
             {
                 "h_id": "h002",
                 "text": "Upadana (clinging) functions as a latching mechanism stabilized by samsaric loops.",
                 "confidence": "low",
                 "source": "template",
+                "proposal_only": True,
+                "mutates_claims": False,
             },
         ]
         return {"hypotheses": hypotheses, "count": len(hypotheses)}
@@ -214,7 +323,8 @@ class Orchestrator:
         return {
             "experiment_specs": [
                 {"spec_id": s.spec_id, "hypothesis": s.hypothesis,
-                 "mode": s.mode, "params": s.params}
+                 "mode": s.mode, "params": s.params, "planning_only": True,
+                 "mutates_claims": False}
                 for s in specs
             ],
             "count": len(specs),
@@ -231,18 +341,18 @@ class Orchestrator:
                 results.append({
                     "spec_id": spec["spec_id"],
                     "mode": spec["mode"],
-                    "status": "dry_run_skipped",
-                    "metrics": {
-                        "I_mean": 0.5, "I_std": 0.05, "I_final": 0.48,
-                        "vort_mean": 1.0, "n_steps": 50.0,
-                        "Qz_mean": 0.0, "Qabs_mean": 0.0, "f_dress": 0.0,
-                    },
+                    "status": "PLANNING_ONLY",
+                    "planning_only": True,
+                    "scientific_evidence": False,
+                    "reason": "Dry-run plans the execution interface and invokes no solver.",
                 })
             else:
                 results.append({
                     "spec_id": spec["spec_id"],
                     "mode": spec["mode"],
-                    "status": "not_implemented",
+                    "status": "NOT_IMPLEMENTED",
+                    "scientific_evidence": False,
+                    "reason": "Live solver execution is not implemented by Awareness Studio.",
                 })
         return {"results": results, "dry_run": cfg.dry_run}
 
@@ -265,15 +375,15 @@ class Orchestrator:
             if cfg.dry_run:
                 interpretations.append({
                     "spec_id": r.get("spec_id"),
-                    "status": "dry_run_stub",
-                    "state": "unclassified",
-                    "confidence": 0.0,
-                    "reasoning": "dry_run stub; no LLM call made",
+                    "status": "PLANNING_ONLY",
+                    "scientific_evidence": False,
+                    "reason": "No LLM call made; planning output is not evidence.",
                 })
             else:
                 interpretations.append({
                     "spec_id": r.get("spec_id"),
-                    "status": "not_implemented",
+                    "status": "NOT_IMPLEMENTED",
+                    "scientific_evidence": False,
                 })
         return {"interpretations": interpretations, "dry_run": cfg.dry_run}
 
@@ -284,15 +394,18 @@ class Orchestrator:
         results = ctx.get("execute", {}).get("results", [])
         checks: List[Dict] = []
         for r in results:
-            passed = "metrics" in r or r.get("status") in ("dry_run_skipped",)
+            passed = False
             checks.append({
                 "spec_id": r.get("spec_id"),
                 "passed": passed,
-                "note": "dry_run stub" if cfg.dry_run else "live",
+                "status": "REVIEW_REQUIRED" if cfg.dry_run else "NOT_IMPLEMENTED",
+                "scientific_evidence": False,
+                "note": "planning/interface evidence only" if cfg.dry_run else "solver execution not implemented",
             })
         all_passed = all(c["passed"] for c in checks)
-        if not all_passed:
-            raise RuntimeError(f"Validation failed: {[c for c in checks if not c['passed']]}")
+        # A non-passing planning check is an explicit review state, not a stage
+        # exception.  This keeps the pipeline auditable without manufacturing a
+        # scientific failure or success.
         return {"checks": checks, "all_passed": all_passed}
 
     def _stage_digest(
@@ -365,8 +478,8 @@ class Orchestrator:
             "",
             f"**Date:** {(_now or datetime.now(timezone.utc)).isoformat()}  ",
             f"**Mode:** {'dry-run' if cfg.dry_run else 'live'}  ",
-            f"**Stages:** {len(PIPELINE_STAGES)} planned, all completed  ",
-            f"**Validation:** {n_pass}/{len(checks)} checks passed",
+            f"**Stages:** {len(PIPELINE_STAGES)} planned; execution state is review-only  ",
+            f"**Validation:** {n_pass}/{len(checks)} checks passed; planning output is not scientific evidence",
             "",
             "## Summary",
             "",
@@ -384,7 +497,7 @@ class Orchestrator:
             "",
         ]
         for c in checks:
-            mark = "PASS" if c["passed"] else "FAIL"
+            mark = "REVIEW_REQUIRED" if not c["passed"] else "COMPLETED"
             lines.append(f"- [{mark}] {c['spec_id']} — {c['note']}")
         lines += [
             "",
@@ -422,7 +535,7 @@ class Orchestrator:
             "created_at": (_now or datetime.now(timezone.utc)).isoformat(),
             "airtable_payload": {
                 "table": "Work Queue",
-                "action": "dry_run" if cfg.dry_run else "upsert",
+                "action": "planning_only" if cfg.dry_run else "not_implemented",
                 "fields": {
                     "task": f"Orchestrator run {run_id[:8]}",
                     "priority": "normal",
