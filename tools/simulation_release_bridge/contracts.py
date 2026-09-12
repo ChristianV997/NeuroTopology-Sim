@@ -190,7 +190,7 @@ class ExecutionOutcomeSpec:
     exit_code: int | None = None
     elapsed_s: float | None = None
     error_message: str | None = None
-    runner_id: str = "bounded_runner"
+    runner_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return finite_value(self)

@@ -359,6 +359,11 @@ def validate_stages(
         warnings.append("non-empirical evidence is confined to engineering review and cannot be promoted")
         rejected_reasons.append("NON_EMPIRICAL_EVIDENCE")
 
+    runner_id = str(outcome.get("runner_id", "")).strip()
+    if not runner_id or runner_id.lower() in PLACEHOLDER_STRINGS:
+        errors.append("execution_outcome.runner_id is required")
+        rejected_reasons.append("MISSING_RUNNER_ID")
+
     # 10. Determine promotion eligibility
     # Promotion requires:
     # - Chain is complete

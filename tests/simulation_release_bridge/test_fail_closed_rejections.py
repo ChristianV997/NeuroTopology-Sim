@@ -121,3 +121,14 @@ def test_implicit_complete_state_is_not_promoted():
     assert any("invalid execution outcome state" in item for item in bundle.diagnostics["errors"])
     assert bundle.promotion_status != ReleasePromotionStatus.PROMOTED.value
     assert bundle.promotion_checksum is None
+
+
+def test_missing_runner_identity_cannot_promote():
+    stages = create_complete_pass_stages()
+    stages["execution_outcome"].pop("runner_id")
+
+    bundle = SimulationReleaseBuilder("rc-test-no-runner", require_canonical_runner=False).build_from_stages(stages)
+
+    assert "MISSING_RUNNER_ID" in bundle.diagnostics["rejected"]
+    assert bundle.promotion_status == ReleasePromotionStatus.BLOCKED.value
+    assert bundle.promotion_checksum is None
