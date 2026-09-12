@@ -331,6 +331,7 @@ def populate_run_directory(
         "exit_code": outcome.get("exit_code"),
         "elapsed_s": outcome.get("elapsed_s"),
         "error": outcome.get("error_message"),
+        "runner_id": outcome.get("runner_id"),
         "code_revision": rev.get("code_revision"),
         "seed": seed_spec.get("seed"),
         "input_references": prov.get("input_references"),
