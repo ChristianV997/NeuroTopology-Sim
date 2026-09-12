@@ -14,7 +14,9 @@ from validation.s3_fetchers import (
     BoundedAccessError,
     BoundedS3ObjectStore,
     ChecksumMismatchError,
+    POLICY_REGISTRATION_REQUIREMENTS,
 )
+from tools.data_access.policy_enforcement.scanner import scan_file
 
 
 class FakeS3:
@@ -158,3 +160,38 @@ def test_streaming_entrypoints_fail_closed_before_remote_metadata(monkeypatch, t
         ds005917.download_bold("sub-01", "ses-d2", tmp_path / "ds005917")
     with pytest.raises(PermissionError):
         ds006644.download_subject_bold("sub-01", tmp_path / "ds006644")
+
+
+def test_omitted_metadata_permission_fails_closed_for_real_like_client(tmp_path: Path):
+    class RealLikeClient:
+        def head_object(self, **kwargs):
+            raise AssertionError("head_object must not run while offline")
+
+    store = BoundedS3ObjectStore(RealLikeClient(), tmp_path)
+    with pytest.raises(PermissionError):
+        store.read_text_metadata("bucket", "participants.tsv")
+
+
+def test_legacy_full_object_fallback_is_rejected(tmp_path: Path):
+    class LegacyClient:
+        def get_object(self, **kwargs):
+            raise AssertionError("legacy unbounded get_object must not run")
+
+    store = BoundedS3ObjectStore(LegacyClient(), tmp_path)
+    with pytest.raises(PermissionError):
+        store.read_text_metadata("bucket", "participants.tsv")
+
+
+def test_residual_findings_are_exactly_policy_registration_requirements():
+    files = [
+        Path("validation/s3_fetchers.py"),
+        Path("validation/fast_tr_fixtures.py"),
+        Path("tools/stream_process_ds005917.py"),
+        Path("tools/stream_process_ds006644.py"),
+    ]
+    findings = [finding for path in files for finding in scan_file(path, repository_root=Path("."))]
+    assert {finding.rule for finding in findings} == {"UNAUTHORIZED_BOUNDED_TRANSFER"}
+    assert len(findings) == 3
+    registration_paths = {item["path"] for item in POLICY_REGISTRATION_REQUIREMENTS["registrations"]}
+    assert {finding.file for finding in findings} <= registration_paths
+    json.dumps(POLICY_REGISTRATION_REQUIREMENTS, allow_nan=False)

@@ -9,6 +9,7 @@ transfers. It does not download data and does not make a scientific claim.
 `validation.s3_fetchers.BoundedS3ObjectStore` is the owned boundary:
 
 1. Network access is disabled unless the caller passes `allow_network=True`.
+   Omitting the permission is equivalent to `False` for real clients.
 2. A `head_object` metadata response must provide an integer object size.
    Missing or conflicting sizes are rejected.
 3. Every data request uses an explicit `Range` whose width is bounded by
@@ -48,9 +49,17 @@ are test infrastructure and must not be labeled as empirical data.
 Before migration, the owned production paths contained direct
 `download_file` calls and unbounded `get_object(...)["Body"].read()` metadata
 reads. After migration, those direct full-object and unbounded reads are gone.
-The repository policy scanner may still report the new bounded `get_object`
-call as an unapproved adapter until its separate policy allowlist is updated;
-that is an integration-review item, not permission to bypass the scanner.
+The repository policy scanner reports three bounded `get_object` calls as
+`UNAUTHORIZED_BOUNDED_TRANSFER` until its separate policy allowlist is
+updated. `validation.s3_fetchers.POLICY_REGISTRATION_REQUIREMENTS` is the
+machine-readable registration request, including exact paths, symbols,
+operation, and required controls. This is an integration-review item, not
+permission to bypass the scanner.
+
+The only compatibility seam is for `unittest.mock` clients used by existing
+parser fixtures. It issues a bounded metadata probe and cannot access AWS;
+real boto clients still fail closed when permission is omitted. The probe is
+never labeled checksum-verified empirical data.
 
 ## Scientific limitation
 

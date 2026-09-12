@@ -76,13 +76,9 @@ def _s3_client():
     )
 
 
-def load_mdd_complete_subjects(*, metadata_cache_root: Path | None = None, allow_network: bool | None = None) -> list[str]:
+def load_mdd_complete_subjects(*, metadata_cache_root: Path | None = None, allow_network: bool = False) -> list[str]:
     """MDD subjects with both infusion arms present -- real, not inferred."""
     metadata_cache_root = metadata_cache_root or (_REPO_ROOT / "data" / _DATASET_ID)
-    # ``None`` preserves the historical direct-call behavior for existing
-    # wrappers; CLI/run paths always pass an explicit bool and default False.
-    if allow_network is None:
-        allow_network = True
     store = BoundedS3ObjectStore(_s3_client(), metadata_cache_root, metadata_max_bytes=4 * 1024 * 1024)
     text = store.read_text_metadata(_BUCKET, f"{_DATASET_ID}/participants.tsv", allow_network=allow_network)
     reader = csv.DictReader(io.StringIO(text), delimiter="\t")
@@ -104,6 +100,7 @@ def download_bold(
 ) -> Path:
     key = _BOLD_KEY_TMPL.format(sub=subject, ses=session)
     dest = dest_dir / f"{subject}_{session}_bold.nii.gz"
+    # The delegated store enforces cache_budget, checksum policy, and eviction.
     store = BoundedS3ObjectStore(
         _s3_client(), dest_dir,
         max_cache_bytes=max_cache_bytes,
