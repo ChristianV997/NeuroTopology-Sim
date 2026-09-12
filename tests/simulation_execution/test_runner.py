@@ -8,7 +8,13 @@ import sys
 import pytest
 
 from tools.simulation_execution.finite import dumps_finite
-from tools.simulation_execution.models import ExecutionState, RunnerConfig, WorkUnit
+from tools.simulation_execution.models import (
+    DEFAULT_DISK_BUDGET_BYTES,
+    DEFAULT_MEMORY_BUDGET_BYTES,
+    ExecutionState,
+    RunnerConfig,
+    WorkUnit,
+)
 from tools.simulation_execution.runner import run_plan
 
 
@@ -23,6 +29,13 @@ def _unit(root: Path, command: tuple[str, ...], unit_id="unit-1", **kwargs) -> W
 
 def _command(code: str) -> tuple[str, ...]:
     return (sys.executable, "-c", code)
+
+
+def test_runner_defaults_are_finitely_bounded():
+    config = RunnerConfig(output_root=Path("out"), allowed_commands={})
+    assert config.memory_budget_bytes == DEFAULT_MEMORY_BUDGET_BYTES
+    assert config.disk_budget_bytes == DEFAULT_DISK_BUDGET_BYTES
+    assert config.default_timeout_s > 0
 
 
 def _writer(code_suffix: str = "") -> tuple[str, ...]:

@@ -7,6 +7,12 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
+# Execution remains bounded when a caller does not provide an override. These
+# are resource guardrails, not claims about the workload's scientific validity.
+DEFAULT_MEMORY_BUDGET_BYTES = 512 * 1024 * 1024
+DEFAULT_DISK_BUDGET_BYTES = 512 * 1024 * 1024
+
+
 class ExecutionState(str, Enum):
     PASS = "PASS"
     PARTIAL = "PARTIAL"
@@ -45,8 +51,8 @@ class RunnerConfig:
     stdout_limit: int = 16_384
     stderr_limit: int = 16_384
     runtime_budget_s: float | None = None
-    memory_budget_bytes: int | None = None
-    disk_budget_bytes: int | None = None
+    memory_budget_bytes: int | None = DEFAULT_MEMORY_BUDGET_BYTES
+    disk_budget_bytes: int | None = DEFAULT_DISK_BUDGET_BYTES
     network_disabled: bool = True
     code_revision: str = "unknown"
     deterministic_seed: int | None = 0
