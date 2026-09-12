@@ -255,9 +255,13 @@ def sync_s3_dataset_metadata(
     `extra_includes` lets a caller pull additional dataset-level files (e.g.
     ds001787's behavioral zip) into the same single sync call.
     `timeout_s` bounds the AWS CLI subprocess (default
-    `S3_METADATA_SYNC_TIMEOUT_S`). Pass `None` only when a caller explicitly
-    wants the platform default of no timeout.
+    `S3_METADATA_SYNC_TIMEOUT_S`). A missing/``None`` override retains the
+    finite default; metadata acquisition is never intentionally unbounded.
     """
+    if timeout_s is None:
+        timeout_s = S3_METADATA_SYNC_TIMEOUT_S
+    if timeout_s <= 0:
+        raise ValueError("timeout_s must be finite and positive")
     cmd = _aws_command() + [
         "s3", "sync", "--no-sign-request", "--only-show-errors",
         f"s3://{bucket}/{dataset_id}", str(dest_root),
@@ -355,9 +359,15 @@ def _is_valid_work_unit(result: object) -> bool:
     Missing entries and `{"error": ...}` records are invalid: resume retries
     those units without touching already-valid results.
     """
-    if result is None:
+    if not isinstance(result, dict) or not result:
         return False
-    if isinstance(result, dict) and result.get("error"):
+    if result.get("error"):
+        return False
+    for key in ("status", "state", "outcome"):
+        value = str(result.get(key, "")).strip().upper()
+        if value in {"FAILED", "FAILURE", "ERROR", "PARTIAL", "INCOMPLETE", "BLOCKED", "TIMEOUT", "NOT_RUN"}:
+            return False
+    if result.get("success") is False or result.get("complete") is False or result.get("ok") is False:
         return False
     return True
 
@@ -442,7 +452,10 @@ def run_streaming_loop(
     manifest_path = out_path / "manifest.json"
     manifest = load_manifest(manifest_path)
 
-    todo = [s for s in all_subjects if s not in manifest["processed_subjects"]]
+    todo = [
+        s for s in all_subjects
+        if not _is_valid_work_unit(manifest["processed_subjects"].get(s))
+    ]
     if limit:
         todo = todo[:limit]
 

@@ -41,6 +41,37 @@ def test_manifest_loop_retries_error_entries_not_valid_ones(tmp_path):
     assert second["processed"]["b"] == {"ok": True, "id": "b", "retried": True}
 
 
+def test_manifest_loop_retries_empty_and_explicit_incomplete_entries(tmp_path):
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"processed": {"empty": {}, "partial": {"status": "PARTIAL"}}}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def recover(item):
+        calls.append(item)
+        return {"ok": True, "id": item}
+
+    with redirect_stdout(io.StringIO()):
+        result = base_runner.run_manifest_loop(
+            ["empty", "partial"], tmp_path, key_fn=lambda x: x, process_fn=recover
+        )
+    assert calls == ["empty", "partial"]
+    assert all(result["processed"][item]["ok"] for item in calls)
+
+
+def test_metadata_sync_none_timeout_uses_finite_default(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_run(cmd, check=True, timeout=None):
+        seen["timeout"] = timeout
+
+    monkeypatch.setattr(base_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(base_runner, "_aws_command", lambda: ["aws"])
+    base_runner.sync_s3_dataset_metadata("openneuro.org", "ds000000", tmp_path, timeout_s=None)
+    assert seen["timeout"] == base_runner.S3_METADATA_SYNC_TIMEOUT_S
+
+
 def test_streaming_loop_retries_failed_and_clears_failure_on_success(tmp_path):
     out_path = tmp_path / "out"
     work_path = tmp_path / "work"
