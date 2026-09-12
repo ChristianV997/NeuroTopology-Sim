@@ -416,6 +416,17 @@ def read_bounded_window(
         cached = cache.acquire(key, request.consumer_lease)
         if cached is not None:
             digest = hashlib.sha256(cached).hexdigest() if request.checksum_policy == "sha256" else None
+            if request.expected_checksum and digest != request.expected_checksum.lower():
+                cache.release(key, request.consumer_lease, final=True)
+                return WindowReadResult(
+                    state=IngestionState.FAILED,
+                    request=request,
+                    bytes_read=len(cached),
+                    attempts=0,
+                    error="cached window checksum mismatch",
+                    cache_hit=True,
+                    provenance_label=request.provenance.evidence_label,
+                )
             return WindowReadResult(state=IngestionState.COMPLETE, request=request, data=cached, bytes_read=len(cached), checksum=digest, cache_hit=True, provenance_label=request.provenance.evidence_label)
     try:
         source_size = source.size(request)
@@ -550,6 +561,11 @@ def read_nwb_eeg_window(nwb, window_start_s: float, window_end_s: float, pick: s
     if start < 0 or stop > n_total or stop <= start:
         raise ValueError(f"window [{window_start_s},{window_end_s}]s out of range (recording {t0:.1f}-{info['t_end_s']:.1f}s, {n_total} samples)")
     ch_stop = info["n_channels"] if max_channels is None else min(info["n_channels"], max_channels)
+    sample_count = stop - start
+    if sample_count > MAX_WINDOW_SAMPLES:
+        raise ValueError("requested NWB EEG window exceeds the bounded sample limit")
+    if ch_stop <= 0 or sample_count * ch_stop * 8 > MAX_WINDOW_BYTES:
+        raise ValueError("requested NWB EEG window exceeds the bounded byte limit")
     block = np.asarray(es["data"][start:stop, :ch_stop], dtype=float).T
     return block.mean(axis=0) if pick == "mean" else block
 
