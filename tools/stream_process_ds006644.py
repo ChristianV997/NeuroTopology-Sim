@@ -6,7 +6,7 @@ only on a synthetic fixture (`dual_engine/fmri_tda_pipeline.py`), now pointed
 at real data for the first time.
 
 Design (from the dataset's own README, not inferred): 40 healthy meditation
-practitioners across two structurally identical 3-day retreats. Group
+ practitioners across two structurally identical 3-day retreats. Group
 (`verum` = DMT+harmine, `placebo`) is BETWEEN-SUBJECT, fixed for the whole
 study, read directly from `participants.tsv`'s `condition` column -- never
 inferred from folder naming. Each subject has two sessions: `ses-01`
@@ -16,11 +16,11 @@ timepoint -- the one that can actually show a verum/placebo topology
 difference) to avoid a within-subject/between-subject pseudoreplication mix.
 
 Uses the fMRIPrep derivative's ICA-AROMA-denoised, smoothed, MNI152NLin6Asym
--space BOLD (`derivatives/fmriprep/.../desc-smoothAROMAnonaggr_bold.nii.gz`)
+-space BOLD (`derivatives/fmriprep/{subject}/ses-02/func/*desc-smoothAROMAnonaggr_bold.nii.gz`)
 rather than raw or minimally-preprocessed BOLD: AROMA denoising is standard
 practice for resting-state functional-connectivity analysis, and
 MNI152NLin6Asym is the same template family as this repo's cached
-Schaefer-100 atlas (`/root/nilearn_data/schaefer_2018/...FSLMNI152_1mm...`),
+Schaefer-100 atlas (`/root/nilearn_data/schaefer_2018/Schaefer2018_100Parcels_7Networks_order_FSLMNI152_1mm.nii.gz`),
 so no extra registration step is needed. No additional confound regression
 is layered on top of AROMA in this first pass (disclosed, not hidden).
 
@@ -69,17 +69,13 @@ def _s3_client():
     )
 
 
-def load_group_labels(*, metadata_cache_root: Path | None = None, allow_network: bool | None = None) -> dict[str, str]:
+def load_group_labels(*, metadata_cache_root: Path | None = None, allow_network: bool = False) -> dict[str, str]:
     """subject_id -> 'verum'|'placebo' from the real participants.tsv `condition` column.
 
     Never inferred from folder/subject naming -- ds006644's subject IDs
     (sub-01..sub-40) carry no group information themselves.
     """
     metadata_cache_root = metadata_cache_root or (_REPO_ROOT / "data" / _DATASET_ID)
-    # ``None`` preserves the historical direct-call behavior for existing
-    # wrappers; CLI/run paths always pass an explicit bool and default False.
-    if allow_network is None:
-        allow_network = True
     store = BoundedS3ObjectStore(_s3_client(), metadata_cache_root, metadata_max_bytes=4 * 1024 * 1024)
     text = store.read_text_metadata(_BUCKET, f"{_DATASET_ID}/participants.tsv", allow_network=allow_network)
     reader = csv.DictReader(text.splitlines(), delimiter="\t")
@@ -103,6 +99,7 @@ def download_subject_bold(
 ) -> Path:
     key = _BOLD_KEY_TMPL.format(sub=subject)
     dest = dest_dir / f"{subject}_{_SESSION}_bold.nii.gz"
+    # The delegated store enforces cache_budget, checksum policy, and eviction.
     store = BoundedS3ObjectStore(_s3_client(), dest_dir, max_cache_bytes=max_cache_bytes, chunk_size=chunk_size)
     store.fetch_object(_BUCKET, key, dest, allow_network=allow_network)
     return dest
