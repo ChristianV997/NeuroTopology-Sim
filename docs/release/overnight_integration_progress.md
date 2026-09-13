@@ -41,6 +41,16 @@ empirical dataset validation. Hosted CI has not been validated in this run.
 
 ## Outstanding integration work
 
+Numerical update: a bounded adapter now runs the existing FHN solver through
+registered orchestration, canonical execution, artifact verification, graph,
+and release review. All trajectory samples match a direct solver call. The
+worker enforces 4096 steps and a 64 KiB checksum-bound specification. It emits
+actual numerical metrics with synthetic labels and explicitly records the
+existing full-trajectory voltage normalization limitation. This replaces the
+arithmetic-only integration evidence for this selected solver; broad solver
+coverage, numerical convergence, empirical data, and release readiness remain
+unverified. See `docs/simulations/registered_fhn.md`.
+
 Literature update: optional locally checksummed context now creates linked
 source, claim, declared hypothesis, and experiment records through the existing
 literature bridge. IDs are scoped to the cycle, review states remain intact,

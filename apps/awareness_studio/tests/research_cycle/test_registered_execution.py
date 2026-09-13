@@ -143,3 +143,55 @@ def test_invalid_literature_blocks_before_execution(tmp_path, change):
     assert result["state"] == "BLOCKED"
     assert not request.output_root.exists()
     assert not ResearchCycleLedger(result["ledger_path"]).records(result["cycle_id"])
+
+
+def test_existing_fhn_solver_runs_through_registered_cycle(tmp_path):
+    from tools.simulation_execution.fhn_workload import prepare_spec, SOURCE, DATASET_ID
+    from sim.pitnn.hodgkin_huxley_ciss import FHNConfig, simulate_fhn
+    from dataclasses import asdict
+    import numpy as np
+    request, _, plan = case(tmp_path)
+    parameters = asdict(FHNConfig(duration_s=0.001, dt_s=0.00001))
+    workload, checksum = prepare_spec(tmp_path / "fhn-spec.json", run_id="fhn-test",
+                                       code_commit=request.code_commit, seed=request.seed, configuration=parameters)
+    registry = WorkloadRegistry([workload])
+    request = replace(request, run_id="fhn-test", workload_id=workload.workload_id,
+                      configuration=parameters, input_identity=checksum,
+                      provenance={"dataset_id": DATASET_ID, "source": SOURCE, "data_mode": "synthetic"})
+    plan["plan"]["dataset_id"] = DATASET_ID
+    plan["plan"]["dataset_checksum"] = checksum
+    plan["plan"]["research_question"] = "Does the bounded FHN adapter preserve the existing solver trajectory?"
+    plan["execution_binding"] = execution_binding(request, registry)
+    result = run(tmp_path, request, registry, plan)
+    assert result["state"] == "ENGINEERING_EXECUTION_COMPLETE", result
+    trajectory = json.loads((request.output_root / request.run_id / "trajectory.json").read_text())
+    expected = simulate_fhn(FHNConfig(**parameters))
+    for name, values in zip(("time_s", "model_voltage_V", "recovery"), expected):
+        np.testing.assert_array_equal(trajectory[name], values)
+    record = json.loads((request.output_root / request.run_id / "RunRecord.json").read_text())
+    assert record["schema_version"] == "0.1"
+    assert record["synthetic"] is True
+    assert any("normalizes" in note for note in record["limitations"])
+    assert result["release_review"]["decision"] == "EVIDENCE_INCOMPLETE"
+    repeated = run(tmp_path, request, registry, plan)
+    assert repeated["execution"]["runner_manifest"]["units"][0]["resumed"] is True
+
+
+def test_fhn_worker_rejects_tampered_spec_before_output(tmp_path):
+    from tools.simulation_execution.fhn_workload import execute_spec
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        execute_spec(spec, "0" * 64, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize("parameter,value", [("duration_s", 100), ("dt_s", 0), ("input_current", float("nan"))])
+def test_fhn_preparation_rejects_unbounded_or_invalid_parameters(tmp_path, parameter, value):
+    from tools.simulation_execution.fhn_workload import prepare_spec
+    config = {"duration_s": 0.001, "dt_s": 0.00001, "input_current": 1.2,
+              "resting_potential_V": -0.07, "spike_scale_V": 0.1}
+    config[parameter] = value
+    with pytest.raises(ValueError):
+        prepare_spec(tmp_path / "spec.json", run_id="bounded-test", code_commit="test-revision", seed=1, configuration=config)
+    assert not (tmp_path / "spec.json").exists()
