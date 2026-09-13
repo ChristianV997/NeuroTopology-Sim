@@ -43,12 +43,32 @@ def _contained(root: Path, child: Path) -> bool:
         return False
 
 
-def _truncate(handle: Any, limit: int) -> tuple[str, bool]:
-    handle.flush()
-    handle.seek(0)
-    data = handle.read(limit + 1)
-    truncated = len(data) > limit
-    return data[:limit].decode("utf-8", errors="replace"), truncated
+class _BoundedCapture:
+    """Drain a child pipe without allowing captured output to grow unbounded."""
+
+    def __init__(self, pipe: Any, limit: int) -> None:
+        self.pipe = pipe
+        self.limit = limit
+        self.data = bytearray()
+        self.total_bytes = 0
+        self.thread = threading.Thread(target=self._drain, daemon=True)
+
+    def _drain(self) -> None:
+        try:
+            for chunk in iter(lambda: self.pipe.read(64 * 1024), b""):
+                self.total_bytes += len(chunk)
+                remaining = self.limit - len(self.data)
+                if remaining > 0:
+                    self.data.extend(chunk[:remaining])
+        finally:
+            self.pipe.close()
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def finish(self) -> tuple[str, bool]:
+        self.thread.join(timeout=5)
+        return bytes(self.data).decode("utf-8", errors="replace"), self.total_bytes > self.limit
 
 
 def _is_python(argv: Sequence[str]) -> bool:
@@ -148,7 +168,14 @@ def _validate_output(unit: WorkUnit, root: Path) -> tuple[ExecutionState, dict[s
 
 
 def _disk_usage(root: Path) -> int:
-    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def _base_unit_record(unit: WorkUnit, config: RunnerConfig) -> dict[str, Any]:
@@ -215,20 +242,26 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         record.update({"state": ExecutionState.INFRASTRUCTURE_FAILURE.value, "limitations": [str(exc)]})
         return record
     guard = _network_guard() if config.network_disabled else None
-    stdout_file = tempfile.TemporaryFile()
-    stderr_file = tempfile.TemporaryFile()
     start = time.perf_counter()
     process: subprocess.Popen[bytes] | None = None
+    stdout_capture: _BoundedCapture | None = None
+    stderr_capture: _BoundedCapture | None = None
     timed_out = False
     memory_exceeded = False
+    disk_exceeded = False
     peak_memory: int | None = None
+    peak_disk = _disk_usage(root)
     try:
-        kwargs: dict[str, Any] = {"stdout": stdout_file, "stderr": stderr_file, "stdin": subprocess.DEVNULL, "shell": False, "env": _environment(config, guard), "cwd": str(output_dir)}
+        kwargs: dict[str, Any] = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "stdin": subprocess.DEVNULL, "shell": False, "env": _environment(config, guard), "cwd": str(output_dir)}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             kwargs["start_new_session"] = True
         process = subprocess.Popen(list(unit.argv), **kwargs)
+        assert process.stdout is not None and process.stderr is not None
+        stdout_capture = _BoundedCapture(process.stdout, config.stdout_limit)
+        stderr_capture = _BoundedCapture(process.stderr, config.stderr_limit)
+        stdout_capture.start(); stderr_capture.start()
         timeout = min(unit.timeout_s or config.default_timeout_s, config.runtime_budget_s or float("inf"))
         memory_module = None
         if config.memory_budget_bytes is not None:
@@ -252,6 +285,12 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
                         break
                 except Exception:
                     pass
+            observed_disk = _disk_usage(root)
+            peak_disk = max(peak_disk, observed_disk)
+            if config.disk_budget_bytes is not None and observed_disk > config.disk_budget_bytes:
+                disk_exceeded = True
+                _terminate_tree(process)
+                break
             if time.perf_counter() >= deadline:
                 timed_out = True
                 _terminate_tree(process)
@@ -262,12 +301,13 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         return record
     finally:
         elapsed = time.perf_counter() - start
-        stdout, stdout_truncated = _truncate(stdout_file, config.stdout_limit)
-        stderr, stderr_truncated = _truncate(stderr_file, config.stderr_limit)
-        stdout_file.close(); stderr_file.close()
+        stdout, stdout_truncated = stdout_capture.finish() if stdout_capture is not None else ("", False)
+        stderr, stderr_truncated = stderr_capture.finish() if stderr_capture is not None else ("", False)
         if guard is not None:
             shutil.rmtree(guard, ignore_errors=True)
-    record["resource_telemetry"] = {"elapsed_s": elapsed, "disk_usage_bytes": _disk_usage(root), "memory_budget_bytes": config.memory_budget_bytes, "memory_observed_bytes": peak_memory}
+    final_disk = _disk_usage(root)
+    peak_disk = max(peak_disk, final_disk)
+    record["resource_telemetry"] = {"elapsed_s": elapsed, "disk_usage_bytes": final_disk, "disk_peak_observed_bytes": peak_disk, "memory_budget_bytes": config.memory_budget_bytes, "memory_observed_bytes": peak_memory, "stdout_observed_bytes": stdout_capture.total_bytes if stdout_capture else 0, "stderr_observed_bytes": stderr_capture.total_bytes if stderr_capture else 0}
     record["stdout"] = stdout; record["stderr"] = stderr
     record["stdout_truncated"] = stdout_truncated; record["stderr_truncated"] = stderr_truncated
     record["exit_code"] = process.returncode if process is not None else None
@@ -282,9 +322,9 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         record["limitations"] = ["memory budget exceeded; process group terminated"]
         record["checksums"] = {name: None for name in unit.expected_outputs}
         return record
-    if config.disk_budget_bytes is not None and record["resource_telemetry"]["disk_usage_bytes"] > config.disk_budget_bytes:
+    if disk_exceeded or (config.disk_budget_bytes is not None and record["resource_telemetry"]["disk_usage_bytes"] > config.disk_budget_bytes):
         record["state"] = ExecutionState.FAILED.value
-        record["limitations"] = ["disk budget exceeded"]
+        record["limitations"] = ["disk budget exceeded; process group terminated and outputs are incomplete"]
         record["checksums"] = {name: None for name in unit.expected_outputs}
         return record
     if process is None or process.returncode != 0:
