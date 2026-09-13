@@ -155,8 +155,35 @@ def _base_unit_record(unit: WorkUnit, config: RunnerConfig) -> dict[str, Any]:
     return {"unit_id": unit.unit_id, "workload_id": unit.workload_id, "state": ExecutionState.NOT_RUN.value, "command": list(unit.argv), "command_identity": _hash(list(unit.argv)), "code_revision": config.code_revision, "configuration": dict(unit.config), "seed": unit.seed if unit.seed is not None else config.deterministic_seed, "input_references": list(unit.input_references), "output_directory": str(unit.output_dir), "output_references": {}, "checksums": {}, "resource_telemetry": {}, "limitations": []}
 
 
-def _valid_resume(record: Mapping[str, Any], unit: WorkUnit, root: Path) -> bool:
+def _resume_identity(unit: WorkUnit, config: RunnerConfig) -> str:
+    """Bind cached results to the declared computation and local input bytes.
+
+    Non-file references remain explicit identifiers; this does not verify remote
+    provenance. Files are hashed incrementally without materializing their data.
+    """
+    inputs = []
+    for reference in unit.input_references:
+        path = Path(reference)
+        inputs.append({"reference": reference, "sha256": _checksum(path) if path.is_file() else None})
+    return _hash({
+        "version": 1, "unit_id": unit.unit_id, "workload_id": unit.workload_id,
+        "argv": list(unit.argv), "code_revision": config.code_revision,
+        "configuration": dict(unit.config),
+        "seed": unit.seed if unit.seed is not None else config.deterministic_seed,
+        "inputs": inputs, "dependencies": list(unit.dependencies),
+        "expected_outputs": list(unit.expected_outputs),
+        "output_directory": str(unit.output_dir.resolve()),
+        "network_disabled": config.network_disabled,
+        "environment": dict(config.environment),
+    })
+
+
+def _valid_resume(record: Mapping[str, Any], unit: WorkUnit, config: RunnerConfig, root: Path, identity: str) -> bool:
     if record.get("state") != ExecutionState.PASS.value or record.get("unit_id") != unit.unit_id:
+        return False
+    if record.get("resume_identity") != identity:
+        return False
+    if tuple(unit.argv) != tuple(config.allowed_commands.get(unit.workload_id, ())):
         return False
     if not _contained(root, unit.output_dir.resolve()):
         return False
@@ -293,12 +320,14 @@ def run_plan(units: Sequence[WorkUnit], config: RunnerConfig, *, resume: bool = 
     manifest: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "output_root": str(root), "state_machine": [state.value for state in ExecutionState], "runner": {"code_revision": config.code_revision, "network_disabled": config.network_disabled, "shell": False, "deterministic_environment": True, "stdout_limit": config.stdout_limit, "stderr_limit": config.stderr_limit}, "units": list(unit_records.values()), "lineage": None, "limitations": []}
     write_atomic_json(manifest_path, manifest)
     for unit in units:
-        if resume and _valid_resume(prior.get(unit.unit_id, {}), unit, root):
-            unit_records[unit.unit_id] = dict(prior[unit.unit_id]); unit_records[unit.unit_id]["resumed"] = True
-        elif any(unit_records.get(dep, {}).get("state") != ExecutionState.PASS.value for dep in unit.dependencies):
+        identity = _resume_identity(unit, config)
+        if any(unit_records.get(dep, {}).get("state") != ExecutionState.PASS.value for dep in unit.dependencies):
             unit_records[unit.unit_id].update({"state": ExecutionState.NOT_RUN.value, "limitations": ["dependency did not complete successfully"]})
+        elif resume and all(unit_records[dep].get("resumed") for dep in unit.dependencies) and _valid_resume(prior.get(unit.unit_id, {}), unit, config, root, identity):
+            unit_records[unit.unit_id] = dict(prior[unit.unit_id]); unit_records[unit.unit_id]["resumed"] = True
         else:
             unit_records[unit.unit_id] = _execute_unit(unit, config, root)
+        unit_records[unit.unit_id]["resume_identity"] = identity
         manifest["units"] = [unit_records[item.unit_id] for item in units]
         write_atomic_json(manifest_path, manifest)
     manifest["lineage"] = extract_lineage(root)
