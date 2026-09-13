@@ -151,15 +151,20 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
                     )
                 )
 
-        # Check source snapshots for an unverified empirical/formal claim.
-        # A literature/data source is, at most, hypothesis-generating input
-        # unless something in its own properties actually corroborates it
-        # (an independent verification/peer-review signal, or the same
-        # preregistered+held-out-locked bar EVIDENCE_RECORD formal claims
-        # must clear). Absent that, EMPIRICAL/FORMAL on a SOURCE_SNAPSHOT
-        # is an unsupported promotion, not a fact -- flag it rather than
-        # silently trusting whatever evidence_class a manifest declared.
-        if node.node_type == NodeType.SOURCE_SNAPSHOT.value and node.evidence_class in (
+        # Check sources AND claims for an unverified empirical/formal claim.
+        # A literature/data source, or a claim derived from one, is at most
+        # hypothesis-generating input unless something in its own properties
+        # actually corroborates it (an independent verification/peer-review
+        # signal, or the same preregistered+held-out-locked bar
+        # EVIDENCE_RECORD formal claims must clear). Absent that,
+        # EMPIRICAL/FORMAL is an unsupported promotion, not a fact -- flag
+        # it rather than silently trusting whatever evidence_class a
+        # manifest declared. This covers CLAIM nodes as well as
+        # SOURCE_SNAPSHOT ones deliberately: a claim's evidence_class comes
+        # from the same manifest-declared, unverified-by-construction path,
+        # and nothing else in this function checked a CLAIM node's
+        # evidence_class at all before this.
+        if node.node_type in (NodeType.SOURCE_SNAPSHOT.value, NodeType.CLAIM.value) and node.evidence_class in (
             EvidenceClass.EMPIRICAL.value,
             EvidenceClass.FORMAL.value,
         ):
@@ -173,10 +178,10 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
             if not verified:
                 diagnostics.append(
                     GraphDiagnostic(
-                        code=DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value,
+                        code=DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value,
                         severity=DiagnosticSeverity.ERROR.value,
                         message=(
-                            f"Source '{nid}' claims evidence_class={node.evidence_class!r} "
+                            f"Node '{nid}' ({node.node_type}) claims evidence_class={node.evidence_class!r} "
                             "with no independent verification/peer-review signal in its properties."
                         ),
                         affected_ids=(nid,),

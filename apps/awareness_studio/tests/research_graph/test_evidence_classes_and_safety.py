@@ -215,7 +215,7 @@ def test_source_claiming_empirical_without_verification_is_flagged():
     assert node is not None
     assert node.evidence_class == EvidenceClass.EMPIRICAL.value
     violations = [
-        d for d in graph.diagnostics if d.code == DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
     assert len(violations) == 1
     assert violations[0].severity == DiagnosticSeverity.ERROR.value
@@ -235,7 +235,7 @@ def test_source_claiming_empirical_with_verification_is_not_flagged():
     }
     graph = load_from_dict(manifest)
     violations = [
-        d for d in graph.diagnostics if d.code == DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
     assert violations == []
 
@@ -248,7 +248,7 @@ def test_source_claiming_formal_without_verification_is_flagged():
     }
     graph = load_from_dict(manifest)
     violations = [
-        d for d in graph.diagnostics if d.code == DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
     assert len(violations) == 1
 
@@ -268,6 +268,37 @@ def test_source_with_hypothesis_evidence_class_is_never_flagged_as_unsupported_p
     assert node is not None
     assert node.evidence_class == EvidenceClass.UNKNOWN.value  # "hypothesis" is not a research_graph EvidenceClass value
     violations = [
-        d for d in graph.diagnostics if d.code == DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
     assert violations == []
+
+
+def test_claim_with_unrecognized_evidence_class_is_not_passed_through_unchecked():
+    """Regression test: the claims loading path used to pass whatever
+    string a manifest supplied straight through as evidence_class with no
+    validation at all (unlike every other section, which already used
+    _classify_evidence). A claim declaring a non-research_graph value
+    (e.g. "hypothesis", from a bridged literature claim) must classify as
+    UNKNOWN, never be accepted verbatim as an unrecognized evidence_class
+    string on the node."""
+    manifest = {
+        "claims": [
+            {"claim_id": "clm-unchecked", "source_id": "src-1", "claim_text": "X", "evidence_class": "hypothesis"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("clm-unchecked")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+
+
+def test_claim_declaring_recognized_evidence_class_still_classifies_correctly():
+    manifest = {
+        "claims": [
+            {"claim_id": "clm-proxy", "source_id": "src-1", "claim_text": "X", "evidence_class": "proxy"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("clm-proxy")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.PROXY.value

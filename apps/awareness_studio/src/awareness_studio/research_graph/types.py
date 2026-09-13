@@ -82,7 +82,7 @@ class DiagnosticCode(str, enum.Enum):
     SYNTHETIC_FORMAL_VIOLATION = "synthetic_formal_violation"
     PROXY_FORMAL_VIOLATION = "proxy_formal_violation"
     SUPERSEDED_UNLINKED = "superseded_unlinked"
-    SOURCE_EMPIRICAL_WITHOUT_VERIFICATION = "source_empirical_without_verification"
+    EMPIRICAL_CLAIM_WITHOUT_VERIFICATION = "empirical_claim_without_verification"
 
 
 class SafetyLabel(str, enum.Enum):
