@@ -51,8 +51,22 @@ edges describe derivation and references; they do not support a scientific
 hypothesis merely because a process completed. Both graph and release report
 are returned and persisted as ledger events.
 
-The method does not yet connect literature records and generated hypotheses to
-experiment records. Its release event explicitly requires review.
+An optional `literature_context` in the preflight request connects an explicit
+source, claim, declared research question, and experiment. Its `source`,
+`snapshot`, and `claim` objects use the canonical literature-evidence schemas.
+The snapshot must be a checksummed local file belonging to the source; source
+retrieval and snapshot capture timestamps must be explicit. Retracted sources,
+inactive claims, source-ID mismatches, and tampered content block admission.
+The existing literature bridge preserves review status. Cycle-scoped record
+IDs allow the same source to be used in different experiments without collisions.
+
+The plan's research question becomes a hypothesis record with a derivation link
+to the declared literature claim. This records the caller's proposed connection;
+the software does not establish that the source supports it. The records and
+their parent links are persisted in the ledger and projected into the graph.
+No hypothesis is automatically confirmed, and no generated scientific argument
+is implied. Literature discovery, hypothesis generation, and independent
+scientific review remain outstanding. The release event requires review.
 It also inherits the canonical runner's resource and network enforcement
 limitations documented in the overnight integration report. A Python socket
 guard is not an operating-system network sandbox.

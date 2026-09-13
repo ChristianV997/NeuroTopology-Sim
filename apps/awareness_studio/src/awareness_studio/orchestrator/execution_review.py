@@ -7,14 +7,22 @@ from awareness_studio.research_graph.types import EdgeType, NodeType
 
 
 def review_execution(cycle_id: str, binding: Mapping[str, Any], preflight: Mapping[str, Any],
-                     result: Mapping[str, Any] | None) -> dict[str, Any]:
+                     result: Mapping[str, Any] | None, research_records=()) -> dict[str, Any]:
     from tools.research_cycle_release.adapters import empty_bundle
     from tools.research_cycle_release.evaluator import evaluate_research_cycle_release
 
     graph = EvidenceGraphBuilder(metadata={"cycle_id": cycle_id, "scientific_pass": False})
-    experiment_id = cycle_id + ":experiment"
-    graph.add_node(GraphNode(experiment_id, NodeType.EXPERIMENT, "Declared execution plan",
-                             status="proposed", evidence_class="unknown", properties=dict(binding)))
+    experiment_id = research_records[-1].record_id if research_records else cycle_id + ":experiment"
+    if research_records:
+        for record in research_records:
+            node_type = "experiment" if record.record_type == "experiment_spec" else record.record_type
+            graph.add_node(GraphNode(record.record_id, node_type, record.record_type,
+                                     status="review_required", evidence_class="unknown", properties=record.to_dict()))
+            for parent in record.parent_ids:
+                graph.link(EdgeType.DERIVED_FROM, record.record_id, parent)
+    else:
+        graph.add_node(GraphNode(experiment_id, NodeType.EXPERIMENT, "Declared execution plan",
+                                 status="proposed", evidence_class="unknown", properties=dict(binding)))
     bundle = empty_bundle(cycle_id=cycle_id)
     bundle.update(configuration_locked=preflight.get("cleared_for_execution") is True,
                   code_commit=binding["code_commit"], seed=binding["seed"],

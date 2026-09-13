@@ -1,4 +1,5 @@
 from dataclasses import replace
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -90,3 +91,55 @@ def test_planning_does_not_execute_and_authorized_repeat_resumes(tmp_path):
     second = run(tmp_path, request, registry, plan)
     assert first["cycle_id"] == second["cycle_id"] == planning["cycle_id"]
     assert second["execution"]["runner_manifest"]["units"][0]["resumed"] is True
+
+
+def literature_context(tmp_path):
+    path = tmp_path / "source.txt"
+    path.write_text("Synthetic test-only literature fixture; no scientific evidence.", encoding="utf-8")
+    checksum = hashlib.sha256(path.read_bytes()).hexdigest()
+    return {
+        "source": {"source_id": "fixture-source", "identifier": "https://example.invalid/fixture",
+                   "identifier_type": "url", "title": "Synthetic test-only source",
+                   "publication_type": "technical_report", "content_checksum": checksum,
+                   "retrieval_timestamp": "2026-09-13T00:00:00Z"},
+        "snapshot": {"snapshot_id": "fixture-snapshot", "source_id": "fixture-source",
+                     "kind": "full_local_snapshot", "local_path": str(path), "content_checksum": checksum,
+                     "captured_at": "2026-09-13T00:00:00Z"},
+        "claim": {"claim_id": "fixture-claim", "source_id": "fixture-source",
+                  "claim_text": "Test-only proposed arithmetic relationship", "claim_kind": "review_required"},
+    }
+
+
+def test_local_literature_links_to_experiment_and_execution(tmp_path):
+    request, registry, plan = case(tmp_path)
+    plan["literature_context"] = literature_context(tmp_path)
+    result = run(tmp_path, request, registry, plan)
+    assert result["state"] == "ENGINEERING_EXECUTION_COMPLETE"
+    records = ResearchCycleLedger(result["ledger_path"]).records(result["cycle_id"])
+    assert {r.record_type for r in records} == {"source_snapshot", "claim", "hypothesis", "experiment_spec"}
+    claim = next(r for r in records if r.record_type == "claim")
+    assert claim.status == "REVIEW_REQUIRED"
+    assert claim.evidence_class.value == "hypothesis"
+    graph = result["graph"]
+    assert len([n for n in graph["nodes"] if n["node_type"] == "experiment"]) == 1
+    assert all(e["edge_type"] != "supports" for e in graph["edges"])
+    repeated = run(tmp_path, request, registry, plan)
+    assert repeated["cycle_id"] == result["cycle_id"]
+    assert repeated["state"] == "ENGINEERING_EXECUTION_COMPLETE"
+
+
+@pytest.mark.parametrize("change", ["retracted", "source_mismatch", "tampered"])
+def test_invalid_literature_blocks_before_execution(tmp_path, change):
+    request, registry, plan = case(tmp_path)
+    context = literature_context(tmp_path)
+    plan["literature_context"] = context
+    if change == "retracted":
+        context["source"]["status"] = "retracted"
+    elif change == "source_mismatch":
+        context["claim"]["source_id"] = "another-source"
+    else:
+        Path(context["snapshot"]["local_path"]).write_text("changed bytes", encoding="utf-8")
+    result = run(tmp_path, request, registry, plan)
+    assert result["state"] == "BLOCKED"
+    assert not request.output_root.exists()
+    assert not ResearchCycleLedger(result["ledger_path"]).records(result["cycle_id"])

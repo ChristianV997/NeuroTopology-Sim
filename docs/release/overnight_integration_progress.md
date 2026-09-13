@@ -41,6 +41,14 @@ empirical dataset validation. Hosted CI has not been validated in this run.
 
 ## Outstanding integration work
 
+Literature update: optional locally checksummed context now creates linked
+source, claim, declared hypothesis, and experiment records through the existing
+literature bridge. IDs are scoped to the cycle, review states remain intact,
+and invalid lifecycle/source/hash declarations block before execution. The
+canonical literature validator now rejects source/snapshot identity mismatch
+and disagreement between the source checksum and actual local bytes. This
+establishes provenance linkage, not literature discovery or hypothesis generation.
+
 Further update: registered execution now projects verified run/artifact/
 validation nodes through the canonical graph builder and invokes the canonical
 release evaluator, persisting both outputs in ledger events. The evaluator now

@@ -45,7 +45,14 @@ def execute_registered(request: BridgeRequest, registry: WorkloadRegistry,
     # Validate serialization before writing any ledger event or starting a child.
     binding_hash = sha256_json(binding)
     preflight_hash = sha256_json(dict(preflight_request))
+    cycle_id = "execution-" + sha256_json({"binding": binding_hash, "preflight": preflight_hash})[:32]
     diagnostics = []
+    from .research_context import prepare_research_context
+    try:
+        research_records = prepare_research_context(preflight_request, cycle_id, binding)
+    except (ValueError, TypeError, KeyError, OSError) as exc:
+        research_records = []
+        diagnostics.append(f"literature context rejected: {exc}")
     if preflight_request.get("execution_binding") != binding:
         diagnostics.append("reviewed execution_binding does not match the requested computation")
     plan = preflight_request.get("plan", {})
@@ -73,9 +80,11 @@ def execute_registered(request: BridgeRequest, registry: WorkloadRegistry,
     preflight = run_preflight(preflight_request, now=timestamp)
     admitted = preflight["cleared_for_execution"] is True and not diagnostics
     ledger = ResearchCycleLedger(ledger_path)
-    cycle_id = "execution-" + sha256_json({"binding": binding_hash, "preflight": preflight_hash})[:32]
     ledger.create_cycle(cycle_id, metadata={"binding": binding, "preflight_request_sha256": preflight_hash},
                         producer="awareness_studio.orchestrator")
+    if admitted:
+        for record in research_records:
+            ledger.append_record(cycle_id, record, producer="awareness_studio.orchestrator")
     ledger.append_event(cycle_id, "orchestrator_stage", producer="awareness_studio.orchestrator",
                         status="COMPLETED" if admitted else "BLOCKED",
                         payload={"stage": "preflight", "report": preflight, "diagnostics": diagnostics})
@@ -96,7 +105,7 @@ def execute_registered(request: BridgeRequest, registry: WorkloadRegistry,
                                      "accepted_artifacts": result["accepted_artifacts"],
                                      "diagnostics": result["diagnostics"], "scientific_evidence": False})
     from .execution_review import review_execution
-    review = review_execution(cycle_id, binding, preflight, result)
+    review = review_execution(cycle_id, binding, preflight, result, research_records if admitted else ())
     ledger.append_event(cycle_id, "evidence_graph_update", producer="awareness_studio.orchestrator",
                         status="REVIEW_REQUIRED", payload=review["graph"])
     ledger.append_event(cycle_id, "release_review", producer="awareness_studio.orchestrator",
