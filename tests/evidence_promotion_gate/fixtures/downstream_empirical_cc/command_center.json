@@ -1,0 +1,10 @@
+{
+  "evidence_class": "EMPIRICAL",
+  "metrics": {
+    "f_dress": 0.2,
+    "q_net": 0.1
+  },
+  "schema_version": "command-center-real-results/v1",
+  "scientific_pass": true,
+  "verdict": "PASS"
+}
