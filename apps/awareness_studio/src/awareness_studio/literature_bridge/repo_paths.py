@@ -35,6 +35,7 @@ def ensure_repo_root_importable() -> Path:
     tools.literature_evidence` resolves, then return that root."""
     root = find_repository_root()
     root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
+    if root_str in sys.path:
+        sys.path.remove(root_str)
+    sys.path.insert(0, root_str)
     return root

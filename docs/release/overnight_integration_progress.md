@@ -41,6 +41,15 @@ empirical dataset validation. Hosted CI has not been validated in this run.
 
 ## Outstanding integration work
 
+Update: `Orchestrator.run_registered` now composes canonical preflight,
+explicit request binding, the simulation bridge, actual executor outcomes,
+artifact verification, and ledger events. Seven new tests exercise the path,
+including a real subprocess arithmetic fixture. The combined relevant suites
+pass 192 tests; governance and compilation also pass. The legacy `run()` stages
+below remain templates; literature-to-experiment linkage, neuroscience solver
+integration, graph projection, and release evaluation are still outstanding.
+See `docs/awareness_studio/registered_execution.md` for the new API and limits.
+
 1. Wire preflight and the simulation bridge into the existing orchestrator.
    Its execute/validate stages still report NOT_IMPLEMENTED in live mode;
    its hypothesis and experiment generation remain templates. Merely importing
