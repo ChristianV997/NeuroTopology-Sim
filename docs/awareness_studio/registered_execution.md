@@ -41,9 +41,18 @@ its result and ledger chain. It covers changed seed/configuration, missing
 plans, synthetic-to-empirical mislabeling, absent budgets, planning, and resume.
 This is not a numerical neuroscience solver benchmark or an empirical study.
 
+The method projects execution, accepted artifacts, and validation into the
+canonical evidence graph and evaluates a generic bundle with the canonical
+release evaluator. Only facts established by execution and verification are
+mapped. Unknown source-manifest, provenance, resource-enforcement, network,
+null-model applicability, and comparability fields stay unknown. Incomplete
+evidence remains EVIDENCE_INCOMPLETE even after successful execution. Graph
+edges describe derivation and references; they do not support a scientific
+hypothesis merely because a process completed. Both graph and release report
+are returned and persisted as ledger events.
+
 The method does not yet connect literature records and generated hypotheses to
-experiment records, project the accepted artifacts into the evidence graph, or
-invoke the release evaluator. Its release event explicitly requires review.
+experiment records. Its release event explicitly requires review.
 It also inherits the canonical runner's resource and network enforcement
 limitations documented in the overnight integration report. A Python socket
 guard is not an operating-system network sandbox.

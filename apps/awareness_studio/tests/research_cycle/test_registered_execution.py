@@ -49,6 +49,14 @@ def test_registered_execution_persists_actual_artifacts_and_review(tmp_path):
     validation = next(e for e in events if e.event_type == "validation_outcome")
     assert len(validation.payload["accepted_artifacts"]) == 3
     assert events[-1].payload["release_authorized"] is False
+    graph = result["graph"]
+    assert len([n for n in graph["nodes"] if n["node_type"] == "artifact"]) == 3
+    assert all(n["evidence_class"] in {"synthetic", "unknown"} for n in graph["nodes"])
+    assert not any(edge["edge_type"] == "supports" for edge in graph["edges"])
+    assert result["release_review"]["decision"] == "EVIDENCE_INCOMPLETE"
+    assert result["release_review"]["bundle"]["input_provenance_complete"] is None
+    assert result["release_review"]["bundle"]["network_policy_violated"] is None
+    assert any(e.event_type == "evidence_graph_update" for e in events)
     assert result["scientific_pass"] is False
     json.dumps(result, allow_nan=False)
 
@@ -70,6 +78,7 @@ def test_admission_blocks_before_process_launch(tmp_path, change):
     result = run(tmp_path, request, registry, plan)
     assert result["state"] == "BLOCKED"
     assert not request.output_root.exists()
+    assert not any(node["node_type"] in {"run", "artifact"} for node in result["graph"]["nodes"])
 
 
 def test_planning_does_not_execute_and_authorized_repeat_resumes(tmp_path):

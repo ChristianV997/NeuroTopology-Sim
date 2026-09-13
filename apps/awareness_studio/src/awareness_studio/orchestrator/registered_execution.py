@@ -95,9 +95,14 @@ def execute_registered(request: BridgeRequest, registry: WorkloadRegistry,
                             payload={"artifact_lineage": result["lineage_report"],
                                      "accepted_artifacts": result["accepted_artifacts"],
                                      "diagnostics": result["diagnostics"], "scientific_evidence": False})
+    from .execution_review import review_execution
+    review = review_execution(cycle_id, binding, preflight, result)
+    ledger.append_event(cycle_id, "evidence_graph_update", producer="awareness_studio.orchestrator",
+                        status="REVIEW_REQUIRED", payload=review["graph"])
     ledger.append_event(cycle_id, "release_review", producer="awareness_studio.orchestrator",
-                        status="REVIEW_REQUIRED", payload={"release_authorized": False, "scientific_evidence": False})
+                        status="REVIEW_REQUIRED", payload={"release_authorized": False, "scientific_evidence": False,
+                                                           "report": review["release_review"]})
     return {"schema_version": "AwarenessStudio.RegisteredExecution.v1", "cycle_id": cycle_id,
             "ledger_path": str(ledger_path), "state": state, "preflight": preflight,
-            "diagnostics": diagnostics, "execution": result, "scientific_pass": False,
+            "diagnostics": diagnostics, "execution": result, **review, "scientific_pass": False,
             "formal_bayes_factor": None, "release_authorized": False}

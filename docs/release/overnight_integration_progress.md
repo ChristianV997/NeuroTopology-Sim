@@ -41,6 +41,14 @@ empirical dataset validation. Hosted CI has not been validated in this run.
 
 ## Outstanding integration work
 
+Further update: registered execution now projects verified run/artifact/
+validation nodes through the canonical graph builder and invokes the canonical
+release evaluator, persisting both outputs in ledger events. The evaluator now
+returns EVIDENCE_INCOMPLETE when any required check remains unknown. Previously
+unknown resource, network, or comparability checks could fall through to ready.
+Targeted regression coverage checks these missing fields and verifies that
+synthetic execution does not invent empirical provenance or supported claims.
+
 Update: `Orchestrator.run_registered` now composes canonical preflight,
 explicit request binding, the simulation bridge, actual executor outcomes,
 artifact verification, and ledger events. Seven new tests exercise the path,
