@@ -98,7 +98,7 @@ def load_from_dict(
                     node_type=NodeType.SOURCE_SNAPSHOT.value,
                     label=s.get("title") or sid,
                     status=s.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=EvidenceClass.EMPIRICAL.value,
+                    evidence_class=_classify_evidence(s),
                     properties=s,
                     source_id=sid,
                     tags=list(s.get("tags", [])),

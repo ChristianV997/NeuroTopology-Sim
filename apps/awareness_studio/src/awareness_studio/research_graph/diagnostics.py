@@ -151,6 +151,38 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
                     )
                 )
 
+        # Check source snapshots for an unverified empirical/formal claim.
+        # A literature/data source is, at most, hypothesis-generating input
+        # unless something in its own properties actually corroborates it
+        # (an independent verification/peer-review signal, or the same
+        # preregistered+held-out-locked bar EVIDENCE_RECORD formal claims
+        # must clear). Absent that, EMPIRICAL/FORMAL on a SOURCE_SNAPSHOT
+        # is an unsupported promotion, not a fact -- flag it rather than
+        # silently trusting whatever evidence_class a manifest declared.
+        if node.node_type == NodeType.SOURCE_SNAPSHOT.value and node.evidence_class in (
+            EvidenceClass.EMPIRICAL.value,
+            EvidenceClass.FORMAL.value,
+        ):
+            props = node.properties
+            verified = (
+                props.get("verification_status") == "verified"
+                or props.get("peer_review_status") == "peer_reviewed"
+                or props.get("review_status") == "reviewed_accepted"
+                or (props.get("preregistered", False) and props.get("held_out_split_locked", False))
+            )
+            if not verified:
+                diagnostics.append(
+                    GraphDiagnostic(
+                        code=DiagnosticCode.SOURCE_EMPIRICAL_WITHOUT_VERIFICATION.value,
+                        severity=DiagnosticSeverity.ERROR.value,
+                        message=(
+                            f"Source '{nid}' claims evidence_class={node.evidence_class!r} "
+                            "with no independent verification/peer-review signal in its properties."
+                        ),
+                        affected_ids=(nid,),
+                    )
+                )
+
         # Check unsupported promotion on hypotheses/claims
         if node.node_type in (NodeType.HYPOTHESIS.value, NodeType.CLAIM.value):
             if node.status in (NodeStatus.SUPPORTED.value, "confirmed", "fact"):
