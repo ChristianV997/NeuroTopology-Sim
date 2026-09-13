@@ -20,7 +20,7 @@ inventory:
 	cd $(REPO_ROOT) && $(PYTHON) $(VALIDATE) --input $(FIXTURES) --output $(OUT)/inventory.json; true
 
 test:
-	cd $(REPO_ROOT) && $(PYTHON) -m pytest tests/evidence_promotion_gate -q
+	cd $(REPO_ROOT) && $(PYTHON) -m pytest tests/evidence_promotion_gate -q --noconftest
 
 compile:
 	cd $(REPO_ROOT) && $(PYTHON) -m py_compile \
