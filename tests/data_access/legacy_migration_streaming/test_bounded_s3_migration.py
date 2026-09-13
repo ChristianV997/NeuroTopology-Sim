@@ -70,6 +70,77 @@ def test_transfer_is_manifest_first_bounded_and_checksum_verified(tmp_path: Path
     json.loads(result.to_json())
 
 
+def test_offline_cache_reuse_requires_matching_managed_manifest_and_bytes(tmp_path: Path):
+    content = b"abcdefghij"
+    client = FakeS3({("bucket", "file"): content})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    client.calls.clear()
+    cached = BoundedS3ObjectStore(client, tmp_path, chunk_size=4).fetch_object(
+        "bucket", "file", "file", allow_network=False
+    )
+    assert cached.status == "cached"
+    assert cached.bytes_transferred == 0
+    assert client.calls == []
+
+
+def test_final_consumer_release_deletes_bytes_and_records_tombstone(tmp_path: Path):
+    content = b"abcdefghij"
+    client = FakeS3({("bucket", "file"): content})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+
+    assert store.release_object("bucket", "file", "file") is True
+    assert not (tmp_path / "file").exists()
+    manifest = json.loads((tmp_path / ".bounded_s3_manifest.json").read_text())
+    record = next(iter(manifest["records"].values()))
+    assert record["status"] == "released"
+    assert record["release_reason"] == "final_consumer_complete"
+    assert record["destination_present"] is False
+    assert record["released_size"] == len(content)
+
+    with pytest.raises(PermissionError):
+        BoundedS3ObjectStore(client, tmp_path, chunk_size=4).fetch_object(
+            "bucket", "file", "file", allow_network=False
+        )
+
+
+def test_release_never_deletes_unmanaged_or_wrong_identity(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"managed"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    unmanaged = tmp_path / "unmanaged"
+    unmanaged.write_bytes(b"user data")
+
+    assert store.release_object("bucket", "other", "file") is False
+    assert store.release_object("bucket", "file", "unmanaged") is False
+    assert (tmp_path / "file").exists()
+    assert unmanaged.read_bytes() == b"user data"
+
+
+def test_unmanaged_or_tampered_existing_file_is_never_trusted_offline(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"remote"})
+    (tmp_path / "file").write_bytes(b"unmanaged")
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    with pytest.raises(PermissionError):
+        store.fetch_object("bucket", "file", "file", allow_network=False)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    (tmp_path / "file").write_bytes(b"tampered")
+    with pytest.raises(BoundedAccessError, match="cached object failed"):
+        store.fetch_object("bucket", "file", "file", allow_network=False)
+    assert (tmp_path / "file").read_bytes() == b"tampered"
+
+
+def test_requested_cache_identity_must_match_offline_manifest(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"remote"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    with pytest.raises(BoundedAccessError):
+        store.fetch_object("bucket", "file", "file", allow_network=False, expected_size=999)
+    with pytest.raises(BoundedAccessError):
+        store.fetch_object("bucket", "file", "file", allow_network=False, expected_checksum="0" * 64)
+
+
 def test_checksum_mismatch_never_promotes_artifact(tmp_path: Path):
     client = FakeS3({("bucket", "file"): b"correct"})
     store = BoundedS3ObjectStore(client, tmp_path, chunk_size=3)
@@ -182,7 +253,7 @@ def test_legacy_full_object_fallback_is_rejected(tmp_path: Path):
         store.read_text_metadata("bucket", "participants.tsv")
 
 
-def test_residual_findings_are_exactly_policy_registration_requirements():
+def test_integrated_policy_registration_leaves_no_owned_findings():
     files = [
         Path("validation/s3_fetchers.py"),
         Path("validation/fast_tr_fixtures.py"),
@@ -190,8 +261,7 @@ def test_residual_findings_are_exactly_policy_registration_requirements():
         Path("tools/stream_process_ds006644.py"),
     ]
     findings = [finding for path in files for finding in scan_file(path, repository_root=Path("."))]
-    assert {finding.rule for finding in findings} == {"UNAUTHORIZED_BOUNDED_TRANSFER"}
-    assert len(findings) == 3
+    assert findings == []
     registration_paths = {item["path"] for item in POLICY_REGISTRATION_REQUIREMENTS["registrations"]}
-    assert {finding.file for finding in findings} <= registration_paths
+    assert registration_paths == {str(path).replace("\\", "/") for path in files if path.name != "fast_tr_fixtures.py"}
     json.dumps(POLICY_REGISTRATION_REQUIREMENTS, allow_nan=False)

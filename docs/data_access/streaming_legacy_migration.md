@@ -26,11 +26,16 @@ transfers. It does not download data and does not make a scientific claim.
 8. Managed completed files are evicted in deterministic least-recent-access
    order when the explicit cache budget requires space. Unmanaged files are
    never silently deleted.
+9. A final consumer releases an object through its exact S3 URI and contained
+   destination identity. The bytes and partial state are removed, while the
+   manifest retains a `released` tombstone with the release reason and size.
+   Released or externally deleted objects cannot be reused offline.
 
 The streaming scripts expose `--allow-network` and `--max-cache-bytes`. Their
-default invocation fails closed before metadata or data access. Temporary BOLD
-files are deleted after processing, while failed transfers remain represented
-by their partial state rather than being presented as valid artifacts.
+default invocation fails closed before metadata or data access. Each temporary
+BOLD object is identity-released immediately after its final subject/session
+consumer, before the next unit begins. Failed transfers remain represented by
+their partial state rather than being presented as valid artifacts.
 
 ## Metadata and provenance
 
@@ -49,12 +54,12 @@ are test infrastructure and must not be labeled as empirical data.
 Before migration, the owned production paths contained direct
 `download_file` calls and unbounded `get_object(...)["Body"].read()` metadata
 reads. After migration, those direct full-object and unbounded reads are gone.
-The repository policy scanner reports three bounded `get_object` calls as
-`UNAUTHORIZED_BOUNDED_TRANSFER` until its separate policy allowlist is
-updated. `validation.s3_fetchers.POLICY_REGISTRATION_REQUIREMENTS` is the
-machine-readable registration request, including exact paths, symbols,
-operation, and required controls. This is an integration-review item, not
-permission to bypass the scanner.
+The integrated policy registration recognizes the exact bounded store and
+delegating symbols only after structural checks for range access, explicit
+network permission, checksum state, atomic staging, containment, cache bounds,
+and observable eviction. The owned-path policy audit reports zero findings.
+`validation.s3_fetchers.POLICY_REGISTRATION_REQUIREMENTS` remains the
+machine-readable registration contract; it is not a filename-wide bypass.
 
 The only compatibility seam is for `unittest.mock` clients used by existing
 parser fixtures. It issues a bounded metadata probe and cannot access AWS;

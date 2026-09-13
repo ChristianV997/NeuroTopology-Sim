@@ -298,6 +298,32 @@ class BoundedS3ObjectStore:
         final_path = self._contained(destination)
         part_path = final_path.with_name(final_path.name + ".part")
         state_path = final_path.with_name(final_path.name + ".part.json")
+        identity = source_uri + "|" + str(final_path)
+        record = self._records.get(identity, {})
+        if not force and final_path.is_file() and record.get("status") == "complete":
+            recorded_size = record.get("expected_size")
+            recorded_checksum = _checksum_hex(record.get("expected_checksum"))
+            recorded_actual = _checksum_hex(record.get("actual_checksum"))
+            requested_checksum = _checksum_hex(expected_checksum)
+            size_matches = (
+                isinstance(recorded_size, int)
+                and recorded_size >= 0
+                and final_path.stat().st_size == recorded_size
+                and (expected_size is None or expected_size == recorded_size)
+            )
+            checksum_contract_matches = requested_checksum is None or requested_checksum == recorded_checksum
+            actual = _sha256(final_path) if size_matches and checksum_contract_matches else None
+            if actual and actual == recorded_actual and (recorded_checksum is None or actual == recorded_checksum):
+                record["access_rank"] = max([int(item.get("access_rank", 0)) for item in self._records.values()] or [0]) + 1
+                self._save_manifest()
+                return BoundedTransferResult(source_uri, str(final_path), "cached", recorded_size,
+                                             recorded_checksum, actual,
+                                             "verified" if recorded_checksum else "unknown",
+                                             0, self.chunk_size, 0, 0)
+            if not allow_network:
+                raise BoundedAccessError("cached object failed manifest, size, or checksum validation")
+        if not allow_network:
+            raise PermissionError("network access is disabled and no verified managed cache entry exists")
         metadata = self._head(bucket, key, allow_network=allow_network)
         size = expected_size if expected_size is not None else metadata["size"]
         if not isinstance(size, int) or size < 0 or size != metadata["size"]:
@@ -305,7 +331,6 @@ class BoundedS3ObjectStore:
         if size > self.max_cache_bytes:
             raise BoundedAccessError(f"object size {size} exceeds cache budget {self.max_cache_bytes}")
         checksum = _checksum_hex(expected_checksum) or metadata["checksum"]
-        identity = source_uri + "|" + str(final_path)
         record = self._records.get(identity, {})
         if not force and final_path.is_file() and record.get("status") == "complete" and record.get("expected_size") == size and record.get("expected_checksum") == checksum:
             actual = _sha256(final_path)
@@ -347,7 +372,12 @@ class BoundedS3ObjectStore:
                     try:
                         response = self.s3_client.get_object(Bucket=bucket, Key=key, Range=f"bytes={start}-{end}")
                         body = response["Body"]
-                        data = body.read(expected_bytes + 1)
+                        try:
+                            data = body.read(expected_bytes + 1)
+                        finally:
+                            close = getattr(body, "close", None)
+                            if callable(close):
+                                close()
                         if len(data) != expected_bytes:
                             raise BoundedAccessError(f"range {start}-{end} returned {len(data)} bytes")
                         with part_path.open("r+b") as handle:
@@ -391,6 +421,38 @@ class BoundedS3ObjectStore:
         except Exception as exc:
             self._save_state(state_path, source_uri, size, checksum, {"completed": completed, "attempts": total_attempts}, status="failed", error=str(exc))
             raise BoundedAccessError(str(exc)) from exc
+
+    def release_object(
+        self,
+        bucket: str,
+        key: str,
+        destination: str | Path,
+        *,
+        reason: str = "final_consumer_complete",
+    ) -> bool:
+        """Release one managed object and leave an observable manifest tombstone.
+
+        The source URI and contained destination must identify the exact cache
+        record.  Unmanaged files are never deleted by this method.
+        """
+        source_uri = self._object_uri(bucket, key)
+        final_path = self._contained(destination)
+        identity = source_uri + "|" + str(final_path)
+        record = self._records.get(identity)
+        if not isinstance(record, dict) or record.get("status") != "complete":
+            return False
+        if record.get("source_uri") != source_uri or Path(str(record.get("destination", ""))).resolve() != final_path:
+            raise BoundedAccessError("managed object identity does not match release request")
+        final_path.unlink(missing_ok=True)
+        final_path.with_name(final_path.name + ".part").unlink(missing_ok=True)
+        final_path.with_name(final_path.name + ".part.json").unlink(missing_ok=True)
+        record["status"] = "released"
+        record["release_reason"] = str(reason)
+        record["released_size"] = record.get("expected_size")
+        record["destination_present"] = False
+        record["access_rank"] = max([int(item.get("access_rank", 0)) for item in self._records.values()] or [0]) + 1
+        self._save_manifest()
+        return True
 
     def read_text_metadata(self, bucket: str, key: str, *, allow_network: bool = False) -> str:
         """Read a small manifest/participants object through bounded ranges."""
@@ -556,9 +618,6 @@ class NKIRSFetcher:
         )
         # Delegated policy controls: chunk bound, checksum state, and eviction.
 
-        if local_path.exists() and not force:
-            return str(local_path)
-
         s3_key = self._s3_path(subject_id, session, "bold")
         try:
             result = self._bounded_store().fetch_object(
@@ -599,9 +658,6 @@ class NKIRSFetcher:
             / f"sub-{subject_id}_ses-{session:02d}_task-rest_desc-preproc_physio.tsv"
         )
         # Delegated policy controls: chunk bound, checksum state, and eviction.
-
-        if local_path.exists() and not force:
-            return str(local_path)
 
         s3_key = self._s3_path(subject_id, session, "confounds")
         try:
@@ -790,9 +846,6 @@ class HCPYAFetcher:
         )
         # Delegated policy controls: chunk bound, checksum state, and eviction.
 
-        if local_path.exists() and not force:
-            return str(local_path)
-
         s3_key = self._s3_path(subject_id, run, "bold")
         try:
             result = self._bounded_store().fetch_object(
@@ -836,9 +889,6 @@ class HCPYAFetcher:
             self.cache_dir / f"sub-{subject_id}_ses-01_task-rest_run-{run}_physio.txt"
         )
         # Delegated policy controls: chunk bound, checksum state, and eviction.
-
-        if local_path.exists() and not force:
-            return str(local_path)
 
         s3_key = self._s3_path(subject_id, run, "confounds")
         try:

@@ -105,6 +105,13 @@ def download_subject_bold(
     return dest
 
 
+def release_subject_bold(subject: str, dest_dir: Path, destination: Path) -> bool:
+    """Release a downloaded BOLD object after its final consumer."""
+    key = _BOLD_KEY_TMPL.format(sub=subject)
+    store = BoundedS3ObjectStore(_s3_client(), dest_dir)
+    return store.release_object(_BUCKET, key, destination)
+
+
 def _real_schaefer_labels() -> list[str]:
     """The real Schaefer-2018 100-ROI region names, in `NiftiLabelsMasker` column order.
 
@@ -138,7 +145,10 @@ def process_subject(subject: str, group: str, work_root: Path, graph_structure_d
             region_labels=region_labels,
         )
     finally:
-        bold_path.unlink(missing_ok=True)  # disk-bounded: delete raw before next subject
+        if not release_subject_bold(subject, work_root, bold_path):
+            # Compatibility for injected test downloaders that do not create a
+            # managed cache record. Production downloads always use the store.
+            bold_path.unlink(missing_ok=True)
     return res
 
 

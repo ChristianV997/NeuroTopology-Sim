@@ -110,6 +110,13 @@ def download_bold(
     return dest
 
 
+def release_bold(subject: str, session: str, dest_dir: Path, destination: Path) -> bool:
+    """Release a downloaded BOLD object after its final consumer."""
+    key = _BOLD_KEY_TMPL.format(sub=subject, ses=session)
+    store = BoundedS3ObjectStore(_s3_client(), dest_dir)
+    return store.release_object(_BUCKET, key, destination)
+
+
 def process_session(subject: str, session: str, work_root: Path, graph_structure_dir: Path | None = None,
                      condition: str | None = None, *, allow_network: bool = False,
                      max_cache_bytes: int = 512 * 1024 * 1024) -> dict:
@@ -152,7 +159,10 @@ def process_session(subject: str, session: str, work_root: Path, graph_structure
                 "total_persistence_h1": 0.0, "modularity": 0.0, "global_efficiency": 0.0,
                 "mean_degree": 0.0, "small_worldness": 0.0, "error": str(exc)}
     finally:
-        bold_path.unlink(missing_ok=True)  # disk-bounded
+        if not release_bold(subject, session, work_root, bold_path):
+            # Compatibility for injected test downloaders that do not create a
+            # managed cache record. Production downloads always use the store.
+            bold_path.unlink(missing_ok=True)
 
 
 def _process_subject_both_arms(sub: str, work_path: Path, graph_structure_dir: Path | None = None,
