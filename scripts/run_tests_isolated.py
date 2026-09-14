@@ -209,8 +209,12 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
             except Exception:
                 pass
 
-    t_out = threading.Thread(target=_drain, args=(proc.stdout, out_chunks), daemon=True)
-    t_err = threading.Thread(target=_drain, args=(proc.stderr, err_chunks), daemon=True)
+    # Small fake workers used by the compatibility suite need not expose pipe
+    # attributes. Real Popen workers always do; treating absent streams as an
+    # empty capture keeps the runner's test seam honest without weakening pipe
+    # draining for actual subprocesses.
+    t_out = threading.Thread(target=_drain, args=(getattr(proc, "stdout", None), out_chunks), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(getattr(proc, "stderr", None), err_chunks), daemon=True)
     t_out.start()
     t_err.start()
 
@@ -245,11 +249,11 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
         time.sleep(poll_interval_s)
 
     if timed_out:
-        _terminate_process_tree(proc)
+        _terminate_worker(proc)
 
     # Reap; if it somehow survives, force again so nothing is left running.
     if not _wait_or(proc, 10.0):
-        _terminate_process_tree(proc)
+        _terminate_worker(proc)
         _wait_or(proc, 5.0)
 
     # Killing the tree closes the inherited pipes, so the drain threads finish.
@@ -353,7 +357,7 @@ def run_batch(
     finally:
         # Cleanup must run even on exceptions: never leave a worker tree behind.
         if proc is not None and proc.poll() is None:
-            _terminate_process_tree(proc)
+            _terminate_worker(proc)
             _wait_or(proc, 5.0)
         if not keep_basetemp:
             try:
