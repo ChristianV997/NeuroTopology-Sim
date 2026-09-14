@@ -25,6 +25,8 @@ def test_verified_merge_reports_merged_into_main(git_repo):
     )
     assert manifest.merge_state == "merged_into_main"
     assert manifest.merge_eligibility is True
+    assert manifest.release_state == "inconclusive"
+    assert manifest.release_eligibility is False
     assert manifest.verified_head_commit.value == head
 
 
@@ -140,7 +142,26 @@ def test_synthetic_scientific_result_is_not_blocking(git_repo_with_integration_b
     )
     assert manifest.scientific_gate_status.value == "blocked"
     assert manifest.merge_state == "blocked_by_scientific_review"
+    assert manifest.release_state == "blocked_by_scientific_review"
+    assert manifest.release_eligibility is False
     assert any("unverified_scientific_pass" in b for b in manifest.blockers)
+
+
+def test_merged_commit_with_scientific_block_is_not_release_eligible(git_repo):
+    repo = git_repo
+    head = commit_of(repo, "main")
+    manifest = build_manifest(
+        repo_path=repo,
+        repository="ChristianV997/NeuroTopology-Sim",
+        target_branch="main",
+        integration_branch="main",
+        source_commit=head,
+        scientific_gate_input=ScientificGateInput(data_mode="synthetic", verdict="PASS"),
+    )
+    assert manifest.merge_state == "merged_into_main"
+    assert manifest.merge_eligibility is True
+    assert manifest.release_state == "blocked_by_scientific_review"
+    assert manifest.release_eligibility is False
 
 
 def test_missing_github_snapshot_reports_unavailable(git_repo):

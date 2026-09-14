@@ -85,7 +85,17 @@ def main() -> int:
     if args.markdown_out:
         args.markdown_out.write_text(markdown_text)
 
-    print(f"merge_state={manifest.merge_state} merge_eligibility={manifest.merge_eligibility}", file=sys.stderr)
+    print(
+        " ".join(
+            (
+                f"merge_state={manifest.merge_state}",
+                f"technical_target_reachability={manifest.merge_eligibility}",
+                f"release_state={manifest.release_state}",
+                f"release_eligibility={manifest.release_eligibility}",
+            )
+        ),
+        file=sys.stderr,
+    )
     return 0
 
 

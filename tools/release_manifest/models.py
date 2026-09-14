@@ -20,6 +20,19 @@ MERGE_STATES: frozenset[str] = frozenset({
     "unknown",
 })
 
+# Release readiness is deliberately independent from git ancestry.  A commit
+# can be on main while its evidence remains blocked or inconclusive.
+RELEASE_STATES: frozenset[str] = frozenset({
+    "ready_for_release",
+    "not_integrated",
+    "blocked_by_scientific_review",
+    "blocked_by_ci",
+    "blocked_by_infrastructure",
+    "blocked_by_dependency",
+    "inconclusive",
+    "unknown",
+})
+
 CHECK_STATES: frozenset[str] = frozenset({
     "passing", "failing", "pending", "skipped", "infrastructure_blocked", "unavailable",
 })
@@ -95,7 +108,11 @@ class ReleaseCandidateManifest:
     dashboard_isolation_status: Evidence = field(default_factory=lambda: Evidence(None, "not computed"))
     memory_timeout_status: Evidence = field(default_factory=lambda: Evidence(None, "not computed"))
     merge_state: str = "unknown"
+    # Legacy technical field: describes target-branch reachability only, never
+    # scientific or operational release permission.
     merge_eligibility: bool = False
+    release_state: str = "inconclusive"
+    release_eligibility: bool = False
     blockers: list = field(default_factory=list)
     github_state: str = "unavailable"
     provenance: dict = field(default_factory=dict)
@@ -123,6 +140,8 @@ class ReleaseCandidateManifest:
             "memory_timeout_status": self.memory_timeout_status.to_dict(),
             "merge_state": self.merge_state,
             "merge_eligibility": self.merge_eligibility,
+            "release_state": self.release_state,
+            "release_eligibility": self.release_eligibility,
             "blockers": list(self.blockers),
             "github_state": self.github_state,
             "provenance": self.provenance,
