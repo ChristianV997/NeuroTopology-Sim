@@ -1,0 +1,14 @@
+{
+  "claim_type": "engineering_fact",
+  "data_mode": "not_applicable",
+  "evidence_class": "engineering_fact",
+  "metrics": {
+    "events_written": 9
+  },
+  "notes": "The parser is deterministic.",
+  "run_id": "eng-001",
+  "run_kind": "orchestrator",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "verdict": null
+}

@@ -1,0 +1,34 @@
+{
+  "claim_type": "descriptive_empirical",
+  "data_mode": "empirical",
+  "effect_size": {
+    "name": "difference",
+    "value": 0.15
+  },
+  "evidence_class": "descriptive_empirical",
+  "labels_verified": true,
+  "multiplicity_correction": "not_needed_single_test",
+  "n_tests": 1,
+  "notes": "The fixture produced a descriptive empirical association.",
+  "null_controls": [
+    "phase_shuffle"
+  ],
+  "provenance": {
+    "acquisition": "local_bundle",
+    "checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dataset_version": "v1",
+    "labels_verified": true,
+    "source_id": "fixture-dataset",
+    "source_uri": "local://fixture-dataset"
+  },
+  "run_id": "desc-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.2
+    ]
+  }
+}
