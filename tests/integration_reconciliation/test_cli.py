@@ -66,3 +66,44 @@ def test_cli_accepts_a_github_snapshot_file(git_fixture_repo, tmp_path):
     # error; PR-matching semantics are covered by test_reconcile.py against
     # a work-order tuple built for the fixture repo's own branches.
     assert len(payload["entries"]) == 12
+
+
+def test_cli_work_orders_from_snapshot_reconciles_every_snapshot_pr(git_fixture_repo, tmp_path):
+    snapshot = {
+        "schema": "NTS.GitHubReconciliationSnapshot.v1",
+        "pull_requests": [
+            {"number": 1, "head_ref": "feature-a", "state": "open", "draft": False,
+             "merged": False, "mergeable_state": "clean"},
+            {"number": 2, "head_ref": "feature-b", "state": "open", "draft": False,
+             "merged": False, "mergeable_state": "unstable"},
+        ],
+    }
+    snapshot_path = tmp_path / "snapshot.json"
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    out_dir = tmp_path / "out"
+    result = _run_cli(
+        "--repo-path", str(git_fixture_repo), "--target-ref", "main",
+        "--github-snapshot", str(snapshot_path),
+        "--work-orders-from-snapshot",
+        "--dashboard-src", str(git_fixture_repo / "no_such_dashboard"),
+        "--output-dir", str(out_dir),
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
+    # Unlike the default-registry run above, every PR in the snapshot
+    # becomes its own work order -- exactly 2 entries, matched against the
+    # fixture repo's real feature-a/feature-b branches, not 12 unrelated
+    # historical ones.
+    assert len(payload["entries"]) == 2
+    work_order_ids = {entry["work_order_id"] for entry in payload["entries"]}
+    assert work_order_ids == {"pr-1", "pr-2"}
+
+
+def test_cli_work_orders_from_snapshot_requires_a_snapshot(git_fixture_repo):
+    result = _run_cli(
+        "--repo-path", str(git_fixture_repo), "--target-ref", "main",
+        "--work-orders-from-snapshot",
+        "--dashboard-src", str(git_fixture_repo / "no_such_dashboard"),
+    )
+    assert result.returncode != 0
+    assert "--work-orders-from-snapshot requires --github-snapshot" in result.stderr
