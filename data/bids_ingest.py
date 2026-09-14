@@ -11,7 +11,7 @@ Two responsibilities, kept explicit:
 
 Provenance is explicit: records discovered through `mne-bids` carry
 `provenance="real_bids"`; the constrained filesystem fallback carries
-`provenance="unvalidated_filesystem_fallback"` and must not be treated as a
+`provenance="unvalidated_filesystem_fallback"` (or `local_bids_unvalidated`) and must not be treated as a
 validated BIDS inventory. Synthetic paths live elsewhere and are labelled
 `synthetic_proxy`. This module never fabricates signal.
 """
@@ -54,7 +54,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
     if not root_path.exists():
         raise FileNotFoundError(
             f"BIDS root does not exist: {root}. Provide a local ds005620-style directory "
-            f"(e.g. via `eegdash` cache or `aws s3 sync --no-sign-request s3://openneuro.org/ds005620`)."
+            "or an explicitly planned bounded-access materialization."
         )
 
     records: list[BIDSEEGRecord] = []
@@ -129,13 +129,14 @@ def _iter_eeg_candidate_files(root_path: Path):
 
 
 def inventory_from_records(dataset_id: str, records: list[BIDSEEGRecord]) -> dict:
-    """Emit the `file_inventory.json` shape the existing Level-M window builder consumes."""
     subjects = sorted({r.subject_id for r in records if r.subject_id})
-    provenance = (
-        "unvalidated_filesystem_fallback"
-        if any(r.provenance == "unvalidated_filesystem_fallback" for r in records)
-        else "real_bids"
-    )
+    provenances = {r.provenance for r in records}
+    if provenances == {"real_bids"}:
+        provenance = "real_bids"
+    elif "local_bids_unvalidated" in provenances:
+        provenance = "unvalidated_or_mixed"
+    else:
+        provenance = "unvalidated_filesystem_fallback"
     return {
         "dataset_id": dataset_id,
         "bids_root": None,

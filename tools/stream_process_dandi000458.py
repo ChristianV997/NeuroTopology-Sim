@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import math
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -27,10 +28,112 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tools.streaming import base_runner  # noqa: E402
-from data.dandi_nwb_ingest import IngestionContractError, resolve_asset_blobs  # noqa: E402
+from data.dandi_nwb_ingest import (  # noqa: E402
+    MAX_WINDOW_BYTES,
+    DandiAsset,
+    IngestionContractError,
+    open_nwb_lazy,
+    resolve_asset_blobs,
+)
 
 _DANDISET = "000458"
 _VERSION = "0.230317.0039"
+
+
+@dataclass(frozen=True)
+class BoundedDandiAccess:
+    """The manifest admission record for one lazy DANDI NWB object.
+
+    DANDI's assets manifest supplies an object identity and size, but the
+    compatibility listing does not supply a SHA-256 digest.  ``checksum`` is
+    therefore explicitly ``unknown`` rather than fabricated.  No NWB object
+    bytes are materialized: the cache budget is the maximum in-memory window
+    and the release policy applies after each window's final consumer.
+    """
+
+    dataset_id: str
+    version: str
+    object_identity: str
+    source_uri: str
+    expected_size_bytes: int
+    checksum_status: str
+    max_window_bytes: int
+    cache_budget_bytes: int
+    eviction_policy: str
+    network_permission: bool
+
+    def validate(self) -> None:
+        if not self.dataset_id or not self.version or not self.object_identity:
+            raise ValueError("DANDI manifest identity is required")
+        if not self.source_uri:
+            raise ValueError("DANDI source URI is required")
+        if self.expected_size_bytes <= 0:
+            raise ValueError("DANDI manifest content size is required and must be positive")
+        if self.checksum_status not in {"verified", "unknown"}:
+            raise ValueError("checksum_status must be verified or unknown")
+        if self.max_window_bytes <= 0 or self.cache_budget_bytes < self.max_window_bytes:
+            raise ValueError("DANDI window and cache bounds must be positive and compatible")
+        if self.eviction_policy != "release_after_final_consumer":
+            raise ValueError("unsupported DANDI eviction policy")
+
+    def to_dict(self) -> dict:
+        self.validate()
+        return {
+            "dataset_id": self.dataset_id,
+            "version": self.version,
+            "object_identity": self.object_identity,
+            "source_uri": self.source_uri,
+            "expected_size_bytes": self.expected_size_bytes,
+            "checksum_status": self.checksum_status,
+            "expected_checksum": None,
+            "max_window_bytes": self.max_window_bytes,
+            "cache_budget_bytes": self.cache_budget_bytes,
+            "eviction_policy": self.eviction_policy,
+            "network_permission": self.network_permission,
+        }
+
+
+def _access_contract(asset: DandiAsset, *, allow_network: bool) -> BoundedDandiAccess:
+    contract = BoundedDandiAccess(
+        dataset_id=_DANDISET,
+        version=_VERSION,
+        object_identity=asset.path,
+        source_uri=asset.blob_url,
+        expected_size_bytes=asset.content_size,
+        checksum_status="verified" if getattr(asset, "checksum_sha256", None) else "unknown",
+        max_window_bytes=MAX_WINDOW_BYTES,
+        cache_budget_bytes=MAX_WINDOW_BYTES,
+        eviction_policy="release_after_final_consumer",
+        network_permission=allow_network,
+    )
+    contract.validate()
+    return contract
+
+
+def _write_manifest(out_dir: Path, contracts: list[BoundedDandiAccess], *, allow_network: bool) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "access_manifest.json"
+    payload = {
+        "schema_version": "NeuroTopology.DandiBoundedAccessManifest.v1",
+        "dataset_id": _DANDISET,
+        "version": _VERSION,
+        "manifest_first": True,
+        "network_accessed": bool(allow_network),
+        "data_materialization": "lazy_bounded_windows",
+        "assets": [c.to_dict() for c in contracts],
+    }
+    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    return manifest_path
+
+
+def _contained_output(out_dir: Path | str, relative_path: str) -> Path:
+    base = Path(out_dir).resolve()
+    target = (base / relative_path).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"DANDI output path escapes output directory: {target}") from exc
+    return target
 
 
 def _sha256_file(path: Path) -> str:
@@ -49,19 +152,28 @@ def process_asset(
     max_channels: int,
     *,
     network_permission: bool = False,
+    allow_network: bool | None = None,
 ) -> dict:
-    from sciencer_d.btc_icft.level_m.dandi000458_windows_real import build_and_extract_real_windows
+    if allow_network is not None:
+        network_permission = allow_network
+    if not network_permission:
+        raise IngestionContractError(
+            "Remote DANDI reads require explicit network permission (--allow-network / allow_network)"
+        )
+    import sciencer_d.btc_icft.level_m.dandi000458_windows_real as dandi_windows
 
     # Use subject+session-date as the CSV stem so multi-session subjects don't collide.
     stem = Path(asset.path).name.replace("_behavior+ecephys.nwb", "")
-    m_rows, t_rows = build_and_extract_real_windows(
-        asset.blob_url, asset.subject_id,
-        window_seconds=window_seconds, max_windows_per_state=max_windows_per_state,
+    m_rows, t_rows = dandi_windows.build_and_extract_real_windows(
+        asset.blob_url,
+        asset.subject_id,
+        window_seconds=window_seconds,
+        max_windows_per_state=max_windows_per_state,
         max_channels=max_channels,
         network_permission=network_permission,
         source_checksum_sha256=getattr(asset, "checksum_sha256", None),
     )
-    output_paths = [out_dir / f"{stem}_features_m.csv", out_dir / f"{stem}_features_t.csv"]
+    output_paths = [_contained_output(out_dir, f"{stem}_features_m.csv"), _contained_output(out_dir, f"{stem}_features_t.csv")]
     base_runner.write_rows_csv(output_paths[0], [asdict(r) for r in m_rows], write_empty_marker=True)
     base_runner.write_rows_csv(output_paths[1], [asdict(r) for r in t_rows], write_empty_marker=True)
     states = {}
@@ -91,9 +203,24 @@ def _contained_output_dir(out_dir: str, output_root: str | None) -> Path:
     return out_path
 
 
-def run(out_dir: str, window_seconds: float, max_windows_per_state: int, max_channels: int,
-        limit: int | None, subjects: list[str] | None, *, network_permission: bool = False,
-        output_root: str | None = None) -> int:
+def run(
+    out_dir: str,
+    window_seconds: float,
+    max_windows_per_state: int,
+    max_channels: int,
+    limit: int | None,
+    subjects: list[str] | None,
+    *,
+    network_permission: bool = False,
+    allow_network: bool | None = None,
+    output_root: str | None = None,
+) -> int:
+    if allow_network is not None:
+        network_permission = allow_network
+    if not network_permission:
+        raise IngestionContractError(
+            "Remote DANDI reads require explicit network permission (--allow-network / allow_network)"
+        )
     if not math.isfinite(window_seconds) or window_seconds <= 0:
         raise IngestionContractError("window_seconds must be finite and positive")
     if max_windows_per_state <= 0 or max_channels <= 0:
@@ -111,9 +238,12 @@ def run(out_dir: str, window_seconds: float, max_windows_per_state: int, max_cha
     if subjects is not None:
         assets = [a for a in assets if a.subject_id in subjects]
     assets = sorted(assets, key=lambda a: a.content_size)  # smallest first (fastest to smoke-test)
+    contracts = [_access_contract(asset, allow_network=network_permission) for asset in assets]
+    _write_manifest(out_path, contracts, allow_network=network_permission)
 
     base_runner.run_manifest_loop(
-        assets, out_path,
+        assets,
+        out_path,
         key_fn=lambda a: a.path,
         process_fn=lambda a: process_asset(
             a,
@@ -122,6 +252,7 @@ def run(out_dir: str, window_seconds: float, max_windows_per_state: int, max_cha
             max_windows_per_state,
             max_channels,
             network_permission=network_permission,
+            allow_network=network_permission,
         ),
         limit=limit,
         label_fn=lambda a: f"{a.path} ({a.content_size/1e6:.0f} MB, lazy-read)",
@@ -151,7 +282,7 @@ def main() -> int:
             network_permission=a.allow_network,
             output_root=a.output_root,
         )
-    except IngestionContractError as exc:
+    except (IngestionContractError, PermissionError, ValueError) as exc:
         print(f"DANDI access blocked: {exc}", file=sys.stderr)
         return 2
 

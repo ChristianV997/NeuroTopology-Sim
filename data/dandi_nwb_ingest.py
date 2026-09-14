@@ -36,7 +36,7 @@ class IngestionState(str, Enum):
     RETRYING = "RETRYING"
 
 
-class IngestionContractError(ValueError):
+class IngestionContractError(PermissionError, ValueError):
     """A request violates the bounded-ingestion contract."""
 
 
