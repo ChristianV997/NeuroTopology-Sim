@@ -154,7 +154,9 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
         result = _score_feature_set(rows, name)
         loss = result["subject_held_out"]["log_loss"]
         result["incremental_gain"] = None if previous_loss is None or loss is None else float(previous_loss - loss)
-        result["incremental_status"] = "BASELINE" if previous_loss is None else ("FORMAL_FORECAST_EVIDENCE" if loss is not None and loss < previous_loss else "NO_INCREMENTAL_GAIN")
+        # A local proper-score improvement is a benchmark observation, not
+        # independently adjudicated formal or scientific evidence.
+        result["incremental_status"] = "BASELINE" if previous_loss is None else ("INCONCLUSIVE" if loss is not None and loss < previous_loss else "NO_INCREMENTAL_GAIN")
         if loss is not None:
             previous_loss = loss
         base["model_ladder"].append(result)

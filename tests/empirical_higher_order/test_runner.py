@@ -26,6 +26,12 @@ def _manifest(tmp_path: Path, subjects: int = 2, *, synthetic=False, respiration
             np.save(stem.with_name(stem.name + "_target.npy"), np.array([0, 1, 0, 1, 0, 1]))
             feature_times = np.arange(n) + subject_index * 20 + condition_index * 10
             np.save(stem.with_name(stem.name + "_time.npy"), feature_times)
+            artifacts = {
+                family: stem.with_name(stem.name + f"_{family}.npy")
+                for family in ("psd", "pairwise_fc", "triadic_fc", "directed_hypergraph")
+            }
+            artifacts["target"] = stem.with_name(stem.name + "_target.npy")
+            artifacts["timestamps"] = stem.with_name(stem.name + "_time.npy")
             recordings.append({
                 "subject_id": subject, "session_id": "ses-01", "run_id": f"run-{condition_index+1:02d}",
                 "condition_label": condition if labels else "", "pairing_key": "paired-cohort",
@@ -34,6 +40,7 @@ def _manifest(tmp_path: Path, subjects: int = 2, *, synthetic=False, respiration
                 "recording_quality_state": "PASS", "origin": "synthetic" if synthetic else "empirical",
                 "feature_paths": {family: f"{stem.name}_{family}.npy" for family in ("psd", "pairwise_fc", "triadic_fc", "directed_hypergraph")},
                 "target_path": f"{stem.name}_target.npy", "timestamps_path": f"{stem.name}_time.npy",
+                "artifact_checksums": {name: hashlib.sha256(artifact.read_bytes()).hexdigest() for name, artifact in artifacts.items()},
                 "target_timestamps": (feature_times + 1).tolist(),
                 "physiology": {"respiration": "resp.npy"} if respiration else {},
             })
@@ -68,6 +75,7 @@ def test_multiple_pairs_are_forecasting_ready(tmp_path):
     report = run_empirical(_manifest(tmp_path, subjects=2))
     assert report["status"] == ReadinessState.READY_FOR_FORECASTING.value
     assert report["scientific_pass"] is False and report["formal_bayes_factor"] is None
+    assert "FORMAL_FORECAST_EVIDENCE" not in {entry["incremental_status"] for entry in report["model_ladder"] if "incremental_status" in entry}
 
 
 def test_missing_respiration_is_explicit(tmp_path):
@@ -106,6 +114,33 @@ def test_no_network_manifest_is_rejected(tmp_path):
     result = validate_manifest(path)
     assert result.status is ReadinessState.INCONCLUSIVE
     assert any("network" in reason for reason in result.reasons)
+
+
+def test_manifest_local_path_escape_is_rejected(tmp_path):
+    path = _manifest(tmp_path)
+    outside = tmp_path.parent / "outside-dataset.bin"
+    outside.write_bytes(b"must not be read through the manifest")
+    data = json.loads(path.read_text())
+    data["dataset_path"] = "../outside-dataset.bin"
+    data["dataset_checksum"] = hashlib.sha256(outside.read_bytes()).hexdigest()
+    path.write_text(json.dumps(data))
+    result = validate_manifest(path)
+    assert result.status is ReadinessState.INCONCLUSIVE
+    assert any("escapes the manifest root" in reason for reason in result.reasons)
+
+
+def test_missing_or_mismatched_artifact_checksum_is_not_forecasting_ready(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["artifact_checksums"].pop("triadic_fc")
+    path.write_text(json.dumps(data))
+    assert validate_manifest(path).status is ReadinessState.INCOMPLETE_PROVENANCE
+
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["artifact_checksums"]["triadic_fc"] = "0" * 64
+    path.write_text(json.dumps(data))
+    assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
 
 
 def test_optional_spectra_is_classified(tmp_path):

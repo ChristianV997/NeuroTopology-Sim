@@ -75,6 +75,40 @@ def _recording_paths(recording: Mapping[str, Any], base: Path) -> dict[str, Path
     return paths
 
 
+def _validate_artifact_checksums(
+    recording: Mapping[str, Any], paths: Mapping[str, Path | None], index: int, reasons: list[str]
+) -> tuple[bool, bool]:
+    """Require manifest-bound hashes for every artifact used by a run.
+
+    A readable local file is not provenance.  The manifest must bind it to a
+    SHA-256 digest so a later execution cannot silently consume a different
+    feature or target artifact.
+    """
+    declared = recording.get("artifact_checksums")
+    if not isinstance(declared, Mapping):
+        reasons.append(f"recordings[{index}] artifact_checksums mapping is required")
+        return True, False
+    incomplete = False
+    invalid = False
+    for name, artifact in paths.items():
+        if artifact is None:
+            continue
+        checksum = declared.get(name)
+        if not isinstance(checksum, str) or not checksum.strip():
+            reasons.append(f"recordings[{index}] missing SHA-256 for {name}")
+            incomplete = True
+            continue
+        expected = checksum.strip().lower()
+        if len(expected) != 64 or any(character not in "0123456789abcdef" for character in expected):
+            reasons.append(f"recordings[{index}] {name} checksum must be a SHA-256 hex digest")
+            invalid = True
+            continue
+        if sha256_file(artifact).lower() != expected:
+            reasons.append(f"recordings[{index}] {name} checksum does not match the declared SHA-256")
+            invalid = True
+    return incomplete, invalid
+
+
 def validate_manifest(path: str | Path) -> ValidationResult:
     try:
         manifest = load_manifest(path)
@@ -161,11 +195,17 @@ def validate_manifest(path: str | Path) -> ValidationResult:
             reasons.append(f"recordings[{index}]: {exc}"); invalid = True; continue
         if paths["target"] is None or not paths["target"].is_file():
             target_missing = True
+        elif paths["timestamps"] is None or not paths["timestamps"].is_file():
+            reasons.append(f"recordings[{index}] timestamps artifact is required when a forecast target is supplied")
+            incomplete = True
         for family in FEATURE_FAMILIES[:-1]:
             if paths[family] is None or not paths[family].is_file():
                 reasons.append(f"recordings[{index}] missing {family} feature artifact"); incomplete = True
         if paths["higher_order_spectra"] is None or not paths["higher_order_spectra"].is_file():
             optional_missing.add("higher_order_spectra")
+        checksum_incomplete, checksum_invalid = _validate_artifact_checksums(raw, paths, index, reasons)
+        incomplete = incomplete or checksum_incomplete
+        invalid = invalid or checksum_invalid
         for family, artifact in paths.items():
             if family == "higher_order_spectra" or family in {"target", "timestamps"}:
                 continue
