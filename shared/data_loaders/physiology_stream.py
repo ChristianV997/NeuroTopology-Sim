@@ -125,7 +125,14 @@ def infer_channel_units(ch_type: PhysiologyChannelType) -> str:
 
 
 def _resample_channel_causal(data: np.ndarray, source_fs: float, target_fs: float) -> tuple[np.ndarray, ResamplingMetadata]:
-    """Causal linear interpolation for sample rate conversion preserving historical causality."""
+    """Causally resample using zero-order hold.
+
+    Linear interpolation at a target time uses the next source sample and is
+    therefore non-causal.  The causal contract deliberately uses the latest
+    source sample available at or before each target time.  A separate
+    non-causal helper below is used only when the caller explicitly selects
+    ``AlignmentMode.NONCAUSAL``.
+    """
     if abs(source_fs - target_fs) < 1e-4:
         return data.copy(), ResamplingMetadata(
             source_sfreq_hz=source_fs,
@@ -143,7 +150,7 @@ def _resample_channel_causal(data: np.ndarray, source_fs: float, target_fs: floa
             source_sfreq_hz=source_fs,
             target_sfreq_hz=target_fs,
             ratio=target_fs / source_fs if source_fs > 0 else 1.0,
-            method="causal_linear_interpolation",
+            method="causal_zero_order_hold",
             interpolated=True,
         )
 
@@ -152,18 +159,54 @@ def _resample_channel_causal(data: np.ndarray, source_fs: float, target_fs: floa
 
     idx_floor = np.floor(source_positions).astype(int)
     idx_floor = np.clip(idx_floor, 0, n_source - 1)
-    idx_ceil = np.clip(idx_floor + 1, 0, n_source - 1)
-    weights = source_positions - idx_floor
-
-    resampled = (1.0 - weights) * data[idx_floor] + weights * data[idx_ceil]
+    # Never inspect idx_floor + 1: that sample may occur in the future.
+    resampled = np.asarray(data[idx_floor], dtype=data.dtype).copy()
     meta = ResamplingMetadata(
         source_sfreq_hz=source_fs,
         target_sfreq_hz=target_fs,
         ratio=float(target_fs / source_fs),
-        method="causal_linear_interpolation",
+        method="causal_zero_order_hold",
         interpolated=True,
     )
     return resampled, meta
+
+
+def _resample_channel_linear(data: np.ndarray, source_fs: float, target_fs: float) -> tuple[np.ndarray, ResamplingMetadata]:
+    """Explicitly non-causal linear interpolation for offline alignment."""
+    if abs(source_fs - target_fs) < 1e-4:
+        return data.copy(), ResamplingMetadata(
+            source_sfreq_hz=source_fs,
+            target_sfreq_hz=target_fs,
+            ratio=1.0,
+            method="identity",
+            interpolated=False,
+        )
+
+    n_source = len(data)
+    duration_s = n_source / source_fs
+    n_target = int(math.floor(duration_s * target_fs))
+    if n_target <= 0 or n_source <= 0:
+        return np.zeros(0, dtype=data.dtype), ResamplingMetadata(
+            source_sfreq_hz=source_fs,
+            target_sfreq_hz=target_fs,
+            ratio=target_fs / source_fs if source_fs > 0 else 1.0,
+            method="symmetric_linear_interpolation",
+            interpolated=True,
+        )
+
+    source_positions = (np.arange(n_target) / target_fs) * source_fs
+    idx_floor = np.floor(source_positions).astype(int)
+    idx_floor = np.clip(idx_floor, 0, n_source - 1)
+    idx_ceil = np.clip(idx_floor + 1, 0, n_source - 1)
+    weights = source_positions - idx_floor
+    resampled = (1.0 - weights) * data[idx_floor] + weights * data[idx_ceil]
+    return resampled, ResamplingMetadata(
+        source_sfreq_hz=source_fs,
+        target_sfreq_hz=target_fs,
+        ratio=float(target_fs / source_fs),
+        method="symmetric_linear_interpolation",
+        interpolated=True,
+    )
 
 
 def compute_respiratory_features(resp_signal: np.ndarray, sfreq: float) -> RespiratoryFeatures:
@@ -475,7 +518,7 @@ class PhysiologyStreamReader:
                 source_sfreq_hz=source_sfreq,
                 target_sfreq_hz=target_sfreq,
                 ratio=ratio,
-                method="causal_linear_interpolation" if self.alignment_mode == AlignmentMode.CAUSAL else "symmetric_interpolation",
+                method="causal_zero_order_hold" if self.alignment_mode == AlignmentMode.CAUSAL else "symmetric_linear_interpolation",
                 interpolated=is_interpolated,
             )
 
@@ -508,7 +551,8 @@ class PhysiologyStreamReader:
             if abs(source_sfreq - target_sfreq) > 1e-4:
                 aligned_channels: list[np.ndarray] = []
                 for ch_idx in range(len(self._channel_infos)):
-                    res_ch, _ = _resample_channel_causal(
+                    resample = _resample_channel_causal if self.alignment_mode == AlignmentMode.CAUSAL else _resample_channel_linear
+                    res_ch, _ = resample(
                         chunk_data_raw[ch_idx],
                         source_sfreq,
                         target_sfreq,

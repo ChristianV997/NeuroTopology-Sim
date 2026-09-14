@@ -24,7 +24,8 @@ def _manifest(tmp_path: Path, subjects: int = 2, *, synthetic=False, respiration
             for family, width in (("psd", 3), ("pairwise_fc", 2), ("triadic_fc", 2), ("directed_hypergraph", 2)):
                 np.save(stem.with_name(stem.name + f"_{family}.npy"), rng.normal(size=(n, width)))
             np.save(stem.with_name(stem.name + "_target.npy"), np.array([0, 1, 0, 1, 0, 1]))
-            np.save(stem.with_name(stem.name + "_time.npy"), np.arange(n) + subject_index * 20 + condition_index * 10)
+            feature_times = np.arange(n) + subject_index * 20 + condition_index * 10
+            np.save(stem.with_name(stem.name + "_time.npy"), feature_times)
             recordings.append({
                 "subject_id": subject, "session_id": "ses-01", "run_id": f"run-{condition_index+1:02d}",
                 "condition_label": condition if labels else "", "pairing_key": "paired-cohort",
@@ -33,6 +34,7 @@ def _manifest(tmp_path: Path, subjects: int = 2, *, synthetic=False, respiration
                 "recording_quality_state": "PASS", "origin": "synthetic" if synthetic else "empirical",
                 "feature_paths": {family: f"{stem.name}_{family}.npy" for family in ("psd", "pairwise_fc", "triadic_fc", "directed_hypergraph")},
                 "target_path": f"{stem.name}_target.npy", "timestamps_path": f"{stem.name}_time.npy",
+                "target_timestamps": (feature_times + 1).tolist(),
                 "physiology": {"respiration": "resp.npy"} if respiration else {},
             })
     manifest = {"schema_version": "NeuroTopologySim.EmpiricalHigherOrderManifest.v1", "dataset_id": "fixture",
@@ -112,5 +114,26 @@ def test_optional_spectra_is_classified(tmp_path):
 
 
 def test_future_window_leakage_is_inconclusive(tmp_path):
-    path = _manifest(tmp_path); data = json.loads(path.read_text()); data["recordings"][0]["target_timestamps"] = [10, 11, 12, 13, 14, 15]; path.write_text(json.dumps(data))
+    path = _manifest(tmp_path); data = json.loads(path.read_text()); data["recordings"][0]["target_timestamps"] = [-1, 0, 1, 2, 3, 4]; path.write_text(json.dumps(data))
     assert run_empirical(path)["status"] == ReadinessState.INCONCLUSIVE.value
+
+
+def test_missing_target_timestamps_is_inconclusive(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    for recording in data["recordings"]:
+        recording.pop("target_timestamps", None)
+    path.write_text(json.dumps(data))
+    report = run_empirical(path)
+    assert report["status"] == ReadinessState.INCONCLUSIVE.value
+    assert any("TEMPORAL_LINEAGE_REQUIRED" in reason for reason in report["validation"]["reasons"])
+
+
+def test_target_timestamp_length_mismatch_is_inconclusive(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["target_timestamps"] = [1, 2]
+    path.write_text(json.dumps(data))
+    report = run_empirical(path)
+    assert report["status"] == ReadinessState.INCONCLUSIVE.value
+    assert any("TEMPORAL_LINEAGE_INVALID" in reason for reason in report["validation"]["reasons"])
