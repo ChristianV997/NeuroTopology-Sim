@@ -33,6 +33,22 @@ class EvidenceClass(str, Enum):
     UNSUPPORTED_CLAIM = "unsupported_claim"
 
 
+_SYNTHETIC_DATA_MODES = frozenset({
+    "synthetic", "synthetic_demo", "synthetic_demo_only", "synthetic_fixture", "synthetic_only",
+})
+_PROXY_DATA_MODES = frozenset({"proxy", "proxy_inference", "proxy_only"})
+_PLANNING_DATA_MODES = frozenset({"plan", "planned", "planning", "planning_only"})
+_PROMOTABLE_EVIDENCE_CLASSES = frozenset({
+    EvidenceClass.BENCHMARK_RESULT,
+    EvidenceClass.DESCRIPTIVE_EMPIRICAL,
+    EvidenceClass.FORMAL_STATISTICAL_EVIDENCE,
+})
+_FAILED_RUN_STATUSES = frozenset({
+    "FAILED", "BLOCKED", "INCONCLUSIVE", "NOT_IMPLEMENTED", "PARTIAL", "TIMEOUT",
+    "PLANNING", "PENDING", "RUNNING", "IN_PROGRESS",
+})
+
+
 VALID_STATUSES = frozenset(
     {
         "PENDING",
@@ -152,16 +168,23 @@ def _validate_common(record: Any) -> None:
         lowered = record.statement.lower()
         if any(term in lowered for term in ("causal", "causation", "mechanism")):
             raise ResearchCycleError("proxy inference cannot be written as a causal or mechanistic claim")
-    if isinstance(record, SourceSnapshot) and record.data_mode == "synthetic_demo":
-        if record.evidence_class != EvidenceClass.SYNTHETIC_DEMONSTRATION:
+    if isinstance(record, (SourceSnapshot, EvidenceRecord)):
+        data_mode = record.data_mode.strip().lower()
+        if data_mode in _SYNTHETIC_DATA_MODES and record.evidence_class != EvidenceClass.SYNTHETIC_DEMONSTRATION:
             raise ResearchCycleError("synthetic data cannot become empirical evidence")
-    if isinstance(record, SourceSnapshot) and record.data_mode == "empirical" and record.evidence_class == EvidenceClass.SYNTHETIC_DEMONSTRATION:
-        raise ResearchCycleError("empirical data cannot be labeled synthetic")
-    if isinstance(record, EvidenceRecord) and record.data_mode == "synthetic_demo":
-        if record.evidence_class != EvidenceClass.SYNTHETIC_DEMONSTRATION:
-            raise ResearchCycleError("synthetic data cannot become empirical evidence")
-    if isinstance(record, EvidenceRecord) and record.data_mode == "empirical" and record.evidence_class == EvidenceClass.SYNTHETIC_DEMONSTRATION:
-        raise ResearchCycleError("empirical data cannot be labeled synthetic")
+        if data_mode in _PROXY_DATA_MODES and record.evidence_class != EvidenceClass.PROXY_INFERENCE:
+            raise ResearchCycleError("proxy data cannot become empirical, benchmark, or formal evidence")
+        if data_mode in _PLANNING_DATA_MODES and record.evidence_class in _PROMOTABLE_EVIDENCE_CLASSES:
+            raise ResearchCycleError("planning data cannot become empirical, benchmark, or formal evidence")
+        if data_mode == "empirical" and record.evidence_class == EvidenceClass.SYNTHETIC_DEMONSTRATION:
+            raise ResearchCycleError("empirical data cannot be labeled synthetic")
+    if isinstance(record, RunRecordLink):
+        run_status = record.run_status.strip().upper()
+        if run_status in _FAILED_RUN_STATUSES:
+            if record.status == "COMPLETED":
+                raise ResearchCycleError("a failed or incomplete run cannot have COMPLETED ledger status")
+            if record.evidence_class in _PROMOTABLE_EVIDENCE_CLASSES:
+                raise ResearchCycleError("a failed or incomplete run cannot be promoted to result evidence")
 
 
 class RecordMixin:

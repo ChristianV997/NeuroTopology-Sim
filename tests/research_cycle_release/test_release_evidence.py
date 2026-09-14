@@ -79,6 +79,29 @@ def test_complete_reviewable_cycle():
     assert "bayes" not in json.dumps(data).lower() or data["bayes_factor_emitted"] is False
 
 
+@pytest.mark.parametrize(
+    "unknown_field",
+    [
+        "input_provenance_complete",
+        "all_work_units_terminal",
+        "partial_runs_explicitly_marked",
+        "artifact_lineage_complete",
+        "validation_report_present",
+        "resource_budgets_respected",
+        "network_policy_recorded",
+        "evidence_classes_consistent",
+        "comparable",
+    ],
+)
+def test_unknown_operational_checks_cannot_be_released_as_reviewable(unknown_field):
+    overrides = {unknown_field: None}
+    if unknown_field == "all_work_units_terminal":
+        overrides["work_units"] = []
+    report = evaluate_research_cycle_release(_complete(**overrides), adapter_hint="generic")
+    assert report.decision == DecisionState.EVIDENCE_INCOMPLETE
+    assert any(check.check_id == unknown_field and check.passed is None for check in report.checks)
+
+
 def test_missing_source_manifest():
     report = evaluate_research_cycle_release(
         _complete(source_manifest_present=False), adapter_hint="generic"
