@@ -92,3 +92,13 @@ This migration does not change topology, Bayesian, simulation, or scientific
 model semantics.  A bounded transfer or a successful local analysis is not a
 scientific PASS and does not establish data validity, causality, biology, or
 mechanism.
+
+## ds000245 workflow boundary
+
+`.github/workflows/fmri_tda_ds000245.yml` is now a local-processing workflow:
+it requires an already-provisioned BIDS root and an optional local native-space
+atlas. It no longer invokes `aws s3 sync`, `aws s3 cp`, or `curl`, and it never
+turns a workflow dispatch into a full-dataset download. Bounded OpenNeuro
+requests remain a separate manifest-first operation through
+`tools/fetch_ds000245.py` and the canonical chunk cache; partial ranges are
+not silently presented to the fMRI pipeline as complete NIfTI files.

@@ -104,3 +104,38 @@ def test_real_window_builder_requires_explicit_network_permission():
 
     with pytest.raises(IngestionContractError, match="explicit network permission"):
         build_and_extract_real_windows("https://example.invalid/object.nwb", "sub-01")
+
+
+def test_dandi_window_builder_closes_local_fixture_handle(tmp_path, monkeypatch):
+    import sciencer_d.btc_icft.level_m.dandi000458_windows_real as windower
+
+    path = _make_fake_nwb(tmp_path, n_samples=6000, n_ch=4)
+    opened = []
+    original_open = windower.open_nwb_lazy
+
+    def tracked_open(*args, **kwargs):
+        handle = original_open(*args, **kwargs)
+
+        class _TrackedContext:
+            def __enter__(self):
+                return handle.__enter__()
+
+            def __exit__(self, *exc_info):
+                try:
+                    return handle.__exit__(*exc_info)
+                finally:
+                    opened.append(not handle.id.valid)
+
+        return _TrackedContext()
+
+    monkeypatch.setattr(windower, "open_nwb_lazy", tracked_open)
+    m_rows, t_rows = windower.build_and_extract_real_windows(
+        str(path),
+        "sub-01",
+        window_seconds=5.0,
+        max_windows_per_state=1,
+        max_channels=2,
+    )
+
+    assert m_rows and t_rows
+    assert opened == [True]

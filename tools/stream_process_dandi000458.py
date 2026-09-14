@@ -16,7 +16,8 @@ State labels come from each recording's own NWB epochs table
 from __future__ import annotations
 
 import argparse
-import json
+import hashlib
+import math
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -26,46 +27,29 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tools.streaming import base_runner  # noqa: E402
-from data.dandi_nwb_ingest import MAX_WINDOW_BYTES, resolve_asset_blobs  # noqa: E402
+from data.dandi_nwb_ingest import IngestionContractError, resolve_asset_blobs  # noqa: E402
 
 _DANDISET = "000458"
 _VERSION = "0.230317.0039"
 
 
-def _write_access_manifest(out_dir: Path, assets: list, *, allow_network: bool) -> None:
-    """Record metadata admission without inventing checksums or data bytes."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema_version": "NeuroTopology.DandiBoundedAccess.v1",
-        "dataset_id": _DANDISET,
-        "version": _VERSION,
-        "manifest_first": True,
-        "metadata_network_permission": bool(allow_network),
-        "data_access": "lazy_bounded_windows",
-        "network_accessed": bool(allow_network),
-        "assets": [
-            {
-                "object_identity": f"{asset.dandiset_id}/{asset.version}/{asset.path}",
-                "source_uri": asset.blob_url,
-                "expected_size_bytes": int(asset.content_size),
-                "checksum_status": "unknown",
-                "expected_checksum": None,
-                "max_window_bytes": MAX_WINDOW_BYTES,
-                "cache_budget_bytes": MAX_WINDOW_BYTES,
-                "eviction_policy": "release_after_final_consumer",
-            }
-            for asset in assets
-        ],
-    }
-    target = (out_dir / "access_manifest.json").resolve()
-    if target.parent != out_dir.resolve() and out_dir.resolve() not in target.parents:
-        raise ValueError("access manifest escaped output root")
-    partial = target.with_name(target.name + ".part")
-    partial.write_text(json.dumps(payload, allow_nan=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    partial.replace(target)
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def process_asset(asset, out_dir: Path, window_seconds: float, max_windows_per_state: int, max_channels: int, *, allow_network: bool = False) -> dict:
+def process_asset(
+    asset,
+    out_dir: Path,
+    window_seconds: float,
+    max_windows_per_state: int,
+    max_channels: int,
+    *,
+    network_permission: bool = False,
+) -> dict:
     from sciencer_d.btc_icft.level_m.dandi000458_windows_real import build_and_extract_real_windows
 
     # Use subject+session-date as the CSV stem so multi-session subjects don't collide.
@@ -74,34 +58,70 @@ def process_asset(asset, out_dir: Path, window_seconds: float, max_windows_per_s
         asset.blob_url, asset.subject_id,
         window_seconds=window_seconds, max_windows_per_state=max_windows_per_state,
         max_channels=max_channels,
-        network_permission=allow_network,
-        offline=not allow_network,
+        network_permission=network_permission,
+        source_checksum_sha256=getattr(asset, "checksum_sha256", None),
     )
-    base_runner.write_rows_csv(out_dir / f"{stem}_features_m.csv", [asdict(r) for r in m_rows], write_empty_marker=True)
-    base_runner.write_rows_csv(out_dir / f"{stem}_features_t.csv", [asdict(r) for r in t_rows], write_empty_marker=True)
+    output_paths = [out_dir / f"{stem}_features_m.csv", out_dir / f"{stem}_features_t.csv"]
+    base_runner.write_rows_csv(output_paths[0], [asdict(r) for r in m_rows], write_empty_marker=True)
+    base_runner.write_rows_csv(output_paths[1], [asdict(r) for r in t_rows], write_empty_marker=True)
     states = {}
     for r in m_rows:
         states[r.state_label] = states.get(r.state_label, 0) + 1
-    return {"n_m_rows": len(m_rows), "n_t_rows": len(t_rows), "states": states}
+    return {
+        "n_m_rows": len(m_rows),
+        "n_t_rows": len(t_rows),
+        "states": states,
+        "source_checksum_sha256": getattr(asset, "checksum_sha256", None),
+        "output_paths": [path.name for path in output_paths],
+        "output_sha256": {path.name: _sha256_file(path) for path in output_paths},
+    }
+
+
+def _contained_output_dir(out_dir: str, output_root: str | None) -> Path:
+    out_path = Path(out_dir).expanduser().resolve()
+    root = Path(output_root or out_path.parent).expanduser().resolve()
+    try:
+        out_path.relative_to(root)
+    except ValueError as exc:
+        raise IngestionContractError(
+            f"DANDI output directory must remain inside output_root: {out_path}"
+        ) from exc
+    if out_path == root:
+        raise IngestionContractError("DANDI output directory must be a child of output_root")
+    return out_path
 
 
 def run(out_dir: str, window_seconds: float, max_windows_per_state: int, max_channels: int,
-        limit: int | None, subjects: list[str] | None, *, allow_network: bool = False) -> int:
-    out_path = Path(out_dir)
+        limit: int | None, subjects: list[str] | None, *, network_permission: bool = False,
+        output_root: str | None = None) -> int:
+    if not math.isfinite(window_seconds) or window_seconds <= 0:
+        raise IngestionContractError("window_seconds must be finite and positive")
+    if max_windows_per_state <= 0 or max_channels <= 0:
+        raise IngestionContractError("window and channel bounds must be positive")
+    if limit is not None and limit < 0:
+        raise IngestionContractError("limit must be non-negative")
+    out_path = _contained_output_dir(out_dir, output_root)
 
-    if not allow_network:
-        raise PermissionError("DANDI access is disabled; pass --allow-network explicitly")
-    assets = resolve_asset_blobs(_DANDISET, _VERSION, network_permission=True, offline=False)
+    assets = resolve_asset_blobs(
+        _DANDISET,
+        _VERSION,
+        network_permission=network_permission,
+        offline=not network_permission,
+    )
     if subjects is not None:
         assets = [a for a in assets if a.subject_id in subjects]
     assets = sorted(assets, key=lambda a: a.content_size)  # smallest first (fastest to smoke-test)
-    _write_access_manifest(out_path, assets, allow_network=True)
 
     base_runner.run_manifest_loop(
         assets, out_path,
         key_fn=lambda a: a.path,
         process_fn=lambda a: process_asset(
-            a, out_path, window_seconds, max_windows_per_state, max_channels, allow_network=True
+            a,
+            out_path,
+            window_seconds,
+            max_windows_per_state,
+            max_channels,
+            network_permission=network_permission,
         ),
         limit=limit,
         label_fn=lambda a: f"{a.path} ({a.content_size/1e6:.0f} MB, lazy-read)",
@@ -117,16 +137,22 @@ def main() -> int:
     p.add_argument("--max-channels", type=int, default=16)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
-    p.add_argument("--allow-network", action="store_true",
-                   help="Explicitly permit DANDI metadata and bounded lazy-window reads")
+    p.add_argument("--allow-network", action="store_true", help="Permit bounded DANDI metadata and lazy window reads")
+    p.add_argument("--output-root", default="outputs", help="Explicit root containing --out")
     a = p.parse_args()
     try:
         return run(
-            a.out, a.window_seconds, a.max_windows_per_state, a.max_channels,
-            a.limit, a.subjects, allow_network=a.allow_network,
+            a.out,
+            a.window_seconds,
+            a.max_windows_per_state,
+            a.max_channels,
+            a.limit,
+            a.subjects,
+            network_permission=a.allow_network,
+            output_root=a.output_root,
         )
-    except (PermissionError, ValueError) as exc:
-        print(f"DATA_ACCESS_BLOCKED: {exc}", file=sys.stderr)
+    except IngestionContractError as exc:
+        print(f"DANDI access blocked: {exc}", file=sys.stderr)
         return 2
 
 

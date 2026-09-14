@@ -16,12 +16,14 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 from typing import Any, Iterable, Iterator, Mapping, Optional, Protocol, runtime_checkable
 
 MAX_WINDOW_BYTES = 64 * 1024 * 1024
 MAX_WINDOW_SAMPLES = 10_000_000
 MAX_METADATA_BYTES = 8 * 1024 * 1024
 _DANDI_BUCKET = "dandiarchive"
+_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 class IngestionState(str, Enum):
@@ -48,6 +50,31 @@ class DandiAsset:
     subject_id: str
     blob_url: str
     content_size: int
+    checksum_sha256: str | None = None
+
+
+def _manifest_checksum(item: Mapping[str, Any]) -> str | None:
+    """Return a DANDI manifest SHA-256 when one is explicitly published.
+
+    DANDI manifests have appeared with both a digest string (for example
+    ``dandi:digest/sha2-256:<hex>``) and a digest mapping.  Unknown or
+    malformed values remain unknown; this helper never invents a checksum.
+    """
+    digest = item.get("digest")
+    candidates: list[Any] = []
+    if isinstance(digest, str):
+        candidates.append(digest.rsplit(":", 1)[-1])
+    elif isinstance(digest, Mapping):
+        candidates.extend(
+            digest.get(key)
+            for key in ("sha2-256", "sha256", "sha2_256")
+            if digest.get(key) is not None
+        )
+    for candidate in candidates:
+        value = str(candidate)
+        if _SHA256.fullmatch(value):
+            return value.lower()
+    return None
 
 
 def resolve_asset_blobs(
@@ -95,15 +122,29 @@ def resolve_asset_blobs(
             response["Body"].close()
     finally:
         client.close() if callable(getattr(client, "close", None)) else None
+    if not isinstance(assets, list):
+        raise IngestionContractError("DANDI assets metadata must be a list")
     out: list[DandiAsset] = []
     for item in assets:
+        if not isinstance(item, Mapping):
+            continue
         path = str(item.get("path", ""))
         if not path.endswith(".nwb"):
             continue
         blob = next((url for url in item.get("contentUrl", []) if "s3.amazonaws.com/blobs" in url), None)
         if blob is None:
             continue
-        out.append(DandiAsset(dandiset_id, version, path, path.split("/")[0], blob, int(item.get("contentSize", 0))))
+        out.append(
+            DandiAsset(
+                dandiset_id,
+                version,
+                path,
+                path.split("/")[0],
+                blob,
+                int(item.get("contentSize", 0)),
+                _manifest_checksum(item),
+            )
+        )
     return out
 
 
@@ -193,6 +234,8 @@ class WindowRequest:
                 raise IngestionContractError("expected_checksum must be a SHA-256 hex digest")
         if self.offline and self.network_permission:
             raise IngestionContractError("offline mode cannot grant network permission")
+        if self.provenance.source_kind in {"dandi", "nwb", "dandi_nwb"} and not self.network_permission:
+            raise IngestionContractError("remote DANDI/NWB windows require explicit network permission")
         return size
 
 
@@ -497,9 +540,12 @@ def open_nwb_lazy(blob_url: str, *, network_permission: bool = False, offline: b
     """
     if not str(blob_url).strip():
         raise IngestionContractError("blob_url is required")
-    if offline or not network_permission:
+    is_remote = str(blob_url).lower().startswith(("http://", "https://", "s3://"))
+    if is_remote and (offline or not network_permission):
         raise IngestionContractError("remote NWB opening requires explicit network permission")
     import h5py
+    if not is_remote:
+        return h5py.File(Path(blob_url), "r")
     import remfile
     return h5py.File(remfile.File(blob_url), "r")
 
@@ -552,6 +598,12 @@ def nwb_state_epochs(nwb) -> list[tuple[str, float, float]]:
 def read_nwb_eeg_window(nwb, window_start_s: float, window_end_s: float, pick: str = "all", max_channels: Optional[int] = None, eeg_series_name: str = "ElectricalSeriesEEG", info: Optional[dict] = None):
     """Read one bounded HDF5 slice from an already-open NWB object."""
     import numpy as np
+    if not all(math.isfinite(float(value)) for value in (window_start_s, window_end_s)):
+        raise ValueError("window bounds must be finite")
+    if pick not in {"all", "mean"}:
+        raise ValueError(f"unsupported EEG pick: {pick!r}")
+    if max_channels is not None and max_channels <= 0:
+        raise ValueError("max_channels must be positive")
     es = _eeg_series(nwb, eeg_series_name)
     if info is None:
         info = nwb_eeg_info(nwb, eeg_series_name)

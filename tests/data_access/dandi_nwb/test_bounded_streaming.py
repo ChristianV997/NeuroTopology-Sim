@@ -153,6 +153,30 @@ def test_remote_compatibility_paths_require_explicit_network_permission():
         resolve_asset_blobs("000000", "draft")
 
 
+def test_remote_window_contract_requires_explicit_permission():
+    remote = _request(
+        provenance=_provenance(
+            source_kind="dandi_nwb",
+            source_uri="https://example.invalid/object",
+            validated_dandi_nwb=True,
+            synthetic=False,
+        ),
+        network_permission=False,
+    )
+    result = read_bounded_window(FakeSource(), remote)
+    assert result.state is IngestionState.BLOCKED
+    assert "permission" in result.error.lower()
+
+
+def test_manifest_checksum_is_normalized_without_invention():
+    from data.dandi_nwb_ingest import _manifest_checksum
+
+    digest = "A" * 64
+    assert _manifest_checksum({"digest": f"dandi:digest/sha2-256:{digest}"}) == digest.lower()
+    assert _manifest_checksum({"digest": {"sha2-256": digest}}) == digest.lower()
+    assert _manifest_checksum({"digest": "not-a-checksum"}) is None
+
+
 def test_local_file_source_is_bounded(tmp_path):
     path = tmp_path / "fixture.bin"
     path.write_bytes(b"0123456789")
