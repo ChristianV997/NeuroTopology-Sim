@@ -31,7 +31,7 @@ def _empirical_kwargs() -> dict:
 def test_formal_k_threshold_mapping_is_strict():
     assert classify_falsification_status(99.999, **_empirical_kwargs()) == "NOT_SUPPORTED"
     assert classify_falsification_status(100.0, **_empirical_kwargs()) == "NOT_SUPPORTED"
-    assert classify_falsification_status(100.001, **_empirical_kwargs()) == "PASS"
+    assert classify_falsification_status(100.001, **_empirical_kwargs()) == "INCONCLUSIVE"
 
 
 def test_invalid_or_missing_k_is_inconclusive():

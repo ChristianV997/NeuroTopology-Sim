@@ -122,3 +122,12 @@ def test_invalid_limits_are_rejected_before_worker_creation():
         runner.run_batches([], batch_size=0, timeout_s=1)
     with pytest.raises(ValueError, match="positive"):
         runner.run_batches([], batch_size=1, timeout_s=0)
+
+
+@pytest.mark.parametrize("stdout", ["1 skipped in 0.58s", "no tests ran", "collected 0 items"])
+def test_empty_pytest_collection_is_classified_as_skipped(stdout):
+    assert runner._pytest_empty_collection(5, stdout, "") is True
+
+
+def test_collection_error_is_not_misclassified_as_skipped():
+    assert runner._pytest_empty_collection(2, "1 error during collection", "") is False

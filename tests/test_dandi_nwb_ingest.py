@@ -96,3 +96,11 @@ def test_no_anesthesia_epoch_yields_no_anesthetized_state():
     states = {s for s, _, _ in intervals}
     assert "anesthetized" not in states  # not fabricated
     assert "awake" in states
+
+
+def test_real_window_builder_requires_explicit_network_permission():
+    from data.dandi_nwb_ingest import IngestionContractError
+    from sciencer_d.btc_icft.level_m.dandi000458_windows_real import build_and_extract_real_windows
+
+    with pytest.raises(IngestionContractError, match="explicit network permission"):
+        build_and_extract_real_windows("https://example.invalid/object.nwb", "sub-01")

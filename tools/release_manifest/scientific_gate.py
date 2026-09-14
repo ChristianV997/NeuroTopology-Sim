@@ -3,13 +3,11 @@ scientific-review block from one caused merely by absent/insufficient
 input data (the lesson carried over from tools/release_scientific_audit
 and governance/merge_gate -- reused conceptually, not imported).
 
-A "claims exceed evidence" style mismatch (e.g. a PR claiming a PASS
-verdict on synthetic data with no bayes_factor/evidence_kind attached)
-is reported as a warning-severity finding only -- it must never, by
-itself, override a more specific and already-evidenced merge_state
-category (a lesson from a real bug in an earlier round of this session:
-an optimistic-label check that was allowed "blocking" severity
-reclassified unrelated CI failures into the wrong top-level bucket).
+A caller-supplied PASS is not scientific evidence.  This module receives
+release metadata and a pre-fetched snapshot; it does not independently
+verify the data, labels, provenance, likelihood construction, nulls, or
+controls.  It therefore fails closed for every supplied PASS rather than
+allowing a literal verdict to promote an unverified result.
 """
 from __future__ import annotations
 
@@ -22,11 +20,8 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
     """Return ``(Evidence(status, source), blocking: bool, findings: list[str])``.
 
     status is one of: "not_applicable", "insufficient_data", "pass",
-    "blocked". Only a genuinely evidenced negative verdict on non-synthetic
-    (or explicitly claim-bearing) data produces ``blocking=True`` --
-    missing input data alone produces "insufficient_data" and
-    ``blocking=False`` (routes to merge_state "unknown"/"open_unintegrated"
-    territory rather than a false "blocked_by_scientific_review").
+    "blocked".  ``pass`` is never emitted from this metadata-only boundary:
+    a literal PASS is not independently verified evidence.
     """
     findings: list[str] = []
 
@@ -45,13 +40,15 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
         )
 
     if gate_input.verdict == "PASS":
-        if gate_input.data_mode in ("synthetic", "synthetic_demo") and gate_input.evidence_kind != "formal":
-            findings.append(
-                "claims_exceeding_evidence: PASS verdict recorded on "
-                f"data_mode={gate_input.data_mode!r} without formal evidence_kind "
-                "(warning only -- does not override merge_state)"
-            )
-        return Evidence("pass", f"verdict=PASS (data_mode={gate_input.data_mode!r})"), False, findings
+        findings.append(
+            "unverified_scientific_pass: caller-supplied PASS cannot be promoted "
+            "without an independently validated evidence artifact"
+        )
+        return (
+            Evidence("blocked", "caller-supplied PASS is not independently verifiable"),
+            True,
+            findings,
+        )
 
     if gate_input.verdict in ("NOT_SUPPORTED", "ERROR"):
         return (

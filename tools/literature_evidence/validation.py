@@ -52,6 +52,9 @@ def validate_record(
             errors=(f"excerpt_hash {record.excerpt_hash!r} is not a well-formed sha256 hex digest",),
         )
 
+    if snapshot is not None and snapshot.source_id != record.source_id:
+        return ValidationResult(state="rejected_invalid_checksum", errors=("snapshot source_id does not match literature source",))
+
     if snapshot is not None and snapshot.kind == "full_local_snapshot":
         if not snapshot.local_path:
             return ValidationResult(
@@ -59,12 +62,17 @@ def validate_record(
                 errors=("snapshot kind=full_local_snapshot but no local_path was provided",),
             )
         path = Path(snapshot.local_path)
-        if not path.exists():
+        if not path.is_file():
             return ValidationResult(
                 state="rejected_invalid_checksum",
                 errors=(f"snapshot local_path {snapshot.local_path!r} does not exist -- cannot verify checksum",),
             )
-        actual = file_checksum(path)
+        try:
+            actual = file_checksum(path)
+        except OSError as exc:
+            return ValidationResult(state="rejected_invalid_checksum", errors=(f"cannot read local snapshot: {exc}",))
+        if record.content_checksum and record.content_checksum != actual:
+            return ValidationResult(state="rejected_invalid_checksum", errors=("literature content_checksum does not match local snapshot bytes",))
         if snapshot.content_checksum and snapshot.content_checksum != actual:
             return ValidationResult(
                 state="rejected_invalid_checksum",

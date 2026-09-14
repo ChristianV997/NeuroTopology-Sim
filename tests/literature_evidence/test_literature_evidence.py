@@ -119,6 +119,25 @@ def test_snapshot_with_checksum_mismatch_is_rejected(tmp_path):
     assert result.state == "rejected_invalid_checksum"
 
 
+def test_snapshot_cannot_substitute_another_source(tmp_path):
+    record = load_record("preprint.json")
+    path = tmp_path / "source.txt"
+    path.write_text("synthetic test source", encoding="utf-8")
+    snapshot = SourceSnapshot("snapshot", "different-source", "full_local_snapshot",
+                              str(path), file_checksum(path))
+    assert validate_record(record, snapshot).state == "rejected_invalid_checksum"
+
+
+def test_source_checksum_must_match_snapshot_even_when_snapshot_hash_matches(tmp_path):
+    record = load_record("preprint.json")
+    path = tmp_path / "source.txt"
+    path.write_text("synthetic test source", encoding="utf-8")
+    record.content_checksum = "0" * 64
+    snapshot = SourceSnapshot("snapshot", record.source_id, "full_local_snapshot",
+                              str(path), file_checksum(path))
+    assert validate_record(record, snapshot).state == "rejected_invalid_checksum"
+
+
 def test_snapshot_with_correct_checksum_is_valid(tmp_path):
     real_file = tmp_path / "content.txt"
     real_file.write_text("the real captured content")

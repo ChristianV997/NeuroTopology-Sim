@@ -209,8 +209,12 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
             except Exception:
                 pass
 
-    t_out = threading.Thread(target=_drain, args=(proc.stdout, out_chunks), daemon=True)
-    t_err = threading.Thread(target=_drain, args=(proc.stderr, err_chunks), daemon=True)
+    # Small fake workers used by the compatibility suite need not expose pipe
+    # attributes. Real Popen workers always do; treating absent streams as an
+    # empty capture keeps the runner's test seam honest without weakening pipe
+    # draining for actual subprocesses.
+    t_out = threading.Thread(target=_drain, args=(getattr(proc, "stdout", None), out_chunks), daemon=True)
+    t_err = threading.Thread(target=_drain, args=(getattr(proc, "stderr", None), err_chunks), daemon=True)
     t_out.start()
     t_err.start()
 
@@ -245,11 +249,11 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
         time.sleep(poll_interval_s)
 
     if timed_out:
-        _terminate_process_tree(proc)
+        _terminate_worker(proc)
 
     # Reap; if it somehow survives, force again so nothing is left running.
     if not _wait_or(proc, 10.0):
-        _terminate_process_tree(proc)
+        _terminate_worker(proc)
         _wait_or(proc, 5.0)
 
     # Killing the tree closes the inherited pipes, so the drain threads finish.
@@ -259,6 +263,19 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
     exit_code = proc.returncode if proc.returncode is not None else -1
     peak_mb = (peak_bytes / (1024 * 1024)) if peak_bytes > 0 else None
     return exit_code, timed_out, "".join(out_chunks), "".join(err_chunks), peak_mb
+
+
+def _pytest_empty_collection(exit_code: int, stdout_text: str, stderr_text: str) -> bool:
+    """Recognize pytest's optional/no-tests exit without hiding real errors.
+
+    Pytest returns 5 when no tests are collected, including a module whose
+    tests are all skipped because an optional dependency is absent. Import and
+    collection errors return different codes and remain failures.
+    """
+    if exit_code != 5:
+        return False
+    text = (stdout_text + "\n" + stderr_text).lower()
+    return "no tests ran" in text or "collected 0 items" in text or " skipped in " in text
 
 
 def _build_pytest_command(
@@ -346,6 +363,9 @@ def run_batch(
             )
             status = "timeout"
             exit_code = 124  # timed-out batches never become passes
+        elif _pytest_empty_collection(exit_code, stdout_text, stderr_text):
+            status = "skipped"
+            exit_code = 0
         elif exit_code != 0:
             status = "failed"
             print(f"[isolated] batch {batch_idx} failed with exit code {exit_code}", flush=True)
@@ -353,7 +373,7 @@ def run_batch(
     finally:
         # Cleanup must run even on exceptions: never leave a worker tree behind.
         if proc is not None and proc.poll() is None:
-            _terminate_process_tree(proc)
+            _terminate_worker(proc)
             _wait_or(proc, 5.0)
         if not keep_basetemp:
             try:
@@ -424,12 +444,14 @@ def run_batches(
     suite_duration = round(time.monotonic() - suite_start, 2)
 
     passed_count = sum(1 for b in batch_reports if b["status"] == "passed")
+    skipped_count = sum(1 for b in batch_reports if b["status"] == "skipped")
     failed_count = sum(1 for b in batch_reports if b["status"] == "failed")
     timeout_count = sum(1 for b in batch_reports if b["status"] == "timeout")
 
     print(
         f"[isolated] finished {len(files)} files in {len(batch_reports)} batches: "
-        f"{passed_count} passed, {failed_count} failed, {timeout_count} timeouts in {suite_duration}s",
+        f"{passed_count} passed, {skipped_count} skipped, {failed_count} failed, "
+        f"{timeout_count} timeouts in {suite_duration}s",
         flush=True,
     )
 
@@ -438,6 +460,7 @@ def run_batches(
             "total_files": len(files),
             "total_batches": len(batch_reports),
             "passed_batches": passed_count,
+            "skipped_batches": skipped_count,
             "failed_batches": failed_count,
             "timeout_batches": timeout_count,
             "duration_s": suite_duration,

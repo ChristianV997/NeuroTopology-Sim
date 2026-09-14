@@ -443,13 +443,17 @@ def adapt_triadic_output(envelope: Mapping[str, Any]) -> CanonicalTriadicFeature
         normalized_key = str(key).lower().replace("-", "_")
         if normalized_key in _TOPOLOGY_KEYS:
             raise TriadicContractError("topology labels cannot be attached to triadic statistical scores")
+    # The adapter validates declarations but cannot independently resolve the
+    # source or recompute a checksum from the originating recording.  Never
+    # promote a non-synthetic declaration to empirical provenance-complete at
+    # this boundary.
     canonical_provenance = {
         "source_id": source_id,
         "source_checksum": source_checksum,
         "provenance_checksum": declared_provenance_checksum,
         "data_mode": data_mode,
         "synthetic_demo": synthetic_demo,
-        "evidence_class": "synthetic_demo" if synthetic_demo else "empirical_provenance_complete",
+        "evidence_class": "synthetic_demo" if synthetic_demo else "empirical_unverified",
     }
     triadic_features = {
         "estimator": estimator,
@@ -510,6 +514,14 @@ def validate_serialized_feature_record(record: Mapping[str, Any]) -> None:
     data = _mapping(record, "feature record")
     if data.get("schema_version") != FEATURE_SCHEMA_VERSION:
         raise TriadicContractError("invalid feature record schema version")
+    synthetic_demo = data.get("synthetic_demo")
+    evidence_class = data.get("evidence_class")
+    if synthetic_demo is True and evidence_class != "synthetic_demo":
+        raise TriadicContractError("synthetic feature records must remain synthetic_demo")
+    if synthetic_demo is False and evidence_class != "empirical_unverified":
+        raise TriadicContractError("feature adapter cannot certify empirical provenance")
+    if not isinstance(synthetic_demo, bool):
+        raise TriadicContractError("feature record synthetic_demo must be boolean")
     expected = data.get("adapter_checksum")
     if not isinstance(expected, str):
         raise TriadicContractError("feature record is missing adapter_checksum")

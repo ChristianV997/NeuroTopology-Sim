@@ -303,6 +303,12 @@ def decide_from_checks(
             "Operational evidence incomplete: " + ", ".join(hit[:8])
         ]
 
+    unresolved = [check.check_id for check in checks if check.passed is None]
+    if unresolved:
+        return DecisionState.EVIDENCE_INCOMPLETE, ["unresolved_checks"], [
+            "Operational checks remain unknown: " + ", ".join(unresolved)
+        ]
+
     if bundle.get("proxy_only") is True:
         return DecisionState.PROXY_ONLY, ["proxy_only"], [
             "Cycle is proxy-only; proxy results are not causal evidence."

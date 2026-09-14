@@ -10,6 +10,7 @@ from tools.higher_order_integration.triadic_adapter import (
     INPUT_SCHEMA_VERSION,
     TriadicContractError,
     adapt_triadic_output,
+    sha256_json,
     validate_serialized_feature_record,
 )
 
@@ -118,8 +119,18 @@ def test_pr279_result_shape_is_accepted_without_importing_the_solver():
 def test_empirical_status_requires_and_preserves_explicit_provenance():
     data = adapt_triadic_output(valid_envelope(synthetic=False)).to_dict()
     assert data["synthetic_demo"] is False
-    assert data["evidence_class"] == "empirical_provenance_complete"
+    assert data["evidence_class"] == "empirical_unverified"
     assert data["provenance"]["data_mode"] == "empirical"
+
+
+def test_empirical_provenance_complete_cannot_be_self_certified():
+    data = adapt_triadic_output(valid_envelope(synthetic=False)).to_dict()
+    data["evidence_class"] = "empirical_provenance_complete"
+    data["adapter_checksum"] = sha256_json(
+        {key: value for key, value in data.items() if key != "adapter_checksum"}
+    )
+    with pytest.raises(TriadicContractError, match="cannot certify empirical provenance"):
+        validate_serialized_feature_record(data)
 
 
 def test_missing_units_sampling_rate_or_source_checksum_is_rejected():

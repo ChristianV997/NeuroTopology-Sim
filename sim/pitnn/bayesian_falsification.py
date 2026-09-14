@@ -2,9 +2,9 @@
 
 The historical implementation compared RSS values and called the resulting
 ratio a Bayes factor. That quantity is retained as a compatibility field,
-but is now explicitly labelled a proxy. A PASS verdict is intentionally
-unavailable to proxy comparisons: it requires formal marginal-likelihood
-evidence plus empirical provenance and declared controls.
+but is now explicitly labelled a proxy. This legacy consumer cannot verify
+an independently produced marginal-likelihood artifact, so it never emits a
+formal Bayes factor or PASS verdict from caller-supplied metadata.
 """
 from __future__ import annotations
 
@@ -154,6 +154,7 @@ _REASON_CODES = {
     "WILSON_COWAN_PROXY",
     "LEGACY_NUMERIC_BAYES_FACTOR_DEPRECATED",
     "PASS_GATE_SATISFIED",
+    "UNVERIFIED_PASS_REJECTED",
     "EXECUTION_ERROR",
 }
 
@@ -194,17 +195,10 @@ def _consumer_semantics(
     interpretable = bool(output.get("analysis_interpretable", output.get("evidence_eligible", validation.get("analysis_interpretable", False))))
     model_supported = bool(output.get("model_comparison_supported", True))
     controls_pass = _controls_passed(output)
-    scientific_eligibility = bool(
-        mode == "empirical"
-        and formal
-        and provenance_status == "complete"
-        and effective_n is not None
-        and effective_n >= MIN_EFFECTIVE_SAMPLE_COUNT
-        and multiplicity not in {"unknown", "missing", "invalid"}
-        and controls_pass
-        and interpretable
-        and model_supported
-    )
+    # Metadata assembled by a caller is not an admissible statistical
+    # evidence artifact.  Keep the field explicit but false; a future
+    # artifact-backed API must establish this independently.
+    scientific_eligibility = False
     reasons = list(reason_codes or output.get("reason_codes", []))
     if evidence_kind == "proxy":
         reasons.append("PROXY_ONLY")
@@ -244,7 +238,8 @@ def _consumer_semantics(
         reasons.append("WILSON_COWAN_PROXY")
     verdict = str(output.get("verdict", output.get("status", "INCONCLUSIVE")))
     if verdict == "PASS":
-        reasons.append("PASS_GATE_SATISFIED")
+        verdict = "INCONCLUSIVE"
+        reasons.append("UNVERIFIED_PASS_REJECTED")
     if verdict == "ERROR":
         reasons.append("EXECUTION_ERROR")
     reasons.append("LEGACY_NUMERIC_BAYES_FACTOR_DEPRECATED")
@@ -261,7 +256,7 @@ def _consumer_semantics(
             "verdict": verdict,
             "scientific_eligibility": scientific_eligibility,
             "proxy_value": k_value if evidence_kind == "proxy" else None,
-            "formal_bayes_factor": k_value if formal else None,
+            "formal_bayes_factor": None,
             "reason_codes": deduplicated,
             "legacy_bayes_factor_status": "deprecated_numeric_compatibility_alias",
             "legacy_bayes_factor_warning": "Do not interpret bayes_factor as formal evidence; inspect evidence_method, evidence_kind, and formal_bayes_factor.",
@@ -527,7 +522,9 @@ def classify_falsification_status(k_value: Any, *, threshold: float = PASS_THRES
     k = _finite(k_value)
     if k is None or k < 0:
         return "INCONCLUSIVE"
-    return "PASS" if k > threshold else "NOT_SUPPORTED"
+    # A scalar K plus caller-supplied metadata is not an independently
+    # validated evidence artifact.  Never emit PASS from this legacy API.
+    return "INCONCLUSIVE" if k > threshold else "NOT_SUPPORTED"
 
 
 def multiplicity_correction(p_values: Any, *, method: str = "holm") -> dict[str, Any]:

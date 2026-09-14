@@ -7,6 +7,8 @@ from .policy import (
     APPROVED_METADATA_OPERATIONS,
     DEFAULT_POLICY,
     DataAccessPolicy,
+    POLICY_REGISTRATION_REQUIREMENTS,
+    PR346_BOUNDED_ADAPTER_REGISTRATIONS,
 )
 from .scanner import (
     PolicyFinding,
@@ -25,6 +27,8 @@ __all__ = [
     "PathContainment",
     "PolicyFinding",
     "PolicyReport",
+    "POLICY_REGISTRATION_REQUIREMENTS",
+    "PR346_BOUNDED_ADAPTER_REGISTRATIONS",
     "check_path_containment",
     "scan_file",
     "scan_paths",
