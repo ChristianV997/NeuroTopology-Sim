@@ -254,15 +254,19 @@ def serialize_falsification_result(falsification_report: Mapping[str, Any]) -> d
     provenance, provenance_complete = _provenance(falsification_report, mode)
     method, method_kind = _extract_evidence_method(falsification_report, comparison)
     threshold = _finite_or_none(_report_value(falsification_report, comparison, "threshold")) or 100.0
-    formal_value = _finite_or_none(_report_value(falsification_report, comparison, "formal_bayes_factor")) if method_kind == "formal" else None
-    if formal_value is None and method_kind == "formal":
-        formal_value = _finite_or_none(falsification_report.get("k_value"))
+    # This adapter receives a caller-supplied mapping, not an independently
+    # verified likelihood artifact.  Keep a diagnostic ratio separate, but
+    # never expose it as a formal Bayes factor or use it to authorize PASS.
+    unverified_formal_value = _finite_or_none(_report_value(falsification_report, comparison, "formal_bayes_factor")) if method_kind == "formal" else None
+    if unverified_formal_value is None and method_kind == "formal":
+        unverified_formal_value = _finite_or_none(falsification_report.get("k_value"))
+    formal_value = None
     proxy_value = None
     if method_kind == "proxy":
         proxy_value = _finite_or_none(_report_value(falsification_report, comparison, "proxy_bayes_factor", "proxy_value", "k_value", "bayes_factor"))
     legacy_value = _finite_or_none(_report_value(falsification_report, comparison, "bayes_factor"))
     if legacy_value is None:
-        legacy_value = formal_value if method_kind == "formal" else proxy_value
+        legacy_value = unverified_formal_value if method_kind == "formal" else proxy_value
     sample_count = _positive_int(_report_value(falsification_report, comparison, "sample_count", "n"))
     effective = _positive_int(_report_value(falsification_report, comparison, "effective_sample_count", "n_eff"))
     controls, controls_passed = _control_status(falsification_report)
@@ -285,13 +289,8 @@ def serialize_falsification_result(falsification_report: Mapping[str, Any]) -> d
     incoming_verdict = str(falsification_report.get("verdict", falsification_report.get("status", "INCONCLUSIVE"))).upper()
     if incoming_verdict not in {"PASS", "NOT_SUPPORTED", "INCONCLUSIVE", "ERROR"}:
         incoming_verdict = "ERROR"
-    all_formal_gates = bool(
-        method_kind == "formal" and formal_value is not None and formal_value > 100.0
-        and not synthetic and mode == "empirical" and provenance_complete
-        and effective is not None and effective >= 8
-        and multiplicity not in {"unknown", "missing", "invalid", "not_provided"}
-        and controls_passed and bool(interpretable) and model_status == "formal"
-    )
+    # No PASS route exists until an artifact-backed verifier is wired in.
+    all_formal_gates = False
     if incoming_verdict == "ERROR":
         verdict = "ERROR"
     elif synthetic:
@@ -304,19 +303,12 @@ def serialize_falsification_result(falsification_report: Mapping[str, Any]) -> d
         # preserved because a naked numeric field is not interpretable as
         # formal evidence.
         verdict = "NOT_SUPPORTED" if incoming_verdict == "NOT_SUPPORTED" and mode == "unknown" else "INCONCLUSIVE"
-    elif formal_value is None:
+    elif unverified_formal_value is None:
         verdict = "INCONCLUSIVE"
-    elif formal_value <= 100.0:
+    elif unverified_formal_value <= 100.0:
         verdict = "NOT_SUPPORTED"
-    elif all_formal_gates:
-        verdict = "PASS"
     else:
-        missing_gate = (
-            not provenance_complete or effective is None
-            or multiplicity in {"unknown", "missing", "invalid", "not_provided"}
-            or not controls_passed or not bool(interpretable) or model_status != "formal"
-        )
-        verdict = "INCONCLUSIVE" if missing_gate else "NOT_SUPPORTED"
+        verdict = "INCONCLUSIVE"
     if incoming_verdict == "PASS" and verdict != "PASS" and synthetic:
         falsification_report = dict(falsification_report)
         falsification_report.setdefault("reason_codes", []).append("SYNTHETIC_PASS_REJECTED")
@@ -334,13 +326,14 @@ def serialize_falsification_result(falsification_report: Mapping[str, Any]) -> d
         "semantic_schema": "PITNN.FalsificationConsumer.v1",
         "evidence_method": method,
         "proxy_bayes_factor": proxy_value,
-        "formal_bayes_factor": formal_value,
+        "formal_bayes_factor": None,
+        "unverified_formal_ratio": unverified_formal_value,
         "bayes_factor_legacy_compatibility": {
             "value": legacy_value,
             "status": "deprecated_numeric_compatibility_alias",
             "deprecated": True,
             "interpretation": "formal" if method_kind == "formal" else "proxy" if method_kind == "proxy" else "unknown",
-            "warning": "Do not interpret bayes_factor as formal evidence; inspect evidence_method and formal_bayes_factor.",
+            "warning": "Do not interpret bayes_factor or unverified_formal_ratio as formal evidence; formal_bayes_factor remains null until independent artifact verification.",
         },
         "verdict": verdict,
         "scientific_eligibility": all_formal_gates,
@@ -358,7 +351,7 @@ def serialize_falsification_result(falsification_report: Mapping[str, Any]) -> d
         "is_proxy": method_kind == "proxy",
         "proxy_value": proxy_value,
         "legacy_bayes_factor_status": "deprecated_numeric_compatibility_alias",
-        "legacy_bayes_factor_warning": "Do not interpret bayes_factor as formal evidence; inspect evidence_method, evidence_kind, and formal_bayes_factor.",
+        "legacy_bayes_factor_warning": "Do not interpret bayes_factor or unverified_formal_ratio as formal evidence; formal_bayes_factor remains null until independent artifact verification.",
         "data_status": mode,
         "provenance_status": provenance.get("status", "missing_or_incomplete"),
         "model_comparison_supported": model_status == "formal" or (method_kind == "proxy" and model_status == "proxy_regression"),

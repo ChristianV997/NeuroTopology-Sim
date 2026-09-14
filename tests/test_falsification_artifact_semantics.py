@@ -44,13 +44,14 @@ def _formal_report(**overrides):
     return report
 
 
-def test_formal_evidence_can_pass_only_with_complete_gates():
+def test_caller_supplied_formal_metadata_cannot_pass():
     payload = serialize_falsification_result(_formal_report())
     assert payload["evidence_method"] == "formal_marginal_likelihood"
-    assert payload["formal_bayes_factor"] == 101.0
+    assert payload["formal_bayes_factor"] is None
+    assert payload["unverified_formal_ratio"] == 101.0
     assert payload["proxy_bayes_factor"] is None
-    assert payload["scientific_eligibility"] is True
-    assert payload["verdict"] == "PASS"
+    assert payload["scientific_eligibility"] is False
+    assert payload["verdict"] == "INCONCLUSIVE"
     assert payload["synthetic_demo"] is False
 
 
@@ -75,7 +76,8 @@ def test_synthetic_proxy_pass_is_rejected_and_value_is_preserved():
 
 def test_empirical_formal_evidence_with_incomplete_provenance_is_inconclusive():
     payload = serialize_falsification_result(_formal_report(empirical_provenance={}))
-    assert payload["formal_bayes_factor"] == 101.0
+    assert payload["formal_bayes_factor"] is None
+    assert payload["unverified_formal_ratio"] == 101.0
     assert payload["empirical_provenance"]["status"] == "incomplete"
     assert payload["verdict"] == "INCONCLUSIVE"
     assert payload["scientific_eligibility"] is False
