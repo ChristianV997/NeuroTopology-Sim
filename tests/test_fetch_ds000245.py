@@ -1,76 +1,85 @@
-"""Offline test for tools/fetch_ds000245.py's skip-if-already-downloaded logic.
+"""Offline tests for the bounded ds000245 access seam.
 
-Network access itself is not tested here (that would require live S3); this
-covers the one piece of decision logic worth protecting: a file already present
-at the correct size must not be re-downloaded.
+These tests use the canonical in-memory transfer adapter.  They intentionally
+do not enumerate OpenNeuro or materialize a complete NIfTI object.
 """
 from __future__ import annotations
 
-from pathlib import Path
+import hashlib
 
-from tools.fetch_ds000245 import fetch
+import pytest
 
-
-class _FakePaginator:
-    def __init__(self, keys_and_sizes: list[tuple[str, int]]) -> None:
-        self._items = keys_and_sizes
-
-    def paginate(self, **_kwargs):
-        yield {"Contents": [{"Key": k, "Size": s} for k, s in self._items]}
+from tools.data_access.chunk_cache import ChunkRange, MockTransferAdapter
+from tools.fetch_ds000245 import BoundedAccessError, BoundedObjectRequest, fetch
 
 
-class _FakeClient:
-    def __init__(self, keys_and_sizes: list[tuple[str, int]]) -> None:
-        self._items = keys_and_sizes
-        self.download_calls: list[str] = []
-
-    def get_paginator(self, _name: str) -> _FakePaginator:
-        return _FakePaginator(self._items)
-
-    def download_file(self, _bucket: str, key: str, dest: str) -> None:
-        self.download_calls.append(key)
-        size = dict(self._items)[key]
-        Path(dest).write_bytes(b"\0" * size)
-
-
-def test_fetch_skips_already_present_file_with_matching_size(tmp_path, monkeypatch):
-    import tools.fetch_ds000245 as mod
-
-    key = "ds000245/sub-CTL01/func/sub-CTL01_task-rest_bold.nii.gz"
-    rel = "sub-CTL01/func/sub-CTL01_task-rest_bold.nii.gz"
-    size = 128
-    existing = tmp_path / rel
-    existing.parent.mkdir(parents=True)
-    existing.write_bytes(b"\0" * size)
-
-    client = _FakeClient([(key, size)])
-    monkeypatch.setattr(mod, "_s3_client", lambda: client)
-
-    result = fetch(tmp_path)
-    assert result["skipped"] == [key]
-    assert result["downloaded"] == []
-    assert client.download_calls == []
+def _request(tmp_path, payload: bytes = b"0123456789", *, allow_network: bool = True, chunk_sha256: str | None = None):
+    source_sha256 = hashlib.sha256(payload).hexdigest()
+    return BoundedObjectRequest(
+        dataset_id="ds000245",
+        bids_path="sub-CTL01/func/sub-CTL01_task-rest_bold.nii.gz",
+        source_uri="mock://ds000245/sub-CTL01/bold",
+        expected_size_bytes=len(payload),
+        source_sha256=source_sha256,
+        cache_root=tmp_path / "cache",
+        output_root=tmp_path / "outputs",
+        max_cache_bytes=64,
+        chunk_range=ChunkRange(0, 3, total_file_size=len(payload)),
+        final_consumer="ds000245-test",
+        eviction_metadata={
+            "consumer_id": "ds000245-test",
+            "final_consumer": "ds000245-test",
+            "delete_after_final_consumer": True,
+        },
+        allow_network=allow_network,
+        chunk_sha256=chunk_sha256 or hashlib.sha256(payload[:4]).hexdigest(),
+    )
 
 
-def test_fetch_downloads_missing_file(tmp_path, monkeypatch):
-    import tools.fetch_ds000245 as mod
+def test_bounded_fetch_uses_fake_remote_and_evicts_after_consume(tmp_path):
+    payload = b"0123456789"
+    request = _request(tmp_path, payload)
+    adapter = MockTransferAdapter()
+    adapter.register_remote_object(request.source_uri, payload)
+    consumed: list[bytes] = []
 
-    key = "ds000245/sub-CTL02/func/sub-CTL02_task-rest_bold.nii.gz"
-    client = _FakeClient([(key, 256)])
-    monkeypatch.setattr(mod, "_s3_client", lambda: client)
+    result = fetch(
+        [request],
+        transfer_adapter=adapter,
+        consume=lambda path: consumed.append(path.read_bytes()),
+    )
 
-    result = fetch(tmp_path)
-    assert result["downloaded"] == [key]
-    assert client.download_calls == [key]
-    assert (tmp_path / "sub-CTL02/func/sub-CTL02_task-rest_bold.nii.gz").stat().st_size == 256
+    assert result["results"][0]["success"] is True
+    assert result["results"][0]["checksum_verified"] is True
+    assert result["results"][0]["cleanup"]["status"] == "deleted"
+    assert consumed == [payload[:4]]
+    assert list((tmp_path / "cache").rglob("*.part*")) == []
 
 
-def test_fetch_respects_limit(tmp_path, monkeypatch):
-    import tools.fetch_ds000245 as mod
+def test_bounded_fetch_is_network_disabled_by_default(tmp_path):
+    payload = b"0123456789"
+    request = _request(tmp_path, payload, allow_network=False)
+    adapter = MockTransferAdapter()
+    adapter.register_remote_object(request.source_uri, payload)
 
-    items = [(f"ds000245/sub-CTL{i:02d}/func/sub-CTL{i:02d}_task-rest_bold.nii.gz", 64) for i in range(1, 6)]
-    client = _FakeClient(items)
-    monkeypatch.setattr(mod, "_s3_client", lambda: client)
+    result = fetch([request], transfer_adapter=adapter)
 
-    result = fetch(tmp_path, limit=2)
-    assert len(result["downloaded"]) == 2
+    assert result["results"][0]["success"] is False
+    assert result["results"][0]["error_code"] == "NETWORK_DISABLED"
+
+
+def test_checksum_mismatch_does_not_complete(tmp_path):
+    payload = b"0123456789"
+    request = _request(tmp_path, payload, chunk_sha256="0" * 64)
+    adapter = MockTransferAdapter()
+    adapter.register_remote_object(request.source_uri, payload)
+
+    result = fetch([request], transfer_adapter=adapter)
+
+    assert result["results"][0]["success"] is False
+    assert result["results"][0]["error_code"] == "CHECKSUM_MISMATCH"
+
+
+def test_legacy_full_dataset_arguments_are_rejected(tmp_path):
+    with pytest.raises(BoundedAccessError, match="full-dataset"):
+        fetch(tmp_path / "data")
