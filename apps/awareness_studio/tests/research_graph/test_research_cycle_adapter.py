@@ -137,6 +137,17 @@ def test_claim_declaring_descriptive_empirical_without_verification_is_flagged(l
     for verification at all -- an unverified empirical claim would have
     passed through completely unflagged."""
     cycle_id = ledger.create_cycle("cycle-claim-empirical")
+    source = SourceSnapshot(
+        snapshot_id="external-evidence-ref",
+        cycle_id=cycle_id,
+        source_uri="urn:test:external-evidence-ref",
+        source_sha256="d" * 64,
+        data_mode="literature_metadata",
+        evidence_class=EvidenceClass.HYPOTHESIS,
+        claim_scope="test",
+        scientific_limitations=("none stated",),
+    )
+    ledger.append_record(cycle_id, source)
     claim = Claim(
         claim_id="claim-empirical-unverified",
         cycle_id=cycle_id,
@@ -145,6 +156,7 @@ def test_claim_declaring_descriptive_empirical_without_verification_is_flagged(l
         evidence_class=EvidenceClass.DESCRIPTIVE_EMPIRICAL,
         claim_scope="test",
         scientific_limitations=("none stated",),
+        parent_ids=("external-evidence-ref",),
     )
     ledger.append_record(cycle_id, claim)
 
