@@ -28,7 +28,7 @@ TERMINAL = frozenset(
         "terminal",
     }
 )
-SYNTHETIC = frozenset({"synthetic", "synthetic_simulation", "computational_model", "surrogate_baseline"})
+SYNTHETIC = frozenset({"synthetic", "synthetic_demo_only", "synthetic_simulation", "computational_model", "surrogate_baseline"})
 PROXY = frozenset({"proxy", "proxy_bayes_factor", "proxy_only"})
 EMPIRICAL = frozenset(
     {"empirical", "empirical_dataset", "formal", "preregistered_empirical", "empirically_constrained"}
