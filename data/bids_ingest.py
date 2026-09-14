@@ -9,8 +9,10 @@ Two responsibilities, kept explicit:
 2. `read_window_signal(path, start_s, end_s, ...)` — open a recording with MNE and return the
    REAL samples for one time window as a 1-D array, for feature extraction.
 
-Provenance is explicit: every record carries `provenance="real_bids"`. Synthetic paths live
-elsewhere and are labelled `synthetic_proxy`. This module never fabricates signal.
+Provenance is explicit: records discovered through validated mne-bids paths
+carry `provenance="real_bids"`; the defensive filesystem fallback is labelled
+`local_bids_unvalidated`. Synthetic paths live elsewhere and are labelled
+`synthetic_proxy`. This module never fabricates signal.
 """
 from __future__ import annotations
 
@@ -49,7 +51,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
     if not root_path.exists():
         raise FileNotFoundError(
             f"BIDS root does not exist: {root}. Provide a local ds005620-style directory "
-            f"(e.g. via `eegdash` cache or `aws s3 sync --no-sign-request s3://openneuro.org/ds005620`)."
+            "or an explicitly planned bounded-access materialization."
         )
 
     records: list[BIDSEEGRecord] = []
@@ -72,7 +74,10 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                     run_id=bp.run,
                     acq_label=getattr(bp, "acquisition", None),
                     extension=fpath.suffix.lower(),
-                    provenance="real_bids",
+                    # A filesystem glob is useful for a non-standard local
+                    # tree, but it has not been validated by mne-bids. Keep
+                    # that distinction visible to downstream evidence gates.
+                    provenance="local_bids_unvalidated",
                     is_eeg_candidate=True,
                 )
             )
@@ -132,7 +137,11 @@ def inventory_from_records(dataset_id: str, records: list[BIDSEEGRecord]) -> dic
         "n_files": len(records),
         "n_subjects": len(subjects),
         "eeg_candidates": [asdict(r) for r in records],
-        "provenance": "real_bids",
+        "provenance": (
+            "real_bids"
+            if {r.provenance for r in records} == {"real_bids"}
+            else "unvalidated_or_mixed"
+        ),
     }
 
 

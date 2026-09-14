@@ -394,8 +394,14 @@ def _unsafe_control_findings(
         return
     func_name = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id if isinstance(node.func, ast.Name) else ""
     function_lower = (function or "").lower()
+    # A local cache helper is not itself a remote transfer.  Including the
+    # generic word ``cache`` here caused ordinary MNE file-handle caches to be
+    # reported as missing remote-access controls because every local ``get``
+    # call inherited the enclosing function name.  Remote cache adapters still
+    # match through their explicit transfer/fetch/materialization names or the
+    # concrete remote call names below.
     transfer_like = func_name in {"download_file", "download_fileobj", "get_object", "copyfileobj"} or any(
-        token in function_lower for token in ("download", "fetch", "transfer", "material", "sync", "cache")
+        token in function_lower for token in ("download", "fetch", "transfer", "material", "sync")
     )
     if not transfer_like:
         return

@@ -313,6 +313,23 @@ def test_dandi_lazy_reader_and_manifest_metadata_are_explicitly_allowlisted():
     assert findings == []
 
 
+def test_local_cache_helper_is_not_misclassified_as_remote_transfer(tmp_path):
+    local = tmp_path / "local_cache.py"
+    local.write_text(
+        """
+def read_raw_cached(path, cache):
+    cached = cache.get(path)
+    if cached is not None:
+        return cached
+    value = open(path, 'rb').read()
+    cache[path] = value
+    return value
+""",
+        encoding="utf-8",
+    )
+    assert scan_file(local, repository_root=tmp_path) == []
+
+
 def test_shell_entrypoint_patterns_are_scanned_without_execution(tmp_path):
     shell = tmp_path / "legacy.sh"
     shell.write_text("aws s3 sync s3://bucket/data ./data\ncurl https://example.invalid/data\n", encoding="utf-8")

@@ -76,6 +76,34 @@ def build_and_extract_real_windows(
     window_seconds: float = 10.0,
     max_windows_per_state: int = 10,
     max_channels: int | None = 16,
+    *,
+    network_permission: bool = False,
+    offline: bool = False,
+) -> tuple[list[LevelMWindowRow], list[LevelTRealTopologyRow]]:
+    """Open one bounded remote NWB source and close it after extraction.
+
+    Remote access is deliberately fail-closed.  The caller must explicitly
+    authorize network access; the underlying extractor still reads only bounded
+    windows and never materializes the recording.
+    """
+    nwb = open_nwb_lazy(blob_url, network_permission=network_permission, offline=offline)
+    try:
+        return _build_and_extract_real_windows_open(
+            nwb, blob_url, subject_id, window_seconds, max_windows_per_state, max_channels
+        )
+    finally:
+        close = getattr(nwb, "close", None)
+        if callable(close):
+            close()
+
+
+def _build_and_extract_real_windows_open(
+    nwb,
+    blob_url: str,
+    subject_id: str,
+    window_seconds: float = 10.0,
+    max_windows_per_state: int = 10,
+    max_channels: int | None = 16,
 ) -> tuple[list[LevelMWindowRow], list[LevelTRealTopologyRow]]:
     """Stream one NWB blob, window awake/anesthetized states, compute BOTH
     Level-M features and Level-T topology per window in one read pass.
@@ -84,7 +112,6 @@ def build_and_extract_real_windows(
     `analyze_cohort_stats.py` can join them). `blob_url` is a DANDI S3 blob URL;
     nothing is downloaded to disk.
     """
-    nwb = open_nwb_lazy(blob_url)
     info = nwb_eeg_info(nwb)
     epochs = nwb_state_epochs(nwb)
     intervals = _state_intervals(epochs, info["t_start_s"])
