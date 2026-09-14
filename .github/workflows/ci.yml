@@ -29,6 +29,10 @@ jobs:
       - name: Validate governance specs
         run: python -m governance.validate
 
+      - name: Check claim guardrails (advisory)
+        run: python tools/check_claim_guardrails.py --scan-mode repo --root . --json-out outputs/claim_guardrails_check.json
+        continue-on-error: true
+
   test:
     name: "Python ${{ matrix.python-version }} tests"
     runs-on: ubuntu-latest
