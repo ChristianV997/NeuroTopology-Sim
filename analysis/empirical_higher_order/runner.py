@@ -48,7 +48,7 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, Any]:
     return {"rows": int(len(y)), "log_loss": log_loss, "brier_score": brier, "auroc": auroc, "auprc": auprc, "calibration_error": calibration}
 
 
-def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], list[str]]:
+def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], np.ndarray]:
     paths = record["paths"]
     arrays: dict[str, np.ndarray] = {}
     for family in FEATURE_FAMILIES[:-1]:
@@ -68,7 +68,7 @@ def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, dic
         raise ValueError("target must contain finite binary labels")
     if np.any(timestamps[1:] < timestamps[:-1]):
         raise ValueError("timestamps are not monotonic")
-    return np.column_stack([arrays["psd"]]), target.astype(float), arrays, []
+    return np.column_stack([arrays["psd"]]), target.astype(float), arrays, timestamps
 
 
 def _feature_matrix(arrays: dict[str, np.ndarray], feature_set: str) -> np.ndarray:
@@ -131,11 +131,17 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
             physiology = raw.get("physiology") if isinstance(raw.get("physiology"), dict) else {}
             if not physiology.get("respiration"):
                 missing_resp += 1
-            _, target, arrays, _ = _load_recording(record)
-            timestamps = np.asarray(_load_array(record["paths"]["timestamps"]), dtype=float).reshape(-1) if record["paths"]["timestamps"] else np.arange(len(target), dtype=float)
+            _, target, arrays, timestamps = _load_recording(record)
             target_times = raw.get("target_timestamps")
-            if isinstance(target_times, list) and any(float(x) < float(y) for x, y in zip(timestamps, target_times)):
-                raise ValueError("LEAKAGE_DETECTED: future-window feature precedes target timestamp")
+            if not isinstance(target_times, (list, tuple)):
+                raise ValueError("TEMPORAL_LINEAGE_REQUIRED: explicit target_timestamps are required for forecasting")
+            target_times_array = np.asarray(target_times, dtype=float).reshape(-1)
+            if target_times_array.shape != timestamps.shape or not np.all(np.isfinite(target_times_array)):
+                raise ValueError("TEMPORAL_LINEAGE_INVALID: target_timestamps must be finite and row-aligned")
+            if np.any(target_times_array[1:] < target_times_array[:-1]):
+                raise ValueError("TEMPORAL_LINEAGE_INVALID: target_timestamps are not monotonic")
+            if np.any(timestamps > target_times_array):
+                raise ValueError("LEAKAGE_DETECTED: feature timestamp occurs after target timestamp")
             rows.append((str(raw["subject_id"]), arrays, target, float(np.min(timestamps))))
     except (OSError, ValueError, KeyError) as exc:
         base["status"] = "INCONCLUSIVE"

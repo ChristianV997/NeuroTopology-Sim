@@ -168,3 +168,78 @@ def test_missing_validation_verdict_is_not_promoted_to_pass():
     assert node.status == NodeStatus.REVIEW_REQUIRED.value
     assert node.evidence_class == EvidenceClass.UNKNOWN.value
     assert not any(edge.source_id == "val-missing" and edge.edge_type == EdgeType.SUPPORTS.value for edge in graph.edges)
+
+
+def test_sources_require_explicit_verified_tier_before_empirical_classification():
+    graph = load_from_dict({
+        "sources": [
+            {
+                "source_id": "src-unverified",
+                "title": "Unverified Source",
+                "source_type": "journal_article",
+                "evidence_tier": "T3_unverified_claimed",
+                "verification_status": "unverified",
+            },
+            {
+                "source_id": "src-verified",
+                "title": "Verified Source",
+                "source_type": "journal_article",
+                "evidence_tier": "T1_verified_primary",
+                "verification_status": "verified",
+            },
+        ],
+    })
+
+    unverified = graph.get_node("src-unverified")
+    verified = graph.get_node("src-verified")
+    assert unverified is not None
+    assert verified is not None
+    assert unverified.evidence_class == EvidenceClass.UNKNOWN.value
+    assert unverified.status == NodeStatus.REVIEW_REQUIRED.value
+    assert SafetyLabel.REVIEW_REQUIRED.value in unverified.safety_labels
+    assert verified.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert verified.status == NodeStatus.ACTIVE.value
+
+
+def test_pass_validation_stays_pending_without_independent_adjudication():
+    graph = load_from_dict({
+        "validations": [
+            {
+                "validation_id": "val-self-attested-pass",
+                "hypothesis_id": "hyp-001",
+                "verdict": "PASS",
+                "data_mode": "empirical",
+                "evidence_class": "formal",
+                "preregistered": True,
+                "held_out_split_locked": True,
+                "provenance_status": "complete",
+                "artifact_lineage_complete": True,
+                "labels_verified": True,
+                "null_models_complete": True,
+                "multiplicity_corrected": True,
+                "human_review_gate": {"passed": True, "reviewer": "fixture-reviewer"},
+            },
+            {
+                "validation_id": "val-synthetic-pass",
+                "hypothesis_id": "hyp-001",
+                "verdict": "PASS",
+                "data_mode": "synthetic",
+                "is_synthetic": True,
+            },
+        ],
+    })
+
+    for validation_id in ("val-self-attested-pass", "val-synthetic-pass"):
+        node = graph.get_node(validation_id)
+        assert node is not None
+        assert node.status == NodeStatus.REVIEW_REQUIRED.value
+        assert SafetyLabel.REVIEW_REQUIRED.value in node.safety_labels
+        assert not any(
+            edge.source_id == validation_id and edge.edge_type == EdgeType.SUPPORTS.value
+            for edge in graph.edges
+        )
+
+    synthetic = graph.get_node("val-synthetic-pass")
+    assert synthetic is not None
+    assert synthetic.evidence_class == EvidenceClass.SYNTHETIC.value
+    assert SafetyLabel.SYNTHETIC_ONLY.value in synthetic.safety_labels

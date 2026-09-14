@@ -38,6 +38,35 @@ Approved adapters and metadata operations are declared in
 narrow. Reviewed exceptions must name an exact path, rule, reviewer, and
 justification; a comment or a 40-character hash is not an exception.
 
+## PR #346 registration boundary
+
+The bounded S3 migration in PR #346 is registered by exact production-relative
+path and complete enclosing symbol. The registration is declarative and does
+not make the current legacy implementation compliant while that migration is
+unmerged:
+
+| Path | Qualified symbols | Control profile |
+| --- | --- | --- |
+| `validation/s3_fetchers.py` | `BoundedS3ObjectStore.fetch_object`, `BoundedS3ObjectStore.read_text_metadata` | manifest-first S3 store |
+| `tools/stream_process_ds005917.py` | `download_bold`, `load_mdd_complete_subjects` | delegated bounded S3 wrapper |
+| `tools/stream_process_ds006644.py` | `download_subject_bold`, `load_group_labels` | delegated bounded S3 wrapper |
+
+For the S3 store, structural validation requires an explicit
+`allow_network=False` default, `head_object`/`ContentLength` object sizing,
+`Range` on every data `get_object`, checksum state that can remain explicitly
+unknown, atomic partial staging, a cache budget, observable eviction, and
+output-root containment. Delegated wrappers must expose the same network
+opt-in plus explicit cache and chunk bounds and must call the registered
+`BoundedS3ObjectStore` methods. A missing control emits a finding even when
+the name resembles an approved adapter.
+
+Qualified matching matters: `OtherStore.fetch_object` and an unrelated
+function in `validation/s3_fetchers.py` are not approved by a registration for
+`BoundedS3ObjectStore.fetch_object`. Direct HTTP imports are not a path-level
+exemption; the retrieval call is checked in its own enclosing symbol. This
+prevents an approved comment, basename collision, or filename-only suppression
+from hiding a full-object transfer.
+
 ## Rejected patterns
 
 The static scanner reports exact file and line for direct `openneuro download`,
@@ -71,6 +100,12 @@ repository still contains legacy direct readers and transfer paths, including
 streaming/base-runner and older OpenNeuro scripts. This task does not modify
 those callers. The audit must therefore remain blocked until each finding is
 reviewed and migrated or receives a recorded exception.
+
+The PR #346 caller and S3 implementation paths are likewise outside this
+policy-only change. On a checkout where those callers are still legacy, the
+repository-wide audit must report their findings. A clean policy-module audit
+or a registration declaration is not evidence that an unmerged caller has
+been migrated.
 
 The DANDI NWB reader is an explicit exception to the generic remote-reader
 rules: `resolve_asset_blobs` is metadata-only for the published assets

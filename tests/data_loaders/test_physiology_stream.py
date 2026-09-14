@@ -32,10 +32,21 @@ from shared.data_loaders.physiology_types import (
 )
 from shared.data_loaders.physiology_stream import (
     PhysiologyStreamReader,
+    _resample_channel_causal,
     classify_channel_type,
     compute_cardiac_features,
     compute_respiratory_features,
 )
+
+
+def test_causal_resampling_never_reads_a_future_sample():
+    source = np.array([0.0, 10.0])
+    changed_future = np.array([0.0, 100.0])
+    first, metadata = _resample_channel_causal(source, 2.0, 4.0)
+    second, _ = _resample_channel_causal(changed_future, 2.0, 4.0)
+    np.testing.assert_array_equal(first, np.array([0.0, 0.0, 10.0, 10.0]))
+    np.testing.assert_array_equal(first[:2], second[:2])
+    assert metadata.method == "causal_zero_order_hold"
 
 
 @pytest.fixture(scope="module")

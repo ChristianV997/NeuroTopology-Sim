@@ -79,7 +79,7 @@ data, complete provenance, passing controls, and known multiplicity.
 10. The validator must never rewrite scientific results. Findings are
     audit metadata only.
 
-## Allowed versus prohibited language
+## Unsafe examples
 
 Allowed when scoped correctly:
 

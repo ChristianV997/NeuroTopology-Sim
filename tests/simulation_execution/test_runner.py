@@ -38,6 +38,32 @@ def test_runner_defaults_are_finitely_bounded():
     assert config.default_timeout_s > 0
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"default_timeout_s": 0},
+        {"stdout_limit": 0},
+        {"stderr_limit": -1},
+        {"runtime_budget_s": 0},
+        {"memory_budget_bytes": -1},
+        {"disk_budget_bytes": 0},
+    ],
+)
+def test_runner_rejects_nonpositive_resource_bounds(tmp_path, kwargs):
+    with pytest.raises(ValueError, match="positive"):
+        RunnerConfig(output_root=tmp_path, allowed_commands={}, **kwargs)
+
+
+def test_work_unit_rejects_ambiguous_or_escaping_contracts(tmp_path):
+    command = _command("pass")
+    with pytest.raises(ValueError, match="relative contained"):
+        WorkUnit.make("unit", "fixture", command, tmp_path / "out", expected_outputs=("../escape",))
+    with pytest.raises(ValueError, match="cannot include"):
+        WorkUnit.make("unit", "fixture", command, tmp_path / "out", dependencies=("unit",))
+    with pytest.raises(ValueError, match="positive"):
+        WorkUnit.make("unit", "fixture", command, tmp_path / "out", timeout_s=0)
+
+
 def _writer(code_suffix: str = "") -> tuple[str, ...]:
     code = "from pathlib import Path; import json; p=Path('result.json'); p.write_text(json.dumps({'value': 7}), encoding='utf-8'); Path('unit_manifest.json').write_text(json.dumps({'work_unit_id':'unit-1','complete':True}), encoding='utf-8')" + code_suffix
     return _command(code)
@@ -134,6 +160,45 @@ def test_stdout_is_truncated(tmp_path):
     report = run_plan([_unit(tmp_path / "out", command)], _config(tmp_path / "out", command, stdout_limit=100))
     unit = report["units"][0]
     assert unit["state"] == ExecutionState.PASS.value and unit["stdout_truncated"] is True
+    assert len(unit["stdout"].encode("utf-8")) <= 100
+    assert unit["resource_telemetry"]["stdout_observed_bytes"] > 100
+
+
+def test_stdout_and_stderr_are_drained_without_unbounded_spool(tmp_path):
+    command = _command(
+        "import sys; print('x'*200000); print('y'*200000, file=sys.stderr); "
+        "from pathlib import Path; Path('result.json').write_text('{}'); "
+        "Path('unit_manifest.json').write_text('{\"work_unit_id\":\"unit-1\",\"complete\":true}')"
+    )
+    report = run_plan(
+        [_unit(tmp_path / "out", command)],
+        _config(tmp_path / "out", command, stdout_limit=128, stderr_limit=96),
+    )
+    unit = report["units"][0]
+    assert unit["state"] == ExecutionState.PASS.value
+    assert len(unit["stdout"].encode("utf-8")) <= 128
+    assert len(unit["stderr"].encode("utf-8")) <= 96
+    assert unit["stdout_truncated"] is unit["stderr_truncated"] is True
+    assert unit["resource_telemetry"]["stdout_observed_bytes"] > 200_000
+    assert unit["resource_telemetry"]["stderr_observed_bytes"] > 200_000
+
+
+def test_disk_budget_is_enforced_while_process_is_running(tmp_path):
+    command = _command(
+        "import time; from pathlib import Path; p=Path('runaway.bin'); f=p.open('wb'); "
+        "[(f.write(b'x'*65536), f.flush(), time.sleep(.02)) for _ in range(1000)]"
+    )
+    root = tmp_path / "out"
+    report = run_plan(
+        [_unit(root, command)],
+        _config(root, command, disk_budget_bytes=150_000, default_timeout_s=10),
+    )
+    unit = report["units"][0]
+    assert unit["state"] == ExecutionState.FAILED.value
+    assert "process group terminated" in unit["limitations"][0]
+    assert unit["resource_telemetry"]["disk_peak_observed_bytes"] > 150_000
+    assert unit["resource_telemetry"]["elapsed_s"] < 5
+    assert all(value is None for value in unit["checksums"].values())
 
 
 def test_network_disabled_by_default(tmp_path):

@@ -35,7 +35,7 @@ def test_formal_result_is_separate_and_cannot_pass_without_empirical_metadata():
     assert result["evidence_kind"] == "formal"
     assert result["is_formal"] is True
     assert result["is_proxy"] is False
-    assert result["formal_bayes_factor"] is not None
+    assert result["formal_bayes_factor"] is None
     assert result["proxy_value"] is None
     assert classify_falsification_status(result) == "INCONCLUSIVE"
 
@@ -55,8 +55,8 @@ def test_formal_mapping_can_pass_only_when_all_metadata_is_present():
         }
     )
     enriched = serialize_falsification_result(result)
-    assert enriched["scientific_eligibility"] is True
-    assert classify_falsification_status(enriched) == "PASS"
+    assert enriched["scientific_eligibility"] is False
+    assert classify_falsification_status(enriched) == "INCONCLUSIVE"
 
 
 def test_invalid_data_has_null_k_and_reason_codes():

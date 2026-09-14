@@ -27,7 +27,7 @@ def _pass_kwargs():
 def test_absolute_gate_is_strict_at_and_around_100():
     assert classify_falsification_status(99.999, **_pass_kwargs()) == "NOT_SUPPORTED"
     assert classify_falsification_status(100.0, **_pass_kwargs()) == "NOT_SUPPORTED"
-    assert classify_falsification_status(100.001, **_pass_kwargs()) == "PASS"
+    assert classify_falsification_status(100.001, **_pass_kwargs()) == "INCONCLUSIVE"
 
 
 def test_invalid_or_missing_k_is_inconclusive():

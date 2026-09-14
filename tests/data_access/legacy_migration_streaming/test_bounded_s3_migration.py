@@ -1,0 +1,267 @@
+"""Contract tests for non-OpenNeuro bounded streaming migration."""
+
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+from pathlib import Path
+
+import pytest
+
+from validation.fast_tr_fixtures import fetch_hcp_ya_subject, fetch_nki_rs_subject
+from validation.s3_fetchers import (
+    BoundedAccessError,
+    BoundedS3ObjectStore,
+    ChecksumMismatchError,
+    POLICY_REGISTRATION_REQUIREMENTS,
+)
+from tools.data_access.policy_enforcement.scanner import scan_file
+
+
+class FakeS3:
+    def __init__(self, objects: dict[tuple[str, str], bytes], *, checksums: bool = True) -> None:
+        self.objects = objects
+        self.checksums = checksums
+        self.calls: list[tuple[str, str, str | None]] = []
+        self.failures = 0
+        self.permanent_failure_on_call: int | None = None
+
+    def head_object(self, *, Bucket: str, Key: str) -> dict:
+        self.calls.append(("head", Bucket, Key))
+        data = self.objects[(Bucket, Key)]
+        result = {"ContentLength": len(data)}
+        if self.checksums:
+            result["ETag"] = hashlib.sha256(data).hexdigest()
+        return result
+
+    def get_object(self, *, Bucket: str, Key: str, Range: str) -> dict:
+        self.calls.append(("range", Bucket, Range))
+        call_number = sum(1 for call in self.calls if call[0] == "range")
+        if self.failures:
+            self.failures -= 1
+            raise TimeoutError("fixture timeout")
+        if self.permanent_failure_on_call == call_number:
+            raise ValueError("fixture transfer failure")
+        start, end = (int(value) for value in Range.removeprefix("bytes=").split("-"))
+        return {"Body": io.BytesIO(self.objects[(Bucket, Key)][start : end + 1])}
+
+
+def test_network_is_fail_closed_and_no_s3_call_is_made(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"data"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=2)
+    with pytest.raises(PermissionError):
+        store.fetch_object("bucket", "file", tmp_path / "file", allow_network=False)
+    assert client.calls == []
+
+
+def test_transfer_is_manifest_first_bounded_and_checksum_verified(tmp_path: Path):
+    content = b"abcdefghij"
+    client = FakeS3({("bucket", "file"): content})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    result = store.fetch_object("bucket", "file", tmp_path / "file", allow_network=True)
+    assert Path(result.destination).read_bytes() == content
+    assert result.checksum_status == "verified"
+    assert [call[2] for call in client.calls if call[0] == "range"] == ["bytes=0-3", "bytes=4-7", "bytes=8-9"]
+    assert not (tmp_path / "file.part").exists()
+    manifest = json.loads((tmp_path / ".bounded_s3_manifest.json").read_text())
+    assert manifest["records"]
+    json.dumps(result.to_dict(), allow_nan=False)
+    json.loads(result.to_json())
+
+
+def test_offline_cache_reuse_requires_matching_managed_manifest_and_bytes(tmp_path: Path):
+    content = b"abcdefghij"
+    client = FakeS3({("bucket", "file"): content})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    client.calls.clear()
+    cached = BoundedS3ObjectStore(client, tmp_path, chunk_size=4).fetch_object(
+        "bucket", "file", "file", allow_network=False
+    )
+    assert cached.status == "cached"
+    assert cached.bytes_transferred == 0
+    assert client.calls == []
+
+
+def test_final_consumer_release_deletes_bytes_and_records_tombstone(tmp_path: Path):
+    content = b"abcdefghij"
+    client = FakeS3({("bucket", "file"): content})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+
+    assert store.release_object("bucket", "file", "file") is True
+    assert not (tmp_path / "file").exists()
+    manifest = json.loads((tmp_path / ".bounded_s3_manifest.json").read_text())
+    record = next(iter(manifest["records"].values()))
+    assert record["status"] == "released"
+    assert record["release_reason"] == "final_consumer_complete"
+    assert record["destination_present"] is False
+    assert record["released_size"] == len(content)
+
+    with pytest.raises(PermissionError):
+        BoundedS3ObjectStore(client, tmp_path, chunk_size=4).fetch_object(
+            "bucket", "file", "file", allow_network=False
+        )
+
+
+def test_release_never_deletes_unmanaged_or_wrong_identity(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"managed"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    unmanaged = tmp_path / "unmanaged"
+    unmanaged.write_bytes(b"user data")
+
+    assert store.release_object("bucket", "other", "file") is False
+    assert store.release_object("bucket", "file", "unmanaged") is False
+    assert (tmp_path / "file").exists()
+    assert unmanaged.read_bytes() == b"user data"
+
+
+def test_unmanaged_or_tampered_existing_file_is_never_trusted_offline(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"remote"})
+    (tmp_path / "file").write_bytes(b"unmanaged")
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    with pytest.raises(PermissionError):
+        store.fetch_object("bucket", "file", "file", allow_network=False)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    (tmp_path / "file").write_bytes(b"tampered")
+    with pytest.raises(BoundedAccessError, match="cached object failed"):
+        store.fetch_object("bucket", "file", "file", allow_network=False)
+    assert (tmp_path / "file").read_bytes() == b"tampered"
+
+
+def test_requested_cache_identity_must_match_offline_manifest(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"remote"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4)
+    store.fetch_object("bucket", "file", "file", allow_network=True)
+    with pytest.raises(BoundedAccessError):
+        store.fetch_object("bucket", "file", "file", allow_network=False, expected_size=999)
+    with pytest.raises(BoundedAccessError):
+        store.fetch_object("bucket", "file", "file", allow_network=False, expected_checksum="0" * 64)
+
+
+def test_checksum_mismatch_never_promotes_artifact(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"correct"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=3)
+    with pytest.raises(ChecksumMismatchError):
+        store.fetch_object("bucket", "file", tmp_path / "file", allow_network=True, expected_checksum="0" * 64)
+    assert not (tmp_path / "file").exists()
+    state = json.loads((tmp_path / "file.part.json").read_text())
+    assert state["status"] == "corrupted"
+
+
+def test_transient_retry_is_bounded(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"abcdef"})
+    client.failures = 2
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=6, max_retries=3)
+    result = store.fetch_object("bucket", "file", tmp_path / "file", allow_network=True)
+    assert result.attempts == 3
+    assert (tmp_path / "file").read_bytes() == b"abcdef"
+
+
+def test_timeout_failure_preserves_resumable_partial_state(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"abcdefgh"})
+    client.permanent_failure_on_call = 2
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4, max_retries=1)
+    with pytest.raises(BoundedAccessError):
+        store.fetch_object("bucket", "file", tmp_path / "file", allow_network=True)
+    assert not (tmp_path / "file").exists()
+    assert (tmp_path / "file.part").exists()
+    client.permanent_failure_on_call = None
+    result = store.fetch_object("bucket", "file", tmp_path / "file", allow_network=True)
+    assert (tmp_path / "file").read_bytes() == b"abcdefgh"
+    assert result.completed_chunks == 2
+    ranges = [call[2] for call in client.calls if call[0] == "range"]
+    assert ranges.count("bytes=0-3") == 1
+
+
+def test_unknown_size_is_rejected(tmp_path: Path):
+    class UnknownSize(FakeS3):
+        def head_object(self, **kwargs):
+            self.calls.append(("head", kwargs["Bucket"], kwargs["Key"]))
+            return {}
+
+    with pytest.raises(BoundedAccessError, match="size is unknown"):
+        BoundedS3ObjectStore(UnknownSize({("bucket", "file"): b"x"}), tmp_path).fetch_object(
+            "bucket", "file", tmp_path / "file", allow_network=True
+        )
+
+
+def test_cache_budget_and_eviction_are_explicit(tmp_path: Path):
+    client = FakeS3({("bucket", "a"): b"1234", ("bucket", "b"): b"5678"})
+    store = BoundedS3ObjectStore(client, tmp_path, chunk_size=4, max_cache_bytes=4)
+    store.fetch_object("bucket", "a", tmp_path / "a", allow_network=True)
+    store.fetch_object("bucket", "b", tmp_path / "b", allow_network=True)
+    assert not (tmp_path / "a").exists()
+    assert (tmp_path / "b").read_bytes() == b"5678"
+
+    too_small = BoundedS3ObjectStore(client, tmp_path / "small", max_cache_bytes=3)
+    with pytest.raises(BoundedAccessError, match="exceeds cache budget"):
+        too_small.fetch_object("bucket", "b", tmp_path / "small" / "b", allow_network=True)
+
+
+def test_path_containment_is_enforced(tmp_path: Path):
+    client = FakeS3({("bucket", "file"): b"x"})
+    with pytest.raises(BoundedAccessError, match="escapes"):
+        BoundedS3ObjectStore(client, tmp_path).fetch_object("bucket", "file", tmp_path / ".." / "outside", allow_network=True)
+
+
+def test_fast_tr_helpers_are_plan_only_and_network_disabled_by_default():
+    hcp = fetch_hcp_ya_subject("100206")
+    nki = fetch_nki_rs_subject("A00008326")
+    for plan in (hcp, nki):
+        assert plan["status"] == "PLAN_ONLY_BOUNDED_ADAPTER_REQUIRED"
+        assert plan["network_enabled"] is False
+        assert plan["acquisition_policy"]["manifest_first"] is True
+        assert plan["acquisition_policy"]["checksum_missing_is_unknown"] is True
+
+
+def test_streaming_entrypoints_fail_closed_before_remote_metadata(monkeypatch, tmp_path: Path):
+    import tools.stream_process_ds005917 as ds005917
+    import tools.stream_process_ds006644 as ds006644
+
+    class NoNetworkClient:
+        def head_object(self, **kwargs):
+            raise AssertionError("offline path must reject before head_object")
+
+    monkeypatch.setattr(ds005917, "_s3_client", lambda: NoNetworkClient())
+    monkeypatch.setattr(ds006644, "_s3_client", lambda: NoNetworkClient())
+    with pytest.raises(PermissionError):
+        ds005917.download_bold("sub-01", "ses-d2", tmp_path / "ds005917")
+    with pytest.raises(PermissionError):
+        ds006644.download_subject_bold("sub-01", tmp_path / "ds006644")
+
+
+def test_omitted_metadata_permission_fails_closed_for_real_like_client(tmp_path: Path):
+    class RealLikeClient:
+        def head_object(self, **kwargs):
+            raise AssertionError("head_object must not run while offline")
+
+    store = BoundedS3ObjectStore(RealLikeClient(), tmp_path)
+    with pytest.raises(PermissionError):
+        store.read_text_metadata("bucket", "participants.tsv")
+
+
+def test_legacy_full_object_fallback_is_rejected(tmp_path: Path):
+    class LegacyClient:
+        def get_object(self, **kwargs):
+            raise AssertionError("legacy unbounded get_object must not run")
+
+    store = BoundedS3ObjectStore(LegacyClient(), tmp_path)
+    with pytest.raises(PermissionError):
+        store.read_text_metadata("bucket", "participants.tsv")
+
+
+def test_integrated_policy_registration_leaves_no_owned_findings():
+    files = [
+        Path("validation/s3_fetchers.py"),
+        Path("validation/fast_tr_fixtures.py"),
+        Path("tools/stream_process_ds005917.py"),
+        Path("tools/stream_process_ds006644.py"),
+    ]
+    findings = [finding for path in files for finding in scan_file(path, repository_root=Path("."))]
+    assert findings == []
+    registration_paths = {item["path"] for item in POLICY_REGISTRATION_REQUIREMENTS["registrations"]}
+    assert registration_paths == {str(path).replace("\\", "/") for path in files if path.name != "fast_tr_fixtures.py"}
+    json.dumps(POLICY_REGISTRATION_REQUIREMENTS, allow_nan=False)

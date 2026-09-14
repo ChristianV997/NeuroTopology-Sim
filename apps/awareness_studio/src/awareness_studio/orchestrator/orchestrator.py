@@ -92,6 +92,15 @@ class Orchestrator:
     def __init__(self, config: Optional[OrchestratorConfig] = None) -> None:
         self._cfg = config or OrchestratorConfig()
 
+    def run_registered(self, request, registry, preflight_request, *, ledger_path: Path, now: str | None = None):
+        """Execute an explicitly bound plan through canonical admission and runtime.
+
+        Unlike the legacy template planning cycle, this entry point requires a
+        complete caller-supplied plan and registered workload before execution.
+        """
+        from .registered_execution import execute_registered
+        return execute_registered(request, registry, preflight_request, ledger_path, now=now)
+
     def run(
         self,
         dry_run: Optional[bool] = None,

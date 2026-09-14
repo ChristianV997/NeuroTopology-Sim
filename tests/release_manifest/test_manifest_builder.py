@@ -138,9 +138,9 @@ def test_synthetic_scientific_result_is_not_blocking(git_repo_with_integration_b
         source_commit=feature_head,
         scientific_gate_input=ScientificGateInput(data_mode="synthetic", verdict="PASS", evidence_kind=None),
     )
-    assert manifest.scientific_gate_status.value == "pass"
-    assert manifest.merge_state == "integration_only"
-    assert any("claims_exceeding_evidence" in b for b in manifest.blockers)
+    assert manifest.scientific_gate_status.value == "blocked"
+    assert manifest.merge_state == "blocked_by_scientific_review"
+    assert any("unverified_scientific_pass" in b for b in manifest.blockers)
 
 
 def test_missing_github_snapshot_reports_unavailable(git_repo):

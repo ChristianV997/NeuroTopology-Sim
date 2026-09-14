@@ -37,8 +37,8 @@ def _init_repo(repo: Path) -> None:
     _git(repo, "commit", "-q", "-m", "root commit")
 
 
-@pytest.fixture
-def git_fixture_repo(tmp_path: Path) -> Path:
+@pytest.fixture(scope="module")
+def git_fixture_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A repo shaped like the real reconciliation scenario:
 
     - `main`: the base branch.
@@ -54,7 +54,7 @@ def git_fixture_repo(tmp_path: Path) -> Path:
     - `origin/with-artifact`: adds a file that looks like a generated
       artifact (`artifacts/RunRecord.json`).
     """
-    repo = tmp_path / "repo"
+    repo = tmp_path_factory.mktemp("integration_reconciliation") / "repo"
     _init_repo(repo)
 
     # feature-a

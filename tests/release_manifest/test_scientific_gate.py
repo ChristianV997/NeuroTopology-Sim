@@ -8,17 +8,13 @@ def test_none_input_is_insufficient_data_not_blocking():
     assert blocking is False
 
 
-def test_synthetic_pass_without_formal_evidence_is_warning_only_not_blocking():
-    """A synthetic PASS verdict without formal evidence_kind is a
-    claims-exceeding-evidence warning -- must never itself block the
-    release (that would let a label-mismatch check override a more
-    specific, evidenced category, the exact bug fixed in an earlier
-    round of this session)."""
+def test_synthetic_pass_is_blocked_at_metadata_boundary():
+    """A literal synthetic PASS cannot become release evidence."""
     gate_input = ScientificGateInput(data_mode="synthetic", verdict="PASS", evidence_kind=None)
     ev, blocking, findings = evaluate_scientific_gate(gate_input)
-    assert ev.value == "pass"
-    assert blocking is False
-    assert any("claims_exceeding_evidence" in f for f in findings)
+    assert ev.value == "blocked"
+    assert blocking is True
+    assert any("unverified_scientific_pass" in f for f in findings)
 
 
 def test_not_supported_verdict_is_blocking():
@@ -35,8 +31,9 @@ def test_inconclusive_is_insufficient_data_not_blocking():
     assert blocking is False
 
 
-def test_formal_evidence_pass_has_no_warning():
+def test_formal_evidence_pass_is_still_blocked_without_artifact_verification():
     gate_input = ScientificGateInput(data_mode="empirical_local", verdict="PASS", evidence_kind="formal")
     ev, blocking, findings = evaluate_scientific_gate(gate_input)
-    assert ev.value == "pass"
-    assert findings == []
+    assert ev.value == "blocked"
+    assert blocking is True
+    assert findings

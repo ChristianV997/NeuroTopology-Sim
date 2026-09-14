@@ -43,12 +43,32 @@ def _contained(root: Path, child: Path) -> bool:
         return False
 
 
-def _truncate(handle: Any, limit: int) -> tuple[str, bool]:
-    handle.flush()
-    handle.seek(0)
-    data = handle.read(limit + 1)
-    truncated = len(data) > limit
-    return data[:limit].decode("utf-8", errors="replace"), truncated
+class _BoundedCapture:
+    """Drain a child pipe without allowing captured output to grow unbounded."""
+
+    def __init__(self, pipe: Any, limit: int) -> None:
+        self.pipe = pipe
+        self.limit = limit
+        self.data = bytearray()
+        self.total_bytes = 0
+        self.thread = threading.Thread(target=self._drain, daemon=True)
+
+    def _drain(self) -> None:
+        try:
+            for chunk in iter(lambda: self.pipe.read(64 * 1024), b""):
+                self.total_bytes += len(chunk)
+                remaining = self.limit - len(self.data)
+                if remaining > 0:
+                    self.data.extend(chunk[:remaining])
+        finally:
+            self.pipe.close()
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def finish(self) -> tuple[str, bool]:
+        self.thread.join(timeout=5)
+        return bytes(self.data).decode("utf-8", errors="replace"), self.total_bytes > self.limit
 
 
 def _is_python(argv: Sequence[str]) -> bool:
@@ -148,15 +168,49 @@ def _validate_output(unit: WorkUnit, root: Path) -> tuple[ExecutionState, dict[s
 
 
 def _disk_usage(root: Path) -> int:
-    return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def _base_unit_record(unit: WorkUnit, config: RunnerConfig) -> dict[str, Any]:
     return {"unit_id": unit.unit_id, "workload_id": unit.workload_id, "state": ExecutionState.NOT_RUN.value, "command": list(unit.argv), "command_identity": _hash(list(unit.argv)), "code_revision": config.code_revision, "configuration": dict(unit.config), "seed": unit.seed if unit.seed is not None else config.deterministic_seed, "input_references": list(unit.input_references), "output_directory": str(unit.output_dir), "output_references": {}, "checksums": {}, "resource_telemetry": {}, "limitations": []}
 
 
-def _valid_resume(record: Mapping[str, Any], unit: WorkUnit, root: Path) -> bool:
+def _resume_identity(unit: WorkUnit, config: RunnerConfig) -> str:
+    """Bind cached results to the declared computation and local input bytes.
+
+    Non-file references remain explicit identifiers; this does not verify remote
+    provenance. Files are hashed incrementally without materializing their data.
+    """
+    inputs = []
+    for reference in unit.input_references:
+        path = Path(reference)
+        inputs.append({"reference": reference, "sha256": _checksum(path) if path.is_file() else None})
+    return _hash({
+        "version": 1, "unit_id": unit.unit_id, "workload_id": unit.workload_id,
+        "argv": list(unit.argv), "code_revision": config.code_revision,
+        "configuration": dict(unit.config),
+        "seed": unit.seed if unit.seed is not None else config.deterministic_seed,
+        "inputs": inputs, "dependencies": list(unit.dependencies),
+        "expected_outputs": list(unit.expected_outputs),
+        "output_directory": str(unit.output_dir.resolve()),
+        "network_disabled": config.network_disabled,
+        "environment": dict(config.environment),
+    })
+
+
+def _valid_resume(record: Mapping[str, Any], unit: WorkUnit, config: RunnerConfig, root: Path, identity: str) -> bool:
     if record.get("state") != ExecutionState.PASS.value or record.get("unit_id") != unit.unit_id:
+        return False
+    if record.get("resume_identity") != identity:
+        return False
+    if tuple(unit.argv) != tuple(config.allowed_commands.get(unit.workload_id, ())):
         return False
     if not _contained(root, unit.output_dir.resolve()):
         return False
@@ -188,20 +242,26 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         record.update({"state": ExecutionState.INFRASTRUCTURE_FAILURE.value, "limitations": [str(exc)]})
         return record
     guard = _network_guard() if config.network_disabled else None
-    stdout_file = tempfile.TemporaryFile()
-    stderr_file = tempfile.TemporaryFile()
     start = time.perf_counter()
     process: subprocess.Popen[bytes] | None = None
+    stdout_capture: _BoundedCapture | None = None
+    stderr_capture: _BoundedCapture | None = None
     timed_out = False
     memory_exceeded = False
+    disk_exceeded = False
     peak_memory: int | None = None
+    peak_disk = _disk_usage(root)
     try:
-        kwargs: dict[str, Any] = {"stdout": stdout_file, "stderr": stderr_file, "stdin": subprocess.DEVNULL, "shell": False, "env": _environment(config, guard), "cwd": str(output_dir)}
+        kwargs: dict[str, Any] = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "stdin": subprocess.DEVNULL, "shell": False, "env": _environment(config, guard), "cwd": str(output_dir)}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             kwargs["start_new_session"] = True
         process = subprocess.Popen(list(unit.argv), **kwargs)
+        assert process.stdout is not None and process.stderr is not None
+        stdout_capture = _BoundedCapture(process.stdout, config.stdout_limit)
+        stderr_capture = _BoundedCapture(process.stderr, config.stderr_limit)
+        stdout_capture.start(); stderr_capture.start()
         timeout = min(unit.timeout_s or config.default_timeout_s, config.runtime_budget_s or float("inf"))
         memory_module = None
         if config.memory_budget_bytes is not None:
@@ -225,6 +285,12 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
                         break
                 except Exception:
                     pass
+            observed_disk = _disk_usage(root)
+            peak_disk = max(peak_disk, observed_disk)
+            if config.disk_budget_bytes is not None and observed_disk > config.disk_budget_bytes:
+                disk_exceeded = True
+                _terminate_tree(process)
+                break
             if time.perf_counter() >= deadline:
                 timed_out = True
                 _terminate_tree(process)
@@ -235,12 +301,13 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         return record
     finally:
         elapsed = time.perf_counter() - start
-        stdout, stdout_truncated = _truncate(stdout_file, config.stdout_limit)
-        stderr, stderr_truncated = _truncate(stderr_file, config.stderr_limit)
-        stdout_file.close(); stderr_file.close()
+        stdout, stdout_truncated = stdout_capture.finish() if stdout_capture is not None else ("", False)
+        stderr, stderr_truncated = stderr_capture.finish() if stderr_capture is not None else ("", False)
         if guard is not None:
             shutil.rmtree(guard, ignore_errors=True)
-    record["resource_telemetry"] = {"elapsed_s": elapsed, "disk_usage_bytes": _disk_usage(root), "memory_budget_bytes": config.memory_budget_bytes, "memory_observed_bytes": peak_memory}
+    final_disk = _disk_usage(root)
+    peak_disk = max(peak_disk, final_disk)
+    record["resource_telemetry"] = {"elapsed_s": elapsed, "disk_usage_bytes": final_disk, "disk_peak_observed_bytes": peak_disk, "memory_budget_bytes": config.memory_budget_bytes, "memory_observed_bytes": peak_memory, "stdout_observed_bytes": stdout_capture.total_bytes if stdout_capture else 0, "stderr_observed_bytes": stderr_capture.total_bytes if stderr_capture else 0}
     record["stdout"] = stdout; record["stderr"] = stderr
     record["stdout_truncated"] = stdout_truncated; record["stderr_truncated"] = stderr_truncated
     record["exit_code"] = process.returncode if process is not None else None
@@ -255,9 +322,9 @@ def _execute_unit(unit: WorkUnit, config: RunnerConfig, root: Path) -> dict[str,
         record["limitations"] = ["memory budget exceeded; process group terminated"]
         record["checksums"] = {name: None for name in unit.expected_outputs}
         return record
-    if config.disk_budget_bytes is not None and record["resource_telemetry"]["disk_usage_bytes"] > config.disk_budget_bytes:
+    if disk_exceeded or (config.disk_budget_bytes is not None and record["resource_telemetry"]["disk_usage_bytes"] > config.disk_budget_bytes):
         record["state"] = ExecutionState.FAILED.value
-        record["limitations"] = ["disk budget exceeded"]
+        record["limitations"] = ["disk budget exceeded; process group terminated and outputs are incomplete"]
         record["checksums"] = {name: None for name in unit.expected_outputs}
         return record
     if process is None or process.returncode != 0:
@@ -293,12 +360,14 @@ def run_plan(units: Sequence[WorkUnit], config: RunnerConfig, *, resume: bool = 
     manifest: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "output_root": str(root), "state_machine": [state.value for state in ExecutionState], "runner": {"code_revision": config.code_revision, "network_disabled": config.network_disabled, "shell": False, "deterministic_environment": True, "stdout_limit": config.stdout_limit, "stderr_limit": config.stderr_limit}, "units": list(unit_records.values()), "lineage": None, "limitations": []}
     write_atomic_json(manifest_path, manifest)
     for unit in units:
-        if resume and _valid_resume(prior.get(unit.unit_id, {}), unit, root):
-            unit_records[unit.unit_id] = dict(prior[unit.unit_id]); unit_records[unit.unit_id]["resumed"] = True
-        elif any(unit_records.get(dep, {}).get("state") != ExecutionState.PASS.value for dep in unit.dependencies):
+        identity = _resume_identity(unit, config)
+        if any(unit_records.get(dep, {}).get("state") != ExecutionState.PASS.value for dep in unit.dependencies):
             unit_records[unit.unit_id].update({"state": ExecutionState.NOT_RUN.value, "limitations": ["dependency did not complete successfully"]})
+        elif resume and all(unit_records[dep].get("resumed") for dep in unit.dependencies) and _valid_resume(prior.get(unit.unit_id, {}), unit, config, root, identity):
+            unit_records[unit.unit_id] = dict(prior[unit.unit_id]); unit_records[unit.unit_id]["resumed"] = True
         else:
             unit_records[unit.unit_id] = _execute_unit(unit, config, root)
+        unit_records[unit.unit_id]["resume_identity"] = identity
         manifest["units"] = [unit_records[item.unit_id] for item in units]
         write_atomic_json(manifest_path, manifest)
     manifest["lineage"] = extract_lineage(root)

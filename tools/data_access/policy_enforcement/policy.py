@@ -13,6 +13,68 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "NeuroTopology.DataAccessPolicy.v1"
 
+# PR #346's bounded S3 adapter is intentionally registered here rather than
+# by a filename-only exception.  The scanner matches the complete enclosing
+# symbol and checks the declared controls structurally before allowing the
+# transfer calls in those symbols.  The implementation is deliberately kept
+# on PR #346's branch; registering it on main does not make the legacy
+# callers in this checkout compliant.
+PR346_BOUNDED_ADAPTER_REGISTRATIONS: tuple[dict[str, Any], ...] = (
+    {
+        "path": "validation/s3_fetchers.py",
+        "symbols": [
+            "BoundedS3ObjectStore.fetch_object",
+            "BoundedS3ObjectStore.read_text_metadata",
+        ],
+        "access_class": "manifest_first_bounded_s3_range",
+        "registration": "pr346",
+        "control_profile": "s3_store",
+        "requirements": [
+            "explicit allow_network=False",
+            "explicit source object identity",
+            "head_object ContentLength expected size",
+            "Range on every data get_object",
+            "checksum state including unknown",
+            "atomic partial staging",
+            "explicit cache budget",
+            "observable eviction",
+            "contained output root",
+        ],
+    },
+    {
+        "path": "tools/stream_process_ds005917.py",
+        "symbols": ["download_bold", "load_mdd_complete_subjects"],
+        "access_class": "delegated_bounded_s3_range",
+        "registration": "pr346",
+        "control_profile": "delegated_s3_wrapper",
+        "requirements": [
+            "explicit allow_network=False",
+            "explicit cache budget",
+            "bounded chunk size for data or metadata_max_bytes for metadata",
+            "delegation to BoundedS3ObjectStore",
+        ],
+    },
+    {
+        "path": "tools/stream_process_ds006644.py",
+        "symbols": ["download_subject_bold", "load_group_labels"],
+        "access_class": "delegated_bounded_s3_range",
+        "registration": "pr346",
+        "control_profile": "delegated_s3_wrapper",
+        "requirements": [
+            "explicit allow_network=False",
+            "explicit cache budget",
+            "bounded chunk size for data or metadata_max_bytes for metadata",
+            "delegation to BoundedS3ObjectStore",
+        ],
+    },
+)
+
+POLICY_REGISTRATION_REQUIREMENTS: dict[str, Any] = {
+    "schema_version": "NeuroTopology.DataAccessPolicyRegistration.v1",
+    "owner": "tools/data_access/policy_enforcement",
+    "registrations": [dict(item) for item in PR346_BOUNDED_ADAPTER_REGISTRATIONS],
+}
+
 APPROVED_ACQUISITION_ADAPTERS: tuple[dict[str, Any], ...] = (
     {
         "path": "tools/data_access/chunk_cache/transfer.py",
@@ -32,6 +94,7 @@ APPROVED_ACQUISITION_ADAPTERS: tuple[dict[str, Any], ...] = (
         "access_class": "explicit_chunk_cache_cli",
         "requirements": ["network flag", "bounded chunk", "manifest record", "strict output"],
     },
+    *PR346_BOUNDED_ADAPTER_REGISTRATIONS,
 )
 
 APPROVED_METADATA_OPERATIONS: tuple[dict[str, Any], ...] = (
