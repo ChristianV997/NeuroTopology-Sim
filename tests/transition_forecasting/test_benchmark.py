@@ -30,12 +30,16 @@ def make_dataset(kind: str = "triadic", *, synthetic: bool = True, missing_respi
     }
     if not missing_respiration:
         controls["respiration"] = rng.normal(size=n)
+    features = {"psd": psd, "pairwise_fc": pairwise, "triadic_fc": triadic, "directed_hypergraph": hyper}
+    timestamps = np.arange(n, dtype=float)
     return BenchmarkDataset(
-        features={"psd": psd, "pairwise_fc": pairwise, "triadic_fc": triadic, "directed_hypergraph": hyper},
+        features=features,
         target=target, subjects=np.repeat(np.arange(6), 12), sessions=np.tile(np.arange(12), 6),
-        timestamps=np.arange(n, dtype=float), prediction_horizon=2.0,
+        timestamps=timestamps, prediction_horizon=2.0,
         target_definition="transition at t+Delta_t", provenance={"dataset_id": "fixture", "complete": True},
-        controls=controls, synthetic=synthetic,
+        controls=controls,
+        feature_times={name: timestamps.copy() for name in features},
+        synthetic=synthetic,
     )
 
 
@@ -73,9 +77,46 @@ def test_subject_leakage_is_rejected_by_locked_validator():
 
 def test_temporal_leakage_is_rejected_and_classified():
     dataset = make_dataset()
-    dataset.feature_times = {"triadic_fc": dataset.timestamps + 1}
+    dataset.feature_times = {
+        name: dataset.timestamps.copy() for name in dataset.features
+    }
+    dataset.feature_times["triadic_fc"] = dataset.timestamps + 1
     report = run_benchmark(dataset)
     assert report.status == ForecastStatus.LEAKAGE_DETECTED.value
+
+
+def test_missing_feature_time_lineage_is_rejected_before_model_fitting():
+    dataset = make_dataset()
+    del dataset.feature_times["triadic_fc"]
+    report = run_benchmark(dataset)
+    assert report.status == ForecastStatus.INVALID_INPUT.value
+    assert "immutable feature-time lineage" in report.dataset_provenance["message"]
+
+
+def test_mismatched_feature_time_vector_is_rejected_before_model_fitting():
+    dataset = make_dataset()
+    dataset.feature_times["psd"] = dataset.timestamps[:-1]
+    report = run_benchmark(dataset)
+    assert report.status == ForecastStatus.INVALID_INPUT.value
+    assert "row-aligned" in report.dataset_provenance["message"]
+
+
+def test_non_finite_and_non_monotonic_feature_time_lineage_are_rejected():
+    non_finite = make_dataset()
+    non_finite.feature_times["pairwise_fc"][3] = np.nan
+    assert run_benchmark(non_finite).status == ForecastStatus.INVALID_INPUT.value
+
+    non_monotonic = make_dataset()
+    non_monotonic.feature_times["pairwise_fc"][4] = non_monotonic.feature_times["pairwise_fc"][3] - 1
+    assert run_benchmark(non_monotonic).status == ForecastStatus.INVALID_INPUT.value
+
+
+def test_feature_time_lineage_is_bound_into_dataset_identity():
+    dataset = make_dataset()
+    baseline = dataset.checksum()
+    dataset.feature_times["triadic_fc"] = dataset.feature_times["triadic_fc"].copy()
+    dataset.feature_times["triadic_fc"][0] = -0.25
+    assert dataset.checksum() != baseline
 
 
 def test_locked_split_strategies_are_group_disjoint_and_forward_time_ordered():
@@ -121,6 +162,46 @@ def test_incomplete_provenance_cannot_be_reported_as_formal_evidence():
     report = run_benchmark(dataset)
     assert report.status == ForecastStatus.INSUFFICIENT_DATA.value
     assert all(result.status != ForecastStatus.FORMAL_FORECAST_EVIDENCE.value for result in report.results)
+
+
+def test_ordinary_valid_held_out_empirical_benchmark_is_inconclusive_locally():
+    dataset = make_dataset("triadic", synthetic=False)
+    dataset.adjudication_metadata = {
+        "null_models": {"families": ["label-permutation"]},
+        "calibration": {"metric": "ece"},
+        "locked_split": {"strategy": "subject-held-out"},
+        "multiplicity": {"method": "holm"},
+    }
+    report = run_benchmark(dataset, seed=7)
+    assert report.status == ForecastStatus.INCONCLUSIVE.value
+    assert all(result.status != ForecastStatus.FORMAL_FORECAST_EVIDENCE.value for result in report.results)
+    assert report.formal_bayes_factor is None and report.scientific_pass is False
+    assert report.adjudication["external_independent_adjudication_required"] is True
+
+
+def test_self_attested_formal_metadata_cannot_promote_forecast_evidence():
+    dataset = make_dataset("triadic", synthetic=False)
+    dataset.provenance = {
+        "dataset_id": "complete-local-data",
+        "complete": True,
+        "formal_bayes_factor": 10_000.0,
+        "scientific_pass": True,
+    }
+    dataset.adjudication_metadata = {
+        "null_models": {"families": ["label-permutation"]},
+        "calibration": {"metric": "ece"},
+        "locked_split": {"strategy": "subject-held-out"},
+        "multiplicity": {"method": "holm"},
+        "formal_evidence": True,
+        "evidence_adjudicated": True,
+    }
+    report = run_benchmark(dataset, seed=7)
+    payload = report.to_dict()
+    assert report.status == ForecastStatus.INCONCLUSIVE.value
+    assert payload["formal_bayes_factor"] is None
+    assert payload["scientific_pass"] is False
+    assert "formal_bayes_factor" in payload["adjudication"]["caller_formal_metadata_ignored"]
+    assert "formal_evidence" in payload["adjudication"]["caller_formal_metadata_ignored"]
 
 
 def test_missing_optional_dependency_does_not_trigger_network_or_false_pass():
