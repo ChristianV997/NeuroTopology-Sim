@@ -98,7 +98,7 @@ def load_from_dict(
                     node_type=NodeType.SOURCE_SNAPSHOT.value,
                     label=s.get("title") or sid,
                     status=s.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=EvidenceClass.EMPIRICAL.value,
+                    evidence_class=_classify_evidence(s),
                     properties=s,
                     source_id=sid,
                     tags=list(s.get("tags", [])),
@@ -119,7 +119,7 @@ def load_from_dict(
                     node_type=NodeType.CLAIM.value,
                     label=c.get("claim_text") or cid,
                     status=c.get("claim_status", NodeStatus.PROPOSED.value),
-                    evidence_class=c.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    evidence_class=_classify_evidence(c),
                     properties=c,
                     source_id=sid,
                 )

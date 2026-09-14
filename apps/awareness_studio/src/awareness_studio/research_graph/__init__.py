@@ -21,6 +21,7 @@ from .models import (
     GraphSummary,
     compute_content_checksum,
 )
+from .research_cycle_adapter import manifest_from_ledger
 from .serialization import (
     save_graph,
     to_awareness_summary,
@@ -60,4 +61,5 @@ __all__ = [
     "to_awareness_summary",
     "save_graph",
     "compute_content_checksum",
+    "manifest_from_ledger",
 ]
