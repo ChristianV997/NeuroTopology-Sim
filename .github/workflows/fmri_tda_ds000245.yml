@@ -1,134 +1,188 @@
-name: fMRI-TDA ds000245 metadata preflight
+name: fMRI-TDA ds000245
 
-# This workflow is intentionally metadata-only. Signal analysis is admitted
-# only after a reviewed bounded manifest exists with object identity, size,
-# checksum state, byte ranges, cache budget, output containment, and eviction
-# policy. No BOLD or atlas bytes are downloaded here.
+# Run the resting-state fMRI functional-connectivity + persistent-homology pipeline
+# (dual_engine/fmri_tda_pipeline.py) on an already-provisioned ds000245 BIDS root.
+# This workflow performs no dataset download: bounded OpenNeuro requests must be
+# planned/executed separately through the manifest-first access tools.
+#
+# Trigger it manually from the Actions tab ("Run workflow") after provisioning the BIDS root in
+# the runner environment. Results appear as (a) a rendered table in the run summary and (b) a
+# downloadable `cohort-result` artifact (cohort_result.json).
+#
+# Method note (honest scoping): ds000245 BOLD is raw/native-space (no fMRIPrep normalization in
+# this pipeline). The default parcellation is therefore a deterministic NATIVE-SPACE coordinate
+# parcellation -- reproducible but NOT an anatomical atlas. Supplying an MNI atlas here without
+# registration would silently mis-register, so the optional atlas must already be local and native-space.
 
 on:
   workflow_dispatch:
     inputs:
       groups:
-        description: "Groups to record in the preflight (no signal data is read)"
+        description: "Groups to process (space-separated subset of: CTL ODN ODP)"
         required: false
         default: "CTL ODN ODP"
-      allow_metadata_network:
-        description: "Permit bounded OpenNeuro object-metadata listing only"
+      bids_root:
+        description: "Already-provisioned local BIDS root; no download is performed"
+        required: true
+        default: "data/ds000245"
+      atlas_path:
+        description: "Optional local native-space labels NIfTI path; remote URLs are rejected"
         required: false
-        type: boolean
-        default: false
+        default: ""
 
 permissions:
   contents: read
 
 env:
   DATASET: ds000245
+  T_R: "2.5"
+  PIP_NO_CACHE_DIR: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  AWS_EC2_METADATA_DISABLED: "true"
 
 jobs:
-  metadata-plan:
-    name: OpenNeuro metadata-only preflight
+  # ---- Fan-out: one job per group over the pre-provisioned local BIDS root ----
+  run-group:
+    name: "Process ${{ matrix.group }}"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [CTL, ODN, ODP]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Prepare explicit metadata output root
-        run: mkdir -p outputs/fmri_tda_metadata
+      - name: Skip if group not requested
+        id: gate
+        run: |
+          if echo "${{ github.event.inputs.groups }}" | grep -qw "${{ matrix.group }}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Group ${{ matrix.group }} not in requested set -- skipping."
+          fi
 
-      - name: Emit offline bounded-access blocker
-        if: ${{ inputs.allow_metadata_network != true }}
-        env:
-          GROUPS: ${{ inputs.groups }}
+      - name: Prepare bounded pip temp directory
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          python -m pip install --no-cache-dir --disable-pip-version-check nibabel nilearn ripser networkx statsmodels scikit-learn scipy numpy pandas
+
+      - name: Require pre-provisioned BIDS root
+        if: steps.gate.outputs.run == 'true'
         run: |
           set -euo pipefail
-          GROUPS="$GROUPS" python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
+          bids_root="${{ inputs.bids_root }}"
+          test -n "$bids_root" || { echo "bids_root is required; no remote acquisition is available in this workflow." >&2; exit 2; }
+          test -d "$bids_root" || { echo "pre-provisioned BIDS root not found: $bids_root" >&2; exit 2; }
 
-          payload = {
-              "schema_version": "NeuroTopology.OpenNeuroMetadataPreflight.v1",
-              "dataset_id": os.environ["DATASET"],
-              "requested_groups": os.environ.get("GROUPS", ""),
-              "status": "BLOCKED_OFFLINE",
-              "metadata_only": True,
-              "network_accessed": False,
-              "data_materialized": False,
-              "manifest_first": True,
-              "reason": "metadata network permission was not explicitly granted",
-              "next_action": "rerun with allow_metadata_network=true or supply a reviewed bounded manifest",
-          }
-          Path("outputs/fmri_tda_metadata/preflight.json").write_text(
-              json.dumps(payload, sort_keys=True, indent=2, allow_nan=False) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-      - name: Inventory bounded object metadata only
-        if: ${{ inputs.allow_metadata_network == true }}
-        env:
-          GROUPS: ${{ inputs.groups }}
+      - name: Validate optional local atlas path
+        if: steps.gate.outputs.run == 'true' && inputs.atlas_path != ''
         run: |
           set -euo pipefail
-          command -v aws >/dev/null
-          timeout 120s aws s3api list-objects-v2 \
-            --no-sign-request \
-            --bucket openneuro.org \
-            --prefix "${DATASET}/" \
-            --max-items 1000 \
-            --page-size 100 \
-            --output json \
-            > outputs/fmri_tda_metadata/openneuro_object_inventory.raw.json
-          GROUPS="$GROUPS" python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
+          test -f "${{ inputs.atlas_path }}" || { echo "local atlas path not found: ${{ inputs.atlas_path }}" >&2; exit 2; }
 
-          raw = json.loads(Path("outputs/fmri_tda_metadata/openneuro_object_inventory.raw.json").read_text(encoding="utf-8"))
-          objects = [
-              {
-                  "key": item.get("Key"),
-                  "size_bytes": item.get("Size"),
-                  "etag": item.get("ETag"),
-                  "last_modified": item.get("LastModified"),
-                  "storage_class": item.get("StorageClass"),
-              }
-              for item in raw.get("Contents", []) or []
-          ]
-          payload = {
-              "schema_version": "NeuroTopology.OpenNeuroMetadataPreflight.v1",
-              "dataset_id": os.environ["DATASET"],
-              "requested_groups": os.environ.get("GROUPS", ""),
-              "status": "METADATA_ONLY",
-              "metadata_only": True,
-              "network_accessed": True,
-              "data_materialized": False,
-              "manifest_first": True,
-              "bounded_listing": {"max_items": 1000, "timeout_seconds": 120},
-              "objects": objects,
-              "next_action": "author and review explicit bounded ranges with checksums before any signal access",
-          }
-          Path("outputs/fmri_tda_metadata/preflight.json").write_text(
-              json.dumps(payload, sort_keys=True, indent=2, allow_nan=False) + "\n",
-              encoding="utf-8",
-          )
-          PY
-
-      - name: Summarize preflight scope
-        if: always()
+      - name: Run pipeline for ${{ matrix.group }}
+        if: steps.gate.outputs.run == 'true'
         run: |
-          {
-            echo "## ds000245 — metadata-only preflight"
-            echo ""
-            echo "No BOLD signal bytes or atlas bytes are materialized by this workflow."
-            echo "A bounded manifest is required before analysis."
-          } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          ATLAS_ARGS=()
+          if [[ -n "${{ inputs.atlas_path }}" ]]; then
+            ATLAS_ARGS=(--atlas "${{ inputs.atlas_path }}")
+          fi
+          python -m dual_engine.fmri_tda_pipeline \
+            --bids-root "${{ inputs.bids_root }}" \
+            --group "${{ matrix.group }}" \
+            --t-r "${T_R}" \
+            "${ATLAS_ARGS[@]}" \
+            --emit-subjects "outputs/fmri_tda/subjects_${{ matrix.group }}.json"
 
-      - name: Upload metadata preflight
-        if: always()
+      - name: Upload per-group results
+        if: steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ds000245-metadata-preflight
-          path: outputs/fmri_tda_metadata/
+          name: subjects-${{ matrix.group }}
+          path: outputs/fmri_tda/subjects_${{ matrix.group }}.json
           if-no-files-found: error
           retention-days: 14
+
+      - name: Clean package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+
+  # ---- Aggregate: merge the per-group subject files -> cohort stats + rendered summary ----
+  aggregate:
+    name: Aggregate cohort + group statistics
+    needs: run-group
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Prepare bounded pip temp directory
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
+      - name: Install minimal deps
+        run: python -m pip install --no-cache-dir --disable-pip-version-check numpy scipy
+
+      - name: Collect per-group artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: subjects-*
+          path: incoming
+          merge-multiple: true
+
+      - name: Aggregate + write step summary
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FILES=(incoming/subjects_*.json)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "## fMRI-TDA ds000245 — no per-group results found" >> "$GITHUB_STEP_SUMMARY"
+            echo "All group jobs failed or were skipped; nothing to aggregate." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          python -m dual_engine.fmri_tda_pipeline --aggregate "${FILES[@]}" --out outputs/fmri_tda
+          {
+            echo ""
+            echo "---"
+            echo "_Parcellation: native-space coordinate parcellation (not an anatomical atlas; no MNI registration in this pipeline). Covariates, if present, come only from the pre-provisioned BIDS root; this workflow does not validate scientific provenance or establish evidence. Interpret any downstream statistics with effect sizes + CIs, not bare p-values._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cohort result
+        uses: actions/upload-artifact@v4
+        with:
+          name: cohort-result
+          path: |
+            outputs/fmri_tda/cohort_result.json
+            outputs/fmri_tda/summary.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Clean package temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
