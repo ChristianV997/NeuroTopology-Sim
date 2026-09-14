@@ -16,7 +16,40 @@ added per the coordinator's updated "known open work" list.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from .models import WorkOrder
+
+
+def work_orders_from_snapshot(snapshot: dict[str, Any]) -> tuple[WorkOrder, ...]:
+    """Build one WorkOrder per PR entry in a GitHub snapshot.
+
+    `default_registry()` is a hand-curated list of specific historical PRs
+    and goes stale as soon as those PRs close and new ones open (as
+    happened between this tool's two rounds and the current, much larger
+    PR pile). This is the alternative for "reconcile whatever is actually
+    open right now": every `pull_requests` entry in the snapshot becomes
+    its own work order, keyed by PR number, with no hand-maintained list
+    to fall out of sync. Entries missing a `head_ref` are skipped (a
+    work order with no `expected_branch` can't be matched against git
+    facts at all, so it would only ever surface as manual-review noise).
+    """
+    orders: list[WorkOrder] = []
+    for pr in snapshot.get("pull_requests", []):
+        head_ref = pr.get("head_ref")
+        if not head_ref:
+            continue
+        number = pr.get("number")
+        title = pr.get("title") or head_ref
+        orders.append(
+            WorkOrder(
+                work_order_id=f"pr-{number}" if number is not None else head_ref,
+                description=f"PR #{number}: {title}" if number is not None else str(title),
+                expected_branch=head_ref,
+                reported_pr_number=number,
+            )
+        )
+    return tuple(orders)
 
 
 def default_registry() -> tuple[WorkOrder, ...]:

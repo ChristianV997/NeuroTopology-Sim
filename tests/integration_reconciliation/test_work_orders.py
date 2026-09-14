@@ -68,3 +68,47 @@ def test_reported_prs_match_known_open_work():
         "bayesian-hardening": 219,
         "ci-test-infrastructure": 222,
     }
+
+
+def test_work_orders_from_snapshot_builds_one_per_pr():
+    snapshot = {
+        "schema": "NTS.GitHubReconciliationSnapshot.v1",
+        "pull_requests": [
+            {"number": 100, "head_ref": "claude/foo", "title": "Add foo"},
+            {"number": 101, "head_ref": "codex/bar", "title": "Add bar"},
+        ],
+    }
+    orders = work_orders.work_orders_from_snapshot(snapshot)
+    assert len(orders) == 2
+    assert {o.work_order_id for o in orders} == {"pr-100", "pr-101"}
+    assert {o.expected_branch for o in orders} == {"claude/foo", "codex/bar"}
+    assert {o.reported_pr_number for o in orders} == {100, 101}
+
+
+def test_work_orders_from_snapshot_ids_are_unique_and_stable():
+    snapshot = {
+        "pull_requests": [
+            {"number": 5, "head_ref": "a/b"},
+            {"number": 6, "head_ref": "c/d"},
+        ],
+    }
+    orders = work_orders.work_orders_from_snapshot(snapshot)
+    ids = [o.work_order_id for o in orders]
+    assert ids == ["pr-5", "pr-6"]
+    assert len(ids) == len(set(ids))
+
+
+def test_work_orders_from_snapshot_skips_entries_with_no_head_ref():
+    snapshot = {
+        "pull_requests": [
+            {"number": 7, "head_ref": "has/branch"},
+            {"number": 8},
+        ],
+    }
+    orders = work_orders.work_orders_from_snapshot(snapshot)
+    assert len(orders) == 1
+    assert orders[0].reported_pr_number == 7
+
+
+def test_work_orders_from_snapshot_empty_pull_requests_yields_empty_tuple():
+    assert work_orders.work_orders_from_snapshot({"pull_requests": []}) == ()
