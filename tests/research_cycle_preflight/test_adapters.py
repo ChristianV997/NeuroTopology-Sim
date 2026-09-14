@@ -118,3 +118,4 @@ def test_data_access_adapter_clear_when_bounded_and_checksummed():
         "network_access_requested": True, "bounded_transfer_declared": True, "checksum_declared": True,
     })
     assert classification["status"] == "CLEAR"
+

@@ -33,3 +33,4 @@ The result contract always has `scientific_pass: false`,
 zero-filled. Synthetic runs use `evidence_class: synthetic_demo_only` and can
 never be treated as empirical evidence. The bridge does not contact datasets,
 AWS, or external services.
+

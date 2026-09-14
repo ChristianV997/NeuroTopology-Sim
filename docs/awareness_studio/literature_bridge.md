@@ -127,3 +127,4 @@ downgrade · no-network · finite JSON — see
 - This bridge does not write to `ResearchCycleLedger` — appending a
   bridged record to an actual research cycle, and any subsequent
   claim-gate evaluation of it, is deliberately out of scope here.
+

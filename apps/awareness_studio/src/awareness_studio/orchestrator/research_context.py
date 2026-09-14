@@ -34,11 +34,20 @@ def prepare_research_context(preflight: Mapping[str, Any], cycle_id: str, bindin
         raise ValueError(source_outcome.reason)
     source_record = record_from_dict(source_outcome.record)
     source_record = replace(source_record, snapshot_id=stable_id("source", {"cycle": cycle_id, "source": source_outcome.record}))
-    claim_outcome = bridge_claim(claim, cycle_id=cycle_id, source_snapshot_id=source_record.record_id)
+    claim_outcome = bridge_claim(
+        claim,
+        cycle_id=cycle_id,
+        source_snapshot_id=f"lit-source-{claim.source_id}",
+    )
     if claim_outcome.status != "bridged":
         raise ValueError(claim_outcome.reason)
     claim_record = record_from_dict(claim_outcome.record)
-    claim_record = replace(claim_record, claim_id=stable_id("claim", {"cycle": cycle_id, "claim": claim_outcome.record}))
+    claim_record = replace(
+        claim_record,
+        claim_id=stable_id("claim", {"cycle": cycle_id, "claim": claim_outcome.record}),
+        evidence_ids=(source_record.record_id,),
+        parent_ids=(source_record.record_id,),
+    )
     hypothesis = Hypothesis(stable_id("hypothesis", {"cycle": cycle_id}), cycle_id,
                             preflight["plan"]["research_question"], (claim_record.record_id,),
                             claim_scope="Declared research question; no conclusion from source ingestion.",

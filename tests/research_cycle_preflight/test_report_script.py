@@ -68,3 +68,4 @@ def test_resolve_prior_run_dir_only_touches_declared_key():
     resolved = _resolve_prior_run_dir(with_prior_run)
     assert resolved["prior_run_dir"].endswith("partial_run")
     assert resolved["plan"] == {"plan_id": "x"}
+

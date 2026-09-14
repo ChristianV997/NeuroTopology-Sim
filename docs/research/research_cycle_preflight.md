@@ -207,3 +207,4 @@ prior-run lineage (if any), and data-access request all passed the
 composed engineering checks -- it says nothing about whether any result
 this cycle eventually produces is true. See `never_emits` on every
 report for the explicit, structural reminder of that boundary.
+

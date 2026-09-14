@@ -101,3 +101,4 @@ def test_isolated_subprocess_execution_against_a_single_request(tmp_path):
     # crash and not silently succeed
     assert result.returncode == 1, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert (out_dir / "research_cycle_preflight_report.json").is_file()
+

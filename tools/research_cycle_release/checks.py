@@ -287,6 +287,12 @@ def decide_from_checks(
             "Non-finite outputs or unsupported causal language in metadata."
         ]
 
+    unresolved = [check.check_id for check in checks if check.passed is None]
+    if unresolved:
+        return DecisionState.EVIDENCE_INCOMPLETE, ["unresolved_checks"], [
+            "Operational checks remain unknown: " + ", ".join(unresolved)
+        ]
+
     incomplete_ids = [
         "all_work_units_terminal",
         "partial_runs_explicitly_marked",
@@ -301,12 +307,6 @@ def decide_from_checks(
         hit = [i for i in incomplete_ids + provenance_ids if failed(i) or unknown(i)]
         return DecisionState.EVIDENCE_INCOMPLETE, ["evidence_incomplete"], [
             "Operational evidence incomplete: " + ", ".join(hit[:8])
-        ]
-
-    unresolved = [check.check_id for check in checks if check.passed is None]
-    if unresolved:
-        return DecisionState.EVIDENCE_INCOMPLETE, ["unresolved_checks"], [
-            "Operational checks remain unknown: " + ", ".join(unresolved)
         ]
 
     if bundle.get("proxy_only") is True:

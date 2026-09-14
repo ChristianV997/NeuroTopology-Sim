@@ -15,3 +15,4 @@ and calls them exactly as published:
 See ``docs/research/research_cycle_preflight.md`` for the full
 requirement-by-requirement mapping.
 """
+

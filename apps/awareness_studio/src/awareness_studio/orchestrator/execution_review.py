@@ -33,7 +33,8 @@ def review_execution(cycle_id: str, binding: Mapping[str, Any], preflight: Mappi
         run_id = cycle_id + ":run"
         success = result.get("state") in {"ENGINEERING_EXECUTION_COMPLETE", "EVIDENCE_READY_FOR_REVIEW"}
         synthetic = result.get("evidence_class") == "synthetic_demo_only"
-        evidence_class = "synthetic" if synthetic else "unknown"
+        proxy = result.get("evidence_class") == "proxy"
+        evidence_class = "synthetic" if synthetic else "proxy" if proxy else "unknown"
         graph.add_node(GraphNode(run_id, NodeType.RUN, "Canonical executor outcome",
                                  status="review_required" if success else "blocked",
                                  evidence_class=evidence_class,
@@ -64,7 +65,7 @@ def review_execution(cycle_id: str, binding: Mapping[str, Any], preflight: Mappi
             artifact_lineage_complete=lineage.get("status") == "COMPLETE" if lineage else None,
             validation_report_present=bool(lineage), validation_status="ok" if success else "failed",
             network_policy_recorded="network_disabled" in manifest.get("runner", {}),
-            synthetic_only=synthetic, evidence_classes=[evidence_class],
+            synthetic_only=synthetic, proxy_only=proxy, evidence_classes=[evidence_class],
             infrastructure_blocked=any(u["state"] == "INFRASTRUCTURE_FAILURE" for u in units),
             resource_budget_details={u["unit_id"]: u.get("resource_telemetry", {}) for u in units},
         )

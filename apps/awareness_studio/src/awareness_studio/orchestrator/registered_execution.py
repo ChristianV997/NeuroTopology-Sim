@@ -92,7 +92,33 @@ def execute_registered(request: BridgeRequest, registry: WorkloadRegistry,
     if admitted:
         ledger.append_event(cycle_id, "orchestrator_stage", producer="awareness_studio.orchestrator",
                             status="IN_PROGRESS", payload={"stage": "execute", "authorized": request.authorize_execution})
-        result = bridge.run(request).to_dict()
+        try:
+            result = bridge.run(request).to_dict()
+        except Exception as exc:
+            # The bridge normally converts runner failures into a typed result,
+            # but keep the ledger recoverable if an adapter boundary itself
+            # fails.  Never turn an unhandled exception into an absent outcome.
+            failure = f"registered execution adapter failed: {type(exc).__name__}: {exc}"
+            diagnostics.append(failure)
+            result = {
+                "schema_version": "AwarenessStudio.SimulationBridge.v1",
+                "state": "EXECUTION_FAILED",
+                "workload_id": request.workload_id,
+                "run_id": request.run_id,
+                "authorize_execution": request.authorize_execution,
+                "network_enabled": request.network_enabled,
+                "execution_state": None,
+                "accepted_artifacts": [],
+                "rejected_artifacts": [],
+                "runner_manifest": None,
+                "lineage_report": None,
+                "diagnostics": [failure],
+                "metrics": None,
+                "scientific_pass": False,
+                "formal_bayes_factor": None,
+                "evidence_class": "engineering_execution",
+                "claim_scope": "Engineering execution and artifact review only; not scientific evidence or causal validation.",
+            }
     state = result["state"] if result else "BLOCKED"
     completed = state in {"ENGINEERING_EXECUTION_COMPLETE", "EVIDENCE_READY_FOR_REVIEW"}
     ledger.append_event(cycle_id, "execution_outcome", producer="awareness_studio.orchestrator",

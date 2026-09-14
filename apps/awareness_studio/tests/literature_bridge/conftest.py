@@ -57,3 +57,4 @@ def theory_paper_record() -> LiteratureRecord:
         publication_type="theory_paper",
         source_url=None,
     )
+

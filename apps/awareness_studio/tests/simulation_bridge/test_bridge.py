@@ -67,8 +67,10 @@ def _request(root: Path, workload_id="fixture", *, authorize=True, network=False
     return BridgeRequest(**values)
 
 
-def _writer(*, malformed=False, nonfinite=False, missing_provenance=False, delay=False, synthetic=True):
+def _writer(*, malformed=False, nonfinite=False, missing_provenance=False, delay=False, synthetic=True, data_mode=None):
     record = _record("run-001", "abc1234", 7, "input-fixture-001", synthetic=synthetic)
+    if data_mode is not None:
+        record["data_mode"] = data_mode
     if missing_provenance:
         record.pop("source")
     record_text = json.dumps(record)
@@ -116,6 +118,17 @@ def test_non_synthetic_complete_artifacts_are_ready_for_review_not_scientific_pa
     assert result.state is BridgeState.EVIDENCE_READY_FOR_REVIEW
     assert result.to_dict()["scientific_pass"] is False
     assert result.to_dict()["formal_bayes_factor"] is None
+
+
+def test_proxy_complete_artifacts_are_explicitly_proxy_not_empirical(tmp_path):
+    registry = WorkloadRegistry([_workload(_writer(synthetic=False, data_mode="proxy"))])
+    provenance = {"dataset_id": "input-fixture-001", "source": "local deterministic fixture", "data_mode": "proxy"}
+    result = SimulationBridge(registry).run(_request(tmp_path, provenance=provenance))
+    assert result.state is BridgeState.EVIDENCE_READY_FOR_REVIEW
+    assert result.evidence_class == "proxy"
+    payload = result.to_dict()
+    assert payload["scientific_pass"] is False
+    assert payload["formal_bayes_factor"] is None
 
 
 @pytest.mark.parametrize("kwargs", [{"malformed": True}, {"nonfinite": True}, {"missing_provenance": True}])

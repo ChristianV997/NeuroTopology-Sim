@@ -198,6 +198,89 @@ class ResearchCycleLedger:
             event_hash=row["event_hash"], schema_version=row["schema_version"],
         )
 
+    @staticmethod
+    def _reference_fields(record: RecordMixin) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """Return typed record-reference fields that must resolve in the cycle lineage."""
+        field_names = {
+            "evidence_record": ("source_snapshot_ids",),
+            "claim": ("evidence_ids",),
+            "hypothesis": ("claim_ids",),
+            "experiment_spec": ("hypothesis_ids",),
+            "run_record": ("experiment_id",),
+            "artifact_manifest": ("run_record_id",),
+            "validation_report": ("artifact_manifest_ids", "run_record_id"),
+            "theory_revision": ("hypothesis_ids", "validation_report_ids"),
+        }
+        references: list[tuple[str, tuple[str, ...]]] = []
+        for field_name in field_names.get(record.record_type, ()):
+            value = getattr(record, field_name)
+            references.append((field_name, (value,) if isinstance(value, str) else tuple(value)))
+        return tuple(references)
+
+    @staticmethod
+    def _cycle_is_in_lineage(connection: sqlite3.Connection, cycle_id: str, candidate: str) -> bool:
+        """Return whether candidate is this cycle or one of its ancestors."""
+        current = cycle_id
+        seen: set[str] = set()
+        while current and current not in seen:
+            if current == candidate:
+                return True
+            seen.add(current)
+            row = connection.execute("SELECT parent_cycle_id FROM cycles WHERE cycle_id = ?", (current,)).fetchone()
+            if row is None:
+                return False
+            current = row["parent_cycle_id"]
+        return False
+
+    @classmethod
+    def _ensure_record_reference(
+        cls,
+        connection: sqlite3.Connection,
+        cycle_id: str,
+        referenced_id: str,
+        *,
+        relation: str,
+    ) -> None:
+        row = connection.execute("SELECT cycle_id FROM records WHERE record_id = ?", (referenced_id,)).fetchone()
+        if row is None:
+            raise LedgerError(f"unknown {relation} record: {referenced_id}")
+        if not cls._cycle_is_in_lineage(connection, cycle_id, row["cycle_id"]):
+            raise LedgerError(
+                f"{relation} record {referenced_id} belongs to unrelated cycle {row['cycle_id']}; "
+                f"target cycle is {cycle_id}"
+            )
+
+    @classmethod
+    def _ensure_record_references(cls, connection: sqlite3.Connection, cycle_id: str, record: RecordMixin) -> None:
+        for parent_id in record.parent_ids:
+            cls._ensure_record_reference(connection, cycle_id, parent_id, relation="parent")
+        for child_id in record.child_ids:
+            cls._ensure_record_reference(connection, cycle_id, child_id, relation="child")
+        for field_name, references in cls._reference_fields(record):
+            for referenced_id in references:
+                cls._ensure_record_reference(connection, cycle_id, referenced_id, relation=field_name)
+
+    @classmethod
+    def _ensure_link_integrity(cls, connection: sqlite3.Connection, cycle_id: str) -> None:
+        """Validate link rows and ensure they are represented by typed records."""
+        expected: set[tuple[str, str]] = set()
+        for row in connection.execute("SELECT payload_json FROM records WHERE cycle_id = ?", (cycle_id,)):
+            record = record_from_dict(json.loads(row["payload_json"]))
+            for parent_id in record.parent_ids:
+                expected.add((parent_id, record.record_id))
+            for child_id in record.child_ids:
+                expected.add((record.record_id, child_id))
+            cls._ensure_record_references(connection, cycle_id, record)
+        actual: set[tuple[str, str]] = set()
+        for row in connection.execute("SELECT parent_id, child_id FROM record_links WHERE cycle_id = ?", (cycle_id,)):
+            cls._ensure_record_reference(connection, cycle_id, row["parent_id"], relation="link parent")
+            cls._ensure_record_reference(connection, cycle_id, row["child_id"], relation="link child")
+            actual.add((row["parent_id"], row["child_id"]))
+        if actual != expected:
+            missing = sorted(expected - actual)
+            extra = sorted(actual - expected)
+            raise LedgerError(f"record link index mismatch for {cycle_id}: missing={missing}, extra={extra}")
+
     def _append_event_connection(self, connection: sqlite3.Connection, *, cycle_id: str, event_type: str, producer: str, status: str, payload: Mapping[str, Any], event_id: str | None = None) -> LedgerEvent:
         self._ensure_event(cycle_id, event_type, producer, status, payload)
         cycle = connection.execute("SELECT finalized FROM cycles WHERE cycle_id = ?", (cycle_id,)).fetchone()
@@ -271,17 +354,14 @@ class ResearchCycleLedger:
                 raise LedgerError(f"unknown cycle: {cycle_id}")
             existing = connection.execute("SELECT * FROM records WHERE record_id = ?", (record_id,)).fetchone()
             if existing is not None:
-                if existing["record_hash"] == record_hash and existing["payload_json"] == canonical_json(payload):
+                if existing["cycle_id"] == cycle_id and existing["record_hash"] == record_hash and existing["payload_json"] == canonical_json(payload):
                     return record
+                if existing["cycle_id"] != cycle_id:
+                    raise ImmutableCycleError(f"record {record_id} already exists in cycle {existing['cycle_id']}")
                 raise ImmutableCycleError(f"record {record_id} already exists with different content")
             if cycle["finalized"]:
                 raise ImmutableCycleError(f"cycle {cycle_id} is finalized")
-            for parent_id in record.parent_ids:
-                if connection.execute("SELECT 1 FROM records WHERE record_id = ?", (parent_id,)).fetchone() is None:
-                    raise LedgerError(f"unknown parent record: {parent_id}")
-            for child_id in record.child_ids:
-                if connection.execute("SELECT 1 FROM records WHERE record_id = ?", (child_id,)).fetchone() is None:
-                    raise LedgerError(f"unknown child record: {child_id}")
+            self._ensure_record_references(connection, cycle_id, record)
             connection.execute("INSERT INTO records (record_id,cycle_id,record_type,schema_version,payload_json,record_hash) VALUES (?,?,?,?,?,?)", (record_id, cycle_id, record.record_type, SCHEMA_VERSION, canonical_json(payload), record_hash))
             for parent_id in record.parent_ids:
                 connection.execute("INSERT OR IGNORE INTO record_links (cycle_id,parent_id,child_id) VALUES (?,?,?)", (cycle_id, parent_id, record_id))
@@ -316,6 +396,8 @@ class ResearchCycleLedger:
             check = connection.execute("PRAGMA integrity_check").fetchone()[0]
             if check != "ok":
                 raise LedgerError(f"SQLite integrity check failed: {check}")
+            if cycle_id is not None and connection.execute("SELECT 1 FROM cycles WHERE cycle_id = ?", (cycle_id,)).fetchone() is None:
+                raise LedgerError(f"unknown cycle: {cycle_id}")
             cycles = [cycle_id] if cycle_id else [row[0] for row in connection.execute("SELECT cycle_id FROM cycles ORDER BY cycle_id")]
             for current in cycles:
                 rows = connection.execute("SELECT * FROM events WHERE cycle_id = ? ORDER BY sequence", (current,)).fetchall()
@@ -329,8 +411,11 @@ class ResearchCycleLedger:
                     previous = event.event_hash
                 for row in connection.execute("SELECT payload_json,record_hash FROM records WHERE cycle_id = ?", (current,)):
                     record = record_from_dict(json.loads(row[0]))
+                    if record.cycle_id != current:
+                        raise LedgerError(f"record {record.record_id} has cycle_id {record.cycle_id}, expected {current}")
                     if record.checksum != row[1]:
                         raise LedgerError(f"record hash broken for {record.record_id}")
+                self._ensure_link_integrity(connection, current)
         return True
 
     def export_json(self, cycle_id: str, path: str | Path | None = None) -> str:

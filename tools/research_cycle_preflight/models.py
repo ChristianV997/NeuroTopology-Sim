@@ -34,3 +34,4 @@ NEVER_EMITTED: dict[str, object] = {
 }
 
 SCHEMA_VERSION = "NeuroTopology.ResearchCyclePreflight.v1"
+
