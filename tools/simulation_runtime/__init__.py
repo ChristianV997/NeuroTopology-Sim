@@ -1,10 +1,74 @@
-"""Measured runtime helpers for real simulation paths.
+"""Reliable, bounded, and resumable simulation campaign runtime.
 
-The helpers in this package preserve the public simulation APIs.  They are
-performance implementations only; their outputs remain candidate telemetry,
-not scientific evidence.
+Provides manifest-first campaign execution, atomic per-unit result recording,
+cross-platform process-tree cleanup, disk and memory guards, retryable infrastructure
+classification, and explicit terminal outcomes without silent partial success.
+Also includes measured runtime helpers preserving public simulation APIs.
 """
+from __future__ import annotations
 
 from .topology_metrics import audit_snapshot_reuse
+from tools.simulation_runtime.types import (
+    Outcome,
+    WorkUnit,
+    UnitResult,
+    CampaignManifest,
+    ResourcePolicy,
+    CampaignState,
+    capture_environment_metadata,
+    is_retryable_outcome,
+)
+from tools.simulation_runtime.checkpoint import (
+    CampaignCheckpointManager,
+    CheckpointMismatchError,
+    CheckpointCorruptError,
+)
+from tools.simulation_runtime.guards import (
+    check_disk_budget,
+    check_memory_budget,
+    check_dependencies,
+)
+from tools.simulation_runtime.atomic_io import (
+    write_atomic_json,
+    load_json,
+    json_safe,
+    compute_sha256,
+    compute_config_hash,
+    get_git_commit,
+)
+from tools.simulation_runtime.runner import (
+    SimulationCampaignRunner,
+    run_campaign_manifest,
+)
+from tools.simulation_runtime.process_cleanup import (
+    ProcessExecutionResult,
+    run_isolated_process,
+)
 
-__all__ = ["audit_snapshot_reuse"]
+__all__ = [
+    "audit_snapshot_reuse",
+    "Outcome",
+    "WorkUnit",
+    "UnitResult",
+    "CampaignManifest",
+    "ResourcePolicy",
+    "CampaignState",
+    "capture_environment_metadata",
+    "is_retryable_outcome",
+    "CampaignCheckpointManager",
+    "CheckpointMismatchError",
+    "CheckpointCorruptError",
+    "check_disk_budget",
+    "check_memory_budget",
+    "check_dependencies",
+    "write_atomic_json",
+    "load_json",
+    "json_safe",
+    "compute_sha256",
+    "compute_config_hash",
+    "get_git_commit",
+    "ProcessExecutionResult",
+    "run_isolated_process",
+    "SimulationCampaignRunner",
+    "run_campaign_manifest",
+]
