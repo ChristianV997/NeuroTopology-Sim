@@ -23,6 +23,10 @@ from .types import (
 )
 
 
+_VERIFIED_SOURCE_TIERS = frozenset({"T1_verified_primary", "T2_verified_secondary"})
+_TERMINAL_SOURCE_STATUSES = frozenset({"disputed", "retracted"})
+
+
 def _classify_evidence(data: Mapping[str, Any]) -> str:
     """Infer evidence class from record metadata without claim promotion."""
     if data.get("is_synthetic") or data.get("data_mode") == "synthetic":
@@ -40,6 +44,39 @@ def _classify_evidence(data: Mapping[str, Any]) -> str:
     if ev_cls in (e.value for e in EvidenceClass):
         return ev_cls
     return EvidenceClass.UNKNOWN.value
+
+
+def _classify_source_evidence(source: Mapping[str, Any]) -> str:
+    """Classify a source snapshot without treating its presence as evidence.
+
+    A graph projection cannot independently resolve a DOI or recompute a source
+    snapshot checksum.  It may preserve an upstream *verified* source tier, but
+    it must not turn an arbitrary source dictionary into empirical evidence.
+    This class describes source-record verification only; it never promotes a
+    claim or hypothesis.
+    """
+    inherited = _classify_evidence(source)
+    if inherited in {EvidenceClass.SYNTHETIC.value, EvidenceClass.PROXY.value}:
+        return inherited
+
+    if str(source.get("status", "")).strip().lower() in _TERMINAL_SOURCE_STATUSES:
+        return EvidenceClass.UNKNOWN.value
+
+    tier = source.get("evidence_tier")
+    verified = source.get("verification_status") == "verified"
+    if tier in _VERIFIED_SOURCE_TIERS and verified:
+        return EvidenceClass.EMPIRICAL.value
+    return EvidenceClass.UNKNOWN.value
+
+
+def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
+    """Preserve terminal lifecycle state, otherwise expose missing verification."""
+    declared = str(source.get("status", NodeStatus.ACTIVE.value))
+    if declared.strip().lower() in _TERMINAL_SOURCE_STATUSES | {NodeStatus.SUPERSEDED.value}:
+        return declared
+    if evidence_class == EvidenceClass.UNKNOWN.value:
+        return NodeStatus.REVIEW_REQUIRED.value
+    return declared
 
 
 def load_from_dict(
@@ -92,13 +129,14 @@ def load_from_dict(
             if not isinstance(s, dict) or "source_id" not in s:
                 continue
             sid = str(s["source_id"])
+            evidence_class = _classify_source_evidence(s)
             builder.add_node(
                 GraphNode(
                     node_id=sid,
                     node_type=NodeType.SOURCE_SNAPSHOT.value,
                     label=s.get("title") or sid,
-                    status=s.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=EvidenceClass.EMPIRICAL.value,
+                    status=_source_status(s, evidence_class),
+                    evidence_class=evidence_class,
                     properties=s,
                     source_id=sid,
                     tags=list(s.get("tags", [])),
@@ -245,13 +283,12 @@ def load_from_dict(
             vid = str(val["validation_id"])
             raw_verdict = val.get("verdict")
             verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
-            if verdict == "PASS":
-                status = NodeStatus.SUPPORTED.value
-            elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+            if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
                 status = NodeStatus.FALSIFIED.value
             else:
-                # An absent or unrecognized verdict is an unresolved
-                # validation record, never an implicit scientific PASS.
+                # A graph loader is a metadata projection, not an independent
+                # evidence adjudicator.  Even a literal PASS must remain pending
+                # artifact, provenance, null-model, split, and human review.
                 status = NodeStatus.REVIEW_REQUIRED.value
             evidence_class = _classify_evidence(val)
             builder.add_node(
@@ -269,9 +306,7 @@ def load_from_dict(
                 builder.link(EdgeType.VALIDATES, vid, target, label="validates_target")
             if val.get("hypothesis_id"):
                 hid = str(val["hypothesis_id"])
-                if verdict == "PASS":
-                    builder.link(EdgeType.SUPPORTS, vid, hid, label="validation_passed")
-                elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+                if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
                     builder.link(EdgeType.CONTRADICTS, vid, hid, label="validation_failed")
 
     # 10. Theory Revisions
