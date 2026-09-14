@@ -265,6 +265,19 @@ def _execute_worker(proc: subprocess.Popen, timeout_s: float,
     return exit_code, timed_out, "".join(out_chunks), "".join(err_chunks), peak_mb
 
 
+def _pytest_empty_collection(exit_code: int, stdout_text: str, stderr_text: str) -> bool:
+    """Recognize pytest's optional/no-tests exit without hiding real errors.
+
+    Pytest returns 5 when no tests are collected, including a module whose
+    tests are all skipped because an optional dependency is absent. Import and
+    collection errors return different codes and remain failures.
+    """
+    if exit_code != 5:
+        return False
+    text = (stdout_text + "\n" + stderr_text).lower()
+    return "no tests ran" in text or "collected 0 items" in text or " skipped in " in text
+
+
 def _build_pytest_command(
     batch: List[Path],
     temp_dir: str,
@@ -350,6 +363,9 @@ def run_batch(
             )
             status = "timeout"
             exit_code = 124  # timed-out batches never become passes
+        elif _pytest_empty_collection(exit_code, stdout_text, stderr_text):
+            status = "skipped"
+            exit_code = 0
         elif exit_code != 0:
             status = "failed"
             print(f"[isolated] batch {batch_idx} failed with exit code {exit_code}", flush=True)
@@ -428,12 +444,14 @@ def run_batches(
     suite_duration = round(time.monotonic() - suite_start, 2)
 
     passed_count = sum(1 for b in batch_reports if b["status"] == "passed")
+    skipped_count = sum(1 for b in batch_reports if b["status"] == "skipped")
     failed_count = sum(1 for b in batch_reports if b["status"] == "failed")
     timeout_count = sum(1 for b in batch_reports if b["status"] == "timeout")
 
     print(
         f"[isolated] finished {len(files)} files in {len(batch_reports)} batches: "
-        f"{passed_count} passed, {failed_count} failed, {timeout_count} timeouts in {suite_duration}s",
+        f"{passed_count} passed, {skipped_count} skipped, {failed_count} failed, "
+        f"{timeout_count} timeouts in {suite_duration}s",
         flush=True,
     )
 
@@ -442,6 +460,7 @@ def run_batches(
             "total_files": len(files),
             "total_batches": len(batch_reports),
             "passed_batches": passed_count,
+            "skipped_batches": skipped_count,
             "failed_batches": failed_count,
             "timeout_batches": timeout_count,
             "duration_s": suite_duration,
