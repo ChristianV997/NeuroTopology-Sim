@@ -39,6 +39,20 @@ from .benchmark import (
     run_benchmark,
     verify_equivalence,
 )
+from .stream_contract import (
+    ChunkBoundError,
+    ChunkingPolicy,
+    EmptyInputError,
+    ShapeContractError,
+    StreamBounds,
+    StreamContractError,
+    StreamSession,
+    TimelineContractError,
+    batch_stream_covariance_parity,
+    deterministic_accumulator_bytes,
+    iter_contract_windows,
+    validate_timestamps,
+)
 
 __all__ = [
     "MemoryPlan", "PlanRequest", "plan_chunk",
@@ -49,4 +63,8 @@ __all__ = [
     "iter_spectral_segments", "iter_triad_candidates", "one_at_a_time_surrogates",
     "EquivalenceReport", "compute_full", "compute_bounded", "run_benchmark",
     "verify_equivalence",
+    "ChunkBoundError", "ChunkingPolicy", "EmptyInputError", "ShapeContractError",
+    "StreamBounds", "StreamContractError", "StreamSession", "TimelineContractError",
+    "batch_stream_covariance_parity", "deterministic_accumulator_bytes",
+    "iter_contract_windows", "validate_timestamps",
 ]
