@@ -1,0 +1,106 @@
+{
+  "audit_metadata": {
+    "audit_date": "2026-10-16",
+    "base_commit": "3f3fe8593303184cb88eef056c1322f3d4e57a16",
+    "agent": "Grok Chat Agent A (Batch 3)",
+    "branch": "batch3/grok-chat-a-theory-to-measurement",
+    "purpose": "Theory-to-measurement bridge review; not scientific validation",
+    "evidence_limits": "No participant data downloaded; no third-party code executed; public sources only",
+    "retrieval_date": "2026-10-16"
+  },
+  "claims": [
+    {
+      "claim_id": "TTM-001",
+      "statement": "Algebraic-topological operators (simplicial complexes, persistent homology) applied to EEG/fMRI functional connectivity measure biologically meaningful higher-order interactions beyond pairwise dependence.",
+      "category": "computational_analogy_or_borrowed_operator",
+      "strongest_primary_source": {
+        "citation": "Giusti C, Ghrist R, Bassett DS. Two’s company, three (or more) is a simplex. J Comput Neurosci. 2016;41:1-14.",
+        "doi": "10.1007/s10827-016-0608-6",
+        "type": "peer-reviewed",
+        "direct_support": false,
+        "note": "Supports mathematical encoding of non-dyadic relations; does not establish recovery from EEG sensors."
+      },
+      "assumptions": ["Connectivity matrix faithfully represents interactions", "Filtration recovers relevant topology", "Sensors sample the relevant manifold"],
+      "counterevidence_or_uncertainty": ["Volume conduction", "Reference choice", "Inverse non-uniqueness", "Phase uncertainty near amplitude zeros", "Nonstationarity", "Limited sensor coverage"],
+      "alternative_explanations": ["Linear mixing of pairwise sources", "Thresholding artifacts", "Spectral leakage"],
+      "falsifiable_prediction_or_disconfirming_test": "On independent preregistered EEG data, higher-order descriptors must outperform pairwise + matched nulls (phase-randomized, spatial-surrogate) after source-space vs sensor-space control. Failure disconfirms operational claim.",
+      "evidence_limit": "Literature audit set supported_for_repository=false; this review does not upgrade."
+    },
+    {
+      "claim_id": "TTM-002",
+      "statement": "PITNN features that pass formal Bayes-factor gate K>100 identify a topological mechanism in EEG.",
+      "category": "operational_measurement_claim",
+      "strongest_primary_source": {
+        "citation": "Repository scientific falsification contract and prior execution: PITNN K>100 gate failed 20/20 on ds005620.",
+        "doi": null,
+        "type": "repository_contract_and_result",
+        "direct_support": false,
+        "note": "Gate failure is the available empirical result; proxy K is not formal Bayes factor."
+      },
+      "assumptions": ["Marginal likelihood correctly specified", "Multiplicity controlled", "Provenance complete"],
+      "counterevidence_or_uncertainty": ["Explicit gate failure", "Synthetic/proxy never PASS"],
+      "alternative_explanations": ["Overfitting to noise", "Incomplete null models", "Dataset-specific artifacts"],
+      "falsifiable_prediction_or_disconfirming_test": "Independent dataset, locked pipeline, formal K>100 with pairwise baselines, full provenance, sensitivity to filtering/montage. Current result disconfirms on that dataset.",
+      "evidence_limit": "Does not promote any result; failure stands."
+    },
+    {
+      "claim_id": "TTM-003",
+      "statement": "Open quantum system simulations of Fröhlich condensation, Diósi-Penrose effects, or exceptional points produce descriptors that measure biological quantum or critical phenomena in macroscopic EEG.",
+      "category": "phenomenological_or_mechanistic_interpretation",
+      "strongest_primary_source": {
+        "citation": "Theoretical physics literature on Fröhlich condensates and exceptional points; prior review verdict that layers are speculative and not empirically identifiable from available EEG/fMRI.",
+        "doi": null,
+        "type": "theoretical_proposal_and_prior_audit",
+        "direct_support": false,
+        "note": "No peer-reviewed primary source demonstrates identification from standard EEG/fMRI."
+      },
+      "assumptions": ["Quantum coherence timescales survive to macroscopic sensors", "EP or gravitational effects detectable above thermal noise"],
+      "counterevidence_or_uncertainty": ["Decoherence rates at biological temperatures", "Lack of validated quantum inputs", "Classical nonlinear models can produce similar descriptors"],
+      "alternative_explanations": ["Classical limit-cycle oscillators", "Filtered 1/f noise", "Thresholded connectivity graphs"],
+      "falsifiable_prediction_or_disconfirming_test": "Biophysical parameter constraints must be matched and a classical null model of equal complexity must fail to reproduce the same EEG topological statistics under the same forward model.",
+      "evidence_limit": "Speculative; historical repository prose only."
+    },
+    {
+      "claim_id": "TTM-004",
+      "statement": "Graph cycle rank (beta-1) computed on functional connectivity equals or measures spatial winding number / topological charge.",
+      "category": "formal_mathematical_identity",
+      "strongest_primary_source": {
+        "citation": "Repository docs/scientific_falsification/claim_language.md (explicit distinction: graph_beta1 ≠ spatial_winding_q ≠ scalar_chirality).",
+        "doi": null,
+        "type": "repository_contract",
+        "direct_support": true,
+        "note": "Supports the mathematical distinction; prohibits identification."
+      },
+      "assumptions": ["Graph construction preserves spatial topology"],
+      "counterevidence_or_uncertainty": ["Threshold, lag, source vs sensor yield different beta-1", "Spatial winding requires continuous field not recovered by cycle rank"],
+      "alternative_explanations": ["Cycle rank as connectivity complexity measure only"],
+      "falsifiable_prediction_or_disconfirming_test": "Compute both quantities on the same data under controlled embeddings; systematic divergence under montage or inverse changes disconfirms identity.",
+      "evidence_limit": "Explicitly prohibited as promoted language."
+    },
+    {
+      "claim_id": "TTM-005",
+      "statement": "Preprints on triadic FC, higher-order spectra, and related construct papers support PITNN, topological charge, or quantum-layer claims.",
+      "category": "empirical_claim",
+      "strongest_primary_source": {
+        "citation": "docs/research/higher_order_literature_audit.md on origin/main; all five identifiers confirmed, all supported_for_repository=false.",
+        "doi": "Multiple (see audit)",
+        "type": "prior_audit",
+        "direct_support": false,
+        "note": "Source identity only; upgrades rejected."
+      },
+      "assumptions": ["Methodological similarity implies theoretical support"],
+      "counterevidence_or_uncertainty": ["Preprint status", "Construct confounds (discernment ≠ nonjudgment; breathing ≠ detachment)", "No EEG topology or quantum identification"],
+      "alternative_explanations": ["Independent methodological contributions that do not license repository mechanistic claims"],
+      "falsifiable_prediction_or_disconfirming_test": "Independent replication that simultaneously satisfies the repository’s falsification contract (K>100, provenance, nulls). Current audit disconfirms the upgrade.",
+      "evidence_limit": "Explicit downgrade; this review does not upgrade."
+    }
+  ],
+  "unknowns": [
+    "Whether any higher-order descriptor survives rigorous pairwise + spatial-surrogate nulls in source space on independent data.",
+    "Whether formal K>100 can be obtained under the full falsification contract on any real dataset.",
+    "Whether classical models of equal complexity can reproduce topological statistics attributed to quantum or EP layers.",
+    "Precise contribution of volume conduction versus genuine higher-order interactions under realistic forward models.",
+    "Independent replication status of the cited preprints."
+  ],
+  "non_promotion": "This artifact does not introduce VALIDATED status. No claim is promoted. Completion of the audit does not establish that any scientific hypothesis is true."
+}
