@@ -12,6 +12,7 @@ import json
 import os
 import re
 import stat
+import struct
 import sys
 import tarfile
 import tempfile
@@ -537,6 +538,45 @@ def _check_archive_inventory(
     return inventory
 
 
+def _preflight_zip_central_directory(archive_file: Any, archive_size: int, max_entries: int) -> None:
+    """Bound the central-directory count before zipfile allocates ZipInfo objects."""
+    tail_size = min(archive_size, 22 + 65_535)
+    archive_file.seek(archive_size - tail_size)
+    tail = archive_file.read(tail_size)
+    signature = b"PK\x05\x06"
+    search_before = len(tail)
+    record = None
+    while True:
+        offset = tail.rfind(signature, 0, search_before)
+        if offset < 0:
+            break
+        if offset + 22 <= len(tail):
+            fields = struct.unpack_from("<4s4H2LH", tail, offset)
+            comment_length = fields[7]
+            if offset + 22 + comment_length == len(tail):
+                record = (offset, fields)
+                break
+        search_before = offset
+    if record is None:
+        raise SourcePackError("malformed ZIP end-of-central-directory record")
+    offset, fields = record
+    _, disk_number, directory_disk, disk_entries, total_entries, directory_size, directory_offset, _ = fields
+    if disk_number != 0 or directory_disk != 0 or disk_entries != total_entries:
+        raise SourcePackError("multi-disk ZIP archives are not supported")
+    if (
+        disk_entries == 0xFFFF
+        or total_entries == 0xFFFF
+        or directory_size == 0xFFFFFFFF
+        or directory_offset == 0xFFFFFFFF
+    ):
+        raise SourcePackError("ZIP64 archives are not supported")
+    if total_entries > max_entries:
+        raise SourcePackError("archive exceeds max_archive_entries")
+    eocd_absolute_offset = archive_size - tail_size + offset
+    if directory_offset + directory_size != eocd_absolute_offset:
+        raise SourcePackError("ZIP central directory extent is ambiguous or malformed")
+
+
 def _selected_archive_payloads(
     selected_paths: list[str],
     archive_names: dict[str, str],
@@ -575,6 +615,8 @@ def _pack_zip(
     if archive_size > limits.max_archive_bytes:
         raise SourcePackError("archive exceeds max_archive_bytes")
     try:
+        _preflight_zip_central_directory(archive_file, archive_size, limits.max_archive_entries)
+        archive_file.seek(0)
         with zipfile.ZipFile(archive_file, "r") as archive:
             infos = archive.infolist()
             raw_entries: list[tuple[str, bool, int]] = []
@@ -652,7 +694,21 @@ def _pack_tar(
         raise SourcePackError("archive exceeds max_archive_bytes")
     try:
         with tarfile.open(fileobj=archive_file, mode="r:") as archive:
-            members = archive.getmembers()
+            members = []
+            declared_total = 0
+            while True:
+                member = archive.next()
+                if member is None:
+                    break
+                members.append(member)
+                if len(members) > limits.max_archive_entries:
+                    raise SourcePackError("archive exceeds max_archive_entries")
+                if member.isfile():
+                    if member.size < 0 or member.size > limits.max_file_bytes:
+                        raise SourcePackError(f"archive entry exceeds max_file_bytes: {member.name}")
+                    declared_total += member.size
+                    if declared_total > limits.max_total_bytes:
+                        raise SourcePackError("archive exceeds max_total_bytes")
             raw_entries: list[tuple[str, bool, int]] = []
             member_by_key: dict[str, tarfile.TarInfo] = {}
             regular_names: dict[str, str] = {}

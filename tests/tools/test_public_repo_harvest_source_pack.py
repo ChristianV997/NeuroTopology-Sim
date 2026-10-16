@@ -271,6 +271,13 @@ def test_archive_limits_cover_file_count_compression_and_uncompressed_bytes(tmp_
             tmp_path / "many-out.zip",
             limits=SourcePackLimits(max_files=2),
         )
+    with pytest.raises(SourcePackError, match="max_archive_entries"):
+        pack_static_source(
+            too_many,
+            source_manifest(["a.txt"]),
+            tmp_path / "entries-out.zip",
+            limits=SourcePackLimits(max_archive_entries=2),
+        )
     with pytest.raises(SourcePackError, match="max_archive_bytes"):
         pack_static_source(
             too_many,
