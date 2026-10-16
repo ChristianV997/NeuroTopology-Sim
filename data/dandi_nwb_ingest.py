@@ -239,6 +239,50 @@ class WindowRequest:
         return size
 
 
+def checksum_status(*, expected_checksum: str | None, observed_checksum: str | None) -> str:
+    """Map expected/observed digests without inventing verification.
+
+    - ``unknown`` when no published/expected digest is supplied
+    - ``verified`` only when both digests are present and equal
+    - ``mismatch`` when both are present and unequal
+    """
+    if expected_checksum is None or not str(expected_checksum).strip():
+        return "unknown"
+    if observed_checksum is None or not str(observed_checksum).strip():
+        return "unknown"
+    if expected_checksum.lower() == observed_checksum.lower():
+        return "verified"
+    return "mismatch"
+
+
+def resolve_under_root(output_root: str | Path, relative_path: str | Path) -> Path:
+    """Resolve ``relative_path`` under ``output_root`` and reject escapes."""
+    root = Path(output_root).expanduser().resolve()
+    if not str(relative_path) or str(relative_path).startswith(("/", "\\")) or Path(relative_path).is_absolute():
+        raise IngestionContractError("output path must be relative to output_root")
+    target = (root / relative_path).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise IngestionContractError(f"output path escapes output_root: {target}") from exc
+    return target
+
+
+def require_output_root(output_root: str | Path | None, out_dir: str | Path) -> Path:
+    """Require an explicit approved root and keep ``out_dir`` strictly inside it."""
+    if output_root is None or not str(output_root).strip():
+        raise IngestionContractError("output_root is required")
+    root = Path(output_root).expanduser().resolve()
+    out_path = Path(out_dir).expanduser().resolve()
+    try:
+        out_path.relative_to(root)
+    except ValueError as exc:
+        raise IngestionContractError(f"output directory must remain inside output_root: {out_path}") from exc
+    if out_path == root:
+        raise IngestionContractError("output directory must be a child of output_root")
+    return out_path
+
+
 @dataclass
 class WindowReadResult:
     state: IngestionState
@@ -246,6 +290,7 @@ class WindowReadResult:
     data: bytes | None = None
     bytes_read: int = 0
     checksum: str | None = None
+    checksum_status: str = "unknown"
     attempts: int = 0
     resume_from: int | None = None
     error: str | None = None
@@ -254,6 +299,11 @@ class WindowReadResult:
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe metadata only; signal bytes are never embedded."""
+        status = self.checksum_status
+        if self.state != IngestionState.COMPLETE:
+            # Incomplete reads never claim verification.
+            if status == "verified":
+                status = "unknown"
         return {
             "schema_version": "DandiNwbWindowResult.v1",
             "state": self.state.value,
@@ -265,6 +315,9 @@ class WindowReadResult:
             "expected_size": self.request.expected_size,
             "bytes_read": self.bytes_read,
             "checksum": self.checksum if self.state == IngestionState.COMPLETE else None,
+            "checksum_status": status if self.state == IngestionState.COMPLETE else (
+                "mismatch" if status == "mismatch" else "unknown"
+            ),
             "attempts": self.attempts,
             "resume_from": self.resume_from,
             "error": self.error,
@@ -459,18 +512,30 @@ def read_bounded_window(
         cached = cache.acquire(key, request.consumer_lease)
         if cached is not None:
             digest = hashlib.sha256(cached).hexdigest() if request.checksum_policy == "sha256" else None
-            if request.expected_checksum and digest != request.expected_checksum.lower():
+            status = checksum_status(expected_checksum=request.expected_checksum, observed_checksum=digest)
+            if status == "mismatch":
                 cache.release(key, request.consumer_lease, final=True)
                 return WindowReadResult(
                     state=IngestionState.FAILED,
                     request=request,
                     bytes_read=len(cached),
+                    checksum=None,
+                    checksum_status="mismatch",
                     attempts=0,
                     error="cached window checksum mismatch",
                     cache_hit=True,
                     provenance_label=request.provenance.evidence_label,
                 )
-            return WindowReadResult(state=IngestionState.COMPLETE, request=request, data=cached, bytes_read=len(cached), checksum=digest, cache_hit=True, provenance_label=request.provenance.evidence_label)
+            return WindowReadResult(
+                state=IngestionState.COMPLETE,
+                request=request,
+                data=cached,
+                bytes_read=len(cached),
+                checksum=digest,
+                checksum_status=status,
+                cache_hit=True,
+                provenance_label=request.provenance.evidence_label,
+            )
     try:
         source_size = source.size(request)
         if source_size is None:
@@ -486,16 +551,53 @@ def read_bounded_window(
             with _managed_source(source) as handle:
                 payload = _payload_bytes(handle.read_window(request))
             if len(payload) != request.expected_size:
-                return WindowReadResult(state=IngestionState.PARTIAL, request=request, data=payload, bytes_read=len(payload), attempts=attempt, resume_from=request.start + len(payload), error=f"short window: expected {request.expected_size}, got {len(payload)}", provenance_label=request.provenance.evidence_label)
+                return WindowReadResult(
+                    state=IngestionState.PARTIAL,
+                    request=request,
+                    data=payload,
+                    bytes_read=len(payload),
+                    checksum=None,
+                    checksum_status="unknown",
+                    attempts=attempt,
+                    resume_from=request.start + len(payload),
+                    error=f"short window: expected {request.expected_size}, got {len(payload)}",
+                    provenance_label=request.provenance.evidence_label,
+                )
             digest = hashlib.sha256(payload).hexdigest() if request.checksum_policy == "sha256" else None
-            if request.expected_checksum and digest != request.expected_checksum.lower():
-                return WindowReadResult(state=IngestionState.FAILED, request=request, bytes_read=len(payload), attempts=attempt, error="checksum mismatch", provenance_label=request.provenance.evidence_label)
+            status = checksum_status(expected_checksum=request.expected_checksum, observed_checksum=digest)
+            if status == "mismatch":
+                return WindowReadResult(
+                    state=IngestionState.FAILED,
+                    request=request,
+                    bytes_read=len(payload),
+                    checksum=None,
+                    checksum_status="mismatch",
+                    attempts=attempt,
+                    error="checksum mismatch",
+                    provenance_label=request.provenance.evidence_label,
+                )
             if cache is not None:
                 try:
                     cache.put(key, payload, request.consumer_lease)
                 except IngestionContractError as exc:
-                    return WindowReadResult(state=IngestionState.BLOCKED, request=request, attempts=attempt, error=str(exc), provenance_label=request.provenance.evidence_label)
-            return WindowReadResult(state=IngestionState.COMPLETE, request=request, data=payload, bytes_read=len(payload), checksum=digest, attempts=attempt, provenance_label=request.provenance.evidence_label)
+                    return WindowReadResult(
+                        state=IngestionState.BLOCKED,
+                        request=request,
+                        attempts=attempt,
+                        error=str(exc),
+                        checksum_status="unknown",
+                        provenance_label=request.provenance.evidence_label,
+                    )
+            return WindowReadResult(
+                state=IngestionState.COMPLETE,
+                request=request,
+                data=payload,
+                bytes_read=len(payload),
+                checksum=digest,
+                checksum_status=status,
+                attempts=attempt,
+                provenance_label=request.provenance.evidence_label,
+            )
         except (InterruptedError, KeyboardInterrupt) as exc:
             return WindowReadResult(state=IngestionState.PARTIAL, request=request, attempts=attempt, resume_from=request.start, error=f"interrupted: {exc or 'read interrupted'}", provenance_label=request.provenance.evidence_label)
         except (OSError, TimeoutError, IngestionContractError) as exc:
@@ -516,13 +618,16 @@ def _reject_unbounded_read(*_args: Any, **_kwargs: Any) -> None:
     raise IngestionContractError("full-recording materialization is disabled; request a bounded window")
 
 
-# Descriptive compatibility name; the implementation name avoids being
+# Descriptive compatibility names; the implementation name avoids being
 # mistaken by static policy scanners for an unsafe materialization routine.
 reject_full_recording_materialization = _reject_unbounded_read
+reject_full_object_materialization = _reject_unbounded_read
 
 
 def inspect_metadata(source: MetadataSource, dataset_identity: str, object_identity: str) -> dict[str, Any]:
     """Inspect metadata only; signal retrieval is a separate API."""
+    if not str(dataset_identity).strip() or not str(object_identity).strip():
+        raise IngestionContractError("dataset_identity and object_identity are required")
     value = dict(source.inspect_metadata(dataset_identity, object_identity))
     for item in value.values():
         if isinstance(item, float) and not math.isfinite(item):
@@ -530,13 +635,61 @@ def inspect_metadata(source: MetadataSource, dataset_identity: str, object_ident
     return {"state": IngestionState.METADATA_ONLY.value, "metadata": value}
 
 
-def open_nwb_lazy(blob_url: str, *, network_permission: bool = False, offline: bool = False):
+class ManagedNwbHandle:
+    """Context manager that closes HDF5 and optional remfile handles together."""
+
+    def __init__(self, h5_file: Any, remote_file: Any | None = None):
+        self._h5 = h5_file
+        self._remote = remote_file
+        self.closed = False
+
+    @property
+    def h5(self) -> Any:
+        return self._h5
+
+    def __enter__(self) -> Any:
+        return self._h5
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        try:
+            close_h5 = getattr(self._h5, "close", None)
+            if callable(close_h5):
+                close_h5()
+        finally:
+            remote = self._remote
+            self._remote = None
+            self.closed = True
+            if remote is not None:
+                close_remote = getattr(remote, "close", None)
+                if callable(close_remote):
+                    try:
+                        close_remote()
+                    except Exception:
+                        pass
+
+    def __getitem__(self, key: Any) -> Any:
+        return self._h5[key]
+
+    def __contains__(self, key: Any) -> bool:
+        return key in self._h5
+
+    def __getattr__(self, name: str) -> Any:
+        # Delegate HDF5 attributes (e.g. ``id.valid``) while keeping local close state.
+        return getattr(self._h5, name)
+
+
+def open_nwb_lazy(blob_url: str, *, network_permission: bool = False, offline: bool = False) -> ManagedNwbHandle:
     """Compatibility opener requiring explicit network permission.
 
     The returned handle is not a license to materialize a recording.  New
     remote callers should use a bounded ``WindowSource``; this helper remains
     only for existing code that performs explicit HDF5 slices and closes the
-    handle.
+    handle via the returned :class:`ManagedNwbHandle`.
     """
     if not str(blob_url).strip():
         raise IngestionContractError("blob_url is required")
@@ -545,9 +698,16 @@ def open_nwb_lazy(blob_url: str, *, network_permission: bool = False, offline: b
         raise IngestionContractError("remote NWB opening requires explicit network permission")
     import h5py
     if not is_remote:
-        return h5py.File(Path(blob_url), "r")
+        return ManagedNwbHandle(h5py.File(Path(blob_url), "r"), remote_file=None)
     import remfile
-    return h5py.File(remfile.File(blob_url), "r")
+    remote = remfile.File(blob_url)
+    try:
+        return ManagedNwbHandle(h5py.File(remote, "r"), remote_file=remote)
+    except Exception:
+        close_remote = getattr(remote, "close", None)
+        if callable(close_remote):
+            close_remote()
+        raise
 
 
 def _eeg_series(nwb, eeg_series_name: str = "ElectricalSeriesEEG"):
@@ -557,22 +717,85 @@ def _eeg_series(nwb, eeg_series_name: str = "ElectricalSeriesEEG"):
     return acq[eeg_series_name]
 
 
+def _attr_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    text = str(value).strip()
+    return text or None
+
+
+def _channel_identity(es) -> list[str] | None:
+    """Return channel names when present; never invent labels."""
+    for key in ("electrodes", "channel_names", "electrodes_index"):
+        if key not in es:
+            continue
+        node = es[key]
+        try:
+            if hasattr(node, "dtype") and getattr(node.dtype, "kind", None) in {"S", "O", "U"}:
+                values = list(node[:])
+                names = []
+                for item in values:
+                    text = _attr_str(item)
+                    if text is None:
+                        return None
+                    names.append(text)
+                return names or None
+        except Exception:
+            return None
+    return None
+
+
 def nwb_eeg_info(nwb, eeg_series_name: str = "ElectricalSeriesEEG") -> dict:
+    """Preserve sampling rate, time bounds, units, channel identity, and montage when present.
+
+    Missing fields stay ``null``; this helper never fabricates electrode names,
+    units, or montage labels.
+    """
     import numpy as np
     es = _eeg_series(nwb, eeg_series_name)
     data = es["data"]
     n_samples, n_channels = int(data.shape[0]), int(data.shape[1])
-    if "timestamps" in es:
+    timestamps_present = "timestamps" in es
+    if timestamps_present:
         ts = es["timestamps"]
         t0, t1 = float(ts[0]), float(ts[-1])
         head = ts[: min(500, n_samples)]
         rate = 1.0 / float(np.mean(np.diff(head)))
+        timestamp_unit = _attr_str(ts.attrs.get("unit") if hasattr(ts, "attrs") else None)
     else:
         st = es["starting_time"]
         rate = float(st.attrs.get("rate"))
         t0 = float(st[()]) if st.shape == () else float(st[0])
         t1 = t0 + n_samples / rate
-    return {"n_samples": n_samples, "n_channels": n_channels, "rate_hz": rate, "t_start_s": t0, "t_end_s": t1}
+        timestamp_unit = _attr_str(st.attrs.get("unit") if hasattr(st, "attrs") else None)
+    data_unit = _attr_str(data.attrs.get("unit") if hasattr(data, "attrs") else None)
+    series_unit = _attr_str(es.attrs.get("unit") if hasattr(es, "attrs") else None)
+    montage = _attr_str(es.attrs.get("montage") if hasattr(es, "attrs") else None)
+    if montage is None and "electrodes" in es:
+        electrodes = es["electrodes"]
+        montage = _attr_str(electrodes.attrs.get("montage") if hasattr(electrodes, "attrs") else None)
+    channel_identity = _channel_identity(es)
+    if channel_identity is not None and len(channel_identity) != n_channels:
+        # Do not invent or truncate identity; treat mismatched tables as unknown.
+        channel_identity = None
+    return {
+        "n_samples": n_samples,
+        "n_channels": n_channels,
+        "rate_hz": rate,
+        "sampling_rate_hz": rate,
+        "t_start_s": t0,
+        "t_end_s": t1,
+        "timestamps_present": bool(timestamps_present),
+        "timestamp_unit": timestamp_unit,
+        "data_unit": data_unit,
+        "series_unit": series_unit,
+        "units": data_unit or series_unit,
+        "channel_identity": channel_identity,
+        "montage": montage,
+        "source_series": eeg_series_name,
+    }
 
 
 def nwb_state_epochs(nwb) -> list[tuple[str, float, float]]:
@@ -612,8 +835,15 @@ def read_nwb_eeg_window(nwb, window_start_s: float, window_end_s: float, pick: s
     stop = int(round((window_end_s - t0) * rate))
     if start < 0 or stop > n_total or stop <= start:
         raise ValueError(f"window [{window_start_s},{window_end_s}]s out of range (recording {t0:.1f}-{info['t_end_s']:.1f}s, {n_total} samples)")
-    ch_stop = info["n_channels"] if max_channels is None else min(info["n_channels"], max_channels)
     sample_count = stop - start
+    spans_full_recording = (
+        sample_count >= n_total
+        or (start <= 0 and stop >= n_total)
+        or (float(window_start_s) <= float(t0) and float(window_end_s) >= float(info["t_end_s"]))
+    )
+    if spans_full_recording:
+        raise IngestionContractError("full-recording materialization is disabled; request a bounded window")
+    ch_stop = info["n_channels"] if max_channels is None else min(info["n_channels"], max_channels)
     if sample_count > MAX_WINDOW_SAMPLES:
         raise ValueError("requested NWB EEG window exceeds the bounded sample limit")
     if ch_stop <= 0 or sample_count * ch_stop * 8 > MAX_WINDOW_BYTES:
@@ -622,4 +852,31 @@ def read_nwb_eeg_window(nwb, window_start_s: float, window_end_s: float, pick: s
     return block.mean(axis=0) if pick == "mean" else block
 
 
-__all__ = ["CacheStats", "DandiAsset", "IngestionContractError", "IngestionState", "LocalFileWindowSource", "LocalMetadataSource", "MetadataSource", "Provenance", "WindowCache", "WindowReadResult", "WindowRequest", "WindowSource", "inspect_metadata", "nwb_eeg_info", "nwb_state_epochs", "open_nwb_lazy", "read_bounded_window", "read_nwb_eeg_window", "reject_full_recording_materialization", "release_window", "resolve_asset_blobs"]
+__all__ = [
+    "CacheStats",
+    "DandiAsset",
+    "IngestionContractError",
+    "IngestionState",
+    "LocalFileWindowSource",
+    "LocalMetadataSource",
+    "ManagedNwbHandle",
+    "MetadataSource",
+    "Provenance",
+    "WindowCache",
+    "WindowReadResult",
+    "WindowRequest",
+    "WindowSource",
+    "checksum_status",
+    "inspect_metadata",
+    "nwb_eeg_info",
+    "nwb_state_epochs",
+    "open_nwb_lazy",
+    "read_bounded_window",
+    "read_nwb_eeg_window",
+    "reject_full_object_materialization",
+    "reject_full_recording_materialization",
+    "release_window",
+    "require_output_root",
+    "resolve_asset_blobs",
+    "resolve_under_root",
+]
