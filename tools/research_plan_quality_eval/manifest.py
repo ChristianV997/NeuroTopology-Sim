@@ -154,6 +154,8 @@ def load_plan_records(manifest: Manifest) -> tuple[PlanRecord, ...]:
     records = []
     for entry in manifest.entries:
         raw = entry.plan_path.read_bytes()
+        if sha256_hex(raw) != entry.plan_sha256:
+            raise ManifestError(f"plan file for {entry.fixture_id} changed after the manifest was verified")
         plan = plan_from_dict(parse_json_bytes(raw, entry.plan_path.name), entry.plan_path.name)
         records.append(PlanRecord(fixture_id=entry.fixture_id, group_id=entry.group_id, split=entry.split, plan=plan))
     return tuple(records)

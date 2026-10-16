@@ -30,6 +30,19 @@ def test_label_like_key_in_a_plan_record_is_rejected(base_plan_dict, label_key):
         plan_from_dict(data, "P01.json")
 
 
+@pytest.mark.parametrize("location", ["sources", "power_analysis", "condition_label_definitions"])
+def test_label_key_nested_anywhere_in_a_record_is_rejected(base_plan_dict, location):
+    data = copy.deepcopy(base_plan_dict)
+    if location == "sources":
+        data["sources"] = [{"title": "x", "gold_label": "PASS"}]
+    elif location == "power_analysis":
+        data["power_analysis"] = {"method": "m", "gold_label": "PASS"}
+    else:
+        data["condition_label_definitions"] = {"rest": "r", "adjudication": "accepted"}
+    with pytest.raises(MalformedRecordError, match="label-like keys"):
+        plan_from_dict(data, "P01.json")
+
+
 def test_unknown_key_is_rejected(base_plan_dict):
     data = copy.deepcopy(base_plan_dict)
     data["surprise_field"] = 1

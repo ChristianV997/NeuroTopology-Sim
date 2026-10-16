@@ -39,7 +39,7 @@ def test_held_out_stage_requires_a_frozen_development_stage(shipped_records):
 def test_held_out_stage_refuses_development_records(shipped_records):
     dev_records = _split(shipped_records, DEVELOPMENT)
     dev = run_development_stage(dev_records)
-    with pytest.raises(ValueError, match="non-held-out"):
+    with pytest.raises(HeldOutAccessError, match="non-held-out"):
         run_held_out_stage(dev_records, dev)
 
 

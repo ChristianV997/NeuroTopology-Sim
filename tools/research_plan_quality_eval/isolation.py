@@ -75,6 +75,6 @@ def run_held_out_stage(records: Sequence[PlanRecord], frozen: StageResult) -> St
         raise HarnessError("configuration changed after the development stage was frozen")
     mismatched = sorted(r.fixture_id for r in records if r.split != LOCKED_INTERNAL_VALIDATION)
     if mismatched:
-        raise ValueError(f"held-out stage received non-held-out records: {mismatched}")
+        raise HeldOutAccessError(f"held-out stage received non-held-out records: {mismatched}")
     outcomes = tuple(_outcome(r) for r in sorted(records, key=lambda r: r.fixture_id))
     return StageResult(role=LOCKED_INTERNAL_VALIDATION, config_fingerprint=frozen.config_fingerprint, outcomes=outcomes)

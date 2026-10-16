@@ -35,6 +35,14 @@ def test_tampered_plan_file_is_rejected(copy_fixture_tree):
         load_manifest(manifest_path)
 
 
+def test_plan_changed_after_verification_is_rejected_at_record_load(copy_fixture_tree):
+    manifest = load_manifest(copy_fixture_tree())
+    target = manifest.entries[0].plan_path
+    target.write_text(target.read_text().replace("forty", "forty-one"), encoding="utf-8")
+    with pytest.raises(ManifestError, match="changed after the manifest was verified"):
+        load_plan_records(manifest)
+
+
 def test_missing_plan_file_is_rejected(copy_fixture_tree):
     manifest_path = copy_fixture_tree()
     (manifest_path.parent / "plans" / "P05.json").unlink()

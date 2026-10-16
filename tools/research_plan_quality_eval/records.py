@@ -112,10 +112,24 @@ def _type_errors(data: Mapping[str, Any]) -> list[str]:
     return errors
 
 
+def _label_key_paths(obj: Any, path: str = "$") -> list[str]:
+    found: list[str] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            here = f"{path}.{key}"
+            if key in FORBIDDEN_LABEL_KEYS:
+                found.append(here)
+            found.extend(_label_key_paths(value, here))
+    elif isinstance(obj, list):
+        for index, value in enumerate(obj):
+            found.extend(_label_key_paths(value, f"{path}[{index}]"))
+    return found
+
+
 def plan_from_dict(data: Any, source: str) -> ResearchPlan:
     if not isinstance(data, dict):
         raise MalformedRecordError(f"{source}: plan record must be a JSON object")
-    forbidden = sorted(FORBIDDEN_LABEL_KEYS.intersection(data))
+    forbidden = _label_key_paths(data)
     if forbidden:
         raise MalformedRecordError(f"{source}: label-like keys are not allowed in plan records: {forbidden}")
     errors = _type_errors(data)
