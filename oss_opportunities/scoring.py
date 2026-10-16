@@ -106,7 +106,16 @@ def score_opportunity(
     frontend_saas_leverage = 1.5 if leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack") else 0.0
     infra_observability_leverage = 1.0 if leverage_category == "infra_observability_stack" else 0.0
 
-    adapter_surface_clarity = 1.0 if leverage_category not in ("reject_or_defer", "security_compliance") else 0.0
+    # Adapter-surface credit needs more than keyword overlap. A documented
+    # surface (homepage or an explicit adapter docs URL) earns full credit; a
+    # category inferred only from description/topics earns half credit.
+    documented_surface = bool(candidate.homepage_url) or bool((candidate.metadata or {}).get("adapter_docs_url"))
+    if leverage_category in ("reject_or_defer", "security_compliance"):
+        adapter_surface_clarity = 0.0
+    elif documented_surface:
+        adapter_surface_clarity = 1.0
+    else:
+        adapter_surface_clarity = 0.5
 
     # Trending/stars widen maintenance/documentation signal only -- a
     # discovery-priority nudge, never a correctness/license signal.
@@ -161,7 +170,9 @@ def score_opportunity(
 
     if blocked:
         recommended_action = "reject" if total_score < 0 else "defer"
-    elif license_review.license_risk == "missing_high":
+    elif license_review.license_risk in ("missing_high", "proprietary_or_unknown_high"):
+        # Unresolved license: an empty/unknown string, or an unmatched license
+        # string. Adoption of any kind waits for a license review.
         recommended_action = "license_review_required"
     elif leverage_category == "security_compliance":
         recommended_action = "security_review_required"
@@ -195,6 +206,15 @@ def score_opportunity(
     # on top of validate_opportunity_against_license_review's cross-check).
     if recommended_action == "integrate_as_optional_adapter" and license_review.license_risk not in ("permissive_low",):
         recommended_action = "integrate_as_external_tool_record"
+
+    # Credentialed adoption is never a direct adapter or tool-record path: it
+    # waits for security review first. credential_required_execution stays in
+    # blocked_actions regardless.
+    if (candidate.metadata or {}).get("requires_credentials") and recommended_action in (
+        "integrate_as_optional_adapter",
+        "integrate_as_external_tool_record",
+    ):
+        recommended_action = "security_review_required"
 
     blocked_actions = sorted(REQUIRED_BLOCKED_ACTIONS)
 
