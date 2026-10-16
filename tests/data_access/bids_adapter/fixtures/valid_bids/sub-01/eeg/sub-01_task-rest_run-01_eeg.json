@@ -1,0 +1,5 @@
+{
+  "TaskName": "rest",
+  "SamplingFrequency": 256.0,
+  "EEGReference": "Cz"
+}
