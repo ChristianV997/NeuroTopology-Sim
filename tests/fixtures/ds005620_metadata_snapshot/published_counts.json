@@ -1,0 +1,16 @@
+{
+  "bids_subjects": 21,
+  "analyzed_participants": 20,
+  "attempted_awakenings": 52,
+  "source_claims": {
+    "proposal": {
+      "bids_subjects": 21,
+      "analyzed_participants": 20,
+      "awakening_trials": 52
+    },
+    "primary_paper": {
+      "recorded_participants": 20,
+      "attempted_awakenings": 52
+    }
+  }
+}

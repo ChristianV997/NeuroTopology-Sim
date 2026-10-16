@@ -94,6 +94,91 @@ def _setup_ontology_root(tmp_path: Path) -> Path:
     return ont
 
 
+def _setup_metadata_inputs(
+    tmp_path: Path,
+    *,
+    participant_rows: str = (
+        "participant_id\texcluded\n"
+        "sub-01\tFalse\n"
+        "sub-02\tFalse\n"
+        "sub-03\tTrue\n"
+    ),
+    published_counts: dict | None = None,
+) -> Path:
+    root = tmp_path / "metadata"
+    root.mkdir()
+    (root / "participants.tsv").write_text(participant_rows, encoding="utf-8")
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "fixture", "License": "CC0"}), encoding="utf-8"
+    )
+    (root / "README.txt").write_text(
+        "This dataset is licensed under CC-BY-4.0.\n", encoding="utf-8"
+    )
+    (root / "nemar_metadata.json").write_text(
+        json.dumps({
+            "dataset_id": "on005620",
+            "license": "CC0",
+            "participants": 3,
+            "tasks": ["awake", "sed", "sed2"],
+        }),
+        encoding="utf-8",
+    )
+    (root / "published_counts.json").write_text(
+        json.dumps(published_counts or {"analyzed_participants": 2, "attempted_awakenings": 52}),
+        encoding="utf-8",
+    )
+    return root
+
+
+def _write_json(root: Path, filename: str, value: dict) -> None:
+    (root / filename).write_text(json.dumps(value), encoding="utf-8")
+
+
+def _write_preregistered_plan(root: Path, requirements=None, *, checksum=None) -> dict:
+    variables = {"expected_task_requirements": requirements} if requirements is not None else {}
+    plan = {
+        "schema_version": "ExperimentPlan.v1",
+        "plan_id": "plan-ds005620-fixture",
+        "hypothesis_id": "hyp-ds005620-fixture",
+        "domain": "metadata_reconciliation_fixture",
+        "design_type": "metadata_only",
+        "variables": variables,
+        "target_sample_size": 20,
+        "power_analysis": {"method": "not_applicable_to_fixture"},
+        "analysis_protocol": "fixture-only; no EEG files are read",
+        "data_source": "ds005620",
+        "is_synthetic": False,
+        "provenance": {
+            "preregistration_reference": "https://osf.io/example",
+            "registered_at": "2025-01-01T00:00:00Z",
+            "authoritative_source_verified": True,
+        },
+    }
+    plan["checksum"] = _mod.canonical_hash(plan) if checksum is None else checksum
+    _write_json(root, "preregistered_plan.json", plan)
+    return plan
+
+
+def _write_inventory(root: Path, task_labels: list[str]) -> None:
+    _write_json(
+        root,
+        "file_inventory.json",
+        {
+            "dataset_id": "ds005620",
+            "eeg_candidates": [
+                {
+                    "subject_id": "sub-01",
+                    "session_id": "01",
+                    "task_label": task,
+                    "run_id": "01",
+                    "is_eeg_candidate": True,
+                }
+                for task in task_labels
+            ],
+        },
+    )
+
+
 # Original tests (preserved)
 
 def test_evidence_packet_created(tmp_path):
@@ -194,3 +279,338 @@ def test_claim_scope_dict_in_packet(tmp_path):
     scope = packet.get("claim_scope", {})
     assert scope.get("engineering_runtime") is True
     assert scope.get("ontology_candidate") is False
+
+
+def test_metadata_audit_keeps_cohort_license_and_task_authority_separate(tmp_path):
+    manifest_path = _setup_manifest(tmp_path)
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    artifacts = build_evidence_packet(
+        str(manifest_path), str(tmp_path / "out"), metadata_root=str(metadata_root)
+    )
+
+    packet = json.loads(Path(artifacts["evidence_packet.json"]).read_text(encoding="utf-8"))
+    audit = packet["metadata_reconciliation"]
+
+    assert audit["metadata_parsed"] is True
+    assert audit["participant_ids"] == ["sub-01", "sub-02", "sub-03"]
+    assert audit["declared_excluded_ids"] == ["sub-03"]
+    assert audit["published_counts"]["analyzed_participants"] == 2
+    assert audit["cohort_reconciled"] is False
+    assert audit["cohort_reconciliation_status"] == "unresolved_count_discrepancy_without_subject_mapping"
+    assert audit["license_resolved"] is False
+    assert audit["license_conflict"] is True
+    assert audit["data_use_ready"] is False
+    assert audit["file_inventory_complete_against_declared_requirements"] is None
+    assert audit["expected_task_set"] is None
+
+
+def test_metadata_audit_missing_root_keeps_source_claim_schema():
+    audit = _mod._metadata_reconciliation(None)
+
+    assert audit["metadata_parsed"] is False
+    assert audit["published_count_source_claims"] is None
+
+
+def test_metadata_audit_rejects_malformed_participants_tsv(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    (metadata_root / "participants.tsv").write_text(
+        'participant_id\texcluded\n"sub-01\tFalse\n', encoding="utf-8"
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["metadata_parsed"] is False
+    assert any(error.startswith("participants_tsv_invalid:") for error in audit["metadata_parse_errors"])
+
+
+def test_metadata_audit_rejects_tsv_rows_with_missing_columns(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    (metadata_root / "participants.tsv").write_text(
+        "participant_id\texcluded\nsub-01\n", encoding="utf-8"
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["metadata_parsed"] is False
+    assert "participants_tsv_malformed_row:2" in audit["metadata_parse_errors"]
+
+
+def test_metadata_audit_rejects_malformed_json(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    (metadata_root / "dataset_description.json").write_text('{"License":', encoding="utf-8")
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["metadata_parsed"] is False
+    assert "dataset_description_invalid_json:JSONDecodeError" in audit["metadata_parse_errors"]
+
+
+def test_metadata_audit_rejects_duplicate_json_keys(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    (metadata_root / "dataset_description.json").write_text(
+        '{"License":"CC0","License":"CC-BY-4.0"}', encoding="utf-8"
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["metadata_parsed"] is False
+    assert "dataset_description_invalid_json:ValueError" in audit["metadata_parse_errors"]
+
+
+def test_duplicate_subjects_invalidate_cohort_count_but_not_tsv_parsing(tmp_path):
+    metadata_root = _setup_metadata_inputs(
+        tmp_path,
+        participant_rows="participant_id\texcluded\nsub-01\tFalse\nsub-01\tFalse\n",
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["metadata_parsed"] is True
+    assert audit["participants_tsv_count"] is None
+    assert "participants_tsv_duplicate_subject:sub-01" in audit["metadata_validation_errors"]
+    assert audit["cohort_reconciled"] is None
+
+
+def test_inventory_missing_declared_task_is_incomplete(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_preregistered_plan(
+        metadata_root,
+        [{"task_label": "awake"}, {"task_label": "sed"}],
+    )
+    _write_inventory(metadata_root, ["awake"])
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["expected_task_set"] == ["awake", "sed"]
+    assert audit["task_session_run_coverage"]["missing_task_requirements"] == [
+        {"task_label": "sed", "session_id": None, "run_id": None, "subject_id": None}
+    ]
+    assert audit["file_inventory_complete_against_declared_requirements"] is False
+
+
+def test_inventory_task_absent_from_protocol_is_unexpected(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_preregistered_plan(metadata_root, [{"task_label": "awake"}])
+    _write_inventory(metadata_root, ["awake", "sed2"])
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["expected_task_set"] == ["awake"]
+    assert audit["task_session_run_coverage"]["unexpected_task_labels"] == ["sed2"]
+    assert audit["file_inventory_complete_against_declared_requirements"] is False
+
+
+def test_inventory_does_not_define_tasks_without_declared_protocol(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_inventory(metadata_root, ["awake", "sed", "sed2"])
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["expected_task_set"] is None
+    assert audit["task_session_run_coverage"]["status"] == "not_evaluable_without_verified_protocol"
+    assert audit["file_inventory_complete_against_declared_requirements"] is None
+
+
+def test_missing_task_requirements_in_plan_do_not_use_observed_tasks(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_preregistered_plan(metadata_root)
+    _write_inventory(metadata_root, ["awake", "sed", "sed2"])
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["preregistration"]["status"] == "requirements_missing_or_invalid"
+    assert "expected_task_requirements_missing" in audit["preregistration"]["errors"]
+    assert audit["expected_task_set"] is None
+    assert audit["file_inventory_complete_against_declared_requirements"] is None
+
+
+def test_empty_bytes_sha256_is_not_valid_preregistration_provenance(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_preregistered_plan(
+        metadata_root,
+        [{"task_label": "awake"}],
+        checksum="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["preregistration"]["plan_integrity_verified"] is False
+    assert audit["preregistration"]["status"] == "invalid"
+    assert "empty_bytes_sha256_is_not_plan_provenance" in audit["preregistration"]["errors"]
+    assert audit["expected_task_set"] is None
+
+
+def test_empty_source_checksum_cannot_authorize_task_requirements(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    plan = _write_preregistered_plan(metadata_root, [{"task_label": "awake"}])
+    plan["provenance"]["source_checksum"] = (
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    )
+    plan["checksum"] = _mod.canonical_hash(
+        {key: value for key, value in plan.items() if key != "checksum"}
+    )
+    _write_json(metadata_root, "preregistered_plan.json", plan)
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["preregistration"]["plan_integrity_verified"] is True
+    assert audit["preregistration"]["status"] != "verified"
+    assert "empty_bytes_sha256_is_not_plan_provenance" in audit["preregistration"]["errors"]
+    assert audit["expected_task_set"] is None
+
+
+def test_license_conflict_blocks_data_use_readiness(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["license_declarations"] == {
+        "dataset_description": "CC0",
+        "readme": "CC-BY-4.0",
+        "nemar": "CC0",
+    }
+    assert audit["license_conflict"] is True
+    assert audit["license_resolved"] is False
+    assert audit["data_use_ready"] is False
+    assert "license_conflict" in audit["data_use_readiness_blockers"]
+
+
+def test_count_discrepancy_does_not_assign_excluded_id_to_published_cohort(tmp_path):
+    participant_rows = "participant_id\texcluded\n" + "".join(
+        f"sub-{index:02d}\t{'True' if index == 21 else 'False'}\n"
+        for index in range(1, 22)
+    )
+    metadata_root = _setup_metadata_inputs(
+        tmp_path,
+        participant_rows=participant_rows,
+        published_counts={
+            "bids_subjects": 21,
+            "analyzed_participants": 20,
+            "attempted_awakenings": 52,
+        },
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["participants_tsv_count"] == 21
+    assert audit["published_counts"]["analyzed_participants"] == 20
+    assert audit["participant_count_difference"] == 1
+    assert audit["declared_excluded_ids"] == ["sub-21"]
+    assert audit["subject_level_analysis_ids_supplied"] is False
+    assert audit["cohort_reconciled"] is False
+    assert audit["cohort_reconciliation_status"] == "unresolved_count_discrepancy_without_subject_mapping"
+
+
+def test_subject_id_list_must_match_explicit_exclusion_flags(tmp_path):
+    metadata_root = _setup_metadata_inputs(
+        tmp_path,
+        participant_rows=(
+            "participant_id\texcluded\n"
+            "sub-01\tFalse\n"
+            "sub-02\tFalse\n"
+            "sub-03\tFalse\n"
+        ),
+        published_counts={
+            "analyzed_participants": 2,
+            "analyzed_subject_ids": ["sub-01", "sub-02"],
+            "attempted_awakenings": 52,
+        },
+    )
+
+    audit = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert audit["subject_level_analysis_ids_supplied"] is True
+    assert audit["cohort_reconciled"] is False
+    assert audit["cohort_reconciliation_status"] == "unresolved"
+
+
+def test_matching_inventory_requires_a_verified_nonempty_plan_and_is_deterministic(tmp_path):
+    metadata_root = _setup_metadata_inputs(tmp_path)
+    _write_preregistered_plan(
+        metadata_root,
+        [{"task_label": "awake"}, {"task_label": "sed"}],
+    )
+    _write_inventory(metadata_root, ["awake", "sed"])
+
+    first = _mod._metadata_reconciliation(str(metadata_root))
+    second = _mod._metadata_reconciliation(str(metadata_root))
+
+    assert first == second
+    assert first["preregistration"]["plan_integrity_verified"] is True
+    assert first["preregistration"]["status"] == "verified"
+    assert first["file_inventory_complete_against_declared_requirements"] is True
+    assert first["task_session_run_coverage"]["observed_task_session_run_coverage"] == [
+        {"task_label": "awake", "session_id": "01", "run_id": "01"},
+        {"task_label": "sed", "session_id": "01", "run_id": "01"},
+    ]
+
+
+def test_complete_metadata_packet_is_not_empirical_evidence_or_data_permission(tmp_path):
+    manifest_path = _setup_manifest(tmp_path)
+    metadata_root = _setup_metadata_inputs(
+        tmp_path,
+        published_counts={
+            "bids_subjects": 3,
+            "analyzed_participants": 2,
+            "analyzed_subject_ids": ["sub-01", "sub-02"],
+            "attempted_awakenings": 52,
+        },
+    )
+    (metadata_root / "README.txt").write_text(
+        "This dataset is licensed under CC0.\n", encoding="utf-8"
+    )
+    _write_preregistered_plan(metadata_root, [{"task_label": "awake"}])
+    _write_inventory(metadata_root, ["awake"])
+
+    artifacts = build_evidence_packet(
+        str(manifest_path), str(tmp_path / "out"), metadata_root=str(metadata_root)
+    )
+    packet = json.loads(Path(artifacts["evidence_packet.json"]).read_text(encoding="utf-8"))
+    audit = packet["metadata_reconciliation"]
+
+    assert audit["metadata_parsed"] is True
+    assert audit["cohort_reconciled"] is True
+    assert audit["license_resolved"] is True
+    assert audit["file_inventory_complete_against_declared_requirements"] is True
+    assert audit["data_use_ready"] is False
+    assert packet["metadata_is_empirical_evidence"] is False
+    assert packet["participant_eeg_data_downloaded_or_analyzed"] is False
+
+
+def test_metadata_snapshot_keeps_published_and_source_counts_separate():
+    fixture_root = Path(__file__).parent.parent / "fixtures" / "ds005620_metadata_snapshot"
+
+    audit = _mod._metadata_reconciliation(str(fixture_root))
+
+    assert audit["metadata_parsed"] is True
+    assert audit["participants_tsv_count"] == 21
+    assert audit["participant_ids"][0] == "sub-SD_1010"
+    assert audit["participant_ids"][-1] == "sub-SD_1074"
+    assert len(audit["participant_ids"]) == 21
+    assert audit["declared_excluded_ids"] == ["sub-SD_1037"]
+    assert audit["source_metadata"]["nemar"]["participants"] == 21
+    assert audit["source_metadata"]["nemar"]["reported_tasks"] == ["awake", "sed", "sed2"]
+    assert audit["published_counts"]["bids_subjects"] == 21
+    assert audit["bids_subject_count_match"] is True
+    assert audit["nemar_participant_count_match"] is True
+    assert audit["published_counts"]["analyzed_participants"] == 20
+    assert audit["published_counts"]["attempted_awakenings"] == 52
+    assert audit["participant_count_difference"] == 1
+    assert audit["published_count_source_claims"] == {
+        "proposal": {
+            "bids_subjects": 21,
+            "analyzed_participants": 20,
+            "awakening_trials": 52,
+        },
+        "primary_paper": {
+            "recorded_participants": 20,
+            "attempted_awakenings": 52,
+        },
+    }
+    assert audit["cohort_reconciled"] is False
+    assert audit["subject_level_analysis_ids_supplied"] is False
+    assert audit["license_conflict"] is True
+    assert audit["license_resolved"] is False
+    assert audit["data_use_ready"] is False
+    assert audit["task_session_run_coverage"]["status"] == "not_supplied"
+    assert audit["expected_task_set"] is None
