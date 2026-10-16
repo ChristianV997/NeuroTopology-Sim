@@ -1,0 +1,109 @@
+{
+  "schema": "NeuroTopologySim.MeasurementHypothesisMapping.v1",
+  "mapping_id": "MHM-0001",
+  "operational": {
+    "feature_id": "channel_phase_gradient_metrics.phase_grad",
+    "feature_family": null,
+    "family_note": "No registered FeatureFamily covers phase gradients along channel index, so the record carries no family.",
+    "implementation": {
+      "module": "validation/analytic_phase.py",
+      "symbol": "channel_phase_gradient_metrics",
+      "output_key": "phase_grad",
+      "metric_kind_literal": "analytic_phase_proxy",
+      "sha256": "ec1f261f9486596ebfbc21f604e9ebf3338ee03c71e08a69987b7f4921a4facf"
+    }
+  },
+  "measurement": {
+    "definition": "Mean absolute wrapped difference between adjacent channels in channel-index order, averaged over time, for one band-limited analytic-phase array of shape channels by samples.",
+    "units": "rad",
+    "data_type": "float64",
+    "preprocessing": ["bandpass_hilbert_phase"]
+  },
+  "operator": {
+    "name": "discrete gradient along the channel-index ordering",
+    "role": "signal_processing_generator",
+    "literal_physical_identity": false,
+    "source_ids": ["barbarossa2020tsp", "jiang2011hodge"]
+  },
+  "interpretation": {
+    "hypothesis_id": "H-PHASE-CIRC-001",
+    "claim_class": "hypothesis",
+    "proposed_interpretation": "Hypothesis only: the channel-index phase gradient could serve as a signal-processing proxy for inter-channel phase circulation. This proposes a reading of the operational value and is not a finding.",
+    "assumptions": [
+      "Channel-index order approximates spatial adjacency. The source module states that channel order does not encode geometry, so this assumption is unmet for any montage.",
+      "The Hilbert analytic phase after bandpass filtering reflects the narrow-band phase of the signal."
+    ],
+    "alternative_explanations": [
+      "Volume conduction makes neighbouring channels phase-correlated without any circulation (Nolte et al. 2004; Stam et al. 2007).",
+      "Band-limited filtering and the Hilbert transform impose phase relations between channels that do not reflect a source process.",
+      "Channel labelling order is arbitrary, so the value can change under relabelling with no change in the recording."
+    ],
+    "confounds": [
+      "Reference scheme (common average or single reference) shifts inter-channel phase differences.",
+      "Low signal-to-noise ratio flattens inter-channel phase differences toward uniform values.",
+      "Choice of frequency band (alpha, 8 to 13 Hz, from DEFAULT_EEG_BANDS)."
+    ],
+    "falsifiers": [
+      {
+        "id": "F1",
+        "test": "Recompute phase_grad after a random permutation of channel order on identical recordings.",
+        "discriminates": "If the value changes under permutation while the recording is unchanged, the metric reflects labelling order rather than spatial circulation, which falsifies the spatial reading."
+      },
+      {
+        "id": "F2",
+        "test": "Compare observed values with phase-randomised surrogates that preserve each channel's amplitude spectrum.",
+        "discriminates": "If observed values fall within the surrogate distribution, the feature carries no structure beyond linear spectral content, which falsifies the proposed reading."
+      },
+      {
+        "id": "F3",
+        "test": "Repeat the comparison with a volume-conduction-robust pairwise measure, such as the phase lag index, on identical data.",
+        "discriminates": "If the effect disappears under the robust measure, the reading is confounded by shared sources, which falsifies it."
+      }
+    ],
+    "source_ids": ["nolte2004", "stam2007", "barbarossa2020tsp"]
+  },
+  "sources": [
+    {
+      "source_id": "barbarossa2020tsp",
+      "title": "Topological signal processing over simplicial complexes",
+      "uri": "https://doi.org/10.1109/TSP.2020.2981920",
+      "version": "IEEE Trans. Signal Process. vol. 68 (2020), pp. 2992-3007",
+      "published": "2020",
+      "accessed": "2026-10-16",
+      "verification": "search_index_metadata"
+    },
+    {
+      "source_id": "jiang2011hodge",
+      "title": "Statistical ranking and combinatorial Hodge theory",
+      "uri": "https://doi.org/10.1007/s10107-010-0419-x",
+      "version": "Math. Program., Ser. B, vol. 127 (2011), pp. 203-244",
+      "published": "2010-11-28",
+      "accessed": "2026-10-16",
+      "verification": "search_index_metadata"
+    },
+    {
+      "source_id": "nolte2004",
+      "title": "Identifying true brain interaction from EEG data using the imaginary part of coherency",
+      "uri": "https://doi.org/10.1016/j.clinph.2004.04.029",
+      "version": "Clin. Neurophysiol. vol. 115 (2004), pp. 2292-2307",
+      "published": "2004-10",
+      "accessed": "2026-10-16",
+      "verification": "search_index_metadata"
+    },
+    {
+      "source_id": "stam2007",
+      "title": "Phase lag index: assessment of functional connectivity from multi channel EEG and MEG with diminished bias from common sources",
+      "uri": "https://doi.org/10.1002/hbm.20346",
+      "version": "Hum. Brain Mapp. vol. 28 (2007), pp. 1178-1193",
+      "published": "2007-11",
+      "accessed": "2026-10-16",
+      "verification": "search_index_metadata"
+    }
+  ],
+  "not_established": [
+    "Does not establish that EEG electrodes are literal gauge or quantum objects. The operator is imported as a signal-processing generator only.",
+    "Does not establish that phase_grad measures phase circulation or any spatial topology. Channel-index order is not geometry.",
+    "Does not establish a causal or mechanistic relation, empirical support, or a scientific pass.",
+    "Does not compute a formal Bayes factor and assigns no evidence state. The claim gate's decision is recorded by reference only."
+  ]
+}

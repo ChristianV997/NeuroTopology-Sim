@@ -1,0 +1,66 @@
+{
+  "schema": "NeuroTopologySim.MeasurementHypothesisMapping.v1",
+  "mapping_id": "MHM-0003",
+  "operational": {
+    "feature_id": "uttl_channel_phase_gradient_metrics.phase_grad",
+    "feature_family": null,
+    "family_note": "No registered FeatureFamily covers phase gradients along channel index, so the record carries no family.",
+    "implementation": {
+      "module": "validation/analytic_phase.py",
+      "symbol": "channel_phase_gradient_metrics",
+      "output_key": "phase_grad",
+      "metric_kind_literal": "analytic_phase_proxy",
+      "sha256": "ec1f261f9486596ebfbc21f604e9ebf3338ee03c71e08a69987b7f4921a4facf"
+    }
+  },
+  "measurement": {
+    "definition": "Mean absolute wrapped difference between adjacent channels in channel-index order, averaged over time, for one band-limited analytic-phase array of shape channels by samples.",
+    "units": "rad",
+    "data_type": "float64",
+    "preprocessing": ["bandpass_hilbert_phase"]
+  },
+  "operator": {
+    "name": "discrete gradient along the channel-index ordering",
+    "role": "signal_processing_generator",
+    "literal_physical_identity": false,
+    "source_ids": ["barbarossa2020tsp"]
+  },
+  "interpretation": {
+    "hypothesis_id": "H-PHASE-CIRC-003",
+    "claim_class": "hypothesis",
+    "theory_term": "UTTL.phase_circulation",
+    "proposed_interpretation": "Hypothesis only: the channel-index phase gradient could serve as a signal-processing proxy for the phase circulation term of the UTTL interpretation.",
+    "assumptions": [
+      "Channel-index order approximates spatial adjacency. The source module states that channel order does not encode geometry, so this assumption is unmet for any montage."
+    ],
+    "alternative_explanations": [
+      "Volume conduction makes neighbouring channels phase-correlated without any circulation."
+    ],
+    "confounds": [
+      "Reference scheme (common average or single reference) shifts inter-channel phase differences."
+    ],
+    "falsifiers": [
+      {
+        "id": "F1",
+        "test": "Recompute the value after a random permutation of channel order on identical recordings.",
+        "discriminates": "If the value changes under permutation while the recording is unchanged, the metric reflects labelling order rather than spatial circulation."
+      }
+    ],
+    "source_ids": ["barbarossa2020tsp"]
+  },
+  "sources": [
+    {
+      "source_id": "barbarossa2020tsp",
+      "title": "Topological signal processing over simplicial complexes",
+      "uri": "https://doi.org/10.1109/TSP.2020.2981920",
+      "version": "IEEE Trans. Signal Process. vol. 68 (2020), pp. 2992-3007",
+      "published": "2020",
+      "accessed": "2026-10-16",
+      "verification": "search_index_metadata"
+    }
+  ],
+  "not_established": [
+    "Does not establish that EEG electrodes are literal gauge or quantum objects.",
+    "Does not establish a causal or mechanistic relation, empirical support, or a scientific pass."
+  ]
+}
