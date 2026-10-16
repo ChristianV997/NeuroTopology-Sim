@@ -1,0 +1,63 @@
+{
+  "all_work_units_terminal": true,
+  "artifact_lineage_complete": true,
+  "artifact_lineage_missing": [],
+  "bundle_schema": "research_cycle_release_bundle.v1",
+  "checksum_entries": [
+    {
+      "id": "src_synthetic_only",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "checksums_present": true,
+  "code_commit": "smoke0c0ffee",
+  "comparability_notes": [],
+  "comparable": true,
+  "configuration_locked": true,
+  "cycle_id": "smoke-synthetic_only",
+  "empirical_present": false,
+  "evidence_classes": [
+    "synthetic"
+  ],
+  "evidence_classes_consistent": true,
+  "forecasting_applicable": false,
+  "full_dataset_download": false,
+  "hardware_metrics_advisory": true,
+  "infrastructure_blocked": false,
+  "input_provenance_complete": true,
+  "input_provenance_missing": [],
+  "metrics": {
+    "fixture_metric": 0.25
+  },
+  "multiplicity_metadata_applicable": true,
+  "multiplicity_metadata_present": true,
+  "network_policy_recorded": true,
+  "network_policy_violated": false,
+  "non_finite_metric_paths": [],
+  "null_metadata_applicable": true,
+  "null_metadata_present": true,
+  "outputs_finite": true,
+  "partial_runs_explicitly_marked": true,
+  "proxy_only": false,
+  "report_metadata_text": "Synthetic smoke fixture for engineering acceptance only. Not empirical evidence and not a formal statistical certification.",
+  "resource_budgets_respected": true,
+  "seed": 7,
+  "source_manifest_path": "fixtures/synthetic_only/source.json",
+  "source_manifest_present": true,
+  "synthetic_only": true,
+  "validation_report_present": true,
+  "validation_status": "ok",
+  "work_units": [
+    {
+      "id": "run_synthetic_only",
+      "input_checksums": [
+        "in_exp_synthetic_only"
+      ],
+      "output_checksums": [
+        "out_run_synthetic_only"
+      ],
+      "partial": false,
+      "status": "completed"
+    }
+  ]
+}
