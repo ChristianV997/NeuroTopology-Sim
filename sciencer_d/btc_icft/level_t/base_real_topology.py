@@ -82,19 +82,36 @@ class LevelTRealTopologyRow:
     run_id: str | None
     window_id: str
     task_label: str | None
-    q_net: float
-    q_abs: float
-    f_dress: float
-    defect_density: float
+    q_net: float | None
+    q_abs: float | None
+    f_dress: float | None
+    defect_density: float | None
     n_triangles: int
     n_valid_triangles: int
-    topology_quality: float
+    topology_quality: float | None
     null_method: str
     null_seed: int
     source_file: str
     window_start_s: float
     window_end_s: float
     warnings: list[str]
+    topology_status: str = "computed"
+    missingness_state: str = "computed"
+    missingness_reason: str | None = None
+    is_valid: bool = True
+    run_status: str = "complete"
+    replicate_count: int = 1
+    uncertainty_metadata: dict | None = None
+
+    def __post_init__(self) -> None:
+        if self.q_abs is None or self.topology_quality is None:
+            self.is_valid = False
+            if self.topology_status == "computed":
+                self.topology_status = "skipped"
+            if self.missingness_state == "computed":
+                self.missingness_state = "unobserved"
+            if self.replicate_count == 1:
+                self.replicate_count = 0
 
 
 @dataclass
@@ -167,9 +184,10 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
     `eeg_signal_topology.compute_topology_from_channels` (the same real, signal-derived
     computation already used by the generic multi-dataset Level T pipeline).
 
-    If the source file can't be read (missing file, out-of-range window, unsupported
-    format), returns a zero/`topology_status`-flagged row with a warning instead of
-    raising, matching the generic pipeline's skip-and-report convention.
+    If the source file or companion files can't be read (missing file, missing companion
+    file like BrainVision .vmrk/.eeg, out-of-range window, unsupported format), returns
+    an explicit missingness row with is_valid=False and None metric fields instead of
+    raising or imputing zero-valued observations.
     """
     from data.bids_ingest import read_window_signal
 
@@ -179,35 +197,71 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
     window_end_s = float(m_row.get("window_end_s") or 0.0)
     warnings: list[str] = []
 
-    def _zero_row(reason: str) -> LevelTRealTopologyRow:
+    def _missing_row(
+        reason: str,
+        missingness_state: str = "failed_read",
+        run_status: str = "failed",
+    ) -> LevelTRealTopologyRow:
         warnings.append(reason)
         return LevelTRealTopologyRow(
-            row_id=row_id, subject_id=str(m_row.get("subject_id")),
-            session_id=m_row.get("session_id") or None, run_id=m_row.get("run_id") or None,
-            window_id=str(m_row.get("window_id")), task_label=m_row.get("task_label") or None,
-            q_net=0.0, q_abs=0.0, f_dress=0.0, defect_density=0.0,
-            n_triangles=0, n_valid_triangles=0, topology_quality=0.0,
-            null_method="real_none", null_seed=0,
-            source_file=source_file, window_start_s=window_start_s, window_end_s=window_end_s,
+            row_id=row_id,
+            subject_id=str(m_row.get("subject_id")),
+            session_id=m_row.get("session_id") or None,
+            run_id=m_row.get("run_id") or None,
+            window_id=str(m_row.get("window_id")),
+            task_label=m_row.get("task_label") or None,
+            q_net=None,
+            q_abs=None,
+            f_dress=None,
+            defect_density=None,
+            n_triangles=0,
+            n_valid_triangles=0,
+            topology_quality=None,
+            null_method="real_none",
+            null_seed=0,
+            source_file=source_file,
+            window_start_s=window_start_s,
+            window_end_s=window_end_s,
             warnings=warnings,
+            topology_status="skipped",
+            missingness_state=missingness_state,
+            missingness_reason=reason,
+            is_valid=False,
+            run_status=run_status,
+            replicate_count=0,
+            uncertainty_metadata={"error": reason, "missingness_state": missingness_state},
         )
 
+    # Alias for backward compatibility
+    _zero_row = _missing_row
+
     if not source_file or not Path(source_file).exists():
-        return _zero_row(f"source file not found: {source_file!r}; topology skipped")
+        return _missing_row(
+            f"source file not found: {source_file!r}; topology skipped",
+            missingness_state="missing_source_file",
+        )
 
     try:
         channels = read_window_signal(
             source_file, window_start_s, window_end_s, pick="all", max_channels=max_channels
         )
     except (ValueError, OSError) as exc:
-        # OSError (e.g. FileNotFoundError): a companion file for a
-        # multi-file format (BrainVision .vhdr/.eeg/.vmrk) can be genuinely
-        # missing from the dataset even though the .vhdr itself (checked
-        # above) exists -- confirmed for real on ds003816 (one task/session
-        # missing its .vmrk on the dataset's own S3 bucket). Same
-        # skip-and-report fix as level_m/base_windows_real.py's identical
-        # bug for this exact failure mode.
-        return _zero_row(f"window skipped: {exc}")
+        exc_str = str(exc).lower()
+        is_companion = (
+            isinstance(exc, FileNotFoundError)
+            or "file not found" in exc_str
+            or any(ext in exc_str for ext in (".vmrk", ".eeg", ".vhdr", ".bdf", ".edf", ".set", ".fdt"))
+        )
+        if is_companion:
+            missing_state = "missing_companion_file"
+            reason = f"companion file missing or unreadable: {exc}"
+        else:
+            missing_state = "failed_read"
+            reason = f"window signal read failed: {exc}"
+        return _missing_row(reason, missingness_state=missing_state)
+
+    if channels is None or len(channels) == 0:
+        return _missing_row("no channels returned for window", missingness_state="failed_read")
 
     channel_data = [list(map(float, ch)) for ch in channels]
     (
@@ -216,14 +270,32 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
     ) = compute_topology_from_channels(channel_data)
 
     return LevelTRealTopologyRow(
-        row_id=row_id, subject_id=str(m_row.get("subject_id")),
-        session_id=m_row.get("session_id") or None, run_id=m_row.get("run_id") or None,
-        window_id=str(m_row.get("window_id")), task_label=m_row.get("task_label") or None,
-        q_net=q_net, q_abs=q_abs, f_dress=f_dress, defect_density=defect_density,
-        n_triangles=n_triangles, n_valid_triangles=n_valid_triangles, topology_quality=topology_quality,
-        null_method="real_none", null_seed=int(_h(row_id) % (2**31 - 1)),
-        source_file=source_file, window_start_s=window_start_s, window_end_s=window_end_s,
+        row_id=row_id,
+        subject_id=str(m_row.get("subject_id")),
+        session_id=m_row.get("session_id") or None,
+        run_id=m_row.get("run_id") or None,
+        window_id=str(m_row.get("window_id")),
+        task_label=m_row.get("task_label") or None,
+        q_net=q_net,
+        q_abs=q_abs,
+        f_dress=f_dress,
+        defect_density=defect_density,
+        n_triangles=n_triangles,
+        n_valid_triangles=n_valid_triangles,
+        topology_quality=topology_quality,
+        null_method="real_none",
+        null_seed=int(_h(row_id) % (2**31 - 1)),
+        source_file=source_file,
+        window_start_s=window_start_s,
+        window_end_s=window_end_s,
         warnings=warnings,
+        topology_status="computed",
+        missingness_state="computed",
+        missingness_reason=None,
+        is_valid=True,
+        run_status="complete",
+        replicate_count=1,
+        uncertainty_metadata={"q_net": q_net, "q_abs": q_abs, "quality": topology_quality},
     )
 
 
@@ -487,15 +559,48 @@ def build_connectivity_report(
 
 
 def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
-    qs = [r.topology_quality for r in rows]
+    valid_rows = [r for r in rows if r.is_valid and r.topology_quality is not None]
+    missing_rows = [r for r in rows if not r.is_valid or r.topology_quality is None]
+    qs = [r.topology_quality for r in valid_rows]
+    n_valid = len(valid_rows)
+    n_missing = len(missing_rows)
+    n_total = len(rows)
+    skip_rate = (n_missing / n_total) if n_total > 0 else 0.0
+
+    quality_passed = (
+        n_total > 0
+        and n_missing == 0
+        and all(r.topology_quality >= 0.25 and r.n_valid_triangles > 0 for r in valid_rows)
+    )
+
+    if n_total == 0:
+        status = "empty_dataset"
+    elif skip_rate > 0.20:
+        status = "blocked_high_skip_rate"
+    elif n_missing > 0:
+        status = "incomplete"
+    elif quality_passed:
+        status = "pass"
+    else:
+        status = "failed_quality"
+
     return {
-        "n_rows": len(rows), "n_subjects": len({r.subject_id for r in rows}), "n_windows": len(rows),
-        "mean_topology_quality": (sum(qs) / len(qs)) if qs else 0.0,
-        "min_topology_quality": min(qs) if qs else 0.0, "max_topology_quality": max(qs) if qs else 0.0,
-        "low_quality_rows": [r.row_id for r in rows if r.topology_quality < 0.25 or r.n_valid_triangles <= 0],
-        "n_valid_triangles_total": sum(r.n_valid_triangles for r in rows),
-        "n_triangles_total": sum(r.n_triangles for r in rows),
-        "quality_passed": all(r.topology_quality >= 0.25 and r.n_valid_triangles > 0 for r in rows),
+        "status": status,
+        "n_rows": n_total,
+        "n_valid_rows": n_valid,
+        "n_missing_rows": n_missing,
+        "skip_rate": round(skip_rate, 4),
+        "n_subjects": len({r.subject_id for r in rows}),
+        "n_valid_subjects": len({r.subject_id for r in valid_rows}),
+        "n_windows": n_total,
+        "mean_topology_quality": (sum(qs) / len(qs)) if qs else None,
+        "min_topology_quality": min(qs) if qs else None,
+        "max_topology_quality": max(qs) if qs else None,
+        "low_quality_rows": [r.row_id for r in valid_rows if r.topology_quality < 0.25 or r.n_valid_triangles <= 0],
+        "missing_row_ids": [r.row_id for r in missing_rows],
+        "n_valid_triangles_total": sum(r.n_valid_triangles for r in valid_rows),
+        "n_triangles_total": sum(r.n_triangles for r in valid_rows),
+        "quality_passed": quality_passed,
     }
 
 
@@ -602,6 +707,8 @@ def build_group_significance_report(
     rows: list[LevelTRealTopologyRow], m_rows: list[dict],
     group_col: str = "state_label", value_cols: tuple[str, ...] = ("q_net", "q_abs", "f_dress", "defect_density"),
     n_permutations: int = 2000, seed: int = 0,
+    min_paired_subjects: int | None = None,
+    max_skip_rate: float | None = None,
 ) -> dict:
     """Test whether a Level M grouping column (default `state_label`) predicts
     each Level T topology metric, using both the window-pooled and
@@ -610,28 +717,68 @@ def build_group_significance_report(
     Joins Level T rows back to Level M rows by row_id (Level T rows do not
     themselves carry the semantic group label, only `task_label`). Reports
     `"not_applicable"` with a reason if `group_col` is absent from the joined
-    data or doesn't have exactly 2 distinct non-null values -- this function
-    only covers the 2-group comparison case; continuous-variable correlation
-    (e.g. a 0-3 depth rating) needs a different test this function does not
-    attempt.
+    data or doesn't have exactly 2 distinct non-null values.
+
+    Fails closed: excludes invalid or unobserved rows from permutation tests
+    and blocks if overall window skip rate exceeds `max_skip_rate` or paired
+    subject count falls below `min_paired_subjects`.
     """
     import pandas as pd
 
     from analysis.permutation import permutation_test, subject_blocked_permutation_test
 
+    eligible_rows = [
+        r for r in rows
+        if r.is_valid and r.topology_status == "computed" and not r.warnings
+    ]
+    skip_rate = (len(rows) - len(eligible_rows)) / len(rows) if rows else 1.0
+
+    if max_skip_rate is not None and skip_rate > max_skip_rate:
+        return {
+            "status": "blocked_high_skip_rate",
+            "reason": f"skip rate {skip_rate:.2%} exceeds maximum threshold {max_skip_rate:.2%}",
+            "skip_rate": round(skip_rate, 4),
+            "max_skip_rate": max_skip_rate,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "group_col": group_col,
+        }
+
+    if not eligible_rows:
+        return {
+            "status": "not_applicable",
+            "reason": "no valid computed Level T rows available",
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": 0,
+            "n_rows_excluded": len(rows),
+        }
+
     by_id = {str(m.get("row_id")): m for m in m_rows}
     joined = []
-    for r in rows:
+    for r in eligible_rows:
         m = by_id.get(r.row_id)
         if m is None:
             continue
         group_val = m.get(group_col)
         if group_val in (None, ""):
             continue
-        joined.append({"subject_id": r.subject_id, "group": group_val, **{c: getattr(r, c) for c in value_cols}})
+        row_vals = {}
+        for c in value_cols:
+            val = getattr(r, c, None)
+            if val is not None:
+                row_vals[c] = val
+        joined.append({"subject_id": r.subject_id, "group": group_val, **row_vals})
 
     if not joined:
-        return {"status": "not_applicable", "reason": f"no rows with a non-null {group_col!r} value", "group_col": group_col}
+        return {
+            "status": "not_applicable",
+            "reason": f"no eligible rows with a non-null {group_col!r} value",
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+        }
 
     df = pd.DataFrame(joined)
     groups = sorted(df["group"].unique(), key=str)
@@ -642,8 +789,24 @@ def build_group_significance_report(
             "group_col": group_col,
         }
 
+    subjects_g0 = set(df.loc[df["group"] == groups[0], "subject_id"].dropna())
+    subjects_g1 = set(df.loc[df["group"] == groups[1], "subject_id"].dropna())
+    paired_subjects = subjects_g0.intersection(subjects_g1)
+
+    if min_paired_subjects is not None and len(paired_subjects) < min_paired_subjects:
+        return {
+            "status": "insufficient_power",
+            "reason": f"paired subject count {len(paired_subjects)} < minimum required {min_paired_subjects}",
+            "n_paired_subjects": len(paired_subjects),
+            "min_paired_subjects": min_paired_subjects,
+            "group_col": group_col,
+        }
+
     metric_results = {}
     for value_col in value_cols:
+        if value_col not in df.columns:
+            metric_results[value_col] = {"status": "not_found"}
+            continue
         sub = df[["subject_id", "group", value_col]].dropna()
         a = sub.loc[sub["group"] == groups[0], value_col].to_numpy(dtype=float)
         b = sub.loc[sub["group"] == groups[1], value_col].to_numpy(dtype=float)
@@ -652,7 +815,30 @@ def build_group_significance_report(
             continue
         pooled = permutation_test(a, b, n_permutations=n_permutations, seed=seed)
         blocked = subject_blocked_permutation_test(sub.rename(columns={value_col: "value"}), "value", "group", "subject_id", n_permutations=n_permutations, seed=seed)
-        metric_results[value_col] = {"window_pooled": pooled.to_dict(), "subject_blocked": blocked.to_dict()}
+
+        mean_a, mean_b = float(np.mean(a)), float(np.mean(b))
+        std_a = float(np.std(a, ddof=1)) if len(a) > 1 else 0.0
+        std_b = float(np.std(b, ddof=1)) if len(b) > 1 else 0.0
+        sem_a = float(std_a / np.sqrt(len(a))) if len(a) > 0 else 0.0
+        sem_b = float(std_b / np.sqrt(len(b))) if len(b) > 0 else 0.0
+        ci_95_a = [round(mean_a - 1.96 * sem_a, 6), round(mean_a + 1.96 * sem_a, 6)]
+        ci_95_b = [round(mean_b - 1.96 * sem_b, 6), round(mean_b + 1.96 * sem_b, 6)]
+
+        metric_results[value_col] = {
+            "window_pooled": pooled.to_dict(),
+            "subject_blocked": blocked.to_dict(),
+            "group_a": str(groups[0]),
+            "group_b": str(groups[1]),
+            "mean_a": round(mean_a, 6),
+            "mean_b": round(mean_b, 6),
+            "sem_a": round(sem_a, 6),
+            "sem_b": round(sem_b, 6),
+            "ci_95_a": ci_95_a,
+            "ci_95_b": ci_95_b,
+            "diff_means": round(mean_b - mean_a, 6),
+            "n_obs_a": len(a),
+            "n_obs_b": len(b),
+        }
 
     return {
         "status": "computed",
@@ -660,6 +846,11 @@ def build_group_significance_report(
         "groups": [str(g) for g in groups],
         "n_permutations": n_permutations,
         "seed": seed,
+        "n_rows_total": len(rows),
+        "n_rows_eligible": len(eligible_rows),
+        "n_rows_excluded": len(rows) - len(eligible_rows),
+        "skip_rate": round(skip_rate, 4),
+        "n_paired_subjects": len(paired_subjects),
         "metrics": metric_results,
     }
 
@@ -765,15 +956,191 @@ def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: l
         if v in (None, ""):
             missing += 1
         else:
-            art.append(float(v))
+            try:
+                art.append(float(v))
+            except (ValueError, TypeError):
+                missing += 1
+    valid_qualities = [r.topology_quality for r in rows if r.is_valid and r.topology_quality is not None]
     return {
-        "n_rows": len(rows), "n_matched_m_rows": sum(1 for r in rows if r.row_id in by_id),
-        "n_missing_artifact_scores": missing, "mean_artifact_score": (sum(art)/len(art)) if art else 0.0,
-        "high_artifact_rows": [r.row_id for r in rows if (by_id.get(r.row_id, {}).get("artifact_score") not in (None, "") and float(by_id[r.row_id]["artifact_score"]) > 0.5)],
-        "topology_quality_mean": (sum(r.topology_quality for r in rows)/len(rows)) if rows else 0.0,
-        "low_topology_quality_rows": [r.row_id for r in rows if r.topology_quality < 0.25],
+        "n_rows": len(rows),
+        "n_matched_m_rows": sum(1 for r in rows if r.row_id in by_id),
+        "n_missing_artifact_scores": missing,
+        "mean_artifact_score": (sum(art) / len(art)) if art else None,
+        "high_artifact_rows": [
+            r.row_id for r in rows
+            if (by_id.get(r.row_id, {}).get("artifact_score") not in (None, "")
+                and float(by_id[r.row_id]["artifact_score"]) > 0.5)
+        ],
+        "topology_quality_mean": (sum(valid_qualities) / len(valid_qualities)) if valid_qualities else None,
+        "low_topology_quality_rows": [r.row_id for r in rows if r.is_valid and r.topology_quality is not None and r.topology_quality < 0.25],
+        "missing_topology_rows": [r.row_id for r in rows if not r.is_valid or r.topology_quality is None],
         "artifact_alignment_warning": "artifact scores partially missing" if missing else "none",
-        "artifact_dominance_proxy": ((sum(art)/len(art)) > 0.5) if art else False,
+        "artifact_dominance_proxy": ((sum(art) / len(art)) > 0.5) if art else False,
+    }
+
+
+def audit_cohort_missingness(
+    t_rows: list[LevelTRealTopologyRow],
+    m_rows: list[dict],
+    group_col: str = "task_label",
+    min_paired_subjects: int = 5,
+    max_skip_rate: float = 0.20,
+    min_windows_per_subject: int = 1,
+    expected_subjects: list[str] | None = None,
+) -> dict:
+    """Audit cohort missingness, pairing integrity, and run completeness.
+
+    Fails closed:
+    - Overall window skip rate > max_skip_rate -> 'BLOCKED'
+    - Paired subject count < min_paired_subjects in a 2-condition cohort -> 'INSUFFICIENT_POWER'
+    - Missing companion files, missing windows, or incomplete cohorts -> 'INCOMPLETE'
+    - Empty dataset -> 'EMPTY_DATASET'
+
+    Passes only when all subjects, companion files, conditions, and windows are
+    observed, valid, and paired.
+    """
+    total_t_rows = len(t_rows)
+    valid_t_rows = [r for r in t_rows if r.is_valid and r.q_abs is not None and r.topology_status == "computed"]
+    missing_t_rows = [r for r in t_rows if not r.is_valid or r.q_abs is None or r.topology_status != "computed"]
+
+    n_valid = len(valid_t_rows)
+    n_missing = len(missing_t_rows)
+    skip_rate = (n_missing / total_t_rows) if total_t_rows > 0 else 1.0
+
+    missingness_by_reason: dict[str, int] = {}
+    missing_records: list[dict] = []
+    for r in missing_t_rows:
+        reason_key = r.missingness_state or "unobserved"
+        missingness_by_reason[reason_key] = missingness_by_reason.get(reason_key, 0) + 1
+        missing_records.append({
+            "row_id": r.row_id,
+            "subject_id": r.subject_id,
+            "session_id": r.session_id,
+            "run_id": r.run_id,
+            "missingness_state": r.missingness_state,
+            "missingness_reason": r.missingness_reason,
+        })
+
+    all_subject_ids = sorted({r.subject_id for r in t_rows})
+    subject_details: dict[str, dict] = {}
+    complete_subjects = []
+    partial_subjects = []
+    failed_subjects = []
+
+    m_by_id = {str(m.get("row_id")): m for m in m_rows}
+
+    for sub_id in all_subject_ids:
+        sub_rows = [r for r in t_rows if r.subject_id == sub_id]
+        sub_valid = [r for r in sub_rows if r.is_valid and r.q_abs is not None and r.topology_status == "computed"]
+        sub_missing = [r for r in sub_rows if not (r.is_valid and r.q_abs is not None and r.topology_status == "computed")]
+
+        sub_conditions = set()
+        for r in sub_valid:
+            c = r.task_label
+            if not c and r.row_id in m_by_id:
+                c = m_by_id[r.row_id].get(group_col)
+            if c:
+                sub_conditions.add(str(c))
+
+        n_sub_total = len(sub_rows)
+        n_sub_valid = len(sub_valid)
+        sub_skip = (len(sub_missing) / n_sub_total) if n_sub_total > 0 else 1.0
+
+        if n_sub_valid == n_sub_total and n_sub_valid >= min_windows_per_subject:
+            status = "complete"
+            complete_subjects.append(sub_id)
+        elif n_sub_valid > 0:
+            status = "partial"
+            partial_subjects.append(sub_id)
+        else:
+            status = "failed"
+            failed_subjects.append(sub_id)
+
+        subject_details[sub_id] = {
+            "status": status,
+            "n_total_windows": n_sub_total,
+            "n_valid_windows": n_sub_valid,
+            "n_missing_windows": len(sub_missing),
+            "skip_rate": round(sub_skip, 4),
+            "conditions": sorted(list(sub_conditions)),
+        }
+
+    joined_valid = []
+    for r in valid_t_rows:
+        cond = r.task_label
+        if not cond and r.row_id in m_by_id:
+            cond = m_by_id[r.row_id].get(group_col)
+        if cond:
+            joined_valid.append({"subject_id": r.subject_id, "condition": str(cond)})
+
+    unique_conditions = sorted({item["condition"] for item in joined_valid})
+    paired_subjects: list[str] = []
+    unpaired_subjects: list[str] = []
+
+    if len(unique_conditions) == 2:
+        c0, c1 = unique_conditions[0], unique_conditions[1]
+        subs_c0 = {item["subject_id"] for item in joined_valid if item["condition"] == c0}
+        subs_c1 = {item["subject_id"] for item in joined_valid if item["condition"] == c1}
+        paired_set = subs_c0.intersection(subs_c1)
+        paired_subjects = sorted(list(paired_set))
+        unpaired_subjects = sorted(list(set(all_subject_ids) - paired_set))
+    else:
+        paired_subjects = complete_subjects
+        unpaired_subjects = sorted(list(set(all_subject_ids) - set(complete_subjects)))
+
+    missing_expected_subjects = []
+    if expected_subjects:
+        missing_expected_subjects = sorted([s for s in expected_subjects if s not in all_subject_ids])
+
+    if total_t_rows == 0:
+        verdict = "EMPTY_DATASET"
+        gate_passed = False
+        verdict_reason = "No Level T rows provided."
+    elif skip_rate > max_skip_rate:
+        verdict = "BLOCKED"
+        gate_passed = False
+        verdict_reason = f"Window skip rate {skip_rate:.2%} exceeds maximum threshold {max_skip_rate:.2%}."
+    elif len(unique_conditions) == 2 and len(paired_subjects) < min_paired_subjects:
+        verdict = "INSUFFICIENT_POWER"
+        gate_passed = False
+        verdict_reason = f"Paired subject count ({len(paired_subjects)}) below minimum power requirement ({min_paired_subjects})."
+    elif n_missing > 0 or len(unpaired_subjects) > 0 or len(missing_expected_subjects) > 0 or len(partial_subjects) > 0:
+        verdict = "INCOMPLETE"
+        gate_passed = False
+        verdict_reason = (
+            f"Cohort incomplete: {n_missing} missing windows, {len(partial_subjects)} partial subjects, "
+            f"{len(unpaired_subjects)} unpaired subjects, {len(missing_expected_subjects)} missing expected subjects."
+        )
+    else:
+        verdict = "PASS"
+        gate_passed = True
+        verdict_reason = "All cohort subjects, companion files, conditions, and windows complete and valid."
+
+    return {
+        "verdict": verdict,
+        "gate_passed": gate_passed,
+        "verdict_reason": verdict_reason,
+        "n_total_windows": total_t_rows,
+        "n_valid_windows": n_valid,
+        "n_missing_windows": n_missing,
+        "skip_rate": round(skip_rate, 4),
+        "max_skip_rate": max_skip_rate,
+        "missingness_by_reason": missingness_by_reason,
+        "missing_records": missing_records,
+        "n_total_subjects": len(all_subject_ids),
+        "n_complete_subjects": len(complete_subjects),
+        "n_partial_subjects": len(partial_subjects),
+        "n_failed_subjects": len(failed_subjects),
+        "complete_subjects": complete_subjects,
+        "partial_subjects": partial_subjects,
+        "failed_subjects": failed_subjects,
+        "conditions_detected": unique_conditions,
+        "n_paired_subjects": len(paired_subjects),
+        "paired_subjects": paired_subjects,
+        "unpaired_subjects": unpaired_subjects,
+        "min_paired_subjects": min_paired_subjects,
+        "missing_expected_subjects": missing_expected_subjects,
+        "subject_details": subject_details,
     }
 
 
@@ -792,17 +1159,13 @@ def write_level_t_topology_outputs(
     phase_based_topology_report: dict | None = None, connectivity_report: dict | None = None,
     spatial_topology_report: dict | None = None, microstate_report: dict | None = None,
     ml_decoding_report: dict | None = None,
+    cohort_missingness_report: dict | None = None,
 ) -> dict[str, str]:
     """`null_gate_report`/`group_significance_report`/`phase_based_topology_report`/
     `connectivity_report`/`spatial_topology_report`/`microstate_report`/
-    `ml_decoding_report` are optional (default None, writing nothing extra)
-    so existing callers that don't pass them keep getting exactly the same
-    output files as before.
-    Passing them writes additional JSON files and adds report.md sections --
-    see `build_null_gate_report`/`build_group_significance_report`/
-    `build_phase_based_topology_report`/`build_connectivity_report`/
-    `spatial_topology.py::build_spatial_topology_report`/
-    `microstates.py::build_microstate_report`.
+    `ml_decoding_report`/`cohort_missingness_report` are optional (default None,
+    writing nothing extra) so existing callers that don't pass them keep getting
+    exactly the same output files as before.
     """
     base = Path(out_dir); base.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -827,14 +1190,26 @@ def write_level_t_topology_outputs(
         paths["microstate_report.json"] = base / "microstate_report.json"
     if ml_decoding_report is not None:
         paths["ml_decoding_report.json"] = base / "ml_decoding_report.json"
+    if cohort_missingness_report is not None:
+        paths["cohort_missingness_report.json"] = base / "cohort_missingness_report.json"
 
     with paths["features_t.csv"].open("w", encoding="utf-8", newline="") as f:
         writer = None
         for r in rows:
             d = asdict(r)
             if writer is None:
-                writer = csv.DictWriter(f, fieldnames=list(d.keys())); writer.writeheader()
-            writer.writerow(d)
+                writer = csv.DictWriter(f, fieldnames=list(d.keys()))
+                writer.writeheader()
+            row_dict = {}
+            for k, v in d.items():
+                if v is None:
+                    row_dict[k] = ""
+                elif isinstance(v, (dict, list)):
+                    row_dict[k] = json.dumps(v)
+                else:
+                    row_dict[k] = v
+            writer.writerow(row_dict)
+
     paths["topology_quality_report.json"].write_text(json.dumps(result.topology_quality_report, indent=2), encoding="utf-8")
     paths["null_placeholder_report.json"].write_text(json.dumps(result.null_placeholder_report, indent=2), encoding="utf-8")
     paths["artifact_alignment_report.json"].write_text(json.dumps(result.artifact_alignment_report, indent=2), encoding="utf-8")
@@ -853,6 +1228,8 @@ def write_level_t_topology_outputs(
         paths["microstate_report.json"].write_text(json.dumps(microstate_report, indent=2), encoding="utf-8")
     if ml_decoding_report is not None:
         paths["ml_decoding_report.json"].write_text(json.dumps(ml_decoding_report, indent=2), encoding="utf-8")
+    if cohort_missingness_report is not None:
+        paths["cohort_missingness_report.json"].write_text(json.dumps(cohort_missingness_report, indent=2), encoding="utf-8")
 
     report_lines = [
         f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
@@ -882,6 +1259,17 @@ def write_level_t_topology_outputs(
         report_lines += ["## Microstate report (real pycrostates modified K-means, per-recording not per-window)", f"- {microstate_report}"]
     if ml_decoding_report is not None:
         report_lines += ["## ML decoding report (cross-validated logistic regression + permutation-test null, complementary to per-metric group significance)", f"- {ml_decoding_report}"]
+    if cohort_missingness_report is not None:
+        report_lines += [
+            "## Cohort missingness audit report",
+            f"- verdict: {cohort_missingness_report.get('verdict')}",
+            f"- gate_passed: {cohort_missingness_report.get('gate_passed')}",
+            f"- skip_rate: {cohort_missingness_report.get('skip_rate')}",
+            f"- n_valid_windows: {cohort_missingness_report.get('n_valid_windows')}",
+            f"- n_missing_windows: {cohort_missingness_report.get('n_missing_windows')}",
+            f"- n_paired_subjects: {cohort_missingness_report.get('n_paired_subjects')}",
+            f"- reason: {cohort_missingness_report.get('verdict_reason')}",
+        ]
     report_lines += [
         "## Artifact alignment report",
         f"- {result.artifact_alignment_report}",
