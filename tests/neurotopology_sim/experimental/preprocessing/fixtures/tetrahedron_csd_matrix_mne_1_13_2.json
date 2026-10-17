@@ -1,0 +1,26 @@
+{
+  "evidence_class": "SYNTHETIC_ONLY",
+  "generation": {
+    "channel_names": [
+      "T0",
+      "T1",
+      "T2",
+      "T3"
+    ],
+    "geometry": "regular_tetrahedron_unit * 0.095",
+    "hand_edited": false,
+    "lambda2": 1e-05,
+    "mne_pin_commit": "bf67729b805865b5bb0f2f97621e416278efd1b2",
+    "mne_pin_version": "1.13.2",
+    "n_legendre_terms": 50,
+    "producer": "neurotopology_sim.experimental.preprocessing.spherical_csd.compute_spherical_csd_transform",
+    "sphere_m": [
+      0.0,
+      0.0,
+      0.0,
+      0.095
+    ],
+    "stiffness": 4.0
+  },
+  "status": "HOLD"
+}
