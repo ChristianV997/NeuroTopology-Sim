@@ -56,6 +56,54 @@ class ReportFirewallTests(unittest.TestCase):
         excluded_lines = {"L6", "L26", "L30", "L31", "L32", "L36", "L38", "L54", "L58"}
         self.assertFalse(any(f["location"] in excluded_lines for f in report["findings"]))
 
+    def _adversarial_markdown_report(self):
+        self._write("adversarial.md", (FIXTURES / "adversarial_context.md").read_text(encoding="utf-8"))
+        return inspect_reports(self.root, ["adversarial.md"])["findings"]
+
+    def test_negation_in_prior_compound_clause_does_not_suppress_positive_claim(self):
+        findings = self._adversarial_markdown_report()
+        causal_locations = {finding["location"] for finding in findings
+                            if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"}
+        self.assertIn("L11", causal_locations)
+        self.assertIn("L13", causal_locations)
+        self.assertNotIn("L17", causal_locations)
+        self.assertNotIn("L19", causal_locations)
+
+    def test_multiple_assertive_claims_in_one_sentence_are_checked(self):
+        findings = self._adversarial_markdown_report()
+        causal_locations = {finding["location"] for finding in findings
+                            if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"}
+        self.assertIn("L15", causal_locations)
+        self.assertIn("REPLICATION_WITHOUT_INDEPENDENT_EVIDENCE", {
+            finding["rule"] for finding in findings if finding["location"] == "L15"
+        })
+
+    def test_fenced_and_indented_markdown_code_are_not_scanned(self):
+        findings = self._adversarial_markdown_report()
+        self.assertFalse(any(finding["location"] in {"L3", "L6"} for finding in findings))
+
+    def test_straight_single_quoted_span_is_not_scanned(self):
+        findings = self._adversarial_markdown_report()
+        self.assertFalse(any(finding["location"] == "L9" for finding in findings))
+
+    def test_real_prose_after_code_and_quotes_remains_scannable(self):
+        findings = self._adversarial_markdown_report()
+        self.assertIn("SYNTHETIC_TO_EMPIRICAL_ASSERTION", {
+            finding["rule"] for finding in findings if finding["location"] == "L21"
+        })
+        self.assertIn("SYNTHETIC_TO_EMPIRICAL_ASSERTION", {
+            finding["rule"] for finding in findings if finding["location"] == "L21"
+        })
+
+    def test_scientific_validated_is_not_excused_by_software_scope_metadata(self):
+        self._write("status-scope.json", (FIXTURES / "status_scope_mismatch.json").read_text(encoding="utf-8"))
+        report = inspect_reports(self.root, ["status-scope.json"])
+        self.assertTrue(any(
+            finding["location"] == "$/report/scientific_status"
+            and finding["rule"] == "AMBIGUOUS_VALIDATION_STATUS"
+            for finding in report["findings"]
+        ))
+
     def test_structured_status_mismatch_and_mixed_sections(self):
         self._write("report.json", (FIXTURES / "status_mismatch.json").read_text(encoding="utf-8"))
         report = inspect_reports(self.root, ["report.json"])
