@@ -1,0 +1,86 @@
+"""Spectral and marginal error definitions for surrogate audit.
+
+Cross-spectral error
+--------------------
+Let ``F`` be the real-FFT of an array shaped ``(n_channels, n_time)``.
+The complex cross-spectral tensor is
+
+    C[f, i, j] = F[i, f] * conj(F[j, f]) / n_time
+
+for every frequency bin ``f``. The **relative cross-spectral error** between
+original ``X`` and surrogate ``S`` is the Frobenius relative residual
+
+    ||C_S - C_X||_F / (||C_X||_F + eps)
+
+This uses the **full channel×channel complex matrix at every frequency**, not
+per-channel auto-spectra alone. Auto-spectral error is reported separately
+when useful, but never as a substitute for the multivariate gate.
+
+Marginal (quantile) error
+-------------------------
+For each channel ``c``, compare ``sort(S[c])`` to ``sort(X[c])``. The channel
+error is ``max_t |sort(S[c])_t - sort(X[c])_t|``; the reported scalar is the
+max over channels. Exact rank restoration yields ~0 (numerical float noise).
+"""
+from __future__ import annotations
+
+import numpy as np
+
+from .errors import SurrogateAuditError
+
+SPECTRAL_GATE_1E3 = 1e-3
+_EPS = 1e-15
+
+
+def validate_array(x: np.ndarray, *, min_channels: int = 1, min_time: int = 2) -> np.ndarray:
+    arr = np.asarray(x, dtype=np.float64)
+    if arr.ndim != 2:
+        raise SurrogateAuditError(f"expected 2-D (n_channels, n_time), got shape {arr.shape}")
+    if arr.shape[0] < min_channels:
+        raise SurrogateAuditError(f"need >= {min_channels} channels, got {arr.shape[0]}")
+    if arr.shape[1] < min_time:
+        raise SurrogateAuditError(f"need >= {min_time} time samples, got {arr.shape[1]}")
+    if not np.all(np.isfinite(arr)):
+        raise SurrogateAuditError("array contains non-finite values")
+    return arr
+
+
+def cross_spectral_tensor(x: np.ndarray) -> np.ndarray:
+    """Return ``C`` with shape ``(n_freq, n_channels, n_channels)`` (complex128)."""
+    arr = validate_array(x)
+    n_ch, n_t = arr.shape
+    F = np.fft.rfft(arr, axis=1)  # (n_ch, n_freq)
+    # C[f] = outer(F[:,f], conj(F[:,f])) / n_t
+    C = (F[:, None, :] * np.conj(F[None, :, :])) / float(n_t)
+    # Currently (n_ch, n_ch, n_freq) — move freq to leading axis.
+    return np.transpose(C, (2, 0, 1))
+
+
+def relative_cross_spectral_error(original: np.ndarray, surrogate: np.ndarray) -> float:
+    """Frobenius relative error of the full complex cross-spectral tensor."""
+    c0 = cross_spectral_tensor(original)
+    c1 = cross_spectral_tensor(surrogate)
+    if c0.shape != c1.shape:
+        raise SurrogateAuditError("original/surrogate shapes disagree for spectral error")
+    num = float(np.linalg.norm(c1 - c0))
+    den = float(np.linalg.norm(c0)) + _EPS
+    return num / den
+
+
+def relative_autospectral_error(original: np.ndarray, surrogate: np.ndarray) -> float:
+    """Relative error of per-channel auto-spectra only (not the multivariate gate)."""
+    a0 = np.abs(np.fft.rfft(validate_array(original), axis=1)) ** 2
+    a1 = np.abs(np.fft.rfft(validate_array(surrogate), axis=1)) ** 2
+    num = float(np.linalg.norm(a1 - a0))
+    den = float(np.linalg.norm(a0)) + _EPS
+    return num / den
+
+
+def marginal_sorted_error(original: np.ndarray, surrogate: np.ndarray) -> float:
+    """Max over channels of max abs difference between sorted values."""
+    x = validate_array(original)
+    s = validate_array(surrogate)
+    if x.shape != s.shape:
+        raise SurrogateAuditError("original/surrogate shapes disagree for marginal error")
+    errs = [float(np.max(np.abs(np.sort(s[c]) - np.sort(x[c])))) for c in range(x.shape[0])]
+    return float(max(errs)) if errs else 0.0
