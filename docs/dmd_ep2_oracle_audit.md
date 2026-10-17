@@ -4,7 +4,7 @@
 
 ## Reproducible checks
 
-Run: `python -m unittest discover -s tests/dmd_ep2_oracle -v` — **7 tests passed** after extending the standard-library oracle. A second run with NumPy available through an isolated, non-checkout cache was used only to confirm environment availability: `uv run --offline --with numpy python -c "import numpy; print(numpy.__version__)"` reported NumPy 2.5.4; the verifier itself remains dependency-free. `git diff --check` passed. The tests use synthetic values; no network, datasets, installs into the repository, or third-party code were used.
+- **Verification:** `python -m unittest discover -s tests/dmd_ep2_oracle -v` — **8 tests passed** after adding the explicit signed Nyquist alias convention. `git diff --check` passed. The tests use synthetic values; no network, datasets, installs into the repository, or third-party code were used.
 
 The matrix-level oracle now covers diagonalizable, defective repeated-eigenvalue, strongly nonnormal, singular, and near-cut synthetic 2x2 matrices. It uses the closed-form 2x2 primary matrix-function identity (with the repeated-root derivative limit), not the candidate Denman–Beavers/Gregory implementation. For supported matrices, it checks `exp(log(A))` reconstruction and separately checks branch proximity. This is an independent mathematical oracle, not evidence that the candidate engine is correct.
 

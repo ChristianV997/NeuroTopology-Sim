@@ -29,6 +29,11 @@ def branch_diagnostic(eigenvalues, margin=1e-6):
     return {'near_cut': d <= margin, 'phase_margin': d}
 
 
+def signed_nyquist_alias(frequency, sampling_rate):
+    """Return the signed representative in [-Fs/2, Fs/2)."""
+    return ((frequency + sampling_rate / 2) % sampling_rate) - sampling_rate / 2
+
+
 def mat_identity():
     return ((1 + 0j, 0j), (0j, 1 + 0j))
 
@@ -109,6 +114,14 @@ class OracleTests(unittest.TestCase):
         # Principal log maps negative-real eigenvalues to phase +pi; proximity
         # warns of branch sensitivity, not an unobserved physical frequency.
         self.assertAlmostEqual(log_diag(-1+0j).imag, math.pi)
+
+    def test_signed_nyquist_alias_convention(self):
+        # With Fs=250 Hz, signed principal representatives put 240 Hz at
+        # -10 Hz and the Nyquist endpoint 250 Hz at 0 Hz.  This demonstrates
+        # aliasing; it does not show that sampling can recover the source.
+        self.assertAlmostEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
+        self.assertAlmostEqual(signed_nyquist_alias(250.0, 250.0), 0.0)
+        self.assertAlmostEqual(signed_nyquist_alias(-240.0, 250.0), 10.0)
 
     def test_singular_log_rejected(self):
         with self.assertRaises(ValueError):
