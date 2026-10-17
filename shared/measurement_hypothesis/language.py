@@ -15,7 +15,7 @@ from typing import Iterable
 from sciencer_d.ontology.firewall import scan_text as ontology_firewall_scan
 from shared.research_claims.language_rules import scan_text as shared_claim_scan
 
-from .schema import THEORY_NAMESPACE_TERMS
+from .schema import TARGET_CONSTRUCT_PHRASES, THEORY_NAMESPACE_TERMS
 
 # "X is Y" sameness claims. A mapping may not equate an electrode or a metric with a
 # theoretical object, so these are never negation-exempt.
@@ -41,7 +41,7 @@ SUPPORT_PHRASES: tuple[str, ...] = (
 )
 
 _NEGATION_PREFIXES: tuple[str, ...] = (
-    "not ", "not yet ", "no ", "never ", "without ", "un",
+    "not ", "not yet ", "not a ", "not an ", "not the ", "no ", "never ", "without ", "un",
 )
 
 
@@ -75,6 +75,14 @@ def scan_interpretation(text: str) -> dict[str, list[str]]:
         "shared_claim_rules": [f"{category}:{phrase}" for category, phrases in shared.items() for phrase in phrases],
         "ontology_firewall": list(ontology_firewall_scan(text).violations),
     }
+
+
+def target_construct_hits(text: str) -> list[str]:
+    """Target constructs (cortical wave, source localization, consciousness, biological validation).
+
+    An explicit negation such as "not a cortical wave" is allowed. An affirmative equation is not.
+    """
+    return _hits(_normalize(text), TARGET_CONSTRUCT_PHRASES, negation_allowed=True)
 
 
 def theory_terms_in(value: str) -> list[str]:

@@ -62,7 +62,7 @@ def test_report_is_deterministic_and_finite_json(valid_mapping, check):
     first = json.dumps(check(valid_mapping), sort_keys=True, allow_nan=False)
     second = json.dumps(check(valid_mapping), sort_keys=True, allow_nan=False)
     assert first == second
-    assert json.loads(first)["schema"] == "NeuroTopologySim.MeasurementHypothesisReport.v1"
+    assert json.loads(first)["schema"] == "NeuroTopologySim.MeasurementHypothesisReport.v2"
 
 
 def test_theory_namespace_term_is_allowed_on_the_interpretation_side(valid_mapping, check):

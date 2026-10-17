@@ -45,6 +45,7 @@ def _tmp_mapping(valid_mapping, source: str, *, module: str = "pkg/mod.py", symb
         "feature_id": f"{symbol}.phase_grad",
         "feature_family": None,
         "family_note": "Synthetic fixture module for resolution tests.",
+        "category": "sensor_space_phase_gradient",
         "implementation": {
             "module": module,
             "symbol": symbol,

@@ -20,11 +20,18 @@ from urllib.parse import urlsplit
 
 from tools.research_claim_gate.gate import evaluate_claim, serialize_json
 
-from .language import scan_interpretation, theory_terms_in
+from .language import scan_interpretation, target_construct_hits, theory_terms_in
 from .resolve import parse, repo_file, sha256_of, string_literals, top_level_function
 from .schema import (
+    CONSTRUCT_VALIDITY_FIELDS,
+    CONSTRUCT_VALIDITY_STATUS,
+    DATA_ACCESS_STATUS,
     DATA_TYPES,
+    EMPIRICAL_CLAIM_FIELDS,
+    EMPIRICAL_CLAIM_STATUS,
     EVIDENCE_KEYS,
+    IDENTITY_STATUSES,
+    OPERATIONAL_CATEGORIES,
     FALSIFIER_FIELDS,
     FALSIFIER_ID_RE,
     HEX64_RE,
@@ -91,13 +98,16 @@ def validate_mapping(mapping: Any, *, repo_root: Path, as_of: date) -> dict[str,
     operational = _check_operational(mapping.get("operational"), repo_root, fail)
     _check_measurement(mapping.get("measurement"), operational, fail)
     _check_operator(mapping.get("operator"), sources, fail)
+    category = operational.get("category")
     interpretation = _check_interpretation(mapping.get("interpretation"), sources, fail)
+    _check_empirical_claim(mapping.get("empirical_claim"), fail)
+    _check_construct_validity(mapping.get("construct_validity"), fail)
     _check_not_established(mapping.get("not_established"), fail)
 
     gate = None
     if interpretation is not None:
         gate = _gate_reference(mapping_id, interpretation, sources, operational, fail)
-    return _report(mapping_id, errors, _public_implementation(operational), gate)
+    return _report(mapping_id, errors, _public_implementation(operational), gate, category=category)
 
 
 # ── shared structural checks ─────────────────────────────────────────────────
@@ -203,7 +213,7 @@ def _check_source_ids(raw: Any, sources: Mapping[str, Any], path: str, fail: Fai
 
 def _check_operational(raw: Any, repo_root: Path, fail: Fail) -> dict[str, Any]:
     facts: dict[str, Any] = {
-        "module": None, "symbol": None, "output_key": None, "metric_kind": None,
+        "category": None, "module": None, "symbol": None, "output_key": None, "metric_kind": None,
         "resolved": False, "sha256_matches": False, "symbol_found": False,
         "output_key_found": False, "metric_kind_found": False, "tree": None,
     }
@@ -219,6 +229,14 @@ def _check_operational(raw: Any, repo_root: Path, fail: Fail) -> dict[str, Any]:
     if family is None and not (isinstance(note, str) and note.strip()):
         fail("FAMILY_NOTE_MISSING", "$.operational.family_note",
              "a mapping with no registered family must say why none applies")
+
+    category = raw.get("category")
+    if category is None:
+        fail("CATEGORY_MISSING", "$.operational.category", "every descriptor declares a category")
+    elif not (isinstance(category, str) and category in OPERATIONAL_CATEGORIES):
+        fail("CATEGORY_UNKNOWN", "$.operational.category", "category is not in the closed vocabulary")
+    else:
+        facts["category"] = category
 
     impl = raw.get("implementation")
     base = "$.operational.implementation"
@@ -284,7 +302,8 @@ def _check_operational(raw: Any, repo_root: Path, fail: Fail) -> dict[str, Any]:
 
 
 def _public_implementation(facts: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in facts.items() if key != "tree"}
+    """Resolution facts only. The category is reported at the top level, not as a resolution fact."""
+    return {key: value for key, value in facts.items() if key not in ("tree", "category")}
 
 
 def _check_measurement(raw: Any, operational: Mapping[str, Any], fail: Fail) -> None:
@@ -314,6 +333,17 @@ def _check_measurement(raw: Any, operational: Mapping[str, Any], fail: Fail) -> 
     if not (isinstance(steps, list) and steps):
         fail("PREPROCESSING_MISSING", f"{base}.preprocessing", "declare the preprocessing steps applied before the feature")
         return
+    observables = raw.get("observables")
+    if not (isinstance(observables, list) and observables
+            and all(isinstance(item, str) and item.strip() for item in observables)):
+        fail("OBSERVABLES_MISSING", f"{base}.observables",
+             "name the sensor-space observables the descriptor is computed from")
+    else:
+        for index, item in enumerate(observables):
+            hits = target_construct_hits(item)
+            if hits:
+                fail("EQUIVALENCE_TO_TARGET_CONSTRUCT", f"{base}.observables[{index}]",
+                     f"an observable is named as {hits}; a sensor measure is never equated with a target construct")
     tree = operational.get("tree")
     for index, step in enumerate(steps):
         path = f"{base}.preprocessing[{index}]"
@@ -340,6 +370,17 @@ def _check_operator(raw: Any, sources: Mapping[str, Any], fail: Fail) -> None:
     if not (isinstance(role, str) and role in OPERATOR_ROLES):
         fail("OPERATOR_ROLE_NOT_PERMITTED", f"{base}.role",
              "an operator is only a signal-processing generator; it is never a physical object")
+    status = raw.get("identity_status")
+    if status is None:
+        fail("IDENTITY_STATUS_MISSING", f"{base}.identity_status",
+             "state whether the operator carries a borrowed formal identity")
+    elif not (isinstance(status, str) and status in IDENTITY_STATUSES):
+        fail("IDENTITY_STATUS_UNKNOWN", f"{base}.identity_status", "identity_status is not in the closed vocabulary")
+    elif status == "borrowed_formal_identity":
+        conditions = raw.get("identity_conditions")
+        if not (isinstance(conditions, str) and conditions.strip()):
+            fail("IDENTITY_CONDITIONS_MISSING", f"{base}.identity_conditions",
+                 "a borrowed identity must state its conditions and normalization")
     if raw.get("literal_physical_identity") is not False:
         fail("LITERAL_PHYSICAL_IDENTITY_NOT_PERMITTED", f"{base}.literal_physical_identity",
              "must be false: a mathematical operator is not claimed to be a physical object")
@@ -384,6 +425,13 @@ def _check_interpretation(raw: Any, sources: Mapping[str, Any], fail: Fail) -> O
         _scan_language(text, f"{base}.proposed_interpretation", fail)
     for index, statement in enumerate(assumptions):
         _scan_language(statement, f"{base}.assumptions[{index}]", fail)
+    candidates = ([(text, f"{base}.proposed_interpretation")] if has_text else []) + [
+        (statement, f"{base}.assumptions[{index}]") for index, statement in enumerate(assumptions)]
+    for piece, piece_path in candidates:
+        hits = target_construct_hits(piece)
+        if hits:
+            fail("EQUIVALENCE_TO_TARGET_CONSTRUCT", piece_path,
+                 f"a descriptor is equated with {hits}; state the target only as an empirical question in empirical_claim")
 
     if not has_text:
         return None
@@ -420,6 +468,59 @@ def _scan_language(text: str, path: str, fail: Fail) -> None:
     for category, code in _LANGUAGE_CODES.items():
         if hits[category]:
             fail(code, path, f"{category.replace('_', ' ')} wording: {hits[category]}")
+
+
+def _check_empirical_claim(raw: Any, fail: Fail) -> None:
+    """Level 4: the empirical claim is stated and designed, but this contract never runs it."""
+    base = "$.empirical_claim"
+    if not isinstance(raw, Mapping):
+        fail("EMPIRICAL_CLAIM_MISSING", base, "state the empirical claim and its analysis design, even though it is not run")
+        return
+    _check_unknown(raw, EMPIRICAL_CLAIM_FIELDS, base, fail)
+    for field in ("statement", "required_data", "analysis_design"):
+        value = raw.get(field)
+        if not (isinstance(value, str) and value.strip()):
+            fail("EMPIRICAL_CLAIM_FIELD_MISSING", f"{base}.{field}", f"{field} is required")
+    controls = raw.get("controls")
+    if not (isinstance(controls, list) and controls and all(isinstance(c, str) and c.strip() for c in controls)):
+        fail("EMPIRICAL_CONTROLS_MISSING", f"{base}.controls",
+             "name the null and control conditions the claim would require")
+    status = raw.get("status")
+    if status != EMPIRICAL_CLAIM_STATUS:
+        code = "EMPIRICAL_STATUS_OVERSTATED" if isinstance(status, str) and status.upper() in {
+            "PASS", "VALIDATED", "CONFIRMED", "SUPPORTED", "ESTABLISHED", "VALID"} else "EMPIRICAL_STATUS_NOT_PERMITTED"
+        fail(code, f"{base}.status", f"must be {EMPIRICAL_CLAIM_STATUS}: this contract runs no empirical analysis")
+    if raw.get("data_access") != DATA_ACCESS_STATUS:
+        fail("DATA_ACCESS_NOT_PERMITTED", f"{base}.data_access",
+             f"must be {DATA_ACCESS_STATUS}: no participant recordings are accessed")
+    statement = raw.get("statement")
+    if isinstance(statement, str) and statement.strip():
+        hits = scan_interpretation(statement)
+        for category, code in (("equivalence", "EQUIVALENCE_LANGUAGE"),
+                               ("shared_claim_rules", "SHARED_CLAIM_RULE"),
+                               ("ontology_firewall", "ONTOLOGY_FIREWALL_VIOLATION")):
+            if hits[category]:
+                fail(code, f"{base}.statement", f"{category.replace('_', ' ')} wording: {hits[category]}")
+
+
+def _check_construct_validity(raw: Any, fail: Fail) -> None:
+    """Whether the descriptor measures the intended construct. This contract never establishes it."""
+    base = "$.construct_validity"
+    if not isinstance(raw, Mapping):
+        fail("CONSTRUCT_VALIDITY_MISSING", base,
+             "state construct validity explicitly; a computable descriptor is not yet a measurement of the construct")
+        return
+    _check_unknown(raw, CONSTRUCT_VALIDITY_FIELDS, base, fail)
+    status = raw.get("status")
+    if status != CONSTRUCT_VALIDITY_STATUS:
+        code = "CONSTRUCT_VALIDITY_OVERSTATED" if isinstance(status, str) and status.upper() in {
+            "VALIDATED", "ESTABLISHED", "CONFIRMED", "SUPPORTED", "PASS", "VALID"} else "CONSTRUCT_VALIDITY_STATUS_NOT_PERMITTED"
+        fail(code, f"{base}.status",
+             f"must be {CONSTRUCT_VALIDITY_STATUS}: computability does not establish that the descriptor measures the construct")
+    for field in ("intended_construct", "basis"):
+        value = raw.get(field)
+        if not (isinstance(value, str) and value.strip()):
+            fail("CONSTRUCT_VALIDITY_FIELD_MISSING", f"{base}.{field}", f"{field} is required")
 
 
 def _check_not_established(raw: Any, fail: Fail) -> None:
@@ -468,13 +569,33 @@ def _gate_reference(mapping_id: Any, interpretation: Mapping[str, Any], sources:
     }
 
 
+# Codes that mean the descriptor cannot be run as declared. They never mean the construct is measured.
+_COMPUTABILITY_CODES = frozenset({
+    "IMPLEMENTATION_UNRESOLVED", "IMPLEMENTATION_DRIFT", "IMPLEMENTATION_UNPARSEABLE",
+    "IMPLEMENTATION_FIELD_INVALID", "IMPLEMENTATION_MISSING", "SHA256_INVALID", "SYMBOL_UNRESOLVED",
+    "OUTPUT_KEY_UNRESOLVED", "METRIC_KIND_UNRESOLVED", "PREPROCESSING_UNRESOLVED",
+    "PREPROCESSING_INVALID", "PREPROCESSING_MISSING", "FEATURE_ID_NOT_DERIVED", "CATEGORY_MISSING",
+    "CATEGORY_UNKNOWN", "OPERATIONAL_BLOCK_MISSING",
+})
+
+
 def _report(mapping_id: Any, errors: list[dict[str, str]], implementation: Mapping[str, Any],
-            gate: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+            gate: Optional[Mapping[str, Any]], category: Any = None) -> dict[str, Any]:
+    computable = (
+        bool(implementation.get("resolved") and implementation.get("symbol_found")
+             and implementation.get("sha256_matches") and implementation.get("output_key_found")
+             and implementation.get("metric_kind_found"))
+        and not any(error["code"] in _COMPUTABILITY_CODES for error in errors)
+    )
     return {
         "schema": REPORT_SCHEMA,
         "mapping_id": mapping_id,
         "contract_status": "REJECTED" if errors else "VALID_HYPOTHESIS_MAPPING",
         "evidence_ready": False,
+        "category": category,
+        "computable": computable,
+        "construct_validity_status": CONSTRUCT_VALIDITY_STATUS,
+        "measures_intended_construct": False,
         "errors": errors,
         "implementation": dict(implementation),
         "gate": dict(gate) if gate is not None else None,

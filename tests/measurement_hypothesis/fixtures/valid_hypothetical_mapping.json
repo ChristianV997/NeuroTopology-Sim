@@ -1,10 +1,11 @@
 {
-  "schema": "NeuroTopologySim.MeasurementHypothesisMapping.v1",
+  "schema": "NeuroTopologySim.MeasurementHypothesisMapping.v2",
   "mapping_id": "MHM-0001",
   "operational": {
     "feature_id": "channel_phase_gradient_metrics.phase_grad",
     "feature_family": null,
     "family_note": "No registered FeatureFamily covers phase gradients along channel index, so the record carries no family.",
+    "category": "sensor_space_phase_gradient",
     "implementation": {
       "module": "validation/analytic_phase.py",
       "symbol": "channel_phase_gradient_metrics",
@@ -17,13 +18,24 @@
     "definition": "Mean absolute wrapped difference between adjacent channels in channel-index order, averaged over time, for one band-limited analytic-phase array of shape channels by samples.",
     "units": "rad",
     "data_type": "float64",
-    "preprocessing": ["bandpass_hilbert_phase"]
+    "preprocessing": [
+      "bandpass_hilbert_phase"
+    ],
+    "observables": [
+      "per-channel analytic phase after bandpass filtering, channels by samples, alpha band",
+      "wrapped inter-channel phase differences in channel-index order"
+    ]
   },
   "operator": {
     "name": "discrete gradient along the channel-index ordering",
     "role": "signal_processing_generator",
     "literal_physical_identity": false,
-    "source_ids": ["barbarossa2020tsp", "jiang2011hodge"]
+    "identity_status": "borrowed_formal_identity",
+    "identity_conditions": "Discrete difference operator on a one-dimensional ordering of channels, applied to wrapped phase values. The identity is exact for the wrapped-difference definition only; no physical identity is claimed.",
+    "source_ids": [
+      "barbarossa2020tsp",
+      "jiang2011hodge"
+    ]
   },
   "interpretation": {
     "hypothesis_id": "H-PHASE-CIRC-001",
@@ -60,7 +72,28 @@
         "discriminates": "If the effect disappears under the robust measure, the reading is confounded by shared sources, which falsifies it."
       }
     ],
-    "source_ids": ["nolte2004", "stam2007", "barbarossa2020tsp"]
+    "source_ids": [
+      "nolte2004",
+      "stam2007",
+      "barbarossa2020tsp"
+    ]
+  },
+  "empirical_claim": {
+    "statement": "If the channel-index phase gradient tracks inter-channel phase circulation, its magnitude should differ between conditions that differ in circulation.",
+    "required_data": "Recordings from at least two declared conditions and a locked analysis plan. This contract accesses no data.",
+    "analysis_design": "Compare the feature across the declared conditions against phase-randomised surrogates and a volume-conduction-robust pairwise measure, under one locked contrast.",
+    "controls": [
+      "phase-randomised surrogates that preserve amplitude spectra",
+      "channel-permutation control",
+      "volume-conduction-robust pairwise measure"
+    ],
+    "status": "NOT_RUN",
+    "data_access": "NOT_AUTHORIZED"
+  },
+  "construct_validity": {
+    "status": "NOT_ESTABLISHED",
+    "intended_construct": "inter-channel phase circulation",
+    "basis": "No empirical data was analyzed. A computable descriptor does not establish that it measures the intended construct."
   },
   "sources": [
     {
