@@ -1,11 +1,9 @@
 """S3 listing and atomic partial-file transfer behaviour (fully mocked)."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from tools.streaming import base_runner
 
-from tests.performance.streaming_optimization.conftest import FakePaginator, FakeS3Client
+from tests.performance.streaming_optimization.conftest import FakePaginator, FakeS3Client, ranged_body
 
 
 def test_task_label_listing_stops_after_max_subjects(fake_s3_modules):
@@ -56,44 +54,51 @@ def test_atomic_partial_is_not_promoted_and_stale_part_is_dropped(
 ):
     dest_root = tmp_path / "work"
     subject = "sub-01"
-    key = f"dsX/{subject}/file.bin"
-    target = dest_root / subject / "file.bin"
+    key = f"dsX/{subject}/file.json"
+    payload = b"DATA"
+    target = dest_root / subject / "file.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     stale = target.with_name(target.name + ".part")
     stale.write_bytes(b"NO")  # truncated leftover must not be treated as complete
 
     attempts = {"n": 0}
 
-    def download_impl(bucket, key, filename, Config=None):
+    def get_object_impl(**kwargs):
         attempts["n"] += 1
-        assert filename.endswith(".part")
-        Path(filename).write_bytes(b"DATA")
+        assert kwargs["Key"] == key
+        assert kwargs["Range"] == "bytes=0-3"
+        return ranged_body(payload, kwargs["Range"])
 
     def handler(kwargs):
         return [{"Contents": [{"Key": key, "Size": 4}]}]
 
-    fake_s3_modules["client"] = FakeS3Client(FakePaginator(handler), download_impl=download_impl)
+    client = FakeS3Client(FakePaginator(handler), get_object_impl=get_object_impl)
+    fake_s3_modules["client"] = client
     dest = base_runner.sync_s3_subject("openneuro.org", "dsX", subject, dest_root)
     assert dest == dest_root / subject
-    assert target.read_bytes() == b"DATA"
+    assert target.read_bytes() == payload
     assert not stale.exists()
     assert attempts["n"] == 1
+    assert client.download_calls == []
 
 
 def test_matching_size_reuses_existing_file_without_redownload(tmp_path, fake_s3_modules):
     dest_root = tmp_path / "work"
     subject = "sub-01"
-    key = f"dsX/{subject}/file.bin"
-    target = dest_root / subject / "file.bin"
+    key = f"dsX/{subject}/file.json"
+    target = dest_root / subject / "file.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"DATA")
 
-    def download_impl(bucket, key, filename, Config=None):
+    def get_object_impl(**kwargs):
         raise AssertionError("must not re-transfer a complete object")
 
     def handler(kwargs):
         return [{"Contents": [{"Key": key, "Size": 4}]}]
 
-    fake_s3_modules["client"] = FakeS3Client(FakePaginator(handler), download_impl=download_impl)
+    client = FakeS3Client(FakePaginator(handler), get_object_impl=get_object_impl)
+    fake_s3_modules["client"] = client
     base_runner.sync_s3_subject("openneuro.org", "dsX", subject, dest_root)
     assert target.read_bytes() == b"DATA"
+    assert client.download_calls == []
+    assert client.get_object_calls == []
