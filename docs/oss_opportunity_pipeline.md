@@ -220,6 +220,47 @@ usually emulation/reference, not direct-dependency candidates) -- see
 next PR for these categories is a **decision record**, not an
 implementation.
 
+## Adoption gates
+
+These gates are part of the scouting workflow. They are checks on which
+candidates may be recommended for adoption. They do not perform any
+integration, and they make no claim about repository quality.
+
+- **Ambiguous source identity** (`oss_opportunities.validation`). A candidate
+  is rejected with an "ambiguous source identity" error when `repo_full_name`
+  is not `owner/name`, when `owner` disagrees with `repo_full_name`, or when a
+  non-empty `repo_url` does not point at `https://github.com/<repo_full_name>`
+  (case-insensitive, trailing slash ignored). `build_opportunities_from_candidates`
+  raises on any invalid candidate, so a batch never silently mixes in an
+  ambiguous record.
+- **Duplicate candidates** (`oss_opportunities.opportunity_batch`). Observations
+  of the same repository (case-insensitive `repo_full_name`) from different
+  sources or snapshots are ranked once. The highest-scoring observation is
+  primary. Each other observation is kept in `opportunities_rejected` with
+  `reason` `duplicate_of:<primary id>` and a `duplicate_of` field. They are
+  excluded from `top_rejections`. The batch metadata records
+  `duplicate_observations`.
+- **Unresolved license** (`oss_opportunities.scoring`). An empty or unknown
+  license (`missing_high`) and an unmatched license string
+  (`proprietary_or_unknown_high`) both recommend `license_review_required`.
+  Previously, an unmatched string could recommend an external-tool-record path
+  while its commercial-core policy was still `blocked_pending_review`.
+- **Unsupported capability claims** (`oss_opportunities.scoring`).
+  `adapter_surface_clarity` needs a documented surface: a non-empty
+  `homepage_url` or `metadata.adapter_docs_url`. A category inferred only from
+  description or topic keywords earns 0.5 instead of 1.0. Security-category
+  candidates earn 0. This changes the score. It does not change the
+  adoption action, which remains a documented limitation.
+- **Adoption blocked by unresolved risk** (`oss_opportunities.scoring`). A
+  candidate with `metadata.requires_credentials` recommends
+  `security_review_required` instead of an optional-adapter or
+  external-tool-record action. The planner routes it to `security_review_queue`.
+  `credential_required_execution` remains in `blocked_actions` regardless.
+
+Offline tests: `tests/test_oss_adoption_gates.py`. Candidate-level review of
+named external projects, with canonical sources and revisions:
+`docs/oss_opportunity_candidate_review_20261016.md`.
+
 ## CLI usage
 
 ```bash

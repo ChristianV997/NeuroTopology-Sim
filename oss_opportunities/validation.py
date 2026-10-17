@@ -15,6 +15,7 @@ other validation module in this repository family (see
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from dataset_acquisition.store import ALLOWED_TARGET_ROOT_PREFIXES
@@ -186,6 +187,11 @@ def validate_repo_relative_root(value: Any, field_name: str) -> list[str]:
 # ── OpenSourceRepositoryCandidateV1 ──────────────────────────────────────
 
 
+# GitHub owner/repo form. Anything else (a bare name, extra path segments)
+# cannot identify one repository unambiguously.
+_REPO_FULL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
 def validate_repository_candidate(record: Any) -> list[str]:
     """Return a list of error strings (empty = valid). Never raises."""
     errors: list[str] = []
@@ -233,6 +239,23 @@ def validate_repository_candidate(record: Any) -> list[str]:
     for field_name in ("limitations", "observed_categories", "topics"):
         _scan_banned_phrases(getattr(record, field_name, None) or [], field_name, errors)
     _scan_banned_phrases(getattr(record, "metadata", None) or {}, "metadata", errors)
+
+    # Ambiguous source identity: one name must mean exactly one repository.
+    # Each check runs only when the field is present; a missing
+    # repo_full_name is already reported above.
+    repo_full_name = getattr(record, "repo_full_name", None) or ""
+    if repo_full_name and not _REPO_FULL_NAME_RE.match(repo_full_name):
+        errors.append(f"repo_full_name {repo_full_name!r} must be 'owner/name' (ambiguous source identity)")
+    owner = getattr(record, "owner", None) or ""
+    if owner and "/" in repo_full_name and owner.lower() != repo_full_name.split("/", 1)[0].lower():
+        errors.append(f"owner {owner!r} does not match repo_full_name {repo_full_name!r} (ambiguous source identity)")
+    repo_url = (getattr(record, "repo_url", None) or "").strip().rstrip("/")
+    if repo_url and repo_full_name:
+        expected_url = f"https://github.com/{repo_full_name}"
+        if repo_url.lower() != expected_url.lower():
+            errors.append(
+                f"repo_url {repo_url!r} does not point to repo_full_name {repo_full_name!r} (ambiguous source identity)"
+            )
 
     return errors
 

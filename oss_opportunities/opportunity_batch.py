@@ -194,9 +194,26 @@ def build_opportunities_from_candidates(
 
     scored.sort(key=lambda triple: (-triple[2].total_score, triple[0].repo_full_name, triple[2].opportunity_id))
 
+    # Duplicate detection. The same repository (case-insensitive
+    # repo_full_name) can arrive from several sources or snapshots. `scored` is
+    # already sorted best-first, so the first observation per repository is the
+    # primary opportunity. Every other observation is kept in
+    # opportunities_rejected with a duplicate_of reason -- never ranked twice,
+    # never silently dropped.
+    primary_by_repo: dict[str, str] = {}
+    unique_scored = []
+    duplicate_observations = []
+    for triple in scored:
+        key = triple[0].repo_full_name.lower()
+        if key in primary_by_repo:
+            duplicate_observations.append((triple[2], primary_by_repo[key]))
+        else:
+            primary_by_repo[key] = triple[2].opportunity_id
+            unique_scored.append(triple)
+
     ranked: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    for candidate, license_review, opportunity in scored:
+    for candidate, license_review, opportunity in unique_scored:
         entry = opportunity.to_dict()
         entry["license_review"] = license_review.to_dict()
         if opportunity.total_score >= _MIN_RANKED_SCORE and opportunity.recommended_action != "reject":
@@ -215,6 +232,17 @@ def build_opportunities_from_candidates(
                 }
             )
 
+    for duplicate, primary_id in duplicate_observations:
+        rejected.append(
+            {
+                "opportunity_id": duplicate.opportunity_id,
+                "repo_full_name": duplicate.repo_full_name,
+                "total_score": duplicate.total_score,
+                "reason": f"duplicate_of:{primary_id} (same repo_full_name observed from another source or snapshot)",
+                "duplicate_of": primary_id,
+            }
+        )
+
     if top_n is not None:
         ranked = ranked[:top_n]
 
@@ -228,7 +256,7 @@ def build_opportunities_from_candidates(
     ]
     top_architecture_emulation = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "emulate_architecture_pattern"]
     top_docs_references = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "create_docs_reference"]
-    top_rejections = [e["repo_full_name"] for e in rejected]
+    top_rejections = [e["repo_full_name"] for e in rejected if "duplicate_of" not in e]
 
     opportunity_ids = [e["opportunity_id"] for e in ranked]
     batch_id = compute_batch_id(opportunity_ids=opportunity_ids, sources_scanned=sources_scanned, scoring_version=scoring_version)
@@ -252,6 +280,7 @@ def build_opportunities_from_candidates(
             "no repository was cloned, no dependency was installed, no external code was executed",
         ],
         provenance=f"built from {len(candidate_records)} candidate(s) via oss_opportunities.opportunity_batch.build_opportunities_from_candidates",
+        metadata={"duplicate_observations": len(duplicate_observations)},
     )
     batch.validate_or_raise()
     return batch
