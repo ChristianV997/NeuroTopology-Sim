@@ -1,144 +1,136 @@
-# Round 6 Four-Shell BVP: Independent Equation Oracle
+# Næss et al. (2017) Four-Sphere BVP: Independent Oracle
 
-**Disposition: HOLD / SYNTHETIC_ONLY.** This is an equation-level engineering audit. It does not establish a scientific result, validate a head model against data, or test the unavailable Gemini implementation.
+**Disposition: HOLD / SYNTHETIC_ONLY.** This is an independent numerical check of the paper’s equations using synthetic inputs. It is not empirical or biological validation and does not validate a production engine.
 
-## Source and scope audit
+## Scope and sources
 
-The verified base is `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16`. A repository search found no `forward_project_dipoles_four_shell`, four-shell implementation, or supplied radii/conductivity tuple in that base. The initial pre-creation open-PR check found 34 PRs and no owned-path conflict. A concurrent recheck found 44 open PRs, including PR #399, which adds `tools/experimental_audits/__init__.py` and `tests/experimental_audits/__init__.py`. This artifact deliberately does not add either shared `__init__.py`; its module, test, and report paths are distinct from PR #399. The latest path scan found no exact filename overlap under `tools/experimental_audits/`, `tests/experimental_audits/`, or `docs/research/batch1/`.
+Primary source: Næss, S., Chintaluri, C., Ness, T. V., Dale, A. M., Einevoll, G. T., & Wójcik, D. K. (2017). *Corrected Four-Sphere Head Model for EEG Signals*. Frontiers in Human Neuroscience, 11:490. [doi:10.3389/fnhum.2017.00490](https://doi.org/10.3389/fnhum.2017.00490) · [open full text](https://pmc.ncbi.nlm.nih.gov/articles/PMC5651266/).
 
-Relevant accessible material was not the missing implementation:
+The paper states that its article is distributed under a Creative Commons Attribution license (CC BY). This artifact attributes the paper and DOI above. The paper separately identifies its accompanying Neuroinflab/fourspheremodel implementation as GPL-3.0. **No code from that implementation was copied, adapted, imported, executed, or packaged; LFPy and other GPL runtime/test dependencies were not used.** This is a provenance statement, not legal advice; any licensing question about equation expression or downstream use remains for human review.
 
-- `batch3/grok-chat-a-round6-claim-audit` at `c483aa3ea6fdca3f736c901f8867dc40cf6fe292` contains a Round 6 claim-audit document and claim-auditor test, not a forward-model module. It cites Næss et al. as a source to consult and explicitly leaves the homogeneous normalization for verification.
-- Open PR #397 changes `docs/audits/batch2_round6_chain_complex_audit.md`; it is a finite chain-complex audit, not the spherical forward model.
-- Open PR #388 adds a separate three-shell synthetic contract. It does not contain the stated four-shell function or parameters.
-- The rechecked open-PR patches contain no `forward_project_dipoles_four_shell` symbol or complete four-radius tuple. Incidental single radius-like values occur in unrelated audits and are not evidence of this model.
+`origin/main` was re-fetched at `19c3203573082f8bc41f7da226b52dc20a49fdb0`. A separate four-shell implementation now exists in open draft PR #418 (`physics/eeg_forward/four_sphere.py`). This oracle deliberately does not import, execute, or compare against that candidate. Round 6/Gemini claims are therefore still unverified by this artifact. PR #399 owns shared experimental-audit namespace initializers; this work changes no shared `__init__.py`.
 
-The oracle below derives only from the basis and boundary conditions in the assignment plus the point-dipole Green-function expansion. It neither copies nor executes third-party code. No claim is made about how the missing proposed module maps sources, sensors, orientations, or signs.
+## Paper parameters and conventions
 
-## Boundary system and the 7×7 / 8×8 discrepancy
+The defaults follow Næss et al. Table 1 and Figure 1/Figure 2, not the alternative prompt tuple:
 
-For degree `l >= 1`, define
+| Quantity | Paper-derived value / convention |
+|---|---|
+| Layer order | brain (1), CSF (2), skull (3), scalp (4) |
+| Radii | `(0.079, 0.080, 0.085, 0.090) m` |
+| Conductivities | `σ1=0.33`, `σ2=5σ1=1.65`, `σ3=σ1/K`, `σ4=σ1` S/m; `K∈{20,40,80}` |
+| Skull conductivity by K | `0.0165`, `0.00825`, `0.004125` S/m for K 20, 40, 80 |
+| Figure source | `r_z=0.078 m` on +z, 1 mm inside the paper’s `r1=0.079 m` brain/CSF boundary |
+| Figure dipole moment | `10^-7 A·m`; radial +z, tangential +y, and 45° from +z in the x=0 plane |
+| Coordinates and units | shared Cartesian origin/axes; radii, positions, and sensors in m; conductivity S/m; moment A·m; output V |
+| PDE sign | `∇·(σ∇Φ) = -C`; free-space dipole sign `q·(r-r_s)/(4πσ|r-r_s|³)` |
+| Interfaces | potential and `σ ∂Φ/∂r` continuous at r1, r2, r3 |
+| Scalp boundary | `∂Φ4/∂r(r4)=0` (equivalently `σ4∂Φ4/∂r=0` since σ4>0) |
 
-\[
-f_l(r)=(r/r_4)^l,\qquad g_l(r)=(r_1/r)^{l+1},
-\]
-\[
-f'_l(r)=\frac{l}{r}f_l(r),\qquad g'_l(r)=-\frac{l+1}{r}g_l(r).
-\]
+The supplied alternative values `(0.078,0.080,0.086,0.095) m` and `(0.33,1.79,0.0042,0.33) S/m` are recorded separately in the machine audit as prompt-proposal parameters, not Næss Table 1. In particular, using `r_z=0.078 m` with that tuple’s `r1=0.078 m` would put the source on the boundary; the paper’s `r_z=0.078 m` is valid only with its `r1=0.079 m`.
 
-Shell `k` has `Phi_k = a_k f_l + b_k g_l`. With `b1=1` fixed, the stated unknown vector is exactly
+### Angular and tangential convention
 
-\[
-x=(a_1,a_2,b_2,a_3,b_3,a_4,b_4)^T.
-\]
-
-At each of `r1`, `r2`, and `r3`, impose one potential-continuity row and one current-continuity row:
-
-\[
-\Phi_k(r_k)-\Phi_{k+1}(r_k)=0,\qquad
-\sigma_k\Phi'_k(r_k)-\sigma_{k+1}\Phi'_{k+1}(r_k)=0.
-\]
-
-The seventh row is the outer zero-current condition `sigma4 * Phi4'(r4)=0`. This is six interface rows plus one outer row for seven unknowns: **the system is 7×7 when `b1` is fixed**. An 8×8 system is possible only if `b1` is added as an eighth unknown and the normalization `b1=1` is added as an eighth equation. Calling the fixed-`b1`, seven-unknown formulation “8×8” is inconsistent.
-
-The oracle records absolute residuals and dimensionless row-scaled residuals separately for potential, current, and outer flux. The normalized basis is dimensionless; thus `sigma * dPhi/dr` is reported in normalized `S/m^2` units. Row scaling divides by the sum of magnitudes of the terms in that same equation.
-
-## Homogeneous limit derivation
-
-When all four conductivities are equal, interface continuity gives the same radial coefficients in every shell. Let
+For a source at `r_s=r_z n` and scalp sensor `r=R e`, set `μ=n·e`, `q_r=q·n`, and `q_t=q-q_r n`. The Legendre polynomials are the ordinary `P_l(μ)`. The associated Legendre convention is Condon–Shortley:
 
 \[
-q_l=(r_1/r_4)^{l+1}=\Phi_\infty(r_4).
+P_l^1(μ)=-\sqrt{1-μ^2}\,P_l'(μ).
 \]
 
-The outer condition gives `l*a4 - (l+1)*q_l = 0`, so `a4=((l+1)/l)q_l`. Therefore
+For the paper’s source on +z and tangential dipole `q=+p y`, use the standard spherical sensor azimuth φ, so `q_t·e=p sinθ sinφ`. Then the paper’s tangential factor `-p sinφ P_l^1(μ)` equals `(q_t·e)P_l'(μ)`. This sign relation and both scalp-axis symmetry cases are tested explicitly.
+
+## Independent boundary-system derivation
+
+Næss Eqs. 5–6 express each radial harmonic, before its angular and physical prefactors, with the source-fixed brain-shell term and shell-scaled regular/singular terms:
 
 \[
-\Phi_4(r_4)=a_4+q_l=\frac{2l+1}{l}q_l,
-\qquad
-\frac{\Phi_4(r_4)}{\Phi_\infty(r_4)}=\frac{2l+1}{l}.
+\begin{aligned}
+U_{1l}(r)&=A_{1l}(r/r_1)^l+(r_z/r)^{l+1}, && r_z<r\le r_1,\\
+U_{sl}(r)&=A_{sl}(r/r_s)^l+B_{sl}(r_s/r)^{l+1}, && s=2,3,4.
+\end{aligned}
 \]
 
-This ratio is undefined at `l=0`; the dipole expansion and oracle therefore require integer `l >= 1`.
+The paper’s radial potential multiplies these terms by `p/(4πσ1 r_z²) · l P_l(cosθ)`; the tangential potential uses the same shell coefficients with `-p sinφ P_l^1/(4πσ1 r_z²)`. The oracle independently assembles the boundary-value matrix from this basis; it does not implement the paper’s coefficient recurrences or use third-party code.
 
-## Independently derived dipole mapping and reference
-
-Using the sign convention
+For each integer `l≥1`, the unknown vector is
 
 \[
-V_\infty(\mathbf r)=\frac{\mathbf q\cdot(\mathbf r-\mathbf r_s)}{4\pi\sigma_1|\mathbf r-\mathbf r_s|^3}
-=\frac{1}{4\pi\sigma_1}\mathbf q\cdot\nabla_{\mathbf r_s}\frac{1}{|\mathbf r-\mathbf r_s|},
+x=(A_{1l},A_{2l},B_{2l},A_{3l},B_{3l},A_{4l},B_{4l})^T.
 \]
 
-expand `1/|r-rs| = sum_l (rs^l/r^(l+1)) P_l(mu)` for `r > rs`. With `n_s=rs/|rs|`, `e=r/|r|`, `mu=n_s dot e`, `q_r=q dot n_s`, and `q_t=q-q_r*n_s`, differentiation with respect to the source gives the degree-`l` numerator
+There are two equations at each of r1, r2, r3 (potential and current continuity) and one scalp Neumann equation. Thus the paper basis with its brain singular-source coefficient fixed to 1 has **seven unknowns and a 7×7 system**. The earlier normalized transfer basis likewise fixes `b1=1` and is 7×7. An 8×8 system is mathematically possible only if that source coefficient becomes an eighth unknown and an eighth normalization equation is added; an 8×8 label without that extra unknown/row is inconsistent.
+
+For the paper-basis mode, the surface transfer is computed as
 
 \[
-r_s^{l-1}\left[l q_r P_l(\mu)+P'_l(\mu)(\mathbf q_t\cdot\mathbf e)\right].
+T_l=\frac{A_{4l}+B_{4l}}{(r_z/r_4)^{l+1}}.
 \]
 
-Let `T_l` be the shell BVP transfer ratio computed from the fixed-`b1` solution. The independently derived truncated outer-surface oracle is
+The coefficient-scale-independent normalized solver gives the same transfer ratio. The homogeneous conductivity limit independently follows from the scalp derivative condition: `T_l=(2l+1)/l`. Its `l=0` case is outside the dipole expansion and rejected.
+
+The projector follows by differentiating the free-space Legendre expansion with respect to source position and multiplying each mode by `T_l`:
 
 \[
-V_4(r_4\mathbf e)=\frac{1}{4\pi\sigma_1}
-\sum_{l=1}^{L} T_l\frac{r_s^{l-1}}{r_4^{l+1}}
-\left[l q_r P_l(\mu)+P'_l(\mu)(\mathbf q_t\cdot\mathbf e)\right].
+V(R e)=\frac{1}{4πσ_1}\sum_{l=1}^{L}T_l\frac{r_z^{l-1}}{R^{l+1}}
+\left[lq_rP_l(μ)+(q_t·e)P_l'(μ)\right].
 \]
 
-This source-radius and orientation mapping is the oracle's own derivation, **not a reconstruction of the missing candidate function**. The center-source limit is handled explicitly by its `l=1` value.
+At `r_z=0`, the implementation takes the explicit `l=1` dipole limit. The independent homogeneous reference sums the known homogeneous transfer using the Legendre generating function; its radial branch is also checked directly against Næss Eq. 19. No candidate engine is imported by the public comparison API:
 
-For the independent homogeneous reference, the known homogeneous transfer `T_l=(2l+1)/l` is summed in closed form using the Legendre generating function. With `t=rs/R` and `D=1-2*t*mu+t^2`, define
+`compare_surface_potentials(reference_v, candidate_v, scale_v=...)`
 
-\[
-A(t,\mu)=\sum_{l\ge1}(2l+1)t^{l-1}P_l(\mu),\quad
-B(t,\mu)=\sum_{l\ge1}\frac{2l+1}{l}t^{l-1}P'_l(\mu).
-\]
+It requires equal non-empty finite vectors and an explicit positive scale in volts, and returns maximum/RMS absolute and scaled errors. A future caller can supply a candidate output vector without importing the oracle’s private solver or triggering candidate execution.
 
-For non-endpoint `mu`,
+## Synthetic execution results
 
-\[
-A=\frac{2t(\mu-t)D^{-3/2}+D^{-1/2}-1}{t},\qquad
-B=2D^{-3/2}+\frac{(t-\mu)/\sqrt D+\mu}{t(1-\mu^2)}.
-\]
+Commands and detailed outputs are reproduced under **Verification**. All runs use the standard-library partial-pivot backend (`python_partial_pivot`); NumPy was unavailable and was not installed.
 
-The implementation uses analytic endpoint limits for `mu=±1`, high-precision scalar evaluation away from the endpoints, and a short series near `t=0`. The resulting reference is
+| Check | Cases | Result |
+|---|---:|---|
+| Homogeneous BVP transfer, `T_l=(2l+1)/l` | 24 (l = 1, 2, 3, 7, 16, 32; four independently varied radius sets) | max absolute ratio error `4.440892098500626e-16`; max relative error `2.1862853408003084e-16`; max scaled boundary residual `1.5951573428181118e-16` |
+| Paper-basis layered boundary solve | 15 (K = 20, 40, 80; l = 1, 2, 4, 8, 16; source r_z = 0.078 m) | max scaled interface/scalp residual `5.310349927144369e-15`; max current-continuity absolute residual `2.1316282072803006e-14 S/m²`; max potential-continuity absolute residual `1.1102230246251565e-15`; max outer-current absolute residual `5.861977570020827e-16 S/m²`; max row-scaled linear backward error `1.9526783304133182e-16`; max row-equilibrated infinity condition estimate `399.05080596211224` |
+| Source-depth law, `U4/r_z² ∝ r_z^(l-1)` | 5 degrees, depths 0.020, 0.050, 0.078 m | max relative ratio error `2.650988938382845e-16` |
+| Full homogeneous dipole projector vs independent closed-form reference | 10 source/orientation cases × 14 sensors = 140 comparisons; source radii 0, 0.020, 0.050, 0.078 m; radial, tangential, tilted 45° | max absolute error `8.673617379884035e-19 V`; max scaled error `2.913460154742836e-13` |
+| Radial homogeneous special case vs paper Eq. 19 | 5 polar angles, r_z = 0.078 m | test threshold `max scaled error <2e-12`; passed |
+| Tangential Legendre sign and axis symmetry | 5 angular positions including ±z axis; L=512 | test threshold `max scaled error <2e-12`; both axis potentials `<1e-18 V`; passed |
 
-\[
-V_{hom}(R\mathbf e)=\frac{q_rA+(\mathbf q_t\cdot\mathbf e)B}{4\pi\sigma R^2},
-\]
+Harmonic truncation for a radial source at r_z=0.078 m and +z scalp sensor, relative to the independent homogeneous closed form:
 
-with center-dipole limit `3*q dot e/(4*pi*sigma*R^2)`. This reference does not call the 7×7 solver or the projector.
+| L | Max scaled error |
+|---:|---:|
+| 8 | 76.38850098802013 |
+| 16 | 36.47001926997962 |
+| 32 | 6.15769585904 |
+| 64 | 0.11375165487706224 |
+| 128 | 2.263070579426106e-5 |
+| 256 | 1.456730077371418e-13 |
+| 512 | 2.913460154742836e-13 |
 
-## Executed synthetic results
+The rapid decay reaches floating-point scale by L=256; the slight 256→512 increase is roundoff, not a certified tail bound. The reported last harmonic is diagnostic only. Finite values, input shapes/units, source containment, interface residuals, symmetry-axis cases, and conditioning diagnostics are covered; a small residual or homogeneous agreement does not authenticate parameters or establish empirical correctness.
 
-The executable audit uses the stated geometry `r=(0.078,0.080,0.086,0.095) m` and layered conductivities `sigma=(0.33,1.79,0.0042,0.33) S/m`.
+## Input contract, limitations, and provenance boundary
 
-- **Homogeneous BVP limit:** 18 cases (`l = 1,2,3,7,16,32`; three independently varied four-radius sets). Maximum absolute ratio error: `4.440892098500626e-16`; maximum relative ratio error: `2.1862853408003084e-16`. Maximum scaled boundary residual: `1.5951573428181118e-16`.
-- **Layered BVP residuals:** degrees `l = 1,2,4,8,16`. Across these cases, maximum potential-continuity absolute/scaled residuals were `8.881784197001252e-16` / `1.113541961569599e-15`; maximum current-continuity absolute/scaled residuals were `4.263256414560601e-14 S/m^2` / `7.355230698709626e-15`; outer-current absolute/scaled residuals were `2.9309887850104134e-16 S/m^2` / `1.0429287414515581e-16`. Maximum row-scaled linear-system backward error: `1.713748122373993e-16`.
-- **Whole oracle projector vs. independent homogeneous reference:** equal conductivities `(0.33,0.33,0.33,0.33) S/m`; seven cases across source radii `0, 0.020, 0.050, 0.070 m`, radial and tangential moments for each noncentral source, 14 synthetic surface points per case, and projector truncation `L=192`. Across 98 sensor comparisons, maximum absolute error was `1.5881867761018131e-22 V`; maximum error scaled by `|q|/(4*pi*sigma*R^2)` was `5.943914997593426e-15`.
+- `l` is a positive integer (bool and l=0 rejected); `1≤L≤512`.
+- Four finite positive strictly increasing radii in metres; `r4≤1 m` and its surface dipole normalization `1/r4²` must be finite. Four finite positive conductivities in S/m; no conversion or inference.
+- Paper-basis source requires `0<r_z<r1`; central dipole uses the explicit l=1 limit. Dipole moment is a finite 3-vector in A·m.
+- Sensors are a non-empty finite `N×3` array on the scalp sphere r4 (tolerance `max(1e-12 m, r4·1e-9)`). All coordinates share one Cartesian frame.
+- Boundary current residuals are `σ·dU/dr` in normalized `S/m²`; scaled residuals divide by the sum of magnitudes of row terms. Conditioning is the infinity-norm condition estimate after equation-row equilibration; it is diagnostic, not a universal accuracy guarantee.
+- Coefficient components may be poorly conditioned at high degree even where surface transfer and boundary residuals are small. L truncation is not a certified error bound, especially for a source close to r1.
+- No participant data, EEG datasets, dataset downloads, live APIs, external FEM/MNE comparator, or third-party implementation was used. No scientific, clinical, biological, or production-candidate validation is claimed.
 
-These are arithmetic and boundary-equation checks for this oracle only. The last-degree contribution is reported but is not a certified truncation-error bound. No layered full-projector comparison to an external reference, MNE, FEM, or air-shell solver was performed.
+## Verification
 
-## Input contract and limitations
-
-- `l` / `max_degree`: positive integer; booleans and `l=0` rejected. Truncation is capped at 2048.
-- `radii_m`: exactly four finite, positive, strictly increasing metre values; `r4 <= 1 m` is an explicit scale guard.
-- `sigmas_sm`: exactly four finite positive S/m values. No unit conversion or inference is attempted.
-- `source_position_m`: finite 3-vector strictly inside `r1`; the center is supported by the dipole `l=1` limit.
-- `dipole_moment_am`: finite 3-vector in A*m.
-- `sensor_positions_m`: non-empty finite `N x 3` coordinates on the `r4` sphere (tolerance `max(1e-12 m, r4*1e-9)`). All coordinates are assumed to share the same Cartesian origin and axes.
-- The API cannot infer a caller's units or coordinate frame from numeric values; names, scale constraints, and the surface/source containment checks are the contract. Conductivities are checked for finiteness and positivity, not independently authenticated.
-- High-degree coefficient components can be poorly conditioned even when boundary residuals and the surface transfer ratio remain small; no coefficient condition-number bound is claimed.
-- The current environment has Python but no NumPy or pytest installed. No installation was attempted. The module uses NumPy's linear solver when NumPy is already available and otherwise uses its dependency-free partial-pivot solver; the executed results below use the latter. The NumPy backend was not exercised here.
-- No empirical or participant data, live APIs, external datasets, or third-party code were used. No source code was copied into the repository.
-
-## Reproduction
-
-From the repository root:
+Executed in the isolated `batch1/hermes-a-shell-bvp-oracle` worktree:
 
 ```text
-python -m tools.experimental_audits.four_shell_bvp_oracle --compact
 python -m unittest discover -s tests/experimental_audits -p 'test_*.py' -v
+Ran 17 tests in 6.167s — OK
+
 python -m py_compile tools/experimental_audits/four_shell_bvp_oracle.py tests/experimental_audits/test_four_shell_bvp_oracle.py
+exit 0
+
+python -m tools.experimental_audits.four_shell_bvp_oracle --compact
+status: HOLD / SYNTHETIC_ONLY; solver_backend: python_partial_pivot; finite JSON
 ```
 
-The focused tests independently check the source-radius harmonic series against the direct free-space dipole Green function, then check the complete oracle projector against the closed-form homogeneous Neumann-sphere reference. The standard-library test run reported `Ran 10 tests ... OK`. The command output identifies `python_partial_pivot` as the active backend. Root pytest was not run because pytest and its required timeout plugin are absent, and installing them is outside this assignment's guardrails.
+The NumPy backend was not exercised because NumPy was unavailable; no dependencies were installed. The independent standard-library checks ran successfully. This report does not claim the full repository suite or GitHub Actions is green; PR #409’s current required Awareness test failure is tracked separately in the handoff.
