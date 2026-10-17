@@ -19,12 +19,15 @@ The input manifest is a small UTF-8 JSON object. The canonical GitHub source URL
     "compatibility_status": "blocked_license",
     "review_status": "unreviewed",
     "can_copy_code": false,
+    "can_copy_docs": false,
     "manual_review_required": true
   }
 }
 ```
 
-Unknown, missing, or conflicting license information remains `reuse_status: blocked`. A license identifier or a `LICENSE` file by itself is not a compatibility decision. The existing license scanner records likely-license metadata as a hint only; it does not fetch or inspect a remote repository. Reuse can be marked only by an explicit human-reviewed compatible record with one consistent identifier, the existing `safe_to_adapt` status, and an affirmative code-copy gate. This classification is not legal advice and does not copy source code into this repository.
+Unknown, missing, or conflicting license information remains `reuse_status: blocked`. A license identifier or a `LICENSE` file by itself is not a compatibility decision. The existing license scanner records likely-license metadata as a hint only; it does not fetch or inspect a remote repository. Reuse requires an explicit human-reviewed compatible record, one consistent identifier, the existing `safe_to_adapt` status, and permission for every content class actually included. Code and documentation are separate grants: code-only packs require `can_copy_code: true`; documentation-only packs require `can_copy_docs: true`; a mixed pack requires both. A source file with an unrecognized content type is blocked for human review rather than guessed. These are conservative workflow gates, not legal advice or legal clearance.
+
+The packer applies an explicit path-extension allowlist to the files that survive packing. Recognized source-code suffixes are classified as code; Markdown, reStructuredText, text, HTML, and common project-guidance files are documentation; Jupyter notebooks are treated as both. Unrecognized text types remain `unclassified` and block pack reuse. The manifest records `content_categories`, per-path `license_evaluation.content_classification`, each copy-permission result, and block reasons. Classification is intentionally conservative and is not a substitute for human review of file contents or license scope.
 
 ## Bounds and exclusions
 

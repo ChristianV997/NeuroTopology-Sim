@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 
 from .license_scanner import ALLOWED as REUSE_ALLOWED_LICENSES
 
-PACKER_VERSION = "1.0.0"
+PACKER_VERSION = "1.1.0"
 SOURCE_MANIFEST_SCHEMA = "PublicRepoSourceManifest.v1"
 PACK_MANIFEST_PATH = "source-pack-manifest.json"
 MAX_SOURCE_MANIFEST_BYTES = 256 * 1024
@@ -79,6 +79,21 @@ _BINARY_SUFFIXES = {
     ".sqlite3", ".tar", ".tgz", ".wasm", ".webp", ".whl", ".woff", ".woff2",
     ".xls", ".xlsx", ".xz", ".zip",
 }
+_CODE_SUFFIXES = {
+    ".bat", ".bash", ".c", ".cc", ".cjs", ".clj", ".cljs", ".cljc", ".cmd",
+    ".cpp", ".cs", ".dart", ".ex", ".exs", ".fs", ".fsx", ".go", ".h",
+    ".hh", ".hpp", ".hrl", ".hs", ".java", ".jl", ".js", ".jsx", ".kt",
+    ".kts", ".lua", ".m", ".mjs", ".php", ".pl", ".pm", ".ps1", ".psm1",
+    ".py", ".pyi", ".pyw", ".r", ".rb", ".rs", ".scala", ".sc", ".sh",
+    ".sql", ".swift", ".ts", ".tsx", ".zsh",
+}
+_DOC_SUFFIXES = {".adoc", ".html", ".htm", ".md", ".markdown", ".rst", ".txt"}
+_DOC_BASENAMES = {
+    "authors", "changelog", "code_of_conduct", "contributing", "copying", "faq",
+    "install", "license", "notice", "readme", "roadmap", "security", "support",
+}
+_CODE_BASENAMES = {"cmakelists.txt", "dockerfile", "makefile"}
+_MIXED_SUFFIXES = {".ipynb"}
 _SECRET_FILE_PATTERN = re.compile(
     r"(?:^|[._-])(?:secret|secrets|credential|credentials|passwords?|tokens?|api[-_]?keys?|"
     r"private[-_]?keys?|access[-_]?keys?|service[-_]?account|auth[-_]?tokens?)(?:[._-]|$)",
@@ -248,6 +263,22 @@ def _license_alias(value: str) -> str:
     return _LICENSE_ALIASES.get(cleaned.casefold(), cleaned)
 
 
+def _source_content_categories(path: str) -> tuple[str, ...]:
+    """Conservatively classify packed text paths; unknown types require review."""
+    name = PurePosixPath(path).name.casefold()
+    suffix = PurePosixPath(path).suffix.casefold()
+    stem = PurePosixPath(path).stem.casefold()
+    if name in _CODE_BASENAMES:
+        return ("code",)
+    if suffix in _MIXED_SUFFIXES:
+        return ("code", "documentation")
+    if suffix in _CODE_SUFFIXES:
+        return ("code",)
+    if suffix in _DOC_SUFFIXES or stem in _DOC_BASENAMES or name in _DOC_BASENAMES:
+        return ("documentation",)
+    return ("unclassified",)
+
+
 def _normalize_license_record(value: object) -> dict[str, Any]:
     if value is None:
         record: dict[str, Any] = {}
@@ -288,7 +319,7 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         raise SourcePackError("license_record.compatibility_status is not recognized")
     if not isinstance(review_status, str) or review_status not in _REVIEW_STATUSES:
         raise SourcePackError("license_record.review_status is not recognized")
-    for key in ("can_copy_code", "manual_review_required", "conflicting"):
+    for key in ("can_copy_code", "can_copy_docs", "manual_review_required", "conflicting"):
         if key in record and not isinstance(record[key], bool):
             raise SourcePackError(f"license_record.{key} must be boolean")
     conflict_list = record.get("conflicting_licenses", [])
@@ -302,13 +333,12 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
     if not isinstance(hint, str) or len(hint) > 64 or not re.fullmatch(r"[A-Za-z0-9.+ -]+", hint or ""):
         raise SourcePackError("license hint must be a short license-like identifier")
 
-    explicit_copy_gate = (
+    explicit_review_gate = (
         len(canonical_detected) == 1
         and canonical_detected[0] in REUSE_ALLOWED_LICENSES
         and license_status == "compatible"
         and compatibility_status == "safe_to_adapt"
         and review_status == "human_reviewed_compatible"
-        and record.get("can_copy_code") is True
         and record.get("manual_review_required") is False
         and not is_conflicting
     )
@@ -317,7 +347,7 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         reasons.append("conflicting_license_information")
     if not canonical_detected:
         reasons.append("license_unknown_or_not_detected")
-    if not explicit_copy_gate and not is_conflicting and canonical_detected:
+    if not explicit_review_gate and not is_conflicting and canonical_detected:
         reasons.append("explicit_human_compatibility_review_missing")
     return {
         "detected_licenses": canonical_detected,
@@ -326,8 +356,10 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         "compatibility_status": compatibility_status,
         "review_status": review_status,
         "can_copy_code": bool(record.get("can_copy_code", False)),
+        "can_copy_docs": bool(record.get("can_copy_docs", False)),
+        "manual_review_required": bool(record.get("manual_review_required", True)),
         "conflicting": is_conflicting,
-        "reuse_status": "human_reviewed_compatible" if explicit_copy_gate else "blocked",
+        "review_gate_status": "human_reviewed_compatible" if explicit_review_gate else "blocked",
         "reuse_block_reasons": reasons,
     }
 
@@ -951,6 +983,55 @@ def pack_static_source(
         for path, data in sorted(files.items(), key=lambda item: (item[0].casefold(), item[0]))
     ]
     license_record = metadata["license_record"]
+    content_classification = [
+        {"path": record["path"], "categories": list(_source_content_categories(record["path"]))}
+        for record in file_records
+    ]
+    content_categories = sorted(
+        {category for row in content_classification for category in row["categories"]},
+        key=lambda category: ("code", "documentation", "unclassified").index(category),
+    )
+    unclassified_paths = [
+        row["path"] for row in content_classification if "unclassified" in row["categories"]
+    ]
+    permission_values = {
+        "code": license_record["can_copy_code"],
+        "documentation": license_record["can_copy_docs"],
+    }
+    missing_permissions = [
+        category for category in ("code", "documentation")
+        if category in content_categories and permission_values[category] is not True
+    ]
+    reuse_block_reasons = list(license_record["reuse_block_reasons"])
+    if not file_records:
+        reuse_block_reasons.append("no_packed_source_content")
+    if unclassified_paths:
+        reuse_block_reasons.append("unclassified_content_requires_human_review")
+    reuse_block_reasons.extend(
+        f"copy_permission_missing_for_{category}" for category in missing_permissions
+    )
+    review_gate_passed = license_record["review_gate_status"] == "human_reviewed_compatible"
+    reuse_permitted = (
+        bool(file_records)
+        and review_gate_passed
+        and not unclassified_paths
+        and not missing_permissions
+    )
+    pack_reuse_status = "human_reviewed_compatible" if reuse_permitted else "blocked"
+    license_evaluation = {
+        **license_record,
+        "content_categories": content_categories,
+        "content_classification": content_classification,
+        "unclassified_paths": unclassified_paths,
+        "copy_permission_evaluation": {
+            "code": {"included": "code" in content_categories,
+                     "granted": license_record["can_copy_code"]},
+            "documentation": {"included": "documentation" in content_categories,
+                              "granted": license_record["can_copy_docs"]},
+        },
+        "reuse_status": pack_reuse_status,
+        "reuse_block_reasons": sorted(set(reuse_block_reasons)),
+    }
     content_excluded = bool(exclusions) or bool(unselected_count) or unselected_scope_not_enumerated
     pack_manifest = {
         "schema_version": "PublicRepoSourcePack.v1",
@@ -968,8 +1049,10 @@ def pack_static_source(
         "exclusions": exclusions,
         "unselected_archive_file_count": unselected_count if not unselected_scope_not_enumerated else None,
         "unselected_directory_paths_enumerated": not unselected_scope_not_enumerated,
-        "license_evaluation": license_record,
-        "reuse_status": license_record["reuse_status"],
+        "license_evaluation": license_evaluation,
+        "content_categories": content_categories,
+        "reuse_status": pack_reuse_status,
+        "reuse_block_reasons": sorted(set(reuse_block_reasons)),
         "limits": asdict(limits),
     }
     manifest_bytes = _canonical_json(pack_manifest)

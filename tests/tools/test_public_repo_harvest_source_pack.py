@@ -431,6 +431,7 @@ def test_only_explicit_human_review_can_mark_license_compatible(tmp_path):
         "compatibility_status": "safe_to_adapt",
         "review_status": "human_reviewed_compatible",
         "can_copy_code": True,
+        "can_copy_docs": False,
         "manual_review_required": False,
     }
     manifest = pack_static_source(
@@ -440,7 +441,7 @@ def test_only_explicit_human_review_can_mark_license_compatible(tmp_path):
     )
     assert manifest["reuse_status"] == "human_reviewed_compatible"
 
-    conflict = dict(reviewed, detected_licenses=["MIT", "Apache-2.0"])
+    conflict = dict(reviewed, detected_licenses=["MIT", "Apache-2.0"], can_copy_docs=True)
     blocked = pack_static_source(
         source,
         source_manifest(["src/module.py"], license_record=conflict),
@@ -448,6 +449,92 @@ def test_only_explicit_human_review_can_mark_license_compatible(tmp_path):
     )
     assert blocked["reuse_status"] == "blocked"
     assert "conflicting_license_information" in blocked["license_evaluation"]["reuse_block_reasons"]
+
+
+@pytest.mark.parametrize(
+    "paths,can_copy_code,can_copy_docs,expected_status,expected_categories",
+    [
+        (["src/module.py"], True, False, "human_reviewed_compatible", ["code"]),
+        (["src/module.py"], False, True, "blocked", ["code"]),
+        (["README.md"], False, True, "human_reviewed_compatible", ["documentation"]),
+        (["README.md"], True, False, "blocked", ["documentation"]),
+        (["src/module.py", "README.md"], True, True, "human_reviewed_compatible", ["code", "documentation"]),
+        (["src/module.py", "README.md"], True, False, "blocked", ["code", "documentation"]),
+        (["src/module.py", "README.md"], False, True, "blocked", ["code", "documentation"]),
+        (["src/module.py", "README.md"], False, False, "blocked", ["code", "documentation"]),
+        (["notebooks/demo.ipynb"], True, False, "blocked", ["code", "documentation"]),
+        (["notebooks/demo.ipynb"], True, True, "human_reviewed_compatible", ["code", "documentation"]),
+        (["config/settings.yaml"], True, True, "blocked", ["unclassified"]),
+    ],
+)
+def test_pack_reuse_gate_applies_code_and_documentation_permissions_per_content(
+    tmp_path, paths, can_copy_code, can_copy_docs, expected_status, expected_categories
+):
+    source = make_tree(
+        tmp_path / "source",
+        {
+            "src/module.py": b"# synthetic code\n",
+            "README.md": b"synthetic documentation\n",
+            "notebooks/demo.ipynb": b'{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}',
+            "config/settings.yaml": b"mode: synthetic\n",
+        },
+    )
+    license_record = {
+        "detected_license": "MIT",
+        "detected_licenses": ["MIT"],
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": can_copy_code,
+        "can_copy_docs": can_copy_docs,
+        "manual_review_required": False,
+        "conflicting": False,
+    }
+    result = pack_static_source(
+        source,
+        source_manifest(paths, license_record=license_record),
+        tmp_path / "pack.zip",
+    )
+    assert result["reuse_status"] == expected_status
+    assert result["content_categories"] == expected_categories
+    assert result["license_evaluation"]["copy_permission_evaluation"]["code"]["granted"] is can_copy_code
+    assert result["license_evaluation"]["copy_permission_evaluation"]["documentation"]["granted"] is can_copy_docs
+    if "src/module.py" in paths and "README.md" in paths and not (can_copy_code and can_copy_docs):
+        assert "copy_permission_missing_for_code" in result["reuse_block_reasons"] or "copy_permission_missing_for_documentation" in result["reuse_block_reasons"]
+    if "config/settings.yaml" in paths:
+        assert "unclassified_content_requires_human_review" in result["reuse_block_reasons"]
+
+
+def test_can_copy_docs_must_be_explicit_boolean_and_unknown_or_conflicting_packs_stay_blocked(tmp_path):
+    with pytest.raises(SourcePackError, match="can_copy_docs must be boolean"):
+        validate_source_manifest(
+            source_manifest(["README.md"], license_record={"can_copy_docs": "yes"})
+        )
+
+    source = make_tree(tmp_path / "source", {"README.md": b"docs\n"})
+    unknown = pack_static_source(source, source_manifest(["README.md"]), tmp_path / "unknown.zip")
+    conflict_record = {
+        "detected_license": "MIT",
+        "detected_licenses": ["MIT", "Apache-2.0"],
+        "license_spdx": "MIT",
+        "license_status": "compatible",
+        "compatibility_status": "safe_to_adapt",
+        "review_status": "human_reviewed_compatible",
+        "can_copy_code": True,
+        "can_copy_docs": True,
+        "manual_review_required": False,
+        "conflicting": False,
+    }
+    conflict = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=conflict_record),
+        tmp_path / "conflict.zip",
+    )
+    assert unknown["reuse_status"] == "blocked"
+    assert conflict["reuse_status"] == "blocked"
+    assert "license_unknown_or_not_detected" in unknown["reuse_block_reasons"]
+    assert "conflicting_license_information" in conflict["reuse_block_reasons"]
 
 
 def test_cli_packs_only_synthetic_local_source_and_reports_status(tmp_path, capsys):
