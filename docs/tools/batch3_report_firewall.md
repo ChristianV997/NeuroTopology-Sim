@@ -15,8 +15,12 @@ Findings can cover synthetic/fixture-to-empirical wording, software conformance
 presented as biological validation, asserted causal/mechanistic language,
 replication without an independent reference, structured evidence/status
 conflicts, missing references, and ambiguous validation labels. Explicit
-negations, limitation sections, fenced examples, Markdown blockquotes, quoted
-phrases, and fixture/example JSON fields are excluded or handled conservatively.
+negations, limitation sections, fenced and indented code, Markdown blockquotes,
+double/curly/single-quoted spans, and fixture/example JSON fields are excluded
+or handled conservatively. Simple punctuation, comma-led boundaries before
+common clause subjects, and coordinating conjunctions are used so a nearby
+negation or caution does not suppress a separate assertive clause; this is not a
+grammar parser and remains a heuristic.
 
 This is an advisory layer, not an evidence evaluator. A finding is not proof of
 misconduct or proof that a claim is false; no finding is not proof that a claim
@@ -39,8 +43,11 @@ shared claim-language ceiling catalog but does not call a promotion gate.
 ## Deterministic limits
 
 - Detection is regex/structure based, not semantic inference. Negation and
-  caution handling is deliberately local; complicated prose, mixed clauses,
-  attribution, and citations may still require human review.
+  caution handling is local to simple punctuation, selected comma-led clause
+  subjects, and coordinating conjunctions; complex grammar, attribution, and
+  mixed claims may still require human review.
+- Single-quote pairing is heuristic; apostrophes, unmatched quotes, and nested
+  quoted spans can be ambiguous. Review any finding in that context.
 - A citation, DOI, URL, or evidence-reference field is not opened or verified.
 - JSON is parsed strictly; malformed/non-finite JSON gets a file-level review
   finding and is not scanned as free text.

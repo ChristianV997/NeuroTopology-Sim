@@ -110,7 +110,12 @@ _NON_ASSERTION_KEYS = {
     "limitation", "caveats", "guardrails",
 }
 _METADATA_TEXT_KEYS = _STATUS_KEYS | _EVIDENCE_KEYS | {"scientific_pass", "formal_bayes_factor"}
-_NEGATION_CLAUSE_SPLIT = re.compile(r"(?<=[.!?;])\s+|\s+\bbut\b\s+", re.IGNORECASE)
+_NEGATION_CLAUSE_SPLIT = re.compile(
+    r"(?<=[.!?;])\s+|,\s+(?=(?:the|this|these|those|it|they|we|results?|findings?|analysis|"
+    r"intervention|model|data|output|evidence|claim|report)\b)|"
+    r"\s+\b(?:and|but|or|nor|yet|whereas|while|although|though)\b\s+",
+    re.IGNORECASE,
+)
 _MARKDOWN_LIMITATION_HEADINGS = {"limitations", "caveats", "guardrails", "what this does not claim", "what cannot be claimed"}
 _FIXTURE_HEADINGS = {"test fixture", "test fixtures", "fixtures", "examples", "quoted examples", "forbidden examples"}
 _TOP_LEVEL_CONTEXT = re.compile(r"^(?:synthetic|empirical|biological|engineering|software|causal|replication)\b", re.IGNORECASE)
@@ -191,24 +196,88 @@ def _quote_spans(text: str) -> list[tuple[int, int]]:
                 break
             spans.append((left, right + len(closing)))
             start = right + len(closing)
-    return spans
+    # Pair straight single quotes with a linear scan; apostrophes between word
+    # characters (for example, in contractions) are content, not delimiters.
+    opening: int | None = None
+    for index, char in enumerate(text):
+        if char != "'":
+            continue
+        previous_is_word = index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_")
+        next_is_word = index + 1 < len(text) and (text[index + 1].isalnum() or text[index + 1] == "_")
+        next_is_space = index + 1 < len(text) and text[index + 1].isspace()
+        if opening is None:
+            if not previous_is_word and next_is_word:
+                opening = index
+        elif previous_is_word and next_is_word:
+            continue
+        elif not next_is_word:
+            spans.append((opening, index + 1))
+            opening = None
+        elif not previous_is_word and not next_is_space:
+            # Treat a fresh quote before a word as a new candidate if the
+            # previous candidate was unmatched; unmatched text is not hidden.
+            opening = index
+
+    merged: list[tuple[int, int]] = []
+    for left, right in sorted(spans):
+        if merged and left <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], right))
+        else:
+            merged.append((left, right))
+    return merged
 
 
 def _inside_quote(text: str, start: int, end: int) -> bool:
     return any(start >= left and end <= right for left, right in _quote_spans(text))
 
 
+def _split_assertion_clauses(text: str) -> list[str]:
+    """Split on simple clause boundaries, but never inside a quoted span."""
+    clauses: list[str] = []
+    start = 0
+    quote_spans = _quote_spans(text)
+    quote_index = 0
+    for separator in _NEGATION_CLAUSE_SPLIT.finditer(text):
+        while quote_index < len(quote_spans) and quote_spans[quote_index][1] <= separator.start():
+            quote_index += 1
+        if (
+            quote_index < len(quote_spans)
+            and quote_spans[quote_index][0] < separator.end()
+            and separator.start() < quote_spans[quote_index][1]
+        ):
+            continue
+        clauses.append(text[start:separator.start()])
+        start = separator.end()
+    clauses.append(text[start:])
+    return clauses
+
+
+def _has_unquoted_match(pattern: re.Pattern[str], text: str) -> bool:
+    quote_spans = _quote_spans(text)
+    quote_index = 0
+    for match in pattern.finditer(text):
+        while quote_index < len(quote_spans) and quote_spans[quote_index][1] <= match.start():
+            quote_index += 1
+        if (
+            quote_index < len(quote_spans)
+            and quote_spans[quote_index][0] < match.end()
+            and match.start() < quote_spans[quote_index][1]
+        ):
+            continue
+        return True
+    return False
+
+
 def _is_negated_or_limited(text: str) -> bool:
-    clauses = _NEGATION_CLAUSE_SPLIT.split(text)
-    return any(_NEGATED_ASSERTION.search(clause) or _ABSENT_EVIDENCE.search(clause) for clause in clauses)
+    return _has_unquoted_match(_NEGATED_ASSERTION, text) or _has_unquoted_match(_ABSENT_EVIDENCE, text)
 
 
 def _is_cautious(text: str) -> bool:
-    return bool(_CAUTIOUS_WORDING.search(text))
+    return _has_unquoted_match(_CAUTIOUS_WORDING, text)
 
 
 def _has_unqualified_statement(text: str) -> bool:
-    clauses = [part.strip() for part in _NEGATION_CLAUSE_SPLIT.split(text) if part.strip()]
+    clauses = [part.strip() for part in _split_assertion_clauses(text) if part.strip()]
     return any(not _is_negated_or_limited(part) and not _is_cautious(part) for part in clauses)
 
 
@@ -283,9 +352,7 @@ def _check_status_object(
     for key in _STATUS_KEYS:
         value = local.get(key)
         if isinstance(value, str) and _normal(value) in {"validated", "scientifically_validated", "biologically_validated", "empirically_validated"}:
-            has_scope = any(_nonempty(local.get(scope)) for scope in ("validation_scope", "validated_object", "validation_target"))
-            if _normal(value) != "validated" or not has_scope:
-                findings.append(_finding(file, _json_location(pointer, key), "AMBIGUOUS_VALIDATION_STATUS"))
+            findings.append(_finding(file, _json_location(pointer, key), "AMBIGUOUS_VALIDATION_STATUS"))
 
     claim_fields = ("claim", "text", "statement", "summary", "conclusion", "result")
     claim_texts = [local[key] for key in claim_fields if isinstance(local.get(key), str) and local[key].strip()]
@@ -320,7 +387,7 @@ def _check_status_object(
 def _scan_text(text: str, file: str, location: str, findings: list[dict[str, Any]], metadata: Mapping[str, Any] | None = None, *, heading: str = "") -> None:
     meta = metadata or {}
     inherited_synthetic = _is_synthetic_metadata(meta)
-    for clause in _NEGATION_CLAUSE_SPLIT.split(text):
+    for clause in _split_assertion_clauses(text):
         clause = clause.strip()
         if not clause or _is_negated_or_limited(clause) or _is_cautious(clause):
             continue
@@ -386,6 +453,8 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
 
     for line_no, raw in enumerate(text.splitlines(), start=1):
         stripped = raw.strip()
+        leading_whitespace = raw[: len(raw) - len(raw.lstrip(" \t"))]
+        indented_code = "\t" in leading_whitespace or len(leading_whitespace) >= 4
         fence = re.match(r"^(```+|~~~+)", stripped)
         if fence:
             flush()
@@ -397,7 +466,7 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
                 fenced = False
                 fence_marker = ""
             continue
-        if fenced or not stripped or stripped.startswith(">") or stripped.startswith("    ") or stripped.startswith("\t"):
+        if fenced or not stripped or stripped.startswith(">") or indented_code:
             flush()
             continue
         heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", raw)
@@ -443,7 +512,7 @@ def _inspect_content(file: str, suffix: str, content: str) -> list[dict[str, Any
         for line, paragraph, heading, excluded in _markdown_paragraphs(content):
             if excluded:
                 continue
-            for sentence in re.split(r"(?<=[.!?])\s+", paragraph):
+            for sentence in _split_assertion_clauses(paragraph):
                 _scan_text(sentence, file, f"L{line}", findings, heading=heading)
     else:
         try:

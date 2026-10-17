@@ -68,6 +68,13 @@ class ReportFirewallTests(unittest.TestCase):
         self.assertIn("L13", causal_locations)
         self.assertNotIn("L17", causal_locations)
         self.assertNotIn("L19", causal_locations)
+        self.assertFalse(any(finding["location"] in {"L17", "L19"} for finding in findings))
+
+    def test_negation_does_not_suppress_assertion_after_comma_clause_boundary(self):
+        findings = self._adversarial_markdown_report()
+        causal_locations = {finding["location"] for finding in findings
+                            if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"}
+        self.assertIn("L29", causal_locations)
 
     def test_multiple_assertive_claims_in_one_sentence_are_checked(self):
         findings = self._adversarial_markdown_report()
@@ -84,15 +91,22 @@ class ReportFirewallTests(unittest.TestCase):
 
     def test_straight_single_quoted_span_is_not_scanned(self):
         findings = self._adversarial_markdown_report()
-        self.assertFalse(any(finding["location"] == "L9" for finding in findings))
+        self.assertFalse(any(finding["location"] in {"L9", "L27"} for finding in findings))
+
+    def test_quoted_negation_or_caution_does_not_suppress_unquoted_claim(self):
+        findings = self._adversarial_markdown_report()
+        causal_locations = {finding["location"] for finding in findings
+                            if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"}
+        self.assertIn("L23", causal_locations)
+        self.assertIn("L25", causal_locations)
 
     def test_real_prose_after_code_and_quotes_remains_scannable(self):
         findings = self._adversarial_markdown_report()
         self.assertIn("SYNTHETIC_TO_EMPIRICAL_ASSERTION", {
             finding["rule"] for finding in findings if finding["location"] == "L21"
         })
-        self.assertIn("SYNTHETIC_TO_EMPIRICAL_ASSERTION", {
-            finding["rule"] for finding in findings if finding["location"] == "L21"
+        self.assertIn("UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM", {
+            finding["rule"] for finding in findings if finding["location"] == "L11"
         })
 
     def test_scientific_validated_is_not_excused_by_software_scope_metadata(self):
