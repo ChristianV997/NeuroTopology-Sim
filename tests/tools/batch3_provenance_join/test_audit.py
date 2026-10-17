@@ -9,7 +9,7 @@ from pathlib import Path
 from scripts.run_batch3_provenance_join import main
 from tools.batch3_provenance_join import audit_provenance
 from tools.batch3_provenance_join.models import run_configuration_fingerprint
-from tests.tools.batch3_provenance_join.helpers import ledger_export, ledger_record, valid_fixture, write_json
+from tests.tools.batch3_provenance_join.helpers import ledger_export, ledger_record, sha, valid_fixture, write_json
 
 
 def _codes(report: dict) -> set[str]:
@@ -161,17 +161,18 @@ def test_partial_producer_status_is_not_success(tmp_path: Path) -> None:
     assert "producer_reports_missing_artifact" in _codes(report)
 
 
-def test_license_reference_is_exact_and_unresolved_when_absent(tmp_path: Path) -> None:
+def test_license_ids_do_not_join_without_a_license_record_contract(tmp_path: Path) -> None:
     paths = valid_fixture(tmp_path)
-    source = json.loads(paths[2].read_text(encoding="utf-8"))
-    source.pop("license_id")
-    source["license_ref"] = "license-not-declared"
-    source_path = write_json(tmp_path / "source-manifest.json", source)
+    run = json.loads(paths[0].read_text(encoding="utf-8"))
+    run["input"]["license_ref"] = "fixture-license-1"
+    run_path = write_json(tmp_path / "run.json", run)
 
-    report = audit_provenance(tmp_path, [paths[0], paths[1], source_path, paths[3], paths[4]])
+    report = audit_provenance(tmp_path, [run_path, *paths[1:]])
 
     assert report["status"] == "INCOMPLETE"
-    assert "unresolved_license_reference" in _codes(report)
+    assert "unverifiable_license_reference" in _codes(report)
+    assert "unverifiable_license_identity" in _codes(report)
+    assert "unresolved_license_reference" not in _codes(report)
 
 
 def test_explicit_configuration_version_mismatch_is_reported(tmp_path: Path) -> None:
@@ -196,7 +197,7 @@ def test_explicit_configuration_version_mismatch_is_reported(tmp_path: Path) -> 
     assert "stale_configuration_version" in _codes(report)
 
 
-def test_explicit_source_version_mismatch_is_reported(tmp_path: Path) -> None:
+def test_untyped_source_version_pin_is_not_joined_to_snapshot_metadata(tmp_path: Path) -> None:
     paths = valid_fixture(tmp_path)
     run = json.loads(paths[0].read_text(encoding="utf-8"))
     run["input"].update({"source_id": "dataset-fixture-1", "source_version": "2"})
@@ -222,7 +223,9 @@ def test_explicit_source_version_mismatch_is_reported(tmp_path: Path) -> None:
 
     report = audit_provenance(tmp_path, [run_path, paths[1], paths[2], ledger_path, paths[4]])
 
-    assert "stale_source_version" in _codes(report)
+    assert "stale_source_version" not in _codes(report)
+    assert "source_version_unverifiable" in _codes(report)
+    assert "unverifiable_source_reference" in _codes(report)
 
 
 def test_conflicting_explicit_origin_classes_are_reported(tmp_path: Path) -> None:
@@ -235,6 +238,123 @@ def test_conflicting_explicit_origin_classes_are_reported(tmp_path: Path) -> Non
 
     assert report["status"] == "INCOMPLETE"
     assert "source_data_mode_conflict" in _codes(report)
+
+
+def test_external_solver_origin_is_unverifiable_for_binary_origin_join(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    source = json.loads(paths[2].read_text(encoding="utf-8"))
+    source["origin"] = "external_solver"
+    source_path = write_json(tmp_path / "source-manifest.json", source)
+
+    report = audit_provenance(tmp_path, [paths[0], paths[1], source_path, paths[3], paths[4]])
+
+    findings = [item for item in report["findings"] if item["code"] == "unverifiable_origin"]
+    assert report["status"] == "INCOMPLETE"
+    assert any(item["subject"] == "source-manifest.json#/origin" for item in findings)
+    assert any("external_solver" in item["detail"] for item in findings)
+    assert any("recognized by the source-manifest schema" in item["detail"] for item in findings)
+
+
+def test_unavailable_origin_is_unverifiable_for_binary_origin_join(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    source = json.loads(paths[2].read_text(encoding="utf-8"))
+    source["origin"] = "unavailable"
+    source_path = write_json(tmp_path / "source-manifest.json", source)
+
+    report = audit_provenance(tmp_path, [paths[0], paths[1], source_path, paths[3], paths[4]])
+
+    findings = [item for item in report["findings"] if item["code"] == "unverifiable_origin"]
+    assert report["status"] == "INCOMPLETE"
+    assert any(item["subject"] == "source-manifest.json#/origin" for item in findings)
+    assert any("unavailable" in item["detail"] for item in findings)
+
+
+def test_unknown_manifest_artifact_type_is_unverifiable(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    manifest = json.loads(paths[1].read_text(encoding="utf-8"))
+    manifest["artifacts"][0]["artifact_type"] = "unregistered_trajectory"
+    manifest_path = write_json(tmp_path / "manifest.json", manifest)
+
+    report = audit_provenance(tmp_path, [paths[0], manifest_path, paths[2], paths[3], paths[4]])
+
+    findings = [item for item in report["findings"] if item["code"] == "unverifiable_artifact_type"]
+    assert report["status"] == "INCOMPLETE"
+    assert any(item["subject"] == "manifest.json#/artifacts/0/artifact_type" for item in findings)
+    assert any("unregistered_trajectory" in item["detail"] for item in findings)
+
+
+def test_unclassified_fields_are_reported_anywhere_with_json_pointer_locations(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    run = json.loads(paths[0].read_text(encoding="utf-8"))
+    run["metadata"] = {"uncertain/key~name": {"artifact_type": "mystery_blob", "data_mode": None}}
+    run_path = write_json(tmp_path / "run.json", run)
+
+    report = audit_provenance(tmp_path, [run_path, *paths[1:]])
+
+    findings = [item for item in report["findings"] if item["code"] in {"unverifiable_origin", "unverifiable_artifact_type"}]
+    assert report["status"] == "INCOMPLETE"
+    assert any(item["subject"] == "run.json#/metadata/uncertain~1key~0name/artifact_type" for item in findings)
+    assert any(item["subject"] == "run.json#/metadata/uncertain~1key~0name/data_mode" for item in findings)
+    assert any("mystery_blob" in item["detail"] for item in findings)
+
+
+def test_dataset_id_does_not_join_to_equal_source_snapshot_id(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    run = json.loads(paths[0].read_text(encoding="utf-8"))
+    run["data_mode"] = "empirical_local"
+    run_path = write_json(tmp_path / "run.json", run)
+    source_manifest = json.loads(paths[2].read_text(encoding="utf-8"))
+    source_manifest["origin"] = "empirical"
+    source_path = write_json(tmp_path / "source-manifest.json", source_manifest)
+
+    old_export = json.loads(paths[3].read_text(encoding="utf-8"))
+    cycle_id = old_export["cycle"]["cycle_id"]
+    old_snapshot, old_evidence = old_export["records"]
+    shared_text = run["dataset_id"]
+    snapshot = ledger_record(
+        "source_snapshot",
+        cycle_id,
+        snapshot_id=shared_text,
+        source_uri=old_snapshot["source_uri"],
+        source_sha256=old_snapshot["source_sha256"],
+        data_mode="synthetic",
+        evidence_class=old_snapshot["evidence_class"],
+        claim_scope=old_snapshot["claim_scope"],
+        scientific_limitations=old_snapshot["scientific_limitations"],
+        source_format=old_snapshot["source_format"],
+        captured_at=old_snapshot["captured_at"],
+        metadata={},
+    )
+    evidence = ledger_record(
+        "evidence_record",
+        cycle_id,
+        evidence_id=old_evidence["evidence_id"],
+        source_snapshot_ids=[shared_text],
+        observation=old_evidence["observation"],
+        data_mode=old_evidence["data_mode"],
+        evidence_class=old_evidence["evidence_class"],
+        claim_scope=old_evidence["claim_scope"],
+        scientific_limitations=old_evidence["scientific_limitations"],
+        metrics=old_evidence["metrics"],
+    )
+    ledger_path = write_json(tmp_path / "cycle-export.json", ledger_export(cycle_id, [snapshot, evidence]))
+
+    report = audit_provenance(tmp_path, [run_path, paths[1], source_path, ledger_path, paths[4]])
+
+    assert "source_data_mode_conflict" not in _codes(report)
+    assert not any(item["subject"] == shared_text and item["code"] == "source_data_mode_conflict" for item in report["findings"])
+
+
+def test_unknown_manifest_schema_is_reported_as_unverifiable(tmp_path: Path) -> None:
+    path = write_json(tmp_path / "unknown.json", {"schema": "NTS.UnmergedSourcePack.v1", "origin": "unavailable"})
+
+    report = audit_provenance(tmp_path, [path])
+
+    finding = next(item for item in report["findings"] if item["code"] == "unverifiable_manifest_schema")
+    assert report["status"] == "INCOMPLETE"
+    assert finding["subject"] == "unknown.json"
+    assert "NTS.UnmergedSourcePack.v1" in finding["detail"]
+    assert {item["code"] for item in report["findings"]} >= {"unverifiable_origin"}
 
 
 def test_untyped_source_manifest_checksum_is_not_assigned_a_scope(tmp_path: Path) -> None:
@@ -363,6 +483,45 @@ def test_positive_status_without_gate_event_is_only_a_warning(tmp_path: Path) ->
 
     assert report["status"] == "INCOMPLETE"
     assert "unsupported_status_claim" in _codes(report)
+
+
+def test_gate_event_identifier_in_another_namespace_does_not_support_status(tmp_path: Path) -> None:
+    cycle_id = "cycle-gate-namespace"
+    claim = ledger_record(
+        "claim",
+        cycle_id,
+        claim_id="shared-status-id",
+        statement="Fixture-only claim.",
+        evidence_ids=[],
+        evidence_class="hypothesis",
+        claim_scope="fixture",
+        scientific_limitations=["No scientific evidence."],
+        status="PASS",
+    )
+    export = ledger_export(cycle_id, [claim])
+    event = {
+        "cycle_id": cycle_id,
+        "event_id": "event-gate-namespace-1",
+        "sequence": 1,
+        "event_type": "validation_outcome",
+        "producer": "fixture",
+        "status": "PASS",
+        "payload": {"artifact_manifest_id": "shared-status-id", "validation_status": "PASS"},
+        "previous_hash": None,
+        "schema_version": "awareness-studio-research-cycle-event.v1",
+    }
+    event["event_hash"] = sha({key: event[key] for key in (
+        "cycle_id", "event_id", "sequence", "event_type", "producer", "status", "payload", "previous_hash", "schema_version",
+    )})
+    export["events"] = [event]
+    export.pop("export_checksum")
+    export["export_checksum"] = sha(export)
+    path = write_json(tmp_path / "gate-namespace.json", export)
+
+    report = audit_provenance(tmp_path, [path])
+
+    assert "unsupported_status_claim" in _codes(report)
+    assert any(item["subject"] == "shared-status-id.claim#/status" for item in report["findings"] if item["code"] == "unsupported_status_claim")
 
 
 def test_run_record_link_checksum_scope_is_not_guessed(tmp_path: Path) -> None:

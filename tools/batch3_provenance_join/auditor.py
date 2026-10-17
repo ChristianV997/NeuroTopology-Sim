@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable, Mapping, Sequence
 
+from configs.empirical_sources.manifest import ORIGIN_LABELS as SOURCE_MANIFEST_ORIGIN_LABELS
+
 from .models import (
     INTEGRATION_MANIFEST_SCHEMA,
     LEDGER_EVENT_SCHEMA_VERSION,
@@ -26,6 +28,7 @@ from .models import (
     SOURCE_MANIFEST_SCHEMA,
     AuditLimits,
     Finding,
+    ReferenceKey,
     run_configuration_fingerprint,
     sha256_json,
     simulation_report_checksum,
@@ -37,14 +40,35 @@ _POSITIVE_GATE_WORDS = frozenset({
     "PASS", "PASSED", "VALID", "VALIDATED", "READY", "ADMISSIBLE",
     "CLAIM_ADMISSIBLE", "EVIDENCE_ADMISSIBLE", "SUPPORTED",
 })
-_REFERENCE_KEYS = {
+_UNSUPPORTED_SOURCE_REFERENCE_KEYS = frozenset({
     "source_id", "source_snapshot_id", "source_manifest_id", "snapshot_id",
-    "dataset_identifier", "dataset_id",
-}
-_LICENSE_REFERENCE_KEYS = {"license_ref"}
+    "dataset_identifier",
+})
+_UNSUPPORTED_LICENSE_FIELDS = frozenset({"license_id", "license_ref"})
 _CONFIG_REFERENCE_KEYS = {"configuration_id", "config_id"}
 _CONFIG_VERSION_KEYS = {"configuration_version", "config_version"}
 _CONFIG_DIGEST_KEYS = {"configuration_sha256", "config_sha256", "configuration_fingerprint"}
+_LEDGER_TYPED_REFERENCE_FIELDS: dict[str, dict[str, str]] = {
+    "evidence_record": {"source_snapshot_ids": "source_snapshot"},
+    "claim": {"evidence_ids": "evidence_record"},
+    "hypothesis": {"claim_ids": "claim"},
+    "experiment_spec": {"hypothesis_ids": "hypothesis"},
+    "run_record": {"experiment_id": "experiment_spec"},
+    "artifact_manifest": {"run_record_id": "run_record"},
+    "validation_report": {
+        "artifact_manifest_ids": "artifact_manifest",
+        "run_record_id": "run_record",
+    },
+    "theory_revision": {
+        "hypothesis_ids": "hypothesis",
+        "validation_report_ids": "validation_report",
+    },
+}
+_KNOWN_LEDGER_RECORD_TYPES = frozenset({
+    "source_snapshot", "evidence_record", "claim", "hypothesis",
+    "experiment_spec", "run_record", "artifact_manifest",
+    "validation_report", "theory_revision",
+})
 
 
 class AuditInputError(ValueError):
@@ -145,7 +169,13 @@ def _file_signature(info: os.stat_result) -> tuple[int, int, int, int]:
 
 
 def _read_stable_file(path: Path, *, maximum: int) -> tuple[bytes, os.stat_result]:
-    """Read a bounded regular file and reject symlink/replacement races."""
+    """Read a bounded file; reject detectable symlink and replacement races.
+
+    O_NOFOLLOW protects the final path component on platforms that provide it.
+    The stat/fstat comparisons detect ordinary replacements and concurrent
+    writes. They are not a portable defense against a hostile process that
+    can race parent-directory components or restore file metadata.
+    """
     before = path.lstat()
     if not stat.S_ISREG(before.st_mode):
         raise ValueError("referenced path is not a regular, non-symlink file")
@@ -153,7 +183,9 @@ def _read_stable_file(path: Path, *, maximum: int) -> tuple[bytes, os.stat_resul
         raise ValueError(f"file size {before.st_size} exceeds limit {maximum}")
     chunks: list[bytes] = []
     remaining = before.st_size
-    with path.open("rb") as handle:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as handle:
         opened = os.fstat(handle.fileno())
         if not stat.S_ISREG(opened.st_mode) or not _same_file_version(before, opened):
             raise ValueError("file changed between validation and open")
@@ -280,7 +312,13 @@ def _load_document(ctx: _Context, raw_path: str | Path) -> _Document | None:
         return None
     kind = _classify(raw)
     if kind == "unknown":
-        ctx.add("unsupported_manifest_schema", relative, "document does not identify a supported existing schema", "error")
+        schema = raw.get("schema", raw.get("schema_version", "<absent>"))
+        ctx.add(
+            "unverifiable_manifest_schema",
+            relative,
+            f"embedded schema {schema!r} is not supported by this auditor; no relationships or checksums were inferred",
+        )
+        _report_unverifiable_fields(ctx, raw, relative)
         return None
     digest = hashlib.sha256(data).hexdigest()
     ctx.file_cache[relative] = (digest, size, _file_signature(info))
@@ -325,7 +363,9 @@ def _hash_file(ctx: _Context, raw_path: str, *, subject: str) -> tuple[str, int,
     digest = hashlib.sha256()
     observed = 0
     try:
-        with path.open("rb") as handle:
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
             opened = os.fstat(handle.fileno())
             if not stat.S_ISREG(opened.st_mode) or not _same_file_version(before, opened):
                 ctx.add("file_changed_during_scan", subject, f"{relative} changed between validation and open", "error")
@@ -510,25 +550,6 @@ def _entries_from_manifest(ctx: _Context, doc: _Document) -> dict[str, dict[str,
     return entries
 
 
-def _walk_references(value: Any, keys: set[str]) -> Iterable[tuple[str, str]]:
-    stack = [value]
-    while stack:
-        current = stack.pop()
-        if isinstance(current, Mapping):
-            items = list(current.items())
-            for key, item in reversed(items):
-                key_text = str(key)
-                if key_text in keys and isinstance(item, str) and item:
-                    yield key_text, item
-                elif key_text in keys and isinstance(item, list):
-                    for member in item:
-                        if isinstance(member, str) and member:
-                            yield key_text, member
-            stack.extend(item for _, item in reversed(items))
-        elif isinstance(current, list):
-            stack.extend(reversed(current))
-
-
 def _walk_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
     stack = [value]
     while stack:
@@ -540,9 +561,56 @@ def _walk_mappings(value: Any) -> Iterable[Mapping[str, Any]]:
             stack.extend(reversed(current))
 
 
-def _explicit_configuration_pins(value: Any) -> list[tuple[str, str | None, str | None]]:
+def _walk_mappings_with_paths(value: Any, path: str = "") -> Iterable[tuple[str, Mapping[str, Any]]]:
+    stack: list[tuple[str, Any]] = [(path, value)]
+    while stack:
+        current_path, current = stack.pop()
+        if isinstance(current, Mapping):
+            yield current_path, current
+            for key, item in reversed(list(current.items())):
+                escaped_key = str(key).replace("~", "~0").replace("/", "~1")
+                stack.append((f"{current_path}/{escaped_key}", item))
+        elif isinstance(current, list):
+            for index in range(len(current) - 1, -1, -1):
+                stack.append((f"{current_path}/{index}", current[index]))
+
+
+def _report_unverifiable_fields(ctx: _Context, raw: Mapping[str, Any], source: str) -> None:
+    """Report present values whose field contracts are absent or unclassified."""
+    for path, mapping in _walk_mappings_with_paths(raw):
+        for field_name in ("origin", "data_mode"):
+            if field_name in mapping and _declared_origin_class(mapping[field_name]) is None:
+                value = mapping[field_name]
+                if isinstance(value, str) and value in SOURCE_MANIFEST_ORIGIN_LABELS:
+                    detail = (
+                        f"{field_name} {value!r} is recognized by the source-manifest schema but is not "
+                        "classifiable as synthetic or empirical for this join; no origin equivalence was inferred"
+                    )
+                else:
+                    detail = f"{field_name} {value!r} is not classified by the supported synthetic/empirical vocabulary"
+                ctx.add(
+                    "unverifiable_origin",
+                    f"{source}#{path}/{field_name}",
+                    detail,
+                )
+        if "artifact_type" in mapping:
+            ctx.add(
+                "unverifiable_artifact_type",
+                f"{source}#{path}/artifact_type",
+                f"artifact_type {mapping['artifact_type']!r} has no declared type contract in the supplied current-main schemas",
+            )
+        for field_name in sorted(_UNSUPPORTED_LICENSE_FIELDS & mapping.keys()):
+            code = "unverifiable_license_reference" if field_name == "license_ref" else "unverifiable_license_identity"
+            ctx.add(
+                code,
+                f"{source}#{path}/{field_name}",
+                f"field {field_name!r} has no typed license record contract on current main; it is not used to resolve another identifier by string equality",
+            )
+
+
+def _explicit_configuration_pins(value: Any) -> list[tuple[ReferenceKey, str | None, str | None]]:
     """Return only explicit config ID/version/digest triples from one document."""
-    pins: list[tuple[str, str | None, str | None]] = []
+    pins: list[tuple[ReferenceKey, str | None, str | None]] = []
     for mapping in _walk_mappings(value):
         config_id = next((mapping[key] for key in sorted(_CONFIG_REFERENCE_KEYS) if isinstance(mapping.get(key), str) and mapping[key]), None)
         if not isinstance(config_id, str):
@@ -552,7 +620,7 @@ def _explicit_configuration_pins(value: Any) -> list[tuple[str, str | None, str 
         version = str(version_value) if version_value is not None else None
         digest = digest_value.lower() if digest_value is not None else None
         if version is not None or digest is not None:
-            pins.append((config_id, version, digest))
+            pins.append((ReferenceKey("configuration", "configuration_id", config_id), version, digest))
     return pins
 
 
@@ -606,6 +674,8 @@ def _verify_ledger_export(ctx: _Context, doc: _Document) -> dict[str, Any] | Non
         if not record_id or not isinstance(record_type, str):
             ctx.add("malformed_ledger_record", subject, "record_type and stable record identifier are required", "error")
             continue
+        if record_type not in _KNOWN_LEDGER_RECORD_TYPES:
+            ctx.add("unverifiable_ledger_record_type", subject, f"record_type {record_type!r} is not part of the supported research-cycle record contract; typed relationships are not inferred")
         if record_id in record_ids_seen:
             ctx.add("duplicate_record_id", record_id, "ledger export contains this record ID more than once", "error")
         record_ids_seen.add(record_id)
@@ -728,13 +798,22 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
         all_records.extend(export["records"].values())
         all_events.extend(event for event in export["events"] if isinstance(event, Mapping))
         all_links.extend(link for link in export["links"] if isinstance(link, Mapping))
-    by_id: dict[str, dict[str, Any]] = {}
+    generic_index: dict[ReferenceKey, list[dict[str, Any]]] = {}
+    typed_index: dict[ReferenceKey, list[dict[str, Any]]] = {}
     duplicate_ids: set[str] = set()
     for record in all_records:
-        record_id = record["record_id"]
-        if record_id in by_id:
+        record_id = record.get("record_id")
+        record_type = record.get("record_type")
+        if not isinstance(record_id, str) or not record_id:
+            continue
+        generic_key = ReferenceKey("research_cycle_record", "record_id", record_id)
+        prior = generic_index.setdefault(generic_key, [])
+        if prior:
             duplicate_ids.add(record_id)
-        by_id[record_id] = record
+        prior.append(record)
+        if isinstance(record_type, str) and record_type:
+            typed_key = ReferenceKey(record_type, "record_id", record_id)
+            typed_index.setdefault(typed_key, []).append(record)
     for record_id in sorted(duplicate_ids):
         ctx.add("duplicate_record_id", record_id, "record ID is repeated across declared ledger exports", "error")
 
@@ -764,11 +843,16 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
         child_id = link.get("child_id")
         if not isinstance(parent_id, str) or not isinstance(child_id, str):
             continue
-        parent = by_id.get(parent_id)
-        child = by_id.get(child_id)
-        if parent is None or child is None:
+        parent_matches = generic_index.get(ReferenceKey("research_cycle_record", "record_id", parent_id), [])
+        child_matches = generic_index.get(ReferenceKey("research_cycle_record", "record_id", child_id), [])
+        if not parent_matches or not child_matches:
             ctx.add("unresolved_ledger_link", f"{parent_id}->{child_id}", "record_links endpoint was not included in explicitly supplied cycle exports")
             continue
+        if len(parent_matches) != 1 or len(child_matches) != 1:
+            ctx.add("ambiguous_ledger_link", f"{parent_id}->{child_id}", "record_links endpoint ID is duplicated; the endpoint was not selected", "error")
+            continue
+        parent = parent_matches[0]
+        child = child_matches[0]
         source_cycle = child.get("cycle_id")
         target_cycle = parent.get("cycle_id")
         cursor = source_cycle
@@ -783,34 +867,33 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
         if not allowed:
             ctx.add("cross_cycle_reference_invalid", child_id, f"record_links parent {parent_id!r} belongs to unrelated or descendant cycle {target_cycle!r}", "error")
     for record in all_records:
-        record_id = record["record_id"]
+        record_id = record.get("record_id")
+        record_type = record.get("record_type")
+        if not isinstance(record_id, str) or not record_id:
+            continue
         source_cycle = record.get("cycle_id")
-        refs = []
+        refs: list[str] = []
         for field_name in ("parent_ids", "child_ids"):
-            value = record.get(field_name)
-            if isinstance(value, list):
-                refs.extend(value)
-        typed_fields = {
-            "evidence_record": ("source_snapshot_ids",),
-            "claim": ("evidence_ids",),
-            "hypothesis": ("claim_ids",),
-            "experiment_spec": ("hypothesis_ids",),
-            "run_record": ("experiment_id",),
-            "artifact_manifest": ("run_record_id",),
-            "validation_report": ("artifact_manifest_ids", "run_record_id"),
-            "theory_revision": ("hypothesis_ids", "validation_report_ids"),
-        }.get(str(record.get("record_type")), ())
-        for field_name in typed_fields:
-            value = record.get(field_name)
-            refs.extend(value if isinstance(value, list) else ([value] if isinstance(value, str) else []))
-        for target_id in sorted({ref for ref in refs if isinstance(ref, str)}):
-            target = by_id.get(target_id)
-            if target is None:
-                # Same-export type-specific missing refs are already diagnosed above.
-                if target_id in duplicate_ids:
-                    continue
-                ctx.add("unresolved_ledger_reference", record_id, f"declared reference {target_id!r} is not in supplied ledger exports", "warning")
+            value = record.get(field_name, [])
+            if not isinstance(value, list):
+                ctx.add("malformed_ledger_reference", f"{record_id}.{field_name}", "generic record references must be arrays of record_id strings", "error")
                 continue
+            for target_id in value:
+                if not isinstance(target_id, str) or not target_id:
+                    ctx.add("malformed_ledger_reference", f"{record_id}.{field_name}", "generic record references must contain non-empty strings", "error")
+                else:
+                    refs.append(target_id)
+        for target_id in sorted(set(refs)):
+            generic_key = ReferenceKey("research_cycle_record", "record_id", target_id)
+            matches = generic_index.get(generic_key, [])
+            if not matches:
+                if target_id not in duplicate_ids:
+                    ctx.add("unresolved_ledger_reference", f"{record_id}.parent_ids/child_ids", f"generic record_id reference {target_id!r} is not in the supplied cycle lineage")
+                continue
+            if len(matches) != 1:
+                ctx.add("ambiguous_ledger_reference", f"{record_id}.parent_ids/child_ids", f"generic record_id {target_id!r} is duplicated; no target was selected", "error")
+                continue
+            target = matches[0]
             target_cycle = target.get("cycle_id")
             cursor = source_cycle
             seen_cycles: set[str] = set()
@@ -822,7 +905,46 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
                 seen_cycles.add(cursor)
                 cursor = cycle_parents.get(cursor)
             if not allowed:
-                ctx.add("cross_cycle_reference_invalid", record_id, f"reference to {target_id!r} crosses from {source_cycle!r} to unrelated or descendant cycle {target_cycle!r}", "error")
+                ctx.add("cross_cycle_reference_invalid", record_id, f"generic record_id reference {target_id!r} crosses from {source_cycle!r} to unrelated or descendant cycle {target_cycle!r}", "error")
+
+        field_targets = _LEDGER_TYPED_REFERENCE_FIELDS.get(str(record_type), {})
+        for field_name, expected_type in field_targets.items():
+            value = record.get(field_name)
+            is_plural = field_name.endswith("_ids")
+            if (is_plural and not isinstance(value, list)) or (not is_plural and not isinstance(value, str)):
+                ctx.add("malformed_ledger_reference", f"{record_id}.{field_name}", f"typed reference must be {'an array' if is_plural else 'a string'} for target record type {expected_type!r}", "error")
+                continue
+            values = value if isinstance(value, list) else [value]
+            for target_id in values:
+                if not isinstance(target_id, str) or not target_id:
+                    ctx.add("malformed_ledger_reference", f"{record_id}.{field_name}", f"typed reference to {expected_type!r} must contain non-empty strings", "error")
+                    continue
+                expected_key = ReferenceKey(expected_type, "record_id", target_id)
+                matches = typed_index.get(expected_key, [])
+                if len(matches) > 1:
+                    ctx.add("ambiguous_ledger_reference", f"{record_id}.{field_name}", f"typed {expected_type!r} record_id {target_id!r} is duplicated; no target was selected", "error")
+                    continue
+                if not matches:
+                    generic_matches = generic_index.get(ReferenceKey("research_cycle_record", "record_id", target_id), [])
+                    found_types = sorted({str(item.get("record_type")) for item in generic_matches})
+                    if found_types:
+                        ctx.add("typed_reference_type_mismatch", f"{record_id}.{field_name}", f"expected {expected_type!r} record_id {target_id!r}, but supplied records have type(s) {found_types}", "error")
+                    elif target_id not in duplicate_ids:
+                        ctx.add("unresolved_ledger_reference", f"{record_id}.{field_name}", f"typed reference to {expected_type!r} record_id {target_id!r} is not in the supplied cycle lineage")
+                    continue
+                target = matches[0]
+                target_cycle = target.get("cycle_id")
+                cursor = source_cycle
+                seen_cycles: set[str] = set()
+                allowed = False
+                while isinstance(cursor, str) and cursor not in seen_cycles:
+                    if cursor == target_cycle:
+                        allowed = True
+                        break
+                    seen_cycles.add(cursor)
+                    cursor = cycle_parents.get(cursor)
+                if not allowed:
+                    ctx.add("cross_cycle_reference_invalid", f"{record_id}.{field_name}", f"typed {expected_type!r} reference {target_id!r} crosses from {source_cycle!r} to unrelated or descendant cycle {target_cycle!r}", "error")
     return all_records, all_events
 
 
@@ -910,36 +1032,37 @@ def _verify_evidence_bundle(ctx: _Context, doc: _Document) -> None:
             ctx.input_paths.add(relative)
 
 
-def _source_ids(doc: _Document) -> set[str]:
-    raw = doc.raw
-    if doc.kind == "source_manifest":
-        values = (raw.get("source_id"), raw.get("source_manifest_id"), raw.get("manifest_id"), raw.get("dataset_identifier"))
-    else:
-        metadata = raw.get("metadata") if isinstance(raw.get("metadata"), Mapping) else {}
-        values = (
-            raw.get("snapshot_id"), metadata.get("source_id"), metadata.get("source_manifest_id"),
-            metadata.get("dataset_identifier"),
-        )
-    return {value for value in values if isinstance(value, str) and value}
-
-
 def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_records: list[dict[str, Any]]) -> None:
     source_docs = [doc for doc in docs if doc.kind == "source_manifest"]
     source_snapshots = [record for record in ledger_records if record.get("record_type") == "source_snapshot"]
-    source_catalog: dict[str, list[tuple[str, Any]]] = {}
-    license_ids: set[str] = set()
-    snapshots_by_source: dict[str, list[Mapping[str, Any]]] = {}
+    source_catalog: dict[ReferenceKey, list[_Document]] = {}
+
+    def add_unverifiable_refs(raw: Mapping[str, Any], *, subject: str, allowed: set[tuple[str, str]]) -> None:
+        for path, mapping in _walk_mappings_with_paths(raw):
+            for key in sorted(_UNSUPPORTED_SOURCE_REFERENCE_KEYS):
+                value = mapping.get(key)
+                if value is None or (path, key) in allowed:
+                    continue
+                ctx.add(
+                    "unverifiable_source_reference",
+                    f"{subject}#{path}/{key}",
+                    f"field {key!r} contains {value!r}, but the current record contract does not define its target type/namespace; no join was attempted",
+                )
+
     for doc in source_docs:
         dataset_identifier = doc.raw.get("dataset_identifier")
         if not isinstance(dataset_identifier, str) or not dataset_identifier:
             ctx.add("missing_source_identity", doc.relative_path, "EmpiricalSourceManifest.v1 requires dataset_identifier", "error")
-        origin = doc.raw.get("origin")
-        if not isinstance(origin, str) or not origin:
-            ctx.add("source_origin_unverifiable", doc.relative_path, "source origin is absent; synthetic versus empirical origin cannot be joined")
-        for identifier in _source_ids(doc):
-            source_catalog.setdefault(identifier, []).append(("source_manifest", doc))
-        for key, value in _walk_references(doc.raw, {"license_id"}):
-            license_ids.add(value)
+        else:
+            key = ReferenceKey("EmpiricalSourceManifest.v1", "dataset_identifier", dataset_identifier)
+            source_catalog.setdefault(key, []).append(doc)
+        if "origin" not in doc.raw:
+            ctx.add("source_origin_unverifiable", f"{doc.relative_path}#/origin", "source origin is absent; synthetic versus empirical origin cannot be joined")
+        add_unverifiable_refs(
+            doc.raw,
+            subject=doc.relative_path,
+            allowed={("", "dataset_identifier")},
+        )
         local_root = doc.raw.get("local_root")
         if isinstance(local_root, str) and local_root:
             try:
@@ -962,99 +1085,96 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
                 ctx.add("source_manifest_checksum_unverifiable", doc.relative_path, "source_checksum is not part of EmpiricalSourceManifest.v1 and its byte/canonicalization scope is undocumented")
     for record in source_snapshots:
         metadata = record.get("metadata") if isinstance(record.get("metadata"), Mapping) else {}
+        record_id = str(record.get("record_id", "source_snapshot"))
         if "metadata" in record and not isinstance(record.get("metadata"), Mapping):
-            ctx.add("malformed_source_snapshot", str(record.get("record_id", "source_snapshot")), "metadata must be an object", "error")
+            ctx.add("malformed_source_snapshot", record_id, "metadata must be an object", "error")
         if not isinstance(record.get("data_mode"), str) or not record.get("data_mode"):
-            ctx.add("malformed_source_snapshot", str(record.get("record_id", "source_snapshot")), "data_mode is required", "error")
-        for identifier in _source_ids_from_record(record):
-            source_catalog.setdefault(identifier, []).append(("source_snapshot", record))
-            snapshots_by_source.setdefault(identifier, []).append(record)
-        for key, value in _walk_references(metadata, {"license_id"}):
-            license_ids.add(value)
-        if not any(isinstance(metadata.get(key), str) and metadata.get(key) for key in ("license_id", "license_ref")):
-            ctx.add("license_not_declared", str(record.get("record_id", "source_snapshot")), "SourceSnapshot has no typed license field and metadata carries no explicit license reference")
+            ctx.add("malformed_source_snapshot", record_id, "data_mode is required", "error")
+        for path, mapping in _walk_mappings_with_paths(metadata, "/metadata"):
+            for key in sorted(_UNSUPPORTED_SOURCE_REFERENCE_KEYS):
+                value = mapping.get(key)
+                if value is not None:
+                    ctx.add(
+                        "unverifiable_source_reference",
+                        f"ledger record {record_id}#{path}/{key}",
+                        f"metadata field {key!r} contains {value!r}, but SourceSnapshot.metadata has no typed source-reference contract; no join was attempted",
+                    )
+        ctx.add("license_not_declared", record_id, "SourceSnapshot has no typed license-reference field; metadata values cannot supply one")
         uri = record.get("source_uri")
         source_hash = record.get("source_sha256")
         if not isinstance(uri, str) or not uri:
-            ctx.add("source_uri_missing", str(record.get("record_id", "source_snapshot")), "SourceSnapshot source_uri is required", "error")
+            ctx.add("source_uri_missing", record_id, "SourceSnapshot source_uri is required", "error")
         if not _is_sha256(source_hash):
-            ctx.add("malformed_source_checksum", str(record.get("record_id", "source_snapshot")), "SourceSnapshot source_sha256 must be a 64-character SHA-256 hex digest", "error")
+            ctx.add("malformed_source_checksum", record_id, "SourceSnapshot source_sha256 must be a 64-character SHA-256 hex digest", "error")
         else:
-            ctx.add("source_checksum_scope_unverifiable", str(record.get("record_id", "source_snapshot")), "SourceSnapshot defines source_sha256 format but not whether it hashes raw URI bytes, normalized text, or an excerpt; source_uri is not resolved or fetched")
+            ctx.add("source_checksum_scope_unverifiable", record_id, "SourceSnapshot defines source_sha256 format but not whether it hashes raw URI bytes, normalized text, or an excerpt; source_uri is not resolved or fetched")
 
-    # Exact declared identifiers only; paths, names, timestamps, and text are not join keys.
-    source_refs: list[tuple[str, str]] = []
-    run_fingerprints: dict[str, tuple[str, str]] = {}
+    # Dataset identities are joined only across the contract-defined
+    # RunRecordV1.dataset_id / EvidenceBundleV1.dataset_id and
+    # EmpiricalSourceManifestV1.dataset_identifier fields. SourceSnapshot IDs
+    # and arbitrary metadata strings occupy different typed namespaces.
+    source_refs: list[tuple[ReferenceKey, str, str]] = []
+    run_fingerprints: dict[ReferenceKey, tuple[str, str]] = {}
     for doc in docs:
         if doc.kind == "run_record":
-            source_refs.extend(_walk_references(doc.raw, _REFERENCE_KEYS))
+            for location, value in (("dataset_id", doc.raw.get("dataset_id")),):
+                if isinstance(value, str) and value:
+                    source_refs.append((ReferenceKey("EmpiricalSourceManifest.v1", "dataset_identifier", value), doc.relative_path, location))
+            input_value = doc.raw.get("input")
+            if isinstance(input_value, Mapping):
+                value = input_value.get("dataset_id")
+                if isinstance(value, str) and value:
+                    source_refs.append((ReferenceKey("EmpiricalSourceManifest.v1", "dataset_identifier", value), doc.relative_path, "input/dataset_id"))
+            allowed = {("", "dataset_id"), ("/input", "dataset_id")}
+            add_unverifiable_refs(doc.raw, subject=doc.relative_path, allowed=allowed)
         elif doc.kind == "evidence_bundle":
             dataset_id = doc.raw.get("dataset_id")
             if isinstance(dataset_id, str) and dataset_id:
-                source_refs.append(("dataset_id", dataset_id))
-        elif doc.kind == "research_cycle_export":
-            for record in doc.raw.get("records", []):
-                if isinstance(record, Mapping):
-                    if record.get("record_type") == "evidence_record":
-                        source_refs.extend(_walk_references(record, {"source_snapshot_ids"}))
-                    elif record.get("record_type") == "run_record":
-                        source_refs.extend(_walk_references(record, _REFERENCE_KEYS))
-    for key, value in source_refs:
-        if value not in source_catalog:
-            ctx.add("unresolved_source_reference", value, f"declared by field {key!r}; no explicit matching source/snapshot ID was supplied")
+                source_refs.append((ReferenceKey("EmpiricalSourceManifest.v1", "dataset_identifier", dataset_id), doc.relative_path, "dataset_id"))
+    for key, location, field_name in source_refs:
+        candidates = source_catalog.get(key, [])
+        if not candidates:
+            ctx.add("unresolved_source_reference", f"{location}#/{field_name}", f"typed dataset reference {key.identifier!r} has no supplied EmpiricalSourceManifest.v1.dataset_identifier")
+        elif len(candidates) > 1:
+            ctx.add("ambiguous_source_reference", f"{location}#/{field_name}", f"dataset identity {key.identifier!r} is declared by multiple source manifests", "error")
 
     for doc in (item for item in docs if item.kind == "run_record"):
         run_id = doc.raw.get("run_id")
         input_value = doc.raw.get("input") if isinstance(doc.raw.get("input"), Mapping) else {}
         run_mode = _declared_origin_class(doc.raw.get("data_mode") or input_value.get("data_mode"))
-        if run_mode is None:
+        dataset_values = {value for value in (doc.raw.get("dataset_id"), input_value.get("dataset_id")) if isinstance(value, str) and value}
+        for dataset_id in sorted(dataset_values):
+            key = ReferenceKey("EmpiricalSourceManifest.v1", "dataset_identifier", dataset_id)
+            candidates = source_catalog.get(key, [])
+            if run_mode is None or len(candidates) != 1:
+                continue
+            source_mode = _declared_origin_class(candidates[0].raw.get("origin"))
+            if source_mode is not None and source_mode != run_mode:
+                ctx.add("source_data_mode_conflict", str(run_id), f"RunRecord origin class {run_mode!r} conflicts with EmpiricalSourceManifest.v1 origin class {source_mode!r} for dataset {dataset_id!r}")
+
+    for doc in (item for item in docs if item.kind == "run_record"):
+        input_value = doc.raw.get("input")
+        if not isinstance(input_value, Mapping):
             continue
-        for _, source_id in _walk_references(doc.raw, _REFERENCE_KEYS):
-            for source_kind, source in source_catalog.get(source_id, []):
-                if source_kind == "source_manifest":
-                    source_mode = _declared_origin_class(source.raw.get("origin"))
-                else:
-                    source_mode = _declared_origin_class(source.get("data_mode"))
-                if source_mode is not None and source_mode != run_mode:
-                    ctx.add("source_data_mode_conflict", str(run_id), f"RunRecord origin class {run_mode!r} conflicts with explicit {source_kind} origin class {source_mode!r} for source {source_id!r}")
-
-    for doc in docs:
-        for key, value in _walk_references(doc.raw, _LICENSE_REFERENCE_KEYS):
-            if value not in license_ids:
-                ctx.add("unresolved_license_reference", value, f"declared by field {key!r}; no exact license_id was supplied")
-    for record in ledger_records:
-        metadata = record.get("metadata") if isinstance(record.get("metadata"), Mapping) else {}
-        for key, value in _walk_references(metadata, _LICENSE_REFERENCE_KEYS):
-            if value not in license_ids:
-                ctx.add("unresolved_license_reference", value, f"declared by source snapshot metadata field {key!r}; no exact license_id was supplied")
-
-    # Compare repeated pinned versions only when both source identity and a version/checksum are explicit.
-    by_source: dict[str, list[tuple[str, str, str]]] = {}
-    for record in source_snapshots:
-        metadata = record.get("metadata") if isinstance(record.get("metadata"), Mapping) else {}
-        source_id = metadata.get("source_id")
-        version = metadata.get("source_version")
-        digest = record.get("source_sha256")
-        if isinstance(source_id, str) and source_id and (isinstance(version, str) or isinstance(digest, str)):
-            by_source.setdefault(source_id, []).append((record.get("record_id", source_id), str(version or ""), str(digest or "")))
-    for source_id, variants in sorted(by_source.items()):
-        signatures = {(version, digest) for _, version, digest in variants}
-        if len(signatures) > 1:
-            ctx.add("source_snapshot_variants", source_id, f"multiple explicit version/checksum pins exist: {sorted(signatures)}; no current version is inferred")
+        for path, mapping in _walk_mappings_with_paths(input_value, "/input"):
+            if mapping.get("source_version") is not None:
+                ctx.add("source_version_unverifiable", f"{doc.relative_path}#{path}/source_version", "RunRecordV1 does not define a typed source-version reference, and SourceSnapshot metadata is not a version index; no stale-version join was attempted")
+            if mapping.get("source_sha256") is not None:
+                ctx.add("run_source_checksum_scope_unverifiable", f"{doc.relative_path}#{path}/source_sha256", "RunRecordV1 does not define a typed source-checksum scope; it is not compared with SourceSnapshot.source_sha256")
 
     for doc in source_docs:
-        if not any(isinstance(doc.raw.get(key), str) and doc.raw.get(key) for key in ("license_id", "license_ref")):
-            ctx.add("license_not_declared", doc.relative_path, "current empirical-source manifest schema has no required typed license field")
+        ctx.add("license_not_declared", doc.relative_path, "current empirical-source manifest schema has no typed license identity or reference field")
 
     run_docs = [doc for doc in docs if doc.kind == "run_record"]
     lineage_docs = [doc for doc in docs if doc.kind == "simulation_artifact_lineage"]
-    runs_by_id: dict[str, list[_Document]] = {}
+    runs_by_id: dict[ReferenceKey, list[_Document]] = {}
     for doc in run_docs:
         run_id = doc.raw.get("run_id")
         if not isinstance(run_id, str) or not run_id:
             ctx.add("missing_run_identity", doc.relative_path, "run_id is required", "error")
             continue
-        runs_by_id.setdefault(run_id, []).append(doc)
+        run_key = ReferenceKey("run_identity", "run_id", run_id)
+        runs_by_id.setdefault(run_key, []).append(doc)
         config = doc.raw.get("config")
         input_data = doc.raw.get("input")
         config_basis = config if isinstance(config, Mapping) and config else (input_data if isinstance(input_data, Mapping) else {})
@@ -1065,26 +1185,27 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
         except (TypeError, ValueError) as exc:
             ctx.add("invalid_configuration_fingerprint", run_id, str(exc), "error")
             continue
-        run_fingerprints[run_id] = (config_fp, input_fp)
+        run_fingerprints[run_key] = (config_fp, input_fp)
         declared_fingerprint = doc.raw.get("configuration_fingerprint")
         if declared_fingerprint is not None and declared_fingerprint != config_fp:
             ctx.add("stale_configuration_fingerprint", run_id, "RunRecord-declared configuration_fingerprint differs from its explicit config/input", "error")
-    for run_id, copies in sorted(runs_by_id.items()):
+    for run_key, copies in sorted(runs_by_id.items()):
         if len(copies) > 1:
-            ctx.add("duplicate_run_id", run_id, f"{len(copies)} RunRecord documents declare the same run_id", "error")
+            ctx.add("duplicate_run_id", run_key.identifier, f"{len(copies)} RunRecord documents declare the same run_id", "error")
     for doc in lineage_docs:
         provenance = doc.raw.get("provenance") if isinstance(doc.raw.get("provenance"), Mapping) else {}
         run_id = provenance.get("run_id")
         if not isinstance(run_id, str) or not run_id:
             continue
-        candidates = runs_by_id.get(run_id, [])
+        run_key = ReferenceKey("run_identity", "run_id", run_id)
+        candidates = runs_by_id.get(run_key, [])
         if not candidates:
             ctx.add("unresolved_run_reference", doc.relative_path, f"lineage report run_id {run_id!r} has no explicit RunRecord")
             continue
         if len(candidates) != 1:
             continue
         run = candidates[0].raw
-        expected_config, expected_input = run_fingerprints.get(run_id, (None, None))
+        expected_config, expected_input = run_fingerprints.get(run_key, (None, None))
         actual_config = provenance.get("configuration_fingerprint")
         actual_input = provenance.get("input_fingerprint")
         if actual_config is not None and expected_config != actual_config:
@@ -1092,43 +1213,11 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
         if actual_input is not None and expected_input != actual_input:
             ctx.add("input_fingerprint_mismatch", run_id, "lineage input fingerprint differs from the explicit RunRecord input")
 
-    for doc in run_docs:
-        run_id = doc.raw.get("run_id")
-        if not isinstance(run_id, str):
-            continue
-        for mapping in _walk_mappings(doc.raw):
-            source_ids: set[str] = set()
-            for key in _REFERENCE_KEYS:
-                candidate = mapping.get(key)
-                if isinstance(candidate, str) and candidate:
-                    source_ids.add(candidate)
-                elif isinstance(candidate, list):
-                    source_ids.update(value for value in candidate if isinstance(value, str) and value)
-            raw_checksums = mapping.get("source_sha256")
-            checksum_values = [raw_checksums] if isinstance(raw_checksums, str) else (raw_checksums if isinstance(raw_checksums, list) else [])
-            pinned_checksums = {value.lower() for value in checksum_values if isinstance(value, str) and value}
-            raw_versions = mapping.get("source_version")
-            version_values = [raw_versions] if isinstance(raw_versions, str) else (raw_versions if isinstance(raw_versions, list) else [])
-            pinned_versions = {value for value in version_values if isinstance(value, str) and value}
-            if not source_ids or not (pinned_checksums or pinned_versions):
-                continue
-            if len(source_ids) != 1:
-                ctx.add("source_pin_ambiguous", run_id, f"a RunRecord input object groups multiple source IDs with one or more version/checksum pins: {sorted(source_ids)}")
-                continue
-            source_id = next(iter(source_ids))
-            if pinned_checksums:
-                ctx.add("run_source_checksum_scope_unverifiable", run_id, f"RunRecord input checksum pin for {source_id!r} has no typed/documented scope; it is not compared with SourceSnapshot.source_sha256")
-            for snapshot in snapshots_by_source.get(source_id, []):
-                metadata = snapshot.get("metadata") if isinstance(snapshot.get("metadata"), Mapping) else {}
-                observed_version = metadata.get("source_version")
-                if pinned_versions and isinstance(observed_version, str) and observed_version not in pinned_versions:
-                    ctx.add("stale_source_version", run_id, f"run pin for {source_id!r} differs from the linked source snapshot version")
-
     # RunRecordV1 does not define a canonical config ID/version contract. When
     # explicit IDs and pins happen to be present, compare only exact values to
     # an explicit ExperimentSpec/config declaration; never infer from content.
-    declarations: dict[str, list[tuple[str | None, str | None, str]]] = {}
-    run_pins: dict[str, list[tuple[str | None, str | None, str]]] = {}
+    declarations: dict[ReferenceKey, list[tuple[str | None, str | None, str]]] = {}
+    run_pins: dict[ReferenceKey, list[tuple[str | None, str | None, str]]] = {}
     for doc in docs:
         if doc.kind != "run_record":
             continue
@@ -1141,10 +1230,10 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
             continue
         for config_id, version, digest in _explicit_configuration_pins(record):
             declarations.setdefault(config_id, []).append((version, digest, str(record.get("record_id", "experiment_spec"))))
-    for config_id, pinned_values in sorted(run_pins.items()):
-        declared_values = declarations.get(config_id, [])
+    for config_key, pinned_values in sorted(run_pins.items()):
+        declared_values = declarations.get(config_key, [])
         if not declared_values:
-            ctx.add("configuration_reference_unresolved", config_id, "RunRecord declares a configuration ID/version but no explicit ExperimentSpec configuration pin was supplied")
+            ctx.add("configuration_reference_unresolved", config_key.identifier, "RunRecord declares a configuration ID/version but no explicit ExperimentSpec configuration pin was supplied")
         for run_version, run_digest, run_id in pinned_values:
             for declared_version, declared_digest, experiment_id in declared_values:
                 if (
@@ -1154,14 +1243,8 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
                     ctx.add(
                         "stale_configuration_version",
                         run_id,
-                        f"RunRecord pin for configuration {config_id!r} differs from explicit ExperimentSpec {experiment_id!r}; this is a declared mismatch, not a selection of the current version",
+                        f"RunRecord pin for configuration {config_key.identifier!r} differs from explicit ExperimentSpec {experiment_id!r}; this is a declared mismatch, not a selection of the current version",
                     )
-
-
-def _source_ids_from_record(record: Mapping[str, Any]) -> set[str]:
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), Mapping) else {}
-    values = (record.get("snapshot_id"), metadata.get("source_id"), metadata.get("source_manifest_id"), metadata.get("dataset_identifier"))
-    return {value for value in values if isinstance(value, str) and value}
 
 
 def _declared_origin_class(value: Any) -> str | None:
@@ -1175,32 +1258,37 @@ def _declared_origin_class(value: Any) -> str | None:
 
 
 def _check_run_manifest_consistency(ctx: _Context, docs: list[_Document], ledger_records: list[dict[str, Any]]) -> None:
-    run_docs: dict[str, list[_Document]] = {}
-    manifest_docs: dict[str, list[_Document]] = {}
+    run_docs: dict[ReferenceKey, list[_Document]] = {}
+    manifest_docs: dict[ReferenceKey, list[_Document]] = {}
     for doc in docs:
         if doc.kind == "run_record" and isinstance(doc.raw.get("run_id"), str):
-            run_docs.setdefault(doc.raw["run_id"], []).append(doc)
+            key = ReferenceKey("run_identity", "run_id", doc.raw["run_id"])
+            run_docs.setdefault(key, []).append(doc)
         if doc.kind == "integration_artifact_manifest":
             run_id = doc.raw.get("run_id")
             if isinstance(run_id, str):
-                manifest_docs.setdefault(run_id, []).append(doc)
+                key = ReferenceKey("run_identity", "run_id", run_id)
+                manifest_docs.setdefault(key, []).append(doc)
         if doc.kind == "simulation_artifact_lineage":
             provenance = doc.raw.get("provenance") if isinstance(doc.raw.get("provenance"), Mapping) else {}
             run_id = provenance.get("run_id")
             if isinstance(run_id, str):
-                manifest_docs.setdefault(run_id, []).append(doc)
+                key = ReferenceKey("run_identity", "run_id", run_id)
+                manifest_docs.setdefault(key, []).append(doc)
 
-    for run_id, manifests in sorted(manifest_docs.items()):
-        if run_id not in run_docs:
-            ctx.add("unresolved_run_reference", run_id, "output manifest declares a run_id with no matching explicit RunRecord")
+    for run_key, manifests in sorted(manifest_docs.items()):
+        run_id = run_key.identifier
+        if run_key not in run_docs:
+            ctx.add("unresolved_run_reference", run_id, "output manifest declares a typed run_identity.run_id with no matching explicit RunRecordV1.run_id")
         if len(manifests) > 1:
             entries_by_path = ctx.output_entries_by_run.get(run_id, {})
             # Multiple manifests are allowed only when they make no contradictory path/hash claim.
             if not entries_by_path:
                 ctx.add("duplicate_output_manifest", run_id, f"{len(manifests)} manifests have no verifiable entries")
 
-    for run_id, runs in sorted(run_docs.items()):
-        if not manifest_docs.get(run_id):
+    for run_key, runs in sorted(run_docs.items()):
+        run_id = run_key.identifier
+        if not manifest_docs.get(run_key):
             ctx.add("run_missing_output_manifest", run_id, "RunRecord has no explicitly supplied output manifest")
         if len(runs) != 1:
             continue
@@ -1215,7 +1303,7 @@ def _check_run_manifest_consistency(ctx: _Context, docs: list[_Document], ledger
             if result is None:
                 continue
             relative = result[2]
-            if manifest_docs.get(run_id) and relative not in manifested:
+            if manifest_docs.get(run_key) and relative not in manifested:
                 ctx.add("run_artifact_unmanifested", run_id, f"RunRecord artifact {relative!r} is not listed by its output manifest")
 
     for record in ledger_records:
@@ -1237,10 +1325,11 @@ def _check_run_manifest_consistency(ctx: _Context, docs: list[_Document], ledger
             run_status = record.get("run_status")
             if not isinstance(run_status, str) or not run_status:
                 ctx.add("malformed_run_record_link", record_id, "run_status is required", "error")
-            if run_id not in run_docs:
+            run_key = ReferenceKey("run_identity", "run_id", run_id) if isinstance(run_id, str) else None
+            if run_key is None or run_key not in run_docs:
                 ctx.add("unresolved_run_reference", record_id, f"ledger run reference {run_id!r} has no explicit RunRecord")
             else:
-                for run_doc in run_docs[run_id]:
+                for run_doc in run_docs[run_key]:
                     if expected_schema is not None and str(run_doc.raw.get("schema_version")) != str(expected_schema):
                         ctx.add("run_schema_version_mismatch", run_id, f"ledger expects {expected_schema!r}, RunRecord declares {run_doc.raw.get('schema_version')!r}", "error")
                 # The main schema requires this digest but does not document whether it hashes raw
@@ -1252,7 +1341,8 @@ def _check_run_manifest_consistency(ctx: _Context, docs: list[_Document], ledger
                     ctx.add("malformed_run_record_link", record_id, "run_record_sha256 is required and must be a 64-character SHA-256 hex digest", "error")
         elif record_type == "artifact_manifest":
             run_id = record.get("run_record_id")
-            if isinstance(run_id, str) and not manifest_docs.get(run_id):
+            run_key = ReferenceKey("run_identity", "run_id", run_id) if isinstance(run_id, str) else None
+            if isinstance(run_id, str) and (run_key is None or not manifest_docs.get(run_key)):
                 ctx.add("ledger_manifest_without_output", record_id, f"ledger artifact manifest references run {run_id!r}, but no output manifest was supplied")
             payload_artifacts = record.get("artifacts")
             if isinstance(payload_artifacts, Mapping) and isinstance(run_id, str):
@@ -1278,49 +1368,39 @@ def _check_run_manifest_consistency(ctx: _Context, docs: list[_Document], ledger
 
 
 def _check_gate_claims(ctx: _Context, docs: list[_Document], ledger_records: list[dict[str, Any]], events: list[dict[str, Any]]) -> None:
-    matching_events: dict[str, list[Mapping[str, Any]]] = {}
-    for event in events:
-        if event.get("event_type") not in _GATE_EVENT_TYPES:
-            continue
-        payload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
-        ids = {value for key, value in payload.items() if key in {
-            "record_id", "target_record_id", "run_record_id", "artifact_manifest_id",
-            "validation_report_id", "evidence_id", "claim_id", "cycle_id",
-        } and isinstance(value, str)}
-        for identifier in ids:
-            matching_events.setdefault(identifier, []).append(event)
+    """Do not treat free-form event payload IDs as record references.
 
+    ResearchCycleLedger currently types event identity and status, but its
+    payload is an unrestricted mapping without a typed target-reference
+    contract. Consequently no gate event can establish that its status belongs
+    to a particular record or artifact.
+    """
     def check(subject: str, status: Any, cycle_id: str | None = None) -> None:
         if not isinstance(status, str) or status.strip().upper() not in _POSITIVE_GATE_WORDS:
             return
-        candidates = [event for event in matching_events.get(subject, []) if cycle_id is None or event.get("cycle_id") == cycle_id]
-        wanted = status.strip().upper()
-        supported = False
-        for event in candidates:
-            payload = event.get("payload") if isinstance(event.get("payload"), Mapping) else {}
-            values = [event.get("status")]
-            values.extend(value for key, value in payload.items() if key in {"status", "decision", "validation_status", "result", "verdict"})
-            if any(isinstance(value, str) and value.strip().upper() == wanted for value in values):
-                supported = True
-                break
-        if not supported:
-            ctx.add("unsupported_status_claim", subject, f"status {status!r} has no matching validation_outcome/release_review event", "warning")
+        has_gate_event = any(
+            event.get("event_type") in _GATE_EVENT_TYPES
+            and (cycle_id is None or event.get("cycle_id") == cycle_id)
+            for event in events
+        )
+        if has_gate_event:
+            detail = (
+                f"status {status!r} cannot be linked to a validation_outcome/release_review event: "
+                "the current event contract has no typed target-reference field"
+            )
+        else:
+            detail = f"status {status!r} has no matching validation_outcome/release_review event"
+        ctx.add("unsupported_status_claim", subject, detail, "warning")
 
     for record in ledger_records:
         record_id = record.get("record_id")
-        if isinstance(record_id, str):
-            check(record_id, record.get("status"), record.get("cycle_id"))
-            check(record_id, record.get("validation_status"), record.get("cycle_id"))
-            check(record_id, record.get("decision"), record.get("cycle_id"))
-            check(record_id, record.get("gate_status"), record.get("cycle_id"))
-            check(record_id, record.get("run_status"), record.get("cycle_id"))
+        record_type = record.get("record_type")
+        if isinstance(record_id, str) and isinstance(record_type, str):
+            for field_name in ("status", "validation_status", "decision", "gate_status", "run_status"):
+                check(f"{record_id}.{record_type}#/{field_name}", record.get(field_name), record.get("cycle_id"))
     for doc in docs:
-        identifier = doc.raw.get("run_id") or doc.raw.get("bundle_id") or doc.raw.get("record_id")
-        if not isinstance(identifier, str):
-            source_ids = _source_ids(doc)
-            identifier = sorted(source_ids)[0] if source_ids else doc.relative_path
         for field_name in ("status", "decision", "validation_status", "gate_status", "verdict"):
-            check(identifier, doc.raw.get(field_name))
+            check(f"{doc.relative_path}#/{field_name}", doc.raw.get(field_name))
 
 
 def _inventory_root(ctx: _Context) -> None:
@@ -1415,6 +1495,8 @@ def audit_provenance(
         ctx.input_paths.add(doc.relative_path)
         ctx.documents.append(doc)
     docs = sorted(ctx.documents, key=lambda item: item.relative_path)
+    for doc in docs:
+        _report_unverifiable_fields(ctx, doc.raw, doc.relative_path)
 
     # Verify every explicitly declared, supported output manifest.
     for doc in docs:
@@ -1469,7 +1551,12 @@ def audit_provenance(
         {
             "field": "source_license",
             "status": "not_typed_on_current_main",
-            "detail": "SourceSnapshot has no typed license field and EmpiricalSourceManifest.v1 does not require one; a license reference is unverifiable unless explicitly supplied in metadata.",
+            "detail": "SourceSnapshot has no typed license field and EmpiricalSourceManifest.v1 does not define a license-record relationship; license_id/license_ref strings are reported unverifiable and never cross-joined.",
+        },
+        {
+            "field": "origin_equivalence",
+            "status": "partially_classifiable_on_current_main",
+            "detail": "The source-manifest schema declares external_solver and unavailable origins, but neither can be equated to the auditor's synthetic/empirical comparison classes; they are reported UNVERIFIABLE for origin joins.",
         },
         {
             "field": "source_snapshot_checksum_scope",
@@ -1480,6 +1567,11 @@ def audit_provenance(
             "field": "run_record_input_checksum_scope",
             "status": "not_typed_on_current_main",
             "detail": "RunRecordV1 has no typed input-source checksum field; arbitrary input.source_sha256 values are not compared with SourceSnapshot hashes.",
+        },
+        {
+            "field": "run_record_source_version_reference",
+            "status": "not_typed_on_current_main",
+            "detail": "RunRecordV1 has no typed source-version reference and SourceSnapshot.metadata is not a version index; source-version mismatch checks are intentionally not inferred.",
         },
         {
             "field": "empirical_source_manifest_checksum",
@@ -1505,6 +1597,21 @@ def audit_provenance(
             "field": "evidence_bundle_artifact_registry",
             "status": "external_registry_not_joined",
             "detail": "EvidenceBundleV1 carries registry artifact IDs and embedded decisions, but this audit does not load or treat those embedded decisions as an authoritative external registry snapshot.",
+        },
+        {
+            "field": "source_pack_manifest",
+            "status": "unsupported_until_schema_is_on_main",
+            "detail": "The source-pack manifest contract associated with open PR #391 is not present in the checked-in main schemas and is not integrated; an unrecognized document is reported UNVERIFIABLE without inferred joins.",
+        },
+        {
+            "field": "source_snapshot_manifest_reference",
+            "status": "not_typed_on_current_main",
+            "detail": "SourceSnapshot has no typed reference to EmpiricalSourceManifest.v1; metadata strings are reported unverifiable rather than joined to dataset identity.",
+        },
+        {
+            "field": "gate_event_target_reference",
+            "status": "not_typed_on_current_main",
+            "detail": "ResearchCycleLedger event payloads are free-form and define no typed target-reference contract; gate event status cannot be attached to an arbitrary record ID.",
         },
     ]
     findings = _finalize_findings(ctx)
@@ -1551,7 +1658,14 @@ def audit_provenance(
             "evidence_bundle_id": "First 16 hex characters of SHA-256 over compact sorted-key UTF-8 JSON identity fields; bundle ID is not an artifact checksum.",
             "run_record_link_checksum": "UNVERIFIED: current schema does not document checksum scope.",
         },
-        "note": "A clean structural audit is not scientific validation, evidence promotion, or a truth/causation decision.",
+        "not_established": [
+            "source authenticity",
+            "data-use rights or legal clearance",
+            "cohort or participant identity",
+            "physical or statistical model correctness",
+            "scientific truth, biological validity, or causation",
+        ],
+        "note": "A clean structural audit is not scientific validation, evidence promotion, data-rights clearance, cohort identity verification, model correctness, or a truth/causation decision.",
     }
     report["report_sha256"] = sha256_json(report)
     return report

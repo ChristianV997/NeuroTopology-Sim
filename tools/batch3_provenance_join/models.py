@@ -44,6 +44,19 @@ class Finding:
         return asdict(self)
 
 
+@dataclass(frozen=True, order=True)
+class ReferenceKey:
+    """Typed identity used for contract-defined joins only.
+
+    Equal identifier text in different record types or namespaces must not
+    create a relationship by itself.
+    """
+
+    record_type: str
+    namespace: str
+    identifier: str
+
+
 def _assert_finite(value: Any, path: str = "$") -> None:
     stack = [(value, path)]
     while stack:
