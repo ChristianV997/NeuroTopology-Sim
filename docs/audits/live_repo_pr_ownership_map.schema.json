@@ -1,0 +1,801 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ChristianV997/NeuroTopology-Sim/blob/main/docs/audits/live_repo_pr_ownership_map.schema.json",
+  "title": "Dated live repository and pull request ownership audit snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_kind",
+    "captured_at_utc",
+    "evidence_retrieval_window_utc",
+    "repository",
+    "scope",
+    "required_check_configuration",
+    "main_ci",
+    "pull_requests",
+    "path_collisions",
+    "ci_failure_groups",
+    "readiness_summary",
+    "ownership_summary",
+    "pr_405",
+    "evidence_sources",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "neurotopology.live-repo-pr-ownership-map.v1"
+    },
+    "snapshot_kind": {
+      "const": "timestamped_read_only_repository_and_pull_request_audit"
+    },
+    "captured_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evidence_retrieval_window_utc": {
+      "type": "object",
+      "required": [
+        "started_at_utc",
+        "ended_at_utc"
+      ],
+      "properties": {
+        "started_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    },
+    "repository": {
+      "type": "object",
+      "required": [
+        "full_name",
+        "html_url",
+        "remote_url",
+        "default_branch",
+        "main_sha",
+        "posture"
+      ],
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "html_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "remote_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "default_branch": {
+          "type": "string"
+        },
+        "main_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "posture": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "scope": {
+      "type": "object",
+      "required": [
+        "open_pr_state",
+        "open_pr_count",
+        "open_pr_numbers"
+      ],
+      "properties": {
+        "open_pr_state": {
+          "const": "open"
+        },
+        "open_pr_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_pr_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "required_check_configuration": {
+      "type": "object",
+      "required": [
+        "state",
+        "reason",
+        "source_url",
+        "http_status",
+        "retrieved_at_utc"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "retrieved_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": true
+    },
+    "main_ci": {
+      "type": "object",
+      "required": [
+        "head_sha",
+        "workflow_runs",
+        "check_runs",
+        "legacy_combined_status",
+        "required_checks_workflow_conclusion",
+        "awareness_failure"
+      ],
+      "properties": {
+        "head_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "workflow_runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "status",
+              "conclusion",
+              "url"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "conclusion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "check_runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "status",
+              "conclusion",
+              "url"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "conclusion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "awareness_failure": {
+          "type": "object",
+          "required": [
+            "check_name",
+            "conclusion",
+            "log_available",
+            "failed_test_ids",
+            "failure_classification",
+            "infrastructure_blocker_observed"
+          ],
+          "properties": {
+            "failure_classification": {
+              "enum": [
+                "test_failure",
+                "dependency_failure",
+                "infrastructure_failure",
+                "unknown"
+              ]
+            },
+            "infrastructure_blocker_observed": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "pull_requests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/pull_request"
+      }
+    },
+    "path_collisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/collision"
+      }
+    },
+    "ci_failure_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "check_names",
+          "open_pr_numbers",
+          "classification",
+          "main_equivalent_status",
+          "root_cause_status",
+          "notes"
+        ],
+        "properties": {
+          "classification": {
+            "enum": [
+              "confirmed_on_main",
+              "confirmed_only_on_pr_branches",
+              "unresolved"
+            ]
+          },
+          "main_equivalent_status": {
+            "type": "string"
+          },
+          "root_cause_status": {
+            "type": "string"
+          },
+          "open_pr_numbers": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "readiness_summary": {
+      "type": "object",
+      "required": [
+        "counts",
+        "pr_numbers",
+        "merge_ready_count",
+        "assessment"
+      ],
+      "properties": {
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "pr_numbers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "uniqueItems": true
+          }
+        },
+        "merge_ready_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assessment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ownership_summary": {
+      "type": "object",
+      "required": [
+        "stale_base_pr_numbers",
+        "stale_base_count",
+        "stale_base_sha_groups",
+        "path_collision_path_count",
+        "pairwise_pr_collision_count",
+        "review_state_counts",
+        "observed_failed_pr_count",
+        "ci_unknown_pr_numbers",
+        "explicit_dependencies",
+        "explicit_batch_lanes",
+        "round_6_references"
+      ],
+      "additionalProperties": true
+    },
+    "pr_405": {
+      "type": "object",
+      "required": [
+        "number",
+        "state",
+        "merged",
+        "merge_commit_sha",
+        "base_sha",
+        "head_sha",
+        "merged_at_utc",
+        "changed_files",
+        "interface"
+      ],
+      "properties": {
+        "number": {
+          "const": 405
+        },
+        "merged": {
+          "const": true
+        },
+        "merge_commit_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "base_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "changed_files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/repo_path"
+          }
+        },
+        "interface": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "url",
+          "claim"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "repo_path": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:[\\\\/]"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(?:/|$)"
+          }
+        ]
+      }
+    },
+    "pull_request": {
+      "type": "object",
+      "required": [
+        "number",
+        "title",
+        "url",
+        "state",
+        "draft",
+        "updated_at_utc",
+        "base",
+        "head",
+        "changed_path_count",
+        "changed_paths",
+        "mergeability",
+        "review",
+        "ci",
+        "readiness",
+        "workstream"
+      ],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "updated_at_utc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "base": {
+          "type": "object",
+          "required": [
+            "branch",
+            "sha",
+            "stale_against_live_main",
+            "live_main_sha"
+          ],
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "sha": {
+              "$ref": "#/$defs/sha"
+            },
+            "stale_against_live_main": {
+              "type": "boolean"
+            },
+            "live_main_sha": {
+              "$ref": "#/$defs/sha"
+            }
+          },
+          "additionalProperties": true
+        },
+        "head": {
+          "type": "object",
+          "required": [
+            "branch",
+            "sha"
+          ],
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "sha": {
+              "$ref": "#/$defs/sha"
+            }
+          },
+          "additionalProperties": true
+        },
+        "changed_path_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed_paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/repo_path"
+          },
+          "uniqueItems": true
+        },
+        "mergeability": {
+          "type": "object",
+          "required": [
+            "api_mergeable",
+            "api_state",
+            "conflict_observation",
+            "conflicting_paths",
+            "conflict_path_detail"
+          ],
+          "properties": {
+            "api_mergeable": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "api_state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "conflict_observation": {
+              "enum": [
+                "reported_by_github",
+                "none_reported_by_github",
+                "unknown"
+              ]
+            },
+            "conflicting_paths": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/$defs/repo_path"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "review": {
+          "type": "object",
+          "required": [
+            "state",
+            "submission_count",
+            "approval_count",
+            "changes_requested_count",
+            "unresolved_inline_thread_count",
+            "source_url"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "approved",
+                "changes_requested",
+                "commented_only",
+                "no_reviews",
+                "unknown"
+              ]
+            },
+            "submission_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "approval_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "changes_requested_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unresolved_inline_thread_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "source_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": true
+        },
+        "ci": {
+          "type": "object",
+          "required": [
+            "required_check_state",
+            "required_check_reason",
+            "required_check_source_url",
+            "observed_state",
+            "observed_failure_count",
+            "check_runs"
+          ],
+          "properties": {
+            "required_check_state": {
+              "enum": [
+                "pass",
+                "fail",
+                "pending",
+                "unknown",
+                "not_applicable"
+              ]
+            },
+            "required_check_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "observed_state": {
+              "enum": [
+                "pass",
+                "fail",
+                "pending",
+                "unknown"
+              ]
+            },
+            "observed_failure_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "no_check_runs_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "check_runs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "status",
+                  "conclusion",
+                  "url"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "conclusion": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "readiness": {
+          "type": "object",
+          "required": [
+            "state",
+            "reasons",
+            "explicit_dependencies"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "ready",
+                "draft",
+                "blocked",
+                "conflicted",
+                "unknown"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "explicit_dependencies": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": true
+        },
+        "workstream": {
+          "type": "object",
+          "required": [
+            "explicit_batch_lane",
+            "round_6_reference"
+          ],
+          "properties": {
+            "explicit_batch_lane": {
+              "type": "string"
+            },
+            "round_6_reference": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "collision": {
+      "type": "object",
+      "required": [
+        "path",
+        "pr_numbers",
+        "kind",
+        "is_git_merge_conflict",
+        "note"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/repo_path"
+        },
+        "pr_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        },
+        "kind": {
+          "const": "exact_changed_path_overlap"
+        },
+        "is_git_merge_conflict": {
+          "const": false
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
