@@ -33,11 +33,18 @@ def test_digest_changes_when_a_path_changes_but_content_does_not():
     assert base != renamed["manifest_sha256"]
 
 
-def test_empty_bytes_entry_is_distinct_from_an_absent_entry():
+def test_empty_payload_entry_is_rejected_and_no_digest_is_produced():
+    result = file_listing_digest(ENTRIES + [("sub-09/eeg/sub-09_task-rest_eeg.edf", b"")])
+    assert result["manifest_sha256"] is None
+    assert result["entries_listed"] == 3
+    assert any(f["code"] == "PAYLOAD_EMPTY" and f["severity"] == "error" for f in result["findings"])
+
+
+def test_empty_payload_is_not_silently_equivalent_to_an_absent_entry():
     with_empty = file_listing_digest(ENTRIES + [("sub-09/eeg/sub-09_task-rest_eeg.edf", b"")])
     without = file_listing_digest(ENTRIES)
-    assert with_empty["manifest_sha256"] != without["manifest_sha256"]
-    assert with_empty["entries_listed"] == 3
+    assert with_empty["manifest_sha256"] is None
+    assert without["manifest_sha256"] is not None
 
 
 def test_bytearray_content_hashes_the_same_as_bytes():

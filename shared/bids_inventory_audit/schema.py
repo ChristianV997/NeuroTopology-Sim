@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from typing import Any
 
 SCHEMA = "NeuroTopologySim.BidsInventoryAudit.v1"
 SCOPE = "INVENTORY_LEVEL_ONLY_PENDING_AUTHORITATIVE_MANIFEST"
@@ -19,6 +20,20 @@ COHORT_IDENTITY = "NOT_ESTABLISHED"
 # UNREGISTERED_DRAFT means no external timestamp or registration exists. Every result
 # in this package carries it, whether or not a payload digest verified.
 REGISTRATION_STATUS = "UNREGISTERED_DRAFT"
+
+# This package never reads payload bytes. The caller supplies bytes or text it already holds.
+PAYLOAD_ACCESS = "NONE"
+
+# An analyzed N or an exclusion list is established only by an authoritative record. A
+# record supplied to this package is declared and unverified, so it is never more than that.
+ANALYSIS_NOT_ESTABLISHED = "NOT_ESTABLISHED"
+ANALYSIS_DECLARED_UNVERIFIED = "DECLARED_UNVERIFIED"
+ANALYSIS_DECLARED_INCONSISTENT = "DECLARED_INCONSISTENT"
+
+
+def external_registration_block() -> dict[str, Any]:
+    """No external timestamp or registration was supplied or verified here. Always ABSENT."""
+    return {"status": "ABSENT", "verified": False}
 
 SUBJECT_RE = re.compile(r"sub-[A-Za-z0-9]+")
 ENTITY_RE = re.compile(r"([A-Za-z]+)-([A-Za-z0-9]+)")

@@ -16,13 +16,19 @@ from .findings import make_finding, sort_findings
 from .license import license_report
 from .paths import parse_bids_relpath
 from .schema import (
+    ANALYSIS_DECLARED_INCONSISTENT,
+    ANALYSIS_DECLARED_UNVERIFIED,
+    ANALYSIS_NOT_ESTABLISHED,
     COHORT_IDENTITY,
     EVIDENCE_CLASS,
+    PAYLOAD_ACCESS,
     REGISTRATION_STATUS,
     SCHEMA,
     SCOPE,
     STATUS,
+    SUBJECT_RE,
     TASK_LABEL_RE,
+    external_registration_block,
 )
 from .tsv import parse_participants_tsv
 
@@ -30,6 +36,91 @@ _COHORT_STATEMENT = (
     "This inventory lists participants and files. It does not establish which subjects any analysis "
     "or publication used, so it is not a cohort identification."
 )
+_TASK_PRESENCE_STATEMENT = (
+    "File-level task presence is not analysis or completion evidence. A listed file with a task "
+    "entity shows only that the file exists in the listing."
+)
+_ANALYSIS_STATEMENT = (
+    "A declared analysis record is caller-supplied and unverified. It is reported as declared, never "
+    "as established, and it is checked only for internal count consistency."
+)
+_ANALYSIS_KEYS = frozenset({"analyzed_n", "excluded_subjects"})
+
+
+def _malformed_reason(record: Any) -> Optional[str]:
+    if not isinstance(record, Mapping):
+        return "analysis record must be a mapping"
+    if set(record) != _ANALYSIS_KEYS:
+        return "analysis record must contain exactly analyzed_n and excluded_subjects"
+    analyzed_n = record["analyzed_n"]
+    if isinstance(analyzed_n, bool) or not isinstance(analyzed_n, int) or analyzed_n < 0:
+        return "analyzed_n must be a non-negative integer"
+    excluded = record["excluded_subjects"]
+    if not isinstance(excluded, (list, tuple)):
+        return "excluded_subjects must be a list"
+    if not all(isinstance(subject, str) and SUBJECT_RE.fullmatch(subject) for subject in excluded):
+        return "excluded_subjects must contain subject labels of the form sub-<label>"
+    if len(set(excluded)) != len(excluded):
+        return "excluded_subjects must not repeat a subject"
+    return None
+
+
+def _analysis_block(record: Any, participants: Optional[set[str]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Report an analysis record as declared and unverified, or as not established. Never as fact."""
+    findings: list[dict[str, Any]] = []
+    block: dict[str, Any] = {
+        "record_declared": record is not None,
+        "record_status": "NOT_DECLARED",
+        "status": ANALYSIS_NOT_ESTABLISHED,
+        "analyzed_n": None,
+        "excluded_subjects": None,
+        "count_check": "NOT_PERFORMED",
+        "authoritative": False,
+        "statement": _ANALYSIS_STATEMENT,
+    }
+    if record is None:
+        findings.append(make_finding(
+            "ANALYSIS_RECORD_NOT_DECLARED", "warning",
+            "no analysis record was declared; analyzed N and exclusions are not established"))
+        return block, findings
+
+    reason = _malformed_reason(record)
+    if reason is not None:
+        block["record_status"] = "MALFORMED"
+        findings.append(make_finding("ANALYSIS_RECORD_MALFORMED", "error", reason))
+        return block, findings
+
+    analyzed_n = record["analyzed_n"]
+    excluded = sorted(record["excluded_subjects"])
+    block.update(record_status="DECLARED", status=ANALYSIS_DECLARED_UNVERIFIED,
+                 analyzed_n=analyzed_n, excluded_subjects=excluded)
+
+    if participants is None:
+        findings.append(make_finding(
+            "ANALYSIS_COUNT_UNCHECKED", "warning",
+            "no participants table; the declared analyzed N cannot be checked"))
+        return block, findings
+
+    unknown = [subject for subject in excluded if subject not in participants]
+    for subject in unknown:
+        findings.append(make_finding(
+            "EXCLUSION_NOT_IN_PARTICIPANTS", "error",
+            "excluded subject is absent from the participants table", subject=subject))
+    expected = len(participants) - len(excluded)
+    if unknown:
+        block["count_check"] = "FAILED"
+    elif analyzed_n != expected:
+        block["count_check"] = "FAILED"
+        findings.append(make_finding(
+            "ANALYSIS_COUNT_MISMATCH", "error",
+            f"declared analyzed N {analyzed_n} differs from {expected}, the participants less the declared exclusions"))
+    else:
+        block["count_check"] = "CONSISTENT"
+
+    if block["count_check"] == "FAILED":
+        # An inconsistent declaration reports no number, so no count can be quoted from it.
+        block.update(status=ANALYSIS_DECLARED_INCONSISTENT, analyzed_n=None, excluded_subjects=None)
+    return block, findings
 
 
 def audit_inventory(
@@ -39,6 +130,9 @@ def audit_inventory(
     expected_tasks: Optional[Iterable[Any]] = None,
     readme_text: Optional[str] = None,
     nemar_metadata: Optional[Mapping[str, Any]] = None,
+    dataset_description: Optional[Mapping[str, Any]] = None,
+    catalog_metadata: Optional[Mapping[str, Any]] = None,
+    analysis_record: Optional[Mapping[str, Any]] = None,
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
 
@@ -159,8 +253,14 @@ def audit_inventory(
                     "UNEXPECTED_TASK", "warning",
                     "observed task is outside the declared set", task=task))
 
+    # Analysis record: declared and count-checked at most. Nothing is inferred when it is absent.
+    analysis, analysis_findings = _analysis_block(analysis_record, participants)
+    findings.extend(analysis_findings)
+
     # License evidence: recorded, never resolved here.
-    license_state = license_report(readme_text, nemar_metadata)
+    license_state = license_report(readme_text, nemar_metadata,
+                                   dataset_description=dataset_description,
+                                   catalog_metadata=catalog_metadata)
     findings.extend(license_state["findings"])
 
     findings = sort_findings(findings)
@@ -171,6 +271,8 @@ def audit_inventory(
         "status": STATUS,
         "evidence_class": EVIDENCE_CLASS,
         "registration_status": REGISTRATION_STATUS,
+        "external_registration": external_registration_block(),
+        "payload_access": PAYLOAD_ACCESS,
         "cohort_identity": COHORT_IDENTITY,
         "cohort_statement": _COHORT_STATEMENT,
         "authoritative_manifest": False,
@@ -198,7 +300,10 @@ def audit_inventory(
             "expected": expected,
             "observed": observed_tasks,
             "coverage": {subject: sorted(tasks) for subject, tasks in sorted(coverage.items())},
+            "presence_statement": _TASK_PRESENCE_STATEMENT,
+            "completion_evidence": False,
         },
+        "analysis": analysis,
         "license": license_state,
         "findings": findings,
         "severity_counts": {key: severity_counts.get(key, 0) for key in ("error", "warning", "info")},

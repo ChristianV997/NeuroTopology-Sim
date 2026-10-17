@@ -45,25 +45,28 @@ def readme_evidence(text: Optional[str]) -> dict[str, Any]:
     return {"source": "readme", "status": "RECOGNIZED", "tokens": sorted(tokens)}
 
 
-def metadata_evidence(metadata: Optional[Mapping[str, Any]]) -> dict[str, Any]:
-    """Tokens from a metadata mapping's license field. Unknown field names are not guessed."""
+def metadata_evidence(metadata: Optional[Mapping[str, Any]], source: str = "metadata") -> dict[str, Any]:
+    """Tokens from a metadata mapping's license field. Unknown field names are not guessed.
+
+    ``source`` names the record the mapping came from, so a disagreement can be traced back to it.
+    """
     if metadata is None:
-        return {"source": "metadata", "status": "NOT_PROVIDED", "tokens": []}
+        return {"source": source, "status": "NOT_PROVIDED", "tokens": []}
     if not isinstance(metadata, Mapping):
-        return {"source": "metadata", "status": "NOT_TEXT", "tokens": []}
+        return {"source": source, "status": "NOT_TEXT", "tokens": []}
     present = [name for name in LICENSE_FIELD_NAMES if name in metadata]
     if not present:
-        return {"source": "metadata", "status": "NO_LICENSE_FIELD", "tokens": []}
+        return {"source": source, "status": "NO_LICENSE_FIELD", "tokens": []}
     if not all(isinstance(metadata[name], str) for name in present):
-        return {"source": "metadata", "status": "NOT_TEXT", "tokens": []}
+        return {"source": source, "status": "NOT_TEXT", "tokens": []}
     tokens: set[str] = set()
     for name in present:
         tokens |= tokens_in(metadata[name])
     if not tokens:
-        return {"source": "metadata", "status": "UNRECOGNIZED_LICENSE_TEXT", "tokens": []}
+        return {"source": source, "status": "UNRECOGNIZED_LICENSE_TEXT", "tokens": []}
     if len(tokens) > 1:
-        return {"source": "metadata", "status": "CONFLICT_WITHIN_SOURCE", "tokens": sorted(tokens)}
-    return {"source": "metadata", "status": "RECOGNIZED", "tokens": sorted(tokens)}
+        return {"source": source, "status": "CONFLICT_WITHIN_SOURCE", "tokens": sorted(tokens)}
+    return {"source": source, "status": "RECOGNIZED", "tokens": sorted(tokens)}
 
 
 def reconcile_license(evidence: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -103,9 +106,15 @@ def reconcile_license(evidence: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "LICENSE_NOT_ADJUDICATED", "info",
             "sources are consistent, but no legal adjudication was performed"))
 
+    # Which sources name each token. A disagreement is kept in this map, not collapsed into a choice.
+    sources_by_token = {
+        token: sorted(item["source"] for item in provided if token in item["tokens"]) for token in all_tokens
+    }
+
     return {
         "state": state,
         "tokens": all_tokens,
+        "sources_by_token": sources_by_token,
         "sources": sources,
         "resolved": False,
         "adjudicated": False,
@@ -115,5 +124,17 @@ def reconcile_license(evidence: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def license_report(readme_text: Optional[str], metadata: Optional[Mapping[str, Any]]) -> dict[str, Any]:
-    return reconcile_license([readme_evidence(readme_text), metadata_evidence(metadata)])
+def license_report(
+    readme_text: Optional[str],
+    nemar_metadata: Optional[Mapping[str, Any]],
+    *,
+    dataset_description: Optional[Mapping[str, Any]] = None,
+    catalog_metadata: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    """Reconcile four license sources. Every source is recorded and none is preferred."""
+    return reconcile_license([
+        readme_evidence(readme_text),
+        metadata_evidence(nemar_metadata, "nemar_metadata"),
+        metadata_evidence(dataset_description, "dataset_description"),
+        metadata_evidence(catalog_metadata, "catalog_metadata"),
+    ])

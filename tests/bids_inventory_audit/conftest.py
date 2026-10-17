@@ -27,3 +27,18 @@ def synthetic_nemar() -> dict:
 @pytest.fixture
 def synthetic_listing() -> list[str]:
     return json.loads((FIXTURES / "synthetic_file_listing.json").read_text(encoding="utf-8"))["paths"]
+
+
+@pytest.fixture
+def synthetic_dataset_description() -> dict:
+    return json.loads((FIXTURES / "synthetic_dataset_description.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def synthetic_catalog() -> dict:
+    return json.loads((FIXTURES / "synthetic_catalog.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def synthetic_analysis_record() -> dict:
+    return json.loads((FIXTURES / "synthetic_analysis_record.json").read_text(encoding="utf-8"))

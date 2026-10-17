@@ -13,9 +13,11 @@ from typing import Any
 from .schema import (
     EMPTY_BYTES_SHA256,
     HEX64_RE,
+    PAYLOAD_ACCESS,
     PLACEHOLDER_TOKENS,
     REGISTRATION_STATUS,
     SCHEMA,
+    external_registration_block,
 )
 
 PAYLOAD_INTEGRITY_VERIFIED = "PAYLOAD_INTEGRITY_VERIFIED"
@@ -62,7 +64,9 @@ def check_payload_digest(payload: Any, digest: Any) -> dict[str, Any]:
         "payload_integrity": outcome,
         "payload_integrity_verified": outcome == PAYLOAD_INTEGRITY_VERIFIED,
         "registration_status": REGISTRATION_STATUS,
+        "external_registration": external_registration_block(),
         "external_timestamp_created": False,
         "preregistration_claim": False,
+        "payload_access": PAYLOAD_ACCESS,
         "statement": STATEMENT,
     }
