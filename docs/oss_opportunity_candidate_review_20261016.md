@@ -1,5 +1,18 @@
 # OSS Candidate Compatibility/Adoption Review — 2026-10-16
 
+> **Superseded for candidate verdicts and pinned revisions** by
+> `docs/oss_compat/compatibility_inventory_20261017.json` and
+> `docs/oss_compat/batch1_compatibility_audit_20261017.md`
+> (PR #406, branch `batch1/claude-d-oss-compatibility-map`). That audit covers
+> 23 candidates with current heads and license evidence. The OpenMed and REA pins
+> below are historical: both heads have moved since 2026-10-16.
+>
+> This document is kept for one reason: it records why the adoption gates in
+> `oss_opportunities` route certain licenses to `license_review_required` (for
+> example, an unmatched license string). That is a workflow routing rule, not an
+> audit disposition. The AutoResearch row below is therefore not the disposition
+> of record. PR #406 gives `reference_only` (no license, no copy).
+
 Status: engineering and adoption review only. Nothing in this document is
 scientific evidence, a legal opinion, or a validation of any candidate's
 claims. No candidate was cloned, installed, executed, or copied. Source
