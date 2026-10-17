@@ -99,3 +99,13 @@ python -m pytest tests/batch2_chain_complex_audit/ -q
 
 Guardrails: small synthetic complexes only; stdlib `fractions` + optional
 numpy SVD; no SciPy; no datasets; no VALIDATED/PASS scientific claims.
+
+## CI note (PR #397)
+
+On head `506f13f8…`: `core-tests`, `Cross-system smoke`, and
+`ontology-claim-language` passed. `awareness-tests` failed in
+`apps/awareness_studio/tests/research_cycle/test_registered_execution.py`
+(3 failures: `EXECUTION_FAILED` / missing `resumed`). That suite is
+**unchanged by this PR** and reproduces the same 3 failures on clean
+`origin/main` @ `3f3fe85…`. Out of ownership for this audit lane —
+not patched here.
