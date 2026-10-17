@@ -1,34 +1,35 @@
 # Independent audit: report-language, source-pack, and provenance-join PRs
 
-Audit date: 2026-10-16. Scope: PRs #390, #391, and #392 against the live remote default branch. This is an independent static review of the PR diffs, changed-file lists, test sources, docs, PR-reported focused tests, and available GitHub Actions status/log summaries. No participant data was inspected; no harvested content was executed or downloaded; no package was installed; no GitHub comment or merge was made.
+Audit date: 2026-10-17 (updated after report-firewall remediation). Scope: PRs #390, #391, and #392 against the live remote default branch. This is an independent static review of PR diffs, changed-file lists, test sources, docs, focused local fixture tests, and available GitHub Actions status/logs. No participant data was inspected; no harvested content was executed or downloaded; no package was installed; no GitHub review comment or merge was made.
 
 ## Decision
 
-HOLD. Preserve HOLD / SYNTHETIC_ONLY. All three PRs remain open drafts and have review findings below. None of the tools establishes truth, data rights, source authenticity, cohort identity, model correctness, or scientific validation. Hash/checksum agreement is internal byte/serialization consistency only.
+HOLD. Preserve HOLD / SYNTHETIC_ONLY. #390's report-language findings listed below are resolved on its current head, but its latest Required Checks run is red for the same Awareness Studio failures present on live main. PRs #391 and #392 remain open drafts with unresolved P2 findings. None of the tools establishes truth, data rights, source authenticity, cohort identity, model correctness, or scientific validation. Hash/checksum agreement is internal byte/serialization consistency only.
 
 Live main and PR heads:
 
-| PR | State | Base SHA | Head branch | Head SHA |
+| PR | State | GitHub-reported base SHA | Head branch | Head SHA |
 | --- | --- | --- | --- | --- |
-| #390 | Open, draft, unmerged | 3f3fe8593303184cb88eef056c1322f3d4e57a16 | batch3/codex-d-report-firewall | 2ea9a3b5bdb9c70844dce23b120b7589607fd6b0 |
+| #390 | Open, non-draft, unmerged | 19c3203573082f8bc41f7da226b52dc20a49fdb0 | batch3/codex-d-report-firewall | e7fe8252c3a7a9dbd675b324691de803d7d194b6 |
 | #391 | Open, draft, unmerged | 3f3fe8593303184cb88eef056c1322f3d4e57a16 | batch1/hermes-a-safe-source-harvest | 6b48bae73430626f1b09c7863954f728b9b48fa9 |
 | #392 | Open, draft, unmerged | 3f3fe8593303184cb88eef056c1322f3d4e57a16 | batch3/codex-c-provenance-join | e7919194823ce28a4ce0074ba723d288cddeb58e |
 
-Live main was verified at 3f3fe8593303184cb88eef056c1322f3d4e57a16 during this audit.
+Live origin/main was re-verified at 19c3203573082f8bc41f7da226b52dc20a49fdb0. The #391/#392 base SHAs above remain their last GitHub-reported base snapshots; neither branch has been updated to the live main tip. #390's remediation branch includes a normal merge of live main; no history was rewritten.
 
 ## Current CI
 
-For each PR head, Ontology Claim Language and Smoke completed successfully. The core-tests job completed successfully; its isolated runner reported 9 files/batches passed with no failures or timeouts. Required Checks is red for all three heads:
+The latest #390 Required Checks run is [39008661251](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661251): core-tests passed and awareness-tests failed. Separate ontology-claim-language [39008661223](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661223) and smoke [39008661284](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661284) checks passed. The failure is the same three tests and observed failure modes present on live main, not a report-firewall test failure. Current live main run [39001665754](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39001665754) has awareness-tests red and core-tests green. Earlier #391/#392 Required Checks runs remain red:
 
 | PR | Required Checks run | Result |
 | --- | --- | --- |
-| #390 | [38971290296](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/38971290296) | Failed |
+| #390 current head | [39008661251](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661251) | awareness-tests failed; core-tests passed |
+| live main | [39001665754](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39001665754) | awareness-tests failed; core-tests passed |
 | #391 | [38972226639](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/38972226639) | Failed |
 | #392 | [38972195283](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/38972195283) | Failed |
 
-The failure is the same three tests in tests/research_cycle/test_registered_execution.py: test_registered_execution_persists_actual_artifacts_and_review (EXECUTION_FAILED instead of ENGINEERING_ACTION_COMPLETE), test_planning_does_not_execute_and_authorized_repeat_resumes (KeyError: resumed), and test_local_literature_links_to_experiment_and_execution (EXECUTION_FAILED instead of ENGINEERING_ACTION_COMPLETE). The awareness-tests job reports 3 failed, 413 passed, and 1 skipped; core-tests passes. These test paths are outside all three PR changed-file sets. Their repetition across the heads suggests a shared failure, but this audit did not establish causation or compare against a separate main CI run.
+Direct logs for both live main and #390 confirm the same three failures in `tests/research_cycle/test_registered_execution.py`: `test_registered_execution_persists_actual_artifacts_and_review` and `test_local_literature_links_to_experiment_and_execution` receive `EXECUTION_FAILED` rather than the expected `ENGINEERING_EXECUTION_COMPLETE`; `test_planning_does_not_execute_and_authorized_repeat_resumes` raises `KeyError: resumed`. The awareness-tests job reports 3 failed, 413 passed, and 1 skipped. These test paths are outside the three audited PRs' changed-file sets. Agent B's PR #422 (head `93c69ffea1df976ac86511531304360d876fda32`) adds an Awareness Studio runtime dependency and has green `awareness-tests`, `core-tests`, and Python 3.11/3.12 Awareness checks; its Docker build workflow currently has two failed image jobs, and it is not merged into live main. Therefore it does not yet clear #390's live CI blocker. Do not describe the PR as CI-green or merge-ready until required checks rerun green after the shared fix is integrated.
 
-Focused test results are reported in the PR descriptions, not independently rerun in this audit: #390 reports 20 unittest cases passing; #391 reports 16 passing/1 skipped; #392 reports 65 passing/1 skipped in its direct harness. The available CI job summaries do not establish that each of those focused suites ran in CI. #392 reports pytest and PyYAML unavailable in its local runtime. No dependencies were installed for this review.
+Focused #390 regression tests were independently run after remediation: 28 `unittest` tests pass on Python 3.12.14 and Python 3.14.7. Both versions compile the checker, CLI, and focused tests. The explicit-fixture CLI accepted selected local fixtures; traversal returned its structured input error. Existing claim checks were run only against selected local fixtures: the claim guardrail reported zero hits and the ontology language validator scanned four fixture files with zero violations. Full governance validation could not run locally because PyYAML is unavailable; no dependencies were installed. No current focused-test rerun was made for #391 or #392 in this remediation pass.
 
 ## Findings (severity-ranked)
 
@@ -50,21 +51,19 @@ tools/public_repo_harvest/source_pack.py accepts can_copy_docs in the license re
 
 Recommendation: make reuse decisions file/content-scope aware or keep mixed packs blocked unless every selected content class has an explicit compatible review. The positive status is caller-supplied metadata, not independently verified legal clearance. The existing scanner correctly leaves unknown/conflicting claims blocked and a likely-license hint alone does not authorize copying; this finding concerns the positive status scope.
 
-### P2 — #390 a negation elsewhere in a compound clause can suppress an actual assertion
+### Resolved on #390 head e7fe825 — P2 negation in a separate compound clause suppressed assertions
 
-tools/batch3_report_firewall/checker.py uses _NEGATED_ASSERTION (57–61), a clause split limited to punctuation and “but” (113), and _is_negated_or_limited (201–203), which skips the whole clause if the negation regex finds any matching target within 100 characters. For example, “The analysis is not preregistered and demonstrates a causal mechanism” can be treated as wholly negated even though the causal assertion is positive. The causal language is then not reported.
+This was reproduced before the fix with `The analysis is not preregistered and demonstrates a causal mechanism.` A later comma-splice fixture also reproduced suppression: `The result was not independently replicated, the findings demonstrate a causal mechanism.` The current checker splits simple punctuation, coordinating conjunctions, and comma boundaries before a bounded set of common clause subjects, outside detected quote spans. Tests `test_negation_in_prior_compound_clause_does_not_suppress_positive_claim`, `test_negation_does_not_suppress_assertion_after_comma_clause_boundary`, and `test_multiple_assertive_claims_in_one_sentence_are_checked` now prove the positive claims remain warnings while explicit negations stay unflagged.
 
-Recommendation: constrain negation to the assertion it grammatically scopes; when uncertain, retain a warning for human review instead of suppressing the entire compound clause. Add mixed-negation regression fixtures.
+This is a deterministic heuristic, not grammatical analysis; unrecognized clause forms can still be missed or over-reported. Findings remain warning-only and require human review.
 
-### P2 — #390 scientific_status=VALIDATED can evade the status warning with an unrelated scope
+### Resolved on #390 head e7fe825 — P2 unrelated validation metadata excused scientific_status=VALIDATED
 
-In checker.py (285–288), any nonempty validation_scope, validated_object, or validation_target suppresses AMBIGUOUS_VALIDATION_STATUS for the bare value VALIDATED. Because scientific_status is among _STATUS_KEYS and metadata status fields are not rescanned as prose, a JSON object such as {\"scientific_status\":\"VALIDATED\",\"validation_scope\":\"software\"} gets no status finding. A software scope does not make an explicitly scientific VALIDATED status safe.
+The status rule now emits `AMBIGUOUS_VALIDATION_STATUS` for validated status values under recognized status keys without allowing unrelated `validation_scope`, `validated_object`, or `validation_target` fields to suppress it. `test_scientific_validated_is_not_excused_by_software_scope_metadata` verifies the nested JSON path `$/report/scientific_status` with `validation_scope: software`. The checker still emits no status result of its own and never promotes scientific claims.
 
-Recommendation: always flag VALIDATED under scientific_status, and only treat an explicit engineering scope as a reason to distinguish an engineering validation status when the field/value contract supports that interpretation. The checker itself still emits no scientific VALIDATED status and remains advisory.
+### Resolved on #390 head e7fe825 — P3 indented code and straight single-quoted spans were scanned
 
-### P3 — #390 Markdown exclusion misses indented code and straight single-quoted assertions
-
-Fenced code and blockquotes are excluded by the parser and covered by fixtures. However, _markdown_paragraphs (388–400) calls raw.strip() before testing whether stripped starts with four spaces or a tab, so those indentation checks cannot succeed; standard indented code can be scanned as prose. _quote_spans (180–195) handles double quotes, curly quotes, and backticks but not straight single-quoted spans. These cases can create false-positive warnings, not automatic blocks. Add fixtures and preserve the human-review-only behavior.
+The Markdown reader now preserves leading whitespace when skipping four-space/tab-indented code; quote filtering covers straight single quotes in addition to double/curly quotes and backticks. `test_fenced_and_indented_markdown_code_are_not_scanned`, `test_straight_single_quoted_span_is_not_scanned`, and `test_quoted_negation_or_caution_does_not_suppress_unquoted_claim` cover false-positive and false-negative cases. Single-quote pairing remains heuristic for apostrophes, unmatched quotes, and nested spans; these contexts can still need human review.
 
 ### P3 — #392 documentation could state non-scientific/non-rights limits more explicitly
 
@@ -93,4 +92,4 @@ There are no file conflicts among these three PRs. #390 is independent. #391 emi
 
 ## Disposition
 
-Keep #390–#392 open as drafts pending the P2 findings and red Required Checks. Do not merge based on a clean core-tests job alone. Maintain HOLD / SYNTHETIC_ONLY. The structural and advisory outputs should not promote any scientific or legal status.
+Keep #390 open but not merge-ready until its Required Checks rerun green after the shared Awareness Studio fix reaches main; the four report-firewall defects above are fixed on its current head and do not clear CI or scientific gates. Keep #391 and #392 open as drafts pending their unresolved P2 findings. Do not merge based on core-tests alone or interpret any heuristic warning/absence, source-pack metadata, or structural join as truth, legal clearance, or scientific validation. Maintain HOLD / SYNTHETIC_ONLY. No scientific claim is validated by this audit.
