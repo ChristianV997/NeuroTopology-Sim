@@ -24,7 +24,9 @@ from tests.experimental.planar_mesh_test_helpers import (
     audit_planar_triangle_mesh,
     build_simplicial_boundary_matrices,
     clip_polygon_with_convex_polygon,
+    counterexample_a_exact_fixture,
     counterexample_a_fixtures,
+    counterexample_b_exact_fixture,
     counterexample_b_fixture,
     delaunay_incircle_exact,
     exact_convex_hull,
@@ -38,8 +40,95 @@ from tests.experimental.planar_mesh_test_helpers import (
 )
 
 
+class TestCounterexampleAFullValidator:
+    """Test Counterexample A directly against the PR #416 candidate validator.
+
+    Coordinates: (0,0), (4,0), (4,4), (0,4), (2,1)
+    Triangles:   (0,1,2), (0,1,4), (1,2,4), (0,4,3)
+
+    Geometric Properties:
+    - 5 vertices forming a 4x4 square with interior point 4=(2,1).
+    - All 4 triangles are strictly CCW with positive areas:
+      Area(0,1,2) = 8
+      Area(0,1,4) = 2
+      Area(1,2,4) = 4
+      Area(0,4,3) = 4
+    - Convex hull area: [0,4] x [0,4] square has area 16.
+    - True rational sum of face areas: 8 + 2 + 4 + 4 = 18.
+      (The area sum exceeds the hull area of 16 because (0,1,4) and (1,2,4)
+      are strictly contained inside (0,1,2), causing internal double-coverage.)
+    - Topological chain complex:
+      D1 @ D0 == 0 (partial_1 partial_2 == 0) holds identically.
+    - Candidate validator MUST reject this invalid embedding:
+      Flags triangle overlaps, nonincident edge crossings, and hull boundary mismatch.
+    """
+
+    def test_counterexample_a_rejected_by_candidate_validator(self):
+        fixture = counterexample_a_exact_fixture()
+        vertices = fixture["points"]
+        triangles = fixture["triangles"]
+
+        result = validate_planar_mesh(vertices, triangles, check_delaunay=False)
+
+        # Candidate validator must reject this invalid embedding
+        assert not result.ok
+        assert result.status == "rejected"
+        assert result.scientific_pass is False
+
+        # Extract diagnostics by layer
+        diags = {d.layer: d for d in result.diagnostics}
+
+        # Abstract chain layer (D1 @ D0 == 0) holds algebraically
+        assert ClaimLayer.ABSTRACT_CHAIN.value in diags
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].status == "holds"
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].detail == "D1 @ D0 == 0"
+
+        # Planar hull triangulation layer MUST fail
+        assert ClaimLayer.PLANAR_HULL_TRIANGULATION.value in diags
+        assert not diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok
+        assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].status == "fails"
+
+        # Assert rejection for the actual geometric/mesh defects
+        assert any("boundary edges" in issue for issue in result.issues)
+        assert any("edge crossing" in issue for issue in result.issues)
+        assert any("overlapping triangle" in issue for issue in result.issues)
+
+    def test_counterexample_a_exact_oracle_arithmetic(self):
+        fixture = counterexample_a_exact_fixture()
+        points = [to_fraction_point(p) for p in fixture["points"]]
+        triangles = fixture["triangles"]
+
+        # 1. Verify signed areas: 8, 2, 4, 4 (all strictly positive CCW)
+        areas = [triangle_signed_area_twice(points[t[0]], points[t[1]], points[t[2]]) / 2 for t in triangles]
+        assert areas == [Fraction(8), Fraction(2), Fraction(4), Fraction(4)]
+        assert all(a > 0 for a in areas)
+
+        # 2. Square hull area is 16
+        hull = exact_convex_hull(points)
+        hull_area = hull["hull_area_twice"] / 2
+        assert hull_area == Fraction(16)
+
+        # 3. Rational area sum is 18 (exceeds hull area 16 due to overlapping faces)
+        assert sum(areas) == Fraction(18)
+
+        # 4. Simplicial boundary identity: D1 @ D0 == 0 is exact despite invalid embedding
+        _, b1, b2, is_zero = build_simplicial_boundary_matrices(len(points), triangles)
+        assert is_zero
+        assert np.all(b1 @ b2 == 0)
+
+        # 5. Overlap detection via exact polygon clipping
+        poly_012 = [points[i] for i in (0, 1, 2)]
+        poly_014 = [points[i] for i in (0, 1, 4)]
+        poly_124 = [points[i] for i in (1, 2, 4)]
+        inter_014 = clip_polygon_with_convex_polygon(poly_014, poly_012)
+        inter_124 = clip_polygon_with_convex_polygon(poly_124, poly_012)
+        assert polygon_area_exact(inter_014) == Fraction(2)  # fully interior to (0,1,2)
+        assert polygon_area_exact(inter_124) == Fraction(4)  # fully interior to (0,1,2)
+
+
 class TestMandatoryFullValidatorCounterexample:
-    """Test the exact mandatory counterexample directly against the PR #416 candidate validator.
+    """Test Counterexample B directly against the PR #416 candidate validator.
 
     Vertices:
     0=(0,0), 1=(4,0), 2=(4,4), 3=(0,4), 4=(3,1)
@@ -184,52 +273,68 @@ class TestEarlierFiveVertexPartialOverlapFixture:
 
 
 class TestIndexValidationAdversarial:
-    """Adversarial testing of simplex indices against PR #416 candidate validator."""
+    """Adversarial testing of simplex indices against PR #416 candidate validator.
+
+    Verifies that malformed simplex indices (floats, booleans, repeated vertices,
+    out of range 99, negative -1) are rejected before array indexing without
+    unhandled IndexError or wraparound.
+    """
 
     def test_repeated_indices_within_simplex_rejected(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         simplices = [(0, 0, 1)]
         result = validate_planar_mesh(coords, simplices)
         assert not result.ok
-        assert any("degenerate in indices" in issue for issue in result.issues)
+        assert any("repeated vertices" in issue for issue in result.issues)
 
     def test_negative_simplex_index_rejected(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         simplices = [(-1, 0, 1)]
         result = validate_planar_mesh(coords, simplices)
         assert not result.ok
-        assert any("out-of-range index" in issue for issue in result.issues)
+        assert any("negative simplex index" in issue for issue in result.issues)
 
-    def test_out_of_range_index_exception_boundary(self):
+    def test_out_of_range_index_rejected_before_indexing(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         simplices = [(0, 1, 99)]
-        with pytest.raises(IndexError):
-            validate_planar_mesh(coords, simplices)
+        result = validate_planar_mesh(coords, simplices)
+        assert not result.ok
+        assert any("out of range for n_points" in issue for issue in result.issues)
 
-    def test_float_and_boolean_simplex_indices_coercion_behavior(self):
+    def test_float_and_boolean_simplex_indices_rejected_before_indexing(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
-        float_simplices = [(0.9, 1.9, 2.9)]
+        float_simplices = [(0.9, 1.0, 2.0)]
         res_float = validate_planar_mesh(coords, float_simplices)
-        assert res_float.simplices == ((0, 1, 2),)
+        assert not res_float.ok
+        assert any("floating-point simplex index is not allowed" in issue for issue in res_float.issues)
 
-        bool_simplices = [(True, False, 2)]
+        bool_simplices = [(True, 1, 2)]
         res_bool = validate_planar_mesh(coords, bool_simplices)
-        assert res_bool.simplices == ((1, 2, 0),)
+        assert not res_bool.ok
+        assert any("boolean is not a valid simplex index" in issue for issue in res_bool.issues)
 
 
 class TestMalformedAndNonFiniteInputs:
     """Test candidate validator and triangulator input validation on malformed and non-finite inputs."""
 
-    def test_numpy_coordinate_array_enforces_sequence_contract(self):
+    def test_numpy_coordinate_array_acceptance(self):
         coords_np = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
         simplices_np = np.array([[0, 1, 2]])
         result = validate_planar_mesh(coords_np, simplices_np)
-        assert not result.ok
-        assert any("coords must be a sequence of 2D points" in issue for issue in result.issues)
+        assert result.ok
+        assert result.status == "ok"
 
-        coords_list = coords_np.tolist()
-        result_valid = validate_planar_mesh(coords_list, simplices_np)
-        assert result_valid.ok
+    def test_numpy_coordinate_array_malformed_shape_rejected(self):
+        coords_bad_shape = np.zeros((3, 3))
+        simplices_np = np.array([[0, 1, 2]])
+        result = validate_planar_mesh(coords_bad_shape, simplices_np)
+        assert not result.ok
+        assert any("coords array must have shape (n, 2)" in issue for issue in result.issues)
+
+        coords_1d = np.zeros(6)
+        result_1d = validate_planar_mesh(coords_1d, simplices_np)
+        assert not result_1d.ok
+        assert any("shape (2,)" in issue or "shape (n, 2)" in issue for issue in result_1d.issues)
 
     @pytest.mark.parametrize("bad_val", [float("nan"), float("inf"), float("-inf")])
     def test_non_finite_coordinates_rejected_by_candidate(self, bad_val):
@@ -291,11 +396,19 @@ class TestCocircularPolicyDelaunayEnabledVsDisabled:
 
     def test_triangulate_2d_cocircular_policy(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        res_reject = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.REJECT)
+        # When require_delaunay=True (default) and degeneracy_policy=REJECT: rejects
+        res_reject = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.REJECT, require_delaunay=True)
         assert not res_reject.ok
         assert res_reject.status == "rejected"
 
-        res_tiebreak = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK)
+        # When require_delaunay=False: accepts as valid planar triangulation even with reject policy
+        res_planar_only = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.REJECT, require_delaunay=False)
+        assert res_planar_only.ok
+        assert res_planar_only.status == "ok"
+        assert len(res_planar_only.simplices) == 2
+
+        # When require_delaunay=True and degeneracy_policy=LEXICOGRAPHIC_TIEBREAK: accepts via tiebreak
+        res_tiebreak = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK, require_delaunay=True)
         assert res_tiebreak.ok
         assert res_tiebreak.status == "ok"
         assert len(res_tiebreak.simplices) == 2
@@ -388,11 +501,11 @@ class TestCounterexampleBRevision8OverlappingFaces:
 
 
 class TestTopologicalBoundaryVsGeometricEmbedding:
-    """Assert independently that incidence matrices can satisfy D1 @ D0 == 0 even when embedding is invalid."""
+    """Assert independently that incidence matrices satisfy D1 @ D0 == 0 even when planar embedding is completely invalid."""
 
-    def test_simplicial_d1_d0_zero_holds_for_invalid_complexes(self):
-        """B1 @ B2 == 0 (partial_1 partial_2 == 0) is an algebraic identity that holds for ANY simplicial complex."""
-        data = counterexample_b_fixture()
+    def test_simplicial_d1_d0_zero_holds_for_counterexample_a(self):
+        """D1 @ D0 == 0 (partial_1 partial_2 == 0) holds identically for Counterexample A despite severe overlap."""
+        data = counterexample_a_exact_fixture()
         points = data["points"]
         triangles = data["triangles"]
 
@@ -400,10 +513,32 @@ class TestTopologicalBoundaryVsGeometricEmbedding:
         assert is_zero
         assert np.all(b1 @ b2 == 0)
 
-        # Confirm candidate validator rejects the embedding despite chain holding
-        result = validate_planar_mesh(points, triangles)
+        # Candidate validator rejects the embedding despite chain complex identity holding
+        result = validate_planar_mesh(points, triangles, check_delaunay=False)
         assert not result.ok
         assert result.status == "rejected"
+        diags = {d.layer: d for d in result.diagnostics}
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok is True
+        assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok is False
+
+    def test_simplicial_d1_d0_zero_holds_for_counterexample_b(self):
+        """D1 @ D0 == 0 (partial_1 partial_2 == 0) holds identically for Counterexample B despite edge crossing."""
+        data = counterexample_b_exact_fixture()
+        points = data["points"]
+        triangles = data["triangles"]
+
+        _, b1, b2, is_zero = build_simplicial_boundary_matrices(len(points), triangles)
+        assert is_zero
+        assert np.all(b1 @ b2 == 0)
+
+        # Candidate validator rejects the embedding despite chain complex identity holding
+        result = validate_planar_mesh(points, triangles, check_delaunay=False)
+        assert not result.ok
+        assert result.status == "rejected"
+        diags = {d.layer: d for d in result.diagnostics}
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok is True
+        assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok is False
+
 
 
 class TestLegacyComparisonAndBlockerStatus:

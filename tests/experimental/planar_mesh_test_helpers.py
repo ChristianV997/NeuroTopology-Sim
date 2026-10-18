@@ -913,3 +913,60 @@ def mandatory_full_validator_counterexample_fixture() -> dict[str, Any]:
         "crossing_edges": ((1, 3), (2, 0)),
         "crossing_point": (Fraction(2), Fraction(2)),
     }
+
+
+def counterexample_a_exact_fixture() -> dict[str, Any]:
+    """Counterexample A fixture: 5-vertex square plus interior vertex (2, 1).
+
+    Vertices:
+    0=(0,0), 1=(4,0), 2=(4,4), 3=(0,4), 4=(2,1)
+
+    Triangles:
+    (0,1,2), (0,1,4), (1,2,4), (0,4,3)
+
+    Exact Rational Verification:
+    - Triangles:
+      (0,1,2): right triangle over (0,0)-(4,0)-(4,4), base 4, height 4 -> exact area 8 (CCW)
+      (0,1,4): base 4 on (0,0)-(4,0), height 1 at (2,1) -> exact area 2 (CCW)
+      (1,2,4): base 4 on (4,0)-(4,4), height 2 at (2,1) -> exact area 4 (CCW)
+      (0,4,3): base 4 on (0,0)-(0,4), height 2 at (2,1) -> exact area 4 (CCW)
+    - All 4 triangles are strictly CCW with positive areas [8, 2, 4, 4].
+    - Convex hull area: [0,4] x [0,4] square has area 16.
+    - True rational sum of face areas: 8 + 2 + 4 + 4 = 18.
+      (Note: The area sum exceeds the hull area of 16 because (0,1,4) and (1,2,4)
+      are strictly contained inside (0,1,2), causing internal double-coverage.)
+    - Topological Chain Complex:
+      D1 @ D0 == 0 (partial_1 partial_2 == 0) holds identically.
+    - Geometric Embedding Defects:
+      - Triangle (0,1,2) overlaps triangle (0,1,4) (overlap area 2) and triangle (1,2,4) (overlap area 4).
+      - Boundary incidence mismatch: edges (0,1) and (1,2) have incidence 2 (double covered).
+      - Missing hull edges: (2,3) is never referenced.
+    """
+    points = [
+        (0.0, 0.0),
+        (4.0, 0.0),
+        (4.0, 4.0),
+        (0.0, 4.0),
+        (2.0, 1.0),
+    ]
+    triangles = [
+        (0, 1, 2),
+        (0, 1, 4),
+        (1, 2, 4),
+        (0, 4, 3),
+    ]
+    return {
+        "points": points,
+        "triangles": triangles,
+        "areas": [Fraction(8), Fraction(2), Fraction(4), Fraction(4)],
+        "hull_area": Fraction(16),
+        "area_sum": Fraction(18),
+    }
+
+
+def counterexample_b_exact_fixture() -> dict[str, Any]:
+    """Counterexample B fixture: 5-vertex square plus interior vertex (3, 1).
+
+    Alias for mandatory_full_validator_counterexample_fixture.
+    """
+    return mandatory_full_validator_counterexample_fixture()
