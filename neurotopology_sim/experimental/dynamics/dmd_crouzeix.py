@@ -78,9 +78,10 @@ function ``f`` holomorphic on a neighborhood of the numerical range ``W(A)``,
     ||f(A)|| ≤ C  max_{z ∈ W(A)} |f(z)| .
 
 The peer-reviewed constant ``C = 1 + √2`` (Crouzeix–Palencia, 2017) is the
-proven fallback used here. ``C = 2`` is exposed only as a labeled
-``PREPRINT_UNVERIFIED`` option and is **not** treated as established in this
-module. Neither constant is a biological or clinical safety certificate.
+proven fallback used here. A ``C = 2`` claim from the 2026 preprint
+``arXiv:2608.03841v2`` is exposed only as a labeled ``PREPRINT_UNVERIFIED``
+option and is **not** a settled peer-reviewed result in this module.
+Neither constant is a biological or clinical safety certificate.
 
 Hermitian dissipation sign is read from the supplied generator under
 ``ẋ = L x``: the Hermitian part ``(L + L†)/2`` is dissipative when its
@@ -95,6 +96,8 @@ References
   applications. *J. Comput. Dyn.*
 * Crouzeix, M. & Palencia, C. (2017). The numerical range is a
   (1+√2)-spectral set. *SIAM J. Matrix Anal. Appl.*
+* arXiv:2608.03841v2 (2026) — preprint ``C=2`` claim only; not peer-reviewed
+  settled here.
 * SciPy ``scipy.linalg.logm`` (Schur–Parlett algorithm).
 """
 
@@ -119,6 +122,7 @@ SCHEMA_VERSION = "NeuroTopology.DMDCrouzeix.v1"
 PROJECT_STATUS = "HOLD_SYNTHETIC_ONLY"
 CROUZEIX_PEER_REVIEWED_C = 1.0 + float(np.sqrt(2.0))
 CROUZEIX_PREPRINT_C2_LABEL = "PREPRINT_UNVERIFIED"
+CROUZEIX_PREPRINT_C2_ARXIV = "arXiv:2608.03841v2"
 ARRAY_ORIENTATION = "state_columns"
 DEFAULT_RCOND = 1e-10
 BRANCH_CUT_MARGIN = 1e-6
@@ -719,9 +723,10 @@ def crouzeix_bound_report(
     role :
         ``\"discrete_operator\"`` or ``\"generator\"`` (affects dissipation note).
     use_preprint_c2 :
-        If True, label ``C=2`` as ``PREPRINT_UNVERIFIED`` instead of using the
-        peer-reviewed ``C=1+√2`` fallback. The preprint claim is **not** treated
-        as verified in this module.
+        If True, label ``C=2`` from preprint ``arXiv:2608.03841v2`` as
+        ``PREPRINT_UNVERIFIED`` instead of using the peer-reviewed
+        ``C=1+√2`` fallback. That preprint claim is **not** treated as a
+        settled peer-reviewed result in this module.
     """
     A = np.asarray(matrix, dtype=np.complex128)
     if A.ndim != 2 or A.shape[0] != A.shape[1]:
@@ -744,7 +749,8 @@ def crouzeix_bound_report(
         constant = 2.0
         label = CROUZEIX_PREPRINT_C2_LABEL
         refs = (
-            "C=2 labeled PREPRINT_UNVERIFIED in this module; source/version not verified here",
+            f"C=2 preprint claim only ({CROUZEIX_PREPRINT_C2_ARXIV}); "
+            "not a settled peer-reviewed result in this module",
             "Peer-reviewed fallback remains Crouzeix–Palencia 2017 C=1+sqrt(2)",
         )
     else:
@@ -786,6 +792,7 @@ __all__ = [
     "PROJECT_STATUS",
     "CROUZEIX_PEER_REVIEWED_C",
     "CROUZEIX_PREPRINT_C2_LABEL",
+    "CROUZEIX_PREPRINT_C2_ARXIV",
     "ARRAY_ORIENTATION",
     "DMDValidationError",
     "SnapshotPairMeta",
