@@ -30,6 +30,7 @@ on:
       - "tools/simulation_artifacts/**"
       - "tools/simulation_execution/**"
       - "scripts/build_awareness_evidence_graph.py"
+      - "tests/research_cycle_preflight/fixtures/complete_plan.json"
       - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   pull_request:
@@ -58,6 +59,7 @@ on:
       - "tools/simulation_artifacts/**"
       - "tools/simulation_execution/**"
       - "scripts/build_awareness_evidence_graph.py"
+      - "tests/research_cycle_preflight/fixtures/complete_plan.json"
       - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   workflow_dispatch:
