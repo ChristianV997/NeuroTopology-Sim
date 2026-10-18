@@ -763,3 +763,153 @@ def non_delaunay_valid_fixture() -> dict[str, Any]:
         "points": points,
         "triangles": triangles,
     }
+
+
+def exact_segment_line_intersection(
+    s: Point,
+    e: Point,
+    c1: Point,
+    c2: Point,
+) -> tuple[Fraction, Fraction, Point]:
+    """Exact parametric intersection of directed segment s->e with line c1->c2.
+
+    Parametric representations:
+        P(t) = s + t*(e - s)
+        Q(u) = c1 + u*(c2 - c1)
+
+    Derivation:
+        s_x + t*(e_x - s_x) = c1_x + u*(c2_x - c1_x)
+        s_y + t*(e_y - s_y) = c1_y + u*(c2_y - c1_y)
+
+        t*(e_x - s_x) - u*(c2_x - c1_x) = c1_x - s_x
+        t*(e_y - s_y) - u*(c2_y - c1_y) = c1_y - s_y
+
+        Using 2D cross-product / orient2d identities:
+        denom = (c2_x - c1_x)*(e_y - s_y) - (c2_y - c1_y)*(e_x - s_x)
+              = orient2d(c1, c2, s) - orient2d(c1, c2, e)
+
+        num_t = orient2d(c1, c2, s)
+        t = num_t / denom
+
+        num_u = orient2d(s, e, c1)
+        denom_u = orient2d(s, e, c1) - orient2d(s, e, c2)
+        u = num_u / denom_u
+
+    Verified on canonical crossing:
+        s=(0, -1), e=(0, 1) against c1=(0, 0), c2=(1, 0)
+        orient2d(c1, c2, s) = -1
+        orient2d(c1, c2, e) = +1
+        denom = -1 - (+1) = -2
+        t = -1 / -2 = 1/2
+        P(1/2) = (0, 0)
+    """
+    o_c_s = orient2d(c1, c2, s)
+    o_c_e = orient2d(c1, c2, e)
+    denom = o_c_s - o_c_e
+    if denom == 0:
+        raise ValueError("Segment s->e and line c1->c2 are parallel / collinear")
+
+    t = o_c_s / denom
+    inter_x = s[0] + t * (e[0] - s[0])
+    inter_y = s[1] + t * (e[1] - s[1])
+
+    o_s_c1 = orient2d(s, e, c1)
+    o_s_c2 = orient2d(s, e, c2)
+    denom_u = o_s_c1 - o_s_c2
+    u = o_s_c1 / denom_u if denom_u != 0 else Fraction(0)
+
+    return (t, u, (inter_x, inter_y))
+
+
+def polygon_area_exact(polygon: Sequence[Point]) -> Fraction:
+    """Exact polygon area via Shoelace formula."""
+    n = len(polygon)
+    if n < 3:
+        return Fraction(0)
+    twice_area = Fraction(0)
+    for i in range(n):
+        j = (i + 1) % n
+        twice_area += polygon[i][0] * polygon[j][1] - polygon[j][0] * polygon[i][1]
+    return abs(twice_area) / 2
+
+
+def clip_polygon_with_convex_polygon(
+    subject: Sequence[Point],
+    clipper: Sequence[Point],
+) -> list[Point]:
+    """Sutherland-Hodgman polygon clipping with exact Fraction arithmetic.
+
+    Both subject and clipper must be sequences of Points in CCW order.
+    Returns the intersection polygon.
+    """
+    output = list(subject)
+    n_clip = len(clipper)
+    for i in range(n_clip):
+        c1 = clipper[i]
+        c2 = clipper[(i + 1) % n_clip]
+        input_list = output
+        output = []
+        if not input_list:
+            break
+        s = input_list[-1]
+        for e in input_list:
+            e_in = orient2d(c1, c2, e) >= 0
+            s_in = orient2d(c1, c2, s) >= 0
+            if e_in:
+                if not s_in:
+                    _, _, p = exact_segment_line_intersection(s, e, c1, c2)
+                    output.append(p)
+                output.append(e)
+            elif s_in:
+                _, _, p = exact_segment_line_intersection(s, e, c1, c2)
+                output.append(p)
+            s = e
+    return output
+
+
+def mandatory_full_validator_counterexample_fixture() -> dict[str, Any]:
+    """Mandatory counterexample for full validator testing.
+
+    Vertices:
+    0=(0,0), 1=(4,0), 2=(4,4), 3=(0,4), 4=(3,1)
+
+    Triangles:
+    (0,1,3), (0,1,4), (1,2,4), (2,0,4)
+
+    Arithmetic breakdown:
+    - Areas:
+      (0,1,3): base 4, height 4 -> area 8
+      (0,1,4): base 4, height 1 -> area 2
+      (1,2,4): base 4, height 1 -> area 2
+      (2,0,4): base sqrt(32), height sqrt(2) -> area 4
+      Sum = 8 + 2 + 2 + 4 = 16 == Area(Square Hull).
+    - Counts:
+      5 vertices, 4 faces, 8 unique edges.
+      All edge incidences are 1 or 2.
+      Incidence-1 vertices are exactly {0, 1, 2, 3}.
+    - Failures:
+      - Non-incident edges (1, 3) and (2, 0) cross at (2, 2).
+      - Triangle interiors overlap (e.g. (0,1,3) overlaps (0,1,4) and (2,0,4)).
+      - Boundary edges {(1,3), (3,0), (1,2), (2,0)} are not the convex hull cycle {(0,1), (1,2), (2,3), (3,0)}.
+    """
+    points = [
+        (0.0, 0.0),
+        (4.0, 0.0),
+        (4.0, 4.0),
+        (0.0, 4.0),
+        (3.0, 1.0),
+    ]
+    triangles = [
+        (0, 1, 3),
+        (0, 1, 4),
+        (1, 2, 4),
+        (2, 0, 4),
+    ]
+    return {
+        "points": points,
+        "triangles": triangles,
+        "areas": [8, 2, 2, 4],
+        "hull_area": 16,
+        "crossing_edges": ((1, 3), (2, 0)),
+        "crossing_point": (Fraction(2), Fraction(2)),
+    }

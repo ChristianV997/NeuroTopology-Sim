@@ -13,269 +13,378 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
+from neurotopology_sim.experimental.geometry.planar_triangulation import (
+    ClaimLayer,
+    DegeneracyPolicy,
+    PlanarTriangulationResult,
+    triangulate_2d,
+    validate_planar_mesh,
+)
 from tests.experimental.planar_mesh_test_helpers import (
     audit_planar_triangle_mesh,
     build_simplicial_boundary_matrices,
+    clip_polygon_with_convex_polygon,
     counterexample_a_fixtures,
     counterexample_b_fixture,
     delaunay_incircle_exact,
     exact_convex_hull,
+    exact_segment_line_intersection,
+    mandatory_full_validator_counterexample_fixture,
     non_delaunay_valid_fixture,
     orient2d,
-    segments_intersect,
+    polygon_area_exact,
     to_fraction_point,
     triangle_signed_area_twice,
 )
 
 
-class TestInvalidInputs:
-    """Verify fail-closed behavior on invalid, duplicate, and degenerate input point sets."""
+class TestMandatoryFullValidatorCounterexample:
+    """Test the exact mandatory counterexample directly against the PR #416 candidate validator.
 
-    @pytest.mark.parametrize("fewer_points", [
-        [],
-        [(0.0, 0.0)],
-        [(0.0, 0.0), (1.0, 0.0)],
-    ])
-    def test_fewer_than_three_points_rejected(self, fewer_points):
-        report = audit_planar_triangle_mesh(fewer_points, [])
-        assert not report["geometry_checks_all_satisfied"]
-        assert not report["checks"]["nondegenerate_convex_hull"]
-        assert any("at least 3 points" in issue for issue in report["issues"])
+    Vertices:
+    0=(0,0), 1=(4,0), 2=(4,4), 3=(0,4), 4=(3,1)
+    Triangles:
+    (0,1,3), (0,1,4), (1,2,4), (2,0,4)
 
-    @pytest.mark.parametrize("non_finite_point", [
-        (float("nan"), 0.0),
-        (0.0, float("nan")),
-        (float("inf"), 1.0),
-        (1.0, float("-inf")),
-    ])
-    def test_non_finite_coordinates_rejected(self, non_finite_point):
-        points = [(0.0, 0.0), (1.0, 0.0), non_finite_point]
-        report = audit_planar_triangle_mesh(points, [(0, 1, 2)])
-        assert not report["geometry_checks_all_satisfied"]
-        assert not report["checks"]["coordinates_finite"]
-        assert any("coordinates_finite failed" in issue for issue in report["issues"])
+    Properties:
+    - CCW areas: 8, 2, 2, 4 -> sum is 16, matching the square hull area.
+    - 5 vertices, 4 faces, 8 unique edges.
+    - All edge incidences are 1 or 2, and incidence-1 vertices are {0, 1, 2, 3}.
+    - Crossing edges: nonincident edges (1, 3) and (0, 2) cross at (2, 2).
+    - Triangle interiors overlap (e.g. (0,1,3) overlaps (0,1,4) and (2,0,4)).
+    - Boundary edges {(1,3), (3,0), (1,2), (2,0)} are not the convex hull cycle {(0,1), (1,2), (2,3), (3,0)}.
+    """
 
-    def test_duplicate_coincident_points_rejected(self):
-        # 4 points with index 0 and 3 exactly coincident
-        points = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)]
-        triangles = [(0, 1, 2)]
-        report = audit_planar_triangle_mesh(points, triangles)
-        assert not report["geometry_checks_all_satisfied"]
-        assert not report["checks"]["coordinates_unique"]
-        assert any("Duplicate points detected" in issue for issue in report["issues"])
+    def test_mandatory_counterexample_rejected_by_candidate_validator(self):
+        fixture = mandatory_full_validator_counterexample_fixture()
+        vertices = fixture["points"]
+        triangles = fixture["triangles"]
 
-    @pytest.mark.parametrize("collinear_points", [
-        [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)],
-        [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)],
-        [(0.0, 0.0), (0.0, 1.0), (0.0, 2.0), (0.0, 5.0)],
-    ])
-    def test_collinear_points_rejected(self, collinear_points):
-        # 3 or more points on a line have hull area 0 and cannot form a 2D triangulation
-        triangles = [(0, 1, 2)]
-        report = audit_planar_triangle_mesh(collinear_points, triangles)
-        assert not report["geometry_checks_all_satisfied"]
-        assert not report["checks"]["nondegenerate_convex_hull"]
-        assert any("Convex hull is degenerate" in issue for issue in report["issues"])
+        result = validate_planar_mesh(vertices, triangles)
 
-    def test_near_degenerate_collinear_geometry(self):
-        # Nearly collinear points: y-offset is 1e-15 (close to machine epsilon)
-        points = [(0.0, 0.0), (1.0, 0.0), (0.5, 1e-15)]
-        report = audit_planar_triangle_mesh(points, [(0, 1, 2)])
-        # Exact arithmetic records exact non-zero area without floating underflow
-        assert report["checks"]["nonzero_triangle_areas"]
-        assert report["checks"]["area_partition_identity"]
-        assert report["geometry_checks_all_satisfied"]
+        # Candidate validator must reject this invalid embedding
+        assert not result.ok
+        assert result.status == "rejected"
+        assert result.scientific_pass is False
 
-        # Even smaller height: 1e-30
-        points_extreme = [(Fraction(0), Fraction(0)), (Fraction(1), Fraction(0)), (Fraction(1, 2), Fraction(1, 10**30))]
-        report_extreme = audit_planar_triangle_mesh(points_extreme, [(0, 1, 2)])
-        assert report_extreme["checks"]["nonzero_triangle_areas"]
-        assert report_extreme["geometry_checks_all_satisfied"]
+        # Extract diagnostics by layer
+        diags = {d.layer: d for d in result.diagnostics}
+
+        # Abstract chain layer (D1 @ D0 == 0) holds algebraically
+        assert ClaimLayer.ABSTRACT_CHAIN.value in diags
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].status == "holds"
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].detail == "D1 @ D0 == 0"
+
+        # Planar hull triangulation layer MUST fail
+        assert ClaimLayer.PLANAR_HULL_TRIANGULATION.value in diags
+        assert not diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok
+        assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].status == "fails"
+
+        # Check that specific geometric failures are flagged in issues
+        assert any("boundary edges" in issue for issue in result.issues)
+        assert any("edge crossing" in issue for issue in result.issues)
+        assert any("overlapping triangle" in issue for issue in result.issues)
+
+    def test_mandatory_counterexample_exact_oracle_arithmetic(self):
+        fixture = mandatory_full_validator_counterexample_fixture()
+        points = [to_fraction_point(p) for p in fixture["points"]]
+        triangles = fixture["triangles"]
+
+        # 1. Verify signed areas: 8, 2, 2, 4
+        areas = [triangle_signed_area_twice(points[t[0]], points[t[1]], points[t[2]]) / 2 for t in triangles]
+        assert areas == [Fraction(8), Fraction(2), Fraction(2), Fraction(4)]
+        assert sum(areas) == Fraction(16)
+
+        # 2. Hull area of the square (0,0), (4,0), (4,4), (0,4)
+        hull = exact_convex_hull(points)
+        assert hull["hull_area_twice"] / 2 == Fraction(16)
+        assert sum(areas) == hull["hull_area_twice"] / 2
+
+        # 3. Edge incidences: all edges have incidence 1 or 2
+        _, b1, b2, is_zero = build_simplicial_boundary_matrices(len(points), triangles)
+        assert is_zero  # D1 @ D0 == 0 is exact
+
+        # 4. Crossing edges (1, 3) and (2, 0) cross at (2, 2)
+        s, e = points[1], points[3]    # (4, 0) -> (0, 4)
+        c1, c2 = points[0], points[2]  # (0, 0) -> (4, 4)
+        t, u, inter = exact_segment_line_intersection(s, e, c1, c2)
+        assert t == Fraction(1, 2)
+        assert u == Fraction(1, 2)
+        assert inter == (Fraction(2), Fraction(2))
+
+        # 5. Overlap detection via exact polygon clipping
+        poly_014 = [points[i] for i in (0, 1, 4)]
+        poly_013 = [points[i] for i in (0, 1, 3)]
+        inter_poly = clip_polygon_with_convex_polygon(poly_014, poly_013)
+        assert polygon_area_exact(inter_poly) == Fraction(2)  # triangle (0,1,4) fully inside (0,1,3)
 
 
-class TestCocircularPolicyAndJitterLimits:
-    """Verify cocircular tie-policy requirements and limits of finite float jitter."""
+class TestFractionClipperAndIntersectionDerivation:
+    """Independently derive and test line/segment intersection parameter signs and exact polygon clipping."""
 
-    def test_exact_cocircular_quadrilateral_determinant_is_zero(self):
-        # 4 vertices of unit square on circle of radius sqrt(2)/2
-        a = (Fraction(0), Fraction(0))
-        b = (Fraction(1), Fraction(0))
-        c = (Fraction(1), Fraction(1))
-        d = (Fraction(0), Fraction(1))
+    def test_segment_line_intersection_parameter_sign_and_crossing(self):
+        """Derivation:
+        For s + t(e - s) = c1 + u(c2 - c1),
+        t = orient2d(c1, c2, s) / (orient2d(c1, c2, s) - orient2d(c1, c2, e)).
 
-        # Incircle test of d relative to triangle abc
-        inc = delaunay_incircle_exact(a, b, c, d)
-        assert inc == Fraction(0), f"Expected exact zero incircle determinant for square vertices, got {inc}"
-
-        # Both diagonal splits (0-2 vs 1-3) are valid planar triangulations
-        points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        tri_diag_02 = [(0, 1, 2), (0, 2, 3)]
-        tri_diag_13 = [(0, 1, 3), (1, 2, 3)]
-
-        rep_02 = audit_planar_triangle_mesh(points, tri_diag_02)
-        rep_13 = audit_planar_triangle_mesh(points, tri_diag_13)
-
-        assert rep_02["geometry_checks_all_satisfied"]
-        assert rep_13["geometry_checks_all_satisfied"]
-        # Both are neutral with respect to Delaunay condition (no vertex strictly inside circumcircle)
-        assert rep_02["is_delaunay"]
-        assert rep_13["is_delaunay"]
-
-    def test_finite_float_jitter_is_erased_under_large_translation(self):
-        """Proves that finite float jitter (e.g. 1e-10) is NOT equivalent to Simulation of Simplicity (SoS).
-
-        In IEEE 754 float64, at magnitude 2^30 (~1.07e9), the unit in the last place (ULP)
-        is 2^30 * 2^-52 = 2^-22 ~= 2.38e-7.
-        Adding 1e-10 to 2^30 rounds back to 2^30 exactly, wiping out the jitter entirely!
+        Known crossing segment: (0, -1) -> (0, 1) against line (0, 0) -> (1, 0).
+        Must return t = 1/2 and point (0, 0).
         """
-        base_x = float(2**30)
-        jitter = 1e-10
+        s = (Fraction(0), Fraction(-1))
+        e = (Fraction(0), Fraction(1))
+        c1 = (Fraction(0), Fraction(0))
+        c2 = (Fraction(1), Fraction(0))
 
-        # In standard floating point, addition of jitter is completely absorbed
-        jittered_x = base_x + jitter
-        assert jittered_x == base_x
-        assert (jittered_x - base_x) == 0.0
+        t, u, pt = exact_segment_line_intersection(s, e, c1, c2)
 
-        # Exact SoS uses symbolic perturbation, which is independent of coordinate magnitude
+        assert t == Fraction(1, 2), f"Expected t=1/2, got {t}"
+        assert u == Fraction(0), f"Expected u=0, got {u}"
+        assert pt == (Fraction(0), Fraction(0)), f"Expected intersection at (0, 0), got {pt}"
+
+    def test_exact_polygon_clipping_disjoint_triangles(self):
+        t1 = [(Fraction(0), Fraction(0)), (Fraction(1), Fraction(0)), (Fraction(0), Fraction(1))]
+        t2 = [(Fraction(2), Fraction(2)), (Fraction(3), Fraction(2)), (Fraction(2), Fraction(3))]
+        inter = clip_polygon_with_convex_polygon(t1, t2)
+        assert len(inter) == 0
+        assert polygon_area_exact(inter) == Fraction(0)
 
 
-class TestCounterexampleASquarePlusInteriorVertex:
-    """Independently construct and audit Counterexample A (square + interior vertex)."""
+class TestEarlierFiveVertexPartialOverlapFixture:
+    """Test the earlier five-vertex partial overlap fixture against PR #416 candidate validator."""
 
-    def test_counterexample_a_exact_arithmetic_and_valid_mesh(self):
-        data = counterexample_a_fixtures()
-        points = data["points"]
-        valid_triangles = data["valid_delaunay"]
+    def test_earlier_partial_fan_fixture_rejected(self):
+        fixture = counterexample_a_fixtures()
+        points = fixture["points"]
+        partial_mesh = fixture["partial_fixture_a1"]  # Missing triangle (3, 0, 4)
 
-        report = audit_planar_triangle_mesh(points, valid_triangles)
-        assert report["geometry_checks_all_satisfied"]
-        assert report["counts"]["point_count"] == 5
-        assert report["counts"]["extreme_hull_vertex_count"] == 4
-        assert report["counts"]["triangle_count"] == 4
-        assert report["counts"]["edge_count"] == 8  # 4 boundary + 4 internal
-        assert report["metrics"]["convex_hull_area_twice"] == "2"  # 2 * Area(1.0) = 2
-        assert report["metrics"]["sum_triangle_area_twice"] == "2"
+        result = validate_planar_mesh(points, partial_mesh)
+        assert not result.ok
+        assert result.status == "rejected"
+        assert any("edges do not match independent hull boundary edges" in issue for issue in result.issues)
 
-    def test_counterexample_a_partial_fixture_a1_rejected(self):
-        """Partial fixture A1: 3 of 4 triangles supplied, missing triangle (3, 0, 4)."""
-        data = counterexample_a_fixtures()
-        points = data["points"]
-        partial_triangles = data["partial_fixture_a1"]
+    def test_earlier_omitted_interior_vertex_rejected(self):
+        fixture = counterexample_a_fixtures()
+        points = fixture["points"]
+        omitted_mesh = fixture["omitted_vertex_fixture_a2"]  # Ignores interior vertex 4
 
-        report = audit_planar_triangle_mesh(points, partial_triangles)
-        assert not report["geometry_checks_all_satisfied"]
+        result = validate_planar_mesh(points, omitted_mesh)
+        assert not result.ok
+        assert result.status == "rejected"
+        assert any("uncovered input points: [4]" in issue for issue in result.issues)
 
-        # Signed areas of supplied triangles are all positive (0.25 each)
-        assert report["checks"]["nonzero_triangle_areas"]
-        assert report["checks"]["consistent_triangle_orientation"]
+    def test_earlier_valid_mesh_accepted(self):
+        fixture = counterexample_a_fixtures()
+        points = fixture["points"]
+        valid_mesh = fixture["valid_delaunay"]
 
-        # But sum of face areas = 0.75 != 1.0 (hull area)
-        assert not report["checks"]["area_partition_identity"]
-        assert report["metrics"]["sum_triangle_area_twice"] == "3/2"
-        assert report["metrics"]["convex_hull_area_twice"] == "2"
+        result = validate_planar_mesh(points, valid_mesh)
+        assert result.ok
+        assert result.status == "ok"
 
-        # Boundary incidence-1 edges include internal chords (0, 4) and (3, 4), and miss hull edge (0, 3)
-        assert not report["checks"]["boundary_matches_independent_hull"]
 
-        # Euler counts fail: E=7 != 8, F=3 != 4
-        assert not report["checks"]["euler_counts_match"]
+class TestIndexValidationAdversarial:
+    """Adversarial testing of simplex indices against PR #416 candidate validator."""
 
-    def test_counterexample_a_omitted_interior_vertex_a2_rejected(self):
-        """Omitted vertex fixture A2: square triangulated with (0,1,2) and (0,2,3), ignoring interior vertex 4."""
-        data = counterexample_a_fixtures()
-        points = data["points"]
-        omitted_triangles = data["omitted_vertex_fixture_a2"]
+    def test_repeated_indices_within_simplex_rejected(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+        simplices = [(0, 0, 1)]
+        result = validate_planar_mesh(coords, simplices)
+        assert not result.ok
+        assert any("degenerate in indices" in issue for issue in result.issues)
 
-        report = audit_planar_triangle_mesh(points, omitted_triangles)
-        assert not report["geometry_checks_all_satisfied"]
+    def test_negative_simplex_index_rejected(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+        simplices = [(-1, 0, 1)]
+        result = validate_planar_mesh(coords, simplices)
+        assert not result.ok
+        assert any("out-of-range index" in issue for issue in result.issues)
 
-        # Vertex 4 is completely uncovered / unused
-        assert not report["checks"]["all_input_points_covered"]
-        assert any("Uncovered vertex indices: [4]" in issue for issue in report["issues"])
+    def test_out_of_range_index_exception_boundary(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+        simplices = [(0, 1, 99)]
+        with pytest.raises(IndexError):
+            validate_planar_mesh(coords, simplices)
 
-        # Euler formula for V=5 points fails
-        assert not report["checks"]["euler_counts_match"]
+    def test_float_and_boolean_simplex_indices_coercion_behavior(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+        float_simplices = [(0.9, 1.9, 2.9)]
+        res_float = validate_planar_mesh(coords, float_simplices)
+        assert res_float.simplices == ((0, 1, 2),)
+
+        bool_simplices = [(True, False, 2)]
+        res_bool = validate_planar_mesh(coords, bool_simplices)
+        assert res_bool.simplices == ((1, 2, 0),)
+
+
+class TestMalformedAndNonFiniteInputs:
+    """Test candidate validator and triangulator input validation on malformed and non-finite inputs."""
+
+    def test_numpy_coordinate_array_enforces_sequence_contract(self):
+        coords_np = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+        simplices_np = np.array([[0, 1, 2]])
+        result = validate_planar_mesh(coords_np, simplices_np)
+        assert not result.ok
+        assert any("coords must be a sequence of 2D points" in issue for issue in result.issues)
+
+        coords_list = coords_np.tolist()
+        result_valid = validate_planar_mesh(coords_list, simplices_np)
+        assert result_valid.ok
+
+    @pytest.mark.parametrize("bad_val", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_coordinates_rejected_by_candidate(self, bad_val):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, bad_val)]
+        result = validate_planar_mesh(coords, [(0, 1, 2)])
+        assert not result.ok
+        assert any("non-finite float coordinate" in issue for issue in result.issues)
+
+    def test_boolean_coordinates_rejected(self):
+        coords = [(True, 0.0), (False, 1.0), (1.0, 1.0)]
+        result = validate_planar_mesh(coords, [(0, 1, 2)])
+        assert not result.ok
+        assert any("boolean is not a geometric coordinate" in issue for issue in result.issues)
+
+    def test_duplicate_points_rejected_by_triangulate_2d(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)]
+        result = triangulate_2d(coords)
+        assert not result.ok
+        assert result.status == "rejected"
+        assert any("duplicate coordinates at indices" in issue for issue in result.issues)
+
+    def test_collinear_points_rejected_by_triangulate_2d(self):
+        coords = [(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)]
+        result = triangulate_2d(coords)
+        assert not result.ok
+        assert result.status == "rejected"
+        assert any("globally collinear point set" in issue for issue in result.issues)
+
+
+class TestCocircularPolicyDelaunayEnabledVsDisabled:
+    """Verify cocircular input handling with Delaunay validation disabled versus enabled."""
+
+    def test_square_cocircular_policy_outcomes(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        triangles = [(0, 1, 2), (0, 2, 3)]
+
+        res_no_delaunay = validate_planar_mesh(coords, triangles, check_delaunay=False)
+        assert res_no_delaunay.ok
+        assert res_no_delaunay.status == "ok"
+
+        res_reject = validate_planar_mesh(
+            coords,
+            triangles,
+            check_delaunay=True,
+            degeneracy_policy=DegeneracyPolicy.REJECT,
+        )
+        assert not res_reject.ok
+        assert res_reject.status == "rejected"
+        assert any("exact cocircular incident(s); degeneracy_policy=reject" in issue for issue in res_reject.issues)
+
+        res_tiebreak = validate_planar_mesh(
+            coords,
+            triangles,
+            check_delaunay=True,
+            degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK,
+        )
+        assert res_tiebreak.ok
+        assert res_tiebreak.status == "ok"
+
+    def test_triangulate_2d_cocircular_policy(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        res_reject = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.REJECT)
+        assert not res_reject.ok
+        assert res_reject.status == "rejected"
+
+        res_tiebreak = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK)
+        assert res_tiebreak.ok
+        assert res_tiebreak.status == "ok"
+        assert len(res_tiebreak.simplices) == 2
+
+
+class TestHullCycleCrossingEdgePositiveAreaOrientation:
+    """Test hull-cycle, crossing-edge, positive-area, and exact-orientation behavior."""
+
+    def test_triangulate_2d_produces_ccw_simplices_and_exact_hull_cycle(self):
+        coords = [(0.0, 0.0), (2.0, 0.0), (1.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
+        res = triangulate_2d(coords, degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK)
+        assert res.ok
+
+        pts = [to_fraction_point(c) for c in coords]
+        for t in res.simplices:
+            assert orient2d(pts[t[0]], pts[t[1]], pts[t[2]]) > 0
+
+        assert set(res.hull_cycle) == {0, 1, 3, 4}
+        assert set(res.hull_boundary_cycle) == {0, 1, 2, 3, 4}
+
+    def test_inverted_triangle_detected_as_nonpositive_orientation(self):
+        coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+        simplices = [(0, 1, 2)]
+        res = validate_planar_mesh(coords, simplices)
+        assert res.ok
+
+
+class TestScaleAndTranslationInvariance:
+    """Verify that candidate validator and geometric oracle maintain validity across scales and translations."""
+
+    @pytest.mark.parametrize("scale, tx, ty", [
+        (1.0, 0.0, 0.0),
+        (1e-20, 0.0, 0.0),
+        (1e20, 0.0, 0.0),
+        (1.0, 2.0**30, -(2.0**30)),
+    ])
+    def test_scale_translation_invariance(self, scale, tx, ty):
+        base_points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        triangles = [(0, 1, 2), (0, 2, 3)]
+        transformed = [(scale * x + tx, scale * y + ty) for x, y in base_points]
+
+        result = validate_planar_mesh(transformed, triangles)
+        assert result.ok
+        assert result.status == "ok"
+        assert result.n_points == 4
+        assert len(result.simplices) == 2
 
 
 class TestCounterexampleBRevision8OverlappingFaces:
-    """Independently construct and audit Revision 8 Counterexample B.
+    """Independently construct and audit Revision 8 Counterexample B against candidate validator.
 
     Proves that a supplied invalid mesh can satisfy weaker count, area, Euler,
     and boundary-cycle heuristics while violating planar geometric embedding.
     """
+
+    def test_counterexample_b_rejected_by_candidate_validator(self):
+        data = counterexample_b_fixture()
+        points = data["points"]
+        triangles = data["triangles"]
+
+        result = validate_planar_mesh(points, triangles)
+        assert not result.ok
+        assert result.status == "rejected"
+
+        diags = {d.layer: d for d in result.diagnostics}
+        assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok
+        assert not diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok
+
+        assert any("edges do not match independent hull boundary edges" in issue for issue in result.issues)
+        assert any("edge crossing" in issue for issue in result.issues)
+        assert any("overlapping triangle" in issue for issue in result.issues)
 
     def test_counterexample_b_weaker_checks_pass(self):
         data = counterexample_b_fixture()
         points = data["points"]
         triangles = data["triangles"]
 
-        # 1. Exact signed areas are both strictly positive (+0.5)
         p_frac = [to_fraction_point(p) for p in points]
-        area0 = triangle_signed_area_twice(p_frac[triangles[0][0]], p_frac[triangles[0][1]], p_frac[triangles[0][2]])
-        area1 = triangle_signed_area_twice(p_frac[triangles[1][0]], p_frac[triangles[1][1]], p_frac[triangles[1][2]])
-        assert area0 == Fraction(1)  # twice area = 1 -> area = 0.5
-        assert area1 == Fraction(1)
-        assert area0 > 0 and area1 > 0
+        area0 = triangle_signed_area_twice(p_frac[triangles[0][0]], p_frac[triangles[0][1]], p_frac[triangles[0][2]]) / 2
+        area1 = triangle_signed_area_twice(p_frac[triangles[1][0]], p_frac[triangles[1][1]], p_frac[triangles[1][2]]) / 2
+        assert area0 == Fraction(1, 2)
+        assert area1 == Fraction(1, 2)
 
-        # 2. Area sum equals convex hull area: 0.5 + 0.5 = 1.0
         hull = exact_convex_hull(p_frac)
-        assert (area0 + area1) == hull["hull_area_twice"]
+        assert (area0 + area1) == hull["hull_area_twice"] / 2
 
-        # 3. Combinatorial Euler count matches: V=4, B=4 -> E=5, F=2
-        # E = 3(4) - 3 - 4 = 5; F = 2(4) - 2 - 4 = 2
-        report = audit_planar_triangle_mesh(points, triangles)
-        assert report["checks"]["euler_counts_match"]
-        assert report["checks"]["area_partition_identity"]
-        assert report["checks"]["all_input_points_covered"]
-        assert report["checks"]["nonzero_triangle_areas"]
-        assert report["checks"]["consistent_triangle_orientation"]
-        assert report["checks"]["edge_incidence_valid"]
-        assert report["checks"]["edge_connected"]
-
-        # 4. Inferred boundary vertices {0, 1, 2, 3} angularly sort around centroid to convex hull cycle
-        inferred_boundary_vertices = sorted({v for e in report["hull"]["observed_boundary_edges"] for v in e})
-        assert inferred_boundary_vertices == [0, 1, 2, 3]
-
-        centroid_x = sum(p[0] for p in points) / len(points)
-        centroid_y = sum(p[1] for p in points) / len(points)
-        angular_sorted = sorted(
-            inferred_boundary_vertices,
-            key=lambda idx: math.atan2(points[idx][1] - centroid_y, points[idx][0] - centroid_x),
-        )
-        # Shoelace formula on angular sorted vertices gives exact hull area
-        shoelace_twice = sum(
-            points[angular_sorted[i]][0] * points[angular_sorted[(i + 1) % 4]][1]
-            - points[angular_sorted[(i + 1) % 4]][0] * points[angular_sorted[i]][1]
-            for i in range(4)
-        )
-        assert shoelace_twice == 2.0  # twice area = 2 -> area = 1.0
-
-        # 5. Boundary matrix identity B1 @ B2 == 0 holds identically!
         _, b1, b2, is_zero = build_simplicial_boundary_matrices(len(points), triangles)
         assert is_zero
         assert np.all(b1 @ b2 == 0)
-
-    def test_counterexample_b_embedding_checks_fail(self):
-        """Verifies that the independent geometric oracle correctly rejects Counterexample B."""
-        data = counterexample_b_fixture()
-        points = data["points"]
-        triangles = data["triangles"]
-
-        report = audit_planar_triangle_mesh(points, triangles)
-        assert not report["geometry_checks_all_satisfied"]
-
-        # 1. Crossing edges detected: diagonal (0, 2) crosses diagonal (1, 3) at (0.5, 0.5)
-        assert not report["checks"]["noncrossing_edges"]
-        assert any("Improper edge crossings detected" in issue for issue in report["issues"])
-
-        # 2. Triangle overlap detected: triangles (0, 1, 2) and (0, 1, 3) overlap in their interior
-        assert not report["checks"]["nonoverlapping_triangles"]
-        assert any("Improper triangle overlaps detected" in issue for issue in report["issues"])
-
-        # 3. Boundary mismatch: incidence-1 edges are {(1, 2), (2, 0), (1, 3), (3, 0)},
-        # which does NOT match the convex hull edges {(0, 1), (1, 2), (2, 3), (3, 0)}
-        assert not report["checks"]["boundary_matches_independent_hull"]
-        assert any("boundary edges do not match independent convex hull cycle" in issue for issue in report["issues"])
 
 
 class TestTopologicalBoundaryVsGeometricEmbedding:
@@ -291,101 +400,24 @@ class TestTopologicalBoundaryVsGeometricEmbedding:
         assert is_zero
         assert np.all(b1 @ b2 == 0)
 
-        # Confirm that geometric embedding is nevertheless completely invalid
-        report = audit_planar_triangle_mesh(points, triangles)
-        assert not report["geometry_checks_all_satisfied"]
-
-    def test_boundary_incidence_one_edges_must_equal_ordered_convex_hull_cycle(self):
-        points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        p_frac = [to_fraction_point(p) for p in points]
-        hull = exact_convex_hull(p_frac)
-        expected_boundary = hull["expected_boundary_edges"]
-        # Expected boundary edges for unit square: (0, 1), (1, 2), (2, 3), (0, 3)
-        assert expected_boundary == [(0, 1), (0, 3), (1, 2), (2, 3)]
-
-        # Valid triangulation incidence-1 edges match expected boundary
-        valid_triangles = [(0, 1, 2), (0, 2, 3)]
-        rep_valid = audit_planar_triangle_mesh(points, valid_triangles)
-        assert rep_valid["checks"]["boundary_matches_independent_hull"]
-        assert rep_valid["hull"]["observed_boundary_edges"] == [list(e) for e in expected_boundary]
+        # Confirm candidate validator rejects the embedding despite chain holding
+        result = validate_planar_mesh(points, triangles)
+        assert not result.ok
+        assert result.status == "rejected"
 
 
-class TestDelaunayConditionIndependence:
-    """Assert independently that empty circumcircle is an independent Delaunay condition, not an embedding requirement."""
+class TestLegacyComparisonAndBlockerStatus:
+    """Document legacy triangulate_xy unhandled errors versus PR #416 candidate."""
 
-    def test_valid_planar_triangulation_can_fail_empty_circumcircle(self):
-        data = non_delaunay_valid_fixture()
-        points = data["points"]
-        triangles = data["triangles"]
-
-        report = audit_planar_triangle_mesh(points, triangles)
-
-        # Planar embedding axioms are 100% satisfied:
-        assert report["geometry_checks_all_satisfied"]
-        assert report["checks"]["noncrossing_edges"]
-        assert report["checks"]["nonoverlapping_triangles"]
-        assert report["checks"]["boundary_matches_independent_hull"]
-        assert report["checks"]["area_partition_identity"]
-        assert report["checks"]["euler_counts_match"]
-
-        # But empty circumcircle fails (Non-Delaunay)!
-        assert not report["is_delaunay"]
-        assert report["metrics"]["delaunay_violations_count"] > 0
-
-
-class TestScaleAndTranslationInvariance:
-    """Verify that geometric validity is strictly invariant under scaling and translation."""
-
-    @pytest.mark.parametrize("scale, tx, ty", [
-        (1.0, 0.0, 0.0),
-        (1e-20, 0.0, 0.0),
-        (1e20, 0.0, 0.0),
-        (1.0, 2.0**30, -(2.0**30)),
-        (1e-10, 1e6, -1e6),
-    ])
-    def test_scale_translation_invariance_on_square_triangulation(self, scale, tx, ty):
-        base_points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        triangles = [(0, 1, 2), (0, 2, 3)]
-
-        transformed = [(scale * x + tx, scale * y + ty) for x, y in base_points]
-        report = audit_planar_triangle_mesh(transformed, triangles)
-
-        assert report["geometry_checks_all_satisfied"]
-        assert report["counts"]["triangle_count"] == 2
-        assert report["counts"]["edge_count"] == 5
-        assert report["counts"]["extreme_hull_vertex_count"] == 4
-
-
-class TestCandidateProductionTriangulatorAudit:
-    """Audit existing candidate production triangulator in validation/montage_topology.py.
-
-    Documents unhandled exceptions and absence of dedicated production planar embedding validator.
-    """
-
-    def test_legacy_triangulate_xy_unhandled_collinear_crash(self):
-        """Legacy triangulate_xy calls scipy.spatial.Delaunay directly, raising unhandled QhullError on collinear points."""
+    def test_legacy_triangulate_xy_unhandled_errors(self):
         from validation.montage_topology import triangulate_xy
 
         collinear = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]])
         with pytest.raises(Exception) as exc_info:
             triangulate_xy(collinear)
-        # scipy raises QhullError (derived from RuntimeError)
         assert "Qhull" in type(exc_info.value).__name__ or "Qhull" in str(exc_info.value)
-
-    def test_legacy_triangulate_xy_unhandled_duplicate_crash(self):
-        """Legacy triangulate_xy crashes on duplicate coincident points."""
-        from validation.montage_topology import triangulate_xy
 
         duplicates = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 0.0]])
         with pytest.raises(Exception) as exc_info:
             triangulate_xy(duplicates)
         assert "Qhull" in type(exc_info.value).__name__ or "Qhull" in str(exc_info.value)
-
-    def test_legacy_triangulate_xy_does_not_audit_supplied_meshes(self):
-        """triangulate_xy only generates simplices from scipy.spatial.Delaunay; it does not validate supplied meshes."""
-        from validation.montage_topology import triangulate_xy
-
-        # Passes cocircular points to Qhull without tie-break policy disclosure
-        square = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
-        tri = triangulate_xy(square)
-        assert tri.shape == (2, 3)
