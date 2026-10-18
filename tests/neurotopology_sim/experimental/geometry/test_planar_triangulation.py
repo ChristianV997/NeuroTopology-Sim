@@ -13,7 +13,9 @@ import pytest
 
 from neurotopology_sim.experimental.geometry.planar_triangulation import (
     SCHEMA_VERSION,
+    ClaimLayer,
     DegeneracyPolicy,
+    FailureKind,
     incircle,
     orient2d,
     triangulate_2d,
@@ -174,7 +176,11 @@ def test_malformed_simplex_indices_fail_closed(bad_faces):
     report = validate_planar_mesh(pts, bad_faces, check_delaunay=False)
     assert report.ok is False
     assert report.status == "rejected"
+    assert report.failure_kind == FailureKind.MALFORMED_INPUT.value
     assert any(report.diagnostics) and report.diagnostics[0].layer == "input_validation"
+    # Never IndexError / negative wrap; structured issues only.
+    blob = " ".join(report.issues)
+    assert "IndexError" not in blob
 
 
 def test_counterexample_a_valid_mesh_and_omitted_crossing_leads():
@@ -192,13 +198,90 @@ def test_counterexample_a_valid_mesh_and_omitted_crossing_leads():
     )
 
 
+def test_user_counterexample_a_overlap_despite_positive_areas():
+    """Square + interior (2,1): positive areas can coexist with overlap — must reject.
+
+    Vertices: (0,0),(4,0),(4,4),(0,4),(2,1)
+    Triangles: (0,1,2),(0,1,4),(1,2,4),(0,4,3)
+    """
+    points = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (2.0, 1.0)]
+    faces = [(0, 1, 2), (0, 1, 4), (1, 2, 4), (0, 4, 3)]
+    report = validate_planar_mesh(points, faces, check_delaunay=False)
+    assert report.ok is False
+    assert report.status == "rejected"
+    assert report.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
+    diags = {d.layer: d for d in report.diagnostics}
+    assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok is True
+    assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok is False
+    assert any("edge crossing" in i or "overlapping triangle" in i for i in report.issues)
+
+
+def test_user_counterexample_b_full_validator_bypass():
+    """Interior (3,1): area-sum==16 and D1@D0==0, yet crossings / non-hull boundary.
+
+    Vertices: (0,0),(4,0),(4,4),(0,4),(3,1)
+    Triangles: (0,1,3),(0,1,4),(1,2,4),(2,0,4)
+    """
+    points = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (3.0, 1.0)]
+    faces = [(0, 1, 3), (0, 1, 4), (1, 2, 4), (2, 0, 4)]
+    report = validate_planar_mesh(points, faces, check_delaunay=False)
+    assert report.ok is False
+    assert report.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
+    diags = {d.layer: d for d in report.diagnostics}
+    assert diags[ClaimLayer.ABSTRACT_CHAIN.value].ok is True
+    assert diags[ClaimLayer.ABSTRACT_CHAIN.value].detail == "D1 @ D0 == 0"
+    assert diags[ClaimLayer.PLANAR_HULL_TRIANGULATION.value].ok is False
+    assert any("boundary edges" in i for i in report.issues)
+    assert any("edge crossing" in i for i in report.issues)
+    assert any("overlapping triangle" in i for i in report.issues)
+
+
 def test_counterexample_b_rejected_as_supplied_mesh():
     points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     faces = [(0, 1, 2), (0, 1, 3)]
     report = validate_planar_mesh(points, faces, check_delaunay=False)
     assert report.ok is False
+    assert report.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
     planar = next(d for d in report.diagnostics if d.layer == "planar_hull_triangulation")
     assert planar.ok is False
+
+
+def test_failure_kind_malformed_vs_delaunay():
+    pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    bad_idx = validate_planar_mesh(pts, [(0, 1, 99)], check_delaunay=False)
+    assert bad_idx.failure_kind == FailureKind.MALFORMED_INPUT.value
+    assert any("out-of-range index" in i for i in bad_idx.issues)
+
+    square = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    faces = [(0, 1, 2), (0, 2, 3)]
+    delaunay_fail = validate_planar_mesh(
+        square, faces, check_delaunay=True, degeneracy_policy="reject"
+    )
+    assert delaunay_fail.ok is False
+    assert delaunay_fail.failure_kind == FailureKind.DELAUNAY_POLICY_FAILURE.value
+    planar_ok = validate_planar_mesh(square, faces, check_delaunay=False)
+    assert planar_ok.ok is True
+    assert planar_ok.failure_kind == FailureKind.NONE.value
+
+
+def test_near_collinear_and_edge_touch_degeneracy():
+    # Near-collinear but exact-rational nonzero area: accepted as planar when valid.
+    tri_ok = validate_planar_mesh(
+        [(0.0, 0.0), (2.0, 0.0), (1.0, 1e-9)],
+        [(0, 1, 2)],
+        check_delaunay=False,
+    )
+    assert tri_ok.ok is True
+
+    # Vertex 1 lies on open edge (0,2) of a coarse triangle — reject.
+    touch = validate_planar_mesh(
+        [(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (1.0, 1.0)],
+        [(0, 2, 3)],
+        check_delaunay=False,
+    )
+    assert touch.ok is False
+    assert touch.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
+    assert any("vertex-on-edge" in i or "uncovered" in i for i in touch.issues)
 
 
 def test_non_delaunay_valid_planar_accepted_when_delaunay_disabled():
@@ -219,3 +302,4 @@ def test_non_delaunay_valid_planar_accepted_when_delaunay_disabled():
     assert planar_layer.ok is True
     assert delaunay_layer.ok is False
     assert with_delaunay.ok is False
+    assert with_delaunay.failure_kind == FailureKind.DELAUNAY_POLICY_FAILURE.value

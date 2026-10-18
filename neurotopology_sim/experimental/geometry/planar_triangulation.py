@@ -82,6 +82,20 @@ class ClaimLayer(str, Enum):
     INPUT_VALIDATION = "input_validation"
 
 
+class FailureKind(str, Enum):
+    """Structured failure class (orthogonal to claim-layer diagnostics).
+
+    Distinguishes malformed input from invalid planar embeddings from
+    Delaunay/degeneracy-policy failures. ``D1 @ D0 == 0`` never certifies
+    geometric validity and is never mapped to a success failure_kind.
+    """
+
+    NONE = "none"
+    MALFORMED_INPUT = "malformed_input"
+    INVALID_PLANAR_EMBEDDING = "invalid_planar_embedding"
+    DELAUNAY_POLICY_FAILURE = "delaunay_policy_failure"
+
+
 @dataclass(frozen=True)
 class LayerDiagnostic:
     """Result of one claim layer (engineering only)."""
@@ -127,6 +141,7 @@ class PlanarTriangulationResult:
     data_policy: str
     scientific_pass: bool
     degeneracy_policy: str
+    failure_kind: str
     n_points: int
     simplices: tuple[Triangle, ...]
     hull_cycle: tuple[int, ...]
@@ -145,6 +160,7 @@ class PlanarTriangulationResult:
             "data_policy": self.data_policy,
             "scientific_pass": False,
             "degeneracy_policy": self.degeneracy_policy,
+            "failure_kind": self.failure_kind,
             "n_points": self.n_points,
             "simplices": [list(t) for t in self.simplices],
             "hull_cycle": list(self.hull_cycle),
@@ -217,36 +233,67 @@ def _parse_coords(coords: Any) -> list[Point]:
 def _parse_simplex_index(value: Any, *, n_points: int, context: str) -> int:
     """Validate a simplex vertex index before any array dereference.
 
-    Rejects booleans (``bool`` is a subclass of ``int``), non-integers,
-    negatives (no Python wraparound), and out-of-range indices.
+    Rejects booleans (``bool`` is a subclass of ``int``), non-integers including
+    floats such as ``0.9``, negatives (no Python wraparound), and out-of-range
+    indices. Never raises ``IndexError``.
     """
     if isinstance(value, bool):
         raise ValueError(f"{context}: boolean is not a valid simplex index")
     if isinstance(value, float):
-        raise ValueError(f"{context}: floating-point simplex index is not allowed")
+        raise ValueError(
+            f"{context}: floating-point simplex index is not allowed "
+            f"(got {value!r}; reject before conversion/indexing)"
+        )
     if not isinstance(value, int):
-        # NumPy integer scalars expose .item()
-        if hasattr(value, "item") and not hasattr(value, "shape"):
+        # NumPy integer scalars expose .item(); reject float dtypes.
+        if hasattr(value, "dtype") and hasattr(value, "item"):
+            dtype = getattr(value, "dtype", None)
+            kind = getattr(dtype, "kind", None)
+            if kind == "b":
+                raise ValueError(f"{context}: boolean is not a valid simplex index")
+            if kind == "f":
+                raise ValueError(
+                    f"{context}: floating-point simplex index is not allowed "
+                    f"(got {value!r}; reject before conversion/indexing)"
+                )
+            if kind in ("i", "u"):
+                try:
+                    value = int(value.item())
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(f"{context}: simplex index must be an integer") from exc
+            else:
+                raise ValueError(f"{context}: simplex index must be an integer")
+        elif hasattr(value, "item") and not hasattr(value, "shape"):
             try:
                 value = value.item()
             except Exception as exc:  # noqa: BLE001
                 raise ValueError(f"{context}: simplex index must be an integer") from exc
         elif hasattr(value, "shape") and tuple(getattr(value, "shape", (None,))) == ():
             try:
-                value = int(value)  # type: ignore[arg-type]
+                value = value.item() if hasattr(value, "item") else int(value)  # type: ignore[arg-type]
             except Exception as exc:  # noqa: BLE001
                 raise ValueError(f"{context}: simplex index must be an integer") from exc
             if isinstance(value, bool):
                 raise ValueError(f"{context}: boolean is not a valid simplex index")
+            if isinstance(value, float):
+                raise ValueError(
+                    f"{context}: floating-point simplex index is not allowed "
+                    f"(got {value!r}; reject before conversion/indexing)"
+                )
         else:
             raise ValueError(f"{context}: simplex index must be an integer")
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{context}: simplex index must be an integer")
     if value < 0:
-        raise ValueError(f"{context}: negative simplex index {value} is not allowed")
+        # Phrase keeps Antigravity substring match without raising IndexError /
+        # allowing negative-index wraparound.
+        raise ValueError(
+            f"{context}: out-of-range index {value} "
+            f"(negative simplex index is not allowed; n_points={n_points})"
+        )
     if value >= n_points:
         raise ValueError(
-            f"{context}: simplex index {value} out of range for n_points={n_points}"
+            f"{context}: out-of-range index {value} for n_points={n_points}"
         )
     return value
 
@@ -277,7 +324,10 @@ def _parse_simplices(
         j = _parse_simplex_index(vals[1], n_points=n_points, context=f"{context}[1]")
         k = _parse_simplex_index(vals[2], n_points=n_points, context=f"{context}[2]")
         if len({i, j, k}) != 3:
-            raise ValueError(f"{context}: repeated vertices are not allowed")
+            raise ValueError(
+                f"triangle {ti} is degenerate in indices: repeated vertices "
+                f"are not allowed ({context}={i},{j},{k})"
+            )
         out.append((i, j, k))
     return out
 
@@ -686,7 +736,9 @@ def validate_layers(
         issues.append(f"nonmanifold edge incidences: {bad_inc}")
     if observed_boundary != expected_boundary_set:
         planar_ok = False
-        issues.append("incidence-one edges do not match independent hull boundary edges")
+        issues.append(
+            "incidence-one boundary edges do not match independent hull boundary edges"
+        )
         planar_notes.append("boundary_mismatch")
 
     # Coverage: every input point appears in some triangle (for n>=3 triangulation)
@@ -698,7 +750,25 @@ def validate_layers(
         missing = sorted(set(range(n)) - covered)
         issues.append(f"uncovered input points: {missing}")
 
-    # Noncrossing non-shared edges
+    # Vertex-on-open-edge degeneracy (T-junction / edge-touch without shared index).
+    edge_touch = 0
+    for e in incidences:
+        a, b = points[e[0]], points[e[1]]
+        for v in range(n):
+            if v == e[0] or v == e[1]:
+                continue
+            p = points[v]
+            if orient2d(a, b, p) != 0:
+                continue
+            on_x = min(a[0], b[0]) <= p[0] <= max(a[0], b[0])
+            on_y = min(a[1], b[1]) <= p[1] <= max(a[1], b[1])
+            if on_x and on_y and p != a and p != b:
+                edge_touch += 1
+    if edge_touch:
+        planar_ok = False
+        issues.append(f"{edge_touch} vertex-on-edge degeneracy(ies)")
+
+    # Noncrossing non-shared edges (proper crossings and collinear overlaps).
     boundary_or_all = list(incidences.keys())
     crossings = 0
     for i in range(len(boundary_or_all)):
@@ -706,7 +776,6 @@ def validate_layers(
             e1, e2 = boundary_or_all[i], boundary_or_all[j]
             if set(e1) & set(e2):
                 continue
-            # Only need to check pairs that are not both interior? Check all nonincident.
             if _segments_properly_intersect(
                 points[e1[0]], points[e1[1]], points[e2[0]], points[e2[1]]
             ):
@@ -758,9 +827,14 @@ def validate_layers(
                 "n_interior_edges": len(interior),
                 "crossings": crossings,
                 "overlaps": overlaps,
+                "vertex_on_edge": edge_touch,
                 "hull_area_twice": str(hull_area2),
                 "face_area_sum_twice": str(face_area2),
                 "notes": planar_notes,
+                "note": (
+                    "Positive areas, Euler counts, D1@D0==0, and area-sum equality "
+                    "are not sufficient proofs of a valid planar embedding."
+                ),
             },
         )
     )
@@ -838,6 +912,58 @@ def validate_layers(
 # ---------------------------------------------------------------------------
 
 
+def _classify_failure_kind(
+    *,
+    ok: bool,
+    diagnostics: Sequence[LayerDiagnostic],
+    issues: Sequence[str],
+) -> str:
+    """Map layer outcomes to a single structured failure_kind.
+
+    Priority: malformed_input > invalid_planar_embedding > delaunay_policy_failure.
+    Abstract-chain success alone never yields ``none`` when planar embedding fails.
+    """
+    if ok:
+        return FailureKind.NONE.value
+    by_layer = {d.layer: d for d in diagnostics}
+    input_diag = by_layer.get(ClaimLayer.INPUT_VALIDATION.value)
+    planar_diag = by_layer.get(ClaimLayer.PLANAR_HULL_TRIANGULATION.value)
+    delaunay_diag = by_layer.get(ClaimLayer.DELAUNAY_EMPTY_CIRCLE.value)
+
+    malformed_markers = (
+        "out-of-range index",
+        "degenerate in indices",
+        "floating-point simplex index",
+        "boolean is not a valid simplex index",
+        "boolean is not a geometric coordinate",
+        "non-finite",
+        "duplicate coordinates",
+        "globally collinear",
+        "rank-deficient",
+        "need at least 3",
+        "must have shape",
+        "must be a sequence",
+        "zero/degenerate area",
+        "could not be parsed",
+        "unsupported coordinate",
+        "repeated vertices",
+        "simplex index must be an integer",
+        "must contain exactly three",
+    )
+    if input_diag is not None and not input_diag.ok:
+        return FailureKind.MALFORMED_INPUT.value
+    if any(any(m in issue for m in malformed_markers) for issue in issues):
+        return FailureKind.MALFORMED_INPUT.value
+    if planar_diag is not None and not planar_diag.ok:
+        return FailureKind.INVALID_PLANAR_EMBEDDING.value
+    if delaunay_diag is not None and delaunay_diag.status == "fails":
+        return FailureKind.DELAUNAY_POLICY_FAILURE.value
+    # Build-time cocircular / cavity failures with only input_validation present.
+    if any("cocircular" in issue or "empty-circle" in issue for issue in issues):
+        return FailureKind.DELAUNAY_POLICY_FAILURE.value
+    return FailureKind.MALFORMED_INPUT.value
+
+
 def _empty_result(
     *,
     status: str,
@@ -846,7 +972,11 @@ def _empty_result(
     diagnostics: Sequence[LayerDiagnostic],
     issues: Sequence[str],
     notes: Sequence[str] = (),
+    failure_kind: str | None = None,
 ) -> PlanarTriangulationResult:
+    kind = failure_kind or _classify_failure_kind(
+        ok=False, diagnostics=diagnostics, issues=issues
+    )
     return PlanarTriangulationResult(
         schema_version=SCHEMA_VERSION,
         ok=False,
@@ -855,6 +985,7 @@ def _empty_result(
         data_policy=DATA_POLICY,
         scientific_pass=False,
         degeneracy_policy=policy.value,
+        failure_kind=kind,
         n_points=n_points,
         simplices=(),
         hull_cycle=(),
@@ -987,6 +1118,7 @@ def triangulate_2d(
         degeneracy_policy=policy,
     )
     all_diags = (input_diag, *layer_diags)
+    all_issues = tuple(issues + build_issues)
     status = "ok" if ok else "rejected"
     return PlanarTriangulationResult(
         schema_version=SCHEMA_VERSION,
@@ -996,13 +1128,16 @@ def triangulate_2d(
         data_policy=DATA_POLICY,
         scientific_pass=False,
         degeneracy_policy=policy.value,
+        failure_kind=_classify_failure_kind(
+            ok=ok, diagnostics=all_diags, issues=all_issues
+        ),
         n_points=n,
         simplices=tuple(simplices),
         hull_cycle=tuple(hull_ext),
         hull_boundary_cycle=tuple(hull_bound),
         edge_incidences=dict(sorted(incidences.items())),
         diagnostics=all_diags,
-        issues=tuple(issues + build_issues),
+        issues=all_issues,
         notes=notes,
     )
 
@@ -1084,6 +1219,7 @@ def validate_planar_mesh(
         check_delaunay=check_delaunay,
         degeneracy_policy=policy,
     )
+    all_diags = (input_diag, *layer_diags)
     return PlanarTriangulationResult(
         schema_version=SCHEMA_VERSION,
         ok=ok,
@@ -1092,12 +1228,15 @@ def validate_planar_mesh(
         data_policy=DATA_POLICY,
         scientific_pass=False,
         degeneracy_policy=policy.value,
+        failure_kind=_classify_failure_kind(
+            ok=ok, diagnostics=all_diags, issues=issues
+        ),
         n_points=len(points),
         simplices=tuple(oriented),
         hull_cycle=tuple(hull_ext),
         hull_boundary_cycle=tuple(hull_bound),
         edge_incidences=dict(sorted(incidences.items())),
-        diagnostics=(input_diag, *layer_diags),
+        diagnostics=all_diags,
         issues=tuple(issues),
         notes=notes,
     )

@@ -14,11 +14,13 @@ report = validate_planar_mesh(coords, simplices, check_delaunay=False)
 ```
 
 `PlanarTriangulationResult` includes `simplices`, ordered `hull_cycle` / `hull_boundary_cycle`,
-`edge_incidences`, and **separate** diagnostics for:
+`edge_incidences`, structured `failure_kind`, and **separate** diagnostics for:
 
-1. `abstract_chain` — `D1 @ D0 == 0`
+1. `abstract_chain` — `D1 @ D0 == 0` (incidence only; never certifies geometric validity)
 2. `planar_hull_triangulation` — planar straight-line embedding of the convex hull
 3. `delaunay_empty_circle` — empty-circumcircle property (optional)
+
+`failure_kind` values: `none` | `malformed_input` | `invalid_planar_embedding` | `delaunay_policy_failure`.
 
 ## Degeneracy policy and claim separation
 
