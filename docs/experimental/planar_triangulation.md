@@ -20,21 +20,23 @@ report = validate_planar_mesh(coords, simplices, check_delaunay=False)
 2. `planar_hull_triangulation` — planar straight-line embedding of the convex hull
 3. `delaunay_empty_circle` — empty-circumcircle property (optional)
 
-## Degeneracy policy
+## Degeneracy policy and claim separation
 
 | Policy | Behavior |
 |---|---|
-| `reject` | Reject duplicates, global collinearity, and exact cocircularity when Delaunay is required |
-| `lexicographic_tiebreak` | Allow weak Delaunay (points may lie on circumcircles); no coordinate perturbation |
+| `reject` | Always reject duplicates / global collinearity; reject represented cocircularity **only when Delaunay is required** |
+| `lexicographic_tiebreak` | With Delaunay required, allow weak Delaunay (points may lie on circumcircles); no coordinate perturbation |
 
-Finite jitter is **not** Simulation of Simplicity. Floats are interpreted as exact IEEE binary values via `Fraction.from_float`.
+`require_delaunay=False` / `check_delaunay=False` must accept a valid planar triangulation of a cocircular set. `D1 @ D0 == 0` is an incidence identity only and does **not** rule out crossings or overlaps — planar embedding is a separate diagnostic.
+
+Finite jitter is **not** Simulation of Simplicity. Floats use a **represented-input exact-sign** policy (`Fraction.from_float`); this is not Shewchuk adaptive expansions and not a fixed epsilon predicate.
 
 ## Sources
 
 - Shewchuk, J. R. Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates. https://people.eecs.berkeley.edu/~jrs/papers/robustr.pdf
 - CGAL `Triangulation_2` / `Delaunay_triangulation_2` manuals (hull subdivision vs empty-circle)
 
-Shewchuk’s adaptive C kernel is **not** copied; this module uses exact rational signs on represented inputs.
+Shewchuk’s adaptive C kernel is **not** copied.
 
 ## Ownership
 
