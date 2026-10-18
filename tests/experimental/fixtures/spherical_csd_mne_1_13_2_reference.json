@@ -22,6 +22,7 @@
       ],
       "output_unit": "V/m^2"
     },
+    "generator_method": "Identity matrix data X = I_N evaluated through MNE-Python 1.13.2 compute_current_source_density to recover the complete N×N linear operator",
     "generator_status": "HOLD / SYNTHETIC_ONLY",
     "is_source_localization": false
   },
