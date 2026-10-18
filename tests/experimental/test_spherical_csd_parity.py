@@ -236,6 +236,8 @@ def test_legendre_series_scalar_constants() -> None:
         ("octahedron_6", 6),
         ("asymmetric_cap_8", 8),
         ("synthetic_cap_12", 12),
+        ("cap_20", 20),
+        ("cap_64", 64),
     ],
 )
 def test_full_matrix_parity_against_reference_fixtures(
