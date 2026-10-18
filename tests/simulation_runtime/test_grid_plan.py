@@ -66,6 +66,24 @@ def _git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def _local_main_sha(test: unittest.TestCase) -> str:
+    """Prefer origin/main, then main. Skip when neither ref resolves."""
+
+    for ref in ("origin/main", "main"):
+        completed = subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        sha = completed.stdout.strip()
+        if completed.returncode == 0 and len(sha) == 40:
+            return sha
+    test.skipTest("neither origin/main nor main resolves; ancestry fixtures skipped")
+    return ""
+
+
 def _spy_calls():
     calls = []
 
@@ -640,7 +658,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.wilson.status, "found")
 
     def test_fabricated_admissible_caller_record_blocks_every_cell(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         fabricated = []
         for gate_id in BLOCKING_GATE_IDS:
             fabricated.append(
@@ -704,7 +722,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("ci_discovery_blocked", {item["code"] for item in plan.gate_check["blockers"]})
 
     def test_stale_non_ancestor_report_blocks_every_cell(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         head_sha = _git("rev-parse", "HEAD")
         self.assertNotEqual(head_sha, main_sha)
         ancestor = subprocess.run(
@@ -744,7 +762,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertIsNone(plan.detector_roc)
 
     def test_forged_report_in_untracked_tmp_dir_opens_no_gate(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -778,7 +796,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(all(item["status"] == "missing" for item in plan.gate_resolution))
 
     def test_forged_report_in_tree_but_uncommitted_opens_no_gate(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         directory = _REPO_ROOT / "tools" / "simulation_runtime"
         names = [f"_forged_{gate_id}.json" for gate_id in BLOCKING_GATE_IDS]
         for name in names:
@@ -812,7 +830,7 @@ class GridPlanTests(unittest.TestCase):
         _assert_seven_non_admissible(self, labeled)
 
     def test_tip_commit_claim_on_a_file_not_on_main_opens_no_gate(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -840,14 +858,20 @@ class GridPlanTests(unittest.TestCase):
             raise FileNotFoundError("git")
 
         def shallow(args):
-            if list(args)[:2] == ["rev-parse", "--is-shallow-repository"]:
+            listed = list(args)
+            if listed[:2] == ["rev-parse", "--is-shallow-repository"]:
                 return _git_result("true\n")
+            if listed[:3] == ["rev-parse", "--verify", "HEAD"]:
+                return _git_result("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
             raise AssertionError(args)
 
         def unresolved(args):
-            if list(args)[:2] == ["rev-parse", "--is-shallow-repository"]:
+            listed = list(args)
+            if listed[:2] == ["rev-parse", "--is-shallow-repository"]:
                 return _git_result("false\n")
-            if list(args)[:2] == ["rev-parse", "--verify"]:
+            if listed[:3] == ["rev-parse", "--verify", "HEAD"]:
+                return _git_result("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n")
+            if listed[:2] == ["rev-parse", "--verify"]:
                 return _git_result("", returncode=1)
             raise AssertionError(args)
 
@@ -872,9 +896,12 @@ class GridPlanTests(unittest.TestCase):
             self.assertTrue(all(item["status"] == "missing" for item in plan.gate_resolution))
             self.assertTrue(all(item["code"] == code for item in plan.gate_check["blockers"]))
             self.assertEqual(plan.provenance["base_sha"], "unresolved")
+        self.assertEqual(missing_plan.code_version_id, "UNKNOWN")
+        self.assertEqual(shallow_plan.code_version_id, "a" * 40)
+        self.assertEqual(unresolved_plan.code_version_id, "b" * 40)
 
     def test_one_case_id_opens_one_gate_and_duplicates_block_that_gate(self):
-        main_sha = _git("rev-parse", "origin/main")
+        main_sha = _local_main_sha(self)
         admissible = {
             "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
             "scientific_pass": False,
@@ -991,6 +1018,146 @@ class GridPlanTests(unittest.TestCase):
                 )
             )
         self.assertEqual(caught.exception.code, "invalid_range")
+
+    def test_declarations_cost_and_smoke_do_not_compute_or_sweep(self):
+        import tools.simulation_runtime.grid_plan as grid_plan
+
+        source = Path(grid_plan.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("import neurotopology_sim", source)
+        self.assertNotIn("from neurotopology_sim", source)
+        self.assertNotIn("synthetic_forward_roc", source)
+        self.assertNotIn("wilson_score_interval", source)
+        self.assertNotIn("simulation(", source)
+        self.assertNotIn("def sweep", source)
+        self.assertNotIn("def run_grid", source)
+        self.assertNotIn('"hash" in name', source)
+        self.assertFalse(hasattr(grid_plan, "compute_auc"))
+        self.assertFalse(hasattr(grid_plan, "compute_roc"))
+        self.assertFalse(hasattr(grid_plan, "run_sweep"))
+        calls, spy = _spy_calls()
+        plan = dry_run(_base_config(), simulation=spy, toy_scores=[0.1, 0.2, 0.3])
+        self.assertEqual(calls, [])
+        self.assertEqual(plan.toy_fixture["label"], TOY_FIXTURE_LABEL)
+        self.assertFalse(plan.execution["simulation_invoked"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertFalse(plan.limits["sweep_reachable"])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertEqual(plan.run_state, "planned")
+        _assert_all_cells_blocked(self, plan)
+        self.assertEqual(plan.sample_size_label, "UNDERPOWERED_DRY_RUN")
+        self.assertEqual(plan.code_version_id, _git("rev-parse", "HEAD"))
+        self.assertEqual(plan.to_dict()["config_digest"], plan.config_hash)
+        self.assertEqual(plan.provenance["config_digest"], plan.config_hash)
+        self.assertEqual(plan.to_dict()["audit"]["project_status"], "HOLD / SYNTHETIC_ONLY")
+        audit = plan.to_dict()["audit"]
+        self.assertEqual(audit["code_version_id"], plan.code_version_id)
+        self.assertEqual(audit["config_digest"], plan.config_hash)
+        self.assertEqual(
+            audit["seeds"],
+            {"master_seed": 100, "calibration_seed": 11, "evaluation_seed": 29},
+        )
+        self.assertEqual(audit["calibration_unit_ids"], plan.cells[0]["calibration_unit_ids"])
+        self.assertEqual(audit["power_claim"], "none")
+        self.assertFalse(audit["power_analysis_supplied"])
+        self.assertFalse(audit["engineering_threshold_is_power_guarantee"])
+        self.assertFalse(plan.cells[0]["roles_are_disjoint_is_statistical_independence"])
+        self.assertIn("per-seed RNG", plan.cells[0]["roles_are_disjoint_note"])
+        spec = plan.metric_spec
+        self.assertFalse(spec["computed"])
+        self.assertFalse(spec["imports_roc_api"])
+        self.assertEqual(spec["integration"], "NOT_INTEGRATED")
+        self.assertEqual(spec["source_pr"], 426)
+        self.assertEqual(spec["source_head"], "55115149c7443ca8b325dc4dbf65d6900c9fdd79")
+        self.assertEqual(plan.hash_payload["metric_spec"], spec)
+        by_id = {item["metric_id"]: item for item in spec["metrics"]}
+        self.assertEqual(
+            set(by_id),
+            {"tpr", "fpr", "precision", "accuracy", "auc", "average_precision"},
+        )
+        for metric_id in ("tpr", "fpr", "precision", "accuracy"):
+            metric = by_id[metric_id]
+            self.assertFalse(metric["computed"])
+            self.assertIsNone(metric["value"])
+            self.assertEqual(metric["interval_method"], "wilson_on_independent_unit")
+            self.assertEqual(metric["count_unit"], "independent_unit")
+            self.assertFalse(metric["windows_counted"])
+            self.assertEqual(metric["undefined_value"], "UNDEFINED")
+            self.assertFalse(metric["silent_zero"])
+            self.assertFalse(metric["silent_nan"])
+        self.assertEqual(by_id["auc"]["tie_rule"], "ties_count_0.5")
+        self.assertEqual(by_id["auc"]["undefined_reason"], "auc_undefined_empty_class")
+        self.assertEqual(by_id["auc"]["interval_method"], "cluster_bootstrap_over_independent_unit")
+        self.assertFalse(by_id["average_precision"]["interpolation"])
+        self.assertEqual(by_id["average_precision"]["undefined_reason"], "ap_undefined_no_positives")
+        self.assertEqual(
+            by_id["precision"]["undefined_reason"],
+            "precision_undefined_no_predicted_positives",
+        )
+        self.assertEqual(by_id["tpr"]["undefined_reason"], "tpr_undefined_zero_denominator")
+        self.assertEqual(by_id["fpr"]["undefined_reason"], "fpr_undefined_zero_denominator")
+        for metric in spec["metrics"]:
+            self.assertIsNone(metric["value"])
+            self.assertNotEqual(metric["value"], 0)
+            self.assertFalse(metric["computed"])
+        cost = plan.cost_estimate
+        self.assertTrue(cost["computed_without_running"])
+        product = plan.cell_count * (12 + 12) * 1
+        self.assertEqual(cost["cells_times_independent_units_times_nested"], product)
+        self.assertEqual(cost["estimated_callback_invocations"], product)
+        self.assertEqual(cost["output_records"], product)
+        self.assertEqual(cost["declared_bytes_per_record"], 4096)
+        self.assertEqual(
+            cost["expected_artifact_count"],
+            len(plan.planned_outputs) + plan.cell_count,
+        )
+        self.assertGreater(cost["estimated_disk_mb"], 0.0)
+        self.assertGreater(cost["estimated_memory_mb"], 0.0)
+        self.assertNotEqual(plan.campaign_manifest.units[0].estimated_disk_mb, 0.0)
+        self.assertNotEqual(plan.campaign_manifest.units[0].estimated_memory_mb, 0.0)
+        self.assertEqual(
+            plan.campaign_manifest.units[0].estimated_disk_mb,
+            cost["per_cell_disk_mb"],
+        )
+        self.assertEqual(
+            plan.campaign_manifest.units[0].estimated_memory_mb,
+            cost["per_cell_memory_mb"],
+        )
+        executed = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(executed.gate_check["opened"])
+        self.assertFalse(executed.execution["sweep_reachable"])
+        self.assertEqual(executed.run_state, "blocked")
+        _assert_all_cells_blocked(self, executed)
+
+        met = dry_run(
+            _base_config(
+                n_independent_calibration=100,
+                n_independent_evaluation=100,
+                max_trials=5000,
+                max_compute_units=100000.0,
+            ),
+            simulation=spy,
+        )
+        self.assertEqual(calls, [])
+        self.assertEqual(met.sample_size_label, "ENGINEERING_THRESHOLD_MET")
+        self.assertEqual(met.cells[0]["power_claim"], "none")
+        self.assertFalse(met.gate_check["opened"])
+        self.assertFalse(met.execution["sweep_reachable"])
+        _assert_all_cells_blocked(self, met)
+
+    def test_reporting_hash_callable_uses_an_exact_name(self):
+        import tools.evidence_promotion_gate.reporting as reporting
+
+        def decoy(_body):
+            raise AssertionError("substring hash name must not be called")
+
+        def report_hash(body):
+            return body
+
+        with patch.object(reporting, "rehash_notes", decoy, create=True):
+            self.assertIsNone(grid_plan_module._reporting_hash_callable())
+        with patch.object(reporting, "report_hash", report_hash, create=True):
+            self.assertIs(grid_plan_module._reporting_hash_callable(), report_hash)
 
     def test_record_root_must_be_a_path_and_is_not_evidence(self):
         with self.assertRaises(GridPlanError) as caught:

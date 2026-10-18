@@ -147,8 +147,67 @@ Changing `evaluation_seed` changes `config_hash` and does not change
 `threshold_hash`.
 
 Wilson floors come from `analysis.binomial_planning.plan_sample_size`.
-There is no second sample-size helper. Meeting a width bound is not a
-power guarantee.
+There is no second sample-size helper. `N>=100` and the #405 width floor
+are engineering thresholds, not a power guarantee, unless a formal power
+analysis is supplied. This planner does not accept or verify a power
+analysis (`power_analysis_supplied` is false). `power_claim` stays `none`.
+A plan whose independent counts are below 100, or below the #405 required
+n, is labeled `UNDERPOWERED_DRY_RUN`. Counts that meet both floors are
+labeled `ENGINEERING_THRESHOLD_MET` and are still not a power analysis.
+Counts below the #405 required n are rejected before a plan is emitted.
+
+`roles_are_disjoint` is the computed disjointness of the two derived id
+sets. It is not proof of statistical independence. Independent draws need
+per-seed RNG streams downstream.
+
+## Declared metrics
+
+`metric_spec` is a declaration block inside the plan hash. Every metric
+has `computed: false` and `value: null`. This module does not import or
+reimplement PR #426 (`55115149c7443ca8b325dc4dbf65d6900c9fdd79`). The names
+`tpr`, `fpr`, `precision`, `auc`, and `average_precision` are recorded as
+`NOT_INTEGRATED`. `accuracy` is an additional declared proportion with the
+same status.
+
+Wilson intervals are declared only for proportions at the frozen
+threshold: `tpr`, `fpr`, `precision`, and `accuracy`. Numerator and
+denominator fields are counted in independent units (seeds), never
+windows. `auc` and `average_precision` are not proportions. Their declared
+`interval_method` is `cluster_bootstrap_over_independent_unit`. Tie-aware
+AUC means ties count 0.5 (Mann-Whitney midrank). Stepwise average
+precision means the sum of precision at each recall step, with no
+interpolation. Those sentences are the contract. No score is ranked here.
+
+Undefined values are the token `UNDEFINED` with a reason code. They are
+never silent 0 or NaN.
+
+| Metric | Undefined when | Reason |
+| --- | --- | --- |
+| `auc` | either class empty | `auc_undefined_empty_class` |
+| `average_precision` | no positives | `ap_undefined_no_positives` |
+| `precision` | no predicted positives | `precision_undefined_no_predicted_positives` |
+| `tpr` | denominator 0 | `tpr_undefined_zero_denominator` |
+| `fpr` | denominator 0 | `fpr_undefined_zero_denominator` |
+| `accuracy` | denominator 0 | `accuracy_undefined_zero_denominator` |
+
+## Pre-run cost bound
+
+`cost_estimate` is computed from `cells × independent units × nested`,
+times a declared `4096` bytes per record, plus `expected_artifact_count`
+(`planned_outputs` plus one artifact per cell). `estimated_callback_invocations`
+is that same product, an upper bound. Nothing is executed to obtain it.
+Each `WorkUnit.estimated_disk_mb` and `estimated_memory_mb` is that cell's
+share of the bound. A bare `0.0` is not an estimate. The label is
+`BOUND_NOT_A_MEASUREMENT`.
+
+## Audit metadata
+
+The plan records `project_status` `HOLD / SYNTHETIC_ONLY`, `code_version_id`
+(the local `HEAD` SHA, or `UNKNOWN` when HEAD does not resolve), and
+`config_digest` (the same value as `config_hash`). `UNKNOWN` keeps the
+plan closed. The audit block also lists `master_seed`, `calibration_seed`,
+`evaluation_seed`, and the derived calibration and evaluation ids.
+`CampaignManifest.code_commit` stays `not_recorded`.
 
 ## Closed labels
 
@@ -171,10 +230,12 @@ Unmerged `NuisanceGridConfig` (`sim/nuisance_scenarios`) is not imported.
 `config_hash` is `tools.simulation_runtime.atomic_io.compute_config_hash`
 of the scientific payload. Mapping key order does not change the digest.
 The payload includes axes, seeds, both independent-unit id lists and
-counts, nesting, the interval method, estimand, `power_claim`, `h0`,
-`h1`, `score_definition_id`, the threshold, `threshold_hash`, Wilson
-inputs, budgets, blocking and nonblocking gate ids, the ADMISSIBLE
-decision names, and `EvidencePromotionGate.v1`.
+counts, nesting, the interval method, estimand, `power_claim`, the
+sample-size label, the engineering threshold, `metric_spec`, the declared
+bytes per record, `h0`, `h1`, `score_definition_id`, the threshold,
+`threshold_hash`, Wilson inputs, budgets, blocking and nonblocking gate
+ids, the ADMISSIBLE decision names, and `EvidencePromotionGate.v1`.
+`code_version_id` is not part of `config_hash`.
 
 Derived cells, caller decisions, `checked_at`, and resolved gate rows are
 not part of `config_hash`. Resolved rows get a separate `evidence_hash`

@@ -53,7 +53,28 @@ FAILURE_POLICY = "fail_closed_block_grid"
 TOY_FIXTURE_LABEL = "TOY_FIXTURE_NOT_A_RESULT"
 TEST_FIXTURE_NOT_EVIDENCE = "TEST_FIXTURE_NOT_EVIDENCE"
 POWER_CLAIM = "none"
+PROJECT_STATUS = "HOLD / SYNTHETIC_ONLY"
+ENGINEERING_THRESHOLD_N = 100
+UNDERPOWERED_DRY_RUN = "UNDERPOWERED_DRY_RUN"
+ENGINEERING_THRESHOLD_MET = "ENGINEERING_THRESHOLD_MET"
+DECLARED_BYTES_PER_RECORD = 4096
+CODE_VERSION_UNKNOWN = "UNKNOWN"
+ROC_API_PR = 426
+ROC_API_HEAD = "55115149c7443ca8b325dc4dbf65d6900c9fdd79"
+# Names only. This module does not import that package.
+ROC_API_NAMES = (
+    "tpr",
+    "fpr",
+    "precision",
+    "auc",
+    "average_precision",
+)
 AUDITED_MAIN_SHA = "19c3203573082f8bc41f7da226b52dc20a49fdb0"
+ROLES_DISJOINT_NOTE = (
+    "Disjoint calibration and evaluation ids are not proof of statistical "
+    "independence. Independent draws need per-seed RNG streams downstream."
+)
+_REPORTING_HASH_NAMES = ("report_hash", "compute_report_hash")
 
 # Labels only. There is no evidence that phase shuffle or IAAFT randomizes
 # a spatial winding statistic. These strings do not call a surrogate.
@@ -762,7 +783,9 @@ def _wilson_bound(normalized: Mapping[str, Any]) -> SampleSizePlanResult:
         _reject(
             "invalid_sample_count",
             "n_independent_calibration and n_independent_evaluation must each be >= "
-            f"Wilson required_n {required}",
+            f"Wilson required_n {required}. N>={ENGINEERING_THRESHOLD_N} and the "
+            "#405 floor are engineering thresholds, not a power guarantee. A plan "
+            f"below either floor is {UNDERPOWERED_DRY_RUN}",
         )
     return result
 
@@ -809,6 +832,174 @@ def _enforce_budget(normalized: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _proportion_declaration(
+    metric_id: str,
+    numerator: str,
+    denominator: str,
+    undefined_reason: str,
+) -> Dict[str, Any]:
+    """Declared proportion. No rate is computed."""
+
+    return {
+        "metric_id": metric_id,
+        "named_on_pr_426": metric_id in ROC_API_NAMES,
+        "integration": "NOT_INTEGRATED",
+        "source_pr": ROC_API_PR,
+        "source_head": ROC_API_HEAD,
+        "computed": False,
+        "value": None,
+        "kind": "proportion_at_frozen_threshold",
+        "numerator_field": numerator,
+        "denominator_field": denominator,
+        "count_unit": "independent_unit",
+        "windows_counted": False,
+        "interval_method": "wilson_on_independent_unit",
+        "undefined_value": "UNDEFINED",
+        "undefined_reason": undefined_reason,
+        "silent_zero": False,
+        "silent_nan": False,
+    }
+
+
+def _metric_spec() -> Dict[str, Any]:
+    """Metric declarations included in the plan hash. Nothing is scored."""
+
+    return {
+        "schema": "grid_plan_metric_declarations_v1",
+        "computed": False,
+        "imports_roc_api": False,
+        "integration": "NOT_INTEGRATED",
+        "source_pr": ROC_API_PR,
+        "source_head": ROC_API_HEAD,
+        "metrics": [
+            _proportion_declaration(
+                "tpr",
+                "true_positives",
+                "positives",
+                "tpr_undefined_zero_denominator",
+            ),
+            _proportion_declaration(
+                "fpr",
+                "false_positives",
+                "negatives",
+                "fpr_undefined_zero_denominator",
+            ),
+            _proportion_declaration(
+                "precision",
+                "true_positives",
+                "predicted_positives",
+                "precision_undefined_no_predicted_positives",
+            ),
+            _proportion_declaration(
+                "accuracy",
+                "correct_independent_units",
+                "independent_units",
+                "accuracy_undefined_zero_denominator",
+            ),
+            {
+                "metric_id": "auc",
+                "named_on_pr_426": True,
+                "integration": "NOT_INTEGRATED",
+                "source_pr": ROC_API_PR,
+                "source_head": ROC_API_HEAD,
+                "computed": False,
+                "value": None,
+                "kind": "ranking",
+                "estimator": "mann_whitney_midrank",
+                "tie_rule": "ties_count_0.5",
+                "interval_method": "cluster_bootstrap_over_independent_unit",
+                "numerator_field": None,
+                "denominator_field": None,
+                "windows_counted": False,
+                "undefined_value": "UNDEFINED",
+                "undefined_when": "either_class_empty",
+                "undefined_reason": "auc_undefined_empty_class",
+                "silent_zero": False,
+                "silent_nan": False,
+            },
+            {
+                "metric_id": "average_precision",
+                "named_on_pr_426": True,
+                "integration": "NOT_INTEGRATED",
+                "source_pr": ROC_API_PR,
+                "source_head": ROC_API_HEAD,
+                "computed": False,
+                "value": None,
+                "kind": "ranking",
+                "estimator": "stepwise_precision_at_recall",
+                "interpolation": False,
+                "definition": "sum of precision at each recall step, no interpolation",
+                "interval_method": "cluster_bootstrap_over_independent_unit",
+                "numerator_field": None,
+                "denominator_field": None,
+                "windows_counted": False,
+                "undefined_value": "UNDEFINED",
+                "undefined_when": "no_positives",
+                "undefined_reason": "ap_undefined_no_positives",
+                "silent_zero": False,
+                "silent_nan": False,
+            },
+        ],
+    }
+
+
+def _sample_size_label(n_calibration: int, n_evaluation: int, wilson_required: int) -> str:
+    """Engineering label. This is not a power analysis."""
+
+    below = (
+        n_calibration < ENGINEERING_THRESHOLD_N
+        or n_evaluation < ENGINEERING_THRESHOLD_N
+        or n_calibration < wilson_required
+        or n_evaluation < wilson_required
+    )
+    if below:
+        return UNDERPOWERED_DRY_RUN
+    return ENGINEERING_THRESHOLD_MET
+
+
+def _mb_bound(nbytes: int) -> float:
+    if nbytes < 1:
+        _reject("cost_not_estimated", "resource bound has no bytes to estimate")
+    mb = nbytes / (1024 * 1024)
+    if mb <= 0.0:
+        _reject("cost_not_estimated", "resource bound rounded to 0")
+    return mb
+
+
+def _cost_estimate(normalized: Mapping[str, Any], cell_count: int) -> Dict[str, Any]:
+    """Upper bound from declared sizes. No callback is run."""
+
+    n_calibration = int(normalized["n_independent_calibration"])
+    n_evaluation = int(normalized["n_independent_evaluation"])
+    nested = int(normalized["nested_per_unit"])
+    independent_units = n_calibration + n_evaluation
+    product = cell_count * independent_units * nested
+    output_bytes = product * DECLARED_BYTES_PER_RECORD
+    expected_artifact_count = len(PLANNED_OUTPUTS) + cell_count
+    artifact_bytes = expected_artifact_count * DECLARED_BYTES_PER_RECORD
+    per_cell_bytes = independent_units * nested * DECLARED_BYTES_PER_RECORD
+    per_cell_disk_bytes = per_cell_bytes + DECLARED_BYTES_PER_RECORD
+    return {
+        "computed_without_running": True,
+        "label": "BOUND_NOT_A_MEASUREMENT",
+        "cell_count": cell_count,
+        "n_independent_calibration": n_calibration,
+        "n_independent_evaluation": n_evaluation,
+        "independent_units_per_cell": independent_units,
+        "nested_per_unit": nested,
+        "cells_times_independent_units_times_nested": product,
+        "estimated_callback_invocations": product,
+        "output_records": product,
+        "declared_bytes_per_record": DECLARED_BYTES_PER_RECORD,
+        "estimated_output_bytes": output_bytes,
+        "expected_artifact_count": expected_artifact_count,
+        "estimated_disk_mb": _mb_bound(output_bytes + artifact_bytes),
+        "estimated_memory_mb": _mb_bound(per_cell_bytes),
+        "per_cell_disk_mb": _mb_bound(per_cell_disk_bytes),
+        "per_cell_memory_mb": _mb_bound(per_cell_bytes),
+    }
+
+
 def _hash_payload(normalized: Mapping[str, Any]) -> Dict[str, Any]:
     """Scientific inputs only. Derived cells and gate records are not included."""
 
@@ -830,6 +1021,12 @@ def _hash_payload(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "interval_method": normalized["interval_method"],
         "estimand": normalized["estimand"],
         "power_claim": normalized["power_claim"],
+        "sample_size_label": normalized["sample_size_label"],
+        "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
+        "power_analysis_supplied": False,
+        "engineering_threshold_is_power_guarantee": False,
+        "declared_bytes_per_record": DECLARED_BYTES_PER_RECORD,
+        "metric_spec": _metric_spec(),
         "h0": normalized["h0"],
         "h1": normalized["h1"],
         "score_definition_id": normalized["score_definition_id"],
@@ -864,6 +1061,9 @@ def _independence_block(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "calibration_unit_ids": list(normalized["calibration_unit_ids"]),
         "evaluation_unit_ids": list(normalized["evaluation_unit_ids"]),
         "roles_are_disjoint": normalized["roles_are_disjoint"],
+        "roles_are_disjoint_is_statistical_independence": False,
+        "roles_are_disjoint_note": ROLES_DISJOINT_NOTE,
+        "sample_size_label": normalized["sample_size_label"],
         "nested_counted_in_n": False,
     }
 
@@ -923,6 +1123,7 @@ def _campaign_manifest(
     normalized: Mapping[str, Any],
     cells: Sequence[Mapping[str, Any]],
     config_hash: str,
+    cost: Mapping[str, Any],
 ) -> CampaignManifest:
     units = [
         WorkUnit(
@@ -932,8 +1133,8 @@ def _campaign_manifest(
             expected_outputs=[],
             timeout_s=0.0,
             dependencies=[],
-            estimated_disk_mb=0.0,
-            estimated_memory_mb=0.0,
+            estimated_disk_mb=float(cost["per_cell_disk_mb"]),
+            estimated_memory_mb=float(cost["per_cell_memory_mb"]),
             retryable=False,
             max_retries=0,
         )
@@ -972,6 +1173,7 @@ def _limits() -> Dict[str, Any]:
         "campaign_manifest_has_gate_evidence": False,
         "outcome_pass_is_not_a_gate": True,
         "launches_simulation": False,
+        "sweep_reachable": False,
         "marks_complete_on_validation": False,
         "data_mode": "synthetic",
         "hold_status": HOLD_STATUS,
@@ -987,6 +1189,10 @@ def _limits() -> Dict[str, Any]:
         "power_claim": POWER_CLAIM,
         "nested_units_count_toward_wilson_n": False,
         "windows_count_toward_wilson_n": False,
+        "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
+        "engineering_threshold_is_power_guarantee": False,
+        "metrics_are_computed": False,
+        "roc_api_integrated": False,
         "ci_discovery": "BLOCKED",
         "detector_roc": None,
         "planned_outputs": list(PLANNED_OUTPUTS),
@@ -1054,13 +1260,38 @@ def _is_ancestor_of_main(commit: str, main_sha: str) -> bool:
     return completed.returncode == 0
 
 
-def _provenance(main_sha: Optional[str]) -> Dict[str, Any]:
+def _resolve_head_sha() -> Optional[str]:
+    """Local HEAD only. Missing git yields None, which becomes UNKNOWN."""
+
+    try:
+        completed = _git(["rev-parse", "--verify", "HEAD"])
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    sha = completed.stdout.strip()
+    if _COMMIT_SHA.fullmatch(sha):
+        return sha
+    return None
+
+
+def _code_version_id() -> str:
+    return _resolve_head_sha() or CODE_VERSION_UNKNOWN
+
+
+def _provenance(
+    main_sha: Optional[str],
+    code_version_id: str,
+    config_hash: str,
+) -> Dict[str, Any]:
     return {
         "schema_version": GRID_PLAN_SCHEMA_VERSION,
         "generator": GENERATOR,
         "base_sha": main_sha or "unresolved",
         "audited_main_sha": AUDITED_MAIN_SHA,
         "code_commit": "not_recorded",
+        "code_version_id": code_version_id,
+        "config_digest": config_hash,
         "failure_policy": FAILURE_POLICY,
     }
 
@@ -1109,12 +1340,16 @@ _EXTRA_RESULT_KEYS = frozenset({"verified_at_commit"})
 
 
 def _reporting_hash_callable() -> Optional[Callable[..., Any]]:
-    """Return a hash function defined by reporting, if that module has one."""
+    """Return reporting's hash callable when it has one of the exact names.
+
+    A name that merely contains ``hash`` is not a reporting hash.
+    """
 
     import tools.evidence_promotion_gate.reporting as reporting
 
-    for name, value in vars(reporting).items():
-        if callable(value) and "hash" in name:
+    for name in _REPORTING_HASH_NAMES:
+        value = getattr(reporting, name, None)
+        if callable(value):
             return value
     return None
 
@@ -1478,14 +1713,22 @@ def _prepare(
     _refuse_callback(simulation)
     normalized = _normalize_config(config)
     wilson = _wilson_bound(normalized)
+    required = int(wilson.required_n) if wilson.required_n is not None else ENGINEERING_THRESHOLD_N
+    normalized["sample_size_label"] = _sample_size_label(
+        int(normalized["n_independent_calibration"]),
+        int(normalized["n_independent_evaluation"]),
+        required,
+    )
+    normalized["power_analysis_supplied"] = False
     budget = _enforce_budget(normalized)
     payload = _hash_payload(normalized)
     config_hash = compute_config_hash(payload)
     cells = _expand_cells(normalized, block_reason=block_reason)
     if len(cells) != budget["cell_count"]:
         _reject("over_budget", "expanded cell count does not match the budget count")
-    manifest = _campaign_manifest(normalized, cells, config_hash)
-    return normalized, wilson, budget, cells, manifest, config_hash, payload
+    cost = _cost_estimate(normalized, budget["cell_count"])
+    manifest = _campaign_manifest(normalized, cells, config_hash, cost)
+    return normalized, wilson, budget, cells, manifest, config_hash, payload, cost
 
 
 class GridPlan:
@@ -1512,6 +1755,7 @@ class GridPlan:
         caller_gate_decision_rejected: bool,
         test_fixture_label: Optional[str],
         gate_source_failure: Optional[str],
+        cost_estimate: Mapping[str, Any],
     ) -> None:
         if run_state not in EMITTED_RUN_STATES:
             _reject("self_declared_state", f"grid_plan_v2 cannot emit run_state {run_state!r}")
@@ -1548,6 +1792,10 @@ class GridPlan:
         self.caller_gate_decision_rejected = caller_gate_decision_rejected
         self.test_fixture_label = test_fixture_label
         self.gate_source_failure = gate_source_failure
+        self.code_version_id = str(provenance["code_version_id"])
+        self.sample_size_label = str(normalized["sample_size_label"])
+        self.cost_estimate = copy.deepcopy(dict(cost_estimate))
+        self.metric_spec = copy.deepcopy(dict(hash_payload["metric_spec"]))
         self.limits = _limits()
         self.failure_policy = FAILURE_POLICY
         self.planned_outputs = list(PLANNED_OUTPUTS)
@@ -1562,7 +1810,10 @@ class GridPlan:
             "schema_version": self.schema_version,
             "status_label": self.status_label,
             "run_state": self.run_state,
+            "project_status": PROJECT_STATUS,
+            "code_version_id": self.code_version_id,
             "config_hash": self.config_hash,
+            "config_digest": self.config_hash,
             "threshold_hash": self.threshold_hash,
             "evidence_hash": self.evidence_hash,
             "checked_at": self.checked_at,
@@ -1586,12 +1837,38 @@ class GridPlan:
                 "calibration_unit_ids": list(self.cells[0]["calibration_unit_ids"]),
                 "evaluation_unit_ids": list(self.cells[0]["evaluation_unit_ids"]),
                 "roles_are_disjoint": self.cells[0]["roles_are_disjoint"],
+                "roles_are_disjoint_is_statistical_independence": False,
+                "roles_are_disjoint_note": ROLES_DISJOINT_NOTE,
                 "independent_unit": self.configuration["independent_unit"],
                 "nested_unit": self.configuration["nested_unit"],
                 "nested_per_unit": self.configuration["nested_per_unit"],
                 "nested_counted_in_n": False,
             },
             "evaluation_manifest": self.evaluation_manifest,
+            "sample_size_label": self.sample_size_label,
+            "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
+            "power_analysis_supplied": False,
+            "engineering_threshold_is_power_guarantee": False,
+            "metric_spec": self.metric_spec,
+            "cost_estimate": self.cost_estimate,
+            "audit": {
+                "project_status": PROJECT_STATUS,
+                "status_label": self.status_label,
+                "code_version_id": self.code_version_id,
+                "config_digest": self.config_hash,
+                "seeds": {
+                    "master_seed": self.configuration["master_seed"],
+                    "calibration_seed": self.configuration["calibration_seed"],
+                    "evaluation_seed": self.configuration["evaluation_seed"],
+                },
+                "calibration_unit_ids": list(self.cells[0]["calibration_unit_ids"]),
+                "evaluation_unit_ids": list(self.cells[0]["evaluation_unit_ids"]),
+                "sample_size_label": self.sample_size_label,
+                "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
+                "power_analysis_supplied": False,
+                "power_claim": POWER_CLAIM,
+                "engineering_threshold_is_power_guarantee": False,
+            },
             "cells": self.cells,
             "campaign_manifest": self.campaign_manifest.to_dict(),
             "wilson_bound": _wilson_dict(self.wilson),
@@ -1663,12 +1940,26 @@ def dry_run(
 ) -> GridPlan:
     """Validate and list cells. Does not resolve gates and does not execute."""
 
-    normalized, wilson, budget, cells, manifest, config_hash, payload = _prepare(
+    normalized, wilson, budget, cells, manifest, config_hash, payload, cost = _prepare(
         config,
         simulation,
         block_reason="dry_run_does_not_resolve_gates",
     )
     main_sha = _resolve_main_sha()
+    code_version_id = _code_version_id()
+    blockers = [
+        _blocker(
+            "not_checked",
+            "dry-run lists cells and does not resolve promotion-gate reports",
+        )
+    ]
+    if code_version_id == CODE_VERSION_UNKNOWN:
+        blockers.append(
+            _blocker(
+                "code_version_unknown",
+                "HEAD did not resolve; code_version_id is UNKNOWN and the plan stays closed",
+            )
+        )
     return GridPlan(
         normalized=normalized,
         budget=budget,
@@ -1680,12 +1971,7 @@ def dry_run(
         run_state="planned",
         gate_check={
             "opened": False,
-            "blockers": [
-                _blocker(
-                    "not_checked",
-                    "dry-run lists cells and does not resolve promotion-gate reports",
-                )
-            ],
+            "blockers": blockers,
             "caller_gate_decision_rejected": False,
         },
         execution={
@@ -1696,15 +1982,17 @@ def dry_run(
             "launched": False,
             "completed": False,
             "reason": "dry-run does not execute",
+            "sweep_reachable": False,
         },
         gate_resolution=[],
-        provenance=_provenance(main_sha),
+        provenance=_provenance(main_sha, code_version_id, config_hash),
         toy_fixture=_toy_fixture(toy_scores),
         evidence_hash=None,
         checked_at=None,
         caller_gate_decision_rejected=False,
         test_fixture_label=None,
         gate_source_failure=None,
+        cost_estimate=cost,
     )
 
 
@@ -1731,21 +2019,29 @@ def execute(
     if record_root is not None and not isinstance(record_root, (str, os.PathLike)):
         _reject("invalid_record_root", "record_root must be a directory path")
     test_fixture_label = None if record_root is None else TEST_FIXTURE_NOT_EVIDENCE
-    normalized, wilson, budget, cells, manifest, config_hash, payload = _prepare(
+    normalized, wilson, budget, cells, manifest, config_hash, payload, cost = _prepare(
         config,
         simulation,
         block_reason="blocking_gates_unresolved",
     )
     resolved, main_sha, git_failure, blockers = _resolve_gates()
-    opened = not blockers and all(
+    code_version_id = _code_version_id()
+    if code_version_id == CODE_VERSION_UNKNOWN and git_failure is None:
+        blockers = list(blockers)
+        blockers.append(
+            _blocker(
+                "code_version_unknown",
+                "HEAD did not resolve; code_version_id is UNKNOWN and the plan stays closed",
+            )
+        )
+    gates_clear = code_version_id != CODE_VERSION_UNKNOWN and not blockers and all(
         item["status"] == "admissible_on_ancestor"
         for item in resolved
         if item["role"] == "blocking"
     )
-    # ci_discovery is never admissible_on_ancestor, so opened stays false
-    # until CI collects this package. Cells remain blocked either way:
-    # this module has no launch path.
-    cell_reason = "blocking_gates_unresolved" if not opened else "grid_plan_does_not_launch"
+    # No sweep exists in this module. Gate rows cannot unlock cells.
+    opened = False
+    cell_reason = "grid_plan_does_not_launch" if gates_clear else "blocking_gates_unresolved"
     for cell in cells:
         cell["blocked"] = True
         cell["evaluation_eligible"] = False
@@ -1775,7 +2071,8 @@ def execute(
         "simulation_invoked": False,
         "launched": False,
         "completed": False,
-        "reason": _REFUSAL_REASON if not opened else "gate check opened; grid_plan_v2 still does not launch",
+        "reason": _REFUSAL_REASON,
+        "sweep_reachable": False,
         "caller_gate_decision_rejected": caller_rejected,
         "checked_at_is_caller_set": True,
     }
@@ -1795,13 +2092,14 @@ def execute(
         },
         execution=execution,
         gate_resolution=resolved,
-        provenance=_provenance(main_sha),
+        provenance=_provenance(main_sha, code_version_id, config_hash),
         toy_fixture=_toy_fixture(None),
         evidence_hash=evidence_hash,
         checked_at=checked_text,
         caller_gate_decision_rejected=caller_rejected,
         test_fixture_label=test_fixture_label,
         gate_source_failure=git_failure,
+        cost_estimate=cost,
     )
 
 
@@ -1821,8 +2119,16 @@ __all__ = [
     "NONBLOCKING_GATE_IDS",
     "NULL_MODEL_IDS",
     "NULL_MODEL_NOTE",
+    "CODE_VERSION_UNKNOWN",
+    "DECLARED_BYTES_PER_RECORD",
+    "ENGINEERING_THRESHOLD_MET",
+    "ENGINEERING_THRESHOLD_N",
     "POWER_CLAIM",
+    "PROJECT_STATUS",
     "REQUIRED_GATE_IDS",
+    "ROC_API_HEAD",
+    "ROC_API_PR",
+    "UNDERPOWERED_DRY_RUN",
     "RUN_STATES",
     "SOURCE_MODEL_IDS",
     "SPLIT_ALGORITHM",
