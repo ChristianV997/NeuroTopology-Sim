@@ -8,13 +8,15 @@ They are not a gate registry.
 from __future__ import annotations
 
 import copy
+import inspect
 import json
-import math
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -28,6 +30,7 @@ from tools.evidence_promotion_gate.schema import (
     PromotionResult,
 )
 from tools.simulation_runtime.atomic_io import compute_config_hash
+from tools.simulation_runtime import grid_plan as grid_plan_module
 from tools.simulation_runtime.grid_plan import (
     ADMISSIBLE_GATE_DECISIONS,
     AUDITED_MAIN_SHA,
@@ -37,6 +40,7 @@ from tools.simulation_runtime.grid_plan import (
     NULL_MODEL_NOTE,
     REQUIRED_GATE_IDS,
     RUN_STATES,
+    TEST_FIXTURE_NOT_EVIDENCE,
     TOY_FIXTURE_LABEL,
     GridPlan,
     GridPlanError,
@@ -71,10 +75,6 @@ def _spy_calls():
     return calls, spy
 
 
-def _ids(prefix: str, count: int):
-    return [f"{prefix}-{index}" for index in range(count)]
-
-
 def _base_config(**overrides):
     config = {
         "schema_version": "grid_plan_v2",
@@ -93,9 +93,7 @@ def _base_config(**overrides):
         "calibration_seed": 11,
         "evaluation_seed": 29,
         "independent_unit": "simulation_seed",
-        "calibration_unit_ids": _ids("cal", 12),
         "n_independent_calibration": 12,
-        "evaluation_unit_ids": _ids("eval", 12),
         "n_independent_evaluation": 12,
         "nested_unit": "none",
         "nested_per_unit": 1,
@@ -167,6 +165,60 @@ def _assert_all_cells_blocked(test: unittest.TestCase, plan) -> None:
         test.assertEqual(cell["independent_unit"], "simulation_seed")
 
 
+def _assert_seven_non_admissible(test: unittest.TestCase, plan) -> None:
+    statuses = _statuses(plan)
+    test.assertEqual(set(statuses), set(BLOCKING_GATE_IDS) | set(NONBLOCKING_GATE_IDS))
+    for gate_id in BLOCKING_GATE_IDS:
+        test.assertNotEqual(statuses[gate_id], "admissible_on_ancestor")
+        test.assertFalse(plan.gate_resolution[list(BLOCKING_GATE_IDS).index(gate_id)]["integration_is_evidence"])
+    test.assertFalse(plan.gate_check["opened"])
+    test.assertEqual(plan.run_state, "blocked")
+    test.assertFalse(plan.execution["simulation_invoked"])
+    test.assertFalse(plan.execution["launched"])
+    _assert_all_cells_blocked(test, plan)
+
+
+def _write_forged_reports(directory: Path, commit: str) -> None:
+    """One admissible case_id per file, so a directory scan could open each gate."""
+
+    for gate_id in BLOCKING_GATE_IDS:
+        _write_report(
+            directory,
+            [
+                {
+                    "case_id": gate_id,
+                    "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                    "verified_at_commit": commit,
+                }
+            ],
+            name=f"_forged_{gate_id}.json",
+        )
+
+
+def _git_result(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=["git"], returncode=returncode, stdout=stdout, stderr="")
+
+
+@contextmanager
+def _resolved_main():
+    """Treat this checkout as non-shallow so report resolution can be asserted.
+
+    The cloud checkout is shallow. Production fail-closes on that, which is
+    covered separately. These tests need the branch that resolves local main
+    and then refuses worktree files. Only the shallow probe is replaced.
+    """
+
+    real_git = grid_plan_module._git
+
+    def wrapped(args):
+        if list(args)[:2] == ["rev-parse", "--is-shallow-repository"]:
+            return _git_result("false\n")
+        return real_git(args)
+
+    with patch.object(grid_plan_module, "_git", side_effect=wrapped):
+        yield
+
+
 class _Probe(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -235,9 +287,18 @@ class GridPlanTests(unittest.TestCase):
             "h1": raw["h1"],
             "score_definition_id": raw["score_definition_id"],
             "threshold": raw["threshold"],
+            "calibration_unit_ids": list(forward.cells[0]["calibration_unit_ids"]),
+            "calibration_seed": raw["calibration_seed"],
+            "estimand": raw["estimand"],
+            "interval_method": raw["interval_method"],
         }
         self.assertEqual(forward.threshold_hash, compute_config_hash(binding))
         self.assertNotIn("evaluation_unit_ids", binding)
+        self.assertNotIn("evaluation_seed", binding)
+        self.assertNotIn("os.walk", source)
+        self.assertEqual(grid_plan._writer_report_paths(), ())
+        output = inspect.signature(write_report).parameters["output"]
+        self.assertIs(output.default, inspect.Parameter.empty)
 
     def test_hash_changes_on_parameter_seed_threshold_and_gate_ids(self):
         original = dry_run(_base_config())
@@ -251,7 +312,14 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotEqual(original.config_hash, dry_run(changed_threshold).config_hash)
         self.assertNotEqual(original.threshold_hash, dry_run(changed_threshold).threshold_hash)
         self.assertNotEqual(original.config_hash, dry_run(changed_estimand).config_hash)
-        self.assertEqual(original.threshold_hash, dry_run(changed_estimand).threshold_hash)
+        self.assertNotEqual(original.threshold_hash, dry_run(changed_estimand).threshold_hash)
+        changed_interval = _base_config(interval_method="cluster_bootstrap_over_independent_unit")
+        changed_calibration_seed = _base_config(calibration_seed=12)
+        changed_evaluation_seed = _base_config(evaluation_seed=30)
+        self.assertNotEqual(original.threshold_hash, dry_run(changed_interval).threshold_hash)
+        self.assertNotEqual(original.threshold_hash, dry_run(changed_calibration_seed).threshold_hash)
+        self.assertNotEqual(original.config_hash, dry_run(changed_evaluation_seed).config_hash)
+        self.assertEqual(original.threshold_hash, dry_run(changed_evaluation_seed).threshold_hash)
         payload = dict(original.hash_payload)
         payload["blocking_gate_ids"] = list(payload["blocking_gate_ids"][:-1])
         self.assertNotEqual(original.config_hash, compute_config_hash(payload))
@@ -261,11 +329,19 @@ class GridPlanTests(unittest.TestCase):
     def test_evaluation_ids_are_read_only_after_the_threshold_hash(self):
         probe = _Probe(_base_config())
         plan = dry_run(probe)
-        self.assertLess(probe.reads.index("threshold"), probe.reads.index("evaluation_unit_ids"))
-        self.assertLess(probe.reads.index("score_definition_id"), probe.reads.index("evaluation_unit_ids"))
+        eval_index = probe.reads.index("n_independent_evaluation")
+        self.assertLess(probe.reads.index("threshold"), eval_index)
+        self.assertLess(probe.reads.index("estimand"), eval_index)
+        self.assertLess(probe.reads.index("interval_method"), eval_index)
+        self.assertLess(probe.reads.index("calibration_seed"), eval_index)
+        self.assertNotIn("evaluation_unit_ids", probe.reads)
+        self.assertNotIn("calibration_unit_ids", probe.reads)
         self.assertEqual(plan.evaluation_manifest["threshold_hash"], plan.threshold_hash)
         self.assertTrue(plan.evaluation_manifest["built_after_threshold_hash"])
-        self.assertEqual(plan.evaluation_manifest["evaluation_unit_ids"], _ids("eval", 12))
+        self.assertEqual(plan.evaluation_manifest["threshold_order"], "in_process_only_not_preregistration")
+        self.assertEqual(plan.evaluation_manifest["evaluation_unit_ids"][0], "evaluation-seed29-u000000")
+        self.assertNotIn("calibration_unit_ids", plan.configuration)
+        self.assertNotIn("evaluation_unit_ids", plan.configuration)
 
         missing = _Probe(_base_config())
         missing.pop("threshold")
@@ -276,7 +352,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("evaluation_unit_ids", missing.reads)
         self.assertNotIn("n_independent_evaluation", missing.reads)
 
-        prebuilt = _base_config(evaluation_manifest={"evaluation_unit_ids": _ids("eval", 12)})
+        prebuilt = _base_config(evaluation_manifest={"evaluation_unit_ids": ["evaluation-seed29-u000000"]})
         with self.assertRaises(GridPlanError) as caught:
             dry_run(prebuilt)
         self.assertEqual(caught.exception.code, "evaluation_manifest_before_threshold")
@@ -286,17 +362,20 @@ class GridPlanTests(unittest.TestCase):
         cal = plan.cells[0]["calibration_unit_ids"]
         ev = plan.cells[0]["evaluation_unit_ids"]
         self.assertEqual(plan.cells[0]["roles_are_disjoint"], set(cal).isdisjoint(ev))
-        self.assertTrue(plan.cells[0]["roles_are_disjoint"])
+        self.assertTrue(set(cal).isdisjoint(set(ev)))
+        self.assertTrue(all(item.startswith("calibration-seed11-u") for item in cal))
+        self.assertTrue(all(item.startswith("evaluation-seed29-u") for item in ev))
+        self.assertEqual(len(cal), plan.cells[0]["n_independent_calibration"])
         self.assertNotIn("calibration_trial_index_start", plan.cells[0])
         self.assertNotIn("evaluation_trial_index_start", plan.cells[0])
         self.assertNotIn("calibration_trial_index_start", plan.cells[0]["parameter_case"])
         shared = _base_config(
-            calibration_unit_ids=_ids("cal", 11) + ["shared-unit"],
-            evaluation_unit_ids=_ids("eval", 11) + ["shared-unit"],
+            calibration_unit_ids=["shared-unit"],
+            evaluation_unit_ids=["shared-unit"],
         )
         with self.assertRaises(GridPlanError) as caught:
             dry_run(shared)
-        self.assertEqual(caught.exception.code, "unit_id_overlap")
+        self.assertEqual(caught.exception.code, "caller_unit_ids_rejected")
 
     def test_windows_are_not_counted_in_n_or_toward_wilson_floors(self):
         nested = _base_config(nested_unit="window", nested_per_unit=10)
@@ -314,14 +393,30 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.trial_count, bare.trial_count)
         self.assertNotEqual(plan.config_hash, bare.config_hash)
 
-        counted = _base_config(
+        window_ids = _base_config(
+            calibration_unit_ids=["s1_w0", "s1_w1"],
+            evaluation_unit_ids=["s1_w0", "s1_w1"],
+            n_independent_calibration=2,
+            n_independent_evaluation=2,
             nested_unit="window",
-            nested_per_unit=10,
-            n_independent_calibration=120,
-            calibration_unit_ids=_ids("cal", 12),
+            nested_per_unit=2,
         )
         with self.assertRaises(GridPlanError) as caught:
-            dry_run(counted)
+            dry_run(window_ids)
+        self.assertEqual(caught.exception.code, "caller_unit_ids_rejected")
+        nested_ids = dry_run(_base_config(nested_unit="window", nested_per_unit=2))
+        self.assertEqual(nested_ids.cells[0]["n_independent_calibration"], 12)
+        self.assertEqual(len(nested_ids.cells[0]["calibration_unit_ids"]), 12)
+        self.assertEqual(nested_ids.trial_count, nested_ids.cell_count * (12 + 12))
+        self.assertFalse(any("_w" in item for item in nested_ids.cells[0]["calibration_unit_ids"]))
+        self.assertTrue(
+            nested_ids.cells[0]["calibration_unit_ids"][0].startswith("calibration-seed11-u")
+        )
+        self.assertTrue(
+            nested_ids.cells[0]["evaluation_unit_ids"][0].startswith("evaluation-seed29-u")
+        )
+        with self.assertRaises(GridPlanError) as caught:
+            grid_plan_module._count_matches_ids(120, ["cal"] * 12, 10, "n_independent_calibration")
         self.assertEqual(caught.exception.code, "windows_counted_in_n")
 
         with self.assertRaises(GridPlanError) as caught:
@@ -470,13 +565,9 @@ class GridPlanTests(unittest.TestCase):
             ("unknown_null_model", {"null_model_ids": ["empirical_surrogate"]}),
             ("unknown_source_model", {"source_model_ids": ["synthetic_iaaft"]}),
             ("duplicate_identifier", {"null_model_ids": ["synthetic_iaaft", "synthetic_iaaft"]}),
-            ("invalid_sample_count", {
-                "n_independent_calibration": 11,
-                "calibration_unit_ids": _ids("cal", 11),
-            }),
+            ("invalid_sample_count", {"n_independent_calibration": 11}),
             ("invalid_sample_count", {"n_independent_evaluation": True}),
             ("invalid_sample_count", {"n_independent_evaluation": 12.0}),
-            ("n_independent_mismatch", {"n_independent_calibration": 13}),
             ("invalid_seed", {"calibration_seed": 29}),
             ("invalid_seed", {"master_seed": True}),
             ("unsupported_schema_version", {"schema_version": "grid_plan_v1"}),
@@ -567,7 +658,7 @@ class GridPlanTests(unittest.TestCase):
                 }
             )
         calls, spy = _spy_calls()
-        with tempfile.TemporaryDirectory() as tmp:
+        with _resolved_main(), tempfile.TemporaryDirectory() as tmp:
             empty = Path(tmp)
             plan = execute(
                 _base_config(),
@@ -584,6 +675,8 @@ class GridPlanTests(unittest.TestCase):
                 record_root=empty,
             )
         self.assertEqual(calls, [])
+        self.assertEqual(plan.test_fixture_label, TEST_FIXTURE_NOT_EVIDENCE)
+        self.assertIsNone(plan.gate_source_failure)
         self.assertTrue(plan.caller_gate_decision_rejected)
         self.assertTrue(plan.gate_check["caller_gate_decision_rejected"])
         self.assertFalse(plan.gate_check["opened"])
@@ -621,7 +714,7 @@ class GridPlanTests(unittest.TestCase):
         )
         self.assertNotEqual(ancestor.returncode, 0)
         calls, spy = _spy_calls()
-        with tempfile.TemporaryDirectory() as tmp:
+        with _resolved_main(), tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _write_report(
                 root,
@@ -637,128 +730,210 @@ class GridPlanTests(unittest.TestCase):
             plan = execute(_base_config(), simulation=spy, record_root=root)
             self.assertEqual(sorted(path.name for path in root.iterdir()), before)
         self.assertEqual(calls, [])
+        self.assertEqual(plan.test_fixture_label, TEST_FIXTURE_NOT_EVIDENCE)
         self.assertFalse(plan.caller_gate_decision_rejected)
         self.assertFalse(plan.gate_check["opened"])
         self.assertEqual(plan.run_state, "blocked")
-        self.assertEqual(_statuses(plan)["four_sphere_oracle"], "not_ancestor")
+        self.assertEqual(_statuses(plan)["four_sphere_oracle"], "missing")
+        self.assertNotEqual(_statuses(plan)["four_sphere_oracle"], "admissible_on_ancestor")
         self.assertEqual(_statuses(plan)["planar_embedding_winding_hodge"], "missing")
         self.assertEqual(_statuses(plan)["ci_discovery"], "ci_discovery_blocked")
-        self.assertIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
+        self.assertNotIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
         _assert_all_cells_blocked(self, plan)
         self.assertFalse(plan.execution["simulation_invoked"])
         self.assertIsNone(plan.detector_roc)
 
-    def test_ancestor_records_still_leave_the_grid_blocked(self):
+    def test_forged_report_in_untracked_tmp_dir_opens_no_gate(self):
         main_sha = _git("rev-parse", "origin/main")
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            rows = [
-                {
-                    "case_id": gate_id,
-                    "promotion_decision": "ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW",
-                    "verified_at_commit": main_sha,
-                }
-                for gate_id in BLOCKING_GATE_IDS
-            ]
-            _write_report(root, rows)
-            untouched = {
-                "schema_version": "command-center-evidence-promotion/v1",
-                "scientific_pass": False,
-                "cases": [
+            _write_forged_reports(root, main_sha)
+            (root / "command_center.json").write_text(
+                json.dumps(
                     {
-                        "case_id": "four_sphere_oracle",
-                        "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                        "schema_version": "command-center-evidence-promotion/v1",
+                        "scientific_pass": False,
+                        "cases": [
+                            {
+                                "case_id": "four_sphere_oracle",
+                                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                            }
+                        ],
                     }
-                ],
-            }
-            (root / "command_center.json").write_text(json.dumps(untouched), encoding="utf-8")
-            plan = execute(
-                _base_config(),
-                {"promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT"},
-                simulation=spy,
-                record_root=root,
+                ),
+                encoding="utf-8",
             )
+            with _resolved_main(), patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+                plan = execute(
+                    _base_config(),
+                    {"promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT"},
+                    simulation=spy,
+                    record_root=root,
+                )
         self.assertEqual(calls, [])
+        self.assertEqual(plan.test_fixture_label, TEST_FIXTURE_NOT_EVIDENCE)
         self.assertTrue(plan.caller_gate_decision_rejected)
-        self.assertFalse(plan.gate_check["opened"])
-        self.assertEqual(plan.run_state, "blocked")
-        statuses = _statuses(plan)
-        for gate_id in BLOCKING_GATE_IDS:
-            if gate_id == "ci_discovery":
-                self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
-            else:
-                self.assertEqual(statuses[gate_id], "admissible_on_ancestor")
-        self.assertEqual(plan.gate_resolution[-1]["role"], "nonblocking")
-        _assert_all_cells_blocked(self, plan)
+        _assert_seven_non_admissible(self, plan)
+        self.assertTrue(all(item["status"] == "missing" for item in plan.gate_resolution))
 
-    def test_writer_record_without_commit_and_bad_records_stay_closed(self):
+    def test_forged_report_in_tree_but_uncommitted_opens_no_gate(self):
+        main_sha = _git("rev-parse", "origin/main")
+        directory = _REPO_ROOT / "tools" / "simulation_runtime"
+        names = [f"_forged_{gate_id}.json" for gate_id in BLOCKING_GATE_IDS]
+        for name in names:
+            self.assertFalse((directory / name).exists())
+        calls, spy = _spy_calls()
+        try:
+            _write_forged_reports(directory, main_sha)
+            for name in names:
+                relative = f"tools/simulation_runtime/{name}"
+                self.assertTrue((directory / name).is_file())
+                tracked = subprocess.run(
+                    ["git", "ls-files", "--error-unmatch", "--", relative],
+                    cwd=str(_REPO_ROOT),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertNotEqual(tracked.returncode, 0)
+            with _resolved_main(), patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+                plan = execute(_base_config(), simulation=spy)
+                labeled = execute(_base_config(), simulation=spy, record_root=directory)
+        finally:
+            for name in names:
+                (directory / name).unlink(missing_ok=True)
+        for name in names:
+            self.assertFalse((directory / name).exists())
+        self.assertEqual(calls, [])
+        self.assertIsNone(plan.test_fixture_label)
+        self.assertEqual(labeled.test_fixture_label, TEST_FIXTURE_NOT_EVIDENCE)
+        _assert_seven_non_admissible(self, plan)
+        _assert_seven_non_admissible(self, labeled)
+
+    def test_tip_commit_claim_on_a_file_not_on_main_opens_no_gate(self):
+        main_sha = _git("rev-parse", "origin/main")
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_report(root, [{"case_id": "csd_full_matrix_pinned_mne"}], name="no_commit.json")
-            no_commit = execute(_base_config(), simulation=spy, record_root=root)
-            self.assertEqual(_statuses(no_commit)["csd_full_matrix_pinned_mne"], "missing")
-
-            hold_root = Path(tmp) / "hold"
-            hold_root.mkdir()
-            _write_report(
-                hold_root,
-                [
-                    {
-                        "case_id": "surrogate_randomizes_target_statistic",
-                        "promotion_decision": "HOLD_SYNTHETIC_ONLY",
-                        "verified_at_commit": _git("rev-parse", "origin/main"),
-                    }
-                ],
+            _write_forged_reports(root, main_sha)
+            on_main = subprocess.run(
+                ["git", "cat-file", "-e", f"{main_sha}:_forged_four_sphere_oracle.json"],
+                cwd=str(_REPO_ROOT),
+                capture_output=True,
+                text=True,
+                check=False,
             )
-            held = execute(_base_config(), simulation=spy, record_root=hold_root)
-            self.assertEqual(
-                _statuses(held)["surrogate_randomizes_target_statistic"],
-                "not_admissible",
-            )
-
-            passed_root = Path(tmp) / "passed"
-            passed_root.mkdir()
-            _write_report(
-                passed_root,
-                [
-                    {
-                        "case_id": "roc_split_threshold_api",
-                        "promotion_decision": Outcome.PASS.value,
-                        "verified_at_commit": _git("rev-parse", "origin/main"),
-                    }
-                ],
-            )
-            passed = execute(_base_config(), simulation=spy, record_root=passed_root)
-            self.assertEqual(_statuses(passed)["roc_split_threshold_api"], "not_admissible")
-
-            science_root = Path(tmp) / "science"
-            science_root.mkdir()
-            _write_report(
-                science_root,
-                [
-                    {
-                        "case_id": "phase_score_limitations_recorded",
-                        "verified_at_commit": _git("rev-parse", "origin/main"),
-                        "scientific_pass": True,
-                    }
-                ],
-            )
-            science = execute(_base_config(), simulation=spy, record_root=science_root)
-            self.assertEqual(
-                _statuses(science)["phase_score_limitations_recorded"],
-                "scientific_pass_refused",
-            )
+            self.assertNotEqual(on_main.returncode, 0)
+            with _resolved_main(), patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+                plan = execute(_base_config(), simulation=spy, record_root=root)
         self.assertEqual(calls, [])
-        for plan in (no_commit, held, passed, science):
-            self.assertEqual(plan.run_state, "blocked")
+        _assert_seven_non_admissible(self, plan)
+        self.assertTrue(
+            all(item.get("verified_at_commit") is None for item in plan.gate_resolution)
+        )
+
+    def test_git_missing_shallow_and_unresolved_main_fail_closed(self):
+        calls, spy = _spy_calls()
+
+        def missing(_args):
+            raise FileNotFoundError("git")
+
+        def shallow(args):
+            if list(args)[:2] == ["rev-parse", "--is-shallow-repository"]:
+                return _git_result("true\n")
+            raise AssertionError(args)
+
+        def unresolved(args):
+            if list(args)[:2] == ["rev-parse", "--is-shallow-repository"]:
+                return _git_result("false\n")
+            if list(args)[:2] == ["rev-parse", "--verify"]:
+                return _git_result("", returncode=1)
+            raise AssertionError(args)
+
+        with patch.object(grid_plan_module, "_git", side_effect=missing):
+            missing_plan = execute(_base_config(), simulation=spy)
+        with patch.object(grid_plan_module, "_git", side_effect=shallow):
+            shallow_plan = execute(_base_config(), simulation=spy)
+        with patch.object(grid_plan_module, "_git", side_effect=unresolved):
+            unresolved_plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        expected = {
+            missing_plan: "git_missing",
+            shallow_plan: "shallow_clone",
+            unresolved_plan: "main_unresolved",
+        }
+        for plan, code in expected.items():
+            self.assertEqual(plan.gate_source_failure, code)
             self.assertFalse(plan.gate_check["opened"])
-            _assert_all_cells_blocked(self, plan)
+            self.assertEqual(plan.run_state, "blocked")
+            self.assertTrue(plan.execution["refused"])
+            _assert_seven_non_admissible(self, plan)
+            self.assertTrue(all(item["status"] == "missing" for item in plan.gate_resolution))
+            self.assertTrue(all(item["code"] == code for item in plan.gate_check["blockers"]))
+            self.assertEqual(plan.provenance["base_sha"], "unresolved")
+
+    def test_one_case_id_opens_one_gate_and_duplicates_block_that_gate(self):
+        main_sha = _git("rev-parse", "origin/main")
+        admissible = {
+            "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+            "scientific_pass": False,
+            "verified_at_commit": main_sha,
+            "_source": "git_blob",
+        }
+        duplicate_rows = [
+            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/a.json"},
+            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/b.json"},
+        ]
+        multi_rows = [
+            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/both.json"},
+            {
+                **admissible,
+                "case_id": "planar_embedding_winding_hodge",
+                "_path": "reports/both.json",
+            },
+        ]
+        single_rows = [
+            {**admissible, "case_id": "four_sphere_oracle", "_path": "not/on/main.json"},
+        ]
+        with patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+            duplicated, duplicate_blockers = grid_plan_module._resolve_gates_from_rows(
+                duplicate_rows,
+                main_sha=main_sha,
+                git_failure=None,
+            )
+            multi, _multi_blockers = grid_plan_module._resolve_gates_from_rows(
+                multi_rows,
+                main_sha=main_sha,
+                git_failure=None,
+            )
+            single, _single_blockers = grid_plan_module._resolve_gates_from_rows(
+                single_rows,
+                main_sha=main_sha,
+                git_failure=None,
+            )
+        by_id = {item["gate_id"]: item for item in duplicated}
+        self.assertEqual(by_id["four_sphere_oracle"]["status"], "duplicate_record")
+        self.assertNotEqual(by_id["four_sphere_oracle"]["status"], "admissible_on_ancestor")
+        self.assertEqual(by_id["planar_embedding_winding_hodge"]["status"], "missing")
+        self.assertIn("duplicate_gate_record", {item["code"] for item in duplicate_blockers})
+        self.assertTrue(
+            all(item["status"] != "admissible_on_ancestor" for item in duplicated)
+        )
+        multi_status = {item["gate_id"]: item["status"] for item in multi}
+        self.assertEqual(multi_status["four_sphere_oracle"], "missing")
+        self.assertEqual(multi_status["planar_embedding_winding_hodge"], "missing")
+        self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in multi))
+        single_status = {item["gate_id"]: item["status"] for item in single}
+        self.assertEqual(single_status["four_sphere_oracle"], "not_on_main")
+        self.assertEqual(single_status["planar_embedding_winding_hodge"], "missing")
+        self.assertEqual(single_status["ci_discovery"], "missing")
+        self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in single))
 
     def test_repo_without_promotion_reports_leaves_gates_missing(self):
         calls, spy = _spy_calls()
-        plan = execute(_base_config(), simulation=spy)
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
         self.assertEqual(calls, [])
         self.assertFalse(plan.caller_gate_decision_rejected)
         self.assertFalse(plan.gate_check["opened"])
@@ -770,16 +945,27 @@ class GridPlanTests(unittest.TestCase):
             else:
                 self.assertEqual(statuses[gate_id], "missing")
         _assert_all_cells_blocked(self, plan)
+        self.assertIsNone(plan.test_fixture_label)
+        self.assertIsNone(plan.gate_source_failure)
+        self.assertEqual(plan.limits["reports_read_from"], "git_blobs_at_writer_paths_on_main")
+        self.assertFalse(plan.limits["record_root_is_evidence"])
+        self.assertFalse(plan.limits["gate_integration_state_is_evidence"])
+        self.assertFalse(plan.limits["ancestry_fetches"])
+        self.assertEqual(plan.limits["writer_report_paths"], [])
+        self.assertTrue(all(item["integration_is_evidence"] is False for item in plan.gate_resolution))
         self.assertEqual(plan.provenance["audited_main_sha"], AUDITED_MAIN_SHA)
         self.assertEqual(len(plan.provenance["base_sha"]), 40)
 
     def test_blocked_document_roundtrip_stays_blocked(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with _resolved_main(), tempfile.TemporaryDirectory() as tmp:
             plan = execute(_base_config(), [{"promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT"}], record_root=Path(tmp))
             self.assertEqual(plan.run_state, "blocked")
             restored = GridPlan.from_dict(plan.to_dict(), record_root=Path(tmp))
             self.assertEqual(restored.run_state, "blocked")
             self.assertEqual(restored.config_hash, plan.config_hash)
+            self.assertEqual(restored.evidence_hash, plan.evidence_hash)
+            self.assertNotIn("calibration_unit_ids", restored.configuration)
+            self.assertNotIn("evaluation_unit_ids", restored.configuration)
             self.assertFalse(restored.gate_check["opened"])
             forged = plan.to_dict()
             forged["run_state"] = "planned"
@@ -805,6 +991,11 @@ class GridPlanTests(unittest.TestCase):
                 )
             )
         self.assertEqual(caught.exception.code, "invalid_range")
+
+    def test_record_root_must_be_a_path_and_is_not_evidence(self):
+        with self.assertRaises(GridPlanError) as caught:
+            execute(_base_config(), record_root=object())
+        self.assertEqual(caught.exception.code, "invalid_record_root")
 
 
 if __name__ == "__main__":

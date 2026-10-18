@@ -4,13 +4,13 @@ This module plans a finite parameter grid and refuses to launch it.
 It does not download data, call the network, import nuisance-scenario
 generators, or mark a run completed because a config parsed.
 
-``execute`` accepts no gate decision from the caller. A gate is resolved
-only when a JSON report already written by
-``tools.evidence_promotion_gate.reporting`` names that gate as ``case_id``
-and that result's ``verified_at_commit`` is an ancestor of current main.
-No gate registry file is created here. The writer does not emit
-``verified_at_commit``, and main has no such report, so every resolvable
-gate is missing and every cell stays blocked.
+``execute`` accepts no gate decision from the caller. Gate reports are
+read only from git blobs tracked at the local main SHA, and only at a
+path ``tools.evidence_promotion_gate.reporting.write_report`` uses by
+default. That function requires an output path, so there is no committed
+default location and every gate stays missing. Untracked files and
+``record_root`` are not evidence. ``record_root`` is a test seam labeled
+``TEST_FIXTURE_NOT_EVIDENCE`` and cannot make a gate admissible.
 
 ``ci_discovery`` is blocking and stays blocked: the CI lists do not
 collect ``tests/simulation_runtime``. ``dmd_crouzeix`` is nonblocking.
@@ -19,6 +19,7 @@ collect ``tests/simulation_runtime``. ``dmd_crouzeix`` is nonblocking.
 from __future__ import annotations
 
 import copy
+import inspect
 import itertools
 import json
 import math
@@ -29,9 +30,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from analysis.binomial_planning.planner import SampleSizePlanResult, plan_sample_size
+from tools.evidence_promotion_gate.reporting import serialize_json, write_report
 from tools.evidence_promotion_gate.schema import (
     PROMOTION_DECISIONS,
     SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
+    PromotionResult,
 )
 from tools.simulation_runtime.atomic_io import compute_config_hash
 from tools.simulation_runtime.types import (
@@ -48,6 +51,7 @@ SPLIT_ALGORITHM = "explicit_disjoint_id_sets"
 GENERATOR = "tools.simulation_runtime.grid_plan"
 FAILURE_POLICY = "fail_closed_block_grid"
 TOY_FIXTURE_LABEL = "TOY_FIXTURE_NOT_A_RESULT"
+TEST_FIXTURE_NOT_EVIDENCE = "TEST_FIXTURE_NOT_EVIDENCE"
 POWER_CLAIM = "none"
 AUDITED_MAIN_SHA = "19c3203573082f8bc41f7da226b52dc20a49fdb0"
 
@@ -134,17 +138,6 @@ _AXIS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _NUISANCE_ID = re.compile(r"^[A-Za-z0-9_.:+-]{1,200}$")
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
-_SKIP_DIRS = frozenset(
-    {
-        ".git",
-        ".venv",
-        "venv",
-        "node_modules",
-        "__pycache__",
-        ".mypy_cache",
-        ".pytest_cache",
-    }
-)
 _ROC_KEYS = frozenset({"auc", "roc", "fpr", "tpr", "detector_roc", "roc_curve"})
 _CALLER_GATE_DECISION = object()
 
@@ -158,7 +151,6 @@ _CONFIG_KEYS = frozenset(
         "calibration_seed",
         "evaluation_seed",
         "independent_unit",
-        "calibration_unit_ids",
         "n_independent_calibration",
         "nested_unit",
         "nested_per_unit",
@@ -179,9 +171,10 @@ _CONFIG_KEYS = frozenset(
         "nuisance_scenario_id",
     }
 )
-# evaluation_unit_ids and n_independent_evaluation are read only after the
-# threshold hash is recorded. They are still required config keys.
-_EVALUATION_KEYS = frozenset({"evaluation_unit_ids", "n_independent_evaluation"})
+# n_independent_evaluation is read only after the threshold hash is recorded.
+# Unit id lists are derived inside the planner. Caller-supplied id lists are rejected.
+_EVALUATION_KEYS = frozenset({"n_independent_evaluation"})
+_CALLER_UNIT_ID_KEYS = frozenset({"calibration_unit_ids", "evaluation_unit_ids"})
 _REQUIRED_BEFORE_THRESHOLD = (_CONFIG_KEYS - {"wilson_design_p", "nuisance_scenario_id"}) - _EVALUATION_KEYS
 _INPUT_KEYS = _CONFIG_KEYS | _EVALUATION_KEYS
 _AXIS_KEYS = frozenset({"name", "unit", "values", "minimum", "maximum"})
@@ -429,14 +422,27 @@ def _count_matches_ids(count: int, unit_ids: Sequence[str], nested_per_unit: int
         )
 
 
+def _derive_unit_ids(seed: int, count: int, role: str) -> List[str]:
+    """Independent-unit ids from a seed. Window indexes are not part of the id."""
+
+    return [f"{role}-seed{seed}-u{index:06d}" for index in range(count)]
+
+
 def _freeze_threshold(
     *,
     h0: str,
     h1: str,
     score_definition_id: str,
     threshold: Mapping[str, Any],
+    calibration_unit_ids: Sequence[str],
+    calibration_seed: int,
+    estimand: str,
+    interval_method: str,
 ) -> str:
-    """Hash the decision rule. This function does not read evaluation ids."""
+    """Hash the decision rule. This function does not read evaluation ids.
+
+    The read order is in-process only. It is not a preregistration record.
+    """
 
     return compute_config_hash(
         {
@@ -444,6 +450,10 @@ def _freeze_threshold(
             "h1": h1,
             "score_definition_id": score_definition_id,
             "threshold": threshold,
+            "calibration_unit_ids": list(calibration_unit_ids),
+            "calibration_seed": calibration_seed,
+            "estimand": estimand,
+            "interval_method": interval_method,
         }
     )
 
@@ -464,6 +474,7 @@ def _evaluation_manifest(
         "threshold_hash": threshold_hash,
         "score_definition_id": score_definition_id,
         "built_after_threshold_hash": True,
+        "threshold_order": "in_process_only_not_preregistration",
         "evaluation_unit_ids": list(evaluation_unit_ids),
         "n_independent_evaluation": int(n_independent_evaluation),
     }
@@ -475,19 +486,20 @@ def _read_evaluation_side(
     threshold_hash: str,
     score_definition_id: str,
     calibration_unit_ids: Sequence[str],
+    evaluation_seed: int,
     nested_per_unit: int,
 ) -> Tuple[List[str], int, bool, Dict[str, Any]]:
-    """Read evaluation ids only after ``threshold_hash`` exists."""
+    """Derive evaluation ids only after ``threshold_hash`` exists."""
 
-    if "evaluation_unit_ids" not in config or "n_independent_evaluation" not in config:
-        _reject("unknown_field", "evaluation_unit_ids and n_independent_evaluation are required")
-    evaluation_unit_ids = _normalize_unit_ids(
-        config["evaluation_unit_ids"], label="evaluation_unit_ids"
-    )
+    if "n_independent_evaluation" not in config:
+        _reject("unknown_field", "n_independent_evaluation is required")
     n_independent_evaluation = _as_positive_int(
         config["n_independent_evaluation"],
         "n_independent_evaluation",
         "invalid_sample_count",
+    )
+    evaluation_unit_ids = _derive_unit_ids(
+        evaluation_seed, n_independent_evaluation, "evaluation"
     )
     _count_matches_ids(
         n_independent_evaluation,
@@ -513,6 +525,12 @@ def _read_evaluation_side(
 def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, Mapping):
         _reject("unsupported_schema_version", "config must be a mapping")
+    if _CALLER_UNIT_ID_KEYS.intersection(config):
+        _reject(
+            "caller_unit_ids_rejected",
+            "calibration_unit_ids and evaluation_unit_ids are derived from seeds; "
+            "caller lists, including window ids, are rejected",
+        )
     if "evaluation_manifest" in config:
         _reject(
             "evaluation_manifest_before_threshold",
@@ -571,13 +589,13 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
             "synthetic_requires_simulation_seed",
             "synthetic plans require independent_unit simulation_seed",
         )
-    calibration_unit_ids = _normalize_unit_ids(
-        config["calibration_unit_ids"], label="calibration_unit_ids"
-    )
     n_independent_calibration = _as_positive_int(
         config["n_independent_calibration"],
         "n_independent_calibration",
         "invalid_sample_count",
+    )
+    calibration_unit_ids = _derive_unit_ids(
+        calibration_seed, n_independent_calibration, "calibration"
     )
     nested_unit = config["nested_unit"]
     if nested_unit not in NESTED_UNITS:
@@ -623,6 +641,10 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         h1=h1,
         score_definition_id=score_definition_id,
         threshold=threshold,
+        calibration_unit_ids=calibration_unit_ids,
+        calibration_seed=calibration_seed,
+        estimand=estimand,
+        interval_method=interval_method,
     )
 
     (
@@ -635,6 +657,7 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         threshold_hash=threshold_hash,
         score_definition_id=score_definition_id,
         calibration_unit_ids=calibration_unit_ids,
+        evaluation_seed=evaluation_seed,
         nested_per_unit=nested_per_unit,
     )
 
@@ -969,6 +992,11 @@ def _limits() -> Dict[str, Any]:
         "planned_outputs": list(PLANNED_OUTPUTS),
         "forbidden_outputs": list(FORBIDDEN_OUTPUTS),
         "failure_policy": FAILURE_POLICY,
+        "reports_read_from": "git_blobs_at_writer_paths_on_main",
+        "record_root_is_evidence": False,
+        "gate_integration_state_is_evidence": False,
+        "ancestry_fetches": False,
+        "writer_report_paths": list(_writer_report_paths()),
     }
 
 
@@ -1053,51 +1081,215 @@ def _toy_fixture(scores: Any) -> Dict[str, Any]:
     }
 
 
-def _iter_report_files(root: Path) -> List[Path]:
-    if not root.is_dir():
-        _reject("invalid_record_root", "record_root must be a directory")
-    found: List[Path] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [name for name in dirnames if name not in _SKIP_DIRS and not name.startswith(".")]
-        for name in filenames:
-            if name.endswith(".json"):
-                found.append(Path(dirpath) / name)
-    found.sort()
-    return found
+def _writer_result_keys() -> frozenset[str]:
+    """Keys ``PromotionResult.to_dict`` emits. reporting defines no separate hash."""
+
+    sample = PromotionResult(
+        schema_version=EVIDENCE_SCHEMA_VERSION,
+        case_id="shape",
+        promotion_decision="HOLD_INCONCLUSIVE",
+        reason_codes=(),
+        reasons=(),
+        declared_evidence_class=None,
+        allowed_evidence_class="hypothesis",
+        synthetic_demo=True,
+        scientific_pass=False,
+        scientific_eligibility=False,
+        formal_bayes_factor=None,
+        declared_formal_bayes_factor=None,
+        claim_gate=None,
+        input_fingerprints={},
+    )
+    return frozenset(sample.to_dict())
 
 
-def _writer_results(root: Path) -> List[Dict[str, Any]]:
-    """Load ``results`` objects from EvidencePromotionGate.v1 report JSON.
+_PAYLOAD_KEYS = frozenset({"schema_version", "scientific_pass", "case_count", "results"})
+_RESULT_KEYS = _writer_result_keys()
+_EXTRA_RESULT_KEYS = frozenset({"verified_at_commit"})
 
-    Command-center and RAG payloads use other schema names and are ignored.
-    A file whose top-level ``scientific_pass`` is not false is ignored.
+
+def _reporting_hash_callable() -> Optional[Callable[..., Any]]:
+    """Return a hash function defined by reporting, if that module has one."""
+
+    import tools.evidence_promotion_gate.reporting as reporting
+
+    for name, value in vars(reporting).items():
+        if callable(value) and "hash" in name:
+            return value
+    return None
+
+
+def _writer_report_paths() -> Tuple[str, ...]:
+    """Repo-relative paths ``write_report`` writes without a caller path.
+
+    ``write_report(payload, output)`` requires ``output``. It has no default
+    location, so no path on main is a promotion report this planner will read.
     """
 
-    results: List[Dict[str, Any]] = []
-    for path in _iter_report_files(root):
+    signature = inspect.signature(write_report)
+    output = signature.parameters.get("output")
+    if output is None or output.default is inspect.Parameter.empty:
+        return ()
+    default = output.default
+    if isinstance(default, (str, Path)) and str(default).strip():
+        return (str(default).replace("\\", "/"),)
+    return ()
+
+
+def _git_failure_reason() -> Optional[str]:
+    """Fail closed when git, a full history, or main cannot be used. No fetch."""
+
+    try:
+        shallow = _git(["rev-parse", "--is-shallow-repository"])
+    except (OSError, subprocess.SubprocessError):
+        return "git_missing"
+    if shallow.returncode != 0:
+        return "git_missing"
+    if shallow.stdout.strip() == "true":
+        return "shallow_clone"
+    if _resolve_main_sha() is None:
+        return "main_unresolved"
+    return None
+
+
+def _path_tracked(main_sha: str, path: str) -> bool:
+    try:
+        completed = _git(["ls-tree", "-r", "--name-only", main_sha, "--", path])
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if completed.returncode != 0:
+        return False
+    names = {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+    return path in names
+
+
+def _git_show(main_sha: str, path: str) -> Optional[str]:
+    try:
+        completed = _git(["show", f"{main_sha}:{path}"])
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    text = completed.stdout
+    if len(text.encode("utf-8")) > _MAX_REPORT_BYTES:
+        return None
+    return text
+
+
+def _blob_commit(main_sha: str, path: str) -> Optional[str]:
+    try:
+        completed = _git(["rev-list", "-1", main_sha, "--", path])
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    sha = completed.stdout.strip()
+    if _COMMIT_SHA.fullmatch(sha):
+        return sha
+    return None
+
+
+def _writer_shaped(payload: Mapping[str, Any], raw_text: str) -> Optional[str]:
+    """Return compute_config_hash of the writer body, or None when the shape differs."""
+
+    if set(payload) != _PAYLOAD_KEYS:
+        return None
+    if payload.get("schema_version") != EVIDENCE_SCHEMA_VERSION:
+        return None
+    if payload.get("scientific_pass") is not False:
+        return None
+    results = payload.get("results")
+    if not isinstance(results, list) or payload.get("case_count") != len(results):
+        return None
+    writer_results: List[Dict[str, Any]] = []
+    for row in results:
+        if not isinstance(row, Mapping):
+            return None
+        if set(row) - _RESULT_KEYS - _EXTRA_RESULT_KEYS:
+            return None
+        if not _RESULT_KEYS.issubset(row):
+            return None
+        if row.get("scientific_pass") is not False:
+            return None
+        if not isinstance(row.get("case_id"), str):
+            return None
+        writer_results.append({key: row[key] for key in sorted(_RESULT_KEYS)})
+    try:
+        canonical = serialize_json(dict(payload))
+    except (TypeError, ValueError):
+        return None
+    if raw_text != canonical:
+        return None
+    writer_body = {
+        "schema_version": payload["schema_version"],
+        "scientific_pass": False,
+        "case_count": payload["case_count"],
+        "results": writer_results,
+    }
+    recomputed = compute_config_hash(writer_body)
+    hash_fn = _reporting_hash_callable()
+    if hash_fn is not None:
         try:
-            if path.stat().st_size > _MAX_REPORT_BYTES:
-                continue
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError):
+            declared = hash_fn(writer_body)
+        except (TypeError, ValueError):
+            return None
+        if declared != recomputed:
+            return None
+    return recomputed
+
+
+def _load_tracked_rows(main_sha: str) -> List[Dict[str, Any]]:
+    """Rows from ``git show <main_sha>:<writer path>`` only. No worktree reads."""
+
+    rows: List[Dict[str, Any]] = []
+    for path in _writer_report_paths():
+        if not _path_tracked(main_sha, path):
+            continue
+        raw = _git_show(main_sha, path)
+        if raw is None:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
             continue
         if not isinstance(payload, Mapping):
             continue
-        if payload.get("schema_version") != EVIDENCE_SCHEMA_VERSION:
+        report_hash = _writer_shaped(payload, raw)
+        if report_hash is None:
             continue
-        if payload.get("scientific_pass") is not False:
-            continue
-        rows = payload.get("results")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if isinstance(row, Mapping) and isinstance(row.get("case_id"), str):
-                results.append(dict(row))
-    return results
+        blob_commit = _blob_commit(main_sha, path)
+        for row in payload["results"]:
+            copied = dict(row)
+            copied["_source"] = "git_blob"
+            copied["_path"] = path
+            copied["_blob_commit"] = blob_commit
+            copied["_report_hash"] = report_hash
+            rows.append(copied)
+    return rows
 
 
 def _blocker(code: str, message: str, gate_id: Optional[str] = None) -> Dict[str, Any]:
     return {"code": code, "gate_id": gate_id, "message": message}
+
+
+def _ci_discovery_blocked() -> bool:
+    """Production default. Tests may patch this. A patch is not evidence."""
+
+    return True
+
+
+def _blob_is_at_or_after(verified_at_commit: str, blob_commit: Optional[str], main_sha: str) -> bool:
+    """The blob commit on main must be ``verified_at_commit`` or a later descendant.
+
+    ``verified_at_commit == main`` is accepted only when the blob itself was
+    last committed at that tip. A worktree file is never a blob commit.
+    """
+
+    if blob_commit is None or _COMMIT_SHA.fullmatch(blob_commit) is None:
+        return False
+    if not _is_ancestor_of_main(verified_at_commit, main_sha):
+        return False
+    return _is_ancestor_of_main(verified_at_commit, blob_commit)
 
 
 def _resolve_one(
@@ -1106,67 +1298,139 @@ def _resolve_one(
     role: str,
     rows: Sequence[Mapping[str, Any]],
     main_sha: Optional[str],
+    git_failure: Optional[str],
 ) -> Dict[str, Any]:
     integration = GATE_INTEGRATION_STATE.get(gate_id, "NOT_INTEGRATED")
     base = {
         "gate_id": gate_id,
         "role": role,
         "integration": integration,
+        "integration_is_evidence": False,
         "verified_at_commit": None,
         "resolved_from": "none",
+        "report_hash": None,
     }
-    if gate_id == CI_DISCOVERY_GATE_ID:
+    if git_failure is not None or main_sha is None:
+        return {**base, "status": "missing", "git_failure": git_failure or "main_unresolved"}
+    if gate_id == CI_DISCOVERY_GATE_ID and _ci_discovery_blocked():
         return {
             **base,
             "status": "ci_discovery_blocked",
             "message": (
                 "tests/simulation_runtime is not collected by .github/workflows/ci.yml, "
-                ".github/workflows/required-checks.yml, or docker/ci/core.Dockerfile"
+                ".github/workflows/required-checks.yml, or docker/ci/core.Dockerfile. "
+                "A CI workflow change must not land before this gate repair is merged."
             ),
         }
     matched = [row for row in rows if row.get("case_id") == gate_id]
     if len(matched) > 1:
-        return {**base, "status": "duplicate_record", "resolved_from": "evidence_promotion_gate_report"}
+        return {
+            **base,
+            "status": "duplicate_record",
+            "resolved_from": "evidence_promotion_gate_report",
+        }
     if len(matched) == 0:
         return {**base, "status": "missing"}
     row = matched[0]
+    if row.get("_source") != "git_blob":
+        return {**base, "status": "missing", "label": TEST_FIXTURE_NOT_EVIDENCE}
+    path = row.get("_path")
+    if not isinstance(path, str) or not _path_tracked(main_sha, path):
+        return {**base, "status": "not_on_main"}
+    raw = _git_show(main_sha, path)
+    blob_commit = _blob_commit(main_sha, path)
     commit = row.get("verified_at_commit")
-    status = "missing"
-    if row.get("scientific_pass") is True:
-        status = "scientific_pass_refused"
-    else:
+    report_hash = None
+    status = "not_on_main"
+    resolved_from = "none"
+    if isinstance(raw, str):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        report_hash = _writer_shaped(payload, raw) if isinstance(payload, Mapping) else None
+        case_ids: List[Any] = []
+        if isinstance(payload, Mapping) and isinstance(payload.get("results"), list):
+            case_ids = [
+                item.get("case_id") for item in payload["results"] if isinstance(item, Mapping)
+            ]
         decision = row.get("promotion_decision")
-        if (
+        if report_hash is None or case_ids != [gate_id]:
+            status = "not_on_main" if report_hash is None else "report_opens_multiple_gates"
+        elif row.get("scientific_pass") is True:
+            status = "scientific_pass_refused"
+            resolved_from = "evidence_promotion_gate_report"
+        elif (
             not isinstance(decision, str)
             or decision in _RUNTIME_OUTCOMES
             or decision == "VERIFIED"
             or decision not in ADMISSIBLE_GATE_DECISIONS
         ):
             status = "not_admissible"
+            resolved_from = "evidence_promotion_gate_report"
         elif not isinstance(commit, str) or _COMMIT_SHA.fullmatch(commit) is None:
             status = "missing"
             commit = None
-        elif main_sha is None or not _is_ancestor_of_main(commit, main_sha):
-            status = "not_ancestor"
+        elif not _blob_is_at_or_after(commit, blob_commit, main_sha):
+            status = "not_on_main" if commit == main_sha else "not_ancestor"
+            resolved_from = "evidence_promotion_gate_report"
         else:
             status = "admissible_on_ancestor"
+            resolved_from = "evidence_promotion_gate_report"
     return {
         **base,
         "status": status,
         "verified_at_commit": commit if isinstance(commit, str) else None,
-        "resolved_from": "evidence_promotion_gate_report",
+        "resolved_from": resolved_from,
+        "report_hash": report_hash,
     }
 
 
-def _resolve_gates(record_root: Optional[Path]) -> Tuple[List[Dict[str, Any]], Optional[str], List[Dict[str, Any]]]:
-    root = _REPO_ROOT if record_root is None else Path(record_root)
-    main_sha = _resolve_main_sha()
-    rows = _writer_results(root)
+def _one_case_id_per_report(rows: Sequence[Mapping[str, Any]]) -> List[Mapping[str, Any]]:
+    """A report blob with more than one case_id opens no gate."""
+
+    grouped: Dict[str, List[Mapping[str, Any]]] = {}
+    for row in rows:
+        path = str(row.get("_path") or "")
+        grouped.setdefault(path, []).append(row)
+    kept: List[Mapping[str, Any]] = []
+    for group in grouped.values():
+        case_ids = [row.get("case_id") for row in group]
+        if len(set(case_ids)) == 1:
+            kept.extend(group)
+    return kept
+
+
+def _resolve_gates_from_rows(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    main_sha: Optional[str],
+    git_failure: Optional[str],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Map each case_id onto one gate. A repeated case_id blocks that gate."""
+
+    rows = _one_case_id_per_report(rows)
     resolved: List[Dict[str, Any]] = []
     for gate_id in BLOCKING_GATE_IDS:
-        resolved.append(_resolve_one(gate_id, role="blocking", rows=rows, main_sha=main_sha))
+        resolved.append(
+            _resolve_one(
+                gate_id,
+                role="blocking",
+                rows=rows,
+                main_sha=main_sha,
+                git_failure=git_failure,
+            )
+        )
     for gate_id in NONBLOCKING_GATE_IDS:
-        resolved.append(_resolve_one(gate_id, role="nonblocking", rows=rows, main_sha=main_sha))
+        resolved.append(
+            _resolve_one(
+                gate_id,
+                role="nonblocking",
+                rows=rows,
+                main_sha=main_sha,
+                git_failure=git_failure,
+            )
+        )
     blockers: List[Dict[str, Any]] = []
     for item in resolved:
         if item["role"] != "blocking":
@@ -1178,13 +1442,31 @@ def _resolve_gates(record_root: Optional[Path]) -> Tuple[List[Dict[str, Any]], O
         code = {
             "missing": "missing_gate",
             "not_ancestor": "not_ancestor",
+            "not_on_main": "not_on_main",
             "not_admissible": "gate_not_admissible",
             "scientific_pass_refused": "scientific_pass_refused",
             "duplicate_record": "duplicate_gate_record",
+            "report_opens_multiple_gates": "report_opens_multiple_gates",
             "ci_discovery_blocked": "ci_discovery_blocked",
         }.get(status, "missing_gate")
+        if git_failure is not None:
+            code = git_failure
         blockers.append(_blocker(code, f"gate {gate_id} is {status}", gate_id))
-    return resolved, main_sha, blockers
+    return resolved, blockers
+
+
+def _resolve_gates() -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], List[Dict[str, Any]]]:
+    """Read writer blobs at local main. ``record_root`` is intentionally absent."""
+
+    git_failure = _git_failure_reason()
+    main_sha = None if git_failure else _resolve_main_sha()
+    if git_failure or main_sha is None:
+        rows: List[Dict[str, Any]] = []
+        git_failure = git_failure or "main_unresolved"
+    else:
+        rows = _load_tracked_rows(main_sha)
+    resolved, blockers = _resolve_gates_from_rows(rows, main_sha=main_sha, git_failure=git_failure)
+    return resolved, main_sha, git_failure, blockers
 
 
 def _prepare(
@@ -1228,6 +1510,8 @@ class GridPlan:
         evidence_hash: Optional[str],
         checked_at: Optional[str],
         caller_gate_decision_rejected: bool,
+        test_fixture_label: Optional[str],
+        gate_source_failure: Optional[str],
     ) -> None:
         if run_state not in EMITTED_RUN_STATES:
             _reject("self_declared_state", f"grid_plan_v2 cannot emit run_state {run_state!r}")
@@ -1262,6 +1546,8 @@ class GridPlan:
         self.evidence_hash = evidence_hash
         self.checked_at = checked_at
         self.caller_gate_decision_rejected = caller_gate_decision_rejected
+        self.test_fixture_label = test_fixture_label
+        self.gate_source_failure = gate_source_failure
         self.limits = _limits()
         self.failure_policy = FAILURE_POLICY
         self.planned_outputs = list(PLANNED_OUTPUTS)
@@ -1282,6 +1568,8 @@ class GridPlan:
             "checked_at": self.checked_at,
             "checked_at_is_caller_set": True,
             "caller_gate_decision_rejected": self.caller_gate_decision_rejected,
+            "test_fixture_label": self.test_fixture_label,
+            "gate_source_failure": self.gate_source_failure,
             "cell_count": self.cell_count,
             "trial_count": self.trial_count,
             "compute_units": self.compute_units,
@@ -1295,8 +1583,8 @@ class GridPlan:
                 "master_seed": self.configuration["master_seed"],
                 "calibration_seed": self.configuration["calibration_seed"],
                 "evaluation_seed": self.configuration["evaluation_seed"],
-                "calibration_unit_ids": list(self.configuration["calibration_unit_ids"]),
-                "evaluation_unit_ids": list(self.configuration["evaluation_unit_ids"]),
+                "calibration_unit_ids": list(self.cells[0]["calibration_unit_ids"]),
+                "evaluation_unit_ids": list(self.cells[0]["evaluation_unit_ids"]),
                 "roles_are_disjoint": self.cells[0]["roles_are_disjoint"],
                 "independent_unit": self.configuration["independent_unit"],
                 "nested_unit": self.configuration["nested_unit"],
@@ -1415,6 +1703,8 @@ def dry_run(
         evidence_hash=None,
         checked_at=None,
         caller_gate_decision_rejected=False,
+        test_fixture_label=None,
+        gate_source_failure=None,
     )
 
 
@@ -1426,26 +1716,27 @@ def execute(
     checked_at: Any = None,
     record_root: Optional[os.PathLike[str] | str] = None,
 ) -> GridPlan:
-    """Resolve gates from promotion-gate reports. Caller decisions are ignored.
+    """Resolve gates from promotion-gate blobs on local main.
 
     ``gate_evidence`` is accepted only so a fabricated decision can be
     rejected. It is not read. ``checked_at`` is stored as caller-set text
-    and is not a freshness proof. ``record_root`` is a directory of JSON
-    files already shaped like ``reporting.results_payload`` output. The
-    default directory is the repository. This function does not write a
-    registry and does not call ``simulation``.
+    and is not a freshness proof. ``record_root``, when it is a path, labels
+    the plan ``TEST_FIXTURE_NOT_EVIDENCE``. The path is not opened and cannot
+    make a gate ``admissible_on_ancestor``. Reports are read only from git
+    blobs at paths ``write_report`` uses by default. This function does not
+    write a registry and does not call ``simulation``.
     """
 
     caller_rejected = gate_evidence is not _CALLER_GATE_DECISION
     if record_root is not None and not isinstance(record_root, (str, os.PathLike)):
         _reject("invalid_record_root", "record_root must be a directory path")
-    root = None if record_root is None else Path(record_root)
+    test_fixture_label = None if record_root is None else TEST_FIXTURE_NOT_EVIDENCE
     normalized, wilson, budget, cells, manifest, config_hash, payload = _prepare(
         config,
         simulation,
         block_reason="blocking_gates_unresolved",
     )
-    resolved, main_sha, blockers = _resolve_gates(root)
+    resolved, main_sha, git_failure, blockers = _resolve_gates()
     opened = not blockers and all(
         item["status"] == "admissible_on_ancestor"
         for item in resolved
@@ -1465,6 +1756,7 @@ def execute(
     evidence_hash = compute_config_hash(
         {
             "main_sha": main_sha,
+            "git_failure": git_failure,
             "resolution": [
                 {
                     "gate_id": item["gate_id"],
@@ -1508,6 +1800,8 @@ def execute(
         evidence_hash=evidence_hash,
         checked_at=checked_text,
         caller_gate_decision_rejected=caller_rejected,
+        test_fixture_label=test_fixture_label,
+        gate_source_failure=git_failure,
     )
 
 
@@ -1532,6 +1826,7 @@ __all__ = [
     "RUN_STATES",
     "SOURCE_MODEL_IDS",
     "SPLIT_ALGORITHM",
+    "TEST_FIXTURE_NOT_EVIDENCE",
     "TOY_FIXTURE_LABEL",
     "GridPlan",
     "GridPlanError",
