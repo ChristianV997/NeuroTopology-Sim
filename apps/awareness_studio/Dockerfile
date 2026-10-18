@@ -16,6 +16,8 @@ COPY tools/literature_evidence/ tools/literature_evidence/
 COPY tools/simulation_artifacts/ tools/simulation_artifacts/
 COPY tools/simulation_execution/ tools/simulation_execution/
 COPY scripts/build_awareness_evidence_graph.py scripts/build_awareness_evidence_graph.py
+# One synthetic root-level fixture is read by registered-execution tests.
+COPY tests/research_cycle_preflight/fixtures/complete_plan.json tests/research_cycle_preflight/fixtures/complete_plan.json
 
 # repo_paths.find_repository_root requires a .git marker plus the root tools
 # package. This empty test-image marker is not Git metadata; .git is excluded
