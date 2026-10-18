@@ -4,18 +4,19 @@ Project posture: HOLD / SYNTHETIC_ONLY.
 Successful discrete geometry checks do **not** establish cortical topology,
 biological vortices, or empirical validity. ``scientific_pass`` is always False.
 
-Predicate model
----------------
-Binary floating-point coordinates are interpreted as their **exact IEEE-754
-binary values** via ``fractions.Fraction.from_float``. Orientation and
-incircle signs are then evaluated with exact rational arithmetic on those
-represented values. This is a defensible exact-sign method for the *input
-as represented*; it is **not** Shewchuk's adaptive floating-point expansion
-code (not copied; see Sources), and it does **not** recover pre-rounding
-intended reals.
+Predicate / precision policy
+----------------------------
+Binary floating-point coordinates are interpreted as their **IEEE-754 binary
+values as represented** via ``fractions.Fraction.from_float``. Orientation and
+incircle *signs* are then evaluated with rational arithmetic on those
+represented values (a represented-input exact-sign policy). This is **not**
+Shewchuk's adaptive floating-point expansion kernel (not copied), **not** a
+claim of exactness with respect to ideal reals before rounding, and **not** a
+fixed geometric epsilon tolerance dressed up as exact arithmetic.
 
-Fixed geometric epsilons are **not** used as predicates. Finite coordinate
-jitter is **not** described as Simulation of Simplicity.
+Fixed geometric epsilons are **not** used as orientation/incircle predicates.
+Finite coordinate jitter is **not** Simulation of Simplicity and is never
+treated as proof about the original (pre-jitter) geometry.
 
 Three separate claim layers (never conflated)
 ---------------------------------------------
@@ -23,16 +24,21 @@ Three separate claim layers (never conflated)
 2. Valid planar straight-line embedding that triangulates the convex hull.
 3. Delaunay empty-circumcircle validity (optional / separate diagnostic).
 
-Degeneracy policy
------------------
-``reject`` (default): reject duplicate points, globally collinear sets, and
-(when Delaunay is required) configurations that retain exact cocircular
-point-on-circumcircle incidents in the final mesh.
-``lexicographic_tiebreak``: allow weak Delaunay (points may lie exactly on
-circumcircles). Tie-breaking among non-unique Delaunay triangulations is by
-deterministic insertion order / cavity rule without moving coordinates.
-Exact cocircularity is reported in diagnostics; coordinates are never
-silently perturbed and then labeled unperturbed Delaunay.
+Degeneracy policy (Delaunay layer only)
+---------------------------------------
+Cocircularity and empty-circumcircle rules apply **only** when Delaunay
+validation is requested (``require_delaunay=True`` / ``check_delaunay=True``).
+A valid planar triangulation of a cocircular point set must not be rejected
+merely for failing to be a unique Delaunay triangulation when Delaunay is
+disabled.
+
+``reject`` (default, with Delaunay requested): reject configurations that
+retain represented cocircular point-on-circumcircle incidents.
+``lexicographic_tiebreak`` (with Delaunay requested): allow weak Delaunay
+(points may lie on circumcircles) via deterministic cavity rules **without**
+moving coordinates.
+Duplicates and globally collinear sets are always rejected as invalid inputs
+for a 2D triangulation.
 
 Sources (retrieved for attribution; code not copied)
 ----------------------------------------------------
@@ -167,20 +173,113 @@ def _as_fraction(value: Any) -> Fraction:
     if isinstance(value, float):
         if value != value or value in (float("inf"), float("-inf")):  # NaN/Inf
             raise ValueError("non-finite float coordinate")
-        # Exact binary float interpretation (not an approximation of a real).
+        # Represented IEEE binary value (not ideal-real exactness).
         return Fraction.from_float(value)
     raise ValueError(f"unsupported coordinate type: {type(value)!r}")
 
 
-def _parse_coords(coords: Sequence[Sequence[Any]]) -> list[Point]:
-    if not isinstance(coords, (list, tuple)):
-        raise ValueError("coords must be a sequence of 2D points")
+def _parse_coords(coords: Any) -> list[Point]:
+    """Parse 2D coordinates from sequences or NumPy arrays (shape ``(n, 2)``)."""
+    # NumPy ndarray support without requiring NumPy at import time.
+    if hasattr(coords, "shape") and hasattr(coords, "__getitem__"):
+        shape = getattr(coords, "shape", None)
+        if shape is not None and len(shape) == 2 and shape[1] == 2:
+            rows = [coords[i] for i in range(int(shape[0]))]
+        elif shape is not None and len(shape) != 1:
+            raise ValueError(f"coords array must have shape (n, 2); got {shape}")
+        else:
+            rows = list(coords)
+    elif isinstance(coords, (list, tuple)):
+        rows = list(coords)
+    else:
+        try:
+            rows = list(coords)
+        except TypeError as exc:
+            raise ValueError("coords must be a sequence or (n, 2) array of 2D points") from exc
+
     points: list[Point] = []
-    for i, row in enumerate(coords):
-        if not isinstance(row, (list, tuple)) or len(row) != 2:
-            raise ValueError(f"coords[{i}] must have shape (2,)")
-        points.append((_as_fraction(row[0]), _as_fraction(row[1])))
+    for i, row in enumerate(rows):
+        try:
+            if hasattr(row, "shape") and tuple(getattr(row, "shape", ())) == (2,):
+                x, y = row[0], row[1]
+            elif isinstance(row, (list, tuple)) and len(row) == 2:
+                x, y = row[0], row[1]
+            else:
+                raise ValueError(f"coords[{i}] must have shape (2,)")
+            points.append((_as_fraction(x), _as_fraction(y)))
+        except ValueError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - structured rejection, no raw crash
+            raise ValueError(f"coords[{i}] could not be parsed: {exc}") from exc
     return points
+
+
+def _parse_simplex_index(value: Any, *, n_points: int, context: str) -> int:
+    """Validate a simplex vertex index before any array dereference.
+
+    Rejects booleans (``bool`` is a subclass of ``int``), non-integers,
+    negatives (no Python wraparound), and out-of-range indices.
+    """
+    if isinstance(value, bool):
+        raise ValueError(f"{context}: boolean is not a valid simplex index")
+    if isinstance(value, float):
+        raise ValueError(f"{context}: floating-point simplex index is not allowed")
+    if not isinstance(value, int):
+        # NumPy integer scalars expose .item()
+        if hasattr(value, "item") and not hasattr(value, "shape"):
+            try:
+                value = value.item()
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError(f"{context}: simplex index must be an integer") from exc
+        elif hasattr(value, "shape") and tuple(getattr(value, "shape", (None,))) == ():
+            try:
+                value = int(value)  # type: ignore[arg-type]
+            except Exception as exc:  # noqa: BLE001
+                raise ValueError(f"{context}: simplex index must be an integer") from exc
+            if isinstance(value, bool):
+                raise ValueError(f"{context}: boolean is not a valid simplex index")
+        else:
+            raise ValueError(f"{context}: simplex index must be an integer")
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{context}: simplex index must be an integer")
+    if value < 0:
+        raise ValueError(f"{context}: negative simplex index {value} is not allowed")
+    if value >= n_points:
+        raise ValueError(
+            f"{context}: simplex index {value} out of range for n_points={n_points}"
+        )
+    return value
+
+
+def _parse_simplices(
+    simplices: Any, *, n_points: int
+) -> list[Triangle]:
+    """Parse triangle index triples with fail-closed validation (no IndexError)."""
+    try:
+        rows = list(simplices)
+    except TypeError as exc:
+        raise ValueError("simplices must be a sequence of index triples") from exc
+    out: list[Triangle] = []
+    for ti, raw in enumerate(rows):
+        context = f"simplex[{ti}]"
+        try:
+            if hasattr(raw, "shape") and tuple(getattr(raw, "shape", ())) == (3,):
+                vals = [raw[0], raw[1], raw[2]]
+            elif isinstance(raw, (list, tuple)) and len(raw) == 3:
+                vals = [raw[0], raw[1], raw[2]]
+            else:
+                raise ValueError(f"{context} must contain exactly three indices")
+        except ValueError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{context} could not be parsed: {exc}") from exc
+        i = _parse_simplex_index(vals[0], n_points=n_points, context=f"{context}[0]")
+        j = _parse_simplex_index(vals[1], n_points=n_points, context=f"{context}[1]")
+        k = _parse_simplex_index(vals[2], n_points=n_points, context=f"{context}[2]")
+        if len({i, j, k}) != 3:
+            raise ValueError(f"{context}: repeated vertices are not allowed")
+        out.append((i, j, k))
+    return out
 
 
 def orient2d(a: Point, b: Point, c: Point) -> int:
@@ -306,9 +405,15 @@ def _triangle_edges(t: Triangle) -> tuple[Edge, Edge, Edge]:
 def _bowyer_watson(
     points: Sequence[Point],
     *,
-    degeneracy_policy: DegeneracyPolicy,
+    reject_exact_cocircular: bool,
 ) -> tuple[list[Triangle], list[str]]:
-    """Compute a Delaunay triangulation; returns (triangles, issues)."""
+    """Compute a triangulation via Bowyer–Watson; returns (triangles, issues).
+
+    ``reject_exact_cocircular`` must be True only when the caller requires a
+    Delaunay result under the ``reject`` degeneracy policy. When False, points
+    on circumcircles are treated as weak-Delaunay (not strictly inside) so a
+    valid planar mesh can still be produced for cocircular inputs.
+    """
     issues: list[str] = []
     n = len(points)
     if n < 3:
@@ -343,11 +448,11 @@ def _bowyer_watson(
             elif sign == 0:
                 cocircular_hit = True
                 # Weak Delaunay: point on circumcircle is not strictly inside.
-                # Do not add to cavity. Record for policy handling.
-        if cocircular_hit and degeneracy_policy is DegeneracyPolicy.REJECT:
+                # Do not add to cavity.
+        if cocircular_hit and reject_exact_cocircular:
             issues.append(
-                f"exact cocircularity encountered while inserting point {p_idx}; "
-                "degeneracy_policy=reject"
+                f"represented cocircularity encountered while inserting point {p_idx}; "
+                "rejected because require_delaunay=True and degeneracy_policy=reject"
             )
             return [], issues
 
@@ -777,7 +882,9 @@ def triangulate_2d(
     degeneracy_policy:
         ``\"reject\"`` or ``\"lexicographic_tiebreak\"`` (see module docstring).
     require_delaunay:
-        If True, run and require the empty-circle diagnostic layer.
+        If True, run and require the empty-circle diagnostic layer and apply
+        cocircular degeneracy policy. If False, a valid planar triangulation
+        is accepted even when the point set is cocircular / non-unique Delaunay.
 
     Returns
     -------
@@ -791,8 +898,9 @@ def triangulate_2d(
 
     notes = (
         "HOLD / SYNTHETIC_ONLY: discrete geometry only; not cortical topology.",
-        "Floats interpreted as exact IEEE binary values (Fraction.from_float).",
+        "Floats use represented-input exact-sign policy (Fraction.from_float).",
         "Finite jitter is not Simulation of Simplicity.",
+        "D1@D0==0 is an incidence identity only; planar embedding is checked separately.",
     )
 
     try:
@@ -858,7 +966,10 @@ def triangulate_2d(
         evidence={"n_points": n, "n_extreme_hull": len(extreme)},
     )
 
-    simplices, build_issues = _bowyer_watson(points, degeneracy_policy=policy)
+    reject_cocircular = require_delaunay and policy is DegeneracyPolicy.REJECT
+    simplices, build_issues = _bowyer_watson(
+        points, reject_exact_cocircular=reject_cocircular
+    )
     if build_issues and not simplices:
         return _empty_result(
             status="rejected",
@@ -920,11 +1031,7 @@ def validate_planar_mesh(
     )
     try:
         points = _parse_coords(coords)
-        tris: list[Triangle] = []
-        for t in simplices:
-            if len(t) != 3:
-                raise ValueError("each simplex must have 3 indices")
-            tris.append((int(t[0]), int(t[1]), int(t[2])))
+        tris = _parse_simplices(simplices, n_points=len(points))
     except (TypeError, ValueError) as exc:
         diag = LayerDiagnostic(
             layer=ClaimLayer.INPUT_VALIDATION.value,
@@ -941,7 +1048,28 @@ def validate_planar_mesh(
             notes=notes,
         )
 
-    # Normalize orientation for consistent checks
+    # Reject zero-area triangles before orientation normalization.
+    area_issues: list[str] = []
+    for ti, t in enumerate(tris):
+        if orient2d(points[t[0]], points[t[1]], points[t[2]]) == 0:
+            area_issues.append(f"simplex[{ti}] has zero/degenerate area")
+    if area_issues:
+        diag = LayerDiagnostic(
+            layer=ClaimLayer.INPUT_VALIDATION.value,
+            status="fails",
+            ok=False,
+            detail="; ".join(area_issues),
+        )
+        return _empty_result(
+            status="rejected",
+            policy=policy,
+            n_points=len(points),
+            diagnostics=[diag],
+            issues=area_issues,
+            notes=notes,
+        )
+
+    # Normalize orientation for consistent checks (indices already validated).
     oriented = [_canonicalize_ccw(points, *t) for t in tris]
     input_diag = LayerDiagnostic(
         layer=ClaimLayer.INPUT_VALIDATION.value,
@@ -982,28 +1110,42 @@ def validate_planar_mesh(
 
 def _self_check() -> None:
     """Minimal engineering smoke checks for local verification."""
-    # Square — unique Delaunay up to diagonal; either planar diagonal is fine.
     square = [(0, 0), (1, 0), (1, 1), (0, 1)]
-    result = triangulate_2d(square, degeneracy_policy="lexicographic_tiebreak")
-    assert result.ok and result.scientific_pass is False
-    assert result.project_status == PROJECT_STATUS
+    # Cocircular square is a valid planar triangulation when Delaunay is not required.
+    planar_only = triangulate_2d(
+        square, degeneracy_policy="reject", require_delaunay=False
+    )
+    assert planar_only.ok and planar_only.scientific_pass is False
+    assert planar_only.project_status == PROJECT_STATUS
 
-    # Counterexample lead (Hermes overlapping square): supplied invalid mesh.
+    # Same input under Delaunay+reject still fails represented cocircularity.
+    delaunay_reject = triangulate_2d(
+        square, degeneracy_policy="reject", require_delaunay=True
+    )
+    assert not delaunay_reject.ok
+
+    # Counterexample B lead: overlapping square mesh must fail planar embedding.
     bad = validate_planar_mesh(square, [(0, 1, 2), (0, 1, 3)], check_delaunay=False)
     assert not bad.ok
     planar = next(d for d in bad.diagnostics if d.layer == "planar_hull_triangulation")
     assert planar.ok is False
 
-    # Globally collinear rejection
+    # Malformed indices must not raise IndexError / wrap negatives.
+    for bad_faces in (
+        [(0, 1, True)],
+        [(0, 1, -1)],
+        [(0, 1, 99)],
+        [(0, 1, 0.5)],
+        [(0, 1, 1)],
+    ):
+        rep = validate_planar_mesh(square[:3], bad_faces)
+        assert not rep.ok
+
     col = triangulate_2d([(0, 0), (1, 0), (2, 0)])
     assert not col.ok
-
-    # Duplicate rejection
     dup = triangulate_2d([(0, 0), (1, 0), (0, 1), (0, 0)])
     assert not dup.ok
-
-    # Abstract chain holds on a good mesh
-    chain = next(d for d in result.diagnostics if d.layer == "abstract_chain")
+    chain = next(d for d in planar_only.diagnostics if d.layer == "abstract_chain")
     assert chain.ok
 
     print("planar_triangulation self-check: OK (HOLD / SYNTHETIC_ONLY)")

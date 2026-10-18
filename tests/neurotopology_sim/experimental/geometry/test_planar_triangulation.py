@@ -57,20 +57,36 @@ def test_reject_nonfinite():
     assert triangulate_2d([(0, 0), (1, 0), (0, float("inf"))]).ok is False
 
 
-def test_square_cocircular_reject_vs_lex():
+def test_square_cocircular_delaunay_reject_vs_lex():
     square = [(0, 0), (1, 0), (1, 1), (0, 1)]
-    rejected = triangulate_2d(square, degeneracy_policy=DegeneracyPolicy.REJECT)
+    rejected = triangulate_2d(
+        square, degeneracy_policy=DegeneracyPolicy.REJECT, require_delaunay=True
+    )
     assert rejected.ok is False
     allowed = triangulate_2d(
-        square, degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK
+        square,
+        degeneracy_policy=DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK,
+        require_delaunay=True,
     )
     assert allowed.ok is True
     assert len(allowed.simplices) == 2
-    # Boundary edges have incidence 1; diagonal incidence 2
     ones = [e for e, c in allowed.edge_incidences.items() if c == 1]
     twos = [e for e, c in allowed.edge_incidences.items() if c == 2]
     assert len(ones) == 4
     assert len(twos) == 1
+
+
+def test_cocircular_accepted_when_delaunay_not_required():
+    """Planar validity must not be rejected solely for cocircularity without Delaunay."""
+    square = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    result = triangulate_2d(
+        square, degeneracy_policy=DegeneracyPolicy.REJECT, require_delaunay=False
+    )
+    assert result.ok is True
+    delaunay = next(d for d in result.diagnostics if d.layer == "delaunay_empty_circle")
+    assert delaunay.status == "skipped"
+    planar = next(d for d in result.diagnostics if d.layer == "planar_hull_triangulation")
+    assert planar.ok is True
 
 
 def test_hull_cycle_and_boundary_incidences():
@@ -133,3 +149,73 @@ def test_no_coordinate_mutation():
     snapshot = [row[:] for row in pts]
     triangulate_2d(pts, degeneracy_policy="lexicographic_tiebreak")
     assert pts == snapshot
+
+
+def test_numpy_coords_supported():
+    np = pytest.importorskip("numpy")
+    coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], dtype=float)
+    result = triangulate_2d(coords, require_delaunay=False)
+    assert result.ok is True
+
+
+@pytest.mark.parametrize(
+    "bad_faces",
+    [
+        [(0, 1, True)],
+        [(0, 1, False)],
+        [(0, 1, -1)],
+        [(0, 1, 99)],
+        [(0, 1, 0.5)],
+        [(0, 1, 1)],  # repeated vertex
+    ],
+)
+def test_malformed_simplex_indices_fail_closed(bad_faces):
+    pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    report = validate_planar_mesh(pts, bad_faces, check_delaunay=False)
+    assert report.ok is False
+    assert report.status == "rejected"
+    assert any(report.diagnostics) and report.diagnostics[0].layer == "input_validation"
+
+
+def test_counterexample_a_valid_mesh_and_omitted_crossing_leads():
+    """Independently check Antigravity Counterexample A fixtures against production API."""
+    points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.5, 0.5)]
+    valid = [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)]
+    assert validate_planar_mesh(points, valid, check_delaunay=False).ok is True
+    # Crossing chords fixture A3-style: diagonals of the square without interior vertex use
+    # is Counterexample B; with interior omitted, overlapping diagonals still fail planar.
+    assert (
+        validate_planar_mesh(
+            points[:4], [(0, 1, 2), (0, 1, 3)], check_delaunay=False
+        ).ok
+        is False
+    )
+
+
+def test_counterexample_b_rejected_as_supplied_mesh():
+    points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    faces = [(0, 1, 2), (0, 1, 3)]
+    report = validate_planar_mesh(points, faces, check_delaunay=False)
+    assert report.ok is False
+    planar = next(d for d in report.diagnostics if d.layer == "planar_hull_triangulation")
+    assert planar.ok is False
+
+
+def test_non_delaunay_valid_planar_accepted_when_delaunay_disabled():
+    points = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.5, 1.5)]
+    faces = [(0, 1, 2), (0, 2, 3)]
+    planar = validate_planar_mesh(points, faces, check_delaunay=False)
+    assert planar.ok is True
+    with_delaunay = validate_planar_mesh(
+        points, faces, check_delaunay=True, degeneracy_policy="reject"
+    )
+    # Planar embedding holds; empty-circle fails independently.
+    planar_layer = next(
+        d for d in with_delaunay.diagnostics if d.layer == "planar_hull_triangulation"
+    )
+    delaunay_layer = next(
+        d for d in with_delaunay.diagnostics if d.layer == "delaunay_empty_circle"
+    )
+    assert planar_layer.ok is True
+    assert delaunay_layer.ok is False
+    assert with_delaunay.ok is False
