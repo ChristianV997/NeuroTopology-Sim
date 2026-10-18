@@ -1,24 +1,32 @@
-# Reproducible container for Awareness Studio: the independently
-# installable FastAPI + RAG chatbot app. Separate from the root sim
-# engine's Dockerfile -- these are two genuinely different Python
-# environments (see repo root CLAUDE.md), each with its own dependency
-# footprint, so each gets its own lean image rather than one shared,
-# bloated one.
+# Isolated test image for Awareness Studio. Keep the repository-relative
+# layout required by its integration tests without copying VCS metadata or data.
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /repo
 
-COPY pyproject.toml .
-COPY src/ src/
-COPY tests/ tests/
-COPY tools/ tools/
-COPY inputs/ inputs/
+COPY apps/awareness_studio/pyproject.toml apps/awareness_studio/pyproject.toml
+COPY apps/awareness_studio/src/ apps/awareness_studio/src/
+COPY apps/awareness_studio/tests/ apps/awareness_studio/tests/
+COPY apps/awareness_studio/tools/ apps/awareness_studio/tools/
+COPY apps/awareness_studio/inputs/ apps/awareness_studio/inputs/
+
+# Root packages imported by the app's offline integration tests.
+COPY tools/__init__.py tools/__init__.py
+COPY tools/literature_evidence/ tools/literature_evidence/
+COPY tools/simulation_artifacts/ tools/simulation_artifacts/
+COPY tools/simulation_execution/ tools/simulation_execution/
+COPY scripts/build_awareness_evidence_graph.py scripts/build_awareness_evidence_graph.py
+
+# repo_paths.find_repository_root requires a .git marker plus the root tools
+# package. This empty test-image marker is not Git metadata; .git is excluded
+# from the build context and no repository history is copied into the image.
+RUN mkdir -p /repo/.git
+
+WORKDIR /repo/apps/awareness_studio
+ENV PYTHONPATH=/repo
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -e ".[dev,web]"
 
-# Default: run this sub-project's own test suite (mirrors `make test` /
-# CLAUDE.md's `pytest -q`, offline, no LLM). Override with
-# `docker run <image> <cmd>` to instead start the web app
-# (`uvicorn awareness_studio.web.app:app --host 0.0.0.0 --port 8000`).
+# Run the complete app test suite offline, including repository integrations.
 CMD ["pytest", "-q"]
