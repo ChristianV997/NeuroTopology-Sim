@@ -34,6 +34,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7
@@ -66,6 +68,17 @@ jobs:
           tests/btc_icft/test_report_guardrails.py
           tests/btc_icft/test_ontology_schema.py
           tests/runner/test_runner_isolation.py
+          tests/audits/test_live_repo_pr_ownership_map.py
+
+      - name: Discover and run changed Round 6 candidate suites
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: >-
+          python .github/workflows/round6_experimental_tests.py
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --report outputs/round6_experimental_ci_report.json
 
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic
@@ -94,6 +107,7 @@ jobs:
           name: required-core-test-report
           path: |
             outputs/required_core_test_report.json
+            outputs/round6_experimental_ci_report.json
             test-results-core-failure.txt
           if-no-files-found: warn
 

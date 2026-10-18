@@ -1,186 +1,225 @@
-"""Structural, offline checks for the dated repository/PR audit artifact."""
+"""Offline structural checks for the dated PR ownership/status snapshot."""
 
 from __future__ import annotations
 
+import importlib.util
+import ast
 import json
 import re
+import unittest
+from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-AUDIT_PATH = ROOT / "docs" / "audits" / "live_repo_pr_ownership_map.json"
-SCHEMA_PATH = ROOT / "docs" / "audits" / "live_repo_pr_ownership_map.schema.json"
-
-
-def _reject_constant(value: str):
-    raise ValueError(f"non-finite JSON constant: {value}")
+AUDIT = ROOT / "docs/audits/live_repo_pr_ownership_map.json"
+SCHEMA = ROOT / "docs/audits/live_repo_pr_ownership_map.schema.json"
+HELPER = ROOT / ".github/workflows/round6_experimental_tests.py"
 
 
 def _load(path: Path):
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant)
+    def reject_constant(value: str):
+        raise ValueError(f"non-finite JSON constant: {value}")
+
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=reject_constant)
 
 
-def _pr_map(document: dict) -> dict[int, dict]:
-    return {pr["number"]: pr for pr in document["pull_requests"]}
+def _helper():
+    spec = importlib.util.spec_from_file_location("round6_experimental_tests", HELPER)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _assert_relative_repo_path(value: str) -> None:
-    assert value and "\x00" not in value
-    assert not PurePosixPath(value).is_absolute()
-    assert not PureWindowsPath(value).is_absolute()
-    assert not PureWindowsPath(value).drive
-    assert ".." not in PurePosixPath(value).parts
+class OwnershipSnapshotTests(unittest.TestCase):
+    def test_snapshot_is_canonical_finite_json_and_schema_versioned(self):
+        raw = AUDIT.read_text(encoding="utf-8")
+        doc = _load(AUDIT)
+        self.assertEqual(raw, json.dumps(doc, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n")
+        schema = _load(SCHEMA)
+        self.assertEqual(doc["schema_version"], schema["properties"]["schema_version"]["const"])
+        self.assertEqual(doc["snapshot_kind"], "timestamped_read_only_repository_and_pull_request_audit")
+        self.assertEqual(doc["repository"]["posture"], "HOLD / SYNTHETIC_ONLY")
+        self.assertRegex(doc["captured_at_utc"], r"^\d{4}-\d{2}-\d{2}T.*Z$")
+        self.assertIsNotNone(datetime.fromisoformat(doc["captured_at_utc"].replace("Z", "+00:00")).tzinfo)
+        self.assertRegex(doc["repository"]["main_sha"], r"^[0-9a-f]{40}$")
+
+    def test_open_inventory_ids_shas_and_relative_paths_are_valid(self):
+        doc = _load(AUDIT)
+        prs = doc["pull_requests"]
+        numbers = [pr["number"] for pr in prs]
+        self.assertEqual(numbers, sorted(set(numbers)))
+        self.assertEqual(numbers, doc["scope"]["open_pr_numbers"])
+        self.assertEqual(len(numbers), doc["scope"]["open_pr_count"])
+        self.assertTrue({390, 392, 409, 413, 421, 425, 428} <= set(numbers))
+        for pr in prs:
+            for key in ("base_sha", "head_sha"):
+                self.assertRegex(pr["base"]["sha"] if key == "base_sha" else pr["head"]["sha"], r"^[0-9a-f]{40}$")
+            for path in pr["changed_paths"]:
+                self.assertNotIn("\x00", path)
+                self.assertFalse(PurePosixPath(path).is_absolute())
+                self.assertFalse(PureWindowsPath(path).is_absolute())
+                self.assertFalse(PureWindowsPath(path).drive)
+                self.assertNotIn("..", PurePosixPath(path).parts)
+
+    def test_path_overlaps_are_exact_ownership_collisions_not_git_conflicts(self):
+        doc = _load(AUDIT)
+        by_number = {pr["number"]: pr for pr in doc["pull_requests"]}
+        seen = set()
+        for collision in doc["path_collisions"]:
+            self.assertNotIn(collision["path"], seen)
+            seen.add(collision["path"])
+            self.assertEqual(collision["classification"], "exact_changed_path_overlap")
+            self.assertIsNone(collision["git_conflict"])
+            self.assertGreaterEqual(len(collision["pr_numbers"]), 2)
+            for number in collision["pr_numbers"]:
+                self.assertIn(collision["path"], by_number[number]["changed_paths"])
+
+    def test_unknown_required_checks_cannot_make_a_pr_ready(self):
+        doc = _load(AUDIT)
+        self.assertEqual(doc["required_check_configuration"]["state"], "unknown")
+        self.assertTrue(doc["required_check_configuration"]["reason"])
+        for pr in doc["pull_requests"]:
+            self.assertEqual(pr["ci"]["required_check_state"], "unknown")
+            if pr["readiness"]["state"] == "ready":
+                self.assertEqual(pr["review"]["approval_count"], 1)
+                self.assertEqual(pr["ci"]["required_check_state"], "pass")
+        self.assertEqual(doc["readiness_summary"]["merge_ready_count"], 0)
+        self.assertEqual(doc["readiness_summary"]["ready_pr_numbers"], [])
+        self.assertEqual(doc["readiness_summary"]["counts"]["ready"], 0)
+
+    def test_collision_summary_and_round6_pr_405_fact_are_consistent(self):
+        doc = _load(AUDIT)
+        self.assertEqual(doc["ownership_summary"]["path_collision_path_count"], len(doc["path_collisions"]))
+        self.assertTrue(doc["pr_405"]["merged"])
+        self.assertRegex(doc["pr_405"]["merge_commit_sha"], r"^[0-9a-f]{40}$")
+        self.assertEqual(doc["pr_405"]["interface"]["package"], "analysis.binomial_planning")
+        self.assertIn("wilson_score_interval", doc["pr_405"]["interface"]["exports"])
+
+    def test_workflow_runs_mapped_candidate_tests_and_does_not_call_absence_a_pass(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        self.assertIn("round6_experimental_tests.py", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("outputs/round6_experimental_ci_report.json", workflow)
+        helper = _helper()
+        expected = {
+            "planar_geometry", "hodge_2d", "spherical_csd", "four_sphere",
+            "phase_winding", "surrogate_nulls", "phase_uncertainty",
+            "surrogate_audit", "synthetic_roc",
+        }
+        for name, spec in helper.COMPONENTS.items():
+            self.assertTrue(spec.get("tests"))
+            self.assertTrue(spec.get("triggers"))
+        self.assertTrue(expected <= set(helper.COMPONENTS))
+        self.assertEqual(helper.select_components({"tests/experimental/test_synthetic_roc_calibration_split.py"}), ["synthetic_roc"])
+        self.assertEqual(helper.select_components({"tests/neurotopology_sim/experimental/geometry/test_planar_triangulation.py"}), ["planar_geometry"])
+        self.assertEqual(helper.select_components({"tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"}), ["hodge_2d"])
+        self.assertEqual(helper.select_components({"tests/mne_csd_reference_audit/test_kkt_operator.py"}), ["spherical_csd"])
+        self.assertEqual(helper.select_components({"tests/experimental_audits/test_four_shell_bvp_oracle.py"}), ["four_sphere"])
+        self.assertEqual(helper.select_components({"tests/surrogate_nulls/test_phase_nulls.py"}), ["surrogate_nulls"])
+        self.assertEqual(helper.select_components({"tests/phase_uncertainty/test_candidate_contract.py"}), ["phase_uncertainty"])
+        self.assertEqual(helper.select_components({"tests/surrogate_audit/test_mv_fpr.py"}), ["surrogate_audit"])
+        self.assertEqual(helper.select_components({"docs/unrelated.md"}), [])
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            verdict = helper.inspect_component("synthetic_roc", root)
+            self.assertEqual(verdict["status"], "BLOCKED")
+            self.assertIn("absent", verdict["reason"])
+
+    def test_candidate_mapping_covers_direct_implementation_and_adversarial_test_pairs(self):
+        helper = _helper()
+        expected_pairs = {
+            "planar_geometry": ("neurotopology_sim/experimental/geometry/planar_triangulation.py", "tests/neurotopology_sim/experimental/geometry/test_planar_triangulation.py"),
+            "hodge_2d": ("neurotopology_sim/experimental/topology/hodge_2d.py", "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"),
+            "spherical_csd": ("neurotopology_sim/experimental/preprocessing/spherical_csd.py", "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py"),
+            "four_sphere": ("physics/eeg_forward/four_sphere.py", "tests/physics/eeg_forward/test_four_sphere.py"),
+            "phase_winding": ("neurotopology_sim/experimental/topology/winding.py", "tests/neurotopology_sim/experimental/topology/test_phase_winding.py"),
+            "surrogate_nulls": ("tools/surrogate_nulls/nulls.py", "tests/surrogate_nulls/test_phase_nulls.py"),
+            "phase_uncertainty": ("tools/phase_uncertainty/candidate_estimator.py", "tests/phase_uncertainty/test_candidate_contract.py"),
+            "surrogate_audit": ("tools/surrogate_audit/mv_fpr.py", "tests/surrogate_audit/test_mv_fpr.py"),
+            "synthetic_roc": ("neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py", "tests/neurotopology_sim/experimental/benchmarks/test_synthetic_forward_roc.py"),
+        }
+        for name, (implementation, test_file) in expected_pairs.items():
+            spec = helper.COMPONENTS[name]
+            implementations = spec.get("implementation_any", (spec.get("implementation"),))
+            self.assertIn(implementation, implementations, name)
+            self.assertIn(test_file, spec["tests"], name)
+
+    def test_junit_skip_and_empty_collection_are_visible_to_ci_gate(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            report = Path(td) / "report.xml"
+            report.write_text('<testsuite tests="2" skipped="1"><testcase/><testcase><skipped/></testcase></testsuite>', encoding="utf-8")
+            counts = helper.junit_counts(report)
+            self.assertEqual(counts, (2, 1, 0, 0))
+            self.assertEqual(helper.junit_status(counts), "FAIL")
+            report.write_text('<testsuite tests="0"/>', encoding="utf-8")
+            counts = helper.junit_counts(report)
+            self.assertEqual(counts, (0, 0, 0, 0))
+            self.assertEqual(helper.junit_status(counts), "FAIL")
+            report.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
+            self.assertEqual(helper.junit_status(helper.junit_counts(report)), "PASS")
+
+    def test_every_mapped_file_runs_even_after_a_skip_and_skip_fails_lane(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["surrogate_nulls"]
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            for source in spec["implementation_any"]:
+                path = root / source
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# fixture implementation path\n", encoding="utf-8")
+            for test_file in spec["tests"]:
+                path = root / test_file
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# fixture candidate test path\n", encoding="utf-8")
+
+            calls = []
+
+            def fake_runner(command, **kwargs):
+                calls.append(command)
+                report_path = Path(command[command.index("--report") + 1])
+                report_path.write_text(json.dumps({
+                    "exit_code": 0,
+                    "batches": [{"status": "passed"}],
+                    "summary": {"skipped_batches": 0, "failed_batches": 0, "timeout_batches": 0},
+                }), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit_path = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit_path.write_text(
+                    '<testsuite tests="1"><testcase><skipped/></testcase></testsuite>'
+                    if len(calls) == 1 else
+                    '<testsuite tests="1"><testcase/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            report_path = root / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={"tools/surrogate_nulls/nulls.py"}), patch.object(helper.subprocess, "run", side_effect=fake_runner):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+
+            report = _load(report_path)
+            self.assertEqual(result, 1)
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(len(calls), len(spec["tests"]))
+            for command in calls:
+                self.assertIn("scripts/run_tests_isolated.py", command)
+                self.assertEqual(command[command.index("--batch-size") + 1], "1")
+                self.assertEqual(command[command.index("--timeout-s") + 1], "120")
+
+    def test_discovery_helper_has_no_dataset_or_network_client_imports(self):
+        tree = ast.parse(HELPER.read_text(encoding="utf-8"))
+        imports = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.add(node.module.split(".")[0])
+        self.assertTrue({"socket", "requests", "urllib", "boto3", "mne"}.isdisjoint(imports))
 
 
-def test_snapshot_is_finite_deterministic_json_with_required_structure():
-    raw = AUDIT_PATH.read_text(encoding="utf-8")
-    document = _load(AUDIT_PATH)
-    canonical = json.dumps(
-        document, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2
-    ) + "\n"
-    assert raw == canonical
-    required = _load(SCHEMA_PATH)["required"]
-    assert set(required) <= document.keys()
-    assert document["snapshot_kind"] == "timestamped_read_only_repository_and_pull_request_audit"
-    assert document["captured_at_utc"].endswith("Z")
-    assert document["repository"]["posture"] == "HOLD / SYNTHETIC_ONLY"
-
-
-def test_pr_ids_are_unique_and_match_the_open_inventory():
-    document = _load(AUDIT_PATH)
-    numbers = [pr["number"] for pr in document["pull_requests"]]
-    assert len(numbers) == len(set(numbers))
-    assert numbers == sorted(numbers)
-    assert numbers == document["scope"]["open_pr_numbers"]
-    assert document["scope"]["open_pr_count"] == len(numbers)
-    assert all(isinstance(number, int) and number > 0 for number in numbers)
-
-
-def test_pr_records_and_readiness_summary_match_the_schema_and_inventory():
-    document = _load(AUDIT_PATH)
-    schema = _load(SCHEMA_PATH)
-    required = set(schema["$defs"]["pull_request"]["required"])
-    for pr in document["pull_requests"]:
-        assert required <= pr.keys()
-
-    counts = document["readiness_summary"]["counts"]
-    observed_counts = {
-        state: sum(pr["readiness"]["state"] == state for pr in document["pull_requests"])
-        for state in counts
-    }
-    assert counts == observed_counts
-    assert document["readiness_summary"]["merge_ready_count"] == observed_counts.get("ready", 0)
-    assert document["ownership_summary"]["observed_failed_pr_count"] == sum(
-        pr["ci"]["observed_state"] == "fail" for pr in document["pull_requests"]
-    )
-
-
-def test_pr_sha_fields_and_statuses_use_declared_vocabulary():
-    document = _load(AUDIT_PATH)
-    schema = _load(SCHEMA_PATH)
-    assert re.fullmatch(schema["$defs"]["sha"]["pattern"], document["repository"]["main_sha"])
-    pr_schema = schema["$defs"]["pull_request"]["properties"]
-    sha_pattern = re.compile(schema["$defs"]["sha"]["pattern"])
-    required_states = set(pr_schema["ci"]["properties"]["required_check_state"]["enum"])
-    observed_states = set(pr_schema["ci"]["properties"]["observed_state"]["enum"])
-    readiness_states = set(pr_schema["readiness"]["properties"]["state"]["enum"])
-
-    for pr in document["pull_requests"]:
-        assert sha_pattern.fullmatch(pr["base"]["sha"])
-        assert sha_pattern.fullmatch(pr["base"]["live_main_sha"])
-        assert sha_pattern.fullmatch(pr["head"]["sha"])
-        assert pr["state"] in {"open", "closed"}
-        assert pr["ci"]["required_check_state"] in required_states
-        assert pr["ci"]["observed_state"] in observed_states
-        assert pr["readiness"]["state"] in readiness_states
-        assert pr["changed_path_count"] == len(pr["changed_paths"])
-        assert len(pr["changed_paths"]) == len(set(pr["changed_paths"]))
-        for path in pr["changed_paths"]:
-            _assert_relative_repo_path(path)
-
-        if pr["ci"]["required_check_state"] == "unknown":
-            assert pr["ci"]["required_check_reason"].strip()
-        if pr["ci"]["observed_state"] == "unknown":
-            assert (pr["ci"].get("no_check_runs_reason") or "").strip() or (
-                pr["ci"].get("observed_state_reason") or ""
-            ).strip()
-
-
-def test_exact_path_collisions_reference_competing_open_pr_changes():
-    document = _load(AUDIT_PATH)
-    prs = _pr_map(document)
-    seen_paths = set()
-    for collision in document["path_collisions"]:
-        path = collision["path"]
-        _assert_relative_repo_path(path)
-        assert path not in seen_paths
-        seen_paths.add(path)
-        numbers = collision["pr_numbers"]
-        assert len(numbers) >= 2
-        assert len(numbers) == len(set(numbers))
-        assert numbers == sorted(numbers)
-        assert all(number in prs and path in prs[number]["changed_paths"] for number in numbers)
-        assert collision["kind"] == "exact_changed_path_overlap"
-        assert collision["is_git_merge_conflict"] is False
-
-
-def test_unknown_is_explicit_and_never_implicitly_passes():
-    document = _load(AUDIT_PATH)
-    for pr in document["pull_requests"]:
-        if pr["ci"]["required_check_state"] == "unknown":
-            assert pr["ci"]["required_check_reason"]
-            assert pr["ci"]["required_check_state"] != "pass"
-        if pr["ci"]["observed_state"] == "unknown":
-            assert pr["ci"].get("no_check_runs_reason") or pr["ci"].get("observed_state_reason")
-            assert pr["ci"]["observed_state"] != "pass"
-
-    if document["required_check_configuration"]["state"] == "unknown":
-        assert document["required_check_configuration"]["reason"]
-
-
-def test_schema_keeps_unknown_optional_fields_forward_compatible():
-    schema = _load(SCHEMA_PATH)
-    assert schema["additionalProperties"] is True
-    assert schema["$defs"]["pull_request"]["additionalProperties"] is True
-    assert schema["$defs"]["pull_request"]["properties"]["ci"]["additionalProperties"] is True
-
-    document = _load(AUDIT_PATH)
-    future_record = dict(document["pull_requests"][0])
-    future_record["future_observation"] = {"state": "unknown"}
-    assert future_record["future_observation"]["state"] == "unknown"
-
-
-def test_audit_artifact_paths_do_not_overlap_open_pr_ownership():
-    document = _load(AUDIT_PATH)
-    audit_paths = {
-        "docs/audits/live_repo_pr_ownership_map.json",
-        "docs/audits/live_repo_pr_ownership_map.schema.json",
-        "docs/audits/live_repo_pr_ownership_map.md",
-        "tests/audits/test_live_repo_pr_ownership_map.py",
-    }
-    open_pr_paths = {
-        path for pr in document["pull_requests"] for path in pr["changed_paths"]
-    }
-    assert audit_paths.isdisjoint(open_pr_paths)
-
-
-def test_pr_405_merge_and_interface_are_explicitly_captured():
-    document = _load(AUDIT_PATH)
-    pr405 = document["pr_405"]
-    assert pr405["number"] == 405
-    assert pr405["state"] == "closed"
-    assert pr405["merged"] is True
-    assert re.fullmatch(r"[0-9a-f]{40}", pr405["base_sha"])
-    assert re.fullmatch(r"[0-9a-f]{40}", pr405["head_sha"])
-    assert re.fullmatch(r"[0-9a-f]{40}", pr405["merge_commit_sha"])
-    assert pr405["interface"]["package"] == "analysis.binomial_planning"
-    assert "wilson_score_interval" in pr405["interface"]["exports"]
-    assert "unavailable_zero_trials" in pr405["interface"]["zero_trials_behavior"]
-
-
-def test_unknown_optional_data_is_not_guessed_from_path_or_title():
-    document = _load(AUDIT_PATH)
-    for pr in document["pull_requests"]:
-        if pr["mergeability"]["conflicting_paths"] is None:
-            assert pr["mergeability"]["conflict_path_detail"].strip()
-        if pr["mergeability"]["api_mergeable"] is None:
-            assert pr["mergeability"]["api_state"] is None or pr["mergeability"]["conflict_path_detail"].strip()
+if __name__ == "__main__":
+    unittest.main()
