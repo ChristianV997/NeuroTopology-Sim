@@ -1,1 +1,0 @@
-# synthetic operating-characteristics benchmarks
