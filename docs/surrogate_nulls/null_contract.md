@@ -177,11 +177,17 @@ and it appears in `EXPLORATORY_NULL_IDS` and `CONTRACTS`.
 - Rule: keep `Re C(f)` from the estimate and draw **real** Gaussian Fourier coefficients with
   covariance `Re C(f)` at every bin. `draw_from_csd(..., real_coefficients=True)` enforces the
   real target.
-- Preserved, in expectation: the real part of the cross-spectrum. Every imaginary part is zero by
-  construction (tested: the surrogate cross-spectrum imaginary part is below 1e-12).
-- It forces every inter-channel phase relation to 0 or pi.
+- Preserved, in expectation over seeds: the real part `Re C(f)` of the estimated cross-spectrum.
+- **Exact, per realisation, by construction:** each realisation's bin coefficients are real, so
+  every inter-channel relative phase of every realisation is exactly 0 or pi at each bin (tested:
+  the largest distance from {0, pi} is below 1e-12 for every realisation checked).
+- This is a stronger property than the ensemble statement. A real covariance matrix on its own
+  constrains only the ensemble imaginary parts. This construction makes the per-realisation
+  constraint exact, and that is a property of the surrogate. It is not evidence about the
+  recording.
 - Assumption-dependent. It does **not** model volume conduction, source geometry, filtering, or
-  lagged coupling. Do not use it to claim that any of these is controlled.
+  lagged coupling. It is **not** a volume-conduction detector, and it must not be used to claim
+  that any of these is controlled.
 
 ## Does the procedure vary the phase statistic? (`winding_variation`)
 
@@ -196,6 +202,50 @@ toy loop-winding statistic across an ensemble. It returns `varies_from_original`
   phases fixed. This is the rank-one failure mode, and it is reported rather than hidden.
 
 A procedure that leaves the statistic unchanged must not be used to test that statistic.
+
+## Common phase: a control, not a winding null
+
+`common_phase_prichard_theiler` multiplies every channel at a bin by the same phasor
+`exp(i phi_f)`. Its cross-product is then unchanged: `X_i'(f) conj(X_j'(f)) = X_i(f) conj(X_j(f))`
+for every bin and every seed. This is an algebraic identity, and it is tested for every randomized
+bin, every channel pair, and several seeds. Every same-frequency relative phase is therefore kept
+exactly. A statistic built from relative phases cannot be shown to exceed this null. The procedure
+is kept only as a labelled control (`role = CONTROL_DIAGNOSTIC_ONLY`): use it to check that a
+statistic is blind to a common phase shift.
+
+## Preserved properties: exact, in expectation, or approximate
+
+| Null | Exact per realisation | In expectation over seeds | Approximate, or measured only |
+|---|---|---|---|
+| `common_phase_prichard_theiler` (control) | auto-spectra; complex cross-spectrum per bin; every same-frequency relative phase; DC/Nyquist real | - | marginal (measured) |
+| `independent_phase_univariate_ft` | auto-spectra per channel | cross-spectrum tends to zero | marginal (measured) |
+| `cholesky_gaussian_csd` (multitaper default) and `cholesky_gaussian_cross_spectral` | DC/Nyquist real; Hermitian and conjugate symmetry | `E[X X^H / n]` equals the estimate | single-realisation deviation (measured); marginal (measured); relative phases unconstrained |
+| `zero_lag_real_part_gaussian` (exploratory) | every inter-channel relative phase is 0 or pi; every imaginary part is zero; DC/Nyquist real | `E` equals `Re` of the estimate | real-part deviation (measured); marginal (measured) |
+| `mv_iaaft_rank_adjusted` | per-channel sorted values (marginal) after the final rank step | - | auto-spectra and cross-spectra measured before and after the rank step; strict cross gate reported UNMET when missed |
+
+Reproducibility: every random draw comes from `rng_for(seed, label)`. Each (seed, label) pair
+is an independent stream. Labels separate channels, bins, and null families, so changing one bin's
+matrix leaves every other bin's coefficients bit-identical (tested).
+
+## Degrees of freedom and rank
+
+- Nominal degrees of freedom per bin: multitaper `2K`; boxcar `2 x` the number of averaged bins
+  (edge-truncated); single periodogram `2`. These are **approximate**. Sine tapers, and neighbouring
+  bins, are not exactly independent for coloured signals.
+- Reported per bin: effective rank (eigenvalues above `1e-10 x max`), absolute and relative minimum
+  eigenvalue, condition number, and participation ratio.
+- No null claims full rank. Every estimated-CSD report carries `rank = EFFECTIVE_RANK_REPORTED_PER_BIN_NOT_ASSUMED_FULL`.
+  A factorization returning a factor does not show full numerical rank.
+
+## Relative-phase diagnostics
+
+- `relative_phase_spread(x, generator, seeds, bin)` reports, for each channel pair, the circular
+  spread `1 - R` of the surrogate relative phases across seeds, and whether it varies. Measured:
+  the common-phase control gives zero spread for every pair. The Cholesky null on independent
+  three-channel noise gives a maximum spread of about 0.87 at bin 3.
+- `zero_or_pi_distance(signals)` gives, for one realisation, the largest distance of any
+  inter-channel relative phase from {0, pi}. Measured: about 2e-15 for the zero-lag null, and about
+  1.55 rad for the Cholesky null on the same data.
 
 ## Limitations
 

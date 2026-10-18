@@ -223,16 +223,24 @@ def estimate_csd(data, estimator, *, n_tapers=None, smoothing_halfwidth=1, shrin
     n_time = len(data[0])
     info = {"estimator": estimator, "n_tapers": None, "smoothing_halfwidth": None,
             "shrinkage": float(shrinkage), "source": "estimated_from_input"}
+    bins = sp.n_freq(n_time)
     if estimator == "multitaper":
         k = default_n_tapers(n_time, n_channels) if n_tapers is None else n_tapers
         csd = multitaper_csd(data, k)
         info["n_tapers"] = k
+        # Nominal complex-Gaussian degrees of freedom: 2 per taper. Approximate, because
+        # sine tapers are only approximately independent for coloured signals.
+        info["dof_per_bin"] = tuple(2 * k for _ in range(bins))
     elif estimator == "periodogram_boxcar":
         csd = periodogram_boxcar_csd(data, smoothing_halfwidth)
         info["smoothing_halfwidth"] = smoothing_halfwidth
+        info["dof_per_bin"] = tuple(
+            2 * (min(bins, k + smoothing_halfwidth + 1) - max(0, k - smoothing_halfwidth)) for k in range(bins)
+        )
     else:
         csd = periodogram_boxcar_csd(data, 0)
         info["smoothing_halfwidth"] = 0
+        info["dof_per_bin"] = tuple(2 for _ in range(bins))
     if shrinkage:
         csd = shrink_csd(csd, shrinkage)
     return csd, info
@@ -306,3 +314,77 @@ def winding_variation(x, generator, seeds, bin_k, *, statistic=phase_loop_windin
         "varies_across_ensemble": len(distinct) > 1,
         "varies_from_original": any(v != original for v in values),
     }
+
+
+VARIATION_TOL = 1e-9  # a circular spread below this is numerical zero, not variation
+
+
+def _wrap(angle):
+    return (angle + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def pairwise_relative_phases(spectra, k):
+    """Relative phases ``arg(X_i[k] conj(X_j[k]))`` for every channel pair ``i < j`` at bin ``k``."""
+    d = len(spectra)
+    return {(i, j): cmath.phase(spectra[i][k] * spectra[j][k].conjugate())
+            for i in range(d) for j in range(i + 1, d)}
+
+
+def relative_phase_spread(x, generator, seeds, bin_k):
+    """Does a procedure vary each channel pair's relative phase at ``bin_k`` across an ensemble?
+
+    For each pair, the circular spread is ``1 - R``, where ``R`` is the mean resultant length of
+    the surrogate relative phases. ``varies`` is True if any pair's spread exceeds
+    ``VARIATION_TOL``. ``max_deviation_from_original`` is the largest wrapped deviation of any
+    surrogate's relative phase from the original data's. A procedure that keeps every relative
+    phase cannot test a statistic built from relative phases.
+    """
+    if isinstance(bin_k, bool) or not isinstance(bin_k, numbers.Integral):
+        raise sp.SurrogateInputError("bin_k must be an integer")
+    seeds = list(seeds)
+    if not seeds:
+        raise sp.SurrogateInputError("seeds must be non-empty")
+    original = pairwise_relative_phases([sp.rfft(c) for c in x], bin_k)
+    angles = {pair: [] for pair in original}
+    for seed in seeds:
+        signals, _ = generator(x, seed)
+        rel = pairwise_relative_phases([sp.rfft(s) for s in signals], bin_k)
+        for pair in angles:
+            angles[pair].append(rel[pair])
+    pairs = {}
+    for pair, values in angles.items():
+        mean_cos = sum(math.cos(v) for v in values) / len(values)
+        mean_sin = sum(math.sin(v) for v in values) / len(values)
+        spread = 1.0 - math.hypot(mean_cos, mean_sin)
+        deviation = max(abs(_wrap(v - original[pair])) for v in values)
+        pairs[pair] = {"spread": spread, "max_deviation_from_original": deviation}
+    max_spread = max((p["spread"] for p in pairs.values()), default=0.0)
+    return {
+        "bin": bin_k,
+        "n_seeds": len(seeds),
+        "pairs": pairs,
+        "max_spread": max_spread,
+        "varies": max_spread > VARIATION_TOL,
+    }
+
+
+def zero_or_pi_distance(signals, bins=None, rel_amplitude_floor=1e-10):
+    """Largest distance, in radians, of any inter-channel relative phase from ``{0, pi}``.
+
+    Zero means every checked relative phase is 0 or pi up to rounding. Bins where a channel's
+    amplitude is below ``rel_amplitude_floor`` times the largest amplitude are skipped, because
+    their phase is undefined. Returns ``0.0`` when no bin is checked.
+    """
+    spectra = [sp.rfft(s) for s in signals]
+    n = len(signals[0])
+    if bins is None:
+        bins = range(sp.n_freq(n))
+    peak = max((abs(v) for row in spectra for v in row), default=0.0)
+    floor = rel_amplitude_floor * peak
+    worst = 0.0
+    for k in bins:
+        if any(abs(row[k]) <= floor for row in spectra):
+            continue
+        for theta in pairwise_relative_phases(spectra, k).values():
+            worst = max(worst, min(abs(_wrap(theta)), abs(_wrap(theta - math.pi))))
+    return worst

@@ -34,6 +34,10 @@ NULL_IDS = (
 # Exploratory, assumption-dependent nulls. Kept out of NULL_IDS on purpose.
 EXPLORATORY_NULL_IDS = ("zero_lag_real_part_gaussian",)
 
+# Reported with every estimated-CSD null. It states what was checked and never claims full rank:
+# the factorization returning a factor does not show that the covariance has full numerical rank.
+RANK_STATUS = "EFFECTIVE_RANK_REPORTED_PER_BIN_NOT_ASSUMED_FULL"
+
 CONTRACTS = {
     "common_phase_prichard_theiler": {
         "generative_rule": (
@@ -43,8 +47,10 @@ CONTRACTS = {
         "preserved": "every channel's power spectrum; the complex cross-spectrum at every bin, "
                      "including same-frequency inter-channel phase differences",
         "randomized": "the absolute phase of each randomized bin, identically across channels",
-        "intended_use": "a sanity baseline that keeps all second-order complex structure; "
-                        "NOT a null for narrowband spatial winding",
+        "role": "CONTROL_DIAGNOSTIC_ONLY: not a winding null and not a Gaussian surrogate",
+        "intended_use": "a control that keeps all second-order complex structure, including every "
+                        "same-frequency relative phase; use it to check that a statistic is blind to a "
+                        "common phase shift. NOT a null for narrowband spatial winding.",
         "invalid_for": "narrowband spatial winding: the winding depends on phase differences, "
                        "which this null preserves exactly, so a winding statistic cannot exceed it",
         "assumptions": "stationary record; second-order structure is the object of the test",
@@ -104,8 +110,11 @@ CONTRACTS = {
             "Draw REAL Gaussian Fourier coefficients with covariance Re C(f) at every bin, "
             "including the randomized bins. Inverse rFFT."
         ),
-        "preserved": "the real part of the cross-spectrum in expectation (zero-phase-lag, in-phase "
-                     "covariance). Every imaginary part is set to zero by construction.",
+        "preserved": "the real part of the estimated cross-spectrum IN EXPECTATION over seeds. "
+                     "Each realisation's bin coefficients are real by construction, so EVERY realisation "
+                     "has inter-channel relative phases of exactly 0 or pi at each bin (a stronger, "
+                     "per-realisation property of this construction, not a generic consequence of a real "
+                     "covariance). The estimate's imaginary part is discarded.",
         "randomized": "the real coefficients at every bin; all phase relations between channels are "
                       "forced to 0 or pi",
         "intended_use": "EXPLORATORY and assumption-dependent: a probe of zero-lag in-phase "
@@ -114,7 +123,9 @@ CONTRACTS = {
                        "coupling. Those are not modelled, and a non-zero-lag effect cannot be "
                        "distinguished from one this null removes.",
         "assumptions": "stationarity; zero-lag (real) second-order structure is the only structure "
-                       "of interest; the imaginary part of the CSD carries no information here",
+                       "of interest; the imaginary part of the CSD carries no information here. A "
+                       "surrogate's 0-or-pi relative phases are a property of the surrogate, not "
+                       "evidence about the recording; the null is not a volume-conduction detector.",
     },
 }
 
@@ -153,6 +164,10 @@ class SurrogateReport:
     min_eig_rel_per_bin: tuple | None = None
     condition_per_bin: tuple | None = None
     participation_ratio_per_bin: tuple | None = None
+    min_eig_abs_per_bin: tuple | None = None
+    estimator_dof_per_bin: tuple | None = None
+    rank_status: str | None = None
+    max_relative_phase_distance_from_zero_or_pi: float | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -292,6 +307,7 @@ def common_phase_prichard_theiler(x, seed):
             "auto_spectrum": "PRESERVED_EXACT_BY_CONSTRUCTION",
             "cross_spectrum": "PRESERVED_EXACT_BY_CONSTRUCTION",
             "same_frequency_relative_phase": "PRESERVED_EXACT_BY_CONSTRUCTION",
+            "role": "CONTROL_DIAGNOSTIC_ONLY",
             "intended_use": "INVALID_FOR_NARROWBAND_SPATIAL_WINDING_NULL",
         },
         marginal=_marginal_error(signals, data),
@@ -403,7 +419,8 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients
     spectra = [[0j] * nf for _ in range(d)]
     info = {"rank_deficient": [], "ridge_applied": [], "zero_power": [],
             "dc_imag": 0.0, "nyquist_imag": 0.0,
-            "effective_rank": [], "min_eig_rel": [], "condition": [], "participation_ratio": []}
+            "effective_rank": [], "min_eig_rel": [], "min_eig_abs": [], "condition": [],
+            "participation_ratio": []}
     scale = math.sqrt(n_time)
 
     for k in range(nf):
@@ -428,6 +445,7 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients
         info["min_eig_rel"].append(min_rel)
         info["condition"].append(cond)
         info["participation_ratio"].append(part)
+        info["min_eig_abs"].append(min_rel * abs(trace))
         if trace == 0.0:
             if any(abs(mat[i][j]) > 0.0 for i in range(d) for j in range(d)):
                 raise sp.NonPositiveDefiniteError(f"bin {k}: zero trace with nonzero entries is not PSD")
@@ -543,6 +561,7 @@ def cholesky_gaussian_csd(x, seed, *, estimator="multitaper", n_tapers=None, smo
             "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "cross_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "spectral_estimate_source": est["source"].upper(),
+            "rank": RANK_STATUS,
             "intended_use": "SECOND_ORDER_GAUSSIAN_NULL_UNDER_STATIONARITY_AND_LINEAR_GAUSSIAN_MODEL",
         },
         marginal=_marginal_error(signals, data),
@@ -563,6 +582,10 @@ def cholesky_gaussian_csd(x, seed, *, estimator="multitaper", n_tapers=None, smo
         min_eig_rel_per_bin=tuple(info["min_eig_rel"]),
         condition_per_bin=tuple(info["condition"]),
         participation_ratio_per_bin=tuple(info["participation_ratio"]),
+        min_eig_abs_per_bin=tuple(info["min_eig_abs"]),
+        estimator_dof_per_bin=est.get("dof_per_bin"),
+        rank_status=RANK_STATUS,
+        max_relative_phase_distance_from_zero_or_pi=csdlib.zero_or_pi_distance(signals),
         notes=[
             f"spectral estimate: {est['estimator']} ({est['source']})",
             "E[X X^H]/n equals the estimate in expectation; one realisation is not exact",
@@ -608,7 +631,9 @@ def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=Non
             "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "cross_spectrum_real_part": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "imaginary_part": "SET_TO_ZERO_BY_CONSTRUCTION",
+            "realization_relative_phase": "EXACT_0_OR_PI_EACH_REALISATION_BY_CONSTRUCTION",
             "spectral_estimate_source": est["source"].upper(),
+            "rank": RANK_STATUS,
             "intended_use": "EXPLORATORY_ASSUMPTION_DEPENDENT_ZERO_LAG_REAL_PART_NULL",
             "volume_conduction": "NOT_MODELLED",
         },
@@ -630,6 +655,10 @@ def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=Non
         min_eig_rel_per_bin=tuple(info["min_eig_rel"]),
         condition_per_bin=tuple(info["condition"]),
         participation_ratio_per_bin=tuple(info["participation_ratio"]),
+        min_eig_abs_per_bin=tuple(info["min_eig_abs"]),
+        estimator_dof_per_bin=est.get("dof_per_bin"),
+        rank_status=RANK_STATUS,
+        max_relative_phase_distance_from_zero_or_pi=csdlib.zero_or_pi_distance(signals),
         notes=[
             f"real part of the {est['estimator']} estimate ({est['source']}); imaginary parts are zero",
             "EXPLORATORY and assumption-dependent: not a volume-conduction, geometry, or filter model",
