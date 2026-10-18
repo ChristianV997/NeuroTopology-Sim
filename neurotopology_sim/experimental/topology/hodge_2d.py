@@ -72,6 +72,16 @@ Complexes with Dependent Face Rows
 Closed 2-manifolds (e.g. sphere, torus) have $\sum_f d_{1, f} = 0$, making
 $M = d_1 W_1^{-1} d_1^T$ rank-deficient. The solver applies minimum-norm
 pseudoinverse solutions to handle dependent face rows cleanly without divergence.
+
+Planar Embedding and Geometry Caveat
+------------------------------------
+$d_1 @ d_0 = 0$ is a purely combinatorial/algebraic incidence property of the
+cochain complex. It does NOT prove that vertex coordinates form a valid planar
+or surface embedding, nor does it guarantee Delaunay triangulation quality or
+absence of self-intersections. Validated geometry is strictly required before
+attributing any geometric or physical meaning. Outputs represent a sensor-space
+algebraic decomposition and do NOT establish cortical sources, traveling
+waves, or biological mechanisms.
 """
 
 from __future__ import annotations
@@ -644,6 +654,8 @@ def hodge_decompose(
         "is_diagonal_metric": is_diag,
         "hold_posture": "HOLD / SYNTHETIC_ONLY",
         "scientific_claim_disclaimer": "Algebraic 2D Hodge decomposition; no biological or clinical claims.",
+        "planar_embedding_proven": False,
+        "sensor_space_algebraic_only": True,
     }
 
     # Handle empty edge case

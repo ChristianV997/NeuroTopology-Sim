@@ -637,3 +637,59 @@ def test_single_vertex_pinned_gauge():
     assert res.potential.shape == (1,)
     assert res.potential[0] == 0.0
 
+
+def test_zero_and_tiny_cochains():
+    """Verify zero cochain and tiny cochains decompose stably without numerical issues."""
+    d0, d1 = fixture_quad_fan()
+    n_edges = d0.shape[0]
+
+    # Exactly zero cochain
+    omega_zero = np.zeros(n_edges, dtype=float)
+    res_zero = hodge_decompose(omega_zero, d0, d1)
+    assert res_zero.energy_total == 0.0
+    assert res_zero.energy_exact == 0.0
+    assert res_zero.energy_coexact == 0.0
+    assert res_zero.energy_harmonic == 0.0
+    assert np.allclose(res_zero.exact, 0.0)
+    assert np.allclose(res_zero.coexact, 0.0)
+    assert np.allclose(res_zero.harmonic, 0.0)
+    assert res_zero.relative_reconstruction_error == 0.0
+    assert res_zero.relative_energy_error == 0.0
+
+    # Tiny cochain (near machine epsilon, 1e-14)
+    omega_tiny = np.full(n_edges, 1e-14, dtype=float)
+    res_tiny = hodge_decompose(omega_tiny, d0, d1)
+    assert res_tiny.relative_reconstruction_error < 1e-8
+    assert res_tiny.relative_energy_error < 1e-8
+
+
+def test_planar_embedding_and_sensor_space_disclosure():
+    """Verify diagnostics explicitly disclaim planar embedding and label as sensor-space algebraic."""
+    d0, d1 = fixture_quad_fan()
+    omega = np.ones(d0.shape[0])
+
+    res = hodge_decompose(omega, d0, d1)
+    assert res.diagnostics["planar_embedding_proven"] is False
+    assert res.diagnostics["sensor_space_algebraic_only"] is True
+    assert "no biological or clinical claims" in res.diagnostics["scientific_claim_disclaimer"]
+
+
+def test_no_silent_regularization_on_singular_or_nonpositive_inputs():
+    """Verify zero/negative weights are rejected, not silently regularized with epsilon."""
+    d0, d1 = fixture_single_triangle()
+
+    # Zero weight must fail closed, NOT be clamped to epsilon
+    with pytest.raises(MetricError, match="strictly positive"):
+        hodge_decompose([1.0, 1.0, 1.0], d0, d1, edge_metric=[1.0, 0.0, 1.0])
+
+    # Negative weight must fail closed
+    with pytest.raises(MetricError, match="strictly positive"):
+        hodge_decompose([1.0, 1.0, 1.0], d0, d1, edge_metric=[1.0, -1e-8, 1.0])
+
+    # Closed tetrahedron has singular M: rank deficiency must be honestly reported
+    d0_tet, d1_tet = fixture_closed_tetrahedron()
+    res = hodge_decompose(np.ones(d0_tet.shape[0]), d0_tet, d1_tet)
+    assert res.diagnostics["rank_M_effective"] == 3
+    assert res.diagnostics["dependent_face_rows"] is True
+
+
