@@ -194,7 +194,14 @@ class SphericalCSDConfig:
 
 @dataclass(frozen=True)
 class SphericalCSDResult:
-    """Full N×N CSD transform and provenance for an explicit channel order."""
+    """Full N×N CSD transform and provenance for an explicit channel order.
+
+    ``transform`` is the complete operator ``M`` with shape ``(N, N)`` for
+    full-matrix conformance (e.g. Antigravity PR #419 fixtures). Apply as
+    ``M @ data`` with channels along the first axis of ``data``, or use
+    :func:`apply_spherical_csd`. Parity must compare this full matrix — not
+    only scalar G/H kernel endpoints.
+    """
 
     transform: np.ndarray
     channel_names: Tuple[str, ...]
@@ -207,6 +214,11 @@ class SphericalCSDResult:
     @property
     def n_channels(self) -> int:
         return int(self.transform.shape[0])
+
+    @property
+    def matrix(self) -> np.ndarray:
+        """Alias for :attr:`transform` (full N×N CSD operator)."""
+        return self.transform
 
 
 # ---------------------------------------------------------------------------

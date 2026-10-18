@@ -168,6 +168,7 @@ def test_transform_shape_and_channel_order():
     names = ("A", "B", "C", "D")
     result = compute_spherical_csd_transform(pos, _cfg(), channel_names=names)
     assert result.transform.shape == (4, 4)
+    assert result.matrix is result.transform  # full N×N alias for parity suites
     assert result.channel_names == names
     assert result.output_unit == "V/m^2"
     assert result.diagnostics["channel_order"] == list(names)

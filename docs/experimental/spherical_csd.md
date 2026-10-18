@@ -54,9 +54,30 @@ csd = apply_spherical_csd(result.transform, data_volts)  # -> V/m^2
 
 ## Tests
 
+Owned production tests:
+
 ```bash
 python -m pytest tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py -q
 ```
 
+Antigravity Agent C owns independent parity tests/fixtures (PR #419;
+`tests/experimental/test_spherical_csd_parity.py`). Do not edit that lane.
+Local cross-check against their pinned MNE 1.13.2 full-matrix fixtures
+(tetrahedron_4, octahedron_6, asymmetric_cap_8, synthetic_cap_12):
+
+| Check | Result |
+|---|---|
+| Production vs #419 fixtures | PASS at rtol/atol `1e-9` (actual rel ≤ ~3e-13) |
+| Production vs #419 NumPy oracle | rel ≤ ~8e-14 |
+| `M @ 1` null | ≤ ~1e-10 on those montages |
+| `1/R²` scaling / permutation | covered in owned tests |
+
 Optional live-MNE full-matrix parity skips when MNE is not installed (this
 lane does not install optional EEG deps).
+
+### CI note
+
+Required `core-tests` uses an explicit allowlist and does **not** currently
+include `tests/neurotopology_sim/**` or `tests/experimental/**`. Editing
+`.github/workflows` is outside this PR’s ownership. Until a separate CI
+wiring change lands, these suites are local / Antigravity-lane evidence only.
