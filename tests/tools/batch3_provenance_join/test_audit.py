@@ -175,6 +175,32 @@ def test_license_ids_do_not_join_without_a_license_record_contract(tmp_path: Pat
     assert "unresolved_license_reference" not in _codes(report)
 
 
+def test_untyped_license_field_spellings_are_reported_at_json_pointers(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    run = json.loads(paths[0].read_text(encoding="utf-8"))
+    run["metadata"] = {
+        "license_url": "https://example.invalid/license",
+        "spdxLicense": "CC-BY-4.0",
+        "nested": {"licence": "unknown"},
+    }
+    run_path = write_json(tmp_path / "run-license-variants.json", run)
+
+    report = audit_provenance(tmp_path, [run_path, *paths[1:]])
+
+    findings = {
+        item["subject"]: item
+        for item in report["findings"]
+        if item["code"] == "unverifiable_license_field"
+    }
+    assert report["status"] == "INCOMPLETE"
+    assert {
+        "run-license-variants.json#/metadata/license_url",
+        "run-license-variants.json#/metadata/spdxLicense",
+        "run-license-variants.json#/metadata/nested/licence",
+    } <= findings.keys()
+    assert all("no typed license record contract" in item["detail"] for item in findings.values())
+
+
 def test_explicit_configuration_version_mismatch_is_reported(tmp_path: Path) -> None:
     paths = valid_fixture(tmp_path)
     run = json.loads(paths[0].read_text(encoding="utf-8"))

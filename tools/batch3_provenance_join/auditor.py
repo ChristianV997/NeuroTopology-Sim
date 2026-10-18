@@ -44,7 +44,6 @@ _UNSUPPORTED_SOURCE_REFERENCE_KEYS = frozenset({
     "source_id", "source_snapshot_id", "source_manifest_id", "snapshot_id",
     "dataset_identifier",
 })
-_UNSUPPORTED_LICENSE_FIELDS = frozenset({"license_id", "license_ref"})
 _CONFIG_REFERENCE_KEYS = {"configuration_id", "config_id"}
 _CONFIG_VERSION_KEYS = {"configuration_version", "config_version"}
 _CONFIG_DIGEST_KEYS = {"configuration_sha256", "config_sha256", "configuration_fingerprint"}
@@ -599,13 +598,29 @@ def _report_unverifiable_fields(ctx: _Context, raw: Mapping[str, Any], source: s
                 f"{source}#{path}/artifact_type",
                 f"artifact_type {mapping['artifact_type']!r} has no declared type contract in the supplied current-main schemas",
             )
-        for field_name in sorted(_UNSUPPORTED_LICENSE_FIELDS & mapping.keys()):
-            code = "unverifiable_license_reference" if field_name == "license_ref" else "unverifiable_license_identity"
+        for field_name in sorted(key for key in mapping if _is_license_field_name(key)):
+            if field_name == "license_ref":
+                code = "unverifiable_license_reference"
+            elif field_name == "license_id":
+                code = "unverifiable_license_identity"
+            else:
+                code = "unverifiable_license_field"
             ctx.add(
                 code,
                 f"{source}#{path}/{field_name}",
                 f"field {field_name!r} has no typed license record contract on current main; it is not used to resolve another identifier by string equality",
             )
+
+
+def _is_license_field_name(value: Any) -> bool:
+    """Recognize license/licence key tokens without inferring their meaning."""
+    if not isinstance(value, str):
+        return False
+    # Split camel case before tokenizing so SPDXLicense, licenseURL, and similar
+    # untyped extension keys are reported just like snake_case fields.
+    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value).casefold()
+    tokens = re.split(r"[^a-z0-9]+", normalized)
+    return any(token in {"license", "licenses", "licence", "licences", "licensing"} for token in tokens)
 
 
 def _explicit_configuration_pins(value: Any) -> list[tuple[ReferenceKey, str | None, str | None]]:
