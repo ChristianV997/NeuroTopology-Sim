@@ -1,193 +1,202 @@
-# Grid plan schema (`grid_plan_v1`)
+# Grid plan schema (`grid_plan_v2`)
 
 Status: **HOLD / SYNTHETIC_ONLY**. This document describes a planning
-schema. It is not a simulation result, not a performance claim, and not
-evidence that any upstream gate has been verified.
+schema. It is not a simulation result, not a detector ROC, not a power
+claim, and not evidence that any upstream gate has been verified.
 
 `neurotopology_sim/` is not a package in this repo. The module lives at
 `tools/simulation_runtime/grid_plan.py`. No `neurotopology_sim/__init__.py`
 file is added. `tools/simulation_runtime/__init__.py` is unchanged.
 
-## What v1 already has
+`grid_plan_v1` is rejected. v2 changes what counts as an independent
+sample and what can open a gate.
+
+## CampaignManifest v1 gap
 
 `CampaignManifest` (`simulation_campaign_manifest_v1` in
 `tools/simulation_runtime/types.py`) is the workload object this plan
-expands into. Existing fields:
+expands into. It is not bumped.
 
-| Field | Role |
+| Field | Role here |
 | --- | --- |
-| `schema_version` | Always `simulation_campaign_manifest_v1` here. Not bumped. |
+| `schema_version` | Always `simulation_campaign_manifest_v1`. |
 | `campaign_id` | Derived from the config hash prefix. |
-| `created_at` | Fixed sentinel `1970-01-01T00:00:00+00:00` so a dry-run is deterministic. |
-| `code_commit` | `not_recorded`. This planner does not shell out to git. |
-| `configuration_hash` | Same digest as `config_hash` (see below). |
+| `created_at` | Fixed sentinel `1970-01-01T00:00:00+00:00`. |
+| `code_commit` | `not_recorded`. The planner does not record HEAD as a scientific commit. |
+| `configuration_hash` | Same digest as `config_hash`. |
 | `seed` | `master_seed`. |
-| `units` | One `WorkUnit` per grid cell. `command` is empty. `parameter_case` holds the cell. |
-| `environment` | Synthetic hold labels only. No hostname capture. |
-| `resource_policy` | Inert placeholders (`max_workers=1`, retries `0`, timeout `0`). Not the scientific budget. |
+| `units` | One `WorkUnit` per cell. `command` is empty. `parameter_case` holds the cell. |
+| `environment` | Synthetic hold labels. `detector_roc` is null. |
+| `resource_policy` | Inert placeholders. Not the scientific budget. |
 
-`WorkUnit` also has `parameter_case`, which is where axis values, null id,
-and source id are stored. `CampaignState` tracks `is_complete`,
-`active_unit`, and `UnitResult.outcome`.
+`CampaignManifest` has no `planned` / `blocked` / `running` / `completed` /
+`failed` field and no gate-evidence field. `Outcome.PASS` is a process
+outcome. It is not a gate and not a scientific status. `grid_plan_v2`
+does not write it.
 
-## What v1 does not have
+## Evidence records this module will read
 
-Run states `planned`, `blocked`, `running`, `completed`, and `failed` are
-not fields of `CampaignManifest` or `CampaignState`. The closest runtime
-vocabulary is `Outcome` (`PASS`, `CORRECTNESS_FAILURE`, `TIMEOUT`,
-`DEPENDENCY_MISSING`, `NETWORK_FAILURE`, `DISK_FAILURE`, `MEMORY_FAILURE`,
-`UNKNOWN_FAILURE`, `NOT_RUN`). `Outcome.PASS` is a process outcome. It is
-not a gate and not a scientific status. `grid_plan_v1` does not write it.
+`tools.evidence_promotion_gate.reporting.results_payload` writes JSON:
 
-Gate evidence is also absent: no gate id, promotion decision, artifact SHA,
-log pointer, verifier, timestamp, or freshness field exists on the manifest,
-the work unit, or the campaign state.
+- `schema_version`: `EvidencePromotionGate.v1`
+- `scientific_pass`: false
+- `results[]`: objects from `PromotionResult.to_dict`, matched by `case_id`
 
-Those gaps stay in the wrapper. v1 is not bumped.
+`PromotionResult` has `promotion_decision` and forces `scientific_pass`
+false. It has no `verified_at_commit`, artifact SHA, log pointer, verifier,
+or freshness field. This module does not edit `schema.py` and does not
+add a gate registry file.
 
-`tools/evidence_promotion_gate/schema.py` (`EvidencePromotionGate.v1`) is
-the decision authority. `PromotionResult` has `promotion_decision` and
-forces `scientific_pass` false. It does **not** have artifact SHA, log
-pointer, verifier, timestamp, or freshness fields. `grid_plan_v1` wraps
-those missing fields and does not edit `schema.py`. It does not call the
-evaluator and does not upgrade a decision.
+`execute` reads only JSON files that already have that report shape.
+Command-center payloads (`command-center-evidence-promotion/v1`) and RAG
+packs are ignored. A report whose top-level `scientific_pass` is not
+false is ignored. The default directory is the repository tree. Callers
+may pass `record_root` as a directory of already-written reports. That
+path is not a decision object.
 
-## Wrapper
+A gate id resolves only when one `results[]` row has:
 
-`schema_version` is `grid_plan_v1`. `status_label` is always
-`HOLD_SYNTHETIC_ONLY`.
+- `case_id` equal to that gate id
+- `promotion_decision` whose name starts with `ADMISSIBLE_`
+- `scientific_pass` not true
+- `verified_at_commit` equal to 40 lowercase hex characters
+- that commit an ancestor of current `origin/main` (else local `main`),
+  checked with `git merge-base --is-ancestor` and no fetch
 
-Emitted `run_state` values are only `planned` (dry-run, or a gate check
-that opened without a launch) and `blocked` (execution refused). The tokens
-`running`, `completed`, and `failed` are reserved. A document that declares
-them is rejected. Parsing a config never emits `completed`.
+No such report is on main at the audited commit
+`19c3203573082f8bc41f7da226b52dc20a49fdb0`. Every resolvable gate is
+therefore `missing`, and every cell stays blocked. A caller dict, list,
+or boolean passed to `execute` is rejected as a gate decision and is not
+read, even when it says `ADMISSIBLE_*` and names an ancestor commit.
 
-## Scientific inputs
+`ci_discovery` is blocking and is not opened by a promotion record. The
+fixed test lists in `.github/workflows/ci.yml`,
+`.github/workflows/required-checks.yml`, and `docker/ci/core.Dockerfile`
+do not collect `tests/simulation_runtime`. `dmd_crouzeix` is recorded and
+is nonblocking.
 
-Closed config keys: `schema_version`, `axes`, `null_model_ids`,
-`source_model_ids`, `master_seed`, `calibration_seed`, `evaluation_seed`,
-`calibration_samples`, `evaluation_samples`, `wilson_confidence_level`,
-`wilson_target_full_width`, optional `wilson_design_p`, `max_cells`,
-`max_trials`, `max_compute_units`, `compute_units_per_trial`,
-`max_evidence_age_s`, optional `nuisance_scenario_id`.
+Integration labels (`NOT_INTEGRATED`, `BLOCKED`, `NONBLOCKING`) are audit
+constants in the module. They are not a second registry and they do not
+replace the report scan.
 
-Axes are mappings `{name, unit, values, minimum, maximum}`. Names are
-identifiers. Units are non-empty strings (for example `dB`, `mm`). Every
-value must be finite and inside `[minimum, maximum]`, with
-`minimum <= maximum`. Empty axes, empty value lists, duplicate names, and
-duplicate values are rejected. NaN and Inf are rejected.
+## Per-cell fields
 
-Cell count is the product of axis lengths, null ids, and source ids.
-Enumeration sorts axes by name, then walks each axis's declared value
-order, then the declared null-id order, then the declared source-id order.
-Cells are `cell-0000` upward.
+Every cell carries:
 
-Null ids, closed: `synthetic_phase_shuffle`, `synthetic_iaaft`,
+| Field | Rule |
+| --- | --- |
+| `independent_unit` | `simulation_seed`, `subject`, or `recording`. Synthetic plans accept only `simulation_seed`. |
+| `n_independent_calibration` | Count of calibration unit ids. The only calibration count checked against `plan_sample_size`. |
+| `n_independent_evaluation` | Count of evaluation unit ids. The only evaluation count checked against `plan_sample_size`. |
+| `nested_unit` | `window`, `trial`, or `none`. |
+| `nested_per_unit` | Nested observations per independent unit. Never added into N. `none` requires `1`. |
+| `interval_method` | `cluster_bootstrap_over_independent_unit` or `wilson_on_independent_unit`. Window-level methods are rejected. |
+| `estimand` | Required text. |
+| `power_claim` | Always `none`. |
+
+`calibration_unit_ids` and `evaluation_unit_ids` are explicit lists.
+`roles_are_disjoint` is `set(calibration).isdisjoint(set(evaluation))`.
+A unit id in both sets is `unit_id_overlap`. `n` equal to
+`len(unit ids) * nested_per_unit` when `nested_per_unit > 1` is
+`windows_counted_in_n`. Trial and compute budgets use the independent-unit
+counts only.
+
+`h0`, `h1`, and `score_definition_id` are required. The score id is a
+reference. This module does not compute a score. The threshold is a
+non-empty finite mapping. Its hash, with `h0`, `h1`, and
+`score_definition_id`, is recorded before `evaluation_unit_ids` or
+`n_independent_evaluation` is read. A caller-supplied `evaluation_manifest`
+is rejected. The evaluation manifest is built only after that hash exists.
+
+Wilson floors come from `analysis.binomial_planning.plan_sample_size`.
+There is no second sample-size helper. Meeting a width bound is not a
+power guarantee.
+
+## Closed labels
+
+Null ids: `synthetic_phase_shuffle`, `synthetic_iaaft`,
 `synthetic_time_reverse`.
 
-Source ids, closed: `synthetic_single_dipole`, `synthetic_patch`,
+Source ids: `synthetic_single_dipole`, `synthetic_patch`,
 `synthetic_noise_only`.
 
-The two allowlists are disjoint. Unknown ids are rejected. These strings
-are planning labels, not generators.
+Null ids are labels only. There is no evidence that phase shuffle or
+IAAFT randomizes a spatial winding statistic. `validation/surrogate_testing.py`
+and `sciencer_d/btc_icft/level_t/winding.py` are not this gate, are not
+CI-collected as this contract, and are not an evidence-promotion record.
 
-Seeds are pairwise-distinct non-negative integers. The split algorithm is
-`disjoint_fixed_seed_blocks`. Trial identity is
-`(cell_index, role, trial_index)` with roles `calibration` and
-`evaluation`. The same fixed seeds are stored on every cell. Roles do not
-share an index space.
-
-`calibration_samples` and `evaluation_samples` must each be integers greater
-than or equal to `required_n` from
-`analysis.binomial_planning.plan_sample_size` at the declared Wilson
-full-width, confidence level, and design proportion (`null` means the
-uniform worst case at `p = 0.5`). There is no second sample-size helper.
-If that search cannot find an `n` inside `max_trials`, the config is
-`over_budget`.
-
-Budgets reject a plan when cell count, trial count
-(`cells * (calibration_samples + evaluation_samples)`), or compute units
-(`trials * compute_units_per_trial`) exceed the declared maxima. Hard
-ceilings, independent of the declared budget, are 4096 cells and 1,000,000
-trials. Equality with a declared maximum is accepted. Over-budget configs
-are rejected before cells are built.
+`nuisance_scenario_id` is an optional opaque token. It is not resolved.
+Unmerged `NuisanceGridConfig` (`sim/nuisance_scenarios`) is not imported.
 
 ## Canonical hash
 
 `config_hash` is `tools.simulation_runtime.atomic_io.compute_config_hash`
-of the scientific payload only. That function sorts mapping keys, so key
-order does not change the digest. List order does: axis values, null ids,
-and source ids are ordered inputs.
+of the scientific payload. Mapping key order does not change the digest.
+The payload includes axes, seeds, both independent-unit id lists and
+counts, nesting, the interval method, estimand, `power_claim`, `h0`,
+`h1`, `score_definition_id`, the threshold, `threshold_hash`, Wilson
+inputs, budgets, blocking and nonblocking gate ids, the ADMISSIBLE
+decision names, and `EvidencePromotionGate.v1`.
 
-The payload includes schema version, axes (name, unit, values, range),
-null and source ids, the three seeds, both sample counts, the split
-algorithm id, the Wilson inputs, the three budgets, `compute_units_per_trial`,
-`max_evidence_age_s`, the required gate ids, the ADMISSIBLE decision names
-read from the evidence schema, `EvidencePromotionGate.v1`, and
-`nuisance_scenario_id`. Changing a scientific parameter, a seed, or that
-gate policy changes the digest.
+Derived cells, caller decisions, `checked_at`, and resolved gate rows are
+not part of `config_hash`. Resolved rows get a separate `evidence_hash`
+from the same function. Changing a caller SHA does not change it.
 
-Derived cells, the campaign manifest, evidence records, and `checked_at`
-are not part of `config_hash`. Evidence records get a separate
-`evidence_hash` from the same `compute_config_hash` function when every
-required gate parsed. A boolean cannot change the scientific digest, and it
-cannot authorize execution.
+## Run state
 
-## Gate check
+Emitted `run_state` values are `planned` (dry-run list) and `blocked`
+(execution refused). `running`, `completed`, and `failed` are rejected.
+Parsing a config never emits `completed`. Dry-run cells are listed and
+still `blocked`, because gates were not resolved. `execute` does not call
+the simulation callback and does not emit `detector_roc`.
 
-Required gate ids:
+Failure policy: `fail_closed_block_grid`.
 
-- `four_sphere_forward_model`
-- `planar_geometry_winding_hodge`
-- `csd`
-- `phase_surrogate`
+Planned outputs: `grid_plan_document`, `cell_inventory`, `gate_resolution`,
+`threshold_hash`. Forbidden outputs include `detector_roc`, `auc`, and
+`roc_curve`.
 
-`execute` refuses unless each id appears once as a record with:
-
-- `promotion_decision` equal to a `PROMOTION_DECISIONS` value whose name
-  starts with `ADMISSIBLE_` (today: `ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW`,
-  `ADMISSIBLE_FOR_ENGINEERING_REPORT`)
-- `artifact_sha256`: 64 lowercase hex characters
-- `log_pointer`: non-empty string
-- `verifier`: non-empty string
-- `verified_at`: timezone-aware ISO-8601 timestamp
-
-Freshness is `checked_at - verified_at`. Age must be finite, non-negative,
-and less than or equal to `max_evidence_age_s`. Missing, HOLD, BLOCK,
-`VERIFIED`, `PASS` or any other `Outcome` value, a bare boolean, a
-self-declared label, a duplicate, an unknown id, a stale timestamp, a
-future timestamp, a naive timestamp, or a missing SHA/log/verifier all
-leave `run_state=blocked`. `scientific_pass` is not an accepted field.
-
-An opened check sets `gate_check.opened` true and leaves `run_state` at
-`planned`. It does not set `running` or `completed`, and it does not call
-the simulation callback. `dry_run` never evaluates evidence and never calls
-that callback.
+A dry-run may attach `toy_scores`. Those numbers are labeled
+`TOY_FIXTURE_NOT_A_RESULT`. They are not a detector ROC.
 
 ## Trust boundary
 
-`grid_plan_v1` reads decisions. It does not create or upgrade them, does
-not open artifact paths, and does not recompute a SHA from disk. A
-well-formed SHA is a schema check, not file verification and not a
-scientific result. ADMISSIBLE means the evidence schema allowed descriptive
-review or an engineering report. The plan label stays
-`HOLD_SYNTHETIC_ONLY`.
+`checked_at` is caller-set. It is stored and is not a freshness proof.
 
-Empty `WorkUnit.command` values are planning records. Do not pass the
-embedded manifest to `SimulationCampaignRunner`. This module never calls
-that runner.
+An artifact SHA on a caller object is format-only. It is not recomputed
+from disk and it does not open a gate. A SHA inside a promotion report is
+also not checked. The only resolution path is `case_id` plus an
+ADMISSIBLE decision plus `verified_at_commit` ancestry of current main,
+read from a report the evidence-promotion writer already shapes.
 
-`nuisance_scenario_id` is an optional opaque token. It is not resolved.
-PR #408 `NuisanceGridConfig` (`sim/nuisance_scenarios`, unmerged) builds
-synthetic scenario objects and ids such as
-`nuis_chi1.00_snr+0.0dB_jit0.00mm_rawcart_seed42`. That package is scenario
-generation, not this run plan. `grid_plan` does not import it.
+`execute(config, gate_evidence, ...)` does not read `gate_evidence`.
+Passing a fabricated ADMISSIBLE record leaves every cell blocked.
+A report whose `verified_at_commit` is not an ancestor of main leaves
+every cell blocked.
 
-Gemini Revision 8 is not an input to this schema.
+Empty `WorkUnit.command` values must not be handed to
+`SimulationCampaignRunner`. This module never calls that runner.
 
-## Dry-run
+Provenance records `schema_version` `grid_plan_v2`, generator
+`tools.simulation_runtime.grid_plan`, `base_sha` (the local main ref used
+for the ancestor check), `audited_main_sha`, and `code_commit`
+`not_recorded`.
 
-`dry_run(config)` validates, hashes, and lists cells. `run_state` is
-`planned`. `execution.launched` and `execution.completed` are false.
-`gate_check.opened` is false. Invalid configs raise `GridPlanError` and do
-not build a completed manifest.
+## Gate ids
+
+Blocking:
+
+- `four_sphere_oracle` — `NOT_INTEGRATED`
+- `planar_embedding_winding_hodge` — `NOT_INTEGRATED`
+- `csd_full_matrix_pinned_mne` — `NOT_INTEGRATED`
+- `phase_score_limitations_recorded` — `NOT_INTEGRATED`
+- `surrogate_randomizes_target_statistic` — `NOT_INTEGRATED`
+- `roc_split_threshold_api` — `NOT_INTEGRATED`
+- `ci_discovery` — `BLOCKED`
+
+Nonblocking:
+
+- `dmd_crouzeix` — `NONBLOCKING`
+
+Verdict of a plan produced with this module while those reports are absent
+and `ci_discovery` is blocked: **BLOCKED**.

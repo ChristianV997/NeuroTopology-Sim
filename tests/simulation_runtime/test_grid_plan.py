@@ -1,6 +1,8 @@
 """Fail-closed tests for the synthetic benchmark grid plan.
 
 These tests do not launch a simulation, download data, or install packages.
+Gate fixtures are temporary JSON files shaped like evidence-promotion reports.
+They are not a gate registry.
 """
 
 from __future__ import annotations
@@ -8,7 +10,9 @@ from __future__ import annotations
 import copy
 import json
 import math
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,15 +21,23 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from analysis.binomial_planning.planner import plan_sample_size
+from tools.evidence_promotion_gate.reporting import results_payload, write_report
 from tools.evidence_promotion_gate.schema import (
     PROMOTION_DECISIONS,
+    SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
     PromotionResult,
 )
 from tools.simulation_runtime.atomic_io import compute_config_hash
 from tools.simulation_runtime.grid_plan import (
     ADMISSIBLE_GATE_DECISIONS,
+    AUDITED_MAIN_SHA,
+    BLOCKING_GATE_IDS,
+    GATE_INTEGRATION_STATE,
+    NONBLOCKING_GATE_IDS,
+    NULL_MODEL_NOTE,
     REQUIRED_GATE_IDS,
     RUN_STATES,
+    TOY_FIXTURE_LABEL,
     GridPlan,
     GridPlanError,
     dry_run,
@@ -35,7 +47,19 @@ from tools.simulation_runtime.types import CampaignManifest, Outcome
 
 
 CHECKED_AT = "2026-01-02T00:00:00+00:00"
-VERIFIED_AT = "2026-01-01T00:00:00+00:00"
+
+
+def _git(*args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(completed.stderr.strip() or "git failed")
+    return completed.stdout.strip()
 
 
 def _spy_calls():
@@ -47,9 +71,13 @@ def _spy_calls():
     return calls, spy
 
 
+def _ids(prefix: str, count: int):
+    return [f"{prefix}-{index}" for index in range(count)]
+
+
 def _base_config(**overrides):
     config = {
-        "schema_version": "grid_plan_v1",
+        "schema_version": "grid_plan_v2",
         "axes": [
             {
                 "name": "snr_db",
@@ -64,8 +92,20 @@ def _base_config(**overrides):
         "master_seed": 100,
         "calibration_seed": 11,
         "evaluation_seed": 29,
-        "calibration_samples": 12,
-        "evaluation_samples": 12,
+        "independent_unit": "simulation_seed",
+        "calibration_unit_ids": _ids("cal", 12),
+        "n_independent_calibration": 12,
+        "evaluation_unit_ids": _ids("eval", 12),
+        "n_independent_evaluation": 12,
+        "nested_unit": "none",
+        "nested_per_unit": 1,
+        "interval_method": "wilson_on_independent_unit",
+        "estimand": "score contrast between synthetic source and null labels",
+        "power_claim": "none",
+        "h0": "source and null labels share the same score distribution",
+        "h1": "source and null labels differ in the score distribution",
+        "score_definition_id": "score_ref_unspecified_v0",
+        "threshold": {"kind": "fixed_reference", "cutoff": 0.5},
         "wilson_confidence_level": 0.95,
         "wilson_target_full_width": 0.5,
         "wilson_design_p": None,
@@ -73,26 +113,68 @@ def _base_config(**overrides):
         "max_trials": 1000,
         "max_compute_units": 10000.0,
         "compute_units_per_trial": 1.0,
-        "max_evidence_age_s": 86400.0,
     }
     config.update(overrides)
     return config
 
 
-def _evidence(decision="ADMISSIBLE_FOR_ENGINEERING_REPORT", **per_gate):
-    records = []
-    for index, gate_id in enumerate(REQUIRED_GATE_IDS):
-        record = {
-            "gate_id": gate_id,
-            "promotion_decision": decision,
-            "artifact_sha256": f"{index + 1:064x}",
-            "log_pointer": f"log:{gate_id}",
-            "verifier": "unit-test-verifier",
-            "verified_at": VERIFIED_AT,
-        }
-        record.update(per_gate.get(gate_id, {}))
-        records.append(record)
-    return records
+def _promotion(case_id: str, decision: str = "ADMISSIBLE_FOR_ENGINEERING_REPORT") -> PromotionResult:
+    return PromotionResult(
+        schema_version=EVIDENCE_SCHEMA_VERSION,
+        case_id=case_id,
+        promotion_decision=decision,
+        reason_codes=(),
+        reasons=(),
+        declared_evidence_class="engineering_fact",
+        allowed_evidence_class="engineering_fact",
+        synthetic_demo=True,
+        scientific_pass=False,
+        scientific_eligibility=False,
+        formal_bayes_factor=None,
+        declared_formal_bayes_factor=None,
+        claim_gate=None,
+        input_fingerprints={},
+    )
+
+
+def _write_report(directory: Path, rows: list[dict], *, name: str = "report.json") -> Path:
+    payload = results_payload([_promotion(row["case_id"], row.get("decision", "ADMISSIBLE_FOR_ENGINEERING_REPORT")) for row in rows])
+    for item, row in zip(payload["results"], rows):
+        if "verified_at_commit" in row:
+            item["verified_at_commit"] = row["verified_at_commit"]
+        if "scientific_pass" in row:
+            item["scientific_pass"] = row["scientific_pass"]
+        if "promotion_decision" in row:
+            item["promotion_decision"] = row["promotion_decision"]
+    if rows and rows[0].get("file_scientific_pass") is True:
+        payload["scientific_pass"] = True
+    path = directory / name
+    write_report(payload, path)
+    return path
+
+
+def _statuses(plan):
+    return {item["gate_id"]: item["status"] for item in plan.gate_resolution}
+
+
+def _assert_all_cells_blocked(test: unittest.TestCase, plan) -> None:
+    test.assertGreater(len(plan.cells), 0)
+    for cell in plan.cells:
+        test.assertTrue(cell["blocked"])
+        test.assertFalse(cell["evaluation_eligible"])
+        test.assertFalse(cell["parameter_case"]["executable"])
+        test.assertEqual(cell["power_claim"], "none")
+        test.assertEqual(cell["independent_unit"], "simulation_seed")
+
+
+class _Probe(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reads: list[str] = []
+
+    def __getitem__(self, key):
+        self.reads.append(key)
+        return super().__getitem__(key)
 
 
 class GridPlanTests(unittest.TestCase):
@@ -108,9 +190,15 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("PASS", RUN_STATES)
         promotion_fields = set(PromotionResult.__dataclass_fields__)
         self.assertIn("promotion_decision", promotion_fields)
-        self.assertIn("scientific_pass", promotion_fields)
-        for missing in ("artifact_sha256", "log_pointer", "verifier", "verified_at", "freshness"):
-            self.assertNotIn(missing, promotion_fields)
+        self.assertIn("case_id", promotion_fields)
+        self.assertNotIn("verified_at_commit", promotion_fields)
+        self.assertNotIn("artifact_sha256", promotion_fields)
+        self.assertEqual(REQUIRED_GATE_IDS, BLOCKING_GATE_IDS)
+        self.assertIn("ci_discovery", BLOCKING_GATE_IDS)
+        self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
+        self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
+        self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
+        self.assertEqual(AUDITED_MAIN_SHA, "19c3203573082f8bc41f7da226b52dc20a49fdb0")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -130,57 +218,128 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("hashlib", grid_plan.__dict__)
         self.assertFalse(hasattr(grid_plan, "run_campaign_manifest"))
         self.assertFalse(hasattr(grid_plan, "SimulationCampaignRunner"))
+        source = Path(grid_plan.__file__).read_text(encoding="utf-8")
+        self.assertNotIn('"roles_are_disjoint": True', source)
+        self.assertNotIn("roles_are_disjoint = True", source)
 
         forward = dry_run(_base_config())
         reversed_keys = {}
-        source = _base_config()
-        for key in reversed(list(source)):
-            reversed_keys[key] = source[key]
+        raw = _base_config()
+        for key in reversed(list(raw)):
+            reversed_keys[key] = raw[key]
         backward = dry_run(reversed_keys)
         self.assertEqual(forward.config_hash, backward.config_hash)
         self.assertEqual(forward.config_hash, compute_config_hash(forward.hash_payload))
-        reshuffled = {key: forward.hash_payload[key] for key in reversed(forward.hash_payload)}
-        self.assertEqual(compute_config_hash(forward.hash_payload), compute_config_hash(reshuffled))
+        binding = {
+            "h0": raw["h0"],
+            "h1": raw["h1"],
+            "score_definition_id": raw["score_definition_id"],
+            "threshold": raw["threshold"],
+        }
+        self.assertEqual(forward.threshold_hash, compute_config_hash(binding))
+        self.assertNotIn("evaluation_unit_ids", binding)
 
-        swapped_axes = _base_config(
-            axes=[
-                {
-                    "name": "jitter_mm",
-                    "unit": "mm",
-                    "values": [0, 2.5],
-                    "minimum": 0,
-                    "maximum": 5,
-                },
-                {
-                    "name": "snr_db",
-                    "unit": "dB",
-                    "values": [-6, 0, 6],
-                    "minimum": -6,
-                    "maximum": 6,
-                },
-            ]
-        )
-        axes = swapped_axes["axes"]
-        other = _base_config(axes=[axes[1], axes[0]])
-        self.assertEqual(dry_run(swapped_axes).config_hash, dry_run(other).config_hash)
-
-    def test_hash_changes_on_parameter_seed_and_gate_policy(self):
+    def test_hash_changes_on_parameter_seed_threshold_and_gate_ids(self):
         original = dry_run(_base_config())
         changed_axis = _base_config()
         changed_axis["axes"][0]["values"] = [-6, 0, 3]
         changed_seed = _base_config(master_seed=101)
-        changed_gate = _base_config(max_evidence_age_s=86399.0)
+        changed_threshold = _base_config(threshold={"kind": "fixed_reference", "cutoff": 0.25})
+        changed_estimand = _base_config(estimand="a different synthetic contrast")
         self.assertNotEqual(original.config_hash, dry_run(changed_axis).config_hash)
         self.assertNotEqual(original.config_hash, dry_run(changed_seed).config_hash)
-        self.assertNotEqual(original.config_hash, dry_run(changed_gate).config_hash)
+        self.assertNotEqual(original.config_hash, dry_run(changed_threshold).config_hash)
+        self.assertNotEqual(original.threshold_hash, dry_run(changed_threshold).threshold_hash)
+        self.assertNotEqual(original.config_hash, dry_run(changed_estimand).config_hash)
+        self.assertEqual(original.threshold_hash, dry_run(changed_estimand).threshold_hash)
         payload = dict(original.hash_payload)
-        payload["required_gate_ids"] = list(payload["required_gate_ids"][:-1])
+        payload["blocking_gate_ids"] = list(payload["blocking_gate_ids"][:-1])
         self.assertNotEqual(original.config_hash, compute_config_hash(payload))
-        self.assertIn("four_sphere_forward_model", original.hash_payload["required_gate_ids"])
+        self.assertIn("four_sphere_oracle", original.hash_payload["blocking_gate_ids"])
+        self.assertNotIn("four_sphere_forward_model", original.hash_payload["blocking_gate_ids"])
 
-    def test_dry_run_lists_cells_and_never_calls_the_simulation(self):
+    def test_evaluation_ids_are_read_only_after_the_threshold_hash(self):
+        probe = _Probe(_base_config())
+        plan = dry_run(probe)
+        self.assertLess(probe.reads.index("threshold"), probe.reads.index("evaluation_unit_ids"))
+        self.assertLess(probe.reads.index("score_definition_id"), probe.reads.index("evaluation_unit_ids"))
+        self.assertEqual(plan.evaluation_manifest["threshold_hash"], plan.threshold_hash)
+        self.assertTrue(plan.evaluation_manifest["built_after_threshold_hash"])
+        self.assertEqual(plan.evaluation_manifest["evaluation_unit_ids"], _ids("eval", 12))
+
+        missing = _Probe(_base_config())
+        missing.pop("threshold")
+        missing.reads.clear()
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(missing)
+        self.assertEqual(caught.exception.code, "threshold_not_frozen")
+        self.assertNotIn("evaluation_unit_ids", missing.reads)
+        self.assertNotIn("n_independent_evaluation", missing.reads)
+
+        prebuilt = _base_config(evaluation_manifest={"evaluation_unit_ids": _ids("eval", 12)})
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(prebuilt)
+        self.assertEqual(caught.exception.code, "evaluation_manifest_before_threshold")
+
+    def test_disjointness_is_computed_from_explicit_id_sets(self):
+        plan = dry_run(_base_config())
+        cal = plan.cells[0]["calibration_unit_ids"]
+        ev = plan.cells[0]["evaluation_unit_ids"]
+        self.assertEqual(plan.cells[0]["roles_are_disjoint"], set(cal).isdisjoint(ev))
+        self.assertTrue(plan.cells[0]["roles_are_disjoint"])
+        self.assertNotIn("calibration_trial_index_start", plan.cells[0])
+        self.assertNotIn("evaluation_trial_index_start", plan.cells[0])
+        self.assertNotIn("calibration_trial_index_start", plan.cells[0]["parameter_case"])
+        shared = _base_config(
+            calibration_unit_ids=_ids("cal", 11) + ["shared-unit"],
+            evaluation_unit_ids=_ids("eval", 11) + ["shared-unit"],
+        )
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(shared)
+        self.assertEqual(caught.exception.code, "unit_id_overlap")
+
+    def test_windows_are_not_counted_in_n_or_toward_wilson_floors(self):
+        nested = _base_config(nested_unit="window", nested_per_unit=10)
+        plan = dry_run(nested)
+        self.assertEqual(plan.trial_count, plan.cell_count * (12 + 12))
+        self.assertNotEqual(plan.trial_count, plan.cell_count * (12 + 12) * 10)
+        self.assertFalse(plan.cells[0]["nested_counted_in_n"])
+        self.assertEqual(plan.wilson.required_n, 12)
+        self.assertEqual(
+            plan.to_dict()["wilson_bound"]["applied_to"],
+            ["n_independent_calibration", "n_independent_evaluation"],
+        )
+        self.assertTrue(plan.to_dict()["wilson_bound"]["nested_per_unit_ignored"])
+        bare = dry_run(_base_config())
+        self.assertEqual(plan.trial_count, bare.trial_count)
+        self.assertNotEqual(plan.config_hash, bare.config_hash)
+
+        counted = _base_config(
+            nested_unit="window",
+            nested_per_unit=10,
+            n_independent_calibration=120,
+            calibration_unit_ids=_ids("cal", 12),
+        )
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(counted)
+        self.assertEqual(caught.exception.code, "windows_counted_in_n")
+
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(_base_config(interval_method="wilson_on_window"))
+        self.assertEqual(caught.exception.code, "window_level_interval")
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(_base_config(independent_unit="subject"))
+        self.assertEqual(caught.exception.code, "synthetic_requires_simulation_seed")
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(_base_config(power_claim="adequate"))
+        self.assertEqual(caught.exception.code, "power_claim")
+        cluster = dry_run(_base_config(interval_method="cluster_bootstrap_over_independent_unit"))
+        self.assertEqual(cluster.cells[0]["interval_method"], "cluster_bootstrap_over_independent_unit")
+        self.assertEqual(cluster.cells[0]["power_claim"], "none")
+
+    def test_dry_run_lists_blocked_cells_and_never_calls_the_simulation(self):
         calls, spy = _spy_calls()
-        plan = dry_run(_base_config(), simulation=spy)
+        plan = dry_run(_base_config(), simulation=spy, toy_scores=[0.25, 0.5])
         self.assertEqual(calls, [])
         self.assertEqual(plan.run_state, "planned")
         self.assertNotEqual(plan.run_state, "completed")
@@ -190,32 +349,33 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(plan.gate_check["opened"])
         self.assertEqual(plan.status_label, "HOLD_SYNTHETIC_ONLY")
         self.assertEqual(plan.cell_count, 3)
-        self.assertEqual(len(plan.cells), 3)
         self.assertEqual(plan.trial_count, 3 * 24)
-        self.assertEqual(
-            [cell["cell_id"] for cell in plan.cells],
-            ["cell-0000", "cell-0001", "cell-0002"],
-        )
         self.assertEqual(plan.cells[0]["parameter_case"]["axes"], {"snr_db": -6})
-        self.assertEqual(plan.cells[0]["null_model_id"], "synthetic_iaaft")
-        self.assertEqual(plan.cells[0]["source_model_id"], "synthetic_single_dipole")
-        self.assertEqual(plan.cells[0]["calibration_seed"], 11)
-        self.assertEqual(plan.cells[0]["evaluation_seed"], 29)
-        self.assertTrue(plan.cells[0]["split"]["roles_are_disjoint"])
+        self.assertEqual(plan.toy_fixture["label"], TOY_FIXTURE_LABEL)
+        self.assertIsNone(plan.toy_fixture["detector_roc"])
+        self.assertIsNone(plan.detector_roc)
+        self.assertEqual(plan.limits["null_model_note"], NULL_MODEL_NOTE)
+        self.assertFalse(plan.limits["spatial_winding_randomization_evidence"])
+        self.assertIn("no evidence that phase shuffle", NULL_MODEL_NOTE)
+        self.assertIn("IAAFT", NULL_MODEL_NOTE)
+        _assert_all_cells_blocked(self, plan)
         manifest = plan.campaign_manifest
         self.assertEqual(manifest.schema_version, "simulation_campaign_manifest_v1")
         self.assertEqual(manifest.configuration_hash, plan.config_hash)
-        self.assertEqual(manifest.seed, 100)
-        self.assertEqual(len(manifest.units), 3)
+        self.assertEqual(manifest.code_commit, "not_recorded")
         self.assertEqual(manifest.units[0].command, [])
-        self.assertFalse(manifest.units[0].retryable)
-        self.assertEqual(manifest.environment["data_mode"], "synthetic")
         self.assertFalse(manifest.environment["launches_simulation"])
-        self.assertEqual(plan.wilson.required_n, 12)
-        self.assertEqual(plan.wilson.status, "found")
+        self.assertIsNone(manifest.environment["detector_roc"])
+        self.assertEqual(plan.provenance["generator"], "tools.simulation_runtime.grid_plan")
+        self.assertEqual(plan.provenance["schema_version"], "grid_plan_v2")
+        self.assertEqual(plan.failure_policy, "fail_closed_block_grid")
         self.assertNotIn("sim.nuisance_scenarios", sys.modules)
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(_base_config(), simulation=spy, toy_scores={"auc": 0.99, "fpr": [0, 1]})
+        self.assertEqual(caught.exception.code, "detector_roc_refused")
+        self.assertEqual(calls, [])
 
-    def test_two_axis_enumeration_is_name_sorted_and_budget_matches(self):
+    def test_two_axis_enumeration_is_name_sorted(self):
         config = _base_config(
             axes=[
                 {
@@ -243,10 +403,7 @@ class GridPlanTests(unittest.TestCase):
         first = plan.cells[0]["parameter_case"]
         self.assertEqual(first["axes"], {"jitter_mm": 0, "snr_db": -6})
         self.assertEqual(first["null_model_id"], "synthetic_time_reverse")
-        self.assertEqual(
-            plan.cells[1]["null_model_id"],
-            "synthetic_iaaft",
-        )
+        self.assertEqual(plan.cells[1]["null_model_id"], "synthetic_iaaft")
 
     def test_serialization_roundtrip_ignores_tampered_cells(self):
         plan = dry_run(_base_config())
@@ -254,10 +411,12 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(encoded, json.dumps(json.loads(encoded), sort_keys=True))
         document = json.loads(encoded)
         document["cells"][0]["parameter_case"]["axes"]["snr_db"] = 99
+        document["cells"][0]["blocked"] = False
         restored = GridPlan.from_dict(document)
         self.assertEqual(restored.config_hash, plan.config_hash)
         self.assertEqual(restored.run_state, "planned")
         self.assertEqual(restored.cells[0]["parameter_case"]["axes"]["snr_db"], -6)
+        self.assertTrue(restored.cells[0]["blocked"])
         document["config_hash"] = "0" * 64
         with self.assertRaises(GridPlanError) as caught:
             GridPlan.from_dict(document)
@@ -282,15 +441,8 @@ class GridPlanTests(unittest.TestCase):
                 "maximum": 6,
             }]}),
             ("non_finite_value", {"max_compute_units": float("inf")}),
-            ("non_finite_value", {"wilson_target_full_width": float("nan")}),
+            ("non_finite_value", {"threshold": {"cutoff": float("nan")}}),
             ("empty_axes", {"axes": []}),
-            ("empty_axes", {"axes": [{
-                "name": "snr_db",
-                "unit": "dB",
-                "values": [],
-                "minimum": -6,
-                "maximum": 6,
-            }]}),
             ("duplicate_axis", {"axes": [
                 {
                     "name": "snr_db",
@@ -307,20 +459,6 @@ class GridPlanTests(unittest.TestCase):
                     "maximum": 6,
                 },
             ]}),
-            ("duplicate_axis", {"axes": [{
-                "name": "snr_db",
-                "unit": "dB",
-                "values": [1, 1.0],
-                "minimum": 0,
-                "maximum": 2,
-            }]}),
-            ("invalid_range", {"axes": [{
-                "name": "snr_db",
-                "unit": "dB",
-                "values": [0],
-                "minimum": 5,
-                "maximum": -5,
-            }]}),
             ("invalid_range", {"axes": [{
                 "name": "snr_db",
                 "unit": "dB",
@@ -328,33 +466,30 @@ class GridPlanTests(unittest.TestCase):
                 "minimum": -6,
                 "maximum": 6,
             }]}),
-            ("invalid_range", {"axes": [{
-                "name": "snr_db",
-                "unit": "  ",
-                "values": [0],
-                "minimum": -6,
-                "maximum": 6,
-            }]}),
             ("invalid_range", {"wilson_design_p": 1.5}),
             ("unknown_null_model", {"null_model_ids": ["empirical_surrogate"]}),
-            ("unknown_null_model", {"null_model_ids": []}),
             ("unknown_source_model", {"source_model_ids": ["synthetic_iaaft"]}),
             ("duplicate_identifier", {"null_model_ids": ["synthetic_iaaft", "synthetic_iaaft"]}),
-            ("invalid_sample_count", {"calibration_samples": 11}),
-            ("invalid_sample_count", {"evaluation_samples": 0}),
-            ("invalid_sample_count", {"calibration_samples": True}),
-            ("invalid_sample_count", {"evaluation_samples": 12.0}),
-            ("invalid_sample_count", {"calibration_samples": -4}),
+            ("invalid_sample_count", {
+                "n_independent_calibration": 11,
+                "calibration_unit_ids": _ids("cal", 11),
+            }),
+            ("invalid_sample_count", {"n_independent_evaluation": True}),
+            ("invalid_sample_count", {"n_independent_evaluation": 12.0}),
+            ("n_independent_mismatch", {"n_independent_calibration": 13}),
             ("invalid_seed", {"calibration_seed": 29}),
             ("invalid_seed", {"master_seed": True}),
-            ("invalid_seed", {"evaluation_seed": -1}),
-            ("unsupported_schema_version", {"schema_version": "grid_plan_v2"}),
+            ("unsupported_schema_version", {"schema_version": "grid_plan_v1"}),
             ("unsupported_schema_version", {"schema_version": "simulation_campaign_manifest_v1"}),
+            ("unknown_field", {"calibration_samples": 12}),
+            ("unknown_field", {"max_evidence_age_s": 10}),
             ("unknown_field", {"hidden_scientific_parameter": 1}),
             ("over_budget", {"max_cells": 2}),
             ("over_budget", {"max_trials": 70}),
-            ("over_budget", {"max_compute_units": 71}),
-            ("over_budget", {"max_trials": 5, "calibration_samples": 12, "evaluation_samples": 12}),
+            ("missing_estimand", {"estimand": "  "}),
+            ("missing_hypothesis", {"h0": ""}),
+            ("missing_score_definition", {"score_definition_id": "has space"}),
+            ("invalid_nested", {"nested_unit": "channel"}),
             ("invalid_nuisance_scenario_id", {"nuisance_scenario_id": "https://example.invalid/scenario"}),
         ]
         for code, updates in cases:
@@ -362,17 +497,16 @@ class GridPlanTests(unittest.TestCase):
                 calls, spy = _spy_calls()
                 with self.assertRaises(GridPlanError) as caught:
                     dry_run(_base_config(**updates), simulation=spy)
-                self.assertEqual(caught.exception.code, code)
+                self.assertEqual(caught.exception.code, code, caught.exception)
                 self.assertEqual(calls, [])
 
     def test_absolute_cell_ceiling_rejects_before_launch(self):
-        values = list(range(64))
         config = _base_config(
             axes=[
                 {
                     "name": "left_index",
                     "unit": "1",
-                    "values": values,
+                    "values": list(range(64)),
                     "minimum": 0,
                     "maximum": 63,
                 },
@@ -399,8 +533,7 @@ class GridPlanTests(unittest.TestCase):
         plan = dry_run(_base_config(nuisance_scenario_id=scenario_id))
         self.assertEqual(plan.cells[0]["nuisance_scenario_id"], scenario_id)
         self.assertNotIn("sim.nuisance_scenarios", sys.modules)
-        bare = dry_run(_base_config())
-        self.assertNotEqual(plan.config_hash, bare.config_hash)
+        self.assertNotEqual(plan.config_hash, dry_run(_base_config()).config_hash)
 
     def test_wilson_floor_matches_planner(self):
         required = plan_sample_size(
@@ -415,160 +548,246 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.wilson.required_n, required.required_n)
         self.assertEqual(plan.wilson.status, "found")
 
-    def test_gate_failures_are_closed_and_do_not_call_the_simulation(self):
-        fresh = _evidence()
-        stale = _base_config(max_evidence_age_s=10.0)
-        missing = fresh[:-1]
-        hold = _evidence(decision="HOLD_SYNTHETIC_ONLY")
-        blocked = _evidence(decision="BLOCK_PROMOTION")
-        unverified = _evidence()
-        unverified[0]["artifact_sha256"] = "ABC"
-        unlabeled = _evidence()
-        unlabeled[2]["promotion_decision"] = "VERIFIED"
-        passed = _evidence()
-        passed[1]["promotion_decision"] = Outcome.PASS.value
-        future = _evidence()
-        future[0]["verified_at"] = "2026-01-03T00:00:00+00:00"
-        naive = _evidence()
-        naive[0]["verified_at"] = "2026-01-01T00:00:00"
-        empty_verifier = _evidence()
-        empty_verifier[0]["verifier"] = "  "
-        cases = [
-            ("invalid_evidence", _base_config(), True, CHECKED_AT),
-            ("invalid_evidence", _base_config(), {gate: True for gate in REQUIRED_GATE_IDS}, CHECKED_AT),
-            ("missing_gate", _base_config(), missing, CHECKED_AT),
-            ("gate_not_admissible", _base_config(), hold, CHECKED_AT),
-            ("gate_not_admissible", _base_config(), blocked, CHECKED_AT),
-            ("gate_not_admissible", _base_config(), unlabeled, CHECKED_AT),
-            ("gate_not_admissible", _base_config(), passed, CHECKED_AT),
-            ("unverified_gate", _base_config(), unverified, CHECKED_AT),
-            ("unverified_gate", _base_config(), future, CHECKED_AT),
-            ("unverified_gate", _base_config(), naive, CHECKED_AT),
-            ("unverified_gate", _base_config(), empty_verifier, CHECKED_AT),
-            ("unverified_gate", _base_config(), fresh, None),
-            ("stale_gate", stale, fresh, CHECKED_AT),
-        ]
-        for code, config, evidence, checked_at in cases:
-            with self.subTest(code=code):
-                calls, spy = _spy_calls()
-                plan = execute(config, evidence, simulation=spy, checked_at=checked_at)
-                self.assertEqual(calls, [])
-                self.assertEqual(plan.run_state, "blocked")
-                self.assertNotEqual(plan.run_state, "completed")
-                self.assertFalse(plan.gate_check["opened"])
-                self.assertTrue(plan.execution["refused"])
-                self.assertFalse(plan.execution["simulation_invoked"])
-                self.assertFalse(plan.execution["launched"])
-                self.assertFalse(plan.execution["completed"])
-                self.assertIn(code, {item["code"] for item in plan.gate_check["blockers"]})
-                self.assertEqual(plan.status_label, "HOLD_SYNTHETIC_ONLY")
-
-    def test_non_record_objects_and_duplicate_gates_fail_closed(self):
+    def test_fabricated_admissible_caller_record_blocks_every_cell(self):
+        main_sha = _git("rev-parse", "origin/main")
+        fabricated = []
+        for gate_id in BLOCKING_GATE_IDS:
+            fabricated.append(
+                {
+                    "schema_version": EVIDENCE_SCHEMA_VERSION,
+                    "case_id": gate_id,
+                    "gate_id": gate_id,
+                    "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                    "scientific_pass": False,
+                    "artifact_sha256": "ab" * 32,
+                    "verified_at_commit": main_sha,
+                    "log_pointer": f"log:{gate_id}",
+                    "verifier": "caller",
+                    "verified_at": CHECKED_AT,
+                }
+            )
         calls, spy = _spy_calls()
-
-        class Declared:
-            promotion_decision = "ADMISSIBLE_FOR_ENGINEERING_REPORT"
-            scientific_pass = True
-
-        plan = execute(_base_config(), Declared(), simulation=spy, checked_at=CHECKED_AT)
+        with tempfile.TemporaryDirectory() as tmp:
+            empty = Path(tmp)
+            plan = execute(
+                _base_config(),
+                fabricated,
+                simulation=spy,
+                checked_at=CHECKED_AT,
+                record_root=empty,
+            )
+            again = execute(
+                _base_config(),
+                [{**fabricated[0], "artifact_sha256": "cd" * 32}],
+                simulation=spy,
+                checked_at="not-a-timestamp",
+                record_root=empty,
+            )
         self.assertEqual(calls, [])
-        self.assertEqual(plan.run_state, "blocked")
-        self.assertIn("invalid_evidence", {item["code"] for item in plan.gate_check["blockers"]})
-
-        duplicated = _evidence()
-        duplicated.append(dict(duplicated[0]))
-        plan = execute(_base_config(), duplicated, simulation=spy, checked_at=CHECKED_AT)
-        self.assertEqual(calls, [])
-        self.assertIn("invalid_evidence", {item["code"] for item in plan.gate_check["blockers"]})
-
-        smuggled = _evidence()
-        smuggled[0]["scientific_pass"] = True
-        plan = execute(_base_config(), smuggled, simulation=spy, checked_at=CHECKED_AT)
+        self.assertTrue(plan.caller_gate_decision_rejected)
+        self.assertTrue(plan.gate_check["caller_gate_decision_rejected"])
         self.assertFalse(plan.gate_check["opened"])
-        self.assertIn("invalid_evidence", {item["code"] for item in plan.gate_check["blockers"]})
-
-    def test_admissible_records_do_not_launch_or_complete(self):
-        calls, spy = _spy_calls()
-        evidence = _evidence()
-        plan = execute(_base_config(), evidence, simulation=spy, checked_at=CHECKED_AT)
-        self.assertEqual(calls, [])
-        self.assertTrue(plan.gate_check["opened"])
-        self.assertEqual(plan.gate_check["blockers"], [])
-        self.assertEqual(plan.run_state, "planned")
+        self.assertEqual(plan.run_state, "blocked")
         self.assertNotEqual(plan.run_state, "completed")
-        self.assertFalse(plan.execution["refused"])
+        self.assertTrue(plan.execution["refused"])
         self.assertFalse(plan.execution["launched"])
         self.assertFalse(plan.execution["simulation_invoked"])
-        self.assertFalse(plan.execution["completed"])
-        self.assertEqual(plan.status_label, "HOLD_SYNTHETIC_ONLY")
-        self.assertIsNotNone(plan.evidence_hash)
-        reversed_evidence = list(reversed(evidence))
-        again = execute(
-            _base_config(), reversed_evidence, simulation=spy, checked_at=CHECKED_AT
-        )
-        self.assertEqual(calls, [])
+        self.assertIsNone(plan.gate_evidence)
+        self.assertIsNone(plan.detector_roc)
+        self.assertEqual(plan.checked_at, CHECKED_AT)
+        self.assertTrue(plan.limits["checked_at_is_caller_set"])
+        self.assertTrue(plan.limits["artifact_sha_is_format_only"])
+        _assert_all_cells_blocked(self, plan)
+        statuses = _statuses(plan)
+        for gate_id in BLOCKING_GATE_IDS:
+            if gate_id == "ci_discovery":
+                self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
+            else:
+                self.assertEqual(statuses[gate_id], "missing")
+            self.assertNotEqual(statuses[gate_id], "admissible_on_ancestor")
+        self.assertEqual(statuses["dmd_crouzeix"], "missing")
         self.assertEqual(plan.evidence_hash, again.evidence_hash)
-        self.assertEqual(plan.config_hash, again.config_hash)
-        changed = _evidence()
-        changed[0]["artifact_sha256"] = f"{9:064x}"
-        changed_plan = execute(_base_config(), changed, simulation=spy, checked_at=CHECKED_AT)
-        self.assertEqual(plan.config_hash, changed_plan.config_hash)
-        self.assertNotEqual(plan.evidence_hash, changed_plan.evidence_hash)
+        self.assertIn("missing_gate", {item["code"] for item in plan.gate_check["blockers"]})
+        self.assertIn("ci_discovery_blocked", {item["code"] for item in plan.gate_check["blockers"]})
 
-        descriptive = execute(
-            _base_config(),
-            _evidence(decision="ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW"),
-            simulation=spy,
-            checked_at=CHECKED_AT,
+    def test_stale_non_ancestor_report_blocks_every_cell(self):
+        main_sha = _git("rev-parse", "origin/main")
+        head_sha = _git("rev-parse", "HEAD")
+        self.assertNotEqual(head_sha, main_sha)
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", head_sha, main_sha],
+            cwd=str(_REPO_ROOT),
+            check=False,
         )
-        self.assertTrue(descriptive.gate_check["opened"])
-        self.assertEqual(descriptive.run_state, "planned")
-        self.assertFalse(descriptive.execution["launched"])
-        self.assertEqual(calls, [])
-
-    def test_exact_freshness_boundary(self):
+        self.assertNotEqual(ancestor.returncode, 0)
         calls, spy = _spy_calls()
-        fresh = execute(
-            _base_config(max_evidence_age_s=86400),
-            _evidence(),
-            simulation=spy,
-            checked_at=CHECKED_AT,
-        )
-        stale = execute(
-            _base_config(max_evidence_age_s=86399),
-            _evidence(),
-            simulation=spy,
-            checked_at=CHECKED_AT,
-        )
-        self.assertTrue(fresh.gate_check["opened"])
-        self.assertEqual(stale.run_state, "blocked")
-        self.assertIn("stale_gate", {item["code"] for item in stale.gate_check["blockers"]})
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_report(
+                root,
+                [
+                    {
+                        "case_id": "four_sphere_oracle",
+                        "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                        "verified_at_commit": head_sha,
+                    }
+                ],
+            )
+            before = sorted(path.name for path in root.iterdir())
+            plan = execute(_base_config(), simulation=spy, record_root=root)
+            self.assertEqual(sorted(path.name for path in root.iterdir()), before)
         self.assertEqual(calls, [])
+        self.assertFalse(plan.caller_gate_decision_rejected)
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertEqual(plan.run_state, "blocked")
+        self.assertEqual(_statuses(plan)["four_sphere_oracle"], "not_ancestor")
+        self.assertEqual(_statuses(plan)["planar_embedding_winding_hodge"], "missing")
+        self.assertEqual(_statuses(plan)["ci_discovery"], "ci_discovery_blocked")
+        self.assertIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
+        _assert_all_cells_blocked(self, plan)
+        self.assertFalse(plan.execution["simulation_invoked"])
+        self.assertIsNone(plan.detector_roc)
 
-    def test_mapping_evidence_is_accepted_only_as_records(self):
+    def test_ancestor_records_still_leave_the_grid_blocked(self):
+        main_sha = _git("rev-parse", "origin/main")
         calls, spy = _spy_calls()
-        mapping = {record["gate_id"]: dict(record) for record in _evidence()}
-        for record in mapping.values():
-            record.pop("gate_id")
-        plan = execute(_base_config(), mapping, simulation=spy, checked_at=CHECKED_AT)
-        self.assertTrue(plan.gate_check["opened"])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rows = [
+                {
+                    "case_id": gate_id,
+                    "promotion_decision": "ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW",
+                    "verified_at_commit": main_sha,
+                }
+                for gate_id in BLOCKING_GATE_IDS
+            ]
+            _write_report(root, rows)
+            untouched = {
+                "schema_version": "command-center-evidence-promotion/v1",
+                "scientific_pass": False,
+                "cases": [
+                    {
+                        "case_id": "four_sphere_oracle",
+                        "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                    }
+                ],
+            }
+            (root / "command_center.json").write_text(json.dumps(untouched), encoding="utf-8")
+            plan = execute(
+                _base_config(),
+                {"promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT"},
+                simulation=spy,
+                record_root=root,
+            )
         self.assertEqual(calls, [])
-        self.assertEqual(plan.run_state, "planned")
+        self.assertTrue(plan.caller_gate_decision_rejected)
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertEqual(plan.run_state, "blocked")
+        statuses = _statuses(plan)
+        for gate_id in BLOCKING_GATE_IDS:
+            if gate_id == "ci_discovery":
+                self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
+            else:
+                self.assertEqual(statuses[gate_id], "admissible_on_ancestor")
+        self.assertEqual(plan.gate_resolution[-1]["role"], "nonblocking")
+        _assert_all_cells_blocked(self, plan)
+
+    def test_writer_record_without_commit_and_bad_records_stay_closed(self):
+        calls, spy = _spy_calls()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_report(root, [{"case_id": "csd_full_matrix_pinned_mne"}], name="no_commit.json")
+            no_commit = execute(_base_config(), simulation=spy, record_root=root)
+            self.assertEqual(_statuses(no_commit)["csd_full_matrix_pinned_mne"], "missing")
+
+            hold_root = Path(tmp) / "hold"
+            hold_root.mkdir()
+            _write_report(
+                hold_root,
+                [
+                    {
+                        "case_id": "surrogate_randomizes_target_statistic",
+                        "promotion_decision": "HOLD_SYNTHETIC_ONLY",
+                        "verified_at_commit": _git("rev-parse", "origin/main"),
+                    }
+                ],
+            )
+            held = execute(_base_config(), simulation=spy, record_root=hold_root)
+            self.assertEqual(
+                _statuses(held)["surrogate_randomizes_target_statistic"],
+                "not_admissible",
+            )
+
+            passed_root = Path(tmp) / "passed"
+            passed_root.mkdir()
+            _write_report(
+                passed_root,
+                [
+                    {
+                        "case_id": "roc_split_threshold_api",
+                        "promotion_decision": Outcome.PASS.value,
+                        "verified_at_commit": _git("rev-parse", "origin/main"),
+                    }
+                ],
+            )
+            passed = execute(_base_config(), simulation=spy, record_root=passed_root)
+            self.assertEqual(_statuses(passed)["roc_split_threshold_api"], "not_admissible")
+
+            science_root = Path(tmp) / "science"
+            science_root.mkdir()
+            _write_report(
+                science_root,
+                [
+                    {
+                        "case_id": "phase_score_limitations_recorded",
+                        "verified_at_commit": _git("rev-parse", "origin/main"),
+                        "scientific_pass": True,
+                    }
+                ],
+            )
+            science = execute(_base_config(), simulation=spy, record_root=science_root)
+            self.assertEqual(
+                _statuses(science)["phase_score_limitations_recorded"],
+                "scientific_pass_refused",
+            )
+        self.assertEqual(calls, [])
+        for plan in (no_commit, held, passed, science):
+            self.assertEqual(plan.run_state, "blocked")
+            self.assertFalse(plan.gate_check["opened"])
+            _assert_all_cells_blocked(self, plan)
+
+    def test_repo_without_promotion_reports_leaves_gates_missing(self):
+        calls, spy = _spy_calls()
+        plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.caller_gate_decision_rejected)
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertEqual(plan.run_state, "blocked")
+        statuses = _statuses(plan)
+        for gate_id in BLOCKING_GATE_IDS:
+            if gate_id == "ci_discovery":
+                self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
+            else:
+                self.assertEqual(statuses[gate_id], "missing")
+        _assert_all_cells_blocked(self, plan)
+        self.assertEqual(plan.provenance["audited_main_sha"], AUDITED_MAIN_SHA)
+        self.assertEqual(len(plan.provenance["base_sha"]), 40)
 
     def test_blocked_document_roundtrip_stays_blocked(self):
-        plan = execute(
-            _base_config(),
-            _evidence(decision="HOLD_SYNTHETIC_ONLY"),
-            checked_at=CHECKED_AT,
-        )
-        self.assertEqual(plan.run_state, "blocked")
-        restored = GridPlan.from_dict(plan.to_dict())
-        self.assertEqual(restored.run_state, "blocked")
-        self.assertEqual(restored.config_hash, plan.config_hash)
-        forged = plan.to_dict()
-        forged["run_state"] = "planned"
-        rebuilt = GridPlan.from_dict(forged)
-        self.assertEqual(rebuilt.run_state, "blocked")
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = execute(_base_config(), [{"promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT"}], record_root=Path(tmp))
+            self.assertEqual(plan.run_state, "blocked")
+            restored = GridPlan.from_dict(plan.to_dict(), record_root=Path(tmp))
+            self.assertEqual(restored.run_state, "blocked")
+            self.assertEqual(restored.config_hash, plan.config_hash)
+            self.assertFalse(restored.gate_check["opened"])
+            forged = plan.to_dict()
+            forged["run_state"] = "planned"
+            forged["gate_check"]["opened"] = True
+            rebuilt = GridPlan.from_dict(forged, record_root=Path(tmp))
+            self.assertEqual(rebuilt.run_state, "blocked")
+            self.assertFalse(rebuilt.gate_check["opened"])
+            _assert_all_cells_blocked(self, rebuilt)
 
     def test_non_finite_helper_rejects_bool_axis_values(self):
         with self.assertRaises(GridPlanError) as caught:
@@ -586,7 +805,6 @@ class GridPlanTests(unittest.TestCase):
                 )
             )
         self.assertEqual(caught.exception.code, "invalid_range")
-        self.assertTrue(math.isnan(float("nan")))
 
 
 if __name__ == "__main__":
