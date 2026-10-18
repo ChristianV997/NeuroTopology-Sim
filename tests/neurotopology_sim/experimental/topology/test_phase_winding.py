@@ -1,12 +1,19 @@
-"""Focused tests for oriented integer phase winding (synthetic only)."""
+"""Focused tests for oriented integer phase winding (synthetic only).
+
+HOLD / SYNTHETIC_ONLY. Algebraic sensor-space fixtures only — not biological
+vortex / cortical-wave evidence. ``d1 @ d0 == 0`` is a cochain identity check,
+not a proof of valid planar embedding.
+"""
 
 from __future__ import annotations
 
+import inspect
 import math
 
 import numpy as np
 import pytest
 
+import neurotopology_sim.experimental.topology.winding as winding_mod
 from neurotopology_sim.experimental.topology.winding import (
     TWO_PI,
     ChargeMomentResult,
@@ -17,6 +24,17 @@ from neurotopology_sim.experimental.topology.winding import (
     phase_winding,
     signed_first_moment,
 )
+
+
+def test_imports_real_implementation_not_skipped():
+    """Guard: tests bind the production module path and are not skipped."""
+    path = inspect.getfile(winding_mod)
+    assert path.endswith("neurotopology_sim/experimental/topology/winding.py")
+    assert inspect.isfunction(phase_winding)
+    assert getattr(test_imports_real_implementation_not_skipped, "pytestmark", None) in (
+        None,
+        [],
+    )
 
 
 def _standard_triangle_incidence() -> tuple[np.ndarray, np.ndarray]:
@@ -122,11 +140,39 @@ def test_branch_tie_at_plus_and_minus_pi():
     assert result.tie_edge_count == 1
     assert bool(result.tie_edge_mask[0]) is True
 
-    # Near-cut within tolerance
-    theta_near = np.array([0.0, np.pi - 1e-15])
+    # Exact −π raw difference also lands on the cut and is flagged.
+    theta_m = np.array([np.pi, 0.0])  # raw = 0 - π = −π
+    result_m = phase_winding(theta_m, d0, d1, tie_tol=0.0)
+    assert float(result_m.raw_difference[0]) == pytest.approx(-np.pi)
+    assert result_m.tie_edge_count == 1
+
+    # Near-cut within tolerance: omega within tie_tol of −π must be flagged.
+    eps = 5e-13
+    theta_near = np.array([0.0, -np.pi + eps])  # raw ≈ −π + eps → omega ≈ −π + eps
     result_near = phase_winding(theta_near, d0, d1, tie_tol=1e-12)
-    # May or may not wrap to near -π depending on float; ensure API accepts
-    assert result_near.tie_edge_count >= 0
+    assert abs(float(result_near.omega[0]) + np.pi) <= 1e-12
+    assert result_near.tie_edge_count == 1
+    assert bool(result_near.tie_edge_mask[0]) is True
+
+    # Comfortably interior edge is not flagged.
+    theta_safe = np.array([0.0, 0.5])
+    result_safe = phase_winding(theta_safe, d0, d1, tie_tol=1e-12)
+    assert result_safe.tie_edge_count == 0
+
+
+def test_winding_identity_d1_omega_equals_minus_2pi_d1_n():
+    """Verify D1@omega = -2π (D1@n) and q = -D1@n (integer)."""
+    d0, d1 = _standard_triangle_incidence()
+    theta = np.array([0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0])
+    result = phase_winding(theta, d0, d1)
+    d1_f = d1.astype(float)
+    lhs = d1_f @ result.omega
+    rhs = -TWO_PI * (d1_f @ result.branch_index.astype(float))
+    assert np.allclose(lhs, rhs, atol=1e-12)
+    q_int = - (d1 @ result.branch_index)
+    assert q_int.dtype == np.int64 or np.issubdtype(q_int.dtype, np.integer)
+    assert np.array_equal(result.face_charge, q_int)
+    assert result.face_charge.dtype == np.int64
 
 
 def test_floor_convention_matches_mission_formula():
@@ -172,6 +218,34 @@ def test_rejects_invalid_incidence_values():
     bad2[0, 0] = 0.5
     with pytest.raises(WindingError, match="integer-valued"):
         phase_winding([0.0, 0.0, 0.0], bad2, d1)
+    with pytest.raises(WindingError, match="non-finite"):
+        bad3 = d0.astype(float)
+        bad3[0, 0] = float("nan")
+        phase_winding([0.0, 0.0, 0.0], bad3, d1)
+
+
+class _FakeSparse:
+    """Minimal sparse-like duck type (no scipy install required)."""
+
+    format = "csr"
+    nnz = 3
+
+    def tocsr(self):
+        return self
+
+
+def test_rejects_sparse_like_and_object_incidence():
+    d0, d1 = _standard_triangle_incidence()
+    with pytest.raises(WindingError, match="sparse"):
+        phase_winding([0.0, 0.0, 0.0], _FakeSparse(), d1)
+    with pytest.raises(WindingError, match="sparse"):
+        phase_winding([0.0, 0.0, 0.0], d0, _FakeSparse())
+    obj = np.empty((3, 3), dtype=object)
+    obj[:] = 0
+    with pytest.raises(WindingError, match="object|numeric"):
+        phase_winding([0.0, 0.0, 0.0], obj, d1)
+    with pytest.raises(WindingError, match="2-D dense"):
+        phase_winding([0.0, 0.0, 0.0], np.array([1, 0, -1]), d1)
 
 
 def test_rejects_unsupported_wrap_interval_and_negative_tie_tol():

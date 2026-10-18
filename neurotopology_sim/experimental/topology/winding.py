@@ -55,15 +55,24 @@ Callers must gate or mask low-amplitude sensors upstream.
 
 Moments (optional helpers)
 --------------------------
-``signed_first_moment`` uses face barycenter coordinates in the caller's units
-(whatever units the coordinate array is expressed in). The origin-shift identity
-is algebraic::
+``signed_first_moment`` / ``charge_moments`` take face barycenter coordinates in
+**sensor-coordinate units**: whatever Euclidean units the caller uses for the
+sensor / electrode embedding (e.g. mm on a scalp montage). These are not
+anatomical, biological, or cortical surface coordinates unless the caller
+supplies such an embedding. The origin-shift identity is algebraic::
 
     p_q(a) = p_q(0) - Q_net * a
 
 where ``a`` is the origin displacement (new coords ``r' = r - a``). Charge
-separation is undefined (explicit) when either sign class is absent — never
-labeled as biological origin invariance.
+separation is undefined (explicit NaN + ``charge_separation_defined=False``)
+when either sign class is absent — never substitute 0.0, and never label this
+as biological origin invariance.
+
+Scope note
+----------
+``d1 @ d0 == 0`` is a cochain / incidence identity. It does **not** prove that
+the mesh is a valid planar embedding; geometric validity belongs to the
+geometry module.
 """
 
 from __future__ import annotations
@@ -150,18 +159,44 @@ def _as_1d_float(name: str, values: ArrayLike) -> np.ndarray:
     return arr
 
 
+def _reject_sparse_like(name: str, mat: object) -> None:
+    """Reject sparse matrices and sparse-like duck types (dense ndarray only)."""
+    mod = type(mat).__module__ or ""
+    if mod.startswith("scipy.sparse") or mod.startswith("scipy.sparse."):
+        raise WindingError(
+            f"{name} must be a dense ndarray; sparse incidence is not accepted "
+            f"(got {type(mat).__module__}.{type(mat).__name__})"
+        )
+    # Duck-typed sparse: has CSR/CSC conversion or nnz+format without being ndarray.
+    if not isinstance(mat, np.ndarray) and (
+        hasattr(mat, "tocsr") or hasattr(mat, "tocsc") or (
+            hasattr(mat, "nnz") and hasattr(mat, "format")
+        )
+    ):
+        raise WindingError(
+            f"{name} must be a dense ndarray; sparse-like incidence is not accepted "
+            f"(got {type(mat).__name__})"
+        )
+
+
 def _as_incidence(name: str, mat: ArrayLike) -> np.ndarray:
+    _reject_sparse_like(name, mat)
     arr = np.asarray(mat)
+    if arr.dtype == object:
+        raise WindingError(f"{name} must be a numeric dense array; got dtype=object")
     if arr.ndim != 2:
-        raise WindingError(f"{name} must be 2-D; got shape {arr.shape}")
+        raise WindingError(f"{name} must be 2-D dense; got shape {arr.shape}")
     if arr.size == 0:
         # Allow empty faces (0 x E) or empty edges (0 x V) when dimensions agree.
         return np.asarray(arr, dtype=np.int64)
-    if not np.all(np.isfinite(arr.astype(float, copy=False))):
+    if not np.issubdtype(arr.dtype, np.number):
+        raise WindingError(f"{name} must be numeric; got dtype={arr.dtype}")
+    float_arr = arr.astype(float, copy=False)
+    if not np.all(np.isfinite(float_arr)):
         raise WindingError(f"{name} contains non-finite values")
     # Require integer-valued entries in {-1, 0, +1}.
-    rounded = np.rint(arr.astype(float, copy=False))
-    if not np.allclose(arr.astype(float, copy=False), rounded, rtol=0.0, atol=0.0):
+    rounded = np.rint(float_arr)
+    if not np.allclose(float_arr, rounded, rtol=0.0, atol=0.0):
         raise WindingError(f"{name} must be integer-valued in {{-1,0,+1}}")
     int_arr = rounded.astype(np.int64)
     unique = set(np.unique(int_arr).tolist())
@@ -294,7 +329,8 @@ def signed_first_moment(
 ) -> np.ndarray:
     """Signed first moment ``p_q = sum_t q_t * r_t``.
 
-    ``face_coordinates`` has shape ``(|F|, D)`` in caller coordinate units.
+    ``face_coordinates`` has shape ``(|F|, D)`` in sensor-coordinate units
+    (caller-defined Euclidean embedding units for face barycenters).
     """
     q = np.asarray(face_charge)
     if q.ndim != 1:
@@ -342,8 +378,10 @@ def charge_moments(
 ) -> ChargeMomentResult:
     """Moments and charge separation; missing-sign ⇒ undefined (not 0.0).
 
-    Separation is ``||r_+ - r_-||`` when both positive and negative charges
-    exist. Otherwise ``charge_separation_defined=False`` and separation is NaN.
+    ``face_coordinates`` are in sensor-coordinate units (caller Euclidean
+    embedding). Separation is ``||r_+ - r_-||`` when both positive and negative
+    charges exist. Otherwise ``charge_separation_defined=False`` and separation
+    is NaN — never substitute 0.0.
     """
     q = np.asarray(face_charge)
     if q.ndim != 1:
