@@ -47,6 +47,8 @@ On 2026-10-18, the exact #390 head e7fe8252c3a7a9dbd675b324691de803d7d194b6 was 
 - The CLI help ran. Scanning the explicitly selected local assertions.md fixture emitted advisory findings and exited 0. Selecting a path that traverses outside the fixture root returned structured input_errors and exit 2.
 - Tests cover no-network/no-execution behavior, deterministic output, bounded explicit selection, symlink escape, quotes, negation, code exclusions, JSON status paths, and false-positive safeguards.
 
+The current required-check workflow does not demonstrate this focused suite in hosted CI: the core job passes an explicit allowlist of nine test files and omits tests/tools/batch3_report_firewall/test_checker.py, while Awareness runs pytest -q tests with working-directory apps/awareness_studio. Thus the 28-pass result above is local evidence only.
+
 This refresh independently reran Python 3.12.14 only. The PR description reports an earlier Python 3.14.7 run; that version was not rerun during this refresh. No dataset, participant data, external report, or harvested content was used.
 
 The specific regression tests passed: test_negation_in_prior_compound_clause_does_not_suppress_positive_claim, test_negation_does_not_suppress_assertion_after_comma_clause_boundary, test_multiple_assertive_claims_in_one_sentence_are_checked, test_scientific_validated_is_not_excused_by_software_scope_metadata, test_fenced_and_indented_markdown_code_are_not_scanned, and test_straight_single_quoted_span_is_not_scanned. The JSON status fixture checks the location $/report/scientific_status despite validation_scope: software.
