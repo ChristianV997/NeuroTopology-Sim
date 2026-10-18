@@ -218,5 +218,14 @@ validation target.
   A rigorous bound would also need `|T_l|` bounded for all `l`.
 - Accuracy is established against closed forms, an independent 7x7 solve, and one out-of-tree oracle.
   It is not established against measured potentials.
+- A tangential dipole queried only at the poles has exactly zero potential. The tail envelope uses `|q_t|`
+  rather than the sensor-specific `|q_t . e|`, so the call is refused as "truncation tail estimate inf"
+  instead of returning zero. The refusal is fail-closed. Changing it would change the envelope, which other
+  test lanes check against.
+- Unresolved provenance question. The task brief gives CSF conductivity 1.65 S/m and skull 0.33/K. A
+  search-result snippet, not the paper, describes CSF equal to the brain value (0.33 S/m) and skull equal to
+  brain/K. The paper could not be read, so neither reading is verified. The two readings change T_1 by about
+  9% at K = 40 (2.437 vs 2.654) and sensor potentials by about 9%. The owner must resolve this from the
+  paper's Table 1 before any result is tied to the literature.
 - No scientific or biological validation is claimed. Synthetic checks support numerical correctness of
   the model only.
