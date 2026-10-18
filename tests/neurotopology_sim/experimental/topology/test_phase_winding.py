@@ -112,6 +112,24 @@ def test_ccw_alternate_representative():
     assert result.face_charge.tolist() == [1]
 
 
+def test_global_phase_offsets_preserve_integer_winding():
+    """Several global phase offsets leave integer plaquette winding unchanged.
+
+    Algebraic gauge: θ → θ + φ·1 does not change D0@θ differences, hence q.
+    """
+    d0, d1 = _standard_triangle_incidence()
+    base = np.array([0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0])
+    offsets = (0.0, 0.3, -1.7, np.pi / 2.0, 2.0 * np.pi, -5.0 * np.pi / 3.0)
+    charges = []
+    for phi in offsets:
+        result = phase_winding(base + phi, d0, d1)
+        assert result.face_charge.dtype == np.int64
+        assert result.face_charge.tolist() == [1]
+        assert result.identity_residual_max_abs < 1e-10
+        charges.append(int(result.net_charge))
+    assert charges == [1] * len(offsets)
+
+
 def test_reversed_edge_orientation_preserves_charge():
     d0_std, d1_std = _standard_triangle_incidence()
     d0_rev, d1_rev = _reversed_edge_orientation()
