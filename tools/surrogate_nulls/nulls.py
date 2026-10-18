@@ -16,6 +16,7 @@ import cmath
 import math
 from dataclasses import asdict, dataclass, field
 
+from . import csd as csdlib
 from . import spectral as sp
 
 # Declared tolerances. They are fixed here, not tuned to pass a result.
@@ -29,6 +30,9 @@ NULL_IDS = (
     "cholesky_gaussian_cross_spectral",
     "mv_iaaft_rank_adjusted",
 )
+
+# Exploratory, assumption-dependent nulls. Kept out of NULL_IDS on purpose.
+EXPLORATORY_NULL_IDS = ("zero_lag_real_part_gaussian",)
 
 CONTRACTS = {
     "common_phase_prichard_theiler": {
@@ -93,6 +97,25 @@ CONTRACTS = {
                        "when it is missed",
         "assumptions": "stationary record; the iteration may not converge (reported)",
     },
+    "zero_lag_real_part_gaussian": {
+        "generative_rule": (
+            "Estimate the cross-spectral matrix per bin (estimator named in the report, or a "
+            "supplied estimate). Keep only its real part Re C(f), which is real symmetric PSD. "
+            "Draw REAL Gaussian Fourier coefficients with covariance Re C(f) at every bin, "
+            "including the randomized bins. Inverse rFFT."
+        ),
+        "preserved": "the real part of the cross-spectrum in expectation (zero-phase-lag, in-phase "
+                     "covariance). Every imaginary part is set to zero by construction.",
+        "randomized": "the real coefficients at every bin; all phase relations between channels are "
+                      "forced to 0 or pi",
+        "intended_use": "EXPLORATORY and assumption-dependent: a probe of zero-lag in-phase "
+                        "structure under a stationary linear-Gaussian model",
+        "invalid_for": "any claim about volume conduction, source geometry, filtering, or lagged "
+                       "coupling. Those are not modelled, and a non-zero-lag effect cannot be "
+                       "distinguished from one this null removes.",
+        "assumptions": "stationarity; zero-lag (real) second-order structure is the only structure "
+                       "of interest; the imaginary part of the CSD carries no information here",
+    },
 }
 
 
@@ -121,6 +144,15 @@ class SurrogateReport:
     tolerances: dict = field(default_factory=dict)
     denominator_eps: float = sp.EPS
     notes: tuple = ()
+    estimator: str | None = None
+    estimator_source: str | None = None
+    n_tapers: int | None = None
+    smoothing_halfwidth: int | None = None
+    shrinkage: float | None = None
+    effective_rank_per_bin: tuple | None = None
+    min_eig_rel_per_bin: tuple | None = None
+    condition_per_bin: tuple | None = None
+    participation_ratio_per_bin: tuple | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -321,7 +353,8 @@ def independent_phase_univariate_ft(x, seed):
 
 # ------------------------------------------------- null 3: Cholesky Gaussian CSD
 
-def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8):
+def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients=False,
+                  rank_tol=csdlib.DEFAULT_RANK_TOL, psd_tol=csdlib.DEFAULT_PSD_TOL):
     """Draw surrogate spectra with ``E[X X^H / n] = csd_by_bin[k]`` at each bin.
 
     ``csd_by_bin`` has one Hermitian matrix per rFFT bin ``0 .. n//2``.
@@ -335,9 +368,15 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8):
       regularised by ``ridge_rel * trace / d`` and the bin is reported. If ``ridge_rel``
       is zero, the failure is raised instead;
     - a genuinely indefinite matrix still fails after regularisation and raises.
+    - a matrix whose smallest eigenvalue is below ``-psd_tol * trace`` is materially
+      indefinite and raises before any regularisation (``matrix_diagnostics``).
 
-    Returns ``(spectra, info)`` where ``spectra[c][k]`` is the surrogate coefficient
-    and ``info`` lists rank-deficient, ridge-applied, and zero-power bins.
+    ``real_coefficients=True`` draws real Gaussian coefficients at every bin (the zero-lag
+    null). The target must then be real-valued, and an imaginary part above rounding raises.
+
+    Returns ``(spectra, info)`` where ``spectra[c][k]`` is the surrogate coefficient and
+    ``info`` lists rank-deficient, ridge-applied, and zero-power bins, plus per-bin
+    ``effective_rank``, ``min_eig_rel`` and ``condition`` diagnostics.
     """
     seed = sp.check_seed(seed)
     if isinstance(n_time, bool) or not isinstance(n_time, int) or n_time < 1:
@@ -363,7 +402,8 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8):
     fixed = set(sp.fixed_bins(n_time))
     spectra = [[0j] * nf for _ in range(d)]
     info = {"rank_deficient": [], "ridge_applied": [], "zero_power": [],
-            "dc_imag": 0.0, "nyquist_imag": 0.0}
+            "dc_imag": 0.0, "nyquist_imag": 0.0,
+            "effective_rank": [], "min_eig_rel": [], "condition": [], "participation_ratio": []}
     scale = math.sqrt(n_time)
 
     for k in range(nf):
@@ -380,6 +420,14 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8):
         trace = sum(mat[i][i].real for i in range(d))
         if trace < 0.0:
             raise sp.NonPositiveDefiniteError(f"bin {k}: negative trace {trace!r}")
+        if real_coefficients and any(abs(mat[i][j].imag) > 1e-12 * max(1.0, abs(trace))
+                                     for i in range(d) for j in range(d)):
+            raise sp.SurrogateInputError(f"bin {k}: real_coefficients=True requires a real-valued target")
+        rank, min_rel, cond, part = csdlib.matrix_diagnostics(mat, rank_tol=rank_tol, psd_tol=psd_tol)
+        info["effective_rank"].append(rank)
+        info["min_eig_rel"].append(min_rel)
+        info["condition"].append(cond)
+        info["participation_ratio"].append(part)
         if trace == 0.0:
             if any(abs(mat[i][j]) > 0.0 for i in range(d) for j in range(d)):
                 raise sp.NonPositiveDefiniteError(f"bin {k}: zero trace with nonzero entries is not PSD")
@@ -398,7 +446,7 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8):
             info["ridge_applied"].append(k)
 
         rng = sp.rng_for(seed, f"cholesky|bin:{k}")
-        g = sp.real_standard_normal(rng, d) if is_fixed else sp.complex_standard_normal(rng, d)
+        g = sp.real_standard_normal(rng, d) if (is_fixed or real_coefficients) else sp.complex_standard_normal(rng, d)
         z = sp.mat_vec(factor, g)
         for c in range(d):
             spectra[c][k] = scale * z[c]
@@ -447,6 +495,145 @@ def cholesky_gaussian_cross_spectral(x, seed, smoothing_halfwidth=1, ridge_rel=1
             "E[X X^H]/n equals the smoothed target; one realisation is not exact",
             "DC and Nyquist use real factors and real normals",
             "assumptions: stationarity, linear-Gaussian second-order model, not universal",
+        ],
+    )
+    return signals, report
+
+
+def _estimate_for_null(data, *, estimator, n_tapers, smoothing_halfwidth, shrinkage, spectral_estimate):
+    """Return ``(csd_by_bin, info)`` from the named estimator, or from an explicit supplied estimate."""
+    if spectral_estimate is not None:
+        target = csdlib.validate_supplied_csd(spectral_estimate, len(data), len(data[0]))
+        info = {"estimator": "supplied", "n_tapers": None, "smoothing_halfwidth": None,
+                "shrinkage": None, "source": "explicitly_supplied"}
+        return target, info
+    return csdlib.estimate_csd(data, estimator, n_tapers=n_tapers,
+                               smoothing_halfwidth=smoothing_halfwidth, shrinkage=shrinkage)
+
+
+def cholesky_gaussian_csd(x, seed, *, estimator="multitaper", n_tapers=None, smoothing_halfwidth=1,
+                          shrinkage=0.0, spectral_estimate=None, ridge_rel=1e-8,
+                          rank_tol=csdlib.DEFAULT_RANK_TOL, psd_tol=csdlib.DEFAULT_PSD_TOL):
+    """Gaussian surrogate whose ``E[X X^H / n]`` equals an explicit spectral estimate.
+
+    The estimate is computed from ``x`` by ``estimator`` (``multitaper``,
+    ``periodogram_boxcar``, or ``single_periodogram``), or supplied as ``spectral_estimate``
+    (one Hermitian matrix per rFFT bin). A supplied estimate is validated for shape and
+    Hermitian symmetry but is not checked against ``x``. The surrogate preserves the estimate
+    IN EXPECTATION over seeds. A single surrogate deviates from it, and the report says so.
+    """
+    seed = sp.check_seed(seed)
+    data = sp.as_float_matrix(x)
+    n_ch, n = len(data), len(data[0])
+    target, est = _estimate_for_null(data, estimator=estimator, n_tapers=n_tapers,
+                                     smoothing_halfwidth=smoothing_halfwidth, shrinkage=shrinkage,
+                                     spectral_estimate=spectral_estimate)
+    out_spectra, info = draw_from_csd(target, n, seed, ridge_rel=ridge_rel,
+                                      rank_tol=rank_tol, psd_tol=psd_tol)
+    signals, dc, nyq = _to_signals(out_spectra, n)
+    measured = [sp.rfft(s) for s in signals]
+    compare_target = _target_for_compare(target, n)
+    report = _make_report(
+        null_id="cholesky_gaussian_csd",
+        seed=seed,
+        n_channels=n_ch,
+        n_time=n,
+        status={
+            "marginal": "NOT_PRESERVED_MEASURED",
+            "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
+            "cross_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
+            "spectral_estimate_source": est["source"].upper(),
+            "intended_use": "SECOND_ORDER_GAUSSIAN_NULL_UNDER_STATIONARITY_AND_LINEAR_GAUSSIAN_MODEL",
+        },
+        marginal=_marginal_error(signals, data),
+        auto=_power_error_to_target(measured, compare_target, n),
+        cross=_csd_rel_error(sp.periodogram_csd(measured, n), compare_target) if n_ch >= 2 else None,
+        dc_imag=dc,
+        nyq_imag=nyq,
+        ridge_rel=ridge_rel,
+        rank_deficient_bins=tuple(info["rank_deficient"]),
+        ridge_applied_bins=tuple(info["ridge_applied"]),
+        zero_power_bins=tuple(info["zero_power"]),
+        estimator=est["estimator"],
+        estimator_source=est["source"],
+        n_tapers=est["n_tapers"],
+        smoothing_halfwidth=est["smoothing_halfwidth"],
+        shrinkage=est["shrinkage"],
+        effective_rank_per_bin=tuple(info["effective_rank"]),
+        min_eig_rel_per_bin=tuple(info["min_eig_rel"]),
+        condition_per_bin=tuple(info["condition"]),
+        participation_ratio_per_bin=tuple(info["participation_ratio"]),
+        notes=[
+            f"spectral estimate: {est['estimator']} ({est['source']})",
+            "E[X X^H]/n equals the estimate in expectation; one realisation is not exact",
+            "effective rank and conditioning are reported per bin; ridge only at rounding level",
+            "a supplied estimate is not checked against the data",
+            "DC and Nyquist use real factors and real normals",
+            "assumptions: stationarity, linear-Gaussian second-order model, not universal",
+        ],
+    )
+    return signals, report
+
+
+def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=None, smoothing_halfwidth=1,
+                                shrinkage=0.0, spectral_estimate=None, ridge_rel=1e-8,
+                                rank_tol=csdlib.DEFAULT_RANK_TOL, psd_tol=csdlib.DEFAULT_PSD_TOL):
+    """EXPLORATORY, assumption-dependent null: real Gaussian coefficients with covariance Re C(f).
+
+    Keeps only the real part of the estimated cross-spectrum and draws real Fourier
+    coefficients, so every imaginary part is zero and channels are in phase or anti-phase at
+    each bin. It does not model volume conduction, source geometry, filtering, or lagged
+    coupling. It must not be used to claim that any of those is controlled.
+    """
+    seed = sp.check_seed(seed)
+    data = sp.as_float_matrix(x)
+    n_ch, n = len(data), len(data[0])
+    target, est = _estimate_for_null(data, estimator=estimator, n_tapers=n_tapers,
+                                     smoothing_halfwidth=smoothing_halfwidth, shrinkage=shrinkage,
+                                     spectral_estimate=spectral_estimate)
+    real_target = [[[complex(mat[i][j].real, 0.0) for j in range(n_ch)] for i in range(n_ch)]
+                   for mat in target]
+    out_spectra, info = draw_from_csd(real_target, n, seed, ridge_rel=ridge_rel, real_coefficients=True,
+                                      rank_tol=rank_tol, psd_tol=psd_tol)
+    signals, dc, nyq = _to_signals(out_spectra, n)
+    measured = [sp.rfft(s) for s in signals]
+    compare_target = _target_for_compare(real_target, n)
+    report = _make_report(
+        null_id="zero_lag_real_part_gaussian",
+        seed=seed,
+        n_channels=n_ch,
+        n_time=n,
+        status={
+            "marginal": "NOT_PRESERVED_MEASURED",
+            "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
+            "cross_spectrum_real_part": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
+            "imaginary_part": "SET_TO_ZERO_BY_CONSTRUCTION",
+            "spectral_estimate_source": est["source"].upper(),
+            "intended_use": "EXPLORATORY_ASSUMPTION_DEPENDENT_ZERO_LAG_REAL_PART_NULL",
+            "volume_conduction": "NOT_MODELLED",
+        },
+        marginal=_marginal_error(signals, data),
+        auto=_power_error_to_target(measured, compare_target, n),
+        cross=_csd_rel_error(sp.periodogram_csd(measured, n), compare_target) if n_ch >= 2 else None,
+        dc_imag=dc,
+        nyq_imag=nyq,
+        ridge_rel=ridge_rel,
+        rank_deficient_bins=tuple(info["rank_deficient"]),
+        ridge_applied_bins=tuple(info["ridge_applied"]),
+        zero_power_bins=tuple(info["zero_power"]),
+        estimator=est["estimator"],
+        estimator_source=est["source"],
+        n_tapers=est["n_tapers"],
+        smoothing_halfwidth=est["smoothing_halfwidth"],
+        shrinkage=est["shrinkage"],
+        effective_rank_per_bin=tuple(info["effective_rank"]),
+        min_eig_rel_per_bin=tuple(info["min_eig_rel"]),
+        condition_per_bin=tuple(info["condition"]),
+        participation_ratio_per_bin=tuple(info["participation_ratio"]),
+        notes=[
+            f"real part of the {est['estimator']} estimate ({est['source']}); imaginary parts are zero",
+            "EXPLORATORY and assumption-dependent: not a volume-conduction, geometry, or filter model",
+            "phase relations between channels are forced to 0 or pi at every bin",
         ],
     )
     return signals, report

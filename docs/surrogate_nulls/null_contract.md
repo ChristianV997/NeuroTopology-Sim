@@ -129,12 +129,83 @@ construction. The tests check the label against the number.
 - `validation/surrogate_testing.py` and `tests/test_surrogate_testing.py` on `main` are a
   separate per-channel FT/IAAFT gate. They are not modified.
 
+## Spectral-matrix estimation (`tools/surrogate_nulls/csd.py`)
+
+The Gaussian nulls take an explicit spectral estimate. The estimator is named in every report.
+
+| `estimator` | What it is | Rank per bin (d channels) |
+|---|---|---|
+| `multitaper` (default) | sine multitaper: K orthonormal tapers `h_j(t)=sqrt(2/(n+1)) sin(pi (j+1)(t+1)/(n+1))`, average of tapered periodogram matrices | up to K |
+| `periodogram_boxcar` | periodogram averaged over neighbouring bins within `smoothing_halfwidth` | up to 2h+1 |
+| `single_periodogram` | one unsmoothed periodogram per bin | 1 for d >= 2 |
+| `supplied` (via `spectral_estimate=`) | caller-provided Hermitian matrix per bin; validated for shape, finiteness, Hermitian symmetry; **not** checked against the data | as supplied |
+
+- Default multitaper count: `K = min(n, max(4, d + 2))`, so the estimate keeps rank headroom.
+- The orthonormality of the sine tapers is tested (Gram error about 1e-16).
+- `single_periodogram` is rank one, so the cross-channel structure of a single epoch cannot be
+  represented. The null reports rank one at every bin and applies ridge at every bin. This is
+  the rank-one collapse: each draw is then a scalar multiple of the periodogram direction, and it
+  reproduces the phase problem that the common-phase null has.
+
+## Shrinkage, PSD policy, and conditioning
+
+- Shrinkage (explicit, default 0): `C <- (1 - lam) C + lam (tr C / d) I`, `lam` in `[0, 1]`. The
+  value is reported. Out-of-range values are rejected.
+- PSD policy: the smallest eigenvalue of each bin's matrix must be at least `-psd_tol * trace`
+  (`psd_tol = 1e-10`). A smaller value is **materially indefinite** and raises
+  `NonPositiveDefiniteError` before any regularisation. Negative eigenvalues within the tolerance
+  are rounding noise. They are regularised by ridge (`ridge_rel * trace / d`) only when the
+  Cholesky factorisation fails, and the bin is reported in `ridge_applied_bins`.
+- Eigenvalues are computed by cyclic Jacobi rotations on the real embedding `[[A, -B], [B, A]]`
+  of `H = A + iB`. The embedding is tested against a known matrix (eigenvalues `2 +- sqrt 2`) and
+  against the trace.
+- Per-bin reports: `effective_rank_per_bin` (eigenvalues above `rank_tol * max`, with
+  `rank_tol = 1e-10`), `min_eig_rel_per_bin`, `condition_per_bin` (infinite when the smallest
+  eigenvalue is below `rank_tol * max`), and `participation_ratio_per_bin`.
+- **The participation ratio** `(sum lam)^2 / sum lam^2` is a continuous measure of how many
+  directions the covariance actually uses. A value near 1 means one direction dominates, even
+  when the numerical rank is higher. Example: the designed three-channel sinusoid gives
+  participation 1.003 at its bin, and independent noise gives about 1.9. The test thresholds
+  (1.01 and 1.5) are illustrations chosen after observing these values. They are not calibrated
+  decision rules.
+
+## The zero-lag real-part null (exploratory)
+
+`zero_lag_real_part_gaussian` is **separately named and exploratory**. It is not in `NULL_IDS`,
+and it appears in `EXPLORATORY_NULL_IDS` and `CONTRACTS`.
+
+- Rule: keep `Re C(f)` from the estimate and draw **real** Gaussian Fourier coefficients with
+  covariance `Re C(f)` at every bin. `draw_from_csd(..., real_coefficients=True)` enforces the
+  real target.
+- Preserved, in expectation: the real part of the cross-spectrum. Every imaginary part is zero by
+  construction (tested: the surrogate cross-spectrum imaginary part is below 1e-12).
+- It forces every inter-channel phase relation to 0 or pi.
+- Assumption-dependent. It does **not** model volume conduction, source geometry, filtering, or
+  lagged coupling. Do not use it to claim that any of these is controlled.
+
+## Does the procedure vary the phase statistic? (`winding_variation`)
+
+`winding_variation(x, generator, seeds, bin_k)` reports whether a surrogate procedure varies the
+toy loop-winding statistic across an ensemble. It returns `varies_from_original` and
+`varies_across_ensemble`, with the distinct values. Measured results:
+
+- Common phase: never varies the winding (tested on independent channels).
+- Cholesky on independent three-channel noise: varies, taking values -1, 0 and 1.
+- Cholesky on the designed noiseless sinusoid at its bin: does **not** vary the winding. The
+  estimate there is dominated by one direction (participation 1.003), so draws keep the relative
+  phases fixed. This is the rank-one failure mode, and it is reported rather than hidden.
+
+A procedure that leaves the statistic unchanged must not be used to test that statistic.
+
 ## Limitations
 
 - O(n^2) reference transforms. Intended for short synthetic arrays, not production data
   volumes.
 - The Cholesky null's expectation is verified by Monte Carlo at one design point (N = 32, two
-  channels, halfwidth 1). Other designs need their own ensemble check.
-- The winding statistic used in tests is a toy loop statistic for a designed three-channel
-  signal. It is not a project metric.
+  channels, halfwidth 1, and multitaper with K = 4). Other designs need their own ensemble check.
+- The winding statistic used in tests is a toy loop statistic for designed signals. It is not a
+  project metric.
+- The participation thresholds in the tests are illustrations, not calibrated rules.
+- The eigenvalue-based diagnostics are numerical, computed with Jacobi rotations on small
+  matrices (d up to a few channels). They are not validated for large d.
 - No claim is made about any biological signal, dataset, or result.
