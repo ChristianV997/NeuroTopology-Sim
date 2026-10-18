@@ -16,6 +16,7 @@ COPY tools/literature_evidence/ tools/literature_evidence/
 COPY tools/simulation_artifacts/ tools/simulation_artifacts/
 COPY tools/simulation_execution/ tools/simulation_execution/
 COPY tools/research_cycle_preflight/ tools/research_cycle_preflight/
+COPY tools/research_cycle_release/ tools/research_cycle_release/
 COPY tools/research_plan_quality/ tools/research_plan_quality/
 COPY tools/research_claim_gate/ tools/research_claim_gate/
 COPY tools/data_access/policy_enforcement/ tools/data_access/policy_enforcement/
