@@ -693,3 +693,100 @@ def test_no_silent_regularization_on_singular_or_nonpositive_inputs():
     assert res.diagnostics["dependent_face_rows"] is True
 
 
+def test_invariance_under_consistent_edge_and_face_reorientation():
+    """Verify decomposition is invariant under consistent orientation reversals.
+
+    1. Edge reorientation (edge k reversed):
+       - d0[k, :] -> -d0[k, :]
+       - d1[:, k] -> -d1[:, k]
+       - omega[k] -> -omega[k]
+       Expectation:
+       - omega_exact[k] -> -omega_exact[k]
+       - omega_coexact[k] -> -omega_coexact[k]
+       - omega_harm[k] -> -omega_harm[k]
+       - potential alpha is invariant
+       - stream function beta is invariant
+       - energies and orthogonalities are invariant
+
+    2. Face reorientation (face f reversed):
+       - d1[f, :] -> -d1[f, :]
+       Expectation:
+       - omega_coexact is invariant
+       - face potential gamma[f] -> -gamma[f]
+       - stream function beta[f] -> -beta[f]
+       - energies and orthogonalities are invariant
+    """
+    d0, d1 = fixture_quad_fan()
+    rng = np.random.default_rng(20261018)
+    omega = rng.standard_normal(d0.shape[0])
+    weights = rng.uniform(0.8, 2.0, size=d0.shape[0])
+
+    res_orig = hodge_decompose(omega, d0, d1, edge_metric=weights)
+
+    # 1. Flip edge 2
+    edge_flip = 2
+    d0_e = d0.copy()
+    d0_e[edge_flip, :] *= -1.0
+    d1_e = d1.copy()
+    d1_e[:, edge_flip] *= -1.0
+    omega_e = omega.copy()
+    omega_e[edge_flip] *= -1.0
+
+    res_edge = hodge_decompose(omega_e, d0_e, d1_e, edge_metric=weights)
+
+    # Component on flipped edge must be negated; other components unchanged
+    expected_exact = res_orig.exact.copy()
+    expected_exact[edge_flip] *= -1.0
+    assert np.allclose(res_edge.exact, expected_exact, atol=1e-11)
+
+    expected_coexact = res_orig.coexact.copy()
+    expected_coexact[edge_flip] *= -1.0
+    assert np.allclose(res_edge.coexact, expected_coexact, atol=1e-11)
+
+    # Potential alpha and stream function beta must be invariant
+    assert np.allclose(res_edge.potential, res_orig.potential, atol=1e-11)
+    assert np.allclose(res_edge.stream_function, res_orig.stream_function, atol=1e-11)
+
+    # Energies and orthogonalities must be identical
+    assert math.isclose(res_edge.energy_total, res_orig.energy_total, rel_tol=1e-10)
+    assert math.isclose(res_edge.energy_exact, res_orig.energy_exact, rel_tol=1e-10)
+    assert math.isclose(res_edge.energy_coexact, res_orig.energy_coexact, rel_tol=1e-10)
+    assert math.isclose(res_edge.energy_harmonic, res_orig.energy_harmonic, rel_tol=1e-10, abs_tol=1e-12)
+
+    # 2. Flip face 1
+    face_flip = 1
+    d1_f = d1.copy()
+    d1_f[face_flip, :] *= -1.0
+
+    res_face = hodge_decompose(omega, d0, d1_f, edge_metric=weights)
+
+    # Coexact 1-cochain is strictly invariant under face orientation choice
+    assert np.allclose(res_face.coexact, res_orig.coexact, atol=1e-11)
+    assert np.allclose(res_face.exact, res_orig.exact, atol=1e-11)
+    assert np.allclose(res_face.harmonic, res_orig.harmonic, atol=1e-11)
+
+    # Face stream function at flipped face must negate
+    expected_beta = res_orig.stream_function.copy()
+    expected_beta[face_flip] *= -1.0
+    assert np.allclose(res_face.stream_function, expected_beta, atol=1e-11)
+
+    assert math.isclose(res_face.energy_total, res_orig.energy_total, rel_tol=1e-10)
+    assert math.isclose(res_face.energy_coexact, res_orig.energy_coexact, rel_tol=1e-10)
+
+
+def test_scale_aware_numerical_closure():
+    """Verify scale-aware numerical closure across 10 orders of magnitude."""
+    d0, d1 = fixture_quad_fan()
+    rng = np.random.default_rng(888)
+    base_omega = rng.standard_normal(d0.shape[0])
+
+    for scale in [1e-5, 1e-2, 1.0, 1e2, 1e5]:
+        omega = scale * base_omega
+        weights = rng.uniform(0.5, 2.5, size=d0.shape[0]) * scale
+
+        res = hodge_decompose(omega, d0, d1, edge_metric=weights)
+
+        # Scale-relative reconstruction and energy errors must stay below 1e-10
+        assert res.relative_reconstruction_error < 1e-10
+        assert res.relative_energy_error < 1e-10
+        assert abs(res.orthogonality_exact_coexact) / (res.energy_total + 1e-12) < 1e-10

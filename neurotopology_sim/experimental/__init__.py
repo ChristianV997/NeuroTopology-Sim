@@ -1,1 +1,3 @@
-"""Experimental packages under HOLD / SYNTHETIC_ONLY posture."""
+"""Experimental algebraic / synthetic modules (HOLD / SYNTHETIC_ONLY)."""
+
+__all__: list[str] = []
