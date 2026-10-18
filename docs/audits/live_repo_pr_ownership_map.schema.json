@@ -369,6 +369,99 @@
         "experimental_test_coverage": {
           "type": "string"
         },
+        "round6_candidate_discovery": {
+          "additionalProperties": true,
+          "properties": {
+            "candidate_pair_count": {"minimum": 0, "type": "integer"},
+            "component_count": {"minimum": 0, "type": "integer"},
+            "components": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_pairs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "implementation": {"$ref": "#/$defs/repo_path"},
+                        "test": {"$ref": "#/$defs/repo_path"}
+                      },
+                      "required": ["implementation", "test"],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "name": {"minLength": 1, "type": "string"},
+                  "test_files": {
+                    "items": {"$ref": "#/$defs/repo_path"},
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "triggers": {
+                    "items": {"minLength": 1, "type": "string"},
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": ["name", "triggers", "candidate_pairs", "test_files"],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "coverage_audit": {
+              "additionalProperties": false,
+              "properties": {
+                "checked_at_utc": {"format": "date-time", "type": "string"},
+                "open_pr_count": {"minimum": 0, "type": "integer"},
+                "relevant_pr_numbers": {
+                  "items": {"minimum": 1, "type": "integer"},
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "unmapped_candidate_paths": {
+                  "items": {"$ref": "#/$defs/repo_path"},
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": ["checked_at_utc", "open_pr_count", "relevant_pr_numbers", "unmapped_candidate_paths"],
+              "type": "object"
+            },
+            "execution_contract": {
+              "additionalProperties": false,
+              "properties": {
+                "empty_collection": {"const": "fail"},
+                "missing_implementation_or_test": {"const": "blocked"},
+                "no_candidate_change": {"const": "NOT_APPLICABLE_not_a_pass"},
+                "outer_timeout_seconds": {"minimum": 1, "type": "integer"},
+                "skipped_tests": {"const": "fail"},
+                "unmapped_changed_candidate_path": {"const": "blocked"},
+                "per_file_singleton_process": {"type": "boolean"}
+              },
+              "required": ["empty_collection", "missing_implementation_or_test", "no_candidate_change", "outer_timeout_seconds", "skipped_tests", "unmapped_changed_candidate_path", "per_file_singleton_process"],
+              "type": "object"
+            },
+            "helper_path": {"$ref": "#/$defs/repo_path"},
+            "hosted_candidate_execution": {"enum": ["not_observed", "observed"]},
+            "local_candidate_probe": {
+              "additionalProperties": false,
+              "properties": {
+                "candidate_head_sha": {"$ref": "#/$defs/sha"},
+                "candidate_pr_number": {"minimum": 1, "type": "integer"},
+                "direct_test_command": {"minLength": 1, "type": "string"},
+                "direct_test_result": {"minLength": 1, "type": "string"},
+                "isolated_runner_blocker": {"minLength": 1, "type": "string"},
+                "isolated_runner_result": {"minLength": 1, "type": "string"},
+                "test_file": {"$ref": "#/$defs/repo_path"}
+              },
+              "required": ["candidate_pr_number", "candidate_head_sha", "test_file", "direct_test_command", "direct_test_result", "isolated_runner_result", "isolated_runner_blocker"],
+              "type": "object"
+            }
+          },
+          "required": ["helper_path", "component_count", "candidate_pair_count", "components", "coverage_audit", "execution_contract", "local_candidate_probe", "hosted_candidate_execution"],
+          "type": "object"
+        },
         "head_sha": {
           "$ref": "#/$defs/sha"
         },
@@ -381,7 +474,8 @@
         "workflow_runs",
         "check_runs",
         "awareness_failure",
-        "experimental_test_coverage"
+        "experimental_test_coverage",
+        "round6_candidate_discovery"
       ],
       "type": "object"
     },
@@ -608,7 +702,7 @@
       "type": "object"
     },
     "schema_version": {
-      "const": "neurotopology.live-repo-pr-ownership-map.v2"
+      "const": "neurotopology.live-repo-pr-ownership-map.v3"
     },
     "scope": {
       "additionalProperties": true,

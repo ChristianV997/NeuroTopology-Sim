@@ -6,6 +6,7 @@ import importlib.util
 import ast
 import json
 import re
+import subprocess
 import unittest
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -80,16 +81,57 @@ class OwnershipSnapshotTests(unittest.TestCase):
 
     def test_unknown_required_checks_cannot_make_a_pr_ready(self):
         doc = _load(AUDIT)
-        self.assertEqual(doc["required_check_configuration"]["state"], "unknown")
-        self.assertTrue(doc["required_check_configuration"]["reason"])
+        allowed_check_states = {"pass", "fail", "pending", "unknown", "not_applicable"}
+        self.assertIn(doc["required_check_configuration"]["state"], allowed_check_states)
+        if doc["required_check_configuration"]["state"] == "unknown":
+            self.assertTrue(doc["required_check_configuration"].get("reason"))
+        readiness_counts = {state: 0 for state in ("ready", "draft", "blocked", "conflicted", "unknown")}
+        ready_numbers = []
         for pr in doc["pull_requests"]:
-            self.assertEqual(pr["ci"]["required_check_state"], "unknown")
+            self.assertIn(pr["ci"]["required_check_state"], allowed_check_states)
+            readiness_counts[pr["readiness"]["state"]] += 1
             if pr["readiness"]["state"] == "ready":
+                ready_numbers.append(pr["number"])
+                self.assertFalse(pr["draft"])
                 self.assertEqual(pr["review"]["approval_count"], 1)
                 self.assertEqual(pr["ci"]["required_check_state"], "pass")
-        self.assertEqual(doc["readiness_summary"]["merge_ready_count"], 0)
-        self.assertEqual(doc["readiness_summary"]["ready_pr_numbers"], [])
-        self.assertEqual(doc["readiness_summary"]["counts"]["ready"], 0)
+                self.assertEqual(pr["ci"]["observed_state"], "pass")
+                self.assertIsNot(pr["mergeability"]["github_mergeable"], False)
+        self.assertEqual(sorted(ready_numbers), doc["readiness_summary"]["ready_pr_numbers"])
+        self.assertEqual(doc["readiness_summary"]["merge_ready_count"], len(ready_numbers))
+        self.assertEqual(doc["readiness_summary"]["counts"], readiness_counts)
+        if doc["required_check_configuration"]["state"] == "unknown":
+            self.assertEqual(ready_numbers, [])
+        if all(pr["review"]["approval_count"] == 0 for pr in doc["pull_requests"]):
+            self.assertEqual(ready_numbers, [])
+
+    def test_candidate_discovery_snapshot_is_complete_and_reports_local_limitations(self):
+        doc = _load(AUDIT)
+        helper = _helper()
+        discovery = doc["main_ci"]["round6_candidate_discovery"]
+        self.assertEqual(discovery["helper_path"], ".github/workflows/round6_experimental_tests.py")
+        self.assertEqual(discovery["component_count"], len(helper.COMPONENTS))
+        self.assertEqual(
+            discovery["candidate_pair_count"],
+            sum(len(spec["candidate_pairs"]) for spec in helper.COMPONENTS.values()),
+        )
+        recorded = {item["name"]: item for item in discovery["components"]}
+        self.assertEqual(set(recorded), set(helper.COMPONENTS))
+        for name, spec in helper.COMPONENTS.items():
+            self.assertEqual(recorded[name]["candidate_pairs"], list(spec["candidate_pairs"]))
+            self.assertEqual(recorded[name]["test_files"], list(spec["tests"]))
+        self.assertEqual(discovery["coverage_audit"]["unmapped_candidate_paths"], [])
+        contract = discovery["execution_contract"]
+        self.assertEqual(contract["empty_collection"], "fail")
+        self.assertEqual(contract["skipped_tests"], "fail")
+        self.assertEqual(contract["missing_implementation_or_test"], "blocked")
+        self.assertEqual(contract["no_candidate_change"], "NOT_APPLICABLE_not_a_pass")
+        self.assertTrue(contract["per_file_singleton_process"])
+        local = discovery["local_candidate_probe"]
+        self.assertEqual(local["candidate_pr_number"], 424)
+        self.assertIn("28", local["direct_test_result"])
+        self.assertNotEqual(discovery["hosted_candidate_execution"], "observed")
+        self.assertIn("pytest-timeout", local["isolated_runner_blocker"])
 
     def test_collision_summary_and_round6_pr_405_fact_are_consistent(self):
         doc = _load(AUDIT)
@@ -127,7 +169,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
             root = Path(td)
             verdict = helper.inspect_component("synthetic_roc", root)
             self.assertEqual(verdict["status"], "BLOCKED")
-            self.assertIn("absent", verdict["reason"])
+            self.assertIn("required candidate implementation is absent", verdict["blockers"])
 
     def test_candidate_mapping_covers_direct_implementation_and_adversarial_test_pairs(self):
         helper = _helper()
@@ -141,12 +183,140 @@ class OwnershipSnapshotTests(unittest.TestCase):
             "phase_uncertainty": ("tools/phase_uncertainty/candidate_estimator.py", "tests/phase_uncertainty/test_candidate_contract.py"),
             "surrogate_audit": ("tools/surrogate_audit/mv_fpr.py", "tests/surrogate_audit/test_mv_fpr.py"),
             "synthetic_roc": ("neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py", "tests/neurotopology_sim/experimental/benchmarks/test_synthetic_forward_roc.py"),
+            "simulation_grid_planner": ("tools/simulation_runtime/grid_plan.py", "tests/simulation_runtime/test_grid_plan.py"),
+            "report_firewall": ("tools/batch3_report_firewall/checker.py", "tests/tools/batch3_report_firewall/test_checker.py"),
+            "provenance_join": ("tools/batch3_provenance_join/auditor.py", "tests/tools/batch3_provenance_join/test_audit.py"),
+            "topology_backend_conformance": ("tools/topology_backend_conformance/comparator.py", "tests/topology_backend_conformance/test_comparability_gates.py"),
+            "finite_chain_audit": ("tools/batch2_chain_complex_audit/complex.py", "tests/batch2_chain_complex_audit/test_boundary_composition.py"),
+            "winding_charge_audit": ("tools/experimental_audits/winding_charge_round6/__main__.py", "tests/experimental_audits/test_winding_charge_round6_oracle.py"),
         }
         for name, (implementation, test_file) in expected_pairs.items():
             spec = helper.COMPONENTS[name]
             implementations = spec.get("implementation_any", (spec.get("implementation"),))
             self.assertIn(implementation, implementations, name)
             self.assertIn(test_file, spec["tests"], name)
+            self.assertIn(
+                {"implementation": implementation, "test": test_file},
+                spec["candidate_pairs"],
+                name,
+            )
+        self.assertIn(
+            {"implementation": "tools/batch3_provenance_join/models.py", "test": "tests/tools/batch3_provenance_join/test_safety_and_cycles.py"},
+            helper.COMPONENTS["provenance_join"]["candidate_pairs"],
+        )
+        self.assertEqual(helper.select_components({"tools/simulation_runtime/grid_plan.py"}), ["simulation_grid_planner"])
+        self.assertEqual(helper.select_components({"scripts/check_batch3_report_language.py"}), ["report_firewall"])
+        self.assertEqual(helper.select_components({"scripts/run_batch3_provenance_join.py"}), ["provenance_join"])
+        self.assertEqual(helper.select_components({"tools/topology_backend_conformance/comparator.py"}), ["topology_backend_conformance"])
+        self.assertEqual(helper.select_components({"tests/batch2_chain_complex_audit/test_boundary_composition.py"}), ["finite_chain_audit"])
+        self.assertEqual(helper.select_components({"tests/experimental_audits/test_winding_charge_round6_oracle.py"}), ["winding_charge_audit"])
+        self.assertIn("tests/mne_csd_reference_audit/test_mne_integration_optional.py", helper.COMPONENTS["spherical_csd"]["tests"])
+        self.assertIn("tests/surrogate_nulls/test_hardening_diagnostics.py", helper.COMPONENTS["surrogate_nulls"]["tests"])
+        for name, spec in helper.COMPONENTS.items():
+            for pair in spec["candidate_pairs"]:
+                self.assertIn(pair["test"], spec["tests"], f"unlisted test mapping in {name}")
+
+        snapshot = _load(AUDIT)
+        for pr in snapshot["pull_requests"]:
+            changed = set(pr["changed_paths"])
+            for name in helper.select_components(changed):
+                self.assertEqual(
+                    helper._changed_candidate_paths(helper.COMPONENTS[name], changed),
+                    [],
+                    f"PR #{pr['number']} has an unmapped candidate path in {name}",
+                )
+
+    def test_windows_separators_select_the_same_candidate_lane(self):
+        helper = _helper()
+        self.assertEqual(
+            helper.select_components({r"tools\batch3_report_firewall\checker.py"}),
+            ["report_firewall"],
+        )
+
+    def test_inspection_blocks_missing_implementation_or_required_test(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["simulation_grid_planner"]
+        pair = spec["candidate_pairs"][0]
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            test_path = root / pair["test"]
+            test_path.parent.mkdir(parents=True, exist_ok=True)
+            test_path.write_text("# candidate test fixture\n", encoding="utf-8")
+            verdict = helper.inspect_component(
+                "simulation_grid_planner", root, {pair["test"]}
+            )
+            self.assertEqual(verdict["status"], "BLOCKED")
+            self.assertEqual(verdict["missing_implementations"], [pair["implementation"]])
+
+            source_path = root / pair["implementation"]
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text("# candidate implementation fixture\n", encoding="utf-8")
+            test_path.unlink()
+            verdict = helper.inspect_component(
+                "simulation_grid_planner", root, {pair["implementation"]}
+            )
+            self.assertEqual(verdict["status"], "BLOCKED")
+            self.assertEqual(verdict["missing_required_tests"], [pair["test"]])
+
+    def test_unmapped_candidate_test_path_is_blocked_instead_of_ignored(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            verdict = helper.inspect_component(
+                "report_firewall",
+                root,
+                {"tests/tools/batch3_report_firewall/test_unregistered_contract.py"},
+            )
+        self.assertEqual(verdict["status"], "BLOCKED")
+        self.assertIn(
+            "tests/tools/batch3_report_firewall/test_unregistered_contract.py",
+            verdict["unmapped_candidate_paths"],
+        )
+
+    def test_relevant_change_with_empty_component_selection_fails_closed(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            report_path = root / "report.json"
+            with patch.object(
+                helper,
+                "collect_changed_paths",
+                return_value={"tools/simulation_runtime/grid_plan.py"},
+            ), patch.object(helper, "select_components", return_value=[]):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = _load(report_path)
+        self.assertNotEqual(result, 0)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["selected_components"], [])
+        self.assertIn("empty component selection", report["selection_error"])
+
+    def test_timeout_is_explicit_and_contains_the_exact_command(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            for relative in (pair["implementation"], pair["test"]):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# local fixture\n", encoding="utf-8")
+            report_path = root / "report.json"
+            with patch.object(
+                helper,
+                "collect_changed_paths",
+                return_value={pair["implementation"]},
+            ), patch.object(
+                helper.subprocess,
+                "run",
+                side_effect=subprocess.TimeoutExpired(["python", "pytest"], 130),
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = _load(report_path)
+        self.assertNotEqual(result, 0)
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["status"], "TIMEOUT")
+        self.assertTrue(execution["timeout"])
+        self.assertIn("scripts/run_tests_isolated.py", execution["command"])
+        self.assertEqual(report["executed_commands"], [execution["command"]])
 
     def test_junit_skip_and_empty_collection_are_visible_to_ci_gate(self):
         helper = _helper()
@@ -159,6 +329,14 @@ class OwnershipSnapshotTests(unittest.TestCase):
             report.write_text('<testsuite tests="0"/>', encoding="utf-8")
             counts = helper.junit_counts(report)
             self.assertEqual(counts, (0, 0, 0, 0))
+            self.assertEqual(helper.junit_status(counts), "FAIL")
+            report.write_text(
+                '<testsuite tests="2"><testcase classname="candidate" name="assertion"><failure message="bad result"/></testcase><testcase classname="candidate" name="import"><error message="import error"/></testcase></testsuite>',
+                encoding="utf-8",
+            )
+            counts, cases = helper.junit_details(report)
+            self.assertEqual(counts, (2, 0, 1, 1))
+            self.assertEqual([case["status"] for case in cases], ["failed", "error"])
             self.assertEqual(helper.junit_status(counts), "FAIL")
             report.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
             self.assertEqual(helper.junit_status(helper.junit_counts(report)), "PASS")
@@ -205,10 +383,17 @@ class OwnershipSnapshotTests(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertEqual(report["status"], "FAIL")
             self.assertEqual(len(calls), len(spec["tests"]))
+            self.assertEqual(len(report["executed_commands"]), len(spec["tests"]))
+            self.assertEqual(report["selected_components"], ["surrogate_nulls"])
+            self.assertIn("tools/surrogate_nulls/nulls.py", report["selected_paths"]["surrogate_nulls"])
             for command in calls:
                 self.assertIn("scripts/run_tests_isolated.py", command)
                 self.assertEqual(command[command.index("--batch-size") + 1], "1")
                 self.assertEqual(command[command.index("--timeout-s") + 1], "120")
+            execution = report["components"][0]["executions"][0]
+            self.assertEqual(execution["status"], "FAIL")
+            self.assertEqual(execution["failure_classification"], "candidate_tests_skipped")
+            self.assertEqual(execution["test_cases"], [{"name": "", "status": "skipped"}])
 
     def test_discovery_helper_has_no_dataset_or_network_client_imports(self):
         tree = ast.parse(HELPER.read_text(encoding="utf-8"))
