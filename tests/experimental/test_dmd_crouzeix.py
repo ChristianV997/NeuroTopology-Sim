@@ -21,34 +21,30 @@ from typing import Any, List, Sequence, Tuple
 import numpy as np
 import pytest
 
-# Attempt import of Cursor Agent D's candidate module
-try:
-    from neurotopology_sim.experimental.dynamics.dmd_crouzeix import (
-        ARRAY_ORIENTATION,
-        CROUZEIX_PEER_REVIEWED_C,
-        CROUZEIX_PREPRINT_C2_LABEL,
-        PROJECT_STATUS,
-        SCHEMA_VERSION,
-        AliasAmbiguityReport,
-        CrouzeixReport,
-        DMDDiagnostics,
-        DMDResult,
-        DMDValidationError,
-        EP2Report,
-        GeneratorDiagnostics,
-        SnapshotPairMeta,
-        alias_ambiguity_report,
-        build_snapshot_matrices,
-        crouzeix_bound_report,
-        diagnose_ep2,
-        discrete_eigenvalue_from_frequency_hz,
-        ep2_hamiltonian,
-        estimate_exact_dmd,
-    )
-
-    HAS_CANDIDATE = True
-except ImportError:
-    HAS_CANDIDATE = False
+# Direct candidate import for production integration regression
+from neurotopology_sim.experimental.dynamics.dmd_crouzeix import (
+    ARRAY_ORIENTATION,
+    CROUZEIX_PEER_REVIEWED_C,
+    CROUZEIX_PREPRINT_C2_ARXIV,
+    CROUZEIX_PREPRINT_C2_LABEL,
+    PROJECT_STATUS,
+    SCHEMA_VERSION,
+    AliasAmbiguityReport,
+    CrouzeixReport,
+    DMDDiagnostics,
+    DMDResult,
+    DMDValidationError,
+    EP2Report,
+    GeneratorDiagnostics,
+    SnapshotPairMeta,
+    alias_ambiguity_report,
+    build_snapshot_matrices,
+    crouzeix_bound_report,
+    diagnose_ep2,
+    discrete_eigenvalue_from_frequency_hz,
+    ep2_hamiltonian,
+    estimate_exact_dmd,
+)
 
 
 # ==============================================================================
@@ -246,10 +242,6 @@ class TestIndependentMathematicalOracles:
 # ==============================================================================
 
 
-@pytest.mark.skipif(
-    not HAS_CANDIDATE,
-    reason="Candidate module neurotopology_sim.experimental.dynamics.dmd_crouzeix not available in environment",
-)
 class TestCandidateDMDCrouzeixRegression:
     """Regression suite against neurotopology_sim.experimental.dynamics.dmd_crouzeix."""
 
@@ -387,7 +379,7 @@ class TestCandidateDMDCrouzeixRegression:
         assert rep_sub.algebraic_multiplicity == 1
 
     def test_crouzeix_peer_reviewed_fallback_and_preprint_c2(self) -> None:
-        """Verify Crouzeix report enforces peer-reviewed C=1+sqrt(2) and tags C=2 as PREPRINT_UNVERIFIED."""
+        """Verify Crouzeix report enforces peer-reviewed C=1+sqrt(2) and tags C=2 as PREPRINT_UNVERIFIED citing arXiv:2608.03841v2."""
         A = np.array([[0.5, 2.0], [0.0, 0.5]], dtype=np.complex128)
 
         # 1. Peer-reviewed default (C = 1 + sqrt(2))
@@ -400,13 +392,61 @@ class TestCandidateDMDCrouzeixRegression:
         assert "HOLD / SYNTHETIC_ONLY" in peer_rep.scope
         assert any("2017" in ref for ref in peer_rep.references)
 
-        # 2. Preprint option (C = 2)
+        # 2. Preprint option (C = 2) referencing arXiv:2608.03841v2
+        assert CROUZEIX_PREPRINT_C2_ARXIV == "arXiv:2608.03841v2"
         pre_rep = crouzeix_bound_report(A, role="discrete_operator", use_preprint_c2=True)
         assert pre_rep.constant == 2.0
         assert pre_rep.constant_label == CROUZEIX_PREPRINT_C2_LABEL
-        assert pre_rep.constant_label == "PREPRINT_UNVERIFIED"
-        assert any("PREPRINT_UNVERIFIED" in ref for ref in pre_rep.references)
+        assert any("preprint" in ref.lower() for ref in pre_rep.references)
+        assert any(CROUZEIX_PREPRINT_C2_ARXIV in ref for ref in pre_rep.references)
         assert pre_rep.not_biological_safety_certificate is True
+
+    def test_large_eigenvector_condition_number_not_falsely_reported_as_ep(self) -> None:
+        """Adversarial test: prove ill-conditioned eigenvectors kappa(V) >> 1 from non-normality are NOT reported as EP.
+
+        Construct upper-triangular non-normal A = [[1.0, 1e6], [0.0, 2.0]]:
+        - Eigenvalues are distinct (1.0 and 2.0, gap = 1.0).
+        - Eigenvectors are nearly collinear: kappa(V) > 1e6.
+        - Must NOT be classified as an exceptional point (algebraic multiplicity = 1,
+          theoretical_coalesced = False, operator_entry_ok = False, N^2 != 0).
+        """
+        A = np.array([[1.0, 1e6], [0.0, 2.0]], dtype=np.complex128)
+
+        # Calculate eigenvector condition number
+        w, V = np.linalg.eig(A)
+        assert abs(w[0] - w[1]) == pytest.approx(1.0)
+        # Normalize columns of V
+        V_norm = V / np.linalg.norm(V, axis=0, keepdims=True)
+        kappa_v = float(np.linalg.cond(V_norm))
+        assert kappa_v > 1e5, f"Expected ill-conditioned eigenvectors, got kappa(V) = {kappa_v}"
+
+        # Diagnose EP: must fail closed against false-positive EP classification
+        rep = diagnose_ep2(A)
+        assert bool(rep.theoretical_coalesced) is False
+        assert bool(rep.operator_entry_ok) is False
+        assert rep.algebraic_multiplicity == 1
+        assert rep.numerical_eig_gap == pytest.approx(1.0, rel=1e-10)
+        # N = A - center*I has center = 1.5, N^2 = 0.25*I != 0
+        assert rep.nilpotent_square_norm > 0.1
+
+        # Verify Crouzeix bound report also preserves HOLD / SYNTHETIC_ONLY posture
+        cr = crouzeix_bound_report(A, role="discrete_operator")
+        assert cr.not_biological_safety_certificate is True
+        assert "HOLD / SYNTHETIC_ONLY" in cr.scope
+
+    def test_defective_jordan_block_ep2_recovery(self) -> None:
+        """Verify exact defective Jordan block J = [[lambda, 1], [0, lambda]] is correctly diagnosed as EP2."""
+        lam = complex(2.5, -1.0)
+        J = np.array([[lam, 1.0], [0.0, lam]], dtype=np.complex128)
+
+        rep = diagnose_ep2(J)
+        assert bool(rep.theoretical_coalesced) is True
+        assert bool(rep.operator_entry_ok) is True
+        assert rep.algebraic_multiplicity == 2
+        assert rep.geometric_multiplicity == 1
+        assert rep.nilpotent_norm == pytest.approx(1.0, abs=1e-12)
+        assert rep.nilpotent_square_norm == pytest.approx(0.0, abs=1e-14)
+        assert any("nonzero nilpotent N with N^2≈0 verified" in n for n in rep.notes)
 
     def test_generator_branch_cut_and_nyquist_diagnostics(self) -> None:
         """Verify generator diagnostics report principal-branch assumptions and Nyquist ambiguity."""
