@@ -181,6 +181,8 @@ def test_untyped_license_field_spellings_are_reported_at_json_pointers(tmp_path:
     run["metadata"] = {
         "license_url": "https://example.invalid/license",
         "spdxLicense": "CC-BY-4.0",
+        "licensee_id": "unknown-party",
+        "License/~Reference": "unknown",
         "nested": {"licence": "unknown"},
     }
     run_path = write_json(tmp_path / "run-license-variants.json", run)
@@ -196,6 +198,8 @@ def test_untyped_license_field_spellings_are_reported_at_json_pointers(tmp_path:
     assert {
         "run-license-variants.json#/metadata/license_url",
         "run-license-variants.json#/metadata/spdxLicense",
+        "run-license-variants.json#/metadata/licensee_id",
+        "run-license-variants.json#/metadata/License~1~0Reference",
         "run-license-variants.json#/metadata/nested/licence",
     } <= findings.keys()
     assert all("no typed license record contract" in item["detail"] for item in findings.values())

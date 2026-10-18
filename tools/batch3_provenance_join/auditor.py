@@ -567,11 +567,16 @@ def _walk_mappings_with_paths(value: Any, path: str = "") -> Iterable[tuple[str,
         if isinstance(current, Mapping):
             yield current_path, current
             for key, item in reversed(list(current.items())):
-                escaped_key = str(key).replace("~", "~0").replace("/", "~1")
+                escaped_key = _escape_json_pointer_segment(str(key))
                 stack.append((f"{current_path}/{escaped_key}", item))
         elif isinstance(current, list):
             for index in range(len(current) - 1, -1, -1):
                 stack.append((f"{current_path}/{index}", current[index]))
+
+
+def _escape_json_pointer_segment(value: str) -> str:
+    """Escape one JSON Pointer segment (RFC 6901)."""
+    return value.replace("~", "~0").replace("/", "~1")
 
 
 def _report_unverifiable_fields(ctx: _Context, raw: Mapping[str, Any], source: str) -> None:
@@ -599,6 +604,7 @@ def _report_unverifiable_fields(ctx: _Context, raw: Mapping[str, Any], source: s
                 f"artifact_type {mapping['artifact_type']!r} has no declared type contract in the supplied current-main schemas",
             )
         for field_name in sorted(key for key in mapping if _is_license_field_name(key)):
+            pointer_field = _escape_json_pointer_segment(field_name)
             if field_name == "license_ref":
                 code = "unverifiable_license_reference"
             elif field_name == "license_id":
@@ -607,20 +613,20 @@ def _report_unverifiable_fields(ctx: _Context, raw: Mapping[str, Any], source: s
                 code = "unverifiable_license_field"
             ctx.add(
                 code,
-                f"{source}#{path}/{field_name}",
+                f"{source}#{path}/{pointer_field}",
                 f"field {field_name!r} has no typed license record contract on current main; it is not used to resolve another identifier by string equality",
             )
 
 
 def _is_license_field_name(value: Any) -> bool:
-    """Recognize license/licence key tokens without inferring their meaning."""
+    """Recognize license/licence substrings without inferring their meaning."""
     if not isinstance(value, str):
         return False
-    # Split camel case before tokenizing so SPDXLicense, licenseURL, and similar
-    # untyped extension keys are reported just like snake_case fields.
-    normalized = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value).casefold()
-    tokens = re.split(r"[^a-z0-9]+", normalized)
-    return any(token in {"license", "licenses", "licence", "licences", "licensing"} for token in tokens)
+    # Substring matching deliberately includes unclassified compound names
+    # such as licensee_id and licensed_to. These are only reported as
+    # unverifiable; their meaning is never inferred and no join is attempted.
+    normalized = value.casefold()
+    return "license" in normalized or "licence" in normalized
 
 
 def _explicit_configuration_pins(value: Any) -> list[tuple[ReferenceKey, str | None, str | None]]:

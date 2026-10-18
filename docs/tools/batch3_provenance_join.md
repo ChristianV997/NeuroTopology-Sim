@@ -76,11 +76,12 @@ unchanged. Redirect the report only to a destination outside the audited root.
   remain `INCOMPLETE` unless a supported record-level contract can establish
   them.
 - Current-main schemas do not define a license record or typed license
-  relationship. Present license/licence-named fields (including `license_id`,
-  `license_ref`, URL-like, and SPDX-like variants) therefore produce explicit
-  `unverifiable_license_*` findings with JSON-pointer locations and are never
-  resolved by matching their text. This is structural coverage only, not
-  data-use-rights or legal clearance.
+  relationship. Present keys containing `license` or `licence` (including
+  compound names such as `licensee_id`, `license_id`, `license_ref`, URL-like,
+  and SPDX-like variants) therefore produce explicit `unverifiable_license_*`
+  findings with RFC 6901-escaped JSON Pointer locations and are never resolved
+  by matching their text. This is structural coverage only, not data-use-rights
+  or legal clearance.
 - `SourceSnapshot.source_sha256` is format-checked, but its schema does not
   define raw bytes versus normalized text/excerpt scope, so the auditor does
   not hash or fetch `source_uri` to guess a match. Arbitrary
