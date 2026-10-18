@@ -29,16 +29,26 @@ Geometry and conventions
 Model (derived from the Laplace equation per degree, see
 docs/physics/four_sphere_forward_model.md)
 -------------------------------------------
-Degree l = 1..L. Let mu = e_s . e_sensor, rho_k = r_k / r4, and let
-P_l, P_l' be the Legendre polynomial and its derivative in mu. The
-infinite-medium dipole series in the brain is
-    V_inf(l) = (1/(4 pi sigma1)) (d^(l-1) / r4^(l+1)) [ l q_r P_l(mu) + P_l'(mu) q_t.e ]
-and the layered four-shell solution multiplies each degree by one transfer
-ratio T_l = V_scalp,l / V_inf,l evaluated at r4:
-    V(sensor) = sum_l T_l V_inf(l).
-T_l is orientation independent, because both orientations share the same
-radial functions r^l and r^-(l+1) in the brain, and it depends only on the
-shell geometry. The homogeneous limit gives T_l = (2l+1)/l.
+Degree l = 1..L. Let e be the sensor unit vector, mu = e_s . e, rho_k = r_k / r4,
+t = d / r4. Radial and tangential components of the dipole are
+q_r = q . e_s and q_t = q - q_r e_s.
+
+Free-space dipole, degree l (checked against q.(r - r_s) / (4 pi sigma1 |r - r_s|^3)):
+    V_inf(l) = (1 / (4 pi sigma1 r4^2)) t^(l-1) [ l q_r P_l(mu) + P_l'(mu) (q_t . e) ]
+
+Tangential term, explicitly. Let e_perp = e - mu e_s be the sensor direction with
+its source-axis component removed, so |e_perp| = sin(theta) and q_t . e = q_t . e_perp.
+With the Condon-Shortley phase P_l^1(mu) = -sin(theta) P_l'(mu) and the unit tangent
+rho_hat = e_perp / sin(theta):
+    P_l'(mu) (q_t . e) = -P_l^1(mu) (q_t . rho_hat).
+The code evaluates P_l'(mu) (q . e - mu q_r) and never divides by sin(theta). At the
+poles e_perp = 0, so the tangential term is zero. P_l'(+-1) = (+-1)^(l+1) l(l+1)/2
+is finite, so the value is finite and symmetric at both poles.
+
+Layered solution: each degree is multiplied by one transfer ratio,
+    V(sensor) = sum_l T_l V_inf(l),   T_l = V_scalp,l / V_inf,l(r4),
+which does not depend on orientation, because both orientations share the radial
+functions r^l and r^-(l+1) in the brain. The homogeneous limit gives T_l = (2l+1)/l.
 
 T_l is computed by propagating the state (Phi, sigma Phi') from the scalp
 surface inwards through the three outer shells with closed-form transfer
@@ -55,9 +65,11 @@ Attribution
 -----------
 Næss et al. (2017), "Corrected Four-Sphere Head Model for EEG Signals",
 Frontiers in Human Neuroscience 11:490, doi:10.3389/fnhum.2017.00490, is the
-literature model this module targets. The source PDF could not be retrieved in
-the audit session (network policy blocked the host). The equations here were
-derived independently and checked numerically, not transcribed from the paper.
+literature model this module targets. In this session the publisher host was refused
+by network policy (HTTP 403 at CONNECT), so the paper could not be read. The Table 1
+values and the paper's series are therefore unverified. The equations here were derived
+independently and checked numerically, not transcribed from the paper. The licence
+(CC-BY-4.0) is as stated in the task brief and was not verified.
 The Neuroinflab four-sphere code (GPL-3.0 per its README) was not read, copied,
 or executed. Licensing is flagged for human review, not legal advice.
 """
@@ -119,6 +131,25 @@ class FourSphereResult:
     transfer_ratios: np.ndarray
     max_degree: int
     diagnostics: dict[str, float]
+
+
+NAESS2017_TABLE1_K_VALUES = (20, 40, 80)
+
+
+def naess2017_table1_geometry(skull_ratio_k: int) -> FourSphereGeometry:
+    """Geometry from the task-specified Næss et al. (2017) Table 1 parameterisation.
+
+    Radii (0.079, 0.080, 0.085, 0.090) m. Conductivities (0.33, 1.65, 0.33/K, 0.33) S/m
+    with K in {20, 40, 80}. These values are as specified in the task brief. They were
+    not checked against the paper, because the publisher host was refused by network
+    policy in the session that wrote this function.
+    """
+    if isinstance(skull_ratio_k, bool) or skull_ratio_k not in NAESS2017_TABLE1_K_VALUES:
+        raise FourSphereInputError(f"skull_ratio_k must be one of {NAESS2017_TABLE1_K_VALUES}")
+    return FourSphereGeometry(
+        radii_m=(0.079, 0.080, 0.085, 0.090),
+        conductivities_sm=(0.33, 1.65, 0.33 / skull_ratio_k, 0.33),
+    )
 
 
 def _finite_tuple(values: Sequence[object], length: int, name: str) -> tuple[float, ...]:
@@ -318,6 +349,28 @@ def transfer_ratios(geometry: FourSphereGeometry, max_degree: int) -> np.ndarray
     return np.array([_checked_degree(l, geometry)[0] for l in range(1, degree_max + 1)])
 
 
+def _truncation_tail_estimate(envelopes: np.ndarray, potentials: np.ndarray) -> float:
+    """Estimated size of the dropped tail, relative to the largest sensor potential.
+
+    The envelope of the dropped degrees is extrapolated geometrically from its last
+    consecutive ratio r: tail ~ env_L r / (1 - r). This is an estimate, not a bound.
+    It assumes the ratio stays at r beyond L. For layered geometries that is not
+    proven, and a rigorous bound would also need |T_l| bounded for all l. Unestimable
+    cases (r >= 1, too few degrees, or zero signal with a non-zero envelope) return inf.
+    """
+    last = float(envelopes[-1])
+    if last == 0.0:
+        return 0.0
+    if len(envelopes) < 2 or envelopes[-2] == 0.0:
+        return math.inf
+    r = last / float(envelopes[-2])
+    if not r < 1.0:
+        return math.inf
+    tail_abs = last * r / (1.0 - r)
+    scale = float(np.max(np.abs(potentials)))
+    return tail_abs / scale if scale > 0.0 else math.inf
+
+
 def forward_potentials(
     geometry: FourSphereGeometry,
     source_position_m: Sequence[object],
@@ -373,23 +426,22 @@ def forward_potentials(
     ratio = depth / r4
     prefactor = 1.0 / (4.0 * math.pi * geometry.conductivities_sm[0] * r4**2)
     potentials = np.zeros(sensors.shape[0])
-    last_term = np.zeros(sensors.shape[0])
-    largest_term = 0.0
+    envelopes = np.zeros(L)
+    q_t_norm = float(np.linalg.norm(moment - q_r * axis))
     for l in range(1, L + 1):
         coeff = transfer[l - 1] * prefactor * ratio ** (l - 1)
-        term = coeff * (l * q_r * P[l] + dP[l] * q_t_dot_e)
-        potentials += term
-        largest_term = max(largest_term, float(np.max(np.abs(term))))
-        last_term = term
-    if not np.all(np.isfinite(potentials)):
+        potentials += coeff * (l * q_r * P[l] + dP[l] * q_t_dot_e)
+        # |P_l| <= 1 and |P_l'| <= l(l+1)/2 on [-1, 1], and |q_t . e| <= |q_t|, so this
+        # envelope bounds the degree-l term at every sensor. It does not depend on where
+        # P_l vanishes, so a node at one sensor or degree cannot end the sum early.
+        envelopes[l - 1] = abs(coeff) * (l * abs(q_r) + l * (l + 1) / 2.0 * q_t_norm)
+    if not (np.all(np.isfinite(potentials)) and np.all(np.isfinite(envelopes))):
         raise FourSphereQualityError("non-finite potential")
-    # Tail is the last retained term relative to the largest term. Measuring against
-    # the total would let cancellation in the sum hide a slow-converging tail.
-    tail_rel = float(np.max(np.abs(last_term)) / (largest_term + 1e-300))
+    tail_rel = _truncation_tail_estimate(envelopes, potentials)
     diagnostics["tail_relative"] = tail_rel
     if not tail_rel <= tail_tol:
         raise FourSphereQualityError(
-            f"truncation tail {tail_rel:.3e} exceeds tail_tol {tail_tol}; increase max_degree (now {L})"
+            f"truncation tail estimate {tail_rel:.3e} exceeds tail_tol {tail_tol}; increase max_degree (now {L})"
         )
     diagnostics["max_degree"] = float(L)
     return FourSphereResult(

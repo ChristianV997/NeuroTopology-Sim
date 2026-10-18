@@ -451,6 +451,85 @@ def test_invalid_forward_inputs_are_rejected(override, message):
         forward_potentials(geometry, source_arg, moment_arg, sensor_arg, **kwargs)
 
 
+# --- Convention, envelope, and preset checks ------------------------------------------
+
+def test_free_space_series_matches_direct_dipole_field():
+    # First-principles check of the radial and tangential terms, their signs, and their
+    # source-depth power, with no shells. The degree sum must equal the direct field
+    # q.(r - r_s) / (4 pi sigma |r - r_s|^3), so no shell model is involved.
+    rng = np.random.default_rng(31)
+    sigma = LAYERED[0]
+    for _ in range(8):
+        e_s = _unit_vectors(rng, 1)[0]
+        source = rng.uniform(0.0, 0.85) * R4 * e_s
+        moment = rng.normal(size=3) * 1e-8
+        sensors = _scalp_points(rng, 12)
+        diff = sensors - source
+        direct = diff @ moment / (4.0 * np.pi * sigma * np.linalg.norm(diff, axis=1) ** 3)
+        dirs = sensors / np.linalg.norm(sensors, axis=1, keepdims=True)
+        mu = np.clip(dirs @ e_s, -1.0, 1.0)
+        q_r = moment @ e_s
+        q_te = dirs @ moment - q_r * mu
+        P, dP = fs.legendre_and_derivative(200, mu)
+        ratio = np.linalg.norm(source) / R4
+        series = np.zeros(len(sensors))
+        for l in range(1, 201):
+            series += ratio ** (l - 1) * (l * q_r * P[l] + dP[l] * q_te) / (4.0 * np.pi * sigma * R4**2)
+        assert np.max(np.abs(series - direct)) / _scale(direct) < 1e-12
+
+
+def test_tangential_term_vanishes_at_both_poles():
+    # At the poles e = +-e_s, so q_t . e = 0 and the tangential term is zero. The potential
+    # there must not depend on the tangential part of the dipole.
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = np.array([0.0, 0.0, 0.05])
+    poles = np.array([[0.0, 0.0, R4], [0.0, 0.0, -R4]])
+    with_tangential = forward_potentials(geometry, source, [1e-8, -2e-8, 3e-8], poles,
+                                         max_degree=256).potentials_v
+    radial_only = forward_potentials(geometry, source, [0.0, 0.0, 3e-8], poles,
+                                     max_degree=256).potentials_v
+    np.testing.assert_allclose(with_tangential, radial_only, rtol=1e-12, atol=0)
+
+
+def test_legendre_sup_bounds_used_by_the_tail_envelope_hold():
+    # Computational check on a grid, not a proof. The inequalities |P_l| <= 1 and
+    # |P_l'| <= l(l+1)/2 on [-1, 1] are classical results.
+    mu = np.linspace(-1.0, 1.0, 4001)
+    P, dP = fs.legendre_and_derivative(256, mu)
+    degrees = np.arange(1, 257)[:, None]
+    assert np.max(np.abs(P[1:])) <= 1.0 + 1e-12
+    assert np.max(np.abs(dP[1:]) / (degrees * (degrees + 1) / 2.0)) <= 1.0 + 1e-12
+
+
+def test_tail_estimate_is_conservative_against_a_longer_series():
+    # Tail estimate must be at least the actual truncation error. Checked against a degree-512
+    # reference for this configuration only. It is not a proof for all geometries.
+    rng = np.random.default_rng(37)
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = np.array([0.0, 0.0, 0.6 * RADII[0]])
+    moment = rng.normal(size=3) * 1e-8
+    sensors = _scalp_points(rng, 15)
+    reference = forward_potentials(geometry, source, moment, sensors, max_degree=512,
+                                   tail_tol=1.0).potentials_v
+    for degree in (32, 64):
+        result = forward_potentials(geometry, source, moment, sensors, max_degree=degree, tail_tol=1.0)
+        actual = np.max(np.abs(result.potentials_v - reference)) / _scale(reference)
+        assert result.diagnostics["tail_relative"] >= actual
+
+
+@pytest.mark.parametrize("k, sigma_skull", [(20, 0.33 / 20), (40, 0.33 / 40), (80, 0.33 / 80)])
+def test_naess_table1_preset_geometry(k, sigma_skull):
+    geometry = fs.naess2017_table1_geometry(k)
+    assert geometry.radii_m == (0.079, 0.080, 0.085, 0.090)
+    assert geometry.conductivities_sm == pytest.approx((0.33, 1.65, sigma_skull, 0.33))
+
+
+@pytest.mark.parametrize("bad", [10, 60, 40.5, True, None])
+def test_naess_preset_rejects_other_skull_ratios(bad):
+    with pytest.raises(FourSphereInputError):
+        fs.naess2017_table1_geometry(bad)
+
+
 # --- Oracle cross-check -----------------------------------------------------------
 
 @pytest.mark.skip(reason=(

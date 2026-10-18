@@ -43,7 +43,11 @@ Free-space dipole expansion (verified to about 1e-14 against the closed form):
 
     V_inf,l(r4) = (1 / (4 pi sigma1 r4^2)) t^(l-1) [ l q_r P_l(mu) + P_l'(mu) (q · e - q_r mu) ]
 
-The radial term carries the factor `l`. The tangential term does not. Both orientations share the
+The radial term carries the factor `l`. The tangential term does not. With the Condon-Shortley
+phase `P_l^1(mu) = -sin(theta) P_l'(mu)` and the unit tangent `rho_hat = (e - mu e_s) / sin(theta)`,
+the tangential term is `P_l'(mu) (q_t . e) = -P_l^1(mu) (q_t . rho_hat)`. The code evaluates
+`P_l'(mu) (q · e - mu q_r)` and never divides by `sin(theta)`. The term is therefore finite and zero at
+both poles, where `e - mu e_s = 0`. Both orientations share the
 same degree-`l` radial functions in the brain, so the layered transfer ratio is orientation-free:
 
     T_l = V_scalp,l / V_inf,l(r4)                       (dimensionless)
@@ -91,9 +95,11 @@ Results are withheld, never silently regularised. The gates are:
   against the closed-form `beta_1`. Limit: `residual_tol` (default `1e-9`).
 - **Scalp zero-current residual.** The outer-boundary radial current from the shell-4 representation of
   `(1, 0)`, normalised by its scale. Limit: `residual_tol`.
-- **Truncation tail.** The last retained term relative to the largest term, maximised over sensors and
-  degrees. Limit: `tail_tol` (default `1e-10`). Measuring against the largest term, not the total,
-  stops cancellation in the sum from hiding a slow tail.
+- **Truncation tail.** Every degree has an envelope `|T_l| t^(l-1) (l |q_r| + l(l+1)/2 |q_t|) / (4 pi sigma1 r4^2)`.
+  It bounds that degree's term at every sensor, using `|P_l| <= 1` and `|P_l'| <= l(l+1)/2` on `[-1, 1]`
+  and `|q_t . e| <= |q_t|`. The dropped tail is estimated by extrapolating the last consecutive envelope
+  ratio `r` as `env_L r / (1 - r)`, then compared with the largest sensor potential. Limit: `tail_tol`
+  (default `1e-10`). The estimate is not a proven bound (see Limitations).
 - **Non-finite values.** NaN compares false against any tolerance, so non-finite transfer ratios or
   residuals are rejected explicitly. Overflow for extreme radius ratios is reported as a quality error.
 
@@ -183,8 +189,9 @@ Næss et al. (2017), *Corrected Four-Sphere Head Model for EEG Signals*, Frontie
 Neuroscience 11:490, doi:10.3389/fnhum.2017.00490. The citation is as recorded in the audit session.
 The full author list and DOI were not re-checked against the publisher.
 
-The model targets the four-sphere literature setting described in that paper. **The paper PDF could
-not be retrieved in the audit session** (the network policy blocked the host). Its Table 1 and any
+The model targets the four-sphere literature setting described in that paper. **The publisher host was refused by network policy (HTTP 403 at CONNECT), so the paper could not be
+read.** The Table 1 values are as specified in the task brief and are unverified. `naess2017_table1_geometry(K)`
+uses them. Its
 correction details have not been checked. The equations here were derived independently and checked
 numerically. They were not transcribed from the paper, and no paper result is reproduced as a
 validation target.
@@ -205,7 +212,10 @@ validation target.
   individual head shape.
 - Isotropic, piecewise-homogeneous, quasi-static conduction. No capacitive or dispersive effects.
 - Sensors are on the outer surface only. Source is a single point dipole in the brain shell.
-- Truncation is controlled by a tail heuristic on the last retained term. This is not a certified error bound.
+- Truncation is controlled by a per-degree envelope and a geometric tail estimate. In the tested cases the
+  estimate is at least the actual truncation error (checked against degree-512 references), but it is not a
+  proven bound. It assumes `|T_l|` stays comparable beyond `L`, and that is not proven for layered geometries.
+  A rigorous bound would also need `|T_l|` bounded for all `l`.
 - Accuracy is established against closed forms, an independent 7x7 solve, and one out-of-tree oracle.
   It is not established against measured potentials.
 - No scientific or biological validation is claimed. Synthetic checks support numerical correctness of
