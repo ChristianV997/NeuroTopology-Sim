@@ -100,6 +100,11 @@ def _run_docker(args: list[str], *, timeout: int = DOCKER_TIMEOUT_SECONDS) -> st
         pytest.fail(f"Docker operation {args[0]!r} timed out after {timeout}s")
 
     if completed.returncode != 0:
+        if args and args[0] == "version":
+            pytest.fail(
+                "Docker CLI is present but no running Docker Engine is reachable "
+                "from the allowed local endpoint; engine output is suppressed"
+            )
         pytest.fail(
             f"Docker operation {args[0]!r} failed with exit code "
             f"{completed.returncode}; command output is suppressed"
