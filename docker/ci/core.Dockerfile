@@ -18,8 +18,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements-base.txt ./
-RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt \
-    && python -m pip cache purge
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
 COPY . .
 
