@@ -1184,6 +1184,38 @@ def validate_planar_mesh(
             notes=notes,
         )
 
+    # Fail-closed input predicates (aligned with triangulate_2d). Incidence /
+    # Euler / empty-boundary vacuity must not certify an embedding for n<3, and
+    # duplicate coordinates are never valid planar-triangulation input.
+    n = len(points)
+    input_issues: list[str] = []
+    seen: dict[Point, int] = {}
+    for i, p in enumerate(points):
+        if p in seen:
+            input_issues.append(f"duplicate coordinates at indices {seen[p]} and {i}")
+        else:
+            seen[p] = i
+    if n < 3:
+        input_issues.append("need at least 3 non-collinear points to triangulate")
+    elif len(convex_hull_extreme(points)) < 3:
+        input_issues.append("rank-deficient / globally collinear point set")
+    if input_issues:
+        diag = LayerDiagnostic(
+            layer=ClaimLayer.INPUT_VALIDATION.value,
+            status="fails",
+            ok=False,
+            detail="; ".join(input_issues),
+            evidence={"n_points": n, "n_simplices": len(tris)},
+        )
+        return _empty_result(
+            status="rejected",
+            policy=policy,
+            n_points=n,
+            diagnostics=[diag],
+            issues=input_issues,
+            notes=notes,
+        )
+
     # Reject zero-area triangles before orientation normalization.
     area_issues: list[str] = []
     for ti, t in enumerate(tris):

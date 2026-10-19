@@ -343,3 +343,30 @@ def test_non_delaunay_valid_planar_accepted_when_delaunay_disabled():
     assert delaunay_layer.ok is False
     assert with_delaunay.ok is False
     assert with_delaunay.failure_kind == FailureKind.DELAUNAY_POLICY_FAILURE.value
+
+
+def test_empty_mesh_with_fewer_than_three_points_rejected():
+    """Empty simplices must not certify a planar hull triangulation for n<3."""
+    for coords in ([], [(0.0, 0.0)], [(0.0, 0.0), (1.0, 0.0)]):
+        report = validate_planar_mesh(coords, [], check_delaunay=False)
+        assert report.ok is False
+        assert report.status == "rejected"
+        assert report.scientific_pass is False
+        assert report.failure_kind == FailureKind.MALFORMED_INPUT.value
+        assert any(
+            "need at least 3" in issue or "duplicate coordinates" in issue
+            for issue in report.issues
+        )
+
+
+def test_validate_planar_mesh_rejects_duplicate_coordinates():
+    """Duplicates are invalid inputs for validate_planar_mesh, matching triangulate_2d."""
+    coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.0, 0.0)]
+    faces = [(0, 1, 2)]
+    report = validate_planar_mesh(coords, faces, check_delaunay=False)
+    assert report.ok is False
+    assert report.status == "rejected"
+    assert report.failure_kind == FailureKind.MALFORMED_INPUT.value
+    assert any("duplicate coordinates" in issue for issue in report.issues)
+    input_layer = next(d for d in report.diagnostics if d.layer == "input_validation")
+    assert input_layer.ok is False
