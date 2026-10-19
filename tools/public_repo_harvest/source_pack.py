@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import json
 import os
 import re
@@ -23,10 +22,9 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from .license_scanner import ALLOWED as REUSE_ALLOWED_LICENSES
-
-PACKER_VERSION = "1.1.0"
+PACKER_VERSION = "1.2.0"
 SOURCE_MANIFEST_SCHEMA = "PublicRepoSourceManifest.v1"
+PACK_MANIFEST_SCHEMA = "PublicRepoSourcePack.v2"
 PACK_MANIFEST_PATH = "source-pack-manifest.json"
 MAX_SOURCE_MANIFEST_BYTES = 256 * 1024
 MAX_CLASSIC_ZIP_SIZE = (1 << 32) - 1
@@ -47,7 +45,8 @@ _LICENSE_RECORD_FIELDS = {
     "license_status", "compatibility_status", "can_copy_code", "can_copy_docs",
     "manual_review_required", "review_status", "conflicting", "conflicting_licenses",
     "license_hint", "likely_license", "decision_rationale", "attribution_required",
-    "notice_required", "can_adapt_patterns",
+    "notice_required", "can_adapt_patterns", "license_evidence_status",
+    "caller_asserted_license_labels", "caller_assertions",
 }
 _LICENSE_ALIASES = {
     "mit license": "MIT",
@@ -264,7 +263,7 @@ def _license_alias(value: str) -> str:
 
 
 def _source_content_categories(path: str) -> tuple[str, ...]:
-    """Conservatively classify packed text paths; unknown types require review."""
+    """Conservatively classify selected paths; unknown types require review."""
     name = PurePosixPath(path).name.casefold()
     suffix = PurePosixPath(path).suffix.casefold()
     stem = PurePosixPath(path).stem.casefold()
@@ -291,33 +290,41 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         raise SourcePackError("license_record must be an object when provided")
 
     candidates: list[str] = []
-    listed = record.get("detected_licenses", [])
-    if not isinstance(listed, list) or any(not isinstance(item, str) for item in listed):
-        raise SourcePackError("license_record.detected_licenses must be a string array")
-    candidates.extend(listed)
+    for key in ("detected_licenses", "caller_asserted_license_labels"):
+        listed = record.get(key, [])
+        if (
+            not isinstance(listed, list)
+            or len(listed) > 64
+            or any(not isinstance(item, str) for item in listed)
+        ):
+            raise SourcePackError(f"license_record.{key} must be a string array")
+        candidates.extend(listed)
     for key in ("detected_license", "license_spdx", "license_name"):
         item = record.get(key)
         if item is not None:
             if not isinstance(item, str):
                 raise SourcePackError(f"license_record.{key} must be a string")
             candidates.append(item)
-    detected_values: list[str] = []
+    asserted_labels: list[str] = []
     for item in candidates:
         cleaned = _license_alias(item)
         if not re.fullmatch(r"[A-Za-z0-9.+ -]{1,128}", cleaned):
             raise SourcePackError("license identifiers must be short, non-empty, printable strings")
         if cleaned.upper() not in {"UNKNOWN", "UNLICENSED", "NOASSERTION"}:
-            detected_values.append(cleaned)
-    canonical_detected = sorted(set(detected_values), key=lambda item: (item.casefold(), item))
+            asserted_labels.append(cleaned)
+    canonical_asserted_labels = sorted(set(asserted_labels), key=lambda item: (item.casefold(), item))
 
-    license_status = record.get("license_status", "unknown")
-    compatibility_status = record.get("compatibility_status", "manual_review_required")
-    review_status = record.get("review_status", "unreviewed")
-    if not isinstance(license_status, str) or license_status not in _LICENSE_STATUSES:
+    claimed_license_status = record.get("license_status", "unknown")
+    claimed_compatibility_status = record.get("compatibility_status", "manual_review_required")
+    claimed_review_status = record.get("review_status", "unreviewed")
+    if not isinstance(claimed_license_status, str) or claimed_license_status not in _LICENSE_STATUSES:
         raise SourcePackError("license_record.license_status is not recognized")
-    if not isinstance(compatibility_status, str) or compatibility_status not in _COMPATIBILITY_STATUSES:
+    if (
+        not isinstance(claimed_compatibility_status, str)
+        or claimed_compatibility_status not in _COMPATIBILITY_STATUSES
+    ):
         raise SourcePackError("license_record.compatibility_status is not recognized")
-    if not isinstance(review_status, str) or review_status not in _REVIEW_STATUSES:
+    if not isinstance(claimed_review_status, str) or claimed_review_status not in _REVIEW_STATUSES:
         raise SourcePackError("license_record.review_status is not recognized")
     for key in ("can_copy_code", "can_copy_docs", "manual_review_required", "conflicting"):
         if key in record and not isinstance(record[key], bool):
@@ -325,41 +332,90 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
     conflict_list = record.get("conflicting_licenses", [])
     if not isinstance(conflict_list, list) or any(not isinstance(item, str) for item in conflict_list):
         raise SourcePackError("license_record.conflicting_licenses must be a string array")
-    if any(len(item) > 128 for item in conflict_list):
-        raise SourcePackError("conflicting license identifiers must be short")
-    is_conflicting = bool(record.get("conflicting", False)) or bool(conflict_list) or len(canonical_detected) > 1
+    if len(conflict_list) > 64 or any(len(item) > 128 for item in conflict_list):
+        raise SourcePackError("conflicting license identifiers must be short and bounded")
+    evidence_status = record.get("license_evidence_status", "caller_supplied_unverified")
+    if not isinstance(evidence_status, str) or len(evidence_status) > 64:
+        raise SourcePackError("license_record.license_evidence_status must be a short string")
+    is_conflicting = bool(record.get("conflicting", False)) or bool(conflict_list) or len(canonical_asserted_labels) > 1
 
     hint = record.get("license_hint", record.get("likely_license", "unknown"))
     if not isinstance(hint, str) or len(hint) > 64 or not re.fullmatch(r"[A-Za-z0-9.+ -]+", hint or ""):
         raise SourcePackError("license hint must be a short license-like identifier")
-
-    explicit_review_gate = (
-        len(canonical_detected) == 1
-        and canonical_detected[0] in REUSE_ALLOWED_LICENSES
-        and license_status == "compatible"
-        and compatibility_status == "safe_to_adapt"
-        and review_status == "human_reviewed_compatible"
-        and record.get("manual_review_required") is False
-        and not is_conflicting
-    )
-    reasons: list[str] = []
-    if is_conflicting:
-        reasons.append("conflicting_license_information")
-    if not canonical_detected:
-        reasons.append("license_unknown_or_not_detected")
-    if not explicit_review_gate and not is_conflicting and canonical_detected:
-        reasons.append("explicit_human_compatibility_review_missing")
-    return {
-        "detected_licenses": canonical_detected,
-        "license_hint": hint,
-        "license_status": license_status,
-        "compatibility_status": compatibility_status,
-        "review_status": review_status,
-        "can_copy_code": bool(record.get("can_copy_code", False)),
-        "can_copy_docs": bool(record.get("can_copy_docs", False)),
-        "manual_review_required": bool(record.get("manual_review_required", True)),
+    nested_claims = record.get("caller_assertions", {})
+    allowed_claim_keys = {
+        "likely_license", "license_labels", "conflicting_licenses", "license_status",
+        "compatibility_status", "review_status", "can_copy_code", "can_copy_docs",
+        "manual_review_required", "invalid_assertion_fields",
+    }
+    if not isinstance(nested_claims, dict) or set(nested_claims) - allowed_claim_keys:
+        raise SourcePackError("license_record.caller_assertions must use the supported claim fields")
+    for key in ("likely_license", "license_status", "compatibility_status", "review_status"):
+        if key in nested_claims and nested_claims[key] is not None and (
+            not isinstance(nested_claims[key], str) or len(nested_claims[key]) > 128
+        ):
+            raise SourcePackError(f"license_record.caller_assertions.{key} must be a short string")
+    for key in ("can_copy_code", "can_copy_docs", "manual_review_required"):
+        if (
+            key in nested_claims
+            and nested_claims[key] is not None
+            and not isinstance(nested_claims[key], bool)
+        ):
+            raise SourcePackError(f"license_record.caller_assertions.{key} must be boolean or null")
+    for key in ("license_labels", "conflicting_licenses", "invalid_assertion_fields"):
+        if key in nested_claims and (
+            not isinstance(nested_claims[key], list)
+            or len(nested_claims[key]) > 64
+            or any(not isinstance(item, str) or len(item) > 128 for item in nested_claims[key])
+        ):
+            raise SourcePackError(f"license_record.caller_assertions.{key} must be a bounded string array")
+    claims = {
+        "license_evidence_status": evidence_status,
+        "license_labels": canonical_asserted_labels,
+        "license_status": claimed_license_status,
+        "compatibility_status": claimed_compatibility_status,
+        "review_status": claimed_review_status,
+        "can_copy_code": record.get("can_copy_code") if "can_copy_code" in record else None,
+        "can_copy_docs": record.get("can_copy_docs") if "can_copy_docs" in record else None,
+        "manual_review_required": (
+            record.get("manual_review_required") if "manual_review_required" in record else None
+        ),
         "conflicting": is_conflicting,
-        "review_gate_status": "human_reviewed_compatible" if explicit_review_gate else "blocked",
+        "likely_license": hint,
+    }
+    for key in allowed_claim_keys:
+        if key in nested_claims:
+            claims[f"nested_{key}"] = nested_claims[key]
+
+    # No authenticated review registry or signed evidence provider exists here.
+    # Caller status fields are retained only as assertions and never open the gate.
+    reasons = ["no_authenticated_license_review_evidence"]
+    if not canonical_asserted_labels:
+        reasons.append("license_unknown_or_not_detected")
+    if is_conflicting:
+        reasons.append("conflicting_caller_license_assertions")
+    if any(
+        label.upper() in {"GPL", "AGPL", "LGPL", "PROPRIETARY", "UNLICENSED", "NO-LICENSE"}
+        or label.upper().startswith(("GPL-", "AGPL-", "LGPL-"))
+        for label in canonical_asserted_labels
+    ):
+        reasons.append("caller_asserted_restricted_license")
+    if claimed_review_status != "unreviewed":
+        reasons.append("caller_review_status_not_authenticated")
+    if record.get("can_copy_code") is True or record.get("can_copy_docs") is True:
+        reasons.append("caller_copy_permission_not_authenticated")
+    return {
+        "license_evidence_status": "caller_supplied_unverified",
+        "caller_asserted_license_labels": canonical_asserted_labels,
+        "caller_assertions": claims,
+        "license_status": "unknown",
+        "compatibility_status": "manual_review_required",
+        "review_status": "unreviewed",
+        "can_copy_code": False,
+        "can_copy_docs": False,
+        "manual_review_required": True,
+        "conflicting": is_conflicting,
+        "review_gate_status": "blocked_no_authenticated_evidence",
         "reuse_block_reasons": reasons,
     }
 
@@ -929,10 +985,10 @@ def pack_static_source(
     *,
     limits: SourcePackLimits | None = None,
 ) -> dict[str, Any]:
-    """Build an atomic, deterministic ZIP containing only selected safe text files.
+    """Build an atomic metadata-only ZIP; never include source payload bytes.
 
     `manifest` is either a small JSON path or an already-loaded mapping. Its
-    provenance fields are caller assertions and are not verified against GitHub.
+    provenance and license fields are caller assertions and are not authenticated.
     """
     if limits is None:
         limits = SourcePackLimits()
@@ -978,14 +1034,11 @@ def pack_static_source(
             archive_file.close()
         unselected_scope_not_enumerated = False
 
-    file_records = [
-        {"path": path, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-        for path, data in sorted(files.items(), key=lambda item: (item[0].casefold(), item[0]))
-    ]
+    candidate_paths = sorted(files, key=lambda item: (item.casefold(), item))
     license_record = metadata["license_record"]
     content_classification = [
-        {"path": record["path"], "categories": list(_source_content_categories(record["path"]))}
-        for record in file_records
+        {"path": path, "categories": list(_source_content_categories(path))}
+        for path in candidate_paths
     ]
     content_categories = sorted(
         {category for row in content_classification for category in row["categories"]},
@@ -994,48 +1047,60 @@ def pack_static_source(
     unclassified_paths = [
         row["path"] for row in content_classification if "unclassified" in row["categories"]
     ]
-    permission_values = {
-        "code": license_record["can_copy_code"],
-        "documentation": license_record["can_copy_docs"],
-    }
-    missing_permissions = [
-        category for category in ("code", "documentation")
-        if category in content_categories and permission_values[category] is not True
-    ]
+    caller_assertions = license_record["caller_assertions"]
+    missing_permissions = [category for category in ("code", "documentation") if category in content_categories]
     reuse_block_reasons = list(license_record["reuse_block_reasons"])
-    if not file_records:
+    if not candidate_paths:
         reuse_block_reasons.append("no_packed_source_content")
     if unclassified_paths:
         reuse_block_reasons.append("unclassified_content_requires_human_review")
-    reuse_block_reasons.extend(
-        f"copy_permission_missing_for_{category}" for category in missing_permissions
+    reuse_block_reasons.extend(f"copy_permission_not_verified_for_{category}" for category in missing_permissions)
+    # There is no authenticated review-evidence provider in this offline tool.
+    # Caller declarations therefore never enable reusable source payloads.
+    pack_reuse_status = "blocked"
+    # Keep the payload mapping structurally disconnected from the source bytes.
+    packed_files: dict[str, bytes] = {}
+    file_records: list[dict[str, Any]] = []
+    withheld_payload_bytes = sum(len(data) for data in files.values())
+    final_exclusions = list(exclusions)
+    final_exclusions.extend(
+        {"path": path, "reason": "payload_withheld_pending_authenticated_review"}
+        for path in sorted(files, key=lambda item: (item.casefold(), item))
     )
-    review_gate_passed = license_record["review_gate_status"] == "human_reviewed_compatible"
-    reuse_permitted = (
-        bool(file_records)
-        and review_gate_passed
-        and not unclassified_paths
-        and not missing_permissions
-    )
-    pack_reuse_status = "human_reviewed_compatible" if reuse_permitted else "blocked"
+    reuse_block_reasons.append("source_payload_withheld_pending_authenticated_review")
+    final_exclusions = sorted(final_exclusions, key=lambda item: (item["path"].casefold(), item["reason"]))
     license_evaluation = {
         **license_record,
         "content_categories": content_categories,
         "content_classification": content_classification,
         "unclassified_paths": unclassified_paths,
-        "copy_permission_evaluation": {
-            "code": {"included": "code" in content_categories,
-                     "granted": license_record["can_copy_code"]},
-            "documentation": {"included": "documentation" in content_categories,
-                              "granted": license_record["can_copy_docs"]},
+        "copy_permission_assertions": {
+            "code": {
+                "requested": "code" in content_categories,
+                "caller_asserted": caller_assertions.get(
+                    "nested_can_copy_code", caller_assertions.get("can_copy_code")
+                ),
+                "effective": False,
+            },
+            "documentation": {
+                "requested": "documentation" in content_categories,
+                "caller_asserted": caller_assertions.get(
+                    "nested_can_copy_docs", caller_assertions.get("can_copy_docs")
+                ),
+                "effective": False,
+            },
         },
         "reuse_status": pack_reuse_status,
         "reuse_block_reasons": sorted(set(reuse_block_reasons)),
     }
-    content_excluded = bool(exclusions) or bool(unselected_count) or unselected_scope_not_enumerated
+    content_excluded = True  # The source payload is omitted in every offline pack.
     pack_manifest = {
-        "schema_version": "PublicRepoSourcePack.v1",
+        "schema_version": PACK_MANIFEST_SCHEMA,
         "packer_version": PACKER_VERSION,
+        "pack_mode": "metadata_only_blocked",
+        "reusable": False,
+        "source_bytes_included": False,
+        "payload_bytes_withheld": withheld_payload_bytes,
         "provenance": {
             "canonical_source_url": metadata["source_url"],
             "source_commit": metadata["source_commit"],
@@ -1043,10 +1108,11 @@ def pack_static_source(
             "assertion_status": "caller_supplied_not_verified_offline",
         },
         "source_kind": source_kind,
+        "caller_selected_paths": metadata["selected_paths"],
         "selected_paths": [record["path"] for record in file_records],
         "files": file_records,
         "content_excluded": content_excluded,
-        "exclusions": exclusions,
+        "exclusions": final_exclusions,
         "unselected_archive_file_count": unselected_count if not unselected_scope_not_enumerated else None,
         "unselected_directory_paths_enumerated": not unselected_scope_not_enumerated,
         "license_evaluation": license_evaluation,
@@ -1056,9 +1122,9 @@ def pack_static_source(
         "limits": asdict(limits),
     }
     manifest_bytes = _canonical_json(pack_manifest)
-    if len(files) + 1 > MAX_CLASSIC_ZIP_ENTRIES:
+    if len(packed_files) + 1 > MAX_CLASSIC_ZIP_ENTRIES:
         raise SourcePackError("source pack exceeds classic ZIP entry count")
-    estimated_size = _zip_output_size(files, manifest_bytes)
+    estimated_size = _zip_output_size(packed_files, manifest_bytes)
     if estimated_size > limits.max_output_bytes:
         raise SourcePackError("deterministic source pack exceeds max_output_bytes")
 
@@ -1070,7 +1136,7 @@ def pack_static_source(
         os.close(fd)
         with zipfile.ZipFile(temp_name, mode="w", compression=zipfile.ZIP_STORED, allowZip64=False) as archive:
             archive.writestr(_zip_info(PACK_MANIFEST_PATH), manifest_bytes)
-            for path, data in sorted(files.items(), key=lambda item: (item[0].casefold(), item[0])):
+            for path, data in sorted(packed_files.items(), key=lambda item: (item[0].casefold(), item[0])):
                 archive.writestr(_zip_info(path), data)
         with open(temp_name, "rb+") as handle:
             os.fsync(handle.fileno())
@@ -1123,8 +1189,11 @@ def main(argv: list[str] | None = None) -> int:
     except SourcePackError as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
-    print(f"PACKED: {args.out} files={len(result['selected_paths'])} content_excluded={result['content_excluded']}")
-    return 0
+    print(
+        f"BLOCKED_METADATA_ONLY: {args.out} reusable_files=0 "
+        f"requested_paths={len(result['caller_selected_paths'])}"
+    )
+    return 2
 
 
 if __name__ == "__main__":
