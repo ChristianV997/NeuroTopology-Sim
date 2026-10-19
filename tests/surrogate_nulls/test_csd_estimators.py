@@ -107,6 +107,134 @@ class MatrixDiagnosticTests(unittest.TestCase):
         m = [[complex(0.0, 0.0)] * 2 for _ in range(2)]
         self.assertEqual(C.matrix_diagnostics(m), (0, 0.0, 1.0, 0.0))
 
+    def test_rank_one_matrix_is_rank_one_at_every_scale(self):
+        # Before the fix, the absolute floor in the Jacobi stop test reported rank 2 for s <= 1e-16.
+        for s in (1.0, 1e-5, 1e-10, 1e-14, 1e-16, 1e-20, 1e-30, 1e10):
+            m = [[complex(s), complex(s)], [complex(s), complex(s)]]
+            rank, min_rel, cond, part = C.matrix_diagnostics(m)
+            self.assertEqual(rank, 1, msg=f"scale {s}")
+            self.assertLess(abs(min_rel), 1e-9, msg=f"scale {s}")
+            self.assertEqual(cond, math.inf, msg=f"scale {s}")
+            self.assertAlmostEqual(part, 1.0, places=9, msg=f"scale {s}")
+
+    def test_eigenvalues_of_a_random_3x3_scale_exactly_with_the_matrix(self):
+        # Scale-invariance check on a non-trivial matrix: eig(s M) = s eig(M) at tiny and huge scales.
+        rng = random.Random(11)
+        a = [[complex(rng.gauss(0, 1), rng.gauss(0, 1)) for _ in range(3)] for _ in range(3)]
+        base = [[sum(a[i][k] * a[j][k].conjugate() for k in range(3)) for j in range(3)] for i in range(3)]
+        ref = C.hermitian_eigenvalues(base)
+        for scale in (1e-20, 1e-8, 1e8):
+            scaled = [[v * scale for v in row] for row in base]
+            got = C.hermitian_eigenvalues(scaled)
+            for g, r in zip(got, ref):
+                self.assertLess(abs(g - r * scale), 1e-12 * scale * max(1.0, abs(ref[0])),
+                                msg=f"scale {scale}")
+
+    def test_full_rank_diagnostics_are_identical_across_scales(self):
+        base = [[complex(2.0, 0.0), complex(1.0, 0.5)], [complex(1.0, -0.5), complex(2.0, 0.0)]]
+        ref_rank, ref_min, ref_cond, ref_part = C.matrix_diagnostics(base)
+        for scale in (1e-20, 1e-8, 1e8, 1e20):
+            scaled = [[v * scale for v in row] for row in base]
+            rank, min_rel, cond, part = C.matrix_diagnostics(scaled)
+            self.assertEqual(rank, ref_rank, msg=f"scale {scale}")
+            self.assertAlmostEqual(min_rel, ref_min, places=9, msg=f"scale {scale}")
+            self.assertAlmostEqual(cond, ref_cond, places=6, msg=f"scale {scale}")
+            self.assertAlmostEqual(part, ref_part, places=9, msg=f"scale {scale}")
+
+    def test_near_rank_deficient_matrix_is_rank_one_at_every_scale(self):
+        for s in (1.0, 1e-12, 1e-20):
+            m = [[complex(s), complex(0.0)], [complex(0.0), complex(s * 1e-14)]]
+            rank, _, cond, _ = C.matrix_diagnostics(m)
+            self.assertEqual(rank, 1, msg=f"scale {s}")
+            self.assertEqual(cond, math.inf, msg=f"scale {s}")
+
+    def test_zero_trace_indefinite_matrix_is_rejected_by_diagnostics_and_draws(self):
+        # Before the fix, diagnostics returned rank 0 here while the draw path rejected it.
+        m = [[complex(1.0), complex(2.0)], [complex(2.0), complex(-1.0)]]
+        with self.assertRaises(sp.NonPositiveDefiniteError):
+            C.matrix_diagnostics(m)
+        with self.assertRaises(sp.NonPositiveDefiniteError):
+            N.draw_from_csd([m], 1, 0)
+
+    def test_negative_trace_matrix_is_rejected(self):
+        m = [[complex(-1.0), complex(0.0)], [complex(0.0), complex(-2.0)]]
+        with self.assertRaises(sp.NonPositiveDefiniteError):
+            C.matrix_diagnostics(m)
+
+    def test_malformed_matrices_are_rejected_before_diagnosis(self):
+        cases = {
+            "empty": [],
+            "non-square": [[complex(1.0), complex(0.0)]],
+            "ragged": [[complex(1.0), complex(0.0)], [complex(0.0)]],
+            "infinite entry": [[complex(float("inf")), complex(0.0)], [complex(0.0), complex(1.0)]],
+            "nan entry": [[complex(float("nan")), complex(0.0)], [complex(0.0), complex(1.0)]],
+            "non-Hermitian": [[complex(1.0), complex(0.5)], [complex(0.0), complex(1.0)]],
+            "bool entry": [[True, 0.0], [0.0, 1.0]],
+        }
+        for name, m in cases.items():
+            with self.subTest(case=name):
+                with self.assertRaises(sp.SurrogateInputError):
+                    C.matrix_diagnostics(m)
+
+    def test_non_hermitian_matrix_is_rejected_at_small_scale(self):
+        # The asymmetry equals the entries themselves, so it is 100% relative. An absolute
+        # floor in the Hermitian check used to accept this.
+        s = 1e-20
+        m = [[complex(s), complex(s, 0.5 * s)], [complex(s, 0.5 * s), complex(s)]]
+        with self.assertRaises(sp.SurrogateInputError):
+            C.matrix_diagnostics(m)
+        with self.assertRaises(sp.SurrogateInputError):
+            N.draw_from_csd([m], 1, 0)
+
+    def test_all_zero_matrix_is_rank_zero_and_gives_zero_power(self):
+        z = [[complex(0.0)] * 2 for _ in range(2)]
+        self.assertEqual(C.matrix_diagnostics(z), (0, 0.0, 1.0, 0.0))
+        spectra, info = N.draw_from_csd([z], 1, 0)
+        self.assertEqual(info["zero_power"], [0])
+        self.assertEqual(spectra[0][0], 0j)
+
+
+class DrawScaleTests(unittest.TestCase):
+    def test_real_coefficient_target_check_is_relative_at_small_scale(self):
+        # n = 5 gives bins 0 (DC, fixed), 1 and 2 (randomised). DC imaginary parts are discarded
+        # and reported by design, so the check that matters is on the randomised bins.
+        s = 1e-20
+        n = 5
+        m = [[complex(s), complex(0.0, 0.5 * s)], [complex(0.0, -0.5 * s), complex(s)]]
+        with self.assertRaises(sp.SurrogateInputError):
+            N.draw_from_csd([m] * sp.n_freq(n), n, 0, real_coefficients=True)
+
+    def test_real_coefficient_target_at_small_scale_is_accepted_when_real(self):
+        s = 1e-20
+        n = 5
+        m = [[complex(s), complex(0.5 * s)], [complex(0.5 * s), complex(s)]]
+        spectra, _ = N.draw_from_csd([m] * sp.n_freq(n), n, 0, real_coefficients=True)
+        for k in sp.randomized_bins(n):
+            self.assertEqual(spectra[0][k].imag, 0.0, msg=f"bin {k}")
+
+    def test_rank_one_draw_reports_rank_one_at_small_scale(self):
+        s = 1e-20
+        m = [[complex(s), complex(s)], [complex(s), complex(s)]]
+        _, info = N.draw_from_csd([m], 1, 0)
+        self.assertEqual(info["effective_rank"], [1])
+        self.assertEqual(info["rank_deficient"], [0])
+        self.assertEqual(info["ridge_applied"], [0])
+
+    def test_draws_scale_with_the_matrix_at_every_bin(self):
+        # Same seed and same normalised target: scaling the CSD by s scales every draw by sqrt(s).
+        n = 5  # three bins: DC (fixed), and two randomised complex bins
+        base = [[complex(2.0), complex(1.0, 0.5)], [complex(1.0, -0.5), complex(2.0)]]
+        ref, _ = N.draw_from_csd([base] * sp.n_freq(n), n, 3)
+        for scale in (1e-20, 1e8):
+            scaled = [[[v * scale for v in row] for row in base]] * sp.n_freq(n)
+            got, _ = N.draw_from_csd(scaled, n, 3)
+            root = math.sqrt(scale)
+            for c in range(2):
+                for k in range(sp.n_freq(n)):
+                    self.assertLessEqual(abs(got[c][k] - ref[c][k] * root),
+                                         1e-9 * root * max(1.0, abs(ref[c][k])),
+                                         msg=f"scale {scale} channel {c} bin {k}")
+
 
 class EstimatorTests(unittest.TestCase):
     def setUp(self):

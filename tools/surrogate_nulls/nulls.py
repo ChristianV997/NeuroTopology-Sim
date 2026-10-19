@@ -378,14 +378,15 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients
     Failure behaviour (fails closed):
     - non-square, mismatched, non-finite, or non-Hermitian matrices raise
       ``SurrogateInputError``;
-    - a matrix with negative trace, or zero trace but nonzero entries, raises
-      ``NonPositiveDefiniteError``;
+    - a matrix whose trace is not positive while its entries are nonzero raises
+      ``NonPositiveDefiniteError``. An all-zero matrix is accepted and gives zero power;
     - a matrix whose Cholesky fails only by rounding (rank deficiency) is ridge
       regularised by ``ridge_rel * trace / d`` and the bin is reported. If ``ridge_rel``
       is zero, the failure is raised instead;
     - a genuinely indefinite matrix still fails after regularisation and raises.
-    - a matrix whose smallest eigenvalue is below ``-psd_tol * trace`` is materially
-      indefinite and raises before any regularisation (``matrix_diagnostics``).
+    - a matrix whose smallest eigenvalue is below ``-psd_tol * scale`` is materially
+      indefinite and raises before any regularisation (``matrix_diagnostics``), where
+      ``scale = max(trace, largest entry)``.
 
     ``real_coefficients=True`` draws real Gaussian coefficients at every bin (the zero-lag
     null). The target must then be real-valued, and an imaginary part above rounding raises.
@@ -408,12 +409,10 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients
     for k, mat in enumerate(csd_by_bin):
         if len(mat) != d or any(len(row) != d for row in mat):
             raise sp.SurrogateInputError(f"dimensional mismatch at bin {k}: expected {d}x{d}")
-        for row in mat:
-            for value in row:
-                if not (math.isfinite(value.real) and math.isfinite(value.imag)):
-                    raise sp.SurrogateInputError(f"bin {k}: CSD contains non-finite values")
-        if not sp.is_hermitian(mat):
-            raise sp.SurrogateInputError(f"bin {k}: CSD is not Hermitian")
+        try:
+            csdlib._validate_hermitian_matrix(mat)
+        except sp.SurrogateInputError as exc:
+            raise sp.SurrogateInputError(f"bin {k}: {exc}") from exc
 
     fixed = set(sp.fixed_bins(n_time))
     spectra = [[0j] * nf for _ in range(d)]
@@ -435,20 +434,17 @@ def draw_from_csd(csd_by_bin, n_time, seed, ridge_rel=1e-8, *, real_coefficients
             mat = [[complex(mat[i][j].real, 0.0) for j in range(d)] for i in range(d)]
 
         trace = sum(mat[i][i].real for i in range(d))
-        if trace < 0.0:
-            raise sp.NonPositiveDefiniteError(f"bin {k}: negative trace {trace!r}")
-        if real_coefficients and any(abs(mat[i][j].imag) > 1e-12 * max(1.0, abs(trace))
+        bin_scale = max(abs(mat[i][j]) for i in range(d) for j in range(d))
+        if real_coefficients and any(abs(mat[i][j].imag) > 1e-12 * bin_scale
                                      for i in range(d) for j in range(d)):
             raise sp.SurrogateInputError(f"bin {k}: real_coefficients=True requires a real-valued target")
-        rank, min_rel, cond, part = csdlib.matrix_diagnostics(mat, rank_tol=rank_tol, psd_tol=psd_tol)
+        rank, min_rel, cond, part = csdlib._diagnose_validated(mat, rank_tol=rank_tol, psd_tol=psd_tol)
         info["effective_rank"].append(rank)
         info["min_eig_rel"].append(min_rel)
         info["condition"].append(cond)
         info["participation_ratio"].append(part)
         info["min_eig_abs"].append(min_rel * abs(trace))
-        if trace == 0.0:
-            if any(abs(mat[i][j]) > 0.0 for i in range(d) for j in range(d)):
-                raise sp.NonPositiveDefiniteError(f"bin {k}: zero trace with nonzero entries is not PSD")
+        if trace == 0.0:  # all entries are zero here: nonzero entries with trace 0 were rejected above
             info["zero_power"].append(k)
             continue
 

@@ -168,5 +168,43 @@ class StaticBoundaryTests(unittest.TestCase):
                 self.assertNotIn(f"from {token}", text, msg=f"{path.name} imports from {token}")
 
 
+class HermitianScaleTests(unittest.TestCase):
+    """Hermitian symmetry is judged relative to the matrix's own largest entry."""
+
+    def test_small_scale_asymmetry_is_rejected(self):
+        s = 1e-20
+        m = [[complex(s), complex(s, 0.5 * s)], [complex(s, 0.5 * s), complex(s)]]
+        self.assertFalse(sp.is_hermitian(m))
+
+    def test_small_scale_hermitian_matrix_is_accepted(self):
+        s = 1e-20
+        m = [[complex(s), complex(s, 0.5 * s)], [complex(s, -0.5 * s), complex(s)]]
+        self.assertTrue(sp.is_hermitian(m))
+
+    def test_unit_scale_tolerance_is_unchanged(self):
+        ok = [[1.0, complex(1.0, 1e-10)], [complex(1.0, -1e-10), 1.0]]
+        bad = [[1.0, complex(1.0, 1e-8)], [complex(1.0, -1e-9), 1.0]]
+        self.assertTrue(sp.is_hermitian(ok))
+        self.assertFalse(sp.is_hermitian(bad))
+
+    def test_zero_matrix_is_hermitian(self):
+        self.assertTrue(sp.is_hermitian([[0j, 0j], [0j, 0j]]))
+
+    def test_cholesky_rejects_non_hermitian_and_non_square_input(self):
+        with self.assertRaises(sp.SurrogateInputError):
+            sp.cholesky_hermitian([[1 + 0j, 0.5 + 0j], [0j, 1 + 0j]])
+        with self.assertRaises(sp.SurrogateInputError):
+            sp.cholesky_hermitian([[1 + 0j, 0j]])
+
+    def test_cholesky_factor_reproduces_a_small_scale_matrix(self):
+        s = 1e-20
+        m = [[complex(2 * s), complex(s, 0.5 * s)], [complex(s, -0.5 * s), complex(s)]]
+        factor = sp.cholesky_hermitian(m)
+        for i in range(2):
+            for j in range(2):
+                got = sum(factor[i][k] * factor[j][k].conjugate() for k in range(2))
+                self.assertLess(abs(got - m[i][j]), 1e-12 * s, msg=f"({i},{j})")
+
+
 if __name__ == "__main__":
     unittest.main()

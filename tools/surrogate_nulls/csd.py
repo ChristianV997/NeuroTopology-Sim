@@ -95,9 +95,19 @@ def shrink_csd(csd_by_bin, lam):
 
 
 def _jacobi_symmetric_eigvals(a, max_sweeps=80):
-    """Eigenvalues of a real symmetric matrix by cyclic Jacobi rotations, sorted descending."""
+    """Eigenvalues of a real symmetric matrix by cyclic Jacobi rotations, sorted descending.
+
+    The matrix is first scaled by an exact power of two, so its largest entry lies in
+    ``[0.5, 1)``, and the eigenvalues are scaled back exactly. Every stop test is then relative
+    to the matrix's own norm. A stop test with an absolute floor would end the iteration before
+    any rotation at tiny scales, and the diagonal would be reported as the eigenvalues.
+    """
     n = len(a)
-    m = [[float(v) for v in row] for row in a]
+    peak = max(abs(float(v)) for row in a for v in row)
+    if peak == 0.0:
+        return [0.0] * n
+    exponent = math.frexp(peak)[1]
+    m = [[math.ldexp(float(v), -exponent) for v in row] for row in a]
     for _ in range(max_sweeps):
         off = 0.0
         diag = 0.0
@@ -105,7 +115,7 @@ def _jacobi_symmetric_eigvals(a, max_sweeps=80):
             diag += m[i][i] * m[i][i]
             for j in range(i + 1, n):
                 off += m[i][j] * m[i][j]
-        if off == 0.0 or off <= 1e-30 * max(diag, 1.0):
+        if off == 0.0 or off <= 1e-30 * (diag + 2.0 * off):
             break
         for p in range(n - 1):
             for q in range(p + 1, n):
@@ -126,7 +136,7 @@ def _jacobi_symmetric_eigvals(a, max_sweeps=80):
                     mqk = m[q][k]
                     m[p][k] = c * mpk - s * mqk
                     m[q][k] = s * mpk + c * mqk
-    return sorted((m[i][i] for i in range(n)), reverse=True)
+    return sorted((math.ldexp(m[i][i], exponent) for i in range(n)), reverse=True)
 
 
 def hermitian_eigenvalues(matrix):
@@ -160,31 +170,70 @@ def participation_ratio(eigs):
     return (total * total / squares) if squares > 0.0 else 0.0
 
 
+def _validate_hermitian_matrix(matrix):
+    """Square, finite, Hermitian. Raises ``SurrogateInputError`` otherwise."""
+    d = len(matrix)
+    if d < 1 or any(len(row) != d for row in matrix):
+        raise sp.SurrogateInputError("matrix must be a non-empty square array")
+    for row in matrix:
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, numbers.Number):
+                raise sp.SurrogateInputError(f"matrix entries must be numbers, got {type(value).__name__}")
+            z = complex(value)
+            if not (math.isfinite(z.real) and math.isfinite(z.imag)):
+                raise sp.SurrogateInputError("matrix contains non-finite entries")
+    if not sp.is_hermitian(matrix):
+        raise sp.SurrogateInputError("matrix is not Hermitian (relative to its largest entry)")
+
+
 def matrix_diagnostics(matrix, rank_tol=DEFAULT_RANK_TOL, psd_tol=DEFAULT_PSD_TOL):
     """Numerical rank, smallest eigenvalue relative to trace, condition number, and participation.
 
     Returns ``(effective_rank, min_eig_rel, condition, participation)``. ``effective_rank``
     counts eigenvalues above ``rank_tol`` times the largest; ``participation`` is the
-    continuous ratio from ``participation_ratio``. Raises ``NonPositiveDefiniteError`` if the
-    matrix is materially indefinite. Rounding-level negative eigenvalues are returned, not
-    raised; the null decides how to regularise them.
+    continuous ratio from ``participation_ratio``.
+
+    Malformed input raises ``SurrogateInputError``: an empty or non-square array, a non-numeric or
+    boolean entry, a non-finite entry, or a matrix that is not Hermitian relative to its largest
+    entry (``spectral.is_hermitian``). The draw path applies the same validation. Its reference scale is
+    ``max(trace, largest entry)``: the trace for a positive-semidefinite matrix, and the largest
+    entry otherwise. An all-zero matrix is positive semidefinite with rank 0. A matrix whose
+    trace is not positive while its entries are nonzero is not positive semidefinite, and it
+    raises ``NonPositiveDefiniteError``. So does a matrix whose smallest eigenvalue is below
+    ``-psd_tol * scale``. Rounding-level negative eigenvalues are returned, not raised; the null
+    decides how to regularise them.
+    """
+    _validate_hermitian_matrix(matrix)
+    return _diagnose_validated(matrix, rank_tol=rank_tol, psd_tol=psd_tol)
+
+
+def _diagnose_validated(matrix, rank_tol=DEFAULT_RANK_TOL, psd_tol=DEFAULT_PSD_TOL):
+    """``matrix_diagnostics`` for a matrix the caller has already validated.
+
+    The caller must have run ``_validate_hermitian_matrix`` on the matrix. The draw path does this
+    once per bin, so the diagnostics do not repeat it.
     """
     d = len(matrix)
-    trace = sum(matrix[i][i].real for i in range(d))
-    if not math.isfinite(trace):
-        raise sp.NonPositiveDefiniteError("trace is not finite")
-    if trace == 0.0:
+    largest_entry = max(abs(matrix[i][j]) for i in range(d) for j in range(d))
+    if largest_entry == 0.0:
         return 0, 0.0, 1.0, 0.0
+    trace = sum(matrix[i][i].real for i in range(d))
+    if trace <= 0.0:
+        raise sp.NonPositiveDefiniteError(
+            f"trace {trace!r} is not positive while entries are nonzero (largest entry "
+            f"{largest_entry!r}); the matrix is not positive semidefinite"
+        )
+    scale = max(trace, largest_entry)
     eigs = hermitian_eigenvalues(matrix)
     smallest = eigs[-1]
-    if smallest < -psd_tol * abs(trace):
+    if smallest < -psd_tol * scale:
         raise sp.NonPositiveDefiniteError(
             f"materially indefinite: smallest eigenvalue {smallest!r} is below "
-            f"-psd_tol*trace = {-psd_tol * abs(trace)!r}"
+            f"-psd_tol*scale = {-psd_tol * scale!r}"
         )
     largest = eigs[0]
-    effective_rank = sum(1 for v in eigs if v > rank_tol * largest) if largest > 0.0 else 0
-    min_eig_rel = smallest / abs(trace)
+    effective_rank = sum(1 for v in eigs if v > rank_tol * largest)
+    min_eig_rel = smallest / trace
     if smallest > rank_tol * largest:
         condition = largest / smallest
     else:
@@ -258,12 +307,10 @@ def validate_supplied_csd(csd_by_bin, n_channels, n_time):
             raise sp.SurrogateInputError(
                 f"supplied spectral estimate bin {k} must be {n_channels}x{n_channels}"
             )
-        for row in mat:
-            for value in row:
-                if not (math.isfinite(value.real) and math.isfinite(value.imag)):
-                    raise sp.SurrogateInputError(f"supplied spectral estimate bin {k} is not finite")
-        if not sp.is_hermitian(mat):
-            raise sp.SurrogateInputError(f"supplied spectral estimate bin {k} is not Hermitian")
+        try:
+            _validate_hermitian_matrix(mat)
+        except sp.SurrogateInputError as exc:
+            raise sp.SurrogateInputError(f"supplied spectral estimate bin {k}: {exc}") from exc
     return [[[complex(v) for v in row] for row in mat] for mat in csd_by_bin]
 
 

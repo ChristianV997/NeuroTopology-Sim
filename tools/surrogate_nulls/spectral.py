@@ -189,8 +189,14 @@ def smooth_csd(raw, halfwidth):
 
 
 def is_hermitian(matrix, tol=1e-9):
+    """Hermitian symmetry relative to the largest entry magnitude.
+
+    The scale is the matrix's own largest entry, with no absolute floor, so a matrix at
+    scale 1e-20 is judged by the same relative bar as one at scale 1. An all-zero matrix
+    is Hermitian. The caller checks shape first.
+    """
     d = len(matrix)
-    scale = max(1.0, max(abs(matrix[i][j]) for i in range(d) for j in range(d)))
+    scale = max(abs(matrix[i][j]) for i in range(d) for j in range(d))
     return all(abs(matrix[i][j] - matrix[j][i].conjugate()) <= tol * scale
                for i in range(d) for j in range(d))
 
@@ -198,11 +204,16 @@ def is_hermitian(matrix, tol=1e-9):
 def cholesky_hermitian(matrix):
     """Lower-triangular ``L`` with ``L L^H = matrix``.
 
-    Raises ``NonPositiveDefiniteError`` if a pivot is not safely positive. The
+    Raises ``SurrogateInputError`` for a non-square or non-Hermitian matrix, and
+    ``NonPositiveDefiniteError`` if a pivot is not safely positive. The
     threshold is relative to the largest diagonal entry, so rounding noise on a
     rank-deficient matrix is treated as singular rather than as a valid factor.
     """
     d = len(matrix)
+    if d < 1 or any(len(row) != d for row in matrix):
+        raise SurrogateInputError("cholesky_hermitian requires a non-empty square matrix")
+    if not is_hermitian(matrix):
+        raise SurrogateInputError("cholesky_hermitian requires a Hermitian matrix")
     max_diag = max(matrix[i][i].real for i in range(d))
     if not math.isfinite(max_diag):
         raise NonPositiveDefiniteError("matrix has a non-finite diagonal")
