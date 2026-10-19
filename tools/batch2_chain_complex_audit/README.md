@@ -4,10 +4,13 @@
 **Status:** `HOLD` / `SYNTHETIC_ONLY`
 
 This package is an **independent algebraic oracle**, not a production engine and
-not the Round 6 candidate. At audit base (`origin/main` @ `3f3fe859…`), no finite
-chain-complex endpoint-validation / exact-rational Betti implementation was
-found on main. Open PR #385 (phase cochain / Hodge) is a different lane and is
-intentionally not modified or overlapped.
+not the Round 6 candidate. At original audit base (`origin/main` @ `3f3fe859…`)
+and after rebase onto live `origin/main` @ `bc91af19…`, no finite chain-complex
+endpoint-validation / exact-rational Betti implementation was found on main.
+Public API: `FiniteChainComplex.betti()`, `.ranks()`, `.composition_zero()`,
+`.boundary_1` / `.boundary_2` / `.boundary_3` (not `betti_numbers` /
+`boundary_matrices`). Open PR #385 (phase cochain / Hodge) is a different lane
+and is intentionally not modified or overlapped.
 
 ## Scope
 
