@@ -185,6 +185,11 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("required: true\n        type: string", workflow)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
+        helper_source = HELPER_PATH.read_text(encoding="utf-8")
+        self.assertIn(
+            "candidate diff head is not an ancestor of the tested checkout",
+            helper_source,
+        )
 
     def test_workflow_dispatch_without_explicit_diff_shas_fails_closed(self):
         helper = _helper()
@@ -198,6 +203,33 @@ class Round6DiscoveryTests(unittest.TestCase):
                     workflow_sha="2" * 40,
                     event_name="workflow_dispatch",
                 )
+
+    def test_candidate_head_not_in_tested_checkout_is_blocked_before_execution(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            candidate_base = _repo(root)
+            _git(root, "switch", "-c", "candidate")
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # candidate only\n")
+            candidate_head = _commit(root, "candidate test change")
+            _git(root, "switch", "main")
+            tested_checkout = _git(root, "rev-parse", "HEAD")
+            report_path = root / "outputs/report.json"
+
+            result = helper.run(
+                root, candidate_base, candidate_head, report_path,
+                tested_checkout_sha=tested_checkout,
+                workflow_sha=candidate_base,
+                event_name="workflow_dispatch",
+                require_checkout_match=True,
+            )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertFalse(report["candidate_head_in_tested_checkout"])
+        self.assertIn("not an ancestor", report["selection_error"])
+        self.assertEqual(report["executed_commands"], [])
 
     def test_docker_engine_suite_is_owned_by_a_dedicated_docker_job(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
@@ -213,10 +245,22 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("scripts/run_tests_isolated.py", job)
         self.assertIn("DIFF_BASE_SHA", job)
         self.assertIn("DIFF_HEAD_SHA", job)
-        self.assertIn('git diff --name-only "$DIFF_BASE_SHA" "$DIFF_HEAD_SHA"', job)
+        self.assertIn("git merge-base --is-ancestor", job)
+        self.assertIn('git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
         self.assertIn("registered engine test is absent", job)
         self.assertIn("if: steps.candidate_scope.outputs.docker_context_changed == 'true'", job)
+        self.assertIn(
+            "--pytest-arg=--junitxml=outputs/docker_context_engine_test_report.junit.xml",
+            job,
+        )
+        self.assertIn('helper["_isolated_runner_report_is_valid"]', job)
+        self.assertIn('helper["junit_details"]', job)
+        self.assertIn("JUnit must contain passing tests only", job)
         self.assertIn("Upload Docker-context diagnostics", job)
+        self.assertLess(
+            job.index("git diff --name-only"),
+            job.index("git merge-base --is-ancestor"),
+        )
 
     def test_contained_artifact_reads_are_size_bounded(self):
         helper = _helper()
