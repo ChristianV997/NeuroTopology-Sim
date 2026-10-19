@@ -19,7 +19,25 @@ An independent, executable conformance audit of the Round 6 *phase-winding and s
 
 ## Candidate location (read-only context)
 
-Round 6 reference code was observed on open PR #385 (`batch2/antigravity-c-cochain-hodge-reference`), absent from `origin/main` at audit base `3f3fe859…`. Because the candidate is not on main, this auditor ships its own oracle and clearly labels results as **independent of the candidate implementation**.
+Original audit base: `origin/main` @ `3f3fe859…` (Round 6 reference observed on
+open PR #385; absent from main). After rebase onto live `origin/main` @
+`bc91af19…`, production leaf
+`neurotopology_sim/experimental/topology/winding.py` is present.
+
+- Independent oracle remains in `tools/experimental_audits/winding_charge_round6/`
+  (self-derived fixtures; does not import production).
+- Production-import comparison:
+  `tests/experimental_audits/test_winding_charge_production_import.py`
+  hard-imports the live production module path and asserts oracle triangle
+  charges / orientation / origin-shift identity match. Dipole
+  `charge_separation_defined` is `True` when both signs are present
+  (`sep≈2`); missing-sign case remains undefined per claim 7.
+
+**Round 6 discovery note (for Codex Agent A — no workflow edits here):**
+component `winding_charge_audit` currently lists only
+`tests/experimental_audits/test_winding_charge_round6_oracle.py`. The new
+production-import path should be added to that component’s `tests` /
+`candidate_pairs` if hosted Round 6 is expected to execute it.
 
 ## Discrete claims under audit
 
