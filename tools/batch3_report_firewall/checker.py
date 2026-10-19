@@ -116,6 +116,9 @@ _NEGATION_CLAUSE_SPLIT = re.compile(
     r"\s+\b(?:and|but|or|nor|yet|whereas|while|although|though)\b\s+",
     re.IGNORECASE,
 )
+_BLOCKQUOTE_INTERRUPTING_BLOCK = re.compile(
+    r"^ {0,3}(?:#{1,6}\s|(?:[-+*]|\d+[.)])\s|`{3,}|~{3,}|(?:-{3,}|\*{3,}|_{3,})\s*$|>)"
+)
 _MARKDOWN_LIMITATION_HEADINGS = {"limitations", "caveats", "guardrails", "what this does not claim", "what cannot be claimed"}
 _FIXTURE_HEADINGS = {"test fixture", "test fixtures", "fixtures", "examples", "quoted examples", "forbidden examples"}
 _TOP_LEVEL_CONTEXT = re.compile(r"^(?:synthetic|empirical|biological|engineering|software|causal|replication)\b", re.IGNORECASE)
@@ -291,10 +294,6 @@ def _quote_spans(text: str) -> list[tuple[int, int]]:
     return merged
 
 
-def _inside_quote(text: str, start: int, end: int) -> bool:
-    return any(start >= left and end <= right for left, right in _quote_spans(text))
-
-
 def _split_assertion_clauses(text: str) -> list[str]:
     """Split on simple clause boundaries, but never inside a quoted span."""
     clauses: list[str] = []
@@ -317,19 +316,14 @@ def _split_assertion_clauses(text: str) -> list[str]:
 
 
 def _has_unquoted_match(pattern: re.Pattern[str], text: str) -> bool:
-    quote_spans = _quote_spans(text)
-    quote_index = 0
-    for match in pattern.finditer(text):
-        while quote_index < len(quote_spans) and quote_spans[quote_index][1] <= match.start():
-            quote_index += 1
-        if (
-            quote_index < len(quote_spans)
-            and quote_spans[quote_index][0] < match.end()
-            and match.start() < quote_spans[quote_index][1]
-        ):
-            continue
-        return True
-    return False
+    unquoted = list(text)
+    for start, end in _quote_spans(text):
+        unquoted[start:end] = [" "] * (end - start)
+    return pattern.search("".join(unquoted)) is not None
+
+
+def _has_unquoted_phrase(phrase: str, text: str) -> bool:
+    return _has_unquoted_match(re.compile(re.escape(phrase), re.IGNORECASE), text)
 
 
 def _is_negated_or_limited(text: str) -> bool:
@@ -460,38 +454,34 @@ def _scan_text(text: str, file: str, location: str, findings: list[dict[str, Any
 
         ceiling_hits = claim_language_rules.scan_text(clause)
         ceiling_phrases = sorted({phrase for values in ceiling_hits.values() for phrase in values})
-        for phrase in ceiling_phrases:
-            offset = clause.lower().find(phrase.lower())
-            if offset >= 0 and not _inside_quote(clause, offset, offset + len(phrase)):
-                findings.append(_finding(file, location, "PROJECT_CLAIM_CEILING", certainty="likely"))
-                break
+        if any(_has_unquoted_phrase(phrase, clause) for phrase in ceiling_phrases):
+            findings.append(_finding(file, location, "PROJECT_CLAIM_CEILING", certainty="likely"))
 
-        synth_match = _SYNTHETIC_ASSERTION.search(context)
-        contextual_match = inherited_synthetic and _PROMOTION_ASSERTION.search(clause)
+        synth_match = _has_unquoted_match(_SYNTHETIC_ASSERTION, context)
+        contextual_match = inherited_synthetic and _has_unquoted_match(_PROMOTION_ASSERTION, clause)
         if synth_match or contextual_match:
-            if not synth_match or not _inside_quote(context, synth_match.start(), synth_match.end()):
-                findings.append(_finding(file, location, "SYNTHETIC_TO_EMPIRICAL_ASSERTION", certainty="likely"))
+            findings.append(_finding(file, location, "SYNTHETIC_TO_EMPIRICAL_ASSERTION", certainty="likely"))
 
-        engineering_match = _ENGINEERING_PROMOTION.search(clause)
-        if engineering_match and not _inside_quote(clause, engineering_match.start(), engineering_match.end()):
+        engineering_match = _has_unquoted_match(_ENGINEERING_PROMOTION, clause)
+        if engineering_match:
             findings.append(_finding(file, location, "ENGINEERING_TO_BIOLOGICAL_VALIDATION", certainty="likely"))
 
-        causal_match = _CAUSAL_ASSERTION.search(clause)
-        if causal_match and not _inside_quote(clause, causal_match.start(), causal_match.end()):
+        causal_match = _has_unquoted_match(_CAUSAL_ASSERTION, clause)
+        if causal_match:
             findings.append(_finding(file, location, "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM", evidence_reference_detected=reference_present))
             if not reference_present:
                 findings.append(_finding(file, location, "MISSING_EVIDENCE_REFERENCE"))
 
-        replication_match = _REPLICATION_ASSERTION.search(clause)
-        if replication_match and not _inside_quote(clause, replication_match.start(), replication_match.end()):
-            independent = bool(_INDEPENDENT_EVIDENCE.search(clause))
+        replication_match = _has_unquoted_match(_REPLICATION_ASSERTION, clause)
+        if replication_match:
+            independent = _has_unquoted_match(_INDEPENDENT_EVIDENCE, clause)
             if not reference_present or not independent:
                 findings.append(_finding(file, location, "REPLICATION_WITHOUT_INDEPENDENT_EVIDENCE", evidence_reference_detected=reference_present))
                 if not reference_present:
                     findings.append(_finding(file, location, "MISSING_EVIDENCE_REFERENCE"))
 
-    status_match = _AMBIGUOUS_STATUS_TEXT.search(text)
-    if status_match and not _inside_quote(text, status_match.start(), status_match.end()):
+    status_match = _has_unquoted_match(_AMBIGUOUS_STATUS_TEXT, text)
+    if status_match:
         findings.append(_finding(file, location, "AMBIGUOUS_VALIDATION_STATUS"))
 
 
@@ -503,6 +493,7 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
     fenced = False
     fence_marker = ""
     fence_length = 0
+    blockquote_lazy_continuation = False
     def flush() -> None:
         nonlocal current
         if current:
@@ -533,6 +524,38 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
                 fence_marker = ""
                 fence_length = 0
             continue
+        blockquote = re.match(r"^ {0,3}> ?(.*)$", raw)
+        if blockquote:
+            flush()
+            quoted_content = blockquote.group(1)
+            while True:
+                nested = re.match(r"^ {0,3}> ?(.*)$", quoted_content)
+                if nested is None:
+                    break
+                quoted_content = nested.group(1)
+            quoted_leading = quoted_content[
+                : len(quoted_content) - len(quoted_content.lstrip(" \t"))
+            ]
+            quoted_indented_code = "\t" in quoted_leading or len(quoted_leading) >= 4
+            content = quoted_content.strip()
+            blockquote_lazy_continuation = (
+                bool(content)
+                and not quoted_indented_code
+                and not _BLOCKQUOTE_INTERRUPTING_BLOCK.match(content)
+            )
+            continue
+        if blockquote_lazy_continuation:
+            if not stripped:
+                flush()
+                blockquote_lazy_continuation = False
+                continue
+            if indented_code or fence or _BLOCKQUOTE_INTERRUPTING_BLOCK.match(raw):
+                blockquote_lazy_continuation = False
+            else:
+                # CommonMark permits an unmarked paragraph continuation inside
+                # a blockquote; this is intentionally limited by the block-start
+                # patterns above rather than a complete Markdown parser.
+                continue
         if fence:
             marker_run, info = fence.groups()
             if marker_run[0] == "~" or "`" not in info:
@@ -541,7 +564,7 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
                 fence_marker = marker_run[0]
                 fence_length = len(marker_run)
                 continue
-        if not stripped or stripped.startswith(">") or indented_code:
+        if not stripped or indented_code:
             flush()
             continue
         heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", raw)

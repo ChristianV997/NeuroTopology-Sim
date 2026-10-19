@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -156,6 +157,53 @@ class ReportFirewallTests(unittest.TestCase):
         self.assertEqual(causal_lines, {"L7", "L13", "L21"})
         self.assertFalse(synthetic_lines)
 
+    def test_quoted_first_causal_match_does_not_hide_later_unquoted_assertion(self):
+        self._write(
+            "quoted-first-causal.md",
+            "The word 'causes' means the intervention causes the transition.\n",
+        )
+        findings = inspect_reports(self.root, ["quoted-first-causal.md"])["findings"]
+        self.assertIn(
+            "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM",
+            {finding["rule"] for finding in findings},
+        )
+
+    def test_quoted_first_claim_ceiling_match_does_not_hide_later_assertion(self):
+        self._write(
+            "quoted-first-ceiling.md",
+            'The phrase "proves consciousness" means graph beta-1 proves consciousness.\n',
+        )
+        findings = inspect_reports(self.root, ["quoted-first-ceiling.md"])["findings"]
+        self.assertIn("PROJECT_CLAIM_CEILING", {finding["rule"] for finding in findings})
+
+    def test_blockquote_lazy_continuation_stays_excluded_but_next_paragraph_is_scanned(self):
+        self._write(
+            "blockquote-lazy.md",
+            "> The quoted report states\n"
+            "Synthetic results demonstrate a biological mechanism.\n\n"
+            "The intervention causes the transition.\n",
+        )
+        findings = inspect_reports(self.root, ["blockquote-lazy.md"])["findings"]
+        self.assertFalse(any(finding["location"] in {"L1", "L2"} for finding in findings))
+        self.assertTrue(any(
+            finding["location"] == "L4"
+            and finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"
+            for finding in findings
+        ))
+
+    def test_blockquoted_indented_code_does_not_hide_following_plain_paragraph(self):
+        self._write(
+            "blockquote-indented-code.md",
+            ">     The intervention causes the transition.\n"
+            "The intervention causes the transition.\n",
+        )
+        findings = inspect_reports(self.root, ["blockquote-indented-code.md"])["findings"]
+        self.assertTrue(any(
+            finding["location"] == "L2"
+            and finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"
+            for finding in findings
+        ))
+
     def test_heuristic_fixture_matrix_keeps_warning_distinct_from_truth(self):
         cases = (
             ("assertion", "The intervention causes the transition.", True),
@@ -188,7 +236,13 @@ class ReportFirewallTests(unittest.TestCase):
                 self.assertTrue(all("recommendation" in item for item in causal))
                 self.assertFalse(any("claim_is_false" in item for item in report["findings"]))
 
-    def _run_cli(self, root: Path, *paths: str) -> subprocess.CompletedProcess[str]:
+    def _run_cli(
+        self,
+        root: Path,
+        *paths: str,
+        env: dict[str, str] | None = None,
+        encoding: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         repository = Path(__file__).resolve().parents[3]
         script = repository / "scripts" / "check_batch3_report_language.py"
         return subprocess.run(
@@ -196,6 +250,8 @@ class ReportFirewallTests(unittest.TestCase):
             cwd=repository,
             capture_output=True,
             text=True,
+            encoding=encoding,
+            env=env,
             check=False,
             timeout=15,
         )
@@ -218,6 +274,18 @@ class ReportFirewallTests(unittest.TestCase):
         malformed_report = json.loads(malformed.stdout)
         self.assertEqual(self._rules(malformed_report), {"REPORT_NOT_PARSEABLE"})
         self.assertEqual(malformed_report["findings"][0]["location"], "$")
+
+    def test_cli_json_is_safe_for_non_ascii_paths_on_legacy_stdout_encodings(self):
+        self._write("报告.md", "The intervention causes the transition.\n")
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+
+        result = self._run_cli(self.root, "报告.md", env=env, encoding="cp1252")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        payload = json.loads(result.stdout)
+        self.assertIn("报告.md", {finding["file"] for finding in payload["findings"]})
 
     def test_cli_rejects_traversal_and_directory_selection_with_structured_errors(self):
         bounded = self.root / "bounded"

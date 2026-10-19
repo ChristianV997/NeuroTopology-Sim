@@ -15,12 +15,17 @@ Findings can cover synthetic/fixture-to-empirical wording, software conformance
 presented as biological validation, asserted causal/mechanistic language,
 replication without an independent reference, structured evidence/status
 conflicts, missing references, and ambiguous validation labels. Explicit
-negations, limitation sections, fenced and indented code, Markdown blockquotes,
-inline backtick code, double/curly/single-quoted spans, and fixture/example JSON
-fields are excluded or handled conservatively. Simple punctuation, comma-led
-boundaries before common clause subjects, and coordinating conjunctions are used so a nearby
-negation or caution does not suppress a separate assertive clause; this is not a
-grammar parser and remains a heuristic.
+negations, limitation sections, fenced and indented code, Markdown blockquotes
+including unmarked lazy paragraph-continuation lines, inline backtick code,
+double/curly/single-quoted spans, and fixture/example JSON fields are excluded
+or handled conservatively. Simple punctuation, comma-led
+boundaries before common clause subjects, and coordinating conjunctions are
+used so a nearby negation or caution does not suppress a separate assertive
+clause; this is not a grammar parser and remains a heuristic.
+
+Quoted spans are masked before pattern matching, so a quoted occurrence does
+not hide a later unquoted occurrence, and a pattern does not bridge across a
+quoted span.
 
 This is an advisory layer, not an evidence evaluator. A finding is not proof of
 misconduct or proof that a claim is false; no finding is not proof that a claim
@@ -58,12 +63,15 @@ over-suppressed.
 
 Fenced code is skipped until a closing fence uses the same marker, has at least
 the opening run length, and has no non-whitespace suffix. Four-space/tab-
-indented code and blockquote lines are skipped. Inline code is excluded only
-when matching, unescaped backtick runs have equal length; backslash-escaped
-backticks are literal delimiters. Paired straight double/single and curly
-quotes are excluded; apostrophes between word characters are treated as
+indented code and blockquote paragraphs (including nonblank unmarked lazy
+continuations until a blank line or recognized block starter) are skipped.
+Inline code is excluded only when matching, unescaped backtick runs have equal
+length; backslash-escaped backticks are literal delimiters. Paired straight
+double/single and curly quotes are excluded; apostrophes between word characters are treated as
 apostrophes, while unmatched quote delimiters do not hide the paragraph tail.
-Nested/malformed Markdown and attribution remain heuristic edge cases.
+Lazy blockquote continuation handling recognizes only a small set of block
+starters; it is not a complete CommonMark parser. Nested/malformed Markdown
+and attribution remain heuristic edge cases.
 
 The `certainty` label is a heuristic category, not a probability or an
 evidentiary weight. A warning is not proof that a claim is false or misconduct

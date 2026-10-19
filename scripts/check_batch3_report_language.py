@@ -38,7 +38,9 @@ def main(argv: list[str] | None = None) -> int:
             "findings": [],
         }
         code = 2
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False))
+    # Escaping non-ASCII values keeps JSON writable on legacy Windows stdout
+    # encodings when a selected report path contains Unicode.
+    print(json.dumps(result, ensure_ascii=True, sort_keys=True, indent=2, allow_nan=False))
     return code
 
 
