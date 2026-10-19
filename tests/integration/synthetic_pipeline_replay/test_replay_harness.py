@@ -79,3 +79,98 @@ class TestSyntheticPipelineReplayHarness:
         assert "disclaimer" in loaded
         assert "engineering check and does not constitute scientific validity" in loaded["disclaimer"]
         assert len(loaded["boundaries"]) == 3
+
+    def test_psd_one_sided_scaling_and_parseval_conservation(self):
+        """Verify that one-sided PSD doubles interior bins and exactly conserves discrete Parseval power."""
+        import numpy as np
+        from tools.synthetic_pipeline_replay.stages import FeatureExtractionStage
+
+        # Test both even and odd sample lengths
+        for n_samples in (250, 251):
+            sfreq = 250.0
+            t = np.arange(n_samples) / sfreq
+            # Synthetic multichannel test signal: carrier + harmonic + DC offset
+            data = np.stack([
+                15.0 * np.cos(2.0 * np.pi * 12.0 * t) + 5.0,
+                8.0 * np.sin(2.0 * np.pi * 30.0 * t),
+            ])
+            stage_input = {
+                "data": data,
+                "sampling_rate_hz": sfreq,
+                "channel_ordering": ["Ch1", "Ch2"],
+                "duration_s": n_samples / sfreq,
+                "coordinate_status": "missing",
+            }
+
+            stage = FeatureExtractionStage()
+            output = stage.execute(stage_input)
+            psd_record = output["psd_record"]
+            psd_matrix = np.asarray(psd_record.values)
+            delta_f = sfreq / n_samples
+
+            # Discrete Parseval integral: sum(P[k]) * delta_f == (1 / N) * sum(x[n]^2)
+            discrete_energy_integral = np.sum(psd_matrix, axis=1) * delta_f
+            time_domain_power = np.mean(data ** 2, axis=1)
+
+            np.testing.assert_allclose(
+                discrete_energy_integral,
+                time_domain_power,
+                rtol=1e-10,
+                atol=1e-12,
+                err_msg=f"Parseval power conservation violated for n_samples={n_samples}",
+            )
+
+            # Verify unscaled DC bin vs expected (X[0]^2 / (fs * N))
+            raw_fft = np.fft.rfft(data, axis=1)
+            raw_dc = (np.abs(raw_fft[:, 0]) ** 2) / (sfreq * n_samples)
+            np.testing.assert_allclose(psd_matrix[:, 0], raw_dc, rtol=1e-12)
+
+            # If even, verify unscaled Nyquist bin
+            if n_samples % 2 == 0:
+                raw_nyq = (np.abs(raw_fft[:, -1]) ** 2) / (sfreq * n_samples)
+                np.testing.assert_allclose(psd_matrix[:, -1], raw_nyq, rtol=1e-12)
+
+            # Verify interior bins are scaled by exactly 2.0
+            interior_end = (n_samples // 2) if n_samples % 2 == 0 else (n_samples + 1) // 2
+            raw_interior = 2.0 * ((np.abs(raw_fft[:, 1:interior_end]) ** 2) / (sfreq * n_samples))
+            np.testing.assert_allclose(
+                psd_matrix[:, 1:interior_end],
+                raw_interior,
+                rtol=1e-12,
+            )
+
+    def test_topology_summary_persistence_intervals_and_thresholded_betti(self):
+        """Verify persistence-interval counts and thresholded Betti number evaluation."""
+        import numpy as np
+        from tools.synthetic_pipeline_replay.stages import TopologySummaryStage
+
+        # Symmetric mock connectivity
+        plv = np.array([
+            [0.0, 0.8, 0.2, 0.1],
+            [0.8, 0.0, 0.7, 0.2],
+            [0.2, 0.7, 0.0, 0.9],
+            [0.1, 0.2, 0.9, 0.0],
+        ])
+        stage_input = {
+            "pairwise_fc_matrix": plv,
+            "channel_ordering": ["Fp1", "Fp2", "C3", "C4"],
+        }
+
+        # 1. Without threshold: reports persistence intervals, betti status is not_evaluated
+        stage_no_thresh = TopologySummaryStage()
+        out_no_thresh = stage_no_thresh.execute(stage_input)
+        assert "persistence_interval_count_h0" in out_no_thresh
+        assert "persistence_interval_count_h1" in out_no_thresh
+        assert out_no_thresh["betti_numbers_at_threshold"] is None
+        assert out_no_thresh["betti_number_status"] == "not_evaluated_no_declared_threshold"
+        assert out_no_thresh["persistence_interval_count_h0"] == 4  # 4 vertices
+
+        # 2. With threshold: evaluates genuine Betti numbers
+        stage_thresh = TopologySummaryStage(filtration_threshold=0.25)
+        out_thresh = stage_thresh.execute(stage_input)
+        assert out_thresh["betti_number_status"] == "evaluated_at_declared_threshold"
+        betti = out_thresh["betti_numbers_at_threshold"]
+        assert betti is not None
+        assert betti["threshold_epsilon"] == 0.25
+        assert isinstance(betti["betti_0"], int)
+        assert isinstance(betti["betti_1"], int)

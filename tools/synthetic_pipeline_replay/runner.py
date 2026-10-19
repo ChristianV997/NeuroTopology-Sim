@@ -85,6 +85,7 @@ class SyntheticPipelineReplayRunner:
             "expected_units": "uV",
             "sampling_rate_hz": self.sfreq_hz,
             "expected_shape": [len(self.channels), n_samples_stage1],
+            "require_timestamps": True,
         }
 
         report_b1 = evaluate_boundary(
@@ -122,6 +123,7 @@ class SyntheticPipelineReplayRunner:
                 "expected_units": "uV",
                 "sampling_rate_hz": self.sfreq_hz,
                 "expected_shape": [len(self.channels), n_window_samples],
+                "require_timestamps": True,
             }
 
             report_b2 = evaluate_boundary(

@@ -109,8 +109,15 @@ def check_timing_conformance(
     observed_rate_hz: float | None,
     sample_count: int | None = None,
     timestamps: Any | None = None,
+    require_timestamps: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Verify timing metadata: sampling rate positivity, consistency, and strictly increasing timestamps."""
+    """Verify timing metadata: sampling rate positivity, consistency, and strictly increasing timestamps.
+
+    Distinguishes:
+    - Absent timestamps: when require_timestamps is True and timestamps is None or empty.
+    - Malformed timestamps: when timestamps are present but non-1D, non-finite, non-monotonic,
+      inconsistent in count with sample_count, or step inconsistent with sampling_rate_hz.
+    """
     mismatches: list[str] = []
     missing_fields: list[str] = []
 
@@ -129,19 +136,41 @@ def check_timing_conformance(
             except (TypeError, ValueError):
                 mismatches.append(f"Invalid sampling rate value: {observed_rate_hz}")
 
-    if timestamps is not None:
+    if require_timestamps:
+        if timestamps is None:
+            missing_fields.append("timestamps")
+            mismatches.append("Timing contract requires timestamps, but timestamps are absent (None)")
+        elif hasattr(timestamps, "__len__") and len(timestamps) == 0:
+            missing_fields.append("timestamps")
+            mismatches.append("Timing contract requires timestamps, but timestamps array is empty")
+
+    if timestamps is not None and not (hasattr(timestamps, "__len__") and len(timestamps) == 0):
         ts_arr = np.asarray(timestamps)
         if ts_arr.ndim != 1:
-            mismatches.append(f"Timestamps must be 1D, observed {ts_arr.ndim}D")
+            mismatches.append(f"Malformed timestamps: must be 1D, observed {ts_arr.ndim}D")
         else:
             if not np.all(np.isfinite(ts_arr)):
-                mismatches.append("Timestamps contain non-finite values (NaN/Inf)")
+                mismatches.append("Malformed timestamps: contain non-finite values (NaN/Inf)")
             if len(ts_arr) > 1 and not bool(np.all(np.diff(ts_arr) > 0)):
-                mismatches.append("Timestamps are not strictly monotonically increasing")
+                mismatches.append("Malformed timestamps: not strictly monotonically increasing")
             if sample_count is not None and len(ts_arr) != sample_count:
                 mismatches.append(
-                    f"Timestamp count ({len(ts_arr)}) does not match sample count ({sample_count})"
+                    f"Malformed timestamps: timestamp count ({len(ts_arr)}) does not match sample count ({sample_count})"
                 )
+            if observed_rate_hz is not None and len(ts_arr) > 1:
+                try:
+                    obs_f = float(observed_rate_hz)
+                    if obs_f > 0:
+                        expected_dt = 1.0 / obs_f
+                        dt_diffs = np.diff(ts_arr)
+                        if np.all(np.isfinite(dt_diffs)):
+                            mean_dt = float(np.mean(dt_diffs))
+                            if abs(mean_dt - expected_dt) > 1e-4:
+                                mismatches.append(
+                                    f"Malformed timestamps: mean sampling step ({mean_dt:.6f} s) does not match declared rate {obs_f} Hz ({expected_dt:.6f} s)"
+                                )
+                except Exception:
+                    pass
 
     return mismatches, missing_fields
 
@@ -299,8 +328,9 @@ def evaluate_boundary(
     obs_rate = observed_contract.get("sampling_rate_hz")
     sample_cnt = observed_contract.get("sample_count")
     timestamps = observed_contract.get("timestamps")
+    require_ts = bool(expected_contract.get("require_timestamps", False))
     timing_mismatches, timing_missing = check_timing_conformance(
-        exp_rate, obs_rate, sample_count=sample_cnt, timestamps=timestamps
+        exp_rate, obs_rate, sample_count=sample_cnt, timestamps=timestamps, require_timestamps=require_ts
     )
     mismatches.extend(timing_mismatches)
     missing_fields.extend(timing_missing)

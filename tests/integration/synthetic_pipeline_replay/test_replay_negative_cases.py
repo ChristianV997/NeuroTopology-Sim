@@ -154,3 +154,108 @@ class TestReplayNegativeCases:
         b1 = report.boundaries[0]
         assert b1.status == BoundaryStatus.INCOMPATIBLE.value
         assert any("Coordinate channel count (2) does not match" in m for m in b1.mismatches)
+
+    def test_absent_timestamps_fails_boundary(self):
+        """Absent timestamps on a time-series contract must yield missing_required_field and halt downstream execution."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        perturbations = {
+            "stage_1": {
+                "timestamps": None,
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+
+        assert report.status == ReplayStatus.INCONCLUSIVE.value
+        b1 = report.boundaries[0]
+        assert b1.status == BoundaryStatus.MISSING_REQUIRED_FIELD.value
+        assert "timestamps" in b1.missing_fields
+        assert any("requires timestamps, but timestamps are absent" in m for m in b1.mismatches)
+        # Downstream Stage 2 must not execute when timestamps are absent
+        assert "stage_2_preprocessing" not in report.stages_executed
+
+    def test_malformed_timestamps_non_monotonic_fails_boundary(self):
+        """Timestamps that are not strictly monotonic must be rejected as incompatible."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        bad_ts = np.linspace(0.0, 2.0, 500)
+        bad_ts[250] = bad_ts[249]  # Flat non-increasing step
+        perturbations = {
+            "stage_1": {
+                "timestamps": bad_ts,
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+
+        assert report.status == ReplayStatus.INCOMPATIBLE.value
+        b1 = report.boundaries[0]
+        assert b1.status == BoundaryStatus.INCOMPATIBLE.value
+        assert any("not strictly monotonically increasing" in m for m in b1.mismatches)
+
+    def test_malformed_timestamps_non_finite_fails_boundary(self):
+        """Timestamps with NaN or Inf must be rejected as incompatible."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        bad_ts = np.linspace(0.0, 2.0, 500)
+        bad_ts[10] = np.nan
+        perturbations = {
+            "stage_1": {
+                "timestamps": bad_ts,
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+
+        assert report.status == ReplayStatus.INCOMPATIBLE.value
+        b1 = report.boundaries[0]
+        assert b1.status == BoundaryStatus.INCOMPATIBLE.value
+        assert any("contain non-finite values" in m for m in b1.mismatches)
+
+    def test_malformed_timestamps_wrong_shape_fails_boundary(self):
+        """Timestamps with ndim != 1 must be rejected as incompatible."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        bad_ts = np.linspace(0.0, 2.0, 500).reshape((2, 250))
+        perturbations = {
+            "stage_1": {
+                "timestamps": bad_ts,
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+
+        assert report.status == ReplayStatus.INCOMPATIBLE.value
+        b1 = report.boundaries[0]
+        assert b1.status == BoundaryStatus.INCOMPATIBLE.value
+        assert any("must be 1D" in m for m in b1.mismatches)
+
+    def test_malformed_timestamps_count_mismatch_fails_boundary(self):
+        """Timestamp length not matching sample_count must be rejected as incompatible."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        # Sample count is 500, but supply 450 timestamps
+        bad_ts = np.linspace(0.0, 1.8, 450)
+        perturbations = {
+            "stage_1": {
+                "timestamps": bad_ts,
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+
+        assert report.status == ReplayStatus.INCOMPATIBLE.value
+        b1 = report.boundaries[0]
+        assert b1.status == BoundaryStatus.INCOMPATIBLE.value
+        assert any("timestamp count (450) does not match sample count (500)" in m for m in b1.mismatches)
+
+    def test_serializer_rejects_nan_inf_fail_closed(self):
+        """Serializer must strictly raise ValueError on NaN/Inf, never silently coerce to null."""
+        from tools.synthetic_pipeline_replay.contracts import safe_json_dict
+
+        # Dict with NaN
+        with pytest.raises(ValueError, match="Non-finite float value"):
+            safe_json_dict({"metric": float("nan")})
+
+        # List with Inf
+        with pytest.raises(ValueError, match="Non-finite float value"):
+            safe_json_dict([1.0, 2.0, float("inf")])
+
+        # Numpy array with NaN
+        with pytest.raises(ValueError, match="Non-finite float value in numpy array"):
+            safe_json_dict(np.array([1.0, np.nan, 3.0]))
+
+        # Numpy scalar with Inf
+        with pytest.raises(ValueError, match="Non-finite float value"):
+            safe_json_dict(np.float64("inf"))

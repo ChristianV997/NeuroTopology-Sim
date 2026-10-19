@@ -77,3 +77,19 @@ def get_contradictory_coordinates_artifact(seed: int = 42) -> dict:
     # 4 channels, but only 2 coordinate rows
     art["montage_coordinates"] = [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]]
     return art
+
+
+def get_absent_timestamps_artifact(seed: int = 42) -> dict:
+    """Generate artifact with timestamps missing/None."""
+    art = get_valid_signal_artifact(seed=seed)
+    art["timestamps"] = None
+    return art
+
+
+def get_malformed_timestamps_artifact(seed: int = 42) -> dict:
+    """Generate artifact with non-monotonic timestamps."""
+    art = get_valid_signal_artifact(seed=seed)
+    ts = np.array(art["timestamps"]).copy()
+    ts[20] = ts[19]  # flat non-increasing step
+    art["timestamps"] = ts
+    return art

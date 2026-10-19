@@ -32,12 +32,19 @@ class ReplayStatus(str, Enum):
 
 
 def safe_json_dict(val: Any) -> Any:
-    """Recursively converts structures to JSON-safe representations, strictly rejecting non-finite floats."""
+    """Recursively converts structures to JSON-safe representations.
+
+    Strictly rejects non-finite floats (NaN, +Inf, -Inf) fail-closed by raising ValueError.
+    Ensures invalid non-finite values cannot be silently coerced to null.
+    """
     if val is None or isinstance(val, (str, bool, int)):
         return val
     if isinstance(val, float):
         if not math.isfinite(val):
-            return None
+            raise ValueError(
+                f"Non-finite float value '{val}' rejected by serializer contract. "
+                "NaN and Inf are strictly forbidden in serialized pipeline artifacts."
+            )
         return val
     if isinstance(val, Enum):
         return val.value
@@ -52,9 +59,20 @@ def safe_json_dict(val: Any) -> Any:
     try:
         import numpy as np
         if isinstance(val, np.ndarray):
+            if not np.all(np.isfinite(val)):
+                raise ValueError(
+                    "Non-finite float value in numpy array rejected by serializer contract. "
+                    "NaN and Inf are strictly forbidden in serialized pipeline artifacts."
+                )
             return val.tolist()
         if isinstance(val, np.generic):
-            return safe_json_dict(val.item())
+            item = val.item()
+            if isinstance(item, float) and not math.isfinite(item):
+                raise ValueError(
+                    f"Non-finite float value '{item}' rejected by serializer contract. "
+                    "NaN and Inf are strictly forbidden in serialized pipeline artifacts."
+                )
+            return safe_json_dict(item)
     except ImportError:
         pass
     return str(val)

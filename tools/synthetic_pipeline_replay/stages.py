@@ -153,22 +153,45 @@ class FeatureExtractionStage:
         n_channels, n_samples = data.shape
 
         # 1. Feature: Power Spectral Density (PSD)
-        # Using discrete FFT power estimation
+        # One-sided periodogram power spectral density via discrete rfft.
+        # For real-valued signals, Parseval's theorem states:
+        #   (1 / N) * sum_{n=0}^{N-1} x[n]^2 = sum_{k=0}^{N_bins-1} S_1[k] * delta_f
+        # where delta_f = sfreq / N.
+        # Two-sided raw power is |X[k]|^2 / (sfreq * N).
+        # In the one-sided spectrum, DC (bin 0) and Nyquist (bin N//2 for even N)
+        # do not have negative frequency conjugates and remain unscaled.
+        # All interior positive-frequency bins (1 <= k < N//2 for even N,
+        # 1 <= k <= (N-1)//2 for odd N) are multiplied by 2.0 to conserve total energy.
         fft_vals = np.fft.rfft(data, axis=1)
         freqs = np.fft.rfftfreq(n_samples, 1.0 / sfreq)
         psd_matrix = (np.abs(fft_vals) ** 2) / (sfreq * n_samples)
+        if n_samples % 2 == 0:
+            if psd_matrix.shape[1] > 2:
+                psd_matrix[:, 1:-1] *= 2.0
+        else:
+            if psd_matrix.shape[1] > 1:
+                psd_matrix[:, 1:] *= 2.0
 
+        delta_f = float(sfreq / n_samples)
         psd_record = CanonicalFeatureRecord(
             feature_family=FeatureFamily.PSD.value,
             feature_name="psd_multichannel",
-            mathematical_definition="Periodogram spectral density via rfft",
+            mathematical_definition=(
+                "One-sided periodogram power spectral density via rfft with interior positive-frequency "
+                "bins scaled by 2 (DC and Nyquist unscaled), conserving discrete Parseval energy."
+            ),
             units="uV^2/Hz",
             sampling_rate_hz=sfreq,
             channel_node_identity=list(channels),
             axes=["channels", "frequencies"],
             shape=list(psd_matrix.shape),
             values=psd_matrix.tolist(),
-            frequency_axis={"frequencies_hz": freqs.tolist()},
+            frequency_axis={
+                "frequencies_hz": freqs.tolist(),
+                "spectral_density_convention": "one_sided",
+                "scaling": "interior_bins_doubled_parseval_conserved",
+                "delta_f_hz": delta_f,
+            },
             time_window={"start_s": 0.0, "duration_s": input_artifact["duration_s"]},
             is_synthetic=True,
             evidence_class=EvidenceClass.SYNTHETIC_SCAFFOLDING.value,
@@ -223,18 +246,27 @@ class FeatureExtractionStage:
 
 
 class TopologySummaryStage:
-    """Stage 4: Persistent homology and topological graph summary."""
+    """Stage 4: Persistent homology and topological graph summary.
+
+    Extracts persistence intervals across dimensions 0 and 1 via Vietoris-Rips filtration.
+    Raw diagram counts represent total persistence intervals across the entire filtration,
+    not Betti numbers at a specific threshold. If a filtration_threshold is declared,
+    evaluates actual Betti numbers beta_k(epsilon) = #{ (b, d) | b <= epsilon < d }.
+    """
 
     STAGE_ID = "stage_4_topology_summary"
     SCHEMA_VERSION = "NeuroTopologySim.TopologicalSummary.v1"
 
+    def __init__(self, filtration_threshold: float | None = None) -> None:
+        self.filtration_threshold = filtration_threshold
+
     def execute(self, input_artifact: Mapping[str, Any]) -> dict[str, Any]:
-        """Compute persistent homology Betti numbers from pairwise connectivity."""
+        """Compute persistence-interval counts and optional thresholded Betti numbers from pairwise connectivity."""
         plv = np.asarray(input_artifact["pairwise_fc_matrix"])
         channels = list(input_artifact["channel_ordering"])
         n_channels = len(channels)
 
-        # Distance matrix for filtration
+        # Distance matrix for filtration: d_ij = 1 - PLV_ij
         dist_matrix = 1.0 - plv
         np.fill_diagonal(dist_matrix, 0.0)
 
@@ -245,9 +277,22 @@ class TopologySummaryStage:
         dgm0 = dgms[0] if len(dgms) > 0 else np.empty((0, 2))
         dgm1 = dgms[1] if len(dgms) > 1 else np.empty((0, 2))
 
-        # Basic Betti counts
-        beta0_count = len(dgm0)
-        beta1_count = len(dgm1)
+        # Total persistence intervals across the entire filtration
+        h0_interval_count = len(dgm0)
+        h1_interval_count = len(dgm1)
+
+        # Evaluate Betti numbers only if an explicit filtration threshold is declared
+        betti_at_threshold = None
+        if self.filtration_threshold is not None:
+            eps = float(self.filtration_threshold)
+            # Count intervals alive at epsilon: birth <= epsilon < death
+            betti_0 = int(np.sum((dgm0[:, 0] <= eps) & (eps < dgm0[:, 1]))) if len(dgm0) > 0 else 0
+            betti_1 = int(np.sum((dgm1[:, 0] <= eps) & (eps < dgm1[:, 1]))) if len(dgm1) > 0 else 0
+            betti_at_threshold = {
+                "threshold_epsilon": eps,
+                "betti_0": betti_0,
+                "betti_1": betti_1,
+            }
 
         return {
             "artifact_id": "topological_summary_001",
@@ -255,8 +300,19 @@ class TopologySummaryStage:
             "schema_version": self.SCHEMA_VERSION,
             "node_count": n_channels,
             "channel_ordering": list(channels),
-            "beta0_interval_count": beta0_count,
-            "beta1_interval_count": beta1_count,
+            # Renamed from beta interval counts to persistence-interval counts
+            "persistence_interval_count_h0": h0_interval_count,
+            "persistence_interval_count_h1": h1_interval_count,
+            # Backward-compatibility aliases
+            "beta0_interval_count": h0_interval_count,
+            "beta1_interval_count": h1_interval_count,
+            "filtration_threshold": self.filtration_threshold,
+            "betti_numbers_at_threshold": betti_at_threshold,
+            "betti_number_status": (
+                "evaluated_at_declared_threshold"
+                if self.filtration_threshold is not None
+                else "not_evaluated_no_declared_threshold"
+            ),
             "observed_shape": [n_channels],
             "observed_units": "count",
             "finite_status": True,
