@@ -566,6 +566,12 @@ def test_invalid_boundary_condition_and_gauge():
     with pytest.raises(HodgeError, match="Invalid gauge policy type"):
         hodge_decompose(omega, d0, d1, gauge=3.14)
 
+    with pytest.raises(NotImplementedError, match="RELATIVE is reserved"):
+        hodge_decompose(omega, d0, d1, boundary_condition=BoundaryCondition.RELATIVE)
+
+    with pytest.raises(NotImplementedError, match="RELATIVE is reserved"):
+        hodge_decompose(omega, d0, d1, boundary_condition="relative")
+
 
 def test_invalid_omega_inputs():
     """Verify non-finite or mismatched omega raises CochainComplexError."""

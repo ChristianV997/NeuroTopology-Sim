@@ -785,6 +785,12 @@ def hodge_decompose(
             alpha_sub, _, _, _ = np.linalg.lstsq(L0_sub, rhs_sub, rcond=None)
             alpha[interior_indices] = alpha_sub
 
+    elif bc == BoundaryCondition.RELATIVE:
+        raise NotImplementedError(
+            "BoundaryCondition.RELATIVE is reserved for future cell-complex releases; "
+            "use BoundaryCondition.NATURAL or BoundaryCondition.DIRICHLET_POTENTIAL."
+        )
+
     else:
         # Natural / Absolute boundary conditions: solve on all vertices
         if gp == GaugePolicy.MINIMUM_NORM:
@@ -851,11 +857,20 @@ def hodge_decompose(
 
     delta0_harm = d0_arr.T @ _apply_metric_w1(w1, is_diag, omega_harm)
     max_delta0_harm = float(np.max(np.abs(delta0_harm)))
+    interior_indices_diag = np.where(~b_verts_mask)[0]
+    if interior_indices_diag.size > 0:
+        max_delta0_harm_interior = float(np.max(np.abs(delta0_harm[interior_indices_diag])))
+    else:
+        max_delta0_harm_interior = 0.0
 
     diagnostics["max_abs_d1_harmonic"] = max_d1_harm
     diagnostics["max_abs_delta0_harmonic"] = max_delta0_harm
+    diagnostics["max_abs_delta0_harmonic_interior"] = max_delta0_harm_interior
     diagnostics["harmonic_is_closed"] = (max_d1_harm <= atol)
-    diagnostics["harmonic_is_coclosed"] = (max_delta0_harm <= atol)
+    if bc == BoundaryCondition.DIRICHLET_POTENTIAL:
+        diagnostics["harmonic_is_coclosed"] = (max_delta0_harm_interior <= atol)
+    else:
+        diagnostics["harmonic_is_coclosed"] = (max_delta0_harm <= atol)
 
     return HodgeResult(
         exact=omega_exact,
