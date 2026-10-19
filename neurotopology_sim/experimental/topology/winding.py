@@ -86,6 +86,10 @@ TWO_PI = 2.0 * np.pi
 SUPPORTED_WRAP_INTERVALS = ("[-pi,pi)",)
 DEFAULT_TIE_TOL = 1e-12
 DEFAULT_IDENTITY_ATOL = 0.0  # exact for integer incidence
+# Contract: dense ndarray incidence only (scipy.sparse and duck-types rejected).
+SUPPORTS_SPARSE_INCIDENCE = False
+# Origin-shift reference: r' = r - a  ⇒  p_q(a) = p_q(0) - Q_net * a
+ORIGIN_SHIFT_COORDINATE_MAP = "r_prime = r - a"
 
 
 ArrayLike = Union[Sequence[float], np.ndarray]
@@ -471,6 +475,8 @@ __all__ = [
     "TWO_PI",
     "SUPPORTED_WRAP_INTERVALS",
     "DEFAULT_TIE_TOL",
+    "SUPPORTS_SPARSE_INCIDENCE",
+    "ORIGIN_SHIFT_COORDINATE_MAP",
     "WindingError",
     "WindingResult",
     "ChargeMomentResult",

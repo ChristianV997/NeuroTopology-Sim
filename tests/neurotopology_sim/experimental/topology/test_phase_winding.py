@@ -274,6 +274,34 @@ def test_rejects_unsupported_wrap_interval_and_negative_tie_tol():
         phase_winding([0.0, 0.0, 0.0], d0, d1, tie_tol=-1.0)
 
 
+def test_origin_shift_moment_sign_independently_derived():
+    """Derive p_q(a)=p_q(0)-Q_net*a from r'=r-a; do not accept by naming alone.
+
+    Independent algebra:
+        p(0) = Σ q_t r_t
+        p(a) = Σ q_t (r_t - a) = p(0) - (Σ q_t) a
+    So the minus sign is required under ORIGIN_SHIFT_COORDINATE_MAP = r' = r - a.
+    """
+    from neurotopology_sim.experimental.topology.winding import (
+        ORIGIN_SHIFT_COORDINATE_MAP,
+    )
+
+    assert ORIGIN_SHIFT_COORDINATE_MAP == "r_prime = r - a"
+    q = np.array([2, -1], dtype=np.int64)  # Q_net = +1
+    r0 = np.array([[1.0, 0.0], [0.0, 1.0]])
+    a = np.array([0.4, -0.2])
+    p0 = signed_first_moment(q, r0)
+    # Manual expansion of Σ q (r - a)
+    p_manual = q[0] * (r0[0] - a) + q[1] * (r0[1] - a)
+    p_via_coords = signed_first_moment(q, r0 - a)
+    p_via_helper = origin_shifted_moment(p0, int(np.sum(q)), a)
+    assert np.allclose(p_via_coords, p_manual)
+    assert np.allclose(p_via_helper, p_manual)
+    assert np.allclose(p_via_helper, p0 - float(np.sum(q)) * a)
+    # Opposite convention a→−a would flip the correction sign — reject that here.
+    assert not np.allclose(p_via_helper, p0 + float(np.sum(q)) * a)
+
+
 def test_net_charge_and_origin_shift_identity():
     # Two-face dipole: +1 and -1
     # Face 0: verts 0,1,2 ; Face 1: verts 3,4,5
