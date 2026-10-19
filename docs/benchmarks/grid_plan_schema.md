@@ -347,12 +347,15 @@ No cell is launched.
 ## Gate ids
 
 Blocking. A pin may name only a commit that `git merge-base --is-ancestor`
-accepts against local main. None of the dependency pull requests are
-merged, so every `pinned_commit` is null. A null pin yields
+accepts against local main, and only when `(merged_pr, pinned_commit)`
+equals `MERGED_PIN_PAIRS`. A null pin yields
 `dependency_not_merged_on_main`. An open-pull-request head supplied as a
-pin yields `pin_not_ancestor_of_main`. Pull-request numbers in
-`informational_candidate` are citations. Gate evaluation does not read
-them, and they are not part of `config_hash`.
+pin yields `pin_not_ancestor_of_main`. A pin that is still an ancestor
+but is not the registered merge commit yields `merged_pr_mismatch`.
+Two gates that cite the same module path yield `duplicate_module_claim`.
+Pull-request numbers and heads in `informational_candidate` are
+citations. Gate evaluation does not read them, and they are not part of
+`config_hash`. `merged_pr` is part of `config_hash`.
 
 A gate is eligible only when all of these hold:
 
@@ -365,22 +368,35 @@ A gate is eligible only when all of these hold:
    (`symbols_missing_on_main` when a name is absent).
 4. A promotion report at the `write_report` default path is a blob on
    main and passes the one-`case_id` admissibility checks. A matching
-   text pin does not open the gate by itself.
+   text pin does not open the gate by itself. When the pin, module, and
+   symbols hold and that report is absent, the status is
+   `pinned_on_main_awaiting_report`, not `admissible_on_ancestor`.
 5. Direct tests are collected by CI. `ci_discovery` stays blocked.
    Pull request #425 merged discovery. That selection does not open the gate.
 
-There are ten blocking gates. `winding_hodge` is split. `winding` is the
-module `neurotopology_sim/experimental/topology/winding.py` observed on
-pull request #413. `hodge` is
-`neurotopology_sim/experimental/topology/hodge_2d.py` observed on open
-pull request #423 (`1785a3a14e1cdf3c2f27924d64b88b9354cf427f`). The pin
-stays null, so the gate stays `dependency_not_merged_on_main`. Open pull
-requests #396 and #385 also ship Hodge code; the contract cites the
-production module on #423. `phase_dispersion_module` has no path and no
-symbols (`contract_declared_unobserved`). No open pull request fetched
-for this audit ships a `phase_dispersion` module. A path under
-`tools/phase_uncertainty/` is `substitute_module_rejected`. Pull request
-#403 is not that module.
+One gate's report never satisfies another gate. `run_state` stays
+`blocked`, `opened` stays false, and `sweep_reachable` stays false while
+any blocking gate is short of `admissible_on_ancestor`.
+
+There are ten blocking gates. `winding_hodge` is split. `winding` is
+pinned to merge commit `9abf3abeebd1c210d59df44b4d208678d203404c` of
+pull request #413 (`neurotopology_sim/experimental/topology/winding.py`
+on main). The pin does not open the gate: there is no main-tracked
+promotion report, so the status is `pinned_on_main_awaiting_report`.
+`hodge` is `neurotopology_sim/experimental/topology/hodge_2d.py` observed
+on open pull request #423. The order cited `ea7a3b99`; the live tip
+re-parsed for this audit is `eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`.
+The pin stays null, so the gate stays `dependency_not_merged_on_main`.
+Open pull requests #396 and #385 also ship Hodge code; the contract cites
+the production module on #423. `phase_dispersion_module` has no path and
+no symbols (`contract_declared_unobserved`) and stays unpinned. No open
+pull request fetched for this audit ships a `phase_dispersion` module.
+A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
+Pull request #403 is not that module. `surrogate_null` stays unpinned.
+Pull request #417 is not merged. Pull request #430
+(`e5e1136631d500dddab7a5b31d6916962b5da5e3`) is stacked on #417 and is
+not on main. A hosted-green adversarial suite on the exact merged #417
+candidate is required before a pin. #430 green alone does not count.
 `contract_declared_unobserved` rows stay `module_missing_on_main` and
 cannot become admissible. `phase_score_limitations_recorded` is a
 separate limitations row and still requires `limitations_recorded: true`
@@ -399,18 +415,18 @@ when the promotion report is not a blob on main.
 Abort order is the blocking-id order. The first blocking gate that is not
 `admissible_on_ancestor` is `abort_gate`.
 
-| Gate | Source | Module | Pin |
-| --- | --- | --- | --- |
-| `four_sphere_forward_model` | candidate_head_observed, #418 `1630d62668422ac14a5eb69c22392540c25ec13d` | `physics/eeg_forward/four_sphere.py` | null |
-| `planar_geometry` | candidate_head_observed, #416 `87d331b563539fb0de0b8966a0af49a84f247ae7` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null |
-| `winding` | candidate_head_observed, #413 `8240892587cc70a6d4456bb2d34dbd110c7d9113` | `neurotopology_sim/experimental/topology/winding.py` | null |
-| `hodge` | candidate_head_observed, #423 `1785a3a14e1cdf3c2f27924d64b88b9354cf427f` | `neurotopology_sim/experimental/topology/hodge_2d.py` | null |
-| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `cff2641a9613ca00f9bad2ab5154118a2cdeaa80` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null |
-| `phase_dispersion_module` | contract_declared_unobserved | none | null |
-| `phase_score_limitations_recorded` | limitations_record | none | null |
-| `surrogate_null` | candidate_head_observed, #417 `c39f715c84e928c0204b8c58ef9e40bc1f0ab684` | `tools/surrogate_nulls/nulls.py` | null |
-| `roc_metrics` | candidate_head_observed, #426 `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | null |
-| `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked |
+| Gate | Source | Module | Pin | Status while the plan is closed |
+| --- | --- | --- | --- | --- |
+| `four_sphere_forward_model` | merged #418, symbols checked on main | `physics/eeg_forward/four_sphere.py` | `02520d44d662d394a2ff0822c0d3170a2d34213a` | `pinned_on_main_awaiting_report` |
+| `planar_geometry` | candidate_head_observed, #416 `757668e9b739d7423fa1493aec550072aa105829` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null | `dependency_not_merged_on_main` |
+| `winding` | merged #413, symbols checked on main | `neurotopology_sim/experimental/topology/winding.py` | `9abf3abeebd1c210d59df44b4d208678d203404c` | `pinned_on_main_awaiting_report` |
+| `hodge` | candidate_head_observed, #423 `eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9` | `neurotopology_sim/experimental/topology/hodge_2d.py` | null | `dependency_not_merged_on_main` |
+| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `5a8e6485be08f68757c46b7e7beda70bf9a0d4b6` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
+| `phase_dispersion_module` | contract_declared_unobserved | none | null | `dependency_not_merged_on_main` |
+| `phase_score_limitations_recorded` | limitations_record | none | null | `dependency_not_merged_on_main` |
+| `surrogate_null` | candidate_head_observed, #417 `c39f715c84e928c0204b8c58ef9e40bc1f0ab684` | `tools/surrogate_nulls/nulls.py` | null | `dependency_not_merged_on_main` |
+| `roc_metrics` | candidate_head_observed, #426 `8c422e9c295510c1e71b373181f9eb1c44871a25` (stub; symbols not verified on that head) | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | null | `dependency_not_merged_on_main` |
+| `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked | `ci_discovery_blocked` |
 
 Public top-level symbols, in blob order:
 
@@ -422,7 +438,7 @@ Public top-level symbols, in blob order:
 - `surrogate_null`: `AUTO_SPECTRUM_TOL`, `CROSS_SPECTRUM_STRICT_TOL`, `MARGINAL_EXACT_TOL`, `NULL_IDS`, `EXPLORATORY_NULL_IDS`, `RANK_STATUS`, `CONTRACTS`, `SurrogateReport`, `common_phase_prichard_theiler`, `independent_phase_univariate_ft`, `draw_from_csd`, `cholesky_gaussian_cross_spectral`, `cholesky_gaussian_csd`, `zero_lag_real_part_gaussian`, `mv_iaaft_rank_adjusted`, `GENERATORS`
 - `roc_metrics`: `PROJECT_STATUS`, `HIGHER_SCORE_IS_POSITIVE`, `HASH_NOTE`, `BenchmarkError`, `ConfusionCounts`, `fingerprint_sample_ids`, `cluster_any_event_rate`, `confusion_at_threshold`, `operating_point`, `compute_roc`, `select_threshold_on_calibration`, `assert_no_sample_overlap`, `evaluate_held_out`, `REQUIRED_PREREQUISITES`, `prerequisite_gate_report`, `SyntheticRunnerConfig`, `run_synthetic_operating_characteristics`, `json_safe`
 
-`cluster_any_event_rate` is the same name cited by the unit-aggregation note at `synthetic_forward_roc.py:194`.
+`cluster_any_event_rate` is the same name cited by the unit-aggregation note at `synthetic_forward_roc.py:194` on the earlier complete head `55115149c7443ca8b325dc4dbf65d6900c9fdd79`. The current #426 tip is a stub and is not a pin. The required symbol list stays non-empty.
 
 Nonblocking:
 

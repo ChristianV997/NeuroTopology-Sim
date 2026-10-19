@@ -16,13 +16,15 @@ default location and every gate stays missing. Untracked files and
 merged Round 6 discovery, which can select this suite. Discovery does
 not open the gate. ``dmd_crouzeix`` is nonblocking.
 
-A pin may name only a commit that is already an ancestor of local main.
-None of the dependency pull requests are merged, so every pin is null.
-An open pull-request head is not a pin. A null pin blocks that gate with
-``dependency_not_merged_on_main``. A matching text pin does not open a
-gate: the module blob, its API symbols, a main-tracked promotion report,
-and CI discovery of these tests all have to hold, and this module still
-refuses the simulation callback.
+A pin may name only a commit that is already an ancestor of local main,
+and only the exact merge commit registered for that gate. Open
+pull-request heads are not pins. A null pin blocks that gate with
+``dependency_not_merged_on_main``. A registered merge pin whose module
+and symbols are on main, but whose promotion report is not, stays
+``pinned_on_main_awaiting_report``. That status does not open the gate.
+The module blob, its API symbols, a main-tracked promotion report for
+that same gate, and CI discovery of these tests all have to hold, and
+this module still refuses the simulation callback.
 """
 
 from __future__ import annotations
@@ -150,16 +152,22 @@ def _contract_row(
     contract_source: str,
     candidate_pr: Optional[int] = None,
     candidate_head: Optional[str] = None,
+    pinned_commit: Optional[str] = None,
+    merged_pr: Optional[int] = None,
+    symbols_verified_on_candidate_head: Optional[bool] = None,
+    candidate_note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One gate contract.
 
-    Gate evaluation reads ``pinned_commit``, ``required_module_path``,
-    ``required_api_symbols``, and ``contract_source``. It does not read
-    ``informational_candidate``. Heads stored there are observations, not pins.
+    Gate evaluation reads ``pinned_commit``, ``merged_pr``,
+    ``required_module_path``, ``required_api_symbols``, and
+    ``contract_source``. It does not read ``informational_candidate``.
+    Heads stored there are observations, not pins.
     """
 
     return {
-        "pinned_commit": None,
+        "pinned_commit": pinned_commit,
+        "merged_pr": merged_pr,
         "required_module_path": path,
         "required_api_symbols": tuple(symbols),
         "contract_source": contract_source,
@@ -167,12 +175,19 @@ def _contract_row(
             "candidate_pr": candidate_pr,
             "candidate_head_observed": candidate_head,
             "read_by_gate_evaluation": False,
+            "symbols_verified_on_candidate_head": symbols_verified_on_candidate_head,
+            "candidate_note": candidate_note,
         },
     }
 
 
-# Pins stay null. The 40-character values below are informational candidate
-# SHAs observed on unmerged pull-request heads. They are not pins.
+# Registry of merge commits that are allowed to become pins. A row pins a
+# gate only when ``(merged_pr, pinned_commit)`` equals this pair. Every
+# other 40-character value below is an informational candidate head.
+MERGED_PIN_PAIRS: Dict[str, Tuple[int, str]] = {
+    "four_sphere_forward_model": (418, "02520d44d662d394a2ff0822c0d3170a2d34213a"),
+    "winding": (413, "9abf3abeebd1c210d59df44b4d208678d203404c"),
+}
 GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
     "four_sphere_forward_model": _contract_row(
         "physics/eeg_forward/four_sphere.py",
@@ -199,7 +214,14 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=418,
-        candidate_head="1630d62668422ac14a5eb69c22392540c25ec13d",
+        candidate_head="02520d44d662d394a2ff0822c0d3170a2d34213a",
+        pinned_commit="02520d44d662d394a2ff0822c0d3170a2d34213a",
+        merged_pr=418,
+        symbols_verified_on_candidate_head=True,
+        candidate_note=(
+            "Merge commit of pull request #418 on main. "
+            "Pre-merge head was 1630d62668422ac14a5eb69c22392540c25ec13d."
+        ),
     ),
     "planar_geometry": _contract_row(
         "neurotopology_sim/experimental/geometry/planar_triangulation.py",
@@ -225,7 +247,9 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=416,
-        candidate_head="87d331b563539fb0de0b8966a0af49a84f247ae7",
+        candidate_head="757668e9b739d7423fa1493aec550072aa105829",
+        symbols_verified_on_candidate_head=True,
+        candidate_note="Open pull request #416. Not a pin.",
     ),
     "winding": _contract_row(
         "neurotopology_sim/experimental/topology/winding.py",
@@ -248,7 +272,14 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=413,
-        candidate_head="8240892587cc70a6d4456bb2d34dbd110c7d9113",
+        candidate_head="9abf3abeebd1c210d59df44b4d208678d203404c",
+        pinned_commit="9abf3abeebd1c210d59df44b4d208678d203404c",
+        merged_pr=413,
+        symbols_verified_on_candidate_head=True,
+        candidate_note=(
+            "Merge commit of pull request #413 on main. "
+            "Pre-merge head was 8240892587cc70a6d4456bb2d34dbd110c7d9113."
+        ),
     ),
     "hodge": _contract_row(
         "neurotopology_sim/experimental/topology/hodge_2d.py",
@@ -273,7 +304,12 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=423,
-        candidate_head="1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
+        candidate_head="eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
+        symbols_verified_on_candidate_head=True,
+        candidate_note=(
+            "Open pull request #423. The cited prefix ea7a3b99 moved; "
+            "live tip eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9 was re-parsed. Not a pin."
+        ),
     ),
     "csd_full_matrix_pinned_mne": _contract_row(
         "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
@@ -294,7 +330,9 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=414,
-        candidate_head="cff2641a9613ca00f9bad2ab5154118a2cdeaa80",
+        candidate_head="5a8e6485be08f68757c46b7e7beda70bf9a0d4b6",
+        symbols_verified_on_candidate_head=True,
+        candidate_note="Open pull request #414. Not a pin.",
     ),
     "phase_dispersion_module": _contract_row(
         None,
@@ -329,6 +367,13 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=417,
         candidate_head="c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
+        symbols_verified_on_candidate_head=True,
+        candidate_note=(
+            "Pull request #417 is not merged. Pull request #430 at "
+            "e5e1136631d500dddab7a5b31d6916962b5da5e3 is stacked on #417 and is not on main. "
+            "A hosted-green adversarial suite on the exact merged #417 candidate is required "
+            "before a pin. #430 green alone does not count."
+        ),
     ),
     "roc_metrics": _contract_row(
         "neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py",
@@ -354,7 +399,13 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=426,
-        candidate_head="55115149c7443ca8b325dc4dbf65d6900c9fdd79",
+        candidate_head="8c422e9c295510c1e71b373181f9eb1c44871a25",
+        symbols_verified_on_candidate_head=False,
+        candidate_note=(
+            "Head 8c422e9c295510c1e71b373181f9eb1c44871a25 is a stub with no public names. "
+            "Required symbols stay the 18 names parsed from "
+            "55115149c7443ca8b325dc4dbf65d6900c9fdd79. An empty symbol tuple is not a pin."
+        ),
     ),
     "ci_discovery": _contract_row(
         "tests/simulation_runtime/test_grid_plan.py",
@@ -2058,7 +2109,7 @@ def _load_tracked_rows(main_sha: str) -> List[Dict[str, Any]]:
 
 
 def _gate_contract_for_hash() -> List[Dict[str, Any]]:
-    """Pin, path, and symbols only. Informational candidates are not hashed."""
+    """Pin, merged PR, path, and symbols only. Informational candidates are not hashed."""
 
     rows: List[Dict[str, Any]] = []
     for gate_id in tuple(BLOCKING_GATE_IDS) + tuple(NONBLOCKING_GATE_IDS):
@@ -2067,6 +2118,7 @@ def _gate_contract_for_hash() -> List[Dict[str, Any]]:
             {
                 "gate_id": gate_id,
                 "pinned_commit": row["pinned_commit"],
+                "merged_pr": row.get("merged_pr"),
                 "contract_source": row["contract_source"],
                 "required_module_path": row["required_module_path"],
                 "required_api_symbols": list(row["required_api_symbols"]),
@@ -2085,6 +2137,8 @@ def _informational_candidates() -> Dict[str, Dict[str, Any]]:
             "candidate_pr": info.get("candidate_pr"),
             "candidate_head_observed": info.get("candidate_head_observed"),
             "read_by_gate_evaluation": False,
+            "symbols_verified_on_candidate_head": info.get("symbols_verified_on_candidate_head"),
+            "candidate_note": info.get("candidate_note"),
         }
     return copied
 
@@ -2123,23 +2177,63 @@ def _symbols_present(main_sha: str, path: str, symbols: Sequence[str]) -> bool:
     return all(symbol in names for symbol in symbols)
 
 
+def _duplicate_module_claim(gate_id: str) -> bool:
+    """True when two gates cite the same module path. One blob cannot open both."""
+
+    path = GATE_CONTRACT[gate_id].get("required_module_path")
+    if not isinstance(path, str) or not path.strip():
+        return False
+    normalized = path.replace("\\", "/")
+    owners = 0
+    for row in GATE_CONTRACT.values():
+        other = row.get("required_module_path")
+        if isinstance(other, str) and other.replace("\\", "/") == normalized:
+            owners += 1
+    return owners > 1
+
+
 def _contract_reasons(gate_id: str, main_sha: str) -> List[str]:
-    """Failing pin, module, and symbol checks. Does not read candidate refs."""
+    """Failing pin, module, and symbol checks. Does not read candidate refs.
+
+    A registered merge pin is not enough. The module path and symbols on
+    that main tree are separate checks, and a promotion report is checked
+    later. One gate's path never satisfies another gate.
+    """
 
     row = GATE_CONTRACT[gate_id]
-    reasons: List[str] = []
-    pinned = row["pinned_commit"]
-    if pinned is None:
-        reasons.append("dependency_not_merged_on_main")
-    elif not _is_ancestor_of_main(str(pinned), main_sha):
-        reasons.append("pin_not_ancestor_of_main")
+    pinned = row.get("pinned_commit")
+    merged_pr = row.get("merged_pr")
     path = row["required_module_path"]
     normalized_path = path.replace("\\", "/") if isinstance(path, str) else ""
-    if gate_id == PHASE_DISPERSION_MODULE_GATE_ID and PHASE_SUBSTITUTE_PREFIX in normalized_path:
+    reasons: List[str] = []
+    non_ancestor = pinned is not None and not _is_ancestor_of_main(str(pinned), main_sha)
+    if non_ancestor:
+        reasons.append("pin_not_ancestor_of_main")
+    substitute = (
+        gate_id == PHASE_DISPERSION_MODULE_GATE_ID
+        and PHASE_SUBSTITUTE_PREFIX in normalized_path
+    )
+    if substitute:
         reasons.append("substitute_module_rejected")
-    elif row.get("contract_source") == CONTRACT_SOURCE_UNOBSERVED:
-        reasons.append("module_missing_on_main")
-    elif isinstance(path, str):
+    registered = MERGED_PIN_PAIRS.get(gate_id)
+    null_pin = pinned is None and merged_pr is None and registered is None
+    pair_matches = registered is not None and registered == (merged_pr, pinned)
+    if not non_ancestor:
+        if null_pin:
+            reasons.append("dependency_not_merged_on_main")
+        elif not pair_matches:
+            reasons.append("merged_pr_mismatch")
+    if _duplicate_module_claim(gate_id):
+        reasons.append("duplicate_module_claim")
+    if substitute:
+        return reasons
+    if row.get("contract_source") == CONTRACT_SOURCE_UNOBSERVED:
+        if non_ancestor or (pinned is None and merged_pr is None):
+            reasons.append("module_missing_on_main")
+        else:
+            reasons = ["module_missing_on_main", *[item for item in reasons if item != "module_missing_on_main"]]
+        return reasons
+    if isinstance(path, str) and not non_ancestor:
         if not _path_tracked(main_sha, path):
             reasons.append("module_missing_on_main")
         elif not _symbols_present(main_sha, path, row["required_api_symbols"]):
@@ -2165,6 +2259,7 @@ def _contract_blocker(
         "gate_id": gate_id,
         "message": f"gate {gate_id} is {status}",
         "pinned_commit": row.get("pinned_commit"),
+        "merged_pr": row.get("merged_pr"),
         "required_module_path": row.get("required_module_path"),
         "required_api_symbols": list(symbols),
         "contract_source": row.get("contract_source"),
@@ -2210,6 +2305,7 @@ def _resolve_one(
         "integration_is_evidence": False,
         "candidate_is_evidence": False,
         "pinned_commit": GATE_CONTRACT[gate_id]["pinned_commit"],
+        "merged_pr": GATE_CONTRACT[gate_id].get("merged_pr"),
         "required_module_path": GATE_CONTRACT[gate_id]["required_module_path"],
         "required_api_symbols": list(GATE_CONTRACT[gate_id]["required_api_symbols"]),
         "verified_at_commit": None,
@@ -2244,6 +2340,12 @@ def _resolve_one(
             "resolved_from": "evidence_promotion_gate_report",
         }
     if len(matched) == 0:
+        if GATE_CONTRACT[gate_id]["pinned_commit"] is not None:
+            return {
+                **base,
+                "status": "pinned_on_main_awaiting_report",
+                "reason_codes": ["pinned_on_main_awaiting_report"],
+            }
         return {**base, "status": "missing"}
     row = matched[0]
     if row.get("_source") != "git_blob":
@@ -2387,6 +2489,9 @@ def _resolve_gates_from_rows(
             "module_missing_on_main": "module_missing_on_main",
             "symbols_missing_on_main": "symbols_missing_on_main",
             "substitute_module_rejected": "substitute_module_rejected",
+            "pinned_on_main_awaiting_report": "pinned_on_main_awaiting_report",
+            "merged_pr_mismatch": "merged_pr_mismatch",
+            "duplicate_module_claim": "duplicate_module_claim",
         }
         reason_codes = list(item.get("reason_codes") or [status])
         if git_failure is not None:
@@ -2938,6 +3043,7 @@ __all__ = [
     "CONTRACT_SOURCE_OBSERVED",
     "CONTRACT_SOURCE_UNOBSERVED",
     "GATE_CONTRACT",
+    "MERGED_PIN_PAIRS",
     "GRID_EXECUTION",
     "HODGE_GATE_ID",
     "POWER_CLAIM",
