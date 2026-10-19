@@ -608,17 +608,24 @@ class FourSphereIndependentOracleTests(unittest.TestCase):
             radius,
         )
         self.assertLess(measured_error, 2.0e-9)
-        self.assertGreaterEqual(high_degree.diagnostics["tail_relative"], measured_error)
+        candidate_scale = float(np.max(np.abs(high_degree.potentials_v)))
+        self.assertGreater(candidate_scale, 0.0)
+        measured_tail_relative = float(
+            np.max(np.abs(high_degree.potentials_v - expected))
+        ) / candidate_scale
+        self.assertGreaterEqual(
+            high_degree.diagnostics["tail_relative"], measured_tail_relative
+        )
         self.assertEqual(high_degree.diagnostics["tail_certified"], 0.0)
         self.assertEqual(high_degree.diagnostics["tail_validated_range"], 1.0)
 
     def test_p10_nodal_term_is_tiny_but_omitted_tail_is_not(self) -> None:
         """A nodal last term is not evidence that the infinite tail is small.
 
-        The candidate exposes a conditional geometric tail *estimate*, not a
-        certified bound. The exception assertion checks that its public refusal
-        labels that diagnostic as an estimate; the independent closed form below
-        quantifies the actual omitted tail.
+        The candidate exposes a geometric tail estimate and a conditional envelope
+        value gated by finite monotonicity lookahead; neither is certified for the
+        infinite tail. The independent closed form below quantifies the actual
+        omitted tail at this sensor.
         """
         geometry = FourSphereGeometry(
             NAESS_RADII_M, HOMOGENEOUS_CONDUCTIVITIES_S_M
@@ -711,9 +718,43 @@ class FourSphereIndependentOracleTests(unittest.TestCase):
             HOMOGENEOUS_CONDUCTIVITIES_S_M[0],
             radius,
         )
-        self.assertGreaterEqual(result.diagnostics["tail_relative"], actual_error)
+        candidate_scale = float(np.max(np.abs(result.potentials_v)))
+        self.assertGreater(candidate_scale, 0.0)
+        actual_tail_relative = float(np.max(np.abs(result.potentials_v - exact))) / candidate_scale
+        self.assertGreaterEqual(result.diagnostics["tail_relative"], actual_tail_relative)
         self.assertEqual(result.diagnostics["tail_certified"], 0.0)
         self.assertEqual(result.diagnostics["tail_validated_range"], 0.0)
+        # The homogeneous transfer T_l=(2l+1)/l is decreasing, so this sample's
+        # finite lookahead gate is expected to pass. Compare only under that gate;
+        # the API must still not label the infinite remainder certified.
+        self.assertEqual(result.diagnostics["tail_monotone_lookahead_ok"], 1.0)
+        conditional_tail_relative = abs(float(exact[0] - finite_sum[0])) / candidate_scale
+        self.assertGreaterEqual(
+            result.diagnostics["tail_bound_conditional_relative"],
+            conditional_tail_relative,
+        )
+
+    def test_tail_gate_is_unverified_and_uncertified_at_max_degree(self) -> None:
+        """The empirical range flag cannot replace a missing infinite-tail gate."""
+        geometry = FourSphereGeometry(
+            NAESS_RADII_M, NAESS_CONDUCTIVITIES_S_M[40]
+        )
+        source = np.asarray((0.0, 0.0, 0.030))
+        radial = np.asarray((0.0, 0.0, DIPOLE_MOMENT_A_M))
+        sensor = np.asarray(((0.0, 0.0, NAESS_RADII_M[3]),))
+        # This permissive tolerance requests the finite L=512 sum only; it does
+        # not certify its remainder or validate the monotone condition beyond L.
+        result = forward_potentials(
+            geometry,
+            source,
+            radial,
+            sensor,
+            max_degree=512,
+            tail_tol=1.0e100,
+        )
+        self.assertEqual(result.diagnostics["tail_validated_range"], 1.0)
+        self.assertEqual(result.diagnostics["tail_monotone_lookahead_ok"], 0.0)
+        self.assertEqual(result.diagnostics["tail_certified"], 0.0)
 
 
 if __name__ == "__main__":
