@@ -156,6 +156,7 @@ jobs:
         env:
           DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
           DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           for sha in "$DIFF_BASE_SHA" "$DIFF_HEAD_SHA"; do
@@ -164,9 +165,15 @@ jobs:
               exit 2
             fi
           done
-          changed_paths="$(git diff --name-only "$DIFF_BASE_SHA" "$DIFF_HEAD_SHA")"
+          changed_paths="$(git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA")"
           if grep -Fxq '.dockerignore' <<< "$changed_paths" || \
              grep -Fxq 'tests/docker_context/test_docker_engine_build_context.py' <<< "$changed_paths"; then
+            checkout_sha="$(git rev-parse HEAD)"
+            if [[ "$checkout_sha" != "$TESTED_CHECKOUT_SHA" ]] || \
+               ! git merge-base --is-ancestor "$DIFF_HEAD_SHA" "$checkout_sha"; then
+              echo "::error::Docker candidate head is not present in the tested checkout"
+              exit 1
+            fi
             if [[ ! -f tests/docker_context/test_docker_engine_build_context.py ]]; then
               echo "::error::Docker-context candidate changed, but its registered engine test is absent"
               exit 1
@@ -195,12 +202,41 @@ jobs:
 
       - name: Run Docker-context verifier in an isolated process
         if: steps.candidate_scope.outputs.docker_context_changed == 'true'
-        run: >-
-          python scripts/run_tests_isolated.py
-          --batch-size 1
-          --timeout-s 120
-          --report outputs/docker_context_engine_test_report.json
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          python scripts/run_tests_isolated.py \
+            --batch-size 1 \
+            --timeout-s 120 \
+            --report outputs/docker_context_engine_test_report.json \
+            --pytest-arg=--junitxml=outputs/docker_context_engine_test_report.junit.xml \
           tests/docker_context/test_docker_engine_build_context.py
+          python - <<'PY'
+          import runpy
+          from pathlib import Path
+
+          expected_file = "tests/docker_context/test_docker_engine_build_context.py"
+          helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
+          report = helper["_strict_json_loads"](
+              Path("outputs/docker_context_engine_test_report.json").read_text(encoding="utf-8")
+          )
+          valid, reason, _ = helper["_isolated_runner_report_is_valid"](report, expected_file)
+          if not valid:
+              raise SystemExit(f"invalid isolated-runner telemetry: {reason}")
+          counts, _ = helper["junit_details"](
+              Path("outputs/docker_context_engine_test_report.junit.xml")
+          )
+          cases, skipped, failed, errors = counts
+          if cases < 1 or skipped or failed or errors:
+              raise SystemExit(
+                  f"JUnit must contain passing tests only: cases={cases} "
+                  f"skipped={skipped} failed={failed} errors={errors}"
+              )
+          print(
+              f"Docker Engine candidate suite PASS: {cases} cases, "
+              "0 skipped, 0 failures, 0 errors, 0 timeouts"
+          )
+          PY
 
       - name: Capture Docker-context diagnostics
         if: failure()
@@ -226,6 +262,7 @@ jobs:
           name: docker-context-engine-test-report
           path: |
             outputs/docker_context_engine_test_report.json
+            outputs/docker_context_engine_test_report.junit.xml
             docker-context-engine-failure.txt
           if-no-files-found: warn
 

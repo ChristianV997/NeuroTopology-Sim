@@ -1986,6 +1986,35 @@ def run(
             )
             print(json.dumps({"status": report["status"], "selection_error": report["selection_error"]}, sort_keys=True))
             return 1
+        has_candidate_paths = bool(
+            selected or relevant_paths or report["unmapped_candidate_paths"]
+        )
+        if has_candidate_paths:
+            # The PR base/head pair chooses paths, but those paths must not be
+            # used to test a checkout that does not contain the candidate head.
+            # PR merge refs and pinned canary merges retain this ancestry.
+            ancestry = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", diff_head_sha, actual_sha],
+                cwd=root, check=False, capture_output=True, text=True, timeout=10,
+            )
+            report["candidate_head_in_tested_checkout"] = ancestry.returncode == 0
+            if ancestry.returncode != 0:
+                report.update({
+                    "status": "BLOCKED",
+                    "selection_error": (
+                        "candidate diff head is not an ancestor of the tested checkout"
+                    ),
+                })
+                _write_contained_text(
+                    root, report_path,
+                    json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+                    "report path", report_file_identity,
+                )
+                print(json.dumps({
+                    "status": report["status"],
+                    "selection_error": report["selection_error"],
+                }, sort_keys=True))
+                return 1
 
     if report["unmapped_candidate_paths"] and not selected and not always_components:
         report.update({
