@@ -1,24 +1,40 @@
-# Reproducible container for Awareness Studio: the independently
-# installable FastAPI + RAG chatbot app. Separate from the root sim
-# engine's Dockerfile -- these are two genuinely different Python
-# environments (see repo root CLAUDE.md), each with its own dependency
-# footprint, so each gets its own lean image rather than one shared,
-# bloated one.
+# Isolated test image for Awareness Studio. Keep the repository-relative
+# layout required by integration tests without copying Git history or root datasets.
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /repo
 
-COPY pyproject.toml .
-COPY src/ src/
-COPY tests/ tests/
-COPY tools/ tools/
-COPY inputs/ inputs/
+COPY apps/awareness_studio/pyproject.toml apps/awareness_studio/pyproject.toml
+COPY apps/awareness_studio/src/ apps/awareness_studio/src/
+COPY apps/awareness_studio/tests/ apps/awareness_studio/tests/
+COPY apps/awareness_studio/tools/ apps/awareness_studio/tools/
+COPY apps/awareness_studio/inputs/ apps/awareness_studio/inputs/
+COPY AGENTS.md AGENTS.md
+
+# Root packages imported by the app's offline integration tests.
+COPY tools/__init__.py tools/__init__.py
+COPY tools/literature_evidence/ tools/literature_evidence/
+COPY tools/simulation_artifacts/ tools/simulation_artifacts/
+COPY tools/simulation_execution/ tools/simulation_execution/
+COPY tools/research_cycle_preflight/ tools/research_cycle_preflight/
+COPY tools/research_cycle_release/ tools/research_cycle_release/
+COPY tools/research_plan_quality/ tools/research_plan_quality/
+COPY tools/research_claim_gate/ tools/research_claim_gate/
+COPY tools/data_access/policy_enforcement/ tools/data_access/policy_enforcement/
+COPY scripts/build_awareness_evidence_graph.py scripts/build_awareness_evidence_graph.py
+# One synthetic root-level fixture is read by registered-execution tests.
+COPY tests/research_cycle_preflight/fixtures/complete_plan.json tests/research_cycle_preflight/fixtures/complete_plan.json
+
+# Root discovery requires repository markers plus actual source trees. AGENTS.md
+# is copied from the checkout; the empty .git marker is only a test-image aid,
+# not Git metadata. The source COPY steps above keep missing inputs a build error.
+RUN mkdir -p /repo/.git
+
+WORKDIR /repo/apps/awareness_studio
+ENV PYTHONPATH=/repo
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -e ".[dev,web]"
 
-# Default: run this sub-project's own test suite (mirrors `make test` /
-# CLAUDE.md's `pytest -q`, offline, no LLM). Override with
-# `docker run <image> <cmd>` to instead start the web app
-# (`uvicorn awareness_studio.web.app:app --host 0.0.0.0 --port 8000`).
+# Run the complete app test suite offline, including repository integrations.
 CMD ["pytest", "-q"]
