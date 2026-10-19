@@ -98,6 +98,23 @@ def oracle_naive_concatenated_pairs(
     return pairs
 
 
+def oracle_crouzeix_numerical_radius_2x2(A: np.ndarray, n_angles: int = 720) -> float:
+    """Independent mathematical oracle for numerical radius w(A) of a 2x2 matrix.
+
+    Uses Johnson's characterization: w(A) = max_{theta in [0, 2*pi)} lambda_max(Re(e^{-i*theta} * A)).
+    Does not import or rely on any candidate helper.
+    """
+    angles = np.linspace(0.0, 2.0 * np.pi, n_angles, endpoint=False)
+    max_eval = 0.0
+    for theta in angles:
+        rot_A = np.exp(-1j * theta) * A
+        H_theta = 0.5 * (rot_A + rot_A.conj().T)
+        evals = np.linalg.eigvalsh(H_theta)
+        if evals[-1] > max_eval:
+            max_eval = float(evals[-1])
+    return max_eval
+
+
 class TestIndependentMathematicalOracles:
     """Tests evaluating exact mathematical properties independent of candidate production code."""
 
@@ -235,6 +252,45 @@ class TestIndependentMathematicalOracles:
 
         # Proof: small residual alone cannot determine whether L_principal or L_alias was original generator
         assert not np.allclose(L_principal, L_alias)
+
+    def test_crouzeix_numerical_radius_analytical_oracles(self) -> None:
+        """Independently verify Crouzeix ratio ||A||_2 / w(A) on canonical small matrices.
+
+        - For Jordan block J_2 = [[0, 1], [0, 0]], ||J_2||_2 = 1.0, w(J_2) = 0.5.
+          The ratio ||J_2||_2 / w(J_2) is exactly 2.0, proving C >= 2 is necessary.
+        - For normal diagonal D = diag(2, -3), ||D||_2 = 3.0, w(D) = 3.0 (ratio = 1.0).
+        - For upper triangular A = [[1, 2], [0, 1]], ||A||_2 = 1 + sqrt(2) ≈ 2.4142, w(A) = 2.0.
+          The ratio is (1 + sqrt(2)) / 2 ≈ 1.2071 <= 2.0.
+        - The peer-reviewed Crouzeix-Palencia bound C = 1 + sqrt(2) ≈ 2.41421356 rigorously
+          bounds all these cases; the conjectured C = 2 (Lorist & Schwenninger 2026,
+          arXiv:2608.03841v2) is an unrefereed preprint tightening.
+        """
+        # 1. Jordan block J_2
+        J2 = np.array([[0.0, 1.0], [0.0, 0.0]], dtype=np.complex128)
+        norm_J2 = float(np.linalg.norm(J2, ord=2))
+        w_J2 = oracle_crouzeix_numerical_radius_2x2(J2)
+        assert norm_J2 == pytest.approx(1.0, abs=1e-12)
+        assert w_J2 == pytest.approx(0.5, abs=1e-3)
+        ratio_J2 = norm_J2 / w_J2
+        assert ratio_J2 == pytest.approx(2.0, abs=1e-2)
+
+        # 2. Normal diagonal matrix D
+        D = np.array([[2.0, 0.0], [0.0, -3.0]], dtype=np.complex128)
+        norm_D = float(np.linalg.norm(D, ord=2))
+        w_D = oracle_crouzeix_numerical_radius_2x2(D)
+        assert norm_D == pytest.approx(3.0, abs=1e-12)
+        assert w_D == pytest.approx(3.0, abs=1e-3)
+        assert norm_D / w_D == pytest.approx(1.0, abs=1e-2)
+
+        # 3. Upper-triangular matrix A
+        A = np.array([[1.0, 2.0], [0.0, 1.0]], dtype=np.complex128)
+        norm_A = float(np.linalg.norm(A, ord=2))
+        w_A = oracle_crouzeix_numerical_radius_2x2(A)
+        expected_norm_A = 1.0 + math.sqrt(2.0)
+        assert norm_A == pytest.approx(expected_norm_A, rel=1e-6)
+        assert w_A == pytest.approx(2.0, abs=1e-2)
+        assert norm_A / w_A < 2.0
+
 
 
 # ==============================================================================
@@ -399,6 +455,7 @@ class TestCandidateDMDCrouzeixRegression:
         assert pre_rep.constant_label == CROUZEIX_PREPRINT_C2_LABEL
         assert any("preprint" in ref.lower() for ref in pre_rep.references)
         assert any(CROUZEIX_PREPRINT_C2_ARXIV in ref for ref in pre_rep.references)
+        assert any("Lorist" in ref for ref in pre_rep.references)
         assert pre_rep.not_biological_safety_certificate is True
 
     def test_large_eigenvector_condition_number_not_falsely_reported_as_ep(self) -> None:
@@ -539,3 +596,75 @@ class TestCandidateDMDCrouzeixRegression:
         # Non-finite in Crouzeix report
         with pytest.raises(DMDValidationError, match="non-finite"):
             crouzeix_bound_report(H_bad)
+
+    def test_diagonalizable_repeated_eigenvalues_not_classified_as_ep2(self) -> None:
+        """Verify diagonalizable repeated eigenvalues (A = 3.0 * I) fail closed against false EP2 classification.
+
+        A scalar multiple of identity has discriminant = 0 and repeated eigenvalues,
+        but N = A - center*I == 0, nullity = 2 (geometric multiplicity = 2).
+        It is NOT a defective EP2 operator (operator_entry_ok must be False).
+        """
+        A = np.array([[3.0, 0.0], [0.0, 3.0]], dtype=np.complex128)
+        rep = diagnose_ep2(A)
+        assert bool(rep.theoretical_coalesced) is True
+        assert bool(rep.operator_entry_ok) is False
+        assert rep.geometric_multiplicity == 2
+        assert rep.algebraic_multiplicity == 2
+        assert rep.nilpotent_norm < 1e-12
+        assert any("diagonalizable degeneracy" in n for n in rep.notes)
+        assert any("large eigenvector condition number alone is not evidence of an EP" in n for n in rep.notes)
+
+    def test_sample_rate_hz_consistency_and_metadata(self) -> None:
+        """Verify sampling frequency consistency check and diagnostics reporting."""
+        traj = np.array([[1.0, 2.0, 3.0], [0.1, 0.2, 0.3]], dtype=np.float64)
+
+        # Inconsistent sample_rate_hz vs dt
+        with pytest.raises(DMDValidationError, match="inconsistent with dt"):
+            estimate_exact_dmd(traj, dt=0.004, sample_rate_hz=100.0)
+
+        # Non-finite and non-positive sample_rate_hz
+        for bad_fs in (0.0, -250.0, float("nan"), float("inf")):
+            with pytest.raises(DMDValidationError, match="sample_rate_hz"):
+                estimate_exact_dmd(traj, dt=0.004, sample_rate_hz=bad_fs)
+
+        # Consistent sample_rate_hz
+        res = estimate_exact_dmd(traj, dt=0.004, sample_rate_hz=250.0)
+        assert res.diagnostics.sample_rate_hz == pytest.approx(250.0)
+        assert res.diagnostics.frequency_units == "Hz"
+
+        # Omitted sample_rate_hz defaults to 1/dt
+        res_default = estimate_exact_dmd(traj, dt=0.004)
+        assert res_default.diagnostics.sample_rate_hz == pytest.approx(250.0)
+
+    def test_ep2_hamiltonian_and_alias_report_finite_validation(self) -> None:
+        """Verify parameter validation in ep2_hamiltonian and alias_ambiguity_report."""
+        # Non-finite parameters in ep2_hamiltonian
+        with pytest.raises(DMDValidationError, match="finite"):
+            ep2_hamiltonian(omega=float("nan"), delta=1.0, gamma=0.0, g=1.0)
+        with pytest.raises(DMDValidationError, match="finite"):
+            ep2_hamiltonian(omega=0.0, delta=float("inf"), gamma=0.0, g=1.0)
+
+        # Non-finite or non-positive parameters in alias_ambiguity_report
+        with pytest.raises(DMDValidationError, match="f_hz"):
+            alias_ambiguity_report(f_hz=float("nan"), fs_hz=250.0)
+        with pytest.raises(DMDValidationError, match="fs_hz"):
+            alias_ambiguity_report(f_hz=240.0, fs_hz=-250.0)
+        with pytest.raises(DMDValidationError, match="fs_hz"):
+            alias_ambiguity_report(f_hz=240.0, fs_hz=float("nan"))
+
+    def test_crouzeix_small_matrix_benchmarks(self) -> None:
+        """Verify crouzeix_bound_report numerical-range diagnostic on canonical 2x2 test matrices."""
+        # 1. Canonical Jordan block
+        J2 = np.array([[0.0, 1.0], [0.0, 0.0]], dtype=np.complex128)
+        rep_j2 = crouzeix_bound_report(J2, role="discrete_operator")
+        assert rep_j2.numerical_range_max_abs == pytest.approx(0.5, abs=0.05)
+        assert rep_j2.not_biological_safety_certificate is True
+
+        # 2. Generator role with dissipation sign reporting
+        L_diss = np.array([[-2.0, 0.5], [0.5, -3.0]], dtype=np.complex128)
+        rep_diss = crouzeix_bound_report(L_diss, role="generator")
+        assert rep_diss.hermitian_dissipation_sign == "dissipative_nonpositive_hermitian_part"
+
+        # 3. Invalid role fails closed
+        with pytest.raises(DMDValidationError, match="role"):
+            crouzeix_bound_report(J2, role="invalid_role")
