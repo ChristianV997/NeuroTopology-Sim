@@ -282,6 +282,78 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertEqual(telemetry_bytes, b'{"completed":true}')
         self.assertEqual(junit_bytes, b"<testsuite/>")
 
+    def test_real_isolated_runner_and_pytest_writers_do_not_follow_swapped_outputs(self):
+        helper = _helper()
+        if not helper._supports_pinned_output_transport():
+            self.skipTest("Linux procfs descriptor transport is unavailable")
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            _write(root, pair["implementation"], "# local synthetic candidate fixture\n")
+            runner = ROOT / "scripts/run_tests_isolated.py"
+            _write(root, "scripts/run_tests_isolated.py", runner.read_text(encoding="utf-8"))
+            outside = Path(td) / "outside"
+            outside.mkdir()
+            outside_telemetry = outside / "telemetry.txt"
+            outside_junit = outside / "junit.txt"
+            outside_telemetry.write_text("preserve telemetry\n", encoding="utf-8")
+            outside_junit.write_text("preserve junit\n", encoding="utf-8")
+            _write(
+                root,
+                pair["test"],
+                """import os
+from pathlib import Path
+
+runner_pid = os.getppid()
+status = Path(f"/proc/{runner_pid}/status").read_text(encoding="utf-8")
+helper_pid = int(next(line.split()[1] for line in status.splitlines() if line.startswith("PPid:")))
+fd_dir = Path(f"/proc/{helper_pid}/fd")
+outside = Path(os.environ["ROUND6_OUTPUT_RACE_DIR"])
+found = set()
+for descriptor in fd_dir.iterdir():
+    try:
+        target = Path(os.readlink(descriptor))
+    except OSError:
+        continue
+    if target.name.endswith(".junit.xml"):
+        kind = "junit"
+    elif target.parent.name.startswith("round6-ci-") and target.suffix == ".json":
+        kind = "telemetry"
+    else:
+        continue
+    if kind not in found:
+        target.unlink()
+        target.symlink_to(outside / f"{kind}.txt")
+        found.add(kind)
+assert found == {"telemetry", "junit"}, found
+
+def test_fixture():
+    Path(os.environ["ROUND6_OUTPUT_RACE_MARKER"]).write_text("candidate ran\\n", encoding="utf-8")
+    assert True
+""",
+            )
+            report_path = root / "outputs/report.json"
+            candidate_marker = root / "candidate-ran.txt"
+            with patch.dict(os.environ, {
+                "ROUND6_OUTPUT_RACE_DIR": str(outside),
+                "ROUND6_OUTPUT_RACE_MARKER": str(candidate_marker),
+            }), patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ):
+                exit_code = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            candidate_marker_text = candidate_marker.read_text(encoding="utf-8")
+            telemetry_text = outside_telemetry.read_text(encoding="utf-8")
+            junit_text = outside_junit.read_text(encoding="utf-8")
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["runner_exit_code"], 0)
+        self.assertEqual(candidate_marker_text, "candidate ran\n")
+        self.assertEqual(telemetry_text, "preserve telemetry\n")
+        self.assertEqual(junit_text, "preserve junit\n")
+
     def test_candidate_implementation_and_test_change_runs_the_explicit_pair(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:

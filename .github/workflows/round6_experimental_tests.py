@@ -2235,6 +2235,7 @@ def run(
                     for fd in (stdout_fd, stderr_fd):
                         if fd is not None:
                             os.close(fd)
+                execution["runner_exit_code"] = completed.returncode
                 try:
                     # Candidate code can mutate workspace paths while pytest
                     # runs. Keep lexical paths intact so no-follow opens can
@@ -2248,7 +2249,6 @@ def run(
                     _close_open_fds(pinned_output_fds)
                     block_artifact_read(entry, execution, exc)
                     continue
-                execution["runner_exit_code"] = completed.returncode
                 try:
                     runner_stderr_tail = _read_contained_tail_text(
                         root, stderr_log, "runner stderr path",
