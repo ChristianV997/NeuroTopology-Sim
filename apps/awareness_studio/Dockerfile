@@ -1,5 +1,5 @@
 # Isolated test image for Awareness Studio. Keep the repository-relative
-# layout required by its integration tests without copying VCS metadata or data.
+# layout required by integration tests without copying Git history or root datasets.
 FROM python:3.11-slim
 
 WORKDIR /repo
@@ -9,6 +9,7 @@ COPY apps/awareness_studio/src/ apps/awareness_studio/src/
 COPY apps/awareness_studio/tests/ apps/awareness_studio/tests/
 COPY apps/awareness_studio/tools/ apps/awareness_studio/tools/
 COPY apps/awareness_studio/inputs/ apps/awareness_studio/inputs/
+COPY AGENTS.md AGENTS.md
 
 # Root packages imported by the app's offline integration tests.
 COPY tools/__init__.py tools/__init__.py
@@ -24,9 +25,9 @@ COPY scripts/build_awareness_evidence_graph.py scripts/build_awareness_evidence_
 # One synthetic root-level fixture is read by registered-execution tests.
 COPY tests/research_cycle_preflight/fixtures/complete_plan.json tests/research_cycle_preflight/fixtures/complete_plan.json
 
-# repo_paths.find_repository_root requires a .git marker plus the root tools
-# package. This empty test-image marker is not Git metadata; .git is excluded
-# from the build context and no repository history is copied into the image.
+# Root discovery requires repository markers plus actual source trees. AGENTS.md
+# is copied from the checkout; the empty .git marker is only a test-image aid,
+# not Git metadata. The source COPY steps above keep missing inputs a build error.
 RUN mkdir -p /repo/.git
 
 WORKDIR /repo/apps/awareness_studio
