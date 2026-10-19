@@ -41,19 +41,26 @@ from dual_engine.forward_model_contract import (
     CoordinateUnitMismatchError,
     ForwardModelContractError,
     ForwardModelContractResult,
+    ForwardUncertainty,
     LeadfieldDimensionMismatchError,
     SensorGeometry,
     SourceOutOfBoundsError,
     SourceSpace,
+    UncertaintyStatus,
+    apply_affine_transform,
     apply_average_reference,
+    apply_channel_reference,
     audit_mne_forward_solution,
     build_synthetic_forward_contract,
     compute_3shell_sphere_potential,
+    compute_concentric_spheres_potential,
     compute_homogeneous_sphere_potential,
     compute_leadfield_diagnostics,
     make_standard_1020_synthetic_sensors,
     make_synthetic_source_grid,
+    validate_affine_transform,
     verify_average_reference_invariant,
+    verify_channel_reference_invariant,
 )
 
 
@@ -446,6 +453,394 @@ class TestForwardModelContract(unittest.TestCase):
         self.assertEqual(parsed["n_channels"], 19)
         self.assertIn("diagnostics", parsed)
         self.assertIn("condition_number", parsed["diagnostics"])
+
+    # -------------------------------------------------------------------------
+    # 16. Multi-Shell Layer Sensitivity & Conductor Model Validation
+    # -------------------------------------------------------------------------
+
+    def test_multishell_inner_layer_physical_effect(self) -> None:
+        """Altering skull conductivity must exert a measurable physical effect on potential."""
+        re = (0.0, 0.06, 0.067)
+        rs = (-0.02, 0.01, 0.035)
+        q = (1.0e-9, -0.5e-9, 2.0e-9)
+
+        cond_default = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_3SHELL,
+            radii_m=(0.080, 0.085, 0.090),
+            sigmas_sm=(0.33, 0.0042, 0.33),
+        )
+        cond_high_skull = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_3SHELL,
+            radii_m=(0.080, 0.085, 0.090),
+            sigmas_sm=(0.33, 0.042, 0.33),
+        )
+
+        v_default = compute_3shell_sphere_potential(re, rs, q, cond_default)
+        v_high_skull = compute_3shell_sphere_potential(re, rs, q, cond_high_skull)
+
+        self.assertNotEqual(v_default, v_high_skull)
+        rel_diff = abs(v_high_skull - v_default) / abs(v_default)
+        self.assertGreater(rel_diff, 0.05)
+
+    def test_multishell_brain_radius_physical_effect(self) -> None:
+        """Altering brain radius (skull thickness) must exert a measurable physical effect."""
+        re = (0.0, 0.06, 0.067)
+        rs = (-0.01, 0.01, 0.02)
+        q = (1.0e-9, 0.0, 1.0e-9)
+
+        cond_thin_skull = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_3SHELL,
+            radii_m=(0.082, 0.086, 0.090),
+            sigmas_sm=(0.33, 0.0042, 0.33),
+        )
+        cond_thick_skull = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_3SHELL,
+            radii_m=(0.075, 0.085, 0.090),
+            sigmas_sm=(0.33, 0.0042, 0.33),
+        )
+
+        v_thin = compute_3shell_sphere_potential(re, rs, q, cond_thin_skull)
+        v_thick = compute_3shell_sphere_potential(re, rs, q, cond_thick_skull)
+
+        self.assertNotEqual(v_thin, v_thick)
+        self.assertGreater(abs(v_thin - v_thick), 1e-10)
+
+    def test_multishell_layer_count_enforced(self) -> None:
+        """ConductorModelType layer count mismatch must fail closed."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(
+                model_type=ConductorModelType.SPHERICAL_1SHELL,
+                radii_m=(0.080, 0.085, 0.090),
+                sigmas_sm=(0.33, 0.0042, 0.33),
+            ).validate()
+
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(
+                model_type=ConductorModelType.SPHERICAL_3SHELL,
+                radii_m=(0.090,),
+                sigmas_sm=(0.33,),
+            ).validate()
+
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(
+                model_type=ConductorModelType.ANATOMICAL_BEM,
+                radii_m=(0.080, 0.085, 0.090),
+                sigmas_sm=(0.33, 0.0042, 0.33),
+            ).validate()
+
+    # -------------------------------------------------------------------------
+    # 17. Coordinate Frame Compatibility & Explicit Transformations
+    # -------------------------------------------------------------------------
+
+    def test_coordinate_frame_mismatch_without_transform_rejected(self) -> None:
+        """Mismatched coordinate frames without transform must raise CoordinateFrameMismatchError."""
+        sources_mni = SourceSpace(
+            positions_m=((0.0, 0.02, 0.03),),
+            coordinate_frame=CoordinateFrame.MNI,
+        )
+        with self.assertRaises(CoordinateFrameMismatchError):
+            build_synthetic_forward_contract(
+                sensor_geometry=self.sensors,
+                source_space=sources_mni,
+                conductor_model=self.conductor,
+            )
+
+    def test_coordinate_transform_affine_applied(self) -> None:
+        """Valid 4x4 affine transform successfully aligns MNI sources to HEAD frame."""
+        transform_4x4 = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.005),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        sources_mni = SourceSpace(
+            positions_m=((0.0, 0.02, 0.03), (0.01, -0.01, 0.02)),
+            coordinate_frame=CoordinateFrame.MNI,
+        )
+
+        contract = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors,
+            source_space=sources_mni,
+            conductor_model=self.conductor,
+            coord_transform=transform_4x4,
+        )
+
+        self.assertTrue(contract.is_valid)
+        self.assertEqual(contract.sensor_geometry.coordinate_frame, CoordinateFrame.HEAD)
+        self.assertAlmostEqual(contract.source_space.positions_m[0][2], 0.035, delta=1e-12)
+
+    def test_coordinate_transform_invalid_matrix_rejected(self) -> None:
+        """Malformed or non-affine transformation matrices must fail closed."""
+        sources_mni = SourceSpace(
+            positions_m=((0.0, 0.02, 0.03),),
+            coordinate_frame=CoordinateFrame.MNI,
+        )
+        bad_transform = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.5, 0.0, 0.0, 1.0),
+        )
+        with self.assertRaises(CoordinateFrameMismatchError):
+            build_synthetic_forward_contract(
+                sensor_geometry=self.sensors,
+                source_space=sources_mni,
+                coord_transform=bad_transform,
+            )
+
+    # -------------------------------------------------------------------------
+    # 18. Unipolar Channel Referencing & Referencing Policies
+    # -------------------------------------------------------------------------
+
+    def test_reference_channel_not_in_montage_fails_closed(self) -> None:
+        """Declaring a reference channel not present in sensor montage must raise ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            SensorGeometry(
+                channel_names=("Fp1", "Fp2", "F3", "F4"),
+                positions_m=((0.0, 0.07, 0.05), (0.0, -0.07, 0.05), (-0.05, 0.0, 0.06), (0.05, 0.0, 0.06)),
+                reference_channel="Cz",
+            ).validate()
+
+    def test_reference_channel_applied_and_verified(self) -> None:
+        """Unipolar reference channel zeroes that channel's row in leadfield."""
+        contract = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors,
+            source_space=self.sources_free,
+            apply_avg_ref=False,
+            reference_channel="Cz",
+        )
+
+        cz_idx = self.sensors.channel_names.index("Cz")
+        cz_row = contract.leadfield[cz_idx]
+        for val in cz_row:
+            self.assertAlmostEqual(val, 0.0, delta=1e-14)
+
+        diag = contract.diagnostics
+        self.assertTrue(diag.is_channel_referenced)
+        self.assertEqual(diag.reference_channel, "Cz")
+        self.assertLessEqual(diag.reference_channel_error, 1e-14)
+        self.assertFalse(diag.is_average_referenced)
+
+    def test_reference_channel_simulated_potentials(self) -> None:
+        """Simulating scalp potentials with unipolar reference yields V(ref_ch) == 0."""
+        contract = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors,
+            source_space=self.sources_free,
+            apply_avg_ref=False,
+            reference_channel="Cz",
+        )
+        q = [1.0e-9] * contract.source_space.n_columns
+        sim_v = contract.simulate_scalp_potentials(q)[0]
+
+        cz_idx = self.sensors.channel_names.index("Cz")
+        self.assertAlmostEqual(sim_v[cz_idx], 0.0, delta=1e-18)
+
+    def test_conflicting_referencing_rejected(self) -> None:
+        """Simultaneously requesting average reference and reference channel must fail closed."""
+        with self.assertRaises(ForwardModelContractError):
+            build_synthetic_forward_contract(
+                sensor_geometry=self.sensors,
+                source_space=self.sources_free,
+                apply_avg_ref=True,
+                reference_channel="Cz",
+            )
+
+    # -------------------------------------------------------------------------
+    # 19. Forward Uncertainty Semantics
+    # -------------------------------------------------------------------------
+
+    def test_uncertainty_semantics_unavailable_by_default(self) -> None:
+        """Uncertainty status must be UNAVAILABLE; default zero error is prohibited."""
+        contract = build_synthetic_forward_contract()
+        unc = contract.uncertainty
+
+        self.assertEqual(unc.status, UncertaintyStatus.UNAVAILABLE)
+        self.assertIsNone(unc.relative_field_uncertainty)
+        self.assertIsNone(unc.sensor_position_std_m)
+        self.assertIn("UNAVAILABLE", unc.disclaimer)
+
+    def test_uncertainty_serialized_in_json(self) -> None:
+        """Serialized contract JSON must explicitly disclose UNAVAILABLE uncertainty."""
+        contract = build_synthetic_forward_contract()
+        parsed = json.loads(contract.to_json())
+
+        self.assertIn("uncertainty", parsed)
+        self.assertEqual(parsed["uncertainty"]["status"], "UNAVAILABLE")
+        self.assertIsNone(parsed["uncertainty"]["relative_field_uncertainty"])
+
+    # -------------------------------------------------------------------------
+    # 20. Independent Numerical Oracle & Closed-Form Verification
+    # -------------------------------------------------------------------------
+
+    def test_analytic_center_dipole_independent_oracle(self) -> None:
+        """Center dipole must match exact independent algebraic formula: 3 (q . r_e) / (4 pi sigma R^3)."""
+        r_scalp = 0.090
+        sigma = 0.33
+        re = (0.05, -0.06, math.sqrt(r_scalp**2 - 0.05**2 - 0.06**2))
+        rs_center = (0.0, 0.0, 0.0)
+        q = (1.5e-9, -2.0e-9, 3.0e-9)
+
+        q_dot_re = sum(q[i] * re[i] for i in range(3))
+        v_oracle = 3.0 * q_dot_re / (4.0 * math.pi * sigma * (r_scalp ** 3))
+
+        v_hom = compute_homogeneous_sphere_potential(
+            electrode_pos_m=re,
+            source_pos_m=rs_center,
+            dipole_moment_am=q,
+            sphere_radius_m=r_scalp,
+            conductivity_sm=sigma,
+        )
+        self.assertAlmostEqual(v_hom, v_oracle, delta=1e-15)
+
+        cond_1shell = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_1SHELL,
+            radii_m=(r_scalp,),
+            sigmas_sm=(sigma,),
+        )
+        v_concentric_1 = compute_concentric_spheres_potential(
+            electrode_pos_m=re,
+            source_pos_m=rs_center,
+            dipole_moment_am=q,
+            conductor=cond_1shell,
+        )
+        self.assertAlmostEqual(v_concentric_1, v_oracle, delta=1e-15)
+
+    def test_hardcoded_analytic_benchmark_fixture(self) -> None:
+        """On-axis dipole in homogeneous sphere matches high-precision benchmark to machine precision."""
+        re = (0.0, 0.0, 0.090)
+        rs = (0.0, 0.0, 0.040)
+        q = (0.0, 0.0, 1.0e-9)
+        v_benchmark = 1.465475850798419e-07
+
+        v_computed = compute_homogeneous_sphere_potential(
+            electrode_pos_m=re,
+            source_pos_m=rs,
+            dipole_moment_am=q,
+            sphere_radius_m=0.090,
+            conductivity_sm=0.33,
+        )
+        self.assertAlmostEqual(v_computed, v_benchmark, delta=1e-14)
+
+    # -------------------------------------------------------------------------
+    # 21. Boundary Invariants & Comprehensive Error Coverage
+    # -------------------------------------------------------------------------
+
+    def test_conductor_radii_sigmas_length_mismatch(self) -> None:
+        """Mismatch in radii and conductivities length must raise ConductorGeometryError."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(radii_m=(0.08, 0.085, 0.09), sigmas_sm=(0.33, 0.33)).validate()
+
+    def test_conductor_empty_radii(self) -> None:
+        """ConductorModel with empty radii must raise ConductorGeometryError."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(radii_m=(), sigmas_sm=()).validate()
+
+    def test_conductor_negative_radius(self) -> None:
+        """Non-positive radius in ConductorModel must raise ConductorGeometryError."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(radii_m=(-0.08, 0.085, 0.09)).validate()
+
+    def test_source_space_empty(self) -> None:
+        """Empty source space must raise ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(positions_m=()).validate()
+
+    def test_source_space_fixed_orientation_missing(self) -> None:
+        """Fixed orientation without orientation vectors must raise ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(
+                positions_m=((0.0, 0.0, 0.03),),
+                orientations=None,
+                is_fixed_orientation=True,
+            ).validate()
+
+    def test_source_space_fixed_orientation_count_mismatch(self) -> None:
+        """Orientation count mismatching positions count must raise ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(
+                positions_m=((0.0, 0.0, 0.03), (0.0, 0.0, 0.04)),
+                orientations=((0.0, 0.0, 1.0),),
+                is_fixed_orientation=True,
+            ).validate()
+
+    def test_simulate_potentials_empty_moments(self) -> None:
+        """Simulating empty moments returns empty list."""
+        contract = build_synthetic_forward_contract()
+        self.assertEqual(contract.simulate_scalp_potentials([]), [])
+
+    def test_simulate_potentials_dimension_mismatch(self) -> None:
+        """Wrong moment vector length raises LeadfieldDimensionMismatchError."""
+        contract = build_synthetic_forward_contract()
+        with self.assertRaises(LeadfieldDimensionMismatchError):
+            contract.simulate_scalp_potentials([[1.0, 2.0]])
+
+    def test_affine_transform_non_finite(self) -> None:
+        """Non-finite values in affine transform raise CoordinateFrameMismatchError."""
+        bad_matrix = (
+            (1.0, 0.0, float("nan"), 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        with self.assertRaises(CoordinateFrameMismatchError):
+            validate_affine_transform(bad_matrix)
+
+    def test_affine_transform_wrong_dimensions(self) -> None:
+        """Non-4x4 affine transform raises CoordinateFrameMismatchError."""
+        bad_matrix = ((1.0, 0.0), (0.0, 1.0))
+        with self.assertRaises(CoordinateFrameMismatchError):
+            validate_affine_transform(bad_matrix)
+
+    def test_audit_mne_forward_solution_missing_sol(self) -> None:
+        """MNE forward solution missing 'sol' raises ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            audit_mne_forward_solution({"coord_frame": 4})
+
+    def test_audit_mne_forward_solution_missing_data_or_row_names(self) -> None:
+        """MNE forward solution missing 'data' or 'row_names' raises ForwardModelContractError."""
+        with self.assertRaises(ForwardModelContractError):
+            audit_mne_forward_solution({"coord_frame": 4, "sol": {"data": None}})
+
+    def test_audit_mne_forward_solution_dimension_mismatch(self) -> None:
+        """MNE leadfield column count mismatching nsources raises LeadfieldDimensionMismatchError."""
+        mock_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,  # Fixed
+            "nsource": 5,
+            "sol": {
+                "data": [[1.0] * 3 for _ in range(4)],  # 3 cols instead of 5
+                "row_names": ["Fp1", "Fp2", "F3", "F4"],
+            },
+        }
+        with self.assertRaises(LeadfieldDimensionMismatchError):
+            audit_mne_forward_solution(mock_fwd)
+
+    def test_audit_mne_forward_solution_source_unit_mismatch(self) -> None:
+        """MNE source vertex coordinates > 1.0m (mm) raises CoordinateUnitMismatchError."""
+        mock_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,
+            "nsource": 1,
+            "sol": {"data": [[1.0]], "row_names": ["Cz"]},
+            "src": [{"rr": [[0.0, 0.0, 50.0]], "inuse": [1]}],  # 50m > 1m (mm scaling error)
+        }
+        with self.assertRaises(CoordinateUnitMismatchError):
+            audit_mne_forward_solution(mock_fwd)
+
+    def test_audit_mne_forward_solution_sensor_unit_mismatch(self) -> None:
+        """MNE sensor location > 1.0m (mm) raises CoordinateUnitMismatchError."""
+        mock_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,
+            "nsource": 1,
+            "sol": {"data": [[1.0]], "row_names": ["Cz"]},
+        }
+        mock_info = {
+            "ch_names": ["Cz"],
+            "chs": [{"ch_name": "Cz", "loc": [0.0, 0.0, 85.0]}],  # 85m > 1m
+        }
+        with self.assertRaises(CoordinateUnitMismatchError):
+            audit_mne_forward_solution(mock_fwd, info=mock_info)
 
 
 if __name__ == "__main__":

@@ -126,6 +126,12 @@ class ContractStatus(str, Enum):
     REJECTED = "REJECTED"
 
 
+class UncertaintyStatus(str, Enum):
+    """Uncertainty quantification status."""
+    UNAVAILABLE = "UNAVAILABLE"  # Uncomputed / idealized deterministic synthetic fixture
+    ESTIMATED = "ESTIMATED"      # Quantified confidence bounds (e.g. from stochastic variations)
+
+
 # -----------------------------------------------------------------------------
 # Data Models
 # -----------------------------------------------------------------------------
@@ -140,12 +146,26 @@ class ConductorModel:
 
     def validate(self) -> None:
         """Validate spherical conductor model physical consistency."""
+        if self.model_type == ConductorModelType.ANATOMICAL_BEM:
+            raise ConductorGeometryError(
+                "Anatomical BEM conductor models are not supported in synthetic forward contract; "
+                "fail closed."
+            )
         if len(self.radii_m) != len(self.sigmas_sm):
             raise ConductorGeometryError(
                 f"Mismatch: {len(self.radii_m)} radii vs {len(self.sigmas_sm)} conductivities."
             )
         if not self.radii_m:
             raise ConductorGeometryError("Conductor model requires at least one layer.")
+
+        if self.model_type == ConductorModelType.SPHERICAL_1SHELL and len(self.radii_m) != 1:
+            raise ConductorGeometryError(
+                f"SPHERICAL_1SHELL requires exactly 1 layer; got {len(self.radii_m)}."
+            )
+        if self.model_type == ConductorModelType.SPHERICAL_3SHELL and len(self.radii_m) != 3:
+            raise ConductorGeometryError(
+                f"SPHERICAL_3SHELL requires exactly 3 layers; got {len(self.radii_m)}."
+            )
 
         for i, r in enumerate(self.radii_m):
             if r > MILLIMETER_THRESHOLD_M:
@@ -208,6 +228,11 @@ class SensorGeometry:
             raise ForwardModelContractError("Duplicate channel names detected in sensor montage.")
         if self.coordinate_frame == CoordinateFrame.UNKNOWN:
             raise CoordinateFrameMismatchError("Coordinate frame UNKNOWN is rejected; must be HEAD or MNI.")
+        if self.reference_channel is not None and self.reference_channel not in self.channel_names:
+            raise ForwardModelContractError(
+                f"Declared reference channel '{self.reference_channel}' is not present in channel names: "
+                f"{self.channel_names}."
+            )
 
         for ch, pos in zip(self.channel_names, self.positions_m):
             norm = math.sqrt(sum(p * p for p in pos))
@@ -299,6 +324,30 @@ class LeadfieldDiagnostics:
     max_channel_norm: float
     is_well_conditioned: bool
     crosstalk_index: float
+    reference_channel: Optional[str] = None
+    is_channel_referenced: bool = False
+    reference_channel_error: float = 0.0
+
+
+@dataclass(frozen=True)
+class ForwardUncertainty:
+    """Explicit representation of forward model uncertainty.
+
+    SCIENTIFIC POSTURE:
+    Idealized synthetic forward models (spherical conductor approximations) carry
+    unquantified physical errors (simplifications of tissue boundaries, skull resistivity,
+    electrode localization). Unless confidence bounds are explicitly modeled or measured,
+    uncertainty status MUST remain UNAVAILABLE. It MUST NOT default to 0.0 or imply calibrated
+    confidence.
+    """
+    status: UncertaintyStatus = UncertaintyStatus.UNAVAILABLE
+    conductor_conductivity_std: Optional[Tuple[float, ...]] = None
+    sensor_position_std_m: Optional[float] = None
+    relative_field_uncertainty: Optional[float] = None
+    disclaimer: str = (
+        "Forward model uncertainty is UNAVAILABLE in synthetic deterministic fixtures. "
+        "No claim of calibrated confidence or zero physical error is made."
+    )
 
 
 @dataclass(frozen=True)
@@ -311,6 +360,7 @@ class ForwardModelContractResult:
     conductor_model: ConductorModel
     source_space: SourceSpace
     diagnostics: LeadfieldDiagnostics
+    uncertainty: ForwardUncertainty = field(default_factory=ForwardUncertainty)
     warnings: Tuple[str, ...] = ()
     failure_reason: Optional[str] = None
     provenance: Dict[str, Any] = field(default_factory=dict)
@@ -327,6 +377,7 @@ class ForwardModelContractResult:
             "is_fixed_orientation": self.source_space.is_fixed_orientation,
             "coordinate_frame": self.sensor_geometry.coordinate_frame.value,
             "diagnostics": asdict(self.diagnostics),
+            "uncertainty": asdict(self.uncertainty),
             "warnings": list(self.warnings),
             "failure_reason": self.failure_reason,
             "provenance": self.provenance,
@@ -479,6 +530,113 @@ def compute_homogeneous_sphere_potential(
     return v
 
 
+def compute_concentric_spheres_potential(
+    electrode_pos_m: Tuple[float, float, float],
+    source_pos_m: Tuple[float, float, float],
+    dipole_moment_am: Tuple[float, float, float],
+    conductor: ConductorModel,
+    n_max_terms: int = 60,
+) -> float:
+    """Compute surface potential for an arbitrary concentric spherical conductor model.
+
+    Evaluates the exact spherical boundary-value solution across all conductor layers
+    using radial transfer matrices. Handles single-shell and multi-shell models,
+    guaranteeing that every declared layer radius and conductivity exerts a verified
+    physical effect on the surface potential.
+    """
+    conductor.validate()
+    radii = conductor.radii_m
+    sigmas = conductor.sigmas_sm
+    K = len(radii)
+    r_scalp = radii[-1]
+    sigma_scalp = sigmas[-1]
+
+    rs = math.sqrt(sum(p * p for p in source_pos_m))
+    re = math.sqrt(sum(p * p for p in electrode_pos_m))
+
+    def _get_cn(n: int) -> float:
+        if K == 1:
+            return 1.0
+        # Scaled transfer matrix product to prevent numerical overflow/underflow
+        M = [[1.0, 0.0], [0.0, 1.0]]
+        for k in range(K - 1):
+            rk = radii[k]
+            sin = sigmas[k]
+            sout = sigmas[k + 1]
+            ratio = sin / sout
+            c = 1.0 / (2 * n + 1)
+            r_over_R = (rk / r_scalp) ** (2 * n + 1)
+            R_over_r = (r_scalp / rk) ** (2 * n + 1)
+            t11 = c * ((n + 1) + n * ratio)
+            t12 = c * (n + 1) * (1.0 - ratio) * R_over_r
+            t21 = c * n * (1.0 - ratio) * r_over_R
+            t22 = c * (n + (n + 1) * ratio)
+            Tk = [[t11, t12], [t21, t22]]
+            M = [
+                [Tk[0][0] * M[0][0] + Tk[0][1] * M[1][0], Tk[0][0] * M[0][1] + Tk[0][1] * M[1][1]],
+                [Tk[1][0] * M[0][0] + Tk[1][1] * M[1][0], Tk[1][0] * M[0][1] + Tk[1][1] * M[1][1]],
+            ]
+        m11, m12, m21, m22 = M[0][0], M[0][1], M[1][0], M[1][1]
+        den = n * m11 - (n + 1) * m21
+        if abs(den) < 1e-30:
+            return 0.0
+        num = (n + 1) * m22 - n * m12
+        A1_hat = num / den
+        AK_hat = m11 * A1_hat + m12
+        return (n / (n + 1)) * AK_hat * (sigmas[-1] / sigmas[0])
+
+    c1 = _get_cn(1)
+
+    # Center dipole limit (exact analytic expression)
+    if rs < 1e-12:
+        re_dot_q = sum(electrode_pos_m[i] * dipole_moment_am[i] for i in range(3))
+        return c1 * 3.0 * re_dot_q / (4.0 * math.pi * sigma_scalp * (r_scalp ** 3))
+
+    a = rs / r_scalp
+    if a >= 1.0:
+        raise SourceOutOfBoundsError(
+            f"Source radius {rs:.4f}m must be strictly inside scalp radius {r_scalp:.4f}m."
+        )
+
+    re_hat = [electrode_pos_m[i] / re for i in range(3)]
+    rs_hat = [source_pos_m[i] / rs for i in range(3)]
+
+    cos_th = sum(re_hat[i] * rs_hat[i] for i in range(3))
+    cos_th = max(-1.0, min(1.0, cos_th))
+
+    qr = sum(dipole_moment_am[i] * rs_hat[i] for i in range(3))
+    q_dot_re = sum(dipole_moment_am[i] * re_hat[i] for i in range(3))
+    qt_proj = q_dot_re - cos_th * qr
+
+    sum_r = 3.0 * c1 * cos_th * qr
+    sum_t = -1.5 * c1 * qt_proj
+
+    p0, p1 = 1.0, cos_th
+    an = 1.0
+
+    for n in range(2, n_max_terms + 1):
+        p2 = ((2 * n - 1) * cos_th * p1 - (n - 1) * p0) / n
+        one_minus_x2 = 1.0 - cos_th * cos_th
+        if abs(one_minus_x2) < 1e-12:
+            pn_prime = 0.5 * n * (n + 1) if cos_th > 0 else 0.5 * n * (n + 1) * ((-1) ** (n - 1))
+        else:
+            pn_prime = n * (p0 - cos_th * p1) / one_minus_x2
+
+        an *= a
+        cn = _get_cn(n)
+        coeff_r = (2 * n + 1) / n
+        coeff_t = (2 * n + 1) / (n * (n + 1))
+        sum_r += coeff_r * an * cn * p2 * qr
+        sum_t -= coeff_t * an * cn * pn_prime * qt_proj
+
+        p0, p1 = p1, p2
+        if an < 1e-15:
+            break
+
+    v = (sum_r + sum_t) / (4.0 * math.pi * sigma_scalp * (r_scalp ** 2))
+    return v
+
+
 def compute_3shell_sphere_potential(
     electrode_pos_m: Tuple[float, float, float],
     source_pos_m: Tuple[float, float, float],
@@ -487,35 +645,109 @@ def compute_3shell_sphere_potential(
 ) -> float:
     """Compute surface potential for a 3-shell concentric sphere conductor model.
 
-    Uses the standard Berg-Scherg (1994) 3-shell equivalent dipole formulation.
+    Evaluates the full physical multi-shell transfer matrix across all 3 layers
+    (brain, skull, scalp), ensuring every layer radius and conductivity exerts
+    a verified physical effect on surface potentials.
     """
     conductor.validate()
-    # Berg-Scherg equivalent dipole parameters for brain/skull/scalp concentric spheres
-    # with typical 1:80 skull/brain conductivity ratio
-    lambdas = (0.08, 0.36, 0.56)
-    mus = (0.63, 0.88, 0.99)
-
-    r_scalp = conductor.scalp_radius_m
-    sigma_scalp = conductor.sigmas_sm[-1]
-
-    total_potential = 0.0
-    for lam, mu in zip(lambdas, mus):
-        scaled_source = tuple(mu * p for p in source_pos_m)
-        v_hom = compute_homogeneous_sphere_potential(
-            electrode_pos_m=electrode_pos_m,
-            source_pos_m=scaled_source,  # type: ignore
-            dipole_moment_am=dipole_moment_am,
-            sphere_radius_m=r_scalp,
-            conductivity_sm=sigma_scalp,
+    if len(conductor.radii_m) != 3 or conductor.model_type != ConductorModelType.SPHERICAL_3SHELL:
+        raise ConductorGeometryError(
+            f"compute_3shell_sphere_potential requires SPHERICAL_3SHELL model with 3 layers; "
+            f"got {conductor.model_type.value} with {len(conductor.radii_m)} layers."
         )
-        total_potential += lam * v_hom
-
-    return total_potential
+    return compute_concentric_spheres_potential(
+        electrode_pos_m=electrode_pos_m,
+        source_pos_m=source_pos_m,
+        dipole_moment_am=dipole_moment_am,
+        conductor=conductor,
+    )
 
 
 # -----------------------------------------------------------------------------
-# Linear Algebra & Conditioning Diagnostics (Self-Contained Pure-Python)
+# Linear Algebra & Referencing Transformations (Self-Contained Pure-Python)
 # -----------------------------------------------------------------------------
+
+def apply_channel_reference(
+    leadfield: Sequence[Sequence[float]],
+    channel_names: Sequence[str],
+    reference_channel: str,
+) -> List[List[float]]:
+    """Project leadfield matrix to unipolar reference channel: V_i - V_ref.
+
+    The row corresponding to reference_channel will be identically zero.
+    """
+    if reference_channel not in channel_names:
+        raise ChannelOrderMismatchError(
+            f"Reference channel '{reference_channel}' not found in channel names."
+        )
+    ref_idx = list(channel_names).index(reference_channel)
+    ref_row = leadfield[ref_idx]
+    n_ch = len(leadfield)
+    n_col = len(ref_row)
+
+    projected: List[List[float]] = []
+    for i in range(n_ch):
+        row = leadfield[i]
+        projected.append([row[j] - ref_row[j] for j in range(n_col)])
+
+    return projected
+
+
+def verify_channel_reference_invariant(
+    leadfield: Sequence[Sequence[float]],
+    channel_names: Sequence[str],
+    reference_channel: str,
+    tolerance: float = 1e-12,
+) -> Tuple[bool, float]:
+    """Verify that the reference channel row is identically zero within tolerance."""
+    if reference_channel not in channel_names:
+        return False, float("inf")
+    ref_idx = list(channel_names).index(reference_channel)
+    ref_row = leadfield[ref_idx]
+    max_err = max(abs(x) for x in ref_row) if ref_row else 0.0
+    return max_err <= tolerance, max_err
+
+
+def validate_affine_transform(
+    transform: Sequence[Sequence[float]],
+) -> None:
+    """Validate 4x4 homogeneous affine coordinate transformation matrix."""
+    if len(transform) != 4 or any(len(r) != 4 for r in transform):
+        raise CoordinateFrameMismatchError(
+            f"Coordinate transform must be 4x4 matrix; got shape ({len(transform)}, ...)."
+        )
+    for r_idx, row in enumerate(transform):
+        for c_idx, val in enumerate(row):
+            if not math.isfinite(val):
+                raise CoordinateFrameMismatchError(
+                    f"Non-finite value at ({r_idx}, {c_idx}) in coordinate transform matrix."
+                )
+    bottom = transform[3]
+    if abs(bottom[0]) > 1e-6 or abs(bottom[1]) > 1e-6 or abs(bottom[2]) > 1e-6 or abs(bottom[3] - 1.0) > 1e-6:
+        raise CoordinateFrameMismatchError(
+            f"Affine transform bottom row must be [0, 0, 0, 1], got {bottom}."
+        )
+
+
+def apply_affine_transform(
+    points_m: Sequence[Tuple[float, float, float]],
+    transform: Sequence[Sequence[float]],
+    is_vector: bool = False,
+) -> Tuple[Tuple[float, float, float], ...]:
+    """Apply 4x4 affine transform to 3D points or orientation vectors.
+
+    If is_vector is True, translation component is ignored (vectors transform by linear part).
+    """
+    transformed: List[Tuple[float, float, float]] = []
+    for p in points_m:
+        x, y, z = p
+        w = 0.0 if is_vector else 1.0
+        tx = transform[0][0] * x + transform[0][1] * y + transform[0][2] * z + transform[0][3] * w
+        ty = transform[1][0] * x + transform[1][1] * y + transform[1][2] * z + transform[1][3] * w
+        tz = transform[2][0] * x + transform[2][1] * y + transform[2][2] * z + transform[2][3] * w
+        transformed.append((tx, ty, tz))
+    return tuple(transformed)
+
 
 def apply_average_reference(
     leadfield: Sequence[Sequence[float]],
@@ -614,6 +846,8 @@ def compute_leadfield_diagnostics(
     is_fixed_orientation: bool,
     n_sources: int,
     is_average_referenced: bool = True,
+    reference_channel: Optional[str] = None,
+    channel_names: Optional[Sequence[str]] = None,
 ) -> LeadfieldDiagnostics:
     """Compute comprehensive numerical diagnostics for a leadfield matrix."""
     n_ch = len(leadfield)
@@ -624,9 +858,25 @@ def compute_leadfield_diagnostics(
     # Check zero-sum column invariant
     is_avg_ref, max_zero_sum_err = verify_average_reference_invariant(leadfield)
 
+    # Check unipolar channel reference invariant if specified
+    is_ch_ref = False
+    ref_ch_err = 0.0
+    if reference_channel is not None and channel_names is not None:
+        is_ch_ref, ref_ch_err = verify_channel_reference_invariant(
+            leadfield=leadfield,
+            channel_names=channel_names,
+            reference_channel=reference_channel,
+        )
+
     # Channel Frobenius norms
     channel_norms = tuple(math.sqrt(sum(x * x for x in row)) for row in leadfield)
-    min_norm = min(channel_norms) if channel_norms else 0.0
+    # If channel referenced, evaluate min_norm across active non-reference channels
+    if is_ch_ref and reference_channel is not None and channel_names is not None:
+        ref_idx = list(channel_names).index(reference_channel)
+        active_norms = [norm for idx, norm in enumerate(channel_norms) if idx != ref_idx]
+        min_norm = min(active_norms) if active_norms else 0.0
+    else:
+        min_norm = min(channel_norms) if channel_norms else 0.0
     max_norm = max(channel_norms) if channel_norms else 0.0
 
     # Compute Gram matrix C = L * L^T (size n_ch x n_ch)
@@ -649,7 +899,7 @@ def compute_leadfield_diagnostics(
     tol = max(n_ch, n_col) * 1e-7 * max_s
     rank = sum(1 for s in singular_values if s > tol)
 
-    # Condition number accounting for average-reference rank deficiency
+    # Condition number accounting for reference rank deficiency
     effective_svs = [s for s in singular_values if s > tol]
     if effective_svs:
         cond = effective_svs[0] / effective_svs[-1]
@@ -698,6 +948,9 @@ def compute_leadfield_diagnostics(
         max_channel_norm=max_norm,
         is_well_conditioned=is_well_conditioned,
         crosstalk_index=crosstalk,
+        reference_channel=reference_channel,
+        is_channel_referenced=is_ch_ref,
+        reference_channel_error=ref_ch_err,
     )
 
 
@@ -812,6 +1065,8 @@ def build_synthetic_forward_contract(
     source_space: Optional[SourceSpace] = None,
     conductor_model: Optional[ConductorModel] = None,
     apply_avg_ref: bool = True,
+    reference_channel: Optional[str] = None,
+    coord_transform: Optional[Sequence[Sequence[float]]] = None,
 ) -> ForwardModelContractResult:
     """Build and verify a synthetic forward model contract with SI units and diagnostics.
 
@@ -824,7 +1079,45 @@ def build_synthetic_forward_contract(
     sensors.validate()
 
     sources = source_space or make_synthetic_source_grid(16, is_fixed_orientation=False)
+
+    # 1. Coordinate Frame Compatibility & Explicit Transform Check
+    if sensors.coordinate_frame != sources.coordinate_frame:
+        if coord_transform is None:
+            raise CoordinateFrameMismatchError(
+                f"Coordinate frame mismatch: sensors have frame '{sensors.coordinate_frame.value}' "
+                f"while sources have frame '{sources.coordinate_frame.value}', and no coordinate "
+                "transform matrix was provided. Cross-frame projection without explicit alignment is rejected fail-closed."
+            )
+        validate_affine_transform(coord_transform)
+        trans_pos = apply_affine_transform(sources.positions_m, coord_transform, is_vector=False)
+        trans_ori = None
+        if sources.orientations is not None:
+            raw_ori = apply_affine_transform(sources.orientations, coord_transform, is_vector=True)
+            norm_ori = []
+            for o in raw_ori:
+                n = math.sqrt(sum(x * x for x in o))
+                norm_ori.append((o[0] / n, o[1] / n, o[2] / n) if n > 1e-12 else (0.0, 0.0, 1.0))
+            trans_ori = tuple(norm_ori)
+        sources = SourceSpace(
+            positions_m=trans_pos,
+            orientations=trans_ori,
+            is_fixed_orientation=sources.is_fixed_orientation,
+            coordinate_frame=sensors.coordinate_frame,
+        )
+
+    # Validate source space inside the conductor shell
     sources.validate(conductor)
+
+    # 2. Referencing Policy Enforcement
+    if reference_channel is None and sensors.reference_channel is not None:
+        reference_channel = sensors.reference_channel
+
+    if reference_channel is not None and apply_avg_ref:
+        raise ForwardModelContractError(
+            f"Conflicting referencing policies: cannot apply average reference (apply_avg_ref=True) "
+            f"and unipolar reference channel '{reference_channel}' simultaneously. "
+            "Set apply_avg_ref=False when specifying a reference_channel."
+        )
 
     n_ch = sensors.n_channels
     n_src = sources.n_sources
@@ -833,14 +1126,13 @@ def build_synthetic_forward_contract(
 
     raw_leadfield: List[List[float]] = [[0.0] * n_col for _ in range(n_ch)]
 
-    # Compute leadfield matrix elements via 3-shell concentric sphere engine
+    # Compute leadfield matrix elements via physical concentric sphere engine
     for ch_idx, elec_pos in enumerate(sensors.positions_m):
         col_idx = 0
         for src_idx, src_pos in enumerate(sources.positions_m):
             if is_fixed:
-                # 1 unit dipole along fixed orientation
                 ori = sources.orientations[src_idx]  # type: ignore
-                v = compute_3shell_sphere_potential(
+                v = compute_concentric_spheres_potential(
                     electrode_pos_m=elec_pos,
                     source_pos_m=src_pos,
                     dipole_moment_am=ori,
@@ -849,11 +1141,10 @@ def build_synthetic_forward_contract(
                 raw_leadfield[ch_idx][col_idx] = v
                 col_idx += 1
             else:
-                # 3 orthogonal unit dipoles along X, Y, Z
                 for axis_idx in range(3):
                     q = [0.0, 0.0, 0.0]
                     q[axis_idx] = 1.0
-                    v = compute_3shell_sphere_potential(
+                    v = compute_concentric_spheres_potential(
                         electrode_pos_m=elec_pos,
                         source_pos_m=src_pos,
                         dipole_moment_am=tuple(q),  # type: ignore
@@ -862,17 +1153,30 @@ def build_synthetic_forward_contract(
                     raw_leadfield[ch_idx][col_idx] = v
                     col_idx += 1
 
-    final_leadfield = apply_average_reference(raw_leadfield) if apply_avg_ref else raw_leadfield
+    # Apply referencing projection
+    if reference_channel is not None:
+        final_leadfield = apply_channel_reference(raw_leadfield, sensors.channel_names, reference_channel)
+        effective_avg_ref = False
+    elif apply_avg_ref:
+        final_leadfield = apply_average_reference(raw_leadfield)
+        effective_avg_ref = True
+    else:
+        final_leadfield = raw_leadfield
+        effective_avg_ref = False
 
     diagnostics = compute_leadfield_diagnostics(
         leadfield=final_leadfield,
         is_fixed_orientation=is_fixed,
         n_sources=n_src,
-        is_average_referenced=apply_avg_ref,
+        is_average_referenced=effective_avg_ref,
+        reference_channel=reference_channel,
+        channel_names=sensors.channel_names,
     )
 
     provenance = {
-        "engine": "concentric_3shell_analytic",
+        "engine": "concentric_spheres_analytic",
+        "model_type": conductor.model_type.value,
+        "n_layers": len(conductor.radii_m),
         "units": {
             "length": CANONICAL_LENGTH_UNIT,
             "potential": CANONICAL_POTENTIAL_UNIT,
@@ -883,8 +1187,17 @@ def build_synthetic_forward_contract(
         "coordinate_frame": sensors.coordinate_frame.value,
         "conductor_radii_m": list(conductor.radii_m),
         "conductor_sigmas_sm": list(conductor.sigmas_sm),
+        "reference_mode": "unipolar" if reference_channel is not None else ("average" if apply_avg_ref else "none"),
+        "reference_channel": reference_channel,
         "disclaimer": CONTRACT_DISCLAIMER,
     }
+
+    uncertainty = ForwardUncertainty(
+        status=UncertaintyStatus.UNAVAILABLE,
+        conductor_conductivity_std=None,
+        sensor_position_std_m=None,
+        relative_field_uncertainty=None,
+    )
 
     return ForwardModelContractResult(
         status=ContractStatus.SYNTHETIC_ONLY,
@@ -894,6 +1207,7 @@ def build_synthetic_forward_contract(
         conductor_model=conductor,
         source_space=sources,
         diagnostics=diagnostics,
+        uncertainty=uncertainty,
         warnings=() if diagnostics.is_well_conditioned else ("Leadfield condition number high.",),
         failure_reason=None,
         provenance=provenance,
@@ -1044,6 +1358,13 @@ def audit_mne_forward_solution(
         "disclaimer": CONTRACT_DISCLAIMER,
     }
 
+    uncertainty = ForwardUncertainty(
+        status=UncertaintyStatus.UNAVAILABLE,
+        conductor_conductivity_std=None,
+        sensor_position_std_m=None,
+        relative_field_uncertainty=None,
+    )
+
     return ForwardModelContractResult(
         status=ContractStatus.ENGINEERING_ONLY,
         is_valid=diagnostics.is_well_conditioned,
@@ -1052,6 +1373,7 @@ def audit_mne_forward_solution(
         conductor_model=conductor,
         source_space=src_space,
         diagnostics=diagnostics,
+        uncertainty=uncertainty,
         warnings=tuple(warnings),
         failure_reason=None,
         provenance=provenance,

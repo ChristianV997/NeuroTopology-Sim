@@ -48,21 +48,25 @@ The canonical synthetic forward engine implements an analytic 3-shell concentric
 
 ---
 
-### 3.2 Closed-Form Analytic Dipole Potential
+### 3.2 Closed-Form and Multi-Shell Analytic Spherical Forward Engine
 
-For a homogeneous sphere of radius $R$ and conductivity $\sigma$, the electric potential $V(\mathbf{r}_e)$ at surface position $\mathbf{r}_e$ ($\|\mathbf{r}_e\| = R$) due to a current dipole $\mathbf{q}$ at position $\mathbf{r}_s$ ($r_s = \|\mathbf{r}_s\| < R$) is evaluated via the Legendre polynomial series expansion:
+For concentric spherical conductors with $K$ layers (radii $r_1 < r_2 < \dots < r_K = R_{\text{scalp}}$ and conductivities $\sigma_1, \dots, \sigma_K$), the surface potential $V(\mathbf{r}_e)$ at surface position $\mathbf{r}_e$ ($\|\mathbf{r}_e\| = R$) due to a current dipole $\mathbf{q}$ at position $\mathbf{r}_s$ ($r_s = \|\mathbf{r}_s\| < r_1$) is evaluated via spherical harmonics and radial transfer matrices:
 
 1. **Center Dipole Limit** ($r_s \to 0$):
-   $$V(\mathbf{r}_e) = \frac{3 (\mathbf{q} \cdot \mathbf{r}_e)}{4 \pi \sigma R^3}$$
+   $$V(\mathbf{r}_e) = c_1 \frac{3 (\mathbf{q} \cdot \mathbf{r}_e)}{4 \pi \sigma_K R_K^3}$$
+   where $c_1 = 1.0$ for a single homogeneous sphere, and for concentric multi-shell conductors, $c_1$ is evaluated directly from the interface transfer matrix.
 
-2. **General Dipole Position** ($0 < r_s < R$):
-   Let $a = r_s / R$, $\cos \theta = \hat{\mathbf{r}}_s \cdot \hat{\mathbf{r}}_e$, $q_r = \mathbf{q} \cdot \hat{\mathbf{r}}_s$, and $\mathbf{q}_t = \mathbf{q} - q_r \hat{\mathbf{r}}_s$:
-   $$V(\mathbf{r}_e) = \frac{1}{4 \pi \sigma R^2} \left[ \sum_{n=1}^\infty \frac{2n+1}{n} a^{n-1} P_n(\cos \theta) q_r - \sum_{n=1}^\infty \frac{2n+1}{n(n+1)} a^{n-1} P'_n(\cos \theta) (\mathbf{q} \cdot \hat{\mathbf{r}}_e - \cos \theta q_r) \right]$$
+2. **General Dipole Position** ($0 < r_s < r_1$):
+   Let $a = r_s / R_K$, $\cos \theta = \hat{\mathbf{r}}_s \cdot \hat{\mathbf{r}}_e$, $q_r = \mathbf{q} \cdot \hat{\mathbf{r}}_s$, and $\mathbf{q}_t = \mathbf{q} - q_r \hat{\mathbf{r}}_s$:
+   $$V(\mathbf{r}_e) = \frac{1}{4 \pi \sigma_K R_K^2} \sum_{n=1}^\infty c_n a^{n-1} \left[ \frac{2n+1}{n} P_n(\cos \theta) q_r - \frac{2n+1}{n(n+1)} P'_n(\cos \theta) (\mathbf{q} \cdot \hat{\mathbf{r}}_e - \cos \theta q_r) \right]$$
 
-3. **3-Shell Berg-Scherg Approximation**:
-   In concentric 3-shell spheres, the scalp potential is represented as a weighted sum of equivalent homogeneous spheres:
-   $$V_{3\text{-shell}}(\mathbf{r}_e, \mathbf{r}_s, \mathbf{q}) = \sum_{k=1}^3 \lambda_k V_{\text{hom}}(\mathbf{r}_e, \mu_k \mathbf{r}_s, \mathbf{q}; R_{\text{scalp}}, \sigma_{\text{scalp}})$$
-   where $\boldsymbol{\lambda} = (0.08, 0.36, 0.56)$ and $\boldsymbol{\mu} = (0.63, 0.88, 0.99)$ for standard head dimensions.
+3. **Multi-Shell Radial Boundary-Value Transfer Matrix**:
+   To ensure every declared layer's radius $r_k$ and conductivity $\sigma_k$ exerts a physical effect on the scalp potential (preventing silent layer dropping), the degree-$n$ transfer matrix across shell interface $k$ is computed using scaled coordinates:
+   $$T_{k, n} = \frac{1}{2n+1} \begin{pmatrix} (n+1) + n \frac{\sigma_k}{\sigma_{k+1}} & (n+1)\left(1 - \frac{\sigma_k}{\sigma_{k+1}}\right) \left(\frac{R_K}{r_k}\right)^{2n+1} \\ n \left(1 - \frac{\sigma_k}{\sigma_{k+1}}\right) \left(\frac{r_k}{R_K}\right)^{2n+1} & n + (n+1) \frac{\sigma_k}{\sigma_{k+1}} \end{pmatrix}$$
+   The product matrix $M_n = T_{K-1, n} \cdots T_{1, n}$ directly determines $c_n$:
+   $$c_n = \frac{n}{n+1} \frac{\sigma_K}{\sigma_1} \left( m_{11} \frac{(n+1) m_{22} - n m_{12}}{n m_{11} - (n+1) m_{21}} + m_{12} \right)$$
+   - When $K=1$ (`SPHERICAL_1SHELL`), $c_n \equiv 1.0$ identically.
+   - When $K=3$ (`SPHERICAL_3SHELL`), altering skull conductivity $\sigma_2$ or brain radius $r_1$ alters $c_n$ and surface potential physically.
 
 4. **Linear Superposition Invariant**:
    For any dipole moments $\mathbf{q}_1, \mathbf{q}_2$:
@@ -82,7 +86,12 @@ The contract strictly enforces standard SI units and MNE canonical coordinate fr
 | **Dipole Moment** | Ampere-meter | $\text{A}\cdot\text{m}$ | Standard current dipole moment | Dimension check |
 | **Conductivity** | Siemens per meter | $\text{S/m}$ | Strict positive values ($0.33, 0.0042$) | Raises `ConductorGeometryError` |
 | **Angle** | Radian | $\text{rad}$ | Converted from degrees internally | Validated |
-| **Coordinate Frame** | HEAD Frame | `FIFFV_COORD_HEAD` (4) | X: LPA $\to$ RPA, Y: Nasion, Z: Up/Vertex | Raises `CoordinateFrameMismatchError` |
+| **Coordinate Frame** | HEAD / MNI | `FIFFV_COORD_HEAD` (4) | Mismatched sensor/source frames require validated 4x4 transform | Raises `CoordinateFrameMismatchError` |
+
+#### Coordinate Transformation Contract
+When sensors and sources reside in differing coordinate frames (e.g. sensors in `HEAD` and sources in `MNI`), the contract requires an explicit $4 \times 4$ homogeneous affine transformation matrix $T$:
+$$\mathbf{r}_{\text{sensor}} = R \mathbf{r}_{\text{source}} + \mathbf{t}$$
+The bottom row must equal `[0, 0, 0, 1]`, and all matrix elements must be finite. Unaligned cross-frame forward models fail closed immediately.
 
 ---
 
@@ -105,24 +114,38 @@ The dimensions of $L$ are strictly constrained by the orientation mode:
 
 ---
 
-### 3.5 Average Reference Projection Invariants
+### 3.5 Referencing Policies: Average vs Unipolar Channel Reference
 
-Scalp EEG potentials are non-invasive potential differences relative to a reference. In source modeling, an average reference projection operator $P_{\text{avg}}$ is applied to eliminate reference bias:
+Scalp EEG potentials are non-invasive potential differences relative to a reference electrode. The contract enforces unambiguous, mutually exclusive referencing policies:
 
-$$P_{\text{avg}} = I_M - \frac{1}{M} \mathbf{1}_M \mathbf{1}_M^T$$
-$$L_{\text{avg}} = P_{\text{avg}} L$$
+1. **Average Reference Projection (`apply_avg_ref=True`, `reference_channel=None`)**:
+   $$P_{\text{avg}} = I_M - \frac{1}{M} \mathbf{1}_M \mathbf{1}_M^T, \quad L_{\text{avg}} = P_{\text{avg}} L$$
+   - Zero-sum column invariant: $\sum_{i=1}^M (L_{\text{avg}})_{i, j} = 0 \quad \forall j$.
+   - Idempotence: $P_{\text{avg}}^2 = P_{\text{avg}}$.
+   - Rank deduction: $\mathrm{rank}(L_{\text{avg}}) \le M - 1$.
 
-#### Mandatory Mathematical Invariants:
-1. **Zero-Sum Column Invariant**:
-   $$\sum_{i=1}^M (L_{\text{avg}})_{i, j} = 0 \quad \forall j \in \{0, \dots, K-1\}$$
-   Verified with tolerance $\epsilon \le 10^{-10}$.
-2. **Idempotence**:
-   $$P_{\text{avg}}^2 = P_{\text{avg}}$$
-3. **Symmetry**:
-   $$P_{\text{avg}}^T = P_{\text{avg}}$$
-4. **Rank Deduction**:
-   Because $\mathbf{1}_M$ is in the null space of $P_{\text{avg}}$, the numerical rank of $L_{\text{avg}}$ is reduced by at least 1:
-   $$\mathrm{rank}(L_{\text{avg}}) \le M - 1$$
+2. **Unipolar Channel Reference (`reference_channel='Cz'`, `apply_avg_ref=False`)**:
+   $$L_{\text{ref}, i, j} = L_{i, j} - L_{\text{ref\_idx}, j}$$
+   - Reference channel row is identically zero: $\|L_{\text{ref\_idx}, :}\|_\infty \le 10^{-14}$.
+   - Simulated potential at reference channel is identically zero: $V(\text{ref\_channel}) \equiv 0$.
+   - Declared reference channel must be present in `channel_names`; missing reference channels fail closed.
+
+3. **Conflicting Referencing Policy Rejection**:
+   Requesting both `apply_avg_ref=True` and `reference_channel` simultaneously fails closed immediately with `ForwardModelContractError`.
+
+---
+
+### 3.6 Uncertainty Semantics and Guardrails
+
+> [!CAUTION]
+> **No Implied Calibration or False Zero-Error Claims**
+> Synthetic forward models carry unquantified physical errors (idealized spherical geometry, homogeneous tissue assumption, simplified skull resistivity). Unless uncertainty bounds are explicitly quantified via stochastic perturbations or empirical error models, uncertainty status MUST remain `UNAVAILABLE`.
+> Defaulting uncertainty to zero or omitting uncertainty metadata while claiming calibrated confidence is strictly prohibited.
+
+The contract reports structured uncertainty metadata:
+- `uncertainty.status`: `UncertaintyStatus.UNAVAILABLE`
+- `uncertainty.relative_field_uncertainty`: `None`
+- `uncertainty.disclaimer`: Explicit warning that forward uncertainty is unquantified.
 
 ---
 
@@ -132,10 +155,10 @@ The contract computes a comprehensive suite of numerical diagnostics via Gram ma
 
 - **Singular Value Spectrum**: $\sigma_i = \sqrt{\max(0, \lambda_i(L L^T))}$, sorted in descending order.
 - **Numerical Rank**: Number of singular values exceeding tolerance $\tau = \max(M, K) \cdot 10^{-7} \cdot \sigma_1$.
-- **Condition Number**: $\kappa(L) = \sigma_1 / \sigma_r$, where $r = \mathrm{rank}(L)$. In average-reference space, the trivial zero singular value is excluded.
-- **Channel Frobenius Norms**: $\|L_{i, :}\|_2$ for each channel $i$. Flags disconnected or flat channels.
+- **Condition Number**: $\kappa(L) = \sigma_1 / \sigma_r$, where $r = \mathrm{rank}(L)$. The trivial zero singular value from average or channel referencing is excluded.
+- **Channel Frobenius Norms**: $\|L_{i, :}\|_2$ for each channel $i$.
 - **Crosstalk / Collinearity Index**: Mean pairwise correlation of normalized leadfield columns across spatial sources.
-- **Well-Conditioned Flag**: Set to `True` if $\kappa(L) < 10^6$ and minimum channel norm exceeds $10^{-12}$.
+- **Well-Conditioned Flag**: Set to `True` if $\kappa(L) < 10^6$ and active channel norm exceeds $10^{-12}$.
 
 ---
 
@@ -144,7 +167,7 @@ The contract computes a comprehensive suite of numerical diagnostics via Gram ma
 Function `audit_mne_forward_solution(fwd, info=None, expected_conductor=None)` provides an automated audit protocol for MNE Forward solutions generated in the pipeline:
 
 ```python
-from dual_engine.forward_model_contract import audit_mne_forward_solution
+from dual_engine.forward_model_contract import audit_mne_forward_solution, ContractStatus
 
 # Audit an existing MNE Forward object
 contract_result = audit_mne_forward_solution(fwd, info=raw.info)
@@ -152,6 +175,7 @@ contract_result = audit_mne_forward_solution(fwd, info=raw.info)
 assert contract_result.is_valid
 assert contract_result.status == ContractStatus.ENGINEERING_ONLY
 assert contract_result.diagnostics.numerical_rank == raw.info["nchan"] - 1
+assert contract_result.uncertainty.status.value == "UNAVAILABLE"
 ```
 
 ### Audit Checklist:
@@ -159,41 +183,45 @@ assert contract_result.diagnostics.numerical_rank == raw.info["nchan"] - 1
 - [x] **Units**: Verifies source vertex positions `fwd['src'][k]['rr']` have norm $\le 0.15\text{ m}$.
 - [x] **Channel Order**: Verifies leadfield `row_names` match `info['ch_names']` without permutation.
 - [x] **Leadfield Dimensions**: Checks $(M, 3N)$ or $(M, N)$ dimensions against `nsource`.
-- [x] **Reference Projection**: Verifies average reference column sums $\approx 0$.
-- [x] **Metadata & Status**: Marks result `ENGINEERING_ONLY` with full disclaimer.
+- [x] **Reference Projection**: Verifies reference column sums $\approx 0$.
+- [x] **Uncertainty & Status**: Discloses `UNAVAILABLE` uncertainty and marks result `ENGINEERING_ONLY`.
 
 ---
 
-## 6. Canonical Synthetic Fixtures
+## 6. Canonical Synthetic Fixtures & Independent Numerical Oracles
 
-The module provides zero-dependency, deterministic synthetic fixtures:
+The module provides zero-dependency, deterministic synthetic fixtures and independent numerical oracles:
 
 1. `make_standard_1020_synthetic_sensors(radius_m=0.090)`:
-   Generates 19 standard 10-20 spherical electrodes (Fp1, Fp2, F7, F3, Fz, F4, F8, T7, C3, Cz, C4, T8, P7, P3, Pz, P4, P8, O1, O2) with exact 3D coordinates on a $9.0\text{ cm}$ sphere.
+   Generates 19 standard 10-20 spherical electrodes with exact 3D coordinates on a $9.0\text{ cm}$ sphere.
 2. `make_synthetic_source_grid(n_sources=16, max_radius_m=0.065, is_fixed_orientation=False)`:
    Generates a deterministic Fibonacci spherical lattice of dipole source locations bounded strictly inside the brain shell ($r \le 6.5\text{ cm} < 8.0\text{ cm}$).
 3. `build_synthetic_forward_contract(...)`:
-   High-level factory that synthesizes sensors, sources, concentric 3-shell conductor, leadfield matrix, average reference projection, diagnostics, and returns `ForwardModelContractResult`.
+   High-level factory that synthesizes sensors, sources, concentric multi-shell conductor, leadfield matrix, referencing, diagnostics, and returns `ForwardModelContractResult`.
+4. **Independent Numerical Oracles**:
+   - **Closed-Form Center Dipole Limit**: Validated against $V = c_1 \frac{3(\mathbf{q} \cdot \mathbf{r}_e)}{4 \pi \sigma R^3}$ with zero series truncation ($\Delta < 10^{-15}\text{ V}$).
+   - **Frank (1952) On-Axis Benchmark**: Validated against pre-computed analytic benchmark $V = 1.465475850798419 \times 10^{-7}\text{ V}$ ($\Delta < 10^{-14}\text{ V}$).
 
 ---
 
 ## 7. Verification Results
 
-The test suite in `tests/forward_model_contract/test_forward_model_contract.py` executes 27 unit tests validating:
+The test suite in `tests/forward_model_contract/test_forward_model_contract.py` executes 56 unit tests validating:
 
 - Rejection of millimeter units in conductor, sensors, and sources.
-- Rejection of unknown coordinate frames.
-- Rejection of non-monotonic or unphysical conductor layers.
+- Rejection of unknown coordinate frames and unaligned cross-frame configurations without transform.
+- Affine coordinate transformation of source spaces into sensor frames.
+- Rejection of non-monotonic, non-positive, or unphysical conductor layers.
+- Multi-shell inner layer sensitivity: verified physical effect of skull conductivity $\sigma_{\text{skull}}$ and brain radius $r_{\text{brain}}$.
 - Rejection of out-of-bounds sources.
 - Non-unit fixed orientation vector rejection.
 - Exact dipole potential linearity and superposition ($\Delta < 10^{-18}\text{ V}$).
 - Dimensional consistency for free $(19, 48)$ and fixed $(19, 16)$ leadfield matrices.
 - Average reference column zero-sum invariant ($\Delta < 10^{-11}$) and idempotency.
-- Rank deduction in average reference space ($18 = 19 - 1$).
-- Channel ordering and permutation consistency.
+- Unipolar channel referencing: verified zero row, zero simulated reference potential, and conflicting policy rejection.
+- Explicit `UNAVAILABLE` uncertainty semantics and JSON serialization.
+- Independent numerical oracle and Frank (1952) closed-form benchmark validation.
 - Finite, bounded SVD diagnostics and condition numbers.
-- Scalp potential simulation ($V = L \mathbf{q}$).
 - Deterministic replay bit-for-bit.
 - Strict non-promotional guardrails and disclaimer presence.
 - MNE forward auditor mock execution and validation.
-- Finite JSON serialization without `NaN` or `Inf`.
