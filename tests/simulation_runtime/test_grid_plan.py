@@ -348,7 +348,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "02520d44d662d394a2ff0822c0d3170a2d34213a")
+        self.assertEqual(AUDITED_MAIN_SHA, "bc91af19a22783d2721fc881842573f7e08a8925")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -885,7 +885,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(plan.limits["artifact_sha_is_format_only"])
         _assert_all_cells_blocked(self, plan)
         statuses = _statuses(plan)
-        pinned_awaiting = {"four_sphere_forward_model", "winding"}
+        pinned_awaiting = {"four_sphere_forward_model", "winding", "roc_metrics"}
         for gate_id in BLOCKING_GATE_IDS:
             if gate_id == "ci_discovery":
                 self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
@@ -1172,6 +1172,7 @@ class GridPlanTests(unittest.TestCase):
         pinned = {
             "four_sphere_forward_model": "02520d44d662d394a2ff0822c0d3170a2d34213a",
             "winding": "9abf3abeebd1c210d59df44b4d208678d203404c",
+            "roc_metrics": "9f10956d521e96f961f29c24f033374c3c20e065",
         }
         for gate_id in BLOCKING_GATE_IDS:
             row = next(item for item in plan.gate_resolution if item["gate_id"] == gate_id)
@@ -1591,7 +1592,11 @@ class GridPlanTests(unittest.TestCase):
         roc_contract = next(
             item for item in plan.limits["gate_contract"] if item["gate_id"] == "roc_metrics"
         )
-        self.assertIsNone(roc_contract["pinned_commit"])
+        self.assertEqual(
+            roc_contract["pinned_commit"],
+            "9f10956d521e96f961f29c24f033374c3c20e065",
+        )
+        self.assertEqual(roc_contract["merged_pr"], 426)
         self.assertEqual(plan.grid_execution, "NOT_RUN")
         self.assertTrue(plan.limits["informational_candidates_are_not_pins"])
 
@@ -1765,6 +1770,7 @@ class GridPlanTests(unittest.TestCase):
         pinned = {
             "four_sphere_forward_model": (418, "02520d44d662d394a2ff0822c0d3170a2d34213a"),
             "winding": (413, "9abf3abeebd1c210d59df44b4d208678d203404c"),
+            "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
         }
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
             if gate_id in pinned:
@@ -1816,6 +1822,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("candidate_note", hashed_text)
         self.assertIn("02520d44d662d394a2ff0822c0d3170a2d34213a", hashed_text)
         self.assertIn("9abf3abeebd1c210d59df44b4d208678d203404c", hashed_text)
+        self.assertIn("9f10956d521e96f961f29c24f033374c3c20e065", hashed_text)
+        self.assertIn("09e6e0c182fa47693954ebee1b5194c3f0a5d0b0", hashed_text)
         for informational in (
             "1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
             "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
@@ -1864,7 +1872,7 @@ class GridPlanTests(unittest.TestCase):
         finally:
             info["candidate_head_observed"] = original_head
         unchanged_status = {item["gate_id"]: item["status"] for item in unchanged}
-        self.assertEqual(unchanged_status["roc_metrics"], "dependency_not_merged_on_main")
+        self.assertEqual(unchanged_status["roc_metrics"], "promotion_report_missing")
 
         open_head = "55115149c7443ca8b325dc4dbf65d6900c9fdd79"
         not_ancestor = subprocess.run(
@@ -2103,7 +2111,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("module_missing_on_main", four["reason_codes"])
         self.assertNotIn("symbols_missing_on_main", four["reason_codes"])
         mutated_status = {item["gate_id"]: item["status"] for item in mutated}
-        self.assertEqual(mutated_status["roc_metrics"], "dependency_not_merged_on_main")
+        self.assertEqual(mutated_status["roc_metrics"], "promotion_report_missing")
         hodge_resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "hodge")
         self.assertEqual(hodge_resolved["status"], "dependency_not_merged_on_main")
         self.assertIn("dependency_not_merged_on_main", hodge_resolved["reason_codes"])
@@ -2151,14 +2159,18 @@ class GridPlanTests(unittest.TestCase):
 
         four_pin = "02520d44d662d394a2ff0822c0d3170a2d34213a"
         winding_pin = "9abf3abeebd1c210d59df44b4d208678d203404c"
+        roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
         winding = grid_plan_module.GATE_CONTRACT["winding"]
+        roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(four["pinned_commit"], four_pin)
         self.assertEqual(four["merged_pr"], 418)
         self.assertEqual(winding["pinned_commit"], winding_pin)
         self.assertEqual(winding["merged_pr"], 413)
+        self.assertEqual(roc["pinned_commit"], roc_pin)
+        self.assertEqual(roc["merged_pr"], 426)
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
-            if gate_id in {"four_sphere_forward_model", "winding"}:
+            if gate_id in {"four_sphere_forward_model", "winding", "roc_metrics"}:
                 continue
             self.assertIsNone(row["pinned_commit"], gate_id)
             self.assertIsNone(row["merged_pr"], gate_id)
@@ -2174,6 +2186,7 @@ class GridPlanTests(unittest.TestCase):
         statuses = _statuses(plan)
         self.assertEqual(statuses["four_sphere_forward_model"], "promotion_report_missing")
         self.assertEqual(statuses["winding"], "promotion_report_missing")
+        self.assertEqual(statuses["roc_metrics"], "promotion_report_missing")
         self.assertEqual(statuses["planar_geometry"], "dependency_not_merged_on_main")
         self.assertEqual(statuses["surrogate_null"], "dependency_not_merged_on_main")
         self.assertEqual(statuses["ci_discovery"], "ci_discovery_blocked")
@@ -2181,6 +2194,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.execution["abort_gate"], "four_sphere_forward_model")
         hashed = json.dumps(grid_plan_module._gate_contract_for_hash())
         self.assertIn(four_pin, hashed)
+        self.assertIn(roc_pin, hashed)
         self.assertNotIn(
             "8c422e9c295510c1e71b373181f9eb1c44871a25",
             hashed,
@@ -2215,9 +2229,7 @@ class GridPlanTests(unittest.TestCase):
 
         for open_head in (
             "8c422e9c295510c1e71b373181f9eb1c44871a25",
-            "c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
             "e5e1136631d500dddab7a5b31d6916962b5da5e3",
-            "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
         ):
             open_probe = subprocess.run(
                 ["git", "merge-base", "--is-ancestor", open_head, main_sha],
@@ -2227,6 +2239,21 @@ class GridPlanTests(unittest.TestCase):
                 check=False,
             )
             self.assertNotEqual(open_probe.returncode, 0, open_head)
+        for landed_head in (
+            "c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
+            "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
+        ):
+            landed_probe = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", landed_head, main_sha],
+                cwd=str(_REPO_ROOT),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(landed_probe.returncode, 0, landed_head)
+        self.assertIsNone(grid_plan_module.GATE_CONTRACT["hodge"]["pinned_commit"])
+        self.assertIsNone(grid_plan_module.GATE_CONTRACT["surrogate_null"]["pinned_commit"])
+        self.assertEqual(statuses["hodge"], "dependency_not_merged_on_main")
         with patch.dict(
             grid_plan_module.GATE_CONTRACT["roc_metrics"],
             {"pinned_commit": "8c422e9c295510c1e71b373181f9eb1c44871a25", "merged_pr": 426},
@@ -2424,7 +2451,11 @@ class GridPlanTests(unittest.TestCase):
         winding_blob = "39084e1735206c616a1befdaddf8b83f23365bdf"
         four_added_blob = "158500ffc5bc2d519b2264613be64a522347bd2f"
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
-        self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
+        self.assertEqual(
+            grid_plan_module.AUDITED_MAIN_SHA,
+            "bc91af19a22783d2721fc881842573f7e08a8925",
+        )
+        self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
         winding = grid_plan_module.GATE_CONTRACT["winding"]
         self.assertEqual(four["pinned_commit"], four_pin)
@@ -2498,6 +2529,46 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(
             next(item["status"] for item in mismatched if item["gate_id"] == "winding"),
             "promotion_report_missing",
+        )
+
+    def test_roc_metrics_pin_matches_426_merge_blob_and_awaits_report(self):
+        """#426's squash commit pins roc_metrics. The missing report keeps it closed."""
+
+        roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
+        roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
+        audited = "bc91af19a22783d2721fc881842573f7e08a8925"
+        roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
+        self.assertEqual(roc["pinned_commit"], roc_pin)
+        self.assertEqual(roc["merged_pr"], 426)
+        self.assertEqual(roc["added_in_commit"], roc_pin)
+        self.assertEqual(roc["implementation_blob_sha"], roc_blob)
+        self.assertEqual(
+            grid_plan_module.MERGED_PIN_PAIRS["roc_metrics"],
+            (426, roc_pin),
+        )
+        self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, audited)
+        main_sha = _require_audited_main_ancestor(self)
+        self.assertEqual(main_sha, audited)
+        pin_blob = grid_plan_module._blob_sha(roc_pin, roc["required_module_path"])
+        main_blob = grid_plan_module._blob_sha(audited, roc["required_module_path"])
+        self.assertEqual(pin_blob, roc_blob)
+        self.assertEqual(main_blob, roc_blob)
+        self.assertEqual(pin_blob, main_blob)
+        calls, spy = _spy_calls()
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertEqual(plan.run_state, "blocked")
+        self.assertEqual(plan.grid_execution, "NOT_RUN")
+        roc_row = next(item for item in plan.gate_resolution if item["gate_id"] == "roc_metrics")
+        self.assertEqual(roc_row["status"], "promotion_report_missing")
+        self.assertEqual(roc_row["reason_codes"], ["promotion_report_missing"])
+        self.assertNotIn("dependency_not_merged_on_main", roc_row["reason_codes"])
+        self.assertNotEqual(roc_row["status"], "dependency_not_merged_on_main")
+        self.assertTrue(
+            all(item["status"] != "admissible_on_ancestor" for item in plan.gate_resolution)
         )
 
 

@@ -89,7 +89,7 @@ ROC_API_NAMES = (
     "auc",
     "average_precision",
 )
-AUDITED_MAIN_SHA = "02520d44d662d394a2ff0822c0d3170a2d34213a"
+AUDITED_MAIN_SHA = "bc91af19a22783d2721fc881842573f7e08a8925"
 ROLES_DISJOINT_NOTE = (
     "Disjoint calibration and evaluation ids are not proof of statistical "
     "independence. Independent draws need per-seed RNG streams downstream."
@@ -197,6 +197,7 @@ def _contract_row(
 MERGED_PIN_PAIRS: Dict[str, Tuple[int, str]] = {
     "four_sphere_forward_model": (418, "02520d44d662d394a2ff0822c0d3170a2d34213a"),
     "winding": (413, "9abf3abeebd1c210d59df44b4d208678d203404c"),
+    "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
 }
 GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
     "four_sphere_forward_model": _contract_row(
@@ -424,11 +425,21 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=426,
         candidate_head="8c422e9c295510c1e71b373181f9eb1c44871a25",
+        pinned_commit="9f10956d521e96f961f29c24f033374c3c20e065",
+        merged_pr=426,
         symbols_verified_on_candidate_head=False,
+        added_in_commit="9f10956d521e96f961f29c24f033374c3c20e065",
+        implementation_blob_sha="09e6e0c182fa47693954ebee1b5194c3f0a5d0b0",
         candidate_note=(
-            "Head 8c422e9c295510c1e71b373181f9eb1c44871a25 is a stub with no public names. "
-            "Required symbols stay the 18 names parsed from "
-            "55115149c7443ca8b325dc4dbf65d6900c9fdd79. An empty symbol tuple is not a pin."
+            "Informational head 8c422e9c295510c1e71b373181f9eb1c44871a25 is a historical "
+            "stub with no public names and is not the pin. "
+            "The pin is squash commit 9f10956d521e96f961f29c24f033374c3c20e065 of pull request #426. "
+            "git log --diff-filter=A on main lists only that commit for this path, so "
+            "added_in_commit equals the pin. "
+            "ast.parse of git show at that commit binds operating_point, compute_roc, and "
+            "cluster_any_event_rate at line 218, plus the other required names. "
+            "The module is not imported. "
+            "Pull-request head 123f969fa0360a887e87a3a071c7de8b523cbfbb is not the pin."
         ),
     ),
     "ci_discovery": _contract_row(
@@ -465,6 +476,8 @@ _UNIT_AGGREGATION_NAMED = {
     "cluster_any_event_rate": {
         "named_on_pr_426": True,
         "symbol": "cluster_any_event_rate",
+        # Citation string kept for the declaration test. On the pinned blob
+        # the function is defined at line 218.
         "source_citation": "synthetic_forward_roc.py:194",
         "cluster_ids_parameters": ["operating_point", "compute_roc"],
     }

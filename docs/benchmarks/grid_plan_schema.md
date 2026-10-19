@@ -85,8 +85,8 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited commit
-`02520d44d662d394a2ff0822c0d3170a2d34213a`. `four_sphere_forward_model`
-and `winding` are pinned to merge commits and stay
+`bc91af19a22783d2721fc881842573f7e08a8925`. `four_sphere_forward_model`,
+`winding`, and `roc_metrics` are pinned to landed commits and stay
 `promotion_report_missing`. Every other dependency pin is null, so those
 gates are `dependency_not_merged_on_main`, and every cell stays blocked.
 A caller dict, list, or boolean passed to `execute` is not read, even
@@ -397,23 +397,52 @@ report, so the status is `promotion_report_missing`.
 `1b3465d4410a531e4686ba3b2dc0d0ae052c6e93` (blob
 `158500ffc5bc2d519b2264613be64a522347bd2f`), pinned at the #418 merge,
 implementation blob `ba01dad6e21e89ed3cf54179bbc7319975987465`.
-`hodge` is `neurotopology_sim/experimental/topology/hodge_2d.py` observed
-on open pull request #423. Re-ls-remote still returns
-`eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`, not the cited prefix
-`ea7a3b99`. #414 remains `5a8e6485be08f68757c46b7e7beda70bf9a0d4b6`,
-#416 remains `757668e9b739d7423fa1493aec550072aa105829`, and #426 remains
-`8c422e9c295510c1e71b373181f9eb1c44871a25`.
-The pin stays null, so the gate stays `dependency_not_merged_on_main`.
+`roc_metrics` is pinned to squash commit
+`9f10956d521e96f961f29c24f033374c3c20e065` of pull request #426
+(`neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py`).
+`git log --diff-filter=A` on main lists only that commit, so
+`added_in_commit` equals the pin. The blob at the pin equals the blob at
+audited main (`09e6e0c182fa47693954ebee1b5194c3f0a5d0b0`). `ast.parse` of
+`git show` binds `operating_point`, `compute_roc`, and
+`cluster_any_event_rate` (line 218) plus the other required names. The
+module is not imported. There is no main-tracked promotion report, so
+the status is `promotion_report_missing`. The historical stub
+`8c422e9c295510c1e71b373181f9eb1c44871a25` stays informational and is
+not the pin. Pull-request head
+`123f969fa0360a887e87a3a071c7de8b523cbfbb` is not the pin.
+`hodge` (`neurotopology_sim/experimental/topology/hodge_2d.py`, blob
+`a5cad32e4b6095d1f8467750f03351e96304b96a`, added at
+`a7369294f3b93186f49562eefc621d2a40831422`) is on audited main.
+Re-ls-remote of #423 returns `046d632fb9482ba200f414e26a41f90cb3eecb77`,
+an ancestor of main. The stored informational head stays
+`eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`. The pin stays null this
+round, so the gate stays `dependency_not_merged_on_main`.
+`planar_geometry` is on audited main (blob
+`6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2`, added at
+`0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`). Re-ls-remote of #416 returns
+`04611a98790be848b25aadbd6602a58c819b2239`, an ancestor. The stored
+informational head stays `757668e9b739d7423fa1493aec550072aa105829`.
+The pin stays null.
+`csd_full_matrix_pinned_mne` is not on audited main:
+`spherical_csd.py` is absent, and #414 head
+`c3cbf584b70670ac54b6336904c09071f3e3107f` is not in this clone. The
+stored informational head stays
+`5a8e6485be08f68757c46b7e7beda70bf9a0d4b6`. The pin stays null.
 Open pull requests #396 and #385 also ship Hodge code; the contract cites
-the production module on #423. `phase_dispersion_module` has no path and
+the production module path recorded for #423. `phase_dispersion_module` has no path and
 no symbols (`contract_declared_unobserved`) and stays unpinned. No open
 pull request fetched for this audit ships a `phase_dispersion` module.
 A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
-Pull request #403 is not that module. `surrogate_null` stays unpinned.
-Pull request #417 is not merged. Pull request #430
-(`e5e1136631d500dddab7a5b31d6916962b5da5e3`) is stacked on #417 and is
-not on main. A hosted-green adversarial suite on the exact merged #417
-candidate is required before a pin. #430 green alone does not count.
+Pull request #403 is not that module. `surrogate_null`
+(`tools/surrogate_nulls/nulls.py`, blob
+`8dfe299692d5cb056ddeff9506cfe392b08115f2`, added at
+`f8eaa29d70c7bd73c0b561662061d61988800639`) is on audited main.
+Re-ls-remote of #417 returns `203884aa262690529a1004135e56f862124052f1`,
+an ancestor. The stored informational head stays
+`c39f715c84e928c0204b8c58ef9e40bc1f0ab684`. The pin stays null this
+round. Pull request #430
+(`e5e1136631d500dddab7a5b31d6916962b5da5e3`) was stacked on #417.
+#430 green alone does not count.
 `contract_declared_unobserved` rows stay `module_missing_on_main` and
 cannot become admissible. `phase_score_limitations_recorded` is a
 separate limitations row and still requires `limitations_recorded: true`
@@ -442,7 +471,7 @@ Abort order is the blocking-id order. The first blocking gate that is not
 | `phase_dispersion_module` | contract_declared_unobserved | none | null | `dependency_not_merged_on_main` |
 | `phase_score_limitations_recorded` | limitations_record | none | null | `dependency_not_merged_on_main` |
 | `surrogate_null` | candidate_head_observed, #417 `c39f715c84e928c0204b8c58ef9e40bc1f0ab684` | `tools/surrogate_nulls/nulls.py` | null | `dependency_not_merged_on_main` |
-| `roc_metrics` | candidate_head_observed, #426 `8c422e9c295510c1e71b373181f9eb1c44871a25` (stub; symbols not verified on that head) | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | null | `dependency_not_merged_on_main` |
+| `roc_metrics` | merged #426; added in `9f10956d521e96f961f29c24f033374c3c20e065`; blob `09e6e0c182fa47693954ebee1b5194c3f0a5d0b0` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | `9f10956d521e96f961f29c24f033374c3c20e065` | `promotion_report_missing` |
 | `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked | `ci_discovery_blocked` |
 
 Public top-level symbols, in blob order:
@@ -455,7 +484,7 @@ Public top-level symbols, in blob order:
 - `surrogate_null`: `AUTO_SPECTRUM_TOL`, `CROSS_SPECTRUM_STRICT_TOL`, `MARGINAL_EXACT_TOL`, `NULL_IDS`, `EXPLORATORY_NULL_IDS`, `RANK_STATUS`, `CONTRACTS`, `SurrogateReport`, `common_phase_prichard_theiler`, `independent_phase_univariate_ft`, `draw_from_csd`, `cholesky_gaussian_cross_spectral`, `cholesky_gaussian_csd`, `zero_lag_real_part_gaussian`, `mv_iaaft_rank_adjusted`, `GENERATORS`
 - `roc_metrics`: `PROJECT_STATUS`, `HIGHER_SCORE_IS_POSITIVE`, `HASH_NOTE`, `BenchmarkError`, `ConfusionCounts`, `fingerprint_sample_ids`, `cluster_any_event_rate`, `confusion_at_threshold`, `operating_point`, `compute_roc`, `select_threshold_on_calibration`, `assert_no_sample_overlap`, `evaluate_held_out`, `REQUIRED_PREREQUISITES`, `prerequisite_gate_report`, `SyntheticRunnerConfig`, `run_synthetic_operating_characteristics`, `json_safe`
 
-`cluster_any_event_rate` is the same name cited by the unit-aggregation note at `synthetic_forward_roc.py:194` on the earlier complete head `55115149c7443ca8b325dc4dbf65d6900c9fdd79`. The current #426 tip is a stub and is not a pin. The required symbol list stays non-empty.
+`cluster_any_event_rate` is defined at line 218 of the pinned blob. The planner still cites the string `synthetic_forward_roc.py:194` from the earlier complete head `55115149c7443ca8b325dc4dbf65d6900c9fdd79`. That string is not a claim that the definition is still on line 194. The historical stub `8c422e9c295510c1e71b373181f9eb1c44871a25` is not a pin. The required symbol list stays non-empty.
 
 Nonblocking:
 
