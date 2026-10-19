@@ -34,6 +34,24 @@ def test_wrap_to_pi_scalar_and_array() -> None:
     assert np.all(wrapped >= -np.pi) and np.all(wrapped < np.pi)
 
 
+def test_wrapped_1_cochain_half_turn_stays_in_principal_branch() -> None:
+    """Regression: raw edge difference exactly +π must not leave omega=+π (outside [-π, π)).
+
+    ``np.rint(0.5)`` is banker's-round-to-even (0), so ``n=round(raw/2π)`` alone
+    leaves omega=+π. Principal-branch wrapping must map this to omega=-π, n=+1.
+    """
+    c = build_single_triangle_fixture()
+    # Edge (0,1) has raw = θ1 - θ0 = +π
+    theta = np.array([0.0, np.pi, 0.0])
+    w1 = compute_wrapped_1_cochain(c, theta)
+    assert np.all(w1.cochain >= -np.pi - 1e-15)
+    assert np.all(w1.cochain < np.pi)  # strict: +π is not in [-π, π)
+    e01 = c.edge_index_map[(0, 1)]
+    assert w1.branch_jumps[e01] == 1
+    assert np.isclose(w1.cochain[e01], -np.pi)
+    assert np.allclose(w1.cochain, w1.raw_difference - 2.0 * np.pi * w1.branch_jumps)
+
+
 def test_wrapped_1_cochain_identity() -> None:
     """Verify that wrapped 1-cochain satisfies omega = d0 @ theta - 2pi * n with omega in [-pi, pi)."""
     c = build_vortex_quad_fixture()
@@ -45,7 +63,7 @@ def test_wrapped_1_cochain_identity() -> None:
 
     assert np.allclose(w1.cochain, reconstructed)
     assert np.all(w1.cochain >= -np.pi - 1e-12)
-    assert np.all(w1.cochain < np.pi + 1e-12)
+    assert np.all(w1.cochain < np.pi)  # strict upper bound
     assert np.issubdtype(w1.branch_jumps.dtype, np.integer)
 
 

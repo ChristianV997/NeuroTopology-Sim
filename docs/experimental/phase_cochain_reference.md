@@ -7,7 +7,15 @@ This document provides the mathematical specifications, discrete differential ge
 ## 1. Operational Scope & Guardrails
 
 > [!IMPORTANT]
-> This module is an independent, synthetic experimental reference implementation intended for algebraic topology and discrete exterior calculus validation. It contains no clinical, neurological, or consciousness claims. All calculations operate on discrete simplicial complexes and synthetic phase fields.
+> This module is an independent, synthetic experimental reference implementation intended for algebraic topology and discrete exterior calculus validation. It contains no clinical, neurological, or consciousness claims. All calculations operate on discrete simplicial complexes and synthetic phase fields. Status: **HOLD / SYNTHETIC_ONLY**.
+>
+> **Relation to merged production (#413 / #423):** Production owns
+> `neurotopology_sim.experimental.topology.winding` (floor-branch phase winding)
+> and `hodge_2d` (weighted Hodge). This package remains useful for
+> `SimplicialComplex` builders, dipole/annulus fixtures, and a complex-centric
+> reference API. It is **not** a second production engine. Principal-branch
+> wrapping here is defined via `wrap_to_pi` (equivalent to
+> `n = floor((raw+π)/2π)`), matching production `#413` at half-turn ties.
 
 ---
 
@@ -58,15 +66,15 @@ Angles are mapped to the principal branch $[-\pi, \pi)$ via:
 $$\operatorname{wrap}(\phi) = ((\phi + \pi) \pmod{2\pi}) - \pi$$
 
 ### 3.2 Wrapped 1-Cochains
-Given vertex phases $\theta \in [-\pi, \pi)^{|V|}$:
+Given vertex phases $\theta \in \mathbb{R}^{|V|}$:
 1. Unwrapped difference along edges:
    $$\Delta \theta = d_0 \theta \in \mathbb{R}^{|E|}$$
-2. Branch cut winding jumps:
-   $$n_e = \operatorname{round}\left(\frac{\Delta \theta_e}{2\pi}\right) \in \mathbb{Z}$$
-3. Wrapped 1-cochain:
-   $$\omega_e = \Delta \theta_e - 2\pi n_e \in [-\pi, \pi)$$
-In matrix form:
-$$\omega = d_0 \theta - 2\pi n, \quad n \in \mathbb{Z}^{|E|}$$
+2. Wrapped 1-cochain via principal-value map:
+   $$\omega_e = \operatorname{wrap}(\Delta \theta_e) \in [-\pi, \pi)$$
+3. Integer branch jumps recovered from the identity $\omega = \Delta\theta - 2\pi n$:
+   $$n_e = \operatorname{rint}\left(\frac{\Delta \theta_e - \omega_e}{2\pi}\right) \in \mathbb{Z}$$
+This is equivalent to $n_e = \lfloor(\Delta\theta_e+\pi)/(2\pi)\rfloor$ (production `#413`).
+Do **not** use bare `round(Δθ/2π)`: NumPy banker's rounding at half-turns leaves $\omega=+\pi\notin[-\pi,\pi)$.
 
 ### 3.3 Exact Integer Topological Charge
 The circulation around triangle $t$ is $(d_1 \omega)_t$. Substituting $\omega$:

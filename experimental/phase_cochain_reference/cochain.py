@@ -33,8 +33,8 @@ class Wrapped1Cochain:
 
     Attributes:
         raw_difference: d0 @ theta (unwrapped phase differences along edges).
-        branch_jumps: Integer jumps n_e = round(raw_diff / 2pi).
-        cochain: Wrapped 1-cochain omega = raw_diff - 2pi * n_e in [-pi, pi).
+        branch_jumps: Integer jumps n_e with omega = raw_diff - 2pi * n_e.
+        cochain: Wrapped 1-cochain omega = wrap_to_pi(raw_diff) in [-pi, pi).
     """
 
     raw_difference: np.ndarray
@@ -52,10 +52,15 @@ def compute_wrapped_1_cochain(
 ) -> Wrapped1Cochain:
     """Compute the wrapped 1-cochain omega on complex edges from vertex phases theta.
 
-    Mathematical definition:
+    Mathematical definition (principal branch):
         delta_theta = d0 @ theta
-        n = round(delta_theta / (2 * pi))
-        omega = delta_theta - 2 * pi * n
+        omega = wrap_to_pi(delta_theta)  # in [-pi, pi)
+        n = rint((delta_theta - omega) / (2 * pi))  # integer, omega = raw - 2π n
+
+    Note: ``n = rint(raw / 2π)`` alone is insufficient at half-turns because
+    NumPy banker's rounding maps ``rint(0.5) → 0``, leaving ``omega = +π``
+    outside ``[-π, π)``. Defining omega via ``wrap_to_pi`` is equivalent to
+    the floor branch ``n = floor((raw+π)/2π)`` used by production ``phase_winding``.
 
     Args:
         complex_: Simplicial complex.
@@ -71,10 +76,9 @@ def compute_wrapped_1_cochain(
         )
 
     raw_diff = complex_.d0 @ theta
-    # Exact integer branch jumps
-    branch_jumps = np.rint(raw_diff / (2.0 * np.pi)).astype(int)
-    # Wrapped phase difference on oriented edges
-    omega = raw_diff - 2.0 * np.pi * branch_jumps
+    # Principal-branch wrap first (fail-closed range), then recover integer n.
+    omega = np.asarray(wrap_to_pi(raw_diff), dtype=float)
+    branch_jumps = np.rint((raw_diff - omega) / (2.0 * np.pi)).astype(int)
 
     return Wrapped1Cochain(
         raw_difference=raw_diff,
