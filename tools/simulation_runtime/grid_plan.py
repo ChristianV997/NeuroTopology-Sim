@@ -15,13 +15,18 @@ default location and every gate stays missing. Untracked files and
 ``ci_discovery`` is blocking and stays blocked: the CI lists do not
 collect ``tests/simulation_runtime``. ``dmd_crouzeix`` is nonblocking.
 
-Dependency gates record a candidate commit. An open pull request, a
-local pass, or a green unrelated workflow is not evidence. A report
-whose ``source_sha`` differs from the recorded pin is stale and blocked.
+A pin may name only a commit that is already an ancestor of local main.
+None of the dependency pull requests are merged, so every pin is null.
+An open pull-request head is not a pin. A null pin blocks that gate with
+``dependency_not_merged_on_main``. A matching text pin does not open a
+gate: the module blob, its API symbols, a main-tracked promotion report,
+and CI discovery of these tests all have to hold, and this module still
+refuses the simulation callback.
 """
 
 from __future__ import annotations
 
+import ast
 import copy
 import inspect
 import itertools
@@ -68,8 +73,9 @@ DECLARED_ESTIMATE = "DECLARED_ESTIMATE"
 DECLARED_BYTES_PER_RECORD = 4096
 CODE_VERSION_UNKNOWN = "UNKNOWN"
 ROC_API_PR = 426
-ROC_API_HEAD = "55115149c7443ca8b325dc4dbf65d6900c9fdd79"
-# Names only. This module does not import that package.
+# Names only. This module does not import that package, and the unmerged
+# pull-request head is not stored here as a pin.
+GRID_EXECUTION = "NOT_RUN"
 ROC_API_NAMES = (
     "tpr",
     "fpr",
@@ -77,7 +83,7 @@ ROC_API_NAMES = (
     "auc",
     "average_precision",
 )
-AUDITED_MAIN_SHA = "19c3203573082f8bc41f7da226b52dc20a49fdb0"
+AUDITED_MAIN_SHA = "f6951115bcbf83b75bf20481085a5dad9c25c7e6"
 ROLES_DISJOINT_NOTE = (
     "Disjoint calibration and evaluation ids are not proof of statistical "
     "independence. Independent draws need per-seed RNG streams downstream."
@@ -128,46 +134,90 @@ PHASE_DISPERSION_MODULE_GATE_ID = "phase_dispersion_module"
 PHASE_SCORE_LIMITATIONS_GATE_ID = "phase_score_limitations_recorded"
 UNIT_SCORE_RULE = "max_window_score"
 
-# Candidate refs only. An open PR head is not a promotion record on main.
-# #427 moved off 27d451fa; that head is not a gate pin.
-REQUIRED_SOURCE_SHA: Dict[str, str] = {
-    "four_sphere_forward_model": "4b04df0bed9d34e1f4de4bb920933aa84df3a724",
-    "planar_geometry": "04d5af7321ff002bb88d75353e59aec73eabbf56",
-    "winding_hodge": "3328dd15a995a62759c4256de944e2dd8e7c9364",
-    "csd_full_matrix_pinned_mne": "24ad946c1cd6142846e19e9db8b7a5325d49ef46",
-    "phase_dispersion_module": "42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98",
-    "surrogate_null": "f8939eec66e585d00966d433cc563d3d34ca0b11",
-    "roc_metrics": ROC_API_HEAD,
-}
-# Source pull requests for the pins above. Not evidence, and not a refresh.
-PIN_SOURCE_PR: Dict[str, int] = {
-    "four_sphere_forward_model": 418,
-    "planar_geometry": 416,
-    "winding_hodge": 413,
-    "csd_full_matrix_pinned_mne": 414,
-    "phase_dispersion_module": 403,
-    "surrogate_null": 417,
-    "roc_metrics": 426,
-}
-# These pins are behind the open PR heads. Fail closed. Refresh only when
-# that dependency merges. Do not replace the pin with the open head.
-PINS_BEHIND_OPEN_PR_HEADS: Dict[str, Dict[str, str]] = {
-    "four_sphere_forward_model": {
-        "pinned_sha": REQUIRED_SOURCE_SHA["four_sphere_forward_model"],
-        "source_pr": "418",
-        "open_pr_head": "e316933282e469795d9c69fd50adc5a51ea9d5be",
-        "refresh": "only_when_dependency_merges",
-    },
-    "surrogate_null": {
-        "pinned_sha": REQUIRED_SOURCE_SHA["surrogate_null"],
-        "source_pr": "417",
-        "open_pr_head": "25c5afeac33f5fac219d1e78453549dc0143d316",
-        "refresh": "only_when_dependency_merges",
-    },
-}
-OPEN_PR_HEADS_NOT_EVIDENCE: Dict[str, str] = {
-    "426": ROC_API_HEAD,
-    "427": "e64304087dba4205ee2211963a3cf40025695e9c",
+# Declared production path. ``tools/phase_uncertainty/`` (pull request #403)
+# is a rejected substitute and cannot satisfy this gate.
+PHASE_DISPERSION_EXPECTED_PATH = "tools/phase_dispersion/phase_dispersion.py"
+PHASE_SUBSTITUTE_PREFIX = "tools/phase_uncertainty/"
+
+
+def _contract_row(
+    path: Optional[str],
+    symbols: Sequence[str],
+    candidate_pr: Optional[int] = None,
+    candidate_head: Optional[str] = None,
+) -> Dict[str, Any]:
+    """One gate contract.
+
+    Gate evaluation reads ``pinned_commit``, ``required_module_path``, and
+    ``required_api_symbols`` only. ``informational_candidate`` is copied
+    onto blocker records and is not a pin.
+    """
+
+    return {
+        "pinned_commit": None,
+        "required_module_path": path,
+        "required_api_symbols": tuple(symbols),
+        "informational_candidate": {
+            "candidate_pr": candidate_pr,
+            "candidate_head_observed": candidate_head,
+            "read_by_gate_evaluation": False,
+        },
+    }
+
+
+# Pins stay null until the dependency commit is an ancestor of main.
+# Candidate prefixes below are observations, not commits this module pins.
+GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
+    "four_sphere_forward_model": _contract_row(
+        "tools/forward/four_sphere_forward_model.py",
+        ("four_sphere_forward_field",),
+        418,
+        "9e198b86",
+    ),
+    "planar_geometry": _contract_row(
+        "tools/geometry/planar_geometry.py",
+        ("planar_geometry",),
+        416,
+        "04d5af73",
+    ),
+    "winding_hodge": _contract_row(
+        "tools/geometry/winding_hodge.py",
+        ("winding_hodge",),
+        413,
+        "e7aaf355",
+    ),
+    "csd_full_matrix_pinned_mne": _contract_row(
+        "tools/csd/csd_full_matrix.py",
+        ("csd_full_matrix",),
+        414,
+        "403c7cd2",
+    ),
+    "phase_dispersion_module": _contract_row(
+        PHASE_DISPERSION_EXPECTED_PATH,
+        ("phase_dispersion",),
+        403,
+        "42f8f9cc",
+    ),
+    "phase_score_limitations_recorded": _contract_row(None, ()),
+    "surrogate_null": _contract_row(
+        "tools/surrogate/surrogate_null.py",
+        ("surrogate_null",),
+        417,
+        "25c5afea",
+    ),
+    "roc_metrics": _contract_row(
+        "tools/metrics/roc_metrics.py",
+        ("operating_point", "compute_roc"),
+        426,
+        "55115149",
+    ),
+    "ci_discovery": _contract_row(
+        "tests/simulation_runtime/test_grid_plan.py",
+        ("GridPlanTests",),
+        425,
+        "ae3f7958",
+    ),
+    "dmd_crouzeix": _contract_row(None, ()),
 }
 
 # Audit labels for this main SHA. Not a registry, and not a substitute
@@ -1108,7 +1158,8 @@ def _proportion_declaration(
         "named_on_pr_426": metric_id in ROC_API_NAMES,
         "integration": "NOT_INTEGRATED",
         "source_pr": ROC_API_PR,
-        "source_head": ROC_API_HEAD,
+        "source_head": None,
+        "source_head_is_pin": False,
         "computed": False,
         "value": None,
         "kind": "proportion_at_frozen_threshold",
@@ -1133,7 +1184,8 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
         "imports_roc_api": False,
         "integration": "NOT_INTEGRATED",
         "source_pr": ROC_API_PR,
-        "source_head": ROC_API_HEAD,
+        "source_head": None,
+        "source_head_is_pin": False,
         "unit_aggregation": copy.deepcopy(dict(unit_aggregation)),
         "unit_score_rule": UNIT_SCORE_RULE,
         "unit_score_rule_consistent_with": "cluster_any_event_rate",
@@ -1174,7 +1226,8 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
                 "unit_score_rule": UNIT_SCORE_RULE,
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
-                "source_head": ROC_API_HEAD,
+                "source_head": None,
+                "source_head_is_pin": False,
                 "computed": False,
                 "value": None,
                 "kind": "ranking",
@@ -1196,7 +1249,8 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
                 "unit_score_rule": UNIT_SCORE_RULE,
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
-                "source_head": ROC_API_HEAD,
+                "source_head": None,
+                "source_head_is_pin": False,
                 "computed": False,
                 "value": None,
                 "kind": "ranking",
@@ -1321,7 +1375,8 @@ def _hash_payload(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "engineering_threshold_is_power_guarantee": False,
         "declared_bytes_per_record": DECLARED_BYTES_PER_RECORD,
         "metric_spec": _metric_spec(normalized["unit_aggregation_spec"]),
-        "required_source_sha": dict(REQUIRED_SOURCE_SHA),
+        "gate_contract": _gate_contract_for_hash(),
+        "grid_execution": GRID_EXECUTION,
         "h0": normalized["h0"],
         "h1": normalized["h1"],
         "score_definition_id": normalized["score_definition_id"],
@@ -1501,10 +1556,9 @@ def _limits() -> Dict[str, Any]:
         "engineering_minimum_note": ENGINEERING_MINIMUM_NOTE,
         "candidate_is_evidence": False,
         "open_pr_is_evidence": False,
-        "required_source_sha": dict(REQUIRED_SOURCE_SHA),
-        "pin_source_pr": dict(PIN_SOURCE_PR),
-        "pins_behind_open_pr_heads": copy.deepcopy(PINS_BEHIND_OPEN_PR_HEADS),
-        "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
+        "grid_execution": GRID_EXECUTION,
+        "gate_contract": _gate_contract_for_hash(),
+        "informational_candidates_are_not_pins": True,
         "data_lock": "string_denylist_not_a_complete_guard",
         "data_paths_opened": False,
         "metrics_are_computed": False,
@@ -1841,8 +1895,118 @@ def _load_tracked_rows(main_sha: str) -> List[Dict[str, Any]]:
     return rows
 
 
+def _gate_contract_for_hash() -> List[Dict[str, Any]]:
+    """Pin, path, and symbols only. Informational candidates are not hashed."""
+
+    rows: List[Dict[str, Any]] = []
+    for gate_id in tuple(BLOCKING_GATE_IDS) + tuple(NONBLOCKING_GATE_IDS):
+        row = GATE_CONTRACT[gate_id]
+        rows.append(
+            {
+                "gate_id": gate_id,
+                "pinned_commit": row["pinned_commit"],
+                "required_module_path": row["required_module_path"],
+                "required_api_symbols": list(row["required_api_symbols"]),
+            }
+        )
+    return rows
+
+
+def _informational_candidates() -> Dict[str, Dict[str, Any]]:
+    """Citation copy. Gate status does not read this mapping."""
+
+    copied: Dict[str, Dict[str, Any]] = {}
+    for gate_id, row in GATE_CONTRACT.items():
+        info = row.get("informational_candidate") or {}
+        copied[gate_id] = {
+            "candidate_pr": info.get("candidate_pr"),
+            "candidate_head_observed": info.get("candidate_head_observed"),
+            "read_by_gate_evaluation": False,
+        }
+    return copied
+
+
+def _defined_names(source: str) -> set[str]:
+    """Names a blob defines. The blob is parsed and not imported or executed."""
+
+    tree = ast.parse(source)
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _symbols_present(main_sha: str, path: str, symbols: Sequence[str]) -> bool:
+    if not symbols:
+        return True
+    raw = _git_show(main_sha, path)
+    if not isinstance(raw, str):
+        return False
+    try:
+        names = _defined_names(raw)
+    except SyntaxError:
+        return False
+    return all(symbol in names for symbol in symbols)
+
+
+def _contract_reasons(gate_id: str, main_sha: str) -> List[str]:
+    """Failing pin, module, and symbol checks. Does not read candidate refs."""
+
+    row = GATE_CONTRACT[gate_id]
+    reasons: List[str] = []
+    pinned = row["pinned_commit"]
+    if pinned is None:
+        reasons.append("dependency_not_merged_on_main")
+    elif not _is_ancestor_of_main(str(pinned), main_sha):
+        reasons.append("pin_not_ancestor_of_main")
+    path = row["required_module_path"]
+    if (
+        gate_id == PHASE_DISPERSION_MODULE_GATE_ID
+        and isinstance(path, str)
+        and PHASE_SUBSTITUTE_PREFIX in path.replace("\\", "/")
+    ):
+        reasons.append("substitute_module_rejected")
+    elif isinstance(path, str):
+        if not _path_tracked(main_sha, path):
+            reasons.append("module_missing_on_main")
+        elif not _symbols_present(main_sha, path, row["required_api_symbols"]):
+            reasons.append("symbols_missing_on_main")
+    elif gate_id == PHASE_DISPERSION_MODULE_GATE_ID:
+        reasons.append("module_missing_on_main")
+    return reasons
+
+
 def _blocker(code: str, message: str, gate_id: Optional[str] = None) -> Dict[str, Any]:
     return {"code": code, "gate_id": gate_id, "message": message}
+
+
+def _contract_blocker(
+    code: str,
+    gate_id: str,
+    status: str,
+    main_sha: Optional[str],
+) -> Dict[str, Any]:
+    row = GATE_CONTRACT.get(gate_id, {})
+    info = row.get("informational_candidate") or {}
+    symbols = row.get("required_api_symbols") or ()
+    return {
+        "code": code,
+        "gate_id": gate_id,
+        "message": f"gate {gate_id} is {status}",
+        "pinned_commit": row.get("pinned_commit"),
+        "required_module_path": row.get("required_module_path"),
+        "required_api_symbols": list(symbols),
+        "candidate_pr": info.get("candidate_pr"),
+        "candidate_head_observed": info.get("candidate_head_observed"),
+        "main_sha_checked": main_sha,
+    }
 
 
 def _ci_discovery_blocked() -> bool:
@@ -1880,10 +2044,13 @@ def _resolve_one(
         "integration": integration,
         "integration_is_evidence": False,
         "candidate_is_evidence": False,
-        "required_source_sha": REQUIRED_SOURCE_SHA.get(gate_id),
+        "pinned_commit": GATE_CONTRACT[gate_id]["pinned_commit"],
+        "required_module_path": GATE_CONTRACT[gate_id]["required_module_path"],
+        "required_api_symbols": list(GATE_CONTRACT[gate_id]["required_api_symbols"]),
         "verified_at_commit": None,
         "resolved_from": "none",
         "report_hash": None,
+        "reason_codes": [],
     }
     if git_failure is not None or main_sha is None:
         return {**base, "status": "missing", "git_failure": git_failure or "main_unresolved"}
@@ -1891,12 +2058,17 @@ def _resolve_one(
         return {
             **base,
             "status": "ci_discovery_blocked",
+            "reason_codes": ["ci_discovery_blocked"],
             "message": (
-                "tests/simulation_runtime is not collected by .github/workflows/ci.yml, "
-                ".github/workflows/required-checks.yml, or docker/ci/core.Dockerfile. "
-                "A CI workflow change must not land before this gate repair is merged."
+                "tests/simulation_runtime/test_grid_plan.py is absent from the fixed "
+                "lists in .github/workflows/ci.yml (the core test step), "
+                ".github/workflows/required-checks.yml (the core test step), and "
+                "docker/ci/core.Dockerfile CMD. Pull request #425 owns that change."
             ),
         }
+    reasons = _contract_reasons(gate_id, main_sha)
+    if reasons:
+        return {**base, "status": reasons[0], "reason_codes": list(reasons)}
     matched = [row for row in rows if row.get("case_id") == gate_id]
     if len(matched) > 1:
         return {
@@ -1909,7 +2081,7 @@ def _resolve_one(
     row = matched[0]
     if row.get("_source") != "git_blob":
         return {**base, "status": "missing", "label": TEST_FIXTURE_NOT_EVIDENCE}
-    required_sha = REQUIRED_SOURCE_SHA.get(gate_id)
+    required_sha = GATE_CONTRACT[gate_id]["pinned_commit"]
     if required_sha is not None:
         recorded = row.get("source_sha")
         if not isinstance(recorded, str) or _COMMIT_SHA.fullmatch(recorded) is None:
@@ -1962,6 +2134,9 @@ def _resolve_one(
             commit = None
         elif not _blob_is_at_or_after(commit, blob_commit, main_sha):
             status = "not_on_main" if commit == main_sha else "not_ancestor"
+            resolved_from = "evidence_promotion_gate_report"
+        elif _ci_discovery_blocked():
+            status = "ci_discovery_blocked"
             resolved_from = "evidence_promotion_gate_report"
         else:
             status = "admissible_on_ancestor"
@@ -2028,7 +2203,7 @@ def _resolve_gates_from_rows(
         gate_id = str(item["gate_id"])
         if status == "admissible_on_ancestor":
             continue
-        code = {
+        status_codes = {
             "missing": "missing_gate",
             "not_ancestor": "not_ancestor",
             "not_on_main": "not_on_main",
@@ -2040,10 +2215,18 @@ def _resolve_gates_from_rows(
             "stale_source": "stale_source",
             "missing_source_sha": "missing_dependency",
             "limitations_missing": "limitations_missing",
-        }.get(status, "missing_gate")
+            "dependency_not_merged_on_main": "dependency_not_merged_on_main",
+            "pin_not_ancestor_of_main": "pin_not_ancestor_of_main",
+            "module_missing_on_main": "module_missing_on_main",
+            "symbols_missing_on_main": "symbols_missing_on_main",
+            "substitute_module_rejected": "substitute_module_rejected",
+        }
+        reason_codes = list(item.get("reason_codes") or [status])
         if git_failure is not None:
-            code = git_failure
-        blockers.append(_blocker(code, f"gate {gate_id} is {status}", gate_id))
+            reason_codes = [git_failure]
+        for reason in reason_codes:
+            code = reason if git_failure is not None else status_codes.get(reason, "missing_gate")
+            blockers.append(_contract_blocker(code, gate_id, status, main_sha))
     return resolved, blockers
 
 
@@ -2165,6 +2348,7 @@ class GridPlan:
         self.failure_policy = FAILURE_POLICY
         self.planned_outputs = list(PLANNED_OUTPUTS)
         self.detector_roc = None
+        self.grid_execution = GRID_EXECUTION
         if self.execution.get("completed") is True or self.run_state == "completed":
             _reject("self_declared_state", "a validated plan is not a completed run")
         if any(cell.get("blocked") is not True for cell in self.cells):
@@ -2255,10 +2439,9 @@ class GridPlan:
             "toy_fixture": self.toy_fixture,
             "limits": self.limits,
             "null_model_note": NULL_MODEL_NOTE,
-            "required_source_sha": dict(REQUIRED_SOURCE_SHA),
-            "pin_source_pr": dict(PIN_SOURCE_PR),
-            "pins_behind_open_pr_heads": copy.deepcopy(PINS_BEHIND_OPEN_PR_HEADS),
-            "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
+            "grid_execution": GRID_EXECUTION,
+            "gate_contract": _gate_contract_for_hash(),
+            "informational_candidates": _informational_candidates(),
         }
 
     def would_execute(self) -> Dict[str, Any]:
@@ -2585,12 +2768,12 @@ __all__ = [
     "ENGINEERING_THRESHOLD_N",
     "EXECUTION_MODE_HELD",
     "EXECUTION_MODE_SMOKE",
-    "OPEN_PR_HEADS_NOT_EVIDENCE",
-    "REQUIRED_SOURCE_SHA",
+    "GATE_CONTRACT",
+    "GRID_EXECUTION",
+    "PHASE_DISPERSION_EXPECTED_PATH",
     "POWER_CLAIM",
     "PROJECT_STATUS",
     "REQUIRED_GATE_IDS",
-    "ROC_API_HEAD",
     "ROC_API_PR",
     "UNDERPOWERED_DRY_RUN",
     "RUN_STATES",

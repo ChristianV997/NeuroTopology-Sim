@@ -85,10 +85,10 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited commit
-`19c3203573082f8bc41f7da226b52dc20a49fdb0`. Every resolvable gate is
-therefore `missing`, and every cell stays blocked. A caller dict, list,
-or boolean passed to `execute` is not read, even when it says `ADMISSIBLE_*`
-and names an ancestor commit.
+`f6951115bcbf83b75bf20481085a5dad9c25c7e6`. Every dependency pin is null,
+so every dependency gate is `dependency_not_merged_on_main`, and every
+cell stays blocked. A caller dict, list, or boolean passed to `execute`
+is not read, even when it says `ADMISSIBLE_*` and names an ancestor commit.
 
 If `git` is missing, the clone is shallow (`git rev-parse
 --is-shallow-repository` is `true`), or main cannot be resolved, every
@@ -97,11 +97,10 @@ gate is `missing` and every cell stays blocked. The plan records
 `main_unresolved`. Ancestry is local git only. This module does not fetch.
 
 `ci_discovery` is blocking. The fixed test lists in
-`.github/workflows/ci.yml`, `.github/workflows/required-checks.yml`, and
-`docker/ci/core.Dockerfile` do not collect `tests/simulation_runtime`.
-That workflow change must not land before this repair is merged:
-`ci_discovery` is currently the only gate this planner keeps closed by
-itself. `dmd_crouzeix` is recorded and is nonblocking.
+`.github/workflows/ci.yml` (core test step), `.github/workflows/required-checks.yml`
+(core test step), and `docker/ci/core.Dockerfile` (`CMD`) do not name
+`tests/simulation_runtime/test_grid_plan.py`. Pull request #425 owns that
+workflow change. `dmd_crouzeix` is recorded and is nonblocking.
 
 `GATE_INTEGRATION_STATE` and the gate-id list are hand-written audit
 labels. `integration_is_evidence` is false on every resolution row. They
@@ -178,27 +177,32 @@ still not a power analysis. This planner does not accept or verify a
 power analysis (`power_analysis_supplied` is false). `power_claim` stays
 `none`. Neither label launches the grid.
 
-`roles_are_disjoint` is the computed disjointness of the two derived id
-sets. It is not proof of statistical independence. Independent draws need
-per-seed RNG streams downstream.
+`roles_are_disjoint` is the computed disjointness of the four derived id
+sets. Disjoint id sets are not statistical independence. Independent draws
+need per-seed RNG streams downstream.
 
 ## Declared metrics
 
 `metric_spec` is a declaration block inside the plan hash. Every metric
 has `computed: false` and `value: null`. This module does not import or
-reimplement PR #426 (`55115149c7443ca8b325dc4dbf65d6900c9fdd79`). The names
-`tpr`, `fpr`, `precision`, `auc`, and `average_precision` are recorded as
+reimplement pull request #426. That pull request is unmerged, so its head
+is not a pin and `source_head` is null. The names `tpr`, `fpr`,
+`precision`, `auc`, and `average_precision` are recorded as
 `NOT_INTEGRATED`. `accuracy` is an additional declared proportion with the
 same status.
 
 Wilson intervals are declared only for proportions at the frozen
 threshold: `tpr`, `fpr`, `precision`, and `accuracy`. Numerator and
 denominator fields are counted in independent units (seeds), never
-windows. `auc` and `average_precision` are not proportions. Their declared
-`interval_method` is `cluster_bootstrap_over_independent_unit`. Tie-aware
-AUC means ties count 0.5 (Mann-Whitney midrank). Stepwise average
-precision means the sum of precision at each recall step, with no
-interpolation. Those sentences are the contract. No score is ranked here.
+windows. The planning floor from `plan_sample_size` covers class counts.
+It does not cover precision's Wilson interval. When the predicted-positive
+count is zero, precision falls back to
+`precision_undefined_no_predicted_positives`. `auc` and
+`average_precision` are not proportions. Their declared `interval_method`
+is `cluster_bootstrap_over_independent_unit`. Tie-aware AUC means ties
+count 0.5 (Mann-Whitney midrank). Stepwise average precision means the
+sum of precision at each recall step, with no interpolation. Those
+sentences are the contract. No score is ranked here.
 
 Undefined values are the token `UNDEFINED` with a reason code. They are
 never silent 0 or NaN.
@@ -256,7 +260,8 @@ The payload includes axes, seeds, both independent-unit id lists and
 counts, the four class counts, nesting, `unit_aggregation`, the interval
 method, estimand, `power_claim`, the sample-size label, `execution_mode`,
 the engineering minimum note, `metric_spec`, the declared bytes per
-record, the required source SHAs, `h0`, `h1`, `score_definition_id`, the
+record, the gate contract (`pinned_commit`, module path, API symbols),
+`grid_execution` (`NOT_RUN`), `h0`, `h1`, `score_definition_id`, the
 threshold, `threshold_hash`, Wilson inputs, budgets, blocking and
 nonblocking gate ids, the ADMISSIBLE decision names, and
 `EvidencePromotionGate.v1`. `code_version_id` and `worktree_dirty` are
@@ -331,55 +336,63 @@ No cell is launched.
 
 ## Gate ids
 
-Blocking. Each dependency gate except `phase_score_limitations_recorded`
-and `ci_discovery` has a recorded candidate SHA. That SHA is not evidence.
-A pin match never opens a gate. A gate opens only when a direct-candidate
-promotion report for that one `case_id` is a git blob on local main, the
-report `source_sha` equals the pin when the gate has one, and the usual
-ancestor and `ADMISSIBLE_*` checks pass. An open pull request, a local
-test pass, or a green unrelated workflow is not enough. A different
-`source_sha` is `stale_source`. A missing `source_sha` on a pinned gate is
-`missing_dependency`. `phase_score_limitations_recorded` has no pin. It
-blocks on its own and requires `limitations_recorded: true`.
-`phase_dispersion_module` does not satisfy that limitations row.
-`ci_discovery` has no candidate SHA and stays blocked until the CI change
-lands after this repair.
+Blocking. A pin may name only a commit that `git merge-base --is-ancestor`
+accepts against local main. None of the dependency pull requests are
+merged, so every `pinned_commit` is null. A null pin yields
+`dependency_not_merged_on_main`. An open-pull-request head supplied as a
+pin yields `pin_not_ancestor_of_main`. Pull-request numbers in
+`informational_candidate` are citations. Gate evaluation does not read
+them, and they are not part of `config_hash`.
+
+A gate is eligible only when all of these hold:
+
+1. `pinned_commit` is non-null and an ancestor of main.
+2. `required_module_path` is a blob in that main tree
+   (`module_missing_on_main` when it is not).
+3. `required_api_symbols` are defined in that blob. The check is
+   `ast.parse` of `git show`. The module is not imported
+   (`symbols_missing_on_main` when a name is absent).
+4. A promotion report at the `write_report` default path is a blob on
+   main and passes the one-`case_id` admissibility checks. A matching
+   text pin does not open the gate by itself.
+5. Direct tests are collected by CI. `ci_discovery` stays blocked.
+   Pull request #425 owns that workflow edit.
+
+`phase_dispersion_module` expects `tools/phase_dispersion/phase_dispersion.py`.
+A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
+Pull request #403 is not that module. `phase_score_limitations_recorded`
+is a separate row and still requires `limitations_recorded: true` once
+its pin is an ancestor. One phase row does not satisfy the other.
+
+`grid_execution` is `NOT_RUN`. `opened` stays false, and the simulation
+callback is refused, including when a document says otherwise.
 
 Abort order is the blocking-id order. The first blocking gate that is not
-`admissible_on_ancestor` is `abort_gate`. The two phase rows each block
-when the other does not.
+`admissible_on_ancestor` is `abort_gate`.
 
-| Gate | Source PR | Candidate SHA | Note |
+| Gate | Expected module | Symbols | Pin |
 | --- | --- | --- | --- |
-| `four_sphere_forward_model` | #418 | `4b04df0bed9d34e1f4de4bb920933aa84df3a724` | Behind open head `e316933282e469795d9c69fd50adc5a51ea9d5be`. Fail closed. Refresh only when #418 merges. |
-| `planar_geometry` | #416 | `04d5af7321ff002bb88d75353e59aec73eabbf56` | Open PR head, not on main. |
-| `winding_hodge` | #413 | `3328dd15a995a62759c4256de944e2dd8e7c9364` | Split from the old combined id. |
-| `csd_full_matrix_pinned_mne` | #414 | `24ad946c1cd6142846e19e9db8b7a5325d49ef46` | Open PR head, not on main. |
-| `phase_dispersion_module` | #403 | `42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98` | Module pin. Does not open the limitations row. |
-| `phase_score_limitations_recorded` | none | none | `NOT_INTEGRATED`. Requires `limitations_recorded`. Blocks alone. |
-| `surrogate_null` | #417 | `f8939eec66e585d00966d433cc563d3d34ca0b11` | Behind open head `25c5afeac33f5fac219d1e78453549dc0143d316`. Fail closed. Refresh only when #417 merges. |
-| `roc_metrics` | #426 | `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | Pinned #426 SHA. |
-| `ci_discovery` | none | none | `BLOCKED`. |
-
-`#427` head `e64304087dba4205ee2211963a3cf40025695e9c` moved off
-`27d451fa`. It is not a gate pin and not evidence.
+| `four_sphere_forward_model` | `tools/forward/four_sphere_forward_model.py` | `four_sphere_forward_field` | null |
+| `planar_geometry` | `tools/geometry/planar_geometry.py` | `planar_geometry` | null |
+| `winding_hodge` | `tools/geometry/winding_hodge.py` | `winding_hodge` | null |
+| `csd_full_matrix_pinned_mne` | `tools/csd/csd_full_matrix.py` | `csd_full_matrix` | null |
+| `phase_dispersion_module` | `tools/phase_dispersion/phase_dispersion.py` | `phase_dispersion` | null |
+| `phase_score_limitations_recorded` | none | none | null |
+| `surrogate_null` | `tools/surrogate/surrogate_null.py` | `surrogate_null` | null |
+| `roc_metrics` | `tools/metrics/roc_metrics.py` | `operating_point`, `compute_roc` | null |
+| `ci_discovery` | `tests/simulation_runtime/test_grid_plan.py` | `GridPlanTests` | null, and blocked |
 
 Nonblocking:
 
-- `dmd_crouzeix` — `NONBLOCKING`
+- `dmd_crouzeix` — `NONBLOCKING`, pin null
 
 `GATE_INTEGRATION_STATE` marks the dependency gates, including both phase
 rows, `NOT_INTEGRATED`, and `ci_discovery` `BLOCKED`. Those labels are not
-evidence. The four-sphere and surrogate pins stay at the SHAs above while
-their open PR heads have moved. This planner does not chase those heads.
+evidence.
 
-Verdict of a plan produced with this module while those reports are absent
-and `ci_discovery` is blocked: **BLOCKED**. HOLD / SYNTHETIC_ONLY. The
-grid is not run. The CI workflow change that would collect
-`tests/simulation_runtime` must not land before this repair is merged,
-because `ci_discovery` is currently the only gate this planner keeps
-closed on its own. The planner can certify a digest, declared metric
-names, an engineering sample-size label, a declared byte bound, and that
-gates are missing or blocked. It cannot certify that a gate passed, that
-a report was produced correctly, a power claim, a detector ROC, statistical
-independence, or that the grid ran.
+Verdict of a plan produced with this module: **BLOCKED**. HOLD /
+SYNTHETIC_ONLY. `GRID_EXECUTION=NOT_RUN`. The planner can certify a
+digest, declared metric names, an engineering sample-size label, a
+declared byte bound, and that gates are blocked. It cannot certify that
+a gate passed, that a report was produced correctly, a power claim, a
+detector ROC, statistical independence, or that the grid ran.
