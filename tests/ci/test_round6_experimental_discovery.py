@@ -522,6 +522,74 @@ def test_fixture():
         self.assertEqual(counts, (2, 0, 0, 0))
         self.assertEqual(len(cases), 2)
 
+    def test_failed_pytest_retains_bounded_junit_diagnostics(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, pair["implementation"], "# fixture implementation\n")
+            _write(root, pair["test"], "def test_fixture():\n    assert False\n")
+            head = _commit(root, "failed pytest diagnostic fixture")
+            report_path = root / "outputs/report.json"
+
+            def failed_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                testcase_xml = "".join(
+                    f'<testcase classname="fixture" name="test_{index}"><failure '
+                    'type="AssertionError" message="fixture failure detail"/>'
+                    '</testcase>'
+                    for index in range(helper.MAX_JUNIT_FAILURE_CASES + 1)
+                )
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["exit_code"] = 1
+                telemetry["summary"].update({
+                    "passed_batches": 0,
+                    "failed_batches": 1,
+                    "overall_exit_code": 1,
+                })
+                batch = telemetry["batches"][0]
+                batch.update({
+                    "status": "failed",
+                    "exit_code": 1,
+                    "failures": [f"FAILED {test_file}::test_fixture - AssertionError"],
+                    "stdout_tail": "1 failed in 0.01s\n",
+                })
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml=(
+                        f'<testsuite tests="{helper.MAX_JUNIT_FAILURE_CASES + 1}" '
+                        f'skipped="0" failures="{helper.MAX_JUNIT_FAILURE_CASES + 1}" errors="0">'
+                        f'{testcase_xml}</testsuite>'
+                    ),
+                    **kwargs,
+                ).__class__(returncode=1, stdout="", stderr="")
+
+            with patch.object(helper.subprocess, "run", side_effect=failed_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "test_or_collection_failure")
+        self.assertEqual(execution["result_counts"], {
+            "collected": helper.MAX_JUNIT_FAILURE_CASES + 1,
+            "skipped": 0,
+            "failed": helper.MAX_JUNIT_FAILURE_CASES + 1,
+            "errors": 0,
+            "timeouts": 0,
+        })
+        self.assertEqual(len(execution["junit_case_failures"]), helper.MAX_JUNIT_FAILURE_CASES)
+        self.assertTrue(execution["junit_case_failures_truncated"])
+        self.assertEqual(execution["junit_case_failures"][0], {
+            "name": "fixture.test_0", "status": "failed"
+        })
+        self.assertNotIn("fixture failure detail", json.dumps(execution))
+
     def test_isolated_pass_reconciles_pytest_subtest_total_with_junit_summary(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
