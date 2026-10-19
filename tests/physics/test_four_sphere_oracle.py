@@ -756,6 +756,28 @@ class FourSphereIndependentOracleTests(unittest.TestCase):
         self.assertEqual(result.diagnostics["tail_monotone_lookahead_ok"], 0.0)
         self.assertEqual(result.diagnostics["tail_certified"], 0.0)
 
+    def test_nonmonotone_tail_gate_does_not_promote_conditional_value(self) -> None:
+        """A synthetic transfer sequence that rises later must leave the gate false."""
+        # Deliberately non-Table-1 geometry for exercising the diagnostic only;
+        # no expected potentials or scientific interpretation are inferred.
+        geometry = FourSphereGeometry(
+            (0.06931, 0.07318, 0.0736, 0.0809),
+            (0.0004, 5.2088, 0.0365, 0.0199),
+        )
+        source = np.asarray((0.0, 0.0, 0.030))
+        moment = np.asarray((0.0, 0.0, 1.0e-8))
+        sensors = np.asarray(((0.0, 0.0, 0.0809), (0.0809, 0.0, 0.0)))
+        result = forward_potentials(
+            geometry,
+            source,
+            moment,
+            sensors,
+            max_degree=16,
+            tail_tol=1.0e100,
+        )
+        self.assertEqual(result.diagnostics["tail_monotone_lookahead_ok"], 0.0)
+        self.assertEqual(result.diagnostics["tail_certified"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
