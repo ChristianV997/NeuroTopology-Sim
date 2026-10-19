@@ -111,7 +111,7 @@ _NON_ASSERTION_KEYS = {
 }
 _METADATA_TEXT_KEYS = _STATUS_KEYS | _EVIDENCE_KEYS | {"scientific_pass", "formal_bayes_factor"}
 _NEGATION_CLAUSE_SPLIT = re.compile(
-    r"(?<=[.!?;])\s+|,\s+(?=(?:the|this|these|those|it|they|we|results?|findings?|analysis|"
+    r"(?<=[.!?;:])\s+|\s+[—–]\s+|,\s+(?=(?:the|this|these|those|it|they|we|results?|findings?|analysis|"
     r"intervention|model|data|output|evidence|claim|report)\b)|"
     r"\s+\b(?:and|but|or|nor|yet|whereas|while|although|though)\b\s+",
     re.IGNORECASE,
@@ -182,25 +182,89 @@ def _finding_sort_key(finding: Mapping[str, Any]) -> tuple[str, tuple[int, int |
     return str(finding["file"]), location_key, str(finding["rule"])
 
 
+def _is_escaped(text: str, position: int) -> bool:
+    backslashes = 0
+    position -= 1
+    while position >= 0 and text[position] == "\\":
+        backslashes += 1
+        position -= 1
+    return backslashes % 2 == 1
+
+
+def _paired_delimiter_spans(
+    text: str,
+    opening: str,
+    closing: str,
+    *,
+    escape_aware: bool = True,
+) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    while True:
+        left = text.find(opening, cursor)
+        while left >= 0 and escape_aware and _is_escaped(text, left):
+            left = text.find(opening, left + len(opening))
+        if left < 0:
+            break
+        right = text.find(closing, left + len(opening))
+        while right >= 0 and escape_aware and _is_escaped(text, right):
+            right = text.find(closing, right + len(closing))
+        if right < 0:
+            break
+        spans.append((left, right + len(closing)))
+        cursor = right + len(closing)
+    return spans
+
+
+def _backtick_spans(text: str) -> list[tuple[int, int]]:
+    """Find inline code spans using matching, unescaped backtick-run lengths."""
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    while cursor < len(text):
+        left = text.find("`", cursor)
+        if left < 0:
+            break
+        run_end = left + 1
+        while run_end < len(text) and text[run_end] == "`":
+            run_end += 1
+        run_length = run_end - left
+        if _is_escaped(text, left):
+            cursor = run_end
+            continue
+
+        right = run_end
+        closing_span: tuple[int, int] | None = None
+        while right < len(text):
+            candidate = text.find("`", right)
+            if candidate < 0:
+                break
+            candidate_end = candidate + 1
+            while candidate_end < len(text) and text[candidate_end] == "`":
+                candidate_end += 1
+            if candidate_end - candidate == run_length:
+                closing_span = (candidate, candidate_end)
+                break
+            right = candidate_end
+
+        if closing_span is None:
+            cursor = run_end
+            continue
+        spans.append((left, closing_span[1]))
+        cursor = closing_span[1]
+    return spans
+
+
 def _quote_spans(text: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
-    pairs = (("\"", "\""), ("“", "”"), ("‘", "’"), ("`", "`"))
-    for opening, closing in pairs:
-        start = 0
-        while True:
-            left = text.find(opening, start)
-            if left < 0:
-                break
-            right = text.find(closing, left + len(opening))
-            if right < 0:
-                break
-            spans.append((left, right + len(closing)))
-            start = right + len(closing)
+    spans.extend(_paired_delimiter_spans(text, "\"", "\""))
+    spans.extend(_paired_delimiter_spans(text, "“", "”", escape_aware=False))
+    spans.extend(_paired_delimiter_spans(text, "‘", "’", escape_aware=False))
+    spans.extend(_backtick_spans(text))
     # Pair straight single quotes with a linear scan; apostrophes between word
     # characters (for example, in contractions) are content, not delimiters.
     opening: int | None = None
     for index, char in enumerate(text):
-        if char != "'":
+        if char != "'" or _is_escaped(text, index):
             continue
         previous_is_word = index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_")
         next_is_word = index + 1 < len(text) and (text[index + 1].isalnum() or text[index + 1] == "_")
@@ -438,6 +502,7 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
     current_start = 1
     fenced = False
     fence_marker = ""
+    fence_length = 0
     def flush() -> None:
         nonlocal current
         if current:
@@ -455,18 +520,28 @@ def _markdown_paragraphs(text: str) -> list[tuple[int, str, str, bool]]:
         stripped = raw.strip()
         leading_whitespace = raw[: len(raw) - len(raw.lstrip(" \t"))]
         indented_code = "\t" in leading_whitespace or len(leading_whitespace) >= 4
-        fence = re.match(r"^(```+|~~~+)", stripped)
-        if fence:
-            flush()
-            marker = fence.group(1)[0]
-            if not fenced:
-                fenced = True
-                fence_marker = marker
-            elif marker == fence_marker:
+        fence = None if indented_code else re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", raw)
+        if fenced:
+            if (
+                fence
+                and fence.group(1)[0] == fence_marker
+                and len(fence.group(1)) >= fence_length
+                and not fence.group(2).strip()
+            ):
+                flush()
                 fenced = False
                 fence_marker = ""
+                fence_length = 0
             continue
-        if fenced or not stripped or stripped.startswith(">") or indented_code:
+        if fence:
+            marker_run, info = fence.groups()
+            if marker_run[0] == "~" or "`" not in info:
+                flush()
+                fenced = True
+                fence_marker = marker_run[0]
+                fence_length = len(marker_run)
+                continue
+        if not stripped or stripped.startswith(">") or indented_code:
             flush()
             continue
         heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", raw)
@@ -512,8 +587,7 @@ def _inspect_content(file: str, suffix: str, content: str) -> list[dict[str, Any
         for line, paragraph, heading, excluded in _markdown_paragraphs(content):
             if excluded:
                 continue
-            for sentence in _split_assertion_clauses(paragraph):
-                _scan_text(sentence, file, f"L{line}", findings, heading=heading)
+            _scan_text(paragraph, file, f"L{line}", findings, heading=heading)
     else:
         try:
             payload = json.loads(

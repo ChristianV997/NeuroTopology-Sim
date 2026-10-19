@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -75,6 +77,200 @@ class ReportFirewallTests(unittest.TestCase):
         causal_locations = {finding["location"] for finding in findings
                             if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"}
         self.assertIn("L29", causal_locations)
+
+    def test_punctuation_and_conjunction_boundaries_scope_negation_locally(self):
+        examples = [
+            "The analysis does not establish causality. The intervention causes the transition.",
+            "The analysis does not establish causality; the intervention causes the transition.",
+            "The analysis does not establish causality? The intervention causes the transition.",
+            "The analysis does not establish causality! The intervention causes the transition.",
+            "The analysis does not establish causality: the intervention causes the transition.",
+            "The analysis does not establish causality — the intervention causes the transition.",
+            "The analysis does not establish causality – the intervention causes the transition.",
+            *[
+                f"The analysis does not establish causality, {joiner} the intervention causes the transition."
+                for joiner in ("and", "but", "or", "nor", "yet", "whereas", "while", "although", "though")
+            ],
+        ]
+        for index, text in enumerate(examples):
+            with self.subTest(text=text):
+                self._write(f"boundary-{index}.md", text)
+                report = inspect_reports(self.root, [f"boundary-{index}.md"])
+                self.assertIn("UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM", self._rules(report))
+
+    def test_every_documented_comma_led_subject_starts_an_independent_clause(self):
+        subjects = {
+            "the": "the model causes",
+            "this": "this model causes",
+            "these": "these results cause",
+            "those": "those results cause",
+            "it": "it causes",
+            "they": "they cause",
+            "we": "we cause",
+            "results": "results cause",
+            "findings": "findings cause",
+            "analysis": "analysis causes",
+            "intervention": "intervention causes",
+            "model": "model causes",
+            "data": "data cause",
+            "output": "output causes",
+            "evidence": "evidence causes",
+            "claim": "claim causes",
+            "report": "report causes",
+        }
+        for index, (subject, phrase) in enumerate(subjects.items()):
+            with self.subTest(subject=subject):
+                name = f"comma-subject-{index}.md"
+                self._write(name, f"No causal evidence was found, {phrase} the transition.")
+                report = inspect_reports(self.root, [name])
+                self.assertIn("UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM", self._rules(report))
+
+    def test_inline_code_and_escaped_quote_edges_are_handled_conservatively(self):
+        self._write(
+            "inline-and-escaped.md",
+            "# Edge cases\n\n"
+            "Single-backtick code: `Synthetic results prove biology`.\n\n"
+            "Double-backtick code: ``Synthetic `results` prove biology``.\n\n"
+            "Escaped backticks are literal: \\`; the intervention causes the transition; also literal \\`.\n\n"
+            'Escaped double quote inside a quoted span: "not causal \\"; synthetic results prove biology".\n\n'
+            "Escaped single quote inside a quoted span: 'not causal \\' but synthetic results prove biology'.\n\n"
+            'Unmatched opening quote: "the intervention causes the transition.\n\n'
+            "````text\n"
+            "Synthetic results prove biology.\n"
+            "```\n"
+            "Still code because this closing fence is shorter than the opener.\n"
+            "````\n\n"
+            "The intervention causes the transition outside the fence.\n",
+        )
+        findings = inspect_reports(self.root, ["inline-and-escaped.md"])["findings"]
+        causal_lines = {
+            finding["location"]
+            for finding in findings
+            if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"
+        }
+        synthetic_lines = {
+            finding["location"]
+            for finding in findings
+            if finding["rule"] in {"SYNTHETIC_TO_EMPIRICAL_ASSERTION", "PROJECT_CLAIM_CEILING"}
+        }
+        self.assertEqual(causal_lines, {"L7", "L13", "L21"})
+        self.assertFalse(synthetic_lines)
+
+    def test_heuristic_fixture_matrix_keeps_warning_distinct_from_truth(self):
+        cases = (
+            ("assertion", "The intervention causes the transition.", True),
+            ("explicit-negation", "The intervention does not cause the transition.", False),
+            ("cautious-hypothesis", "The intervention may cause the transition.", False),
+            ("quoted-assertion", "The report says 'the intervention causes the transition'.", False),
+            (
+                "quoted-plus-independent-assertion",
+                "The report quotes 'not causal'; the intervention causes the transition.",
+                True,
+            ),
+            (
+                "negation-plus-independent-assertion",
+                "No causal evidence is reported, but the intervention causes the transition.",
+                True,
+            ),
+        )
+        for name, text, expected_warning in cases:
+            with self.subTest(name=name):
+                path = f"matrix-{name}.md"
+                self._write(path, text)
+                report = inspect_reports(self.root, [path])
+                causal = [
+                    finding for finding in report["findings"]
+                    if finding["rule"] == "UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM"
+                ]
+                self.assertEqual(bool(causal), expected_warning)
+                self.assertTrue(report["advisory_only"])
+                self.assertTrue(all(item["severity"] == "warning" for item in causal))
+                self.assertTrue(all("recommendation" in item for item in causal))
+                self.assertFalse(any("claim_is_false" in item for item in report["findings"]))
+
+    def _run_cli(self, root: Path, *paths: str) -> subprocess.CompletedProcess[str]:
+        repository = Path(__file__).resolve().parents[3]
+        script = repository / "scripts" / "check_batch3_report_language.py"
+        return subprocess.run(
+            [sys.executable, str(script), "--root", str(root), *paths],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+
+    def test_cli_explicit_file_and_malformed_json_have_stable_exit_contracts(self):
+        bounded = self.root / "reports"
+        bounded.mkdir()
+        self._write("reports/valid.md", "The intervention causes the transition.\n")
+        self._write("reports/broken.json", '{"text":"The intervention causes biology",}')
+
+        valid = self._run_cli(bounded, "valid.md")
+        self.assertEqual(valid.returncode, 0)
+        self.assertEqual(json.loads(valid.stdout)["schema_version"], "Batch3ReportLanguageFindings.v1")
+        self.assertIn("UNSUPPORTED_CAUSAL_OR_MECHANISTIC_CLAIM", {
+            finding["rule"] for finding in json.loads(valid.stdout)["findings"]
+        })
+
+        malformed = self._run_cli(bounded, "broken.json")
+        self.assertEqual(malformed.returncode, 0)
+        malformed_report = json.loads(malformed.stdout)
+        self.assertEqual(self._rules(malformed_report), {"REPORT_NOT_PARSEABLE"})
+        self.assertEqual(malformed_report["findings"][0]["location"], "$")
+
+    def test_cli_rejects_traversal_and_directory_selection_with_structured_errors(self):
+        bounded = self.root / "bounded"
+        bounded.mkdir()
+        nested = bounded / "nested"
+        nested.mkdir()
+        (nested / "report.md").write_text("The intervention causes the transition.", encoding="utf-8")
+        (self.root / "outside.md").write_text("The intervention causes biology.", encoding="utf-8")
+
+        traversal = self._run_cli(bounded, "../outside.md")
+        repeated = self._run_cli(bounded, "../outside.md")
+        self.assertEqual(traversal.returncode, 2)
+        self.assertEqual(traversal.stdout, repeated.stdout)
+        error_report = json.loads(traversal.stdout)
+        self.assertEqual(error_report["findings"], [])
+        self.assertIn("traverse", error_report["input_errors"][0])
+
+        recursive = self._run_cli(bounded, "nested")
+        self.assertEqual(recursive.returncode, 2)
+        recursive_report = json.loads(recursive.stdout)
+        self.assertEqual(recursive_report["findings"], [])
+        self.assertTrue(recursive_report["input_errors"])
+
+    def test_cli_rejects_symlink_escape_where_supported(self):
+        bounded = self.root / "bounded"
+        bounded.mkdir()
+        outside = self.root / "outside.md"
+        outside.write_text("The intervention causes biology.", encoding="utf-8")
+        link = bounded / "escape.md"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"symlink creation is unavailable on this platform: {exc}")
+
+        result = self._run_cli(bounded, "escape.md")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["findings"], [])
+        self.assertIn("symlink", json.loads(result.stdout)["input_errors"][0])
+
+    def test_cli_enforces_the_explicit_file_count_limit(self):
+        bounded = self.root / "bounded"
+        bounded.mkdir()
+        paths = []
+        for index in range(101):
+            name = f"report-{index:03d}.md"
+            (bounded / name).write_text("Engineering check only.\n", encoding="utf-8")
+            paths.append(name)
+
+        result = self._run_cli(bounded, *paths)
+        self.assertEqual(result.returncode, 2)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["findings"], [])
+        self.assertIn("no more than 100", payload["input_errors"][0])
 
     def test_multiple_assertive_claims_in_one_sentence_are_checked(self):
         findings = self._adversarial_markdown_report()

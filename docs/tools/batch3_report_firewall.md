@@ -16,9 +16,9 @@ presented as biological validation, asserted causal/mechanistic language,
 replication without an independent reference, structured evidence/status
 conflicts, missing references, and ambiguous validation labels. Explicit
 negations, limitation sections, fenced and indented code, Markdown blockquotes,
-double/curly/single-quoted spans, and fixture/example JSON fields are excluded
-or handled conservatively. Simple punctuation, comma-led boundaries before
-common clause subjects, and coordinating conjunctions are used so a nearby
+inline backtick code, double/curly/single-quoted spans, and fixture/example JSON
+fields are excluded or handled conservatively. Simple punctuation, comma-led
+boundaries before common clause subjects, and coordinating conjunctions are used so a nearby
 negation or caution does not suppress a separate assertive clause; this is not a
 grammar parser and remains a heuristic.
 
@@ -27,6 +27,8 @@ misconduct or proof that a claim is false; no finding is not proof that a claim
 is true. Evidence-reference presence is only a textual/field-presence signal,
 not source verification. The checker never rewrites reports, assigns a
 scientific status, emits a scientific pass, or emits scientific `VALIDATED`.
+Structured `scientific_status: VALIDATED` is still warned on when unrelated
+metadata says `validation_scope: software`.
 It does not replace the research-claim auditor, claim/evidence promotion gate,
 hypothesis-to-measurement checks, provenance system, or report generators.
 
@@ -40,7 +42,46 @@ generating drafts. None provides the bounded, explicit-file, advisory
 cross-format language/status review implemented here. The checker reuses the
 shared claim-language ceiling catalog but does not call a promotion gate.
 
-## Deterministic limits
+## Heuristic boundaries
+
+For prose, the lightweight clause splitter recognizes `.`, `!`, `?`, `;`, or
+`:` followed by whitespace; an en or em dash surrounded by whitespace; and the
+coordinating words `and`, `but`, `or`, `nor`, `yet`, `whereas`, `while`,
+`although`, and `though` when surrounded by whitespace. A comma is a boundary
+only when followed by whitespace and one of these subjects: `the`, `this`,
+`these`, `those`, `it`, `they`, `we`, `result(s)`, `finding(s)`, `analysis`,
+`intervention`, `model`, `data`, `output`, `evidence`, `claim`, or `report`.
+Recognized negation/caution in one such fragment should not suppress a separate
+fragment, but this is not grammar parsing. Unlisted comma-led subjects, complex
+syntax, and a qualifier and assertion in one fragment may still be missed or
+over-suppressed.
+
+Fenced code is skipped until a closing fence uses the same marker, has at least
+the opening run length, and has no non-whitespace suffix. Four-space/tab-
+indented code and blockquote lines are skipped. Inline code is excluded only
+when matching, unescaped backtick runs have equal length; backslash-escaped
+backticks are literal delimiters. Paired straight double/single and curly
+quotes are excluded; apostrophes between word characters are treated as
+apostrophes, while unmatched quote delimiters do not hide the paragraph tail.
+Nested/malformed Markdown and attribution remain heuristic edge cases.
+
+The `certainty` label is a heuristic category, not a probability or an
+evidentiary weight. A warning is not proof that a claim is false or misconduct
+occurred; an empty finding list does not prove that claims are true. Evidence
+references are not opened or verified.
+
+## CLI and deterministic limits
+
+Exit code `0` means the explicit selection was scanned. It may still include
+warnings, such as `REPORT_NOT_PARSEABLE` for malformed JSON or invalid UTF-8;
+content checks are not performed for that file. Path-selection failures,
+including traversal, directory selection, unsupported extensions, missing
+files, or size/count limits, return exit code `2`, a JSON `input_errors` list,
+and no report findings. Directories are never recursively expanded. Repeating
+the same invalid selection on a stable root produces the same error payload.
+Path resolution and containment checks are not a race-resistant filesystem
+sandbox against concurrent replacement of path components or file contents;
+scan a stable local tree.
 
 - Detection is regex/structure based, not semantic inference. Negation and
   caution handling is local to simple punctuation, selected comma-led clause
