@@ -21,6 +21,21 @@ on:
       - "tests/runner/**"
       - "apps/awareness_studio/Dockerfile"
       - "apps/awareness_studio/pyproject.toml"
+      - "apps/awareness_studio/src/**"
+      - "apps/awareness_studio/tests/**"
+      - "apps/awareness_studio/tools/**"
+      - "apps/awareness_studio/inputs/**"
+      - "tools/__init__.py"
+      - "tools/literature_evidence/**"
+      - "tools/simulation_artifacts/**"
+      - "tools/simulation_execution/**"
+      - "tools/research_cycle_preflight/**"
+      - "tools/research_cycle_release/**"
+      - "tools/research_plan_quality/**"
+      - "tools/research_claim_gate/**"
+      - "tools/data_access/policy_enforcement/**"
+      - "scripts/build_awareness_evidence_graph.py"
+      - "tests/research_cycle_preflight/fixtures/complete_plan.json"
       - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   pull_request:
@@ -40,6 +55,21 @@ on:
       - "tests/runner/**"
       - "apps/awareness_studio/Dockerfile"
       - "apps/awareness_studio/pyproject.toml"
+      - "apps/awareness_studio/src/**"
+      - "apps/awareness_studio/tests/**"
+      - "apps/awareness_studio/tools/**"
+      - "apps/awareness_studio/inputs/**"
+      - "tools/__init__.py"
+      - "tools/literature_evidence/**"
+      - "tools/simulation_artifacts/**"
+      - "tools/simulation_execution/**"
+      - "tools/research_cycle_preflight/**"
+      - "tools/research_cycle_release/**"
+      - "tools/research_plan_quality/**"
+      - "tools/research_claim_gate/**"
+      - "tools/data_access/policy_enforcement/**"
+      - "scripts/build_awareness_evidence_graph.py"
+      - "tests/research_cycle_preflight/fixtures/complete_plan.json"
       - ".dockerignore"
       - ".github/workflows/docker-build.yml"
   workflow_dispatch:
@@ -79,8 +109,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build Awareness image
-        run: docker build --progress=plain -t awareness-studio:latest -f apps/awareness_studio/Dockerfile apps/awareness_studio
+      - name: Build Awareness test image from repository root
+        run: docker build --progress=plain -t awareness-studio:latest -f apps/awareness_studio/Dockerfile .
 
       - name: Run Awareness test suite inside container
         run: docker run --rm awareness-studio:latest
