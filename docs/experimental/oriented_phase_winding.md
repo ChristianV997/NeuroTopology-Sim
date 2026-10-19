@@ -1,6 +1,6 @@
 # Oriented Integer Phase Winding — Contract
 
-**Status:** HOLD / SYNTHETIC_ONLY  
+**Status:** HOLD / SYNTHETIC_ONLY
 **Production path:** `neurotopology_sim/experimental/topology/winding.py`
 **PR:** #413 (Cursor Agent B / Batch 2)
 
