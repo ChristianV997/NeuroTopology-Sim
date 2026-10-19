@@ -89,7 +89,7 @@ def _valid_telemetry(test_file: str) -> str:
             "duration_s": 0.1,
             "peak_memory_mb": None,
             "failures": [],
-            "stdout_tail": "",
+            "stdout_tail": "1 passed in 0.01s\n",
             "stderr_tail": "",
             "files": [test_file],
             "test_files": [test_file],
@@ -129,15 +129,81 @@ class Round6DiscoveryTests(unittest.TestCase):
     def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}",
             workflow,
         )
         self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}",
             workflow,
         )
+        self.assertIn("diff_base_sha:\n        description:", workflow)
+        self.assertIn("diff_head_sha:\n        description:", workflow)
+        self.assertIn("required: true\n        type: string", workflow)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
+
+    def test_workflow_dispatch_without_explicit_diff_shas_fails_closed(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root)
+            with self.assertRaisesRegex(ValueError, "workflow_dispatch requires an explicit"):
+                helper.run(
+                    root, "", "", root / "outputs/report.json",
+                    tested_checkout_sha="1" * 40,
+                    workflow_sha="2" * 40,
+                    event_name="workflow_dispatch",
+                )
+
+    def test_contained_artifact_reads_are_size_bounded(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            artifact = root / "diagnostics.bin"
+            artifact.write_bytes(b"x" * 33)
+            with self.assertRaisesRegex(ValueError, "exceeds the 32-byte read limit"):
+                helper._read_contained_bytes(root, artifact, "fixture artifact", max_bytes=32)
+            artifact.write_bytes(b"0123456789")
+            self.assertEqual(
+                helper._read_contained_tail_text(root, artifact, "fixture log", tail_bytes=4),
+                "6789",
+            )
+
+    def test_contained_artifact_open_survives_parent_symlink_swap(self):
+        helper = _helper()
+        if (
+            helper.os.name == "nt"
+            or helper.os.open not in getattr(helper.os, "supports_dir_fd", set())
+            or not getattr(helper.os, "O_NOFOLLOW", 0)
+            or not getattr(helper.os, "O_DIRECTORY", 0)
+        ):
+            self.skipTest("openat-style no-follow directory descriptors are unavailable")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            original_parent = root / "logs"
+            outside_parent = Path(td) / "outside"
+            original_parent.mkdir(parents=True)
+            outside_parent.mkdir()
+            (original_parent / "junit.xml").write_text("trusted-tree", encoding="utf-8")
+            (outside_parent / "junit.xml").write_text("outside-tree", encoding="utf-8")
+            real_open = helper.os.open
+            swapped = False
+
+            def swap_after_open(file, flags, *args, **kwargs):
+                nonlocal swapped
+                fd = real_open(file, flags, *args, **kwargs)
+                if file == "logs" and kwargs.get("dir_fd") is not None and not swapped:
+                    swapped = True
+                    original_parent.rename(root / "logs-held")
+                    (root / "logs").symlink_to(outside_parent, target_is_directory=True)
+                return fd
+
+            with patch.object(helper.os, "open", side_effect=swap_after_open):
+                observed = helper._read_contained_bytes(
+                    root, root / "logs" / "junit.xml", "JUnit path", max_bytes=64
+                )
+        self.assertTrue(swapped)
+        self.assertEqual(observed, b"trusted-tree")
 
     def test_candidate_implementation_and_test_change_runs_the_explicit_pair(self):
         helper = _helper()
@@ -164,6 +230,12 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertEqual(execution["implementation_paths"], [IMPLEMENTATION])
         self.assertEqual(execution["diff_base_sha"], base)
         self.assertEqual(execution["diff_head_sha"], head)
+        executed_command = report["executed_commands"][0]
+        self.assertNotIn("--report-dir", executed_command)
+        junit_arg = next(arg for arg in executed_command if arg.startswith("--pytest-arg=--junitxml="))
+        junit_path = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+        with self.assertRaises(ValueError):
+            junit_path.relative_to(root)
         self.assertEqual(execution["tested_checkout_sha"], head)
         self.assertEqual(execution["workflow_sha"], base)
         self.assertEqual(execution["result_counts"], {
@@ -255,6 +327,92 @@ class Round6DiscoveryTests(unittest.TestCase):
             )
             counts, _ = helper.junit_details(report)
         self.assertEqual(counts, (2, 0, 1, 0))
+
+    def test_junit_accepts_pytest_unittest_subtest_total(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            report = Path(td) / "junit.xml"
+            report.write_text(
+                '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                '<testcase/><testcase/></testsuite>',
+                encoding="utf-8",
+            )
+            counts, cases = helper.junit_details(report)
+        self.assertEqual(counts, (2, 0, 0, 0))
+        self.assertEqual(len(cases), 2)
+
+    def test_isolated_pass_reconciles_pytest_subtest_total_with_junit_summary(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # unittest subtest fixture\n")
+            head = _commit(root, "unittest subtest fixture")
+            report_path = root / "outputs/report.json"
+
+            def subtest_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                telemetry_path = Path(command[command.index("--report") + 1])
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["batches"][0]["stdout_tail"] = "2 passed, 2 subtests passed in 0.01s\n"
+                telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit.write_text(
+                    '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                    '<testcase/><testcase/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=subtest_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(execution["tests_collected"], 2)
+        self.assertEqual(execution["runner_passed_tests"], 2)
+        self.assertEqual(execution["runner_passed_subtests"], 2)
+        self.assertEqual(execution["junit_reported_test_outcomes"], 4)
+        self.assertEqual(len(execution["test_cases"]), 2)
+
+    def test_runner_rejects_inflated_stdout_pass_count(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # inflated summary probe\n")
+            head = _commit(root, "inflated pytest summary probe")
+            report_path = root / "outputs/report.json"
+
+            def inflated_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                telemetry_path = Path(command[command.index("--report") + 1])
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["batches"][0]["stdout_tail"] = "4 passed in 0.01s\n"
+                telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit.write_text(
+                    '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                    '<testcase/><testcase/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=inflated_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+        self.assertIn("testcase records", execution["junit_error"])
 
     def test_unknown_data_suffixes_under_candidate_roots_fail_closed(self):
         helper = _helper()
@@ -381,6 +539,175 @@ class Round6DiscoveryTests(unittest.TestCase):
             execution = report["components"][0]["executions"][0]
             self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
             self.assertFalse((outside / "stdout.log").exists())
+
+    def test_junit_symlink_escape_created_by_candidate_is_blocked_after_runner(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside-junit.xml"
+            outside.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            report_path = root / "outputs/report.json"
+
+            def replace_junit_after_launch(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                try:
+                    junit.unlink()
+                    junit.symlink_to(outside)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper, "collect_changed_paths", return_value={pair["implementation"]}), patch.object(
+                helper.subprocess, "run", side_effect=replace_junit_after_launch
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertNotIn("tests_collected", execution)
+
+    def test_junit_symlink_to_in_repo_report_is_not_followed_after_runner(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            preserved = root / "preserved.xml"
+            preserved.write_text(
+                '<testsuite tests="1" skipped="0" failures="0" errors="0">'
+                "<testcase/></testsuite>",
+                encoding="utf-8",
+            )
+            report_path = root / "outputs/report.json"
+
+            def replace_junit_with_in_repo_symlink(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                try:
+                    junit.unlink()
+                    junit.symlink_to(preserved)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ), patch.object(
+                helper.subprocess, "run", side_effect=replace_junit_with_in_repo_symlink
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertNotIn("tests_collected", execution)
+
+    def test_preexisting_log_directory_symlink_to_in_repo_path_is_blocked(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            report_parent = root / "outputs"
+            report_parent.mkdir()
+            linked_parent = report_parent / "round6-experimental-logs"
+            target_parent = root / "preserved-logs"
+            target_parent.mkdir()
+            target = target_parent / "runner.stdout.log"
+            target.write_text("preserve this file\n", encoding="utf-8")
+            try:
+                linked_parent.symlink_to(target_parent, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_parent / "report.json")
+            report = json.loads((report_parent / "report.json").read_text(encoding="utf-8"))
+            captured = target.read_text(encoding="utf-8")
+
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertEqual(captured, "preserve this file\n")
+
+    def test_report_symlink_escape_created_by_candidate_is_not_written(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside-report.json"
+            outside.write_text("preserve this file\n", encoding="utf-8")
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # report symlink probe\n")
+            head = _commit(root, "report symlink probe")
+            report_path = root / "outputs/report.json"
+
+            def replace_report_after_launch(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
+                try:
+                    report_path.unlink()
+                    report_path.symlink_to(outside)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=replace_report_after_launch):
+                result = helper.run(root, base, head, report_path)
+            captured = outside.read_text(encoding="utf-8")
+        self.assertEqual(result, 1)
+        self.assertEqual(captured, "preserve this file\n")
+
+    def test_preexisting_report_symlink_to_in_repo_file_is_not_followed(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            base = _repo(root)
+            report_parent = root / "outputs"
+            report_parent.mkdir()
+            preserved = report_parent / "preserved.json"
+            preserved.write_text("preserve this file\n", encoding="utf-8")
+            report_path = report_parent / "round6-experimental-report.json"
+            try:
+                report_path.symlink_to(preserved)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            result = helper.run(root, base, base, report_path)
+            captured = preserved.read_text(encoding="utf-8")
+
+        self.assertEqual(result, 1)
+        self.assertEqual(captured, "preserve this file\n")
 
     def test_stale_base_uses_pr_base_and_pr_head_while_testing_merge_checkout(self):
         helper = _helper()

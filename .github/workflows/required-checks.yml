@@ -6,6 +6,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      diff_base_sha:
+        description: Full base commit SHA for candidate-path discovery
+        required: true
+        type: string
+      diff_head_sha:
+        description: Full head commit SHA for candidate-path discovery
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -76,8 +85,8 @@ jobs:
       - name: Discover and run changed Round 6 candidate suites
         if: ${{ !cancelled() && steps.install_base.outcome == 'success' }}
         env:
-          DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
-          DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
           TESTED_CHECKOUT_SHA: ${{ github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EVENT_NAME: ${{ github.event_name }}

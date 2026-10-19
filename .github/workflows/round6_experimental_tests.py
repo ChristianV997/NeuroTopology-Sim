@@ -3,20 +3,33 @@
 This helper is invoked only from the Required Checks workflow. It uses explicit
 file mappings so a test-only PR cannot pass by skipping an import that is not
 present on main. Every selected file runs in a fresh bounded pytest process.
+
+Artifact-path checks protect the helper from following redirected report and
+log paths; candidate tests still execute with the workflow job's OS permissions.
+This is not a security sandbox. POSIX CI uses descriptor-relative no-follow
+operations; the Windows local fallback rejects observed reparse points but
+cannot eliminate a concurrent check-then-open race.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
+import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+
+MAX_RUNNER_TELEMETRY_BYTES = 4 * 1024 * 1024
+MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
+MAX_RUNNER_STDERR_TAIL_BYTES = 4096
 
 
 COMPONENTS: dict[str, dict[str, Any]] = {
@@ -677,6 +690,28 @@ def normalize_repo_path(path: str) -> str:
     return normalized
 
 
+def _lexically_contained_path(root: Path, path: Path, label: str) -> Path:
+    """Normalize a path without resolving links, and require it to be below root."""
+    resolved_root = root.resolve()
+    candidate = path if path.is_absolute() else resolved_root / path
+    lexical = Path(os.path.abspath(candidate))
+    try:
+        relative = lexical.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(f"{label} must remain inside the checked-out repository") from exc
+    if any(part in {".", ".."} for part in relative.parts):
+        raise ValueError(f"{label} must use a normalized path below the checked-out repository")
+    return lexical
+
+
+def _is_reparse_path(path: Path) -> bool:
+    """Return whether an existing path component is a symlink or Windows junction."""
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    return bool(is_junction()) if callable(is_junction) else False
+
+
 def _contained_path(root: Path, path: Path, label: str) -> Path:
     """Resolve symlinks and reject paths that escape the checked-out repository."""
     resolved_root = root.resolve()
@@ -687,6 +722,183 @@ def _contained_path(root: Path, path: Path, label: str) -> Path:
     except ValueError as exc:
         raise ValueError(f"{label} must remain inside the checked-out repository") from exc
     return resolved
+
+
+def _open_contained_file(
+    root: Path, path: Path, flags: int, label: str, *, mode: int = 0o600
+) -> int:
+    """Open a regular-file candidate without following path components on POSIX."""
+    resolved_root = root.resolve()
+    lexical = _lexically_contained_path(resolved_root, path, label)
+    relative = lexical.relative_to(resolved_root)
+    if not relative.parts or any(part in {".", ".."} for part in relative.parts):
+        raise ValueError(f"{label} must name a file below the checked-out repository")
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+    supports_dir_fd = os.open in getattr(os, "supports_dir_fd", set())
+    if os.name != "nt" and nofollow and directory and supports_dir_fd:
+        parent_fd = os.open(
+            os.fspath(resolved_root), os.O_RDONLY | directory | nofollow
+        )
+        try:
+            for part in relative.parts[:-1]:
+                next_fd = os.open(
+                    part, os.O_RDONLY | directory | nofollow, dir_fd=parent_fd
+                )
+                os.close(parent_fd)
+                parent_fd = next_fd
+            return os.open(relative.parts[-1], flags | nofollow, mode, dir_fd=parent_fd)
+        finally:
+            os.close(parent_fd)
+
+    # Windows does not expose openat/dir_fd. Reject every existing link/reparse
+    # component before resolving and containing the candidate. This is a
+    # best-effort check on Windows; POSIX CI uses descriptor-relative no-follow.
+    probe = resolved_root
+    for part in relative.parts:
+        probe = probe / part
+        if _is_reparse_path(probe):
+            raise ValueError(f"{label} must not traverse a symlink or reparse point")
+    resolved = _contained_path(resolved_root, lexical, label)
+    return os.open(
+        os.fspath(resolved), flags | nofollow | getattr(os, "O_BINARY", 0), mode
+    )
+
+
+def _ensure_contained_directories(root: Path, path: Path, label: str) -> None:
+    """Create a contained directory path without traversing links where supported."""
+    resolved_root = root.resolve()
+    lexical = _lexically_contained_path(resolved_root, path, label)
+    relative = lexical.relative_to(resolved_root)
+    if not relative.parts:
+        return
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory = getattr(os, "O_DIRECTORY", 0)
+    supports_dir_fd = os.open in getattr(os, "supports_dir_fd", set())
+    if os.name != "nt" and nofollow and directory and supports_dir_fd:
+        parent_fd = os.open(
+            os.fspath(resolved_root), os.O_RDONLY | directory | nofollow
+        )
+        try:
+            for part in relative.parts:
+                try:
+                    next_fd = os.open(
+                        part, os.O_RDONLY | directory | nofollow, dir_fd=parent_fd
+                    )
+                except FileNotFoundError:
+                    os.mkdir(part, mode=0o700, dir_fd=parent_fd)
+                    next_fd = os.open(
+                        part, os.O_RDONLY | directory | nofollow, dir_fd=parent_fd
+                    )
+                os.close(parent_fd)
+                parent_fd = next_fd
+        finally:
+            os.close(parent_fd)
+        return
+
+    current = resolved_root
+    for part in relative.parts:
+        current = current / part
+        if _is_reparse_path(current):
+            raise ValueError(f"{label} must not traverse a symlink or reparse point")
+        try:
+            current.mkdir()
+        except FileExistsError:
+            pass
+        if _is_reparse_path(current) or not current.is_dir():
+            raise ValueError(f"{label} contains a non-directory or linked path component")
+
+
+def _prepare_contained_output(root: Path, path: Path, label: str) -> tuple[int, int]:
+    """Safely create/truncate a report file and return its pinned file identity."""
+    lexical = _lexically_contained_path(root, path, label)
+    _ensure_contained_directories(root, lexical.parent, f"{label} parent directory")
+    fd = _open_contained_file(
+        root, lexical, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, label, mode=0o600
+    )
+    try:
+        opened = _assert_regular_file(fd, label)
+        return opened.st_dev, opened.st_ino
+    finally:
+        os.close(fd)
+
+
+def _assert_regular_file(fd: int, label: str) -> os.stat_result:
+    opened = os.fstat(fd)
+    if not stat.S_ISREG(opened.st_mode) or not opened.st_ino:
+        raise ValueError(f"{label} is not a verifiable regular file")
+    return opened
+
+
+def _read_contained_bytes(
+    root: Path,
+    path: Path,
+    label: str,
+    *,
+    max_bytes: int,
+    expected_identity: tuple[int, int] | None = None,
+) -> bytes:
+    """Read a size-bounded file through a descriptor opened beneath the root."""
+    if max_bytes < 0:
+        raise ValueError("max_bytes must be non-negative")
+    fd = _open_contained_file(root, path, os.O_RDONLY, label)
+    try:
+        opened = _assert_regular_file(fd, label)
+        if expected_identity is not None and (opened.st_dev, opened.st_ino) != expected_identity:
+            raise ValueError(f"{label} was replaced during candidate execution")
+        if opened.st_size > max_bytes:
+            raise ValueError(f"{label} exceeds the {max_bytes}-byte read limit")
+        with os.fdopen(fd, "rb") as stream:
+            fd = -1
+            content = stream.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise ValueError(f"{label} grew beyond the {max_bytes}-byte read limit")
+        return content
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _read_contained_tail_text(root: Path, path: Path, label: str, *, tail_bytes: int) -> str:
+    """Read only a bounded trailing diagnostic window from a contained log."""
+    if tail_bytes < 0:
+        raise ValueError("tail_bytes must be non-negative")
+    fd = _open_contained_file(root, path, os.O_RDONLY, label)
+    try:
+        opened = _assert_regular_file(fd, label)
+        start = max(0, opened.st_size - tail_bytes)
+        os.lseek(fd, start, os.SEEK_SET)
+        content = os.read(fd, tail_bytes + 1)
+        if len(content) > tail_bytes:
+            raise ValueError(f"{label} changed while its bounded tail was read")
+        return content.decode("utf-8", errors="replace")
+    finally:
+        os.close(fd)
+
+
+def _write_contained_text(
+    root: Path,
+    path: Path,
+    content: str,
+    label: str,
+    expected_identity: tuple[int, int],
+) -> None:
+    """Write through a pre-created, identity-pinned file, never through a new symlink."""
+    fd = _open_contained_file(root, path, os.O_WRONLY, label)
+    try:
+        opened = _assert_regular_file(fd, label)
+        if (opened.st_dev, opened.st_ino) != expected_identity:
+            raise ValueError(f"{label} was replaced during candidate execution")
+        os.ftruncate(fd, 0)
+        os.lseek(fd, 0, os.SEEK_SET)
+        payload = content.encode("utf-8")
+        offset = 0
+        while offset < len(payload):
+            offset += os.write(fd, payload[offset:])
+    finally:
+        os.close(fd)
 
 
 def _trigger_matches(path: str, trigger: str) -> bool:
@@ -991,9 +1203,11 @@ def inspect_component(
     }
 
 
-def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str, str]]]:
-    """Validate JUnit structure and return reconciled testcase outcomes."""
-    root = ET.parse(path).getroot()
+def _junit_details_from_bytes(
+    content: bytes,
+) -> tuple[tuple[int, int, int, int], list[dict[str, str]], int]:
+    """Validate JUnit structure and keep explicit testcase count separate from suite totals."""
+    root = ET.fromstring(content)
     if root.tag not in {"testsuite", "testsuites"}:
         raise ValueError(f"unsupported JUnit root element: {root.tag!r}")
     cases = list(root.iter("testcase"))
@@ -1027,6 +1241,7 @@ def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str,
     scopes = list(suites)
     if root.tag == "testsuites":
         scopes.append(root)
+    declared_tests: dict[int, int] = {}
     for suite in scopes:
         suite_cases = list(suite.iter("testcase"))
         observed = {
@@ -1041,11 +1256,61 @@ def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str,
             raw = suite.attrib[key]
             if not re.fullmatch(r"\d+", raw):
                 raise ValueError(f"JUnit {key} summary must be a non-negative integer")
-            if int(raw) != actual:
+            declared = int(raw)
+            if key == "tests":
+                # Pytest's JUnit totals include unittest.subTest outcomes while
+                # emitting only the parent unittest testcase element.
+                if declared < actual:
+                    raise ValueError(
+                        f"JUnit tests summary {declared} is below {actual} testcase outcomes"
+                    )
+                declared_tests[id(suite)] = declared
+                continue
+            if declared != actual:
                 raise ValueError(
                     f"JUnit {key} summary {raw} does not match {actual} testcase outcomes"
                 )
-    return (len(cases), skipped, failed, errors), details
+    if id(root) in declared_tests:
+        total_tests = declared_tests[id(root)]
+    elif root.tag == "testsuite":
+        total_tests = len(cases)
+    else:
+        direct_suites = [child for child in list(root) if child.tag == "testsuite"]
+        if direct_suites and all(id(suite) in declared_tests for suite in direct_suites):
+            total_tests = sum(declared_tests[id(suite)] for suite in direct_suites)
+        else:
+            total_tests = len(cases)
+    if total_tests < len(cases):
+        raise ValueError("JUnit test total is below the number of testcase elements")
+    return (len(cases), skipped, failed, errors), details, total_tests
+
+
+def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str, str]]]:
+    """Validate a JUnit file and return explicit testcase-element outcomes."""
+    if path.stat().st_size > MAX_JUNIT_XML_BYTES:
+        raise ValueError(f"JUnit report exceeds the {MAX_JUNIT_XML_BYTES}-byte read limit")
+    with path.open("rb") as stream:
+        content = stream.read(MAX_JUNIT_XML_BYTES + 1)
+    if len(content) > MAX_JUNIT_XML_BYTES:
+        raise ValueError(f"JUnit report exceeds the {MAX_JUNIT_XML_BYTES}-byte read limit")
+    counts, details, _ = _junit_details_from_bytes(content)
+    return counts, details
+
+
+def _pytest_result_summary(stdout_tail: Any) -> tuple[int, int] | None:
+    """Parse pytest's final pass/subtest summary without inflating testcase records."""
+    if not isinstance(stdout_tail, str):
+        return None
+    lines = [line.strip() for line in stdout_tail.splitlines() if line.strip()]
+    if not lines:
+        return None
+    match = re.fullmatch(
+        r"(\d+)\s+passed(?:,\s*(\d+)\s+subtests passed)?\s+in\s+\d+(?:\.\d+)?s",
+        lines[-1],
+    )
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2) or 0)
 
 
 def junit_counts(path: Path) -> tuple[int, int, int, int]:
@@ -1187,16 +1452,6 @@ def _strict_json_loads(raw: str) -> Any:
     return json.loads(raw, parse_constant=reject_constant)
 
 
-def _tail_text(path: Path, max_bytes: int = 4096) -> str:
-    if not path.is_file():
-        return ""
-    with path.open("rb") as stream:
-        stream.seek(0, 2)
-        size = stream.tell()
-        stream.seek(max(0, size - max_bytes))
-        return stream.read(max_bytes).decode("utf-8", errors="replace")
-
-
 def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple[bool, str | None, list[dict[str, Any]]]:
     """Require one completed, successful singleton batch for the requested test."""
     if not isinstance(batch_report, dict):
@@ -1284,6 +1539,11 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
         return False, "runner batch failures telemetry is missing or non-empty", batches
     if not isinstance(batch.get("stdout_tail"), str) or not isinstance(batch.get("stderr_tail"), str):
         return False, "runner batch output-tail telemetry is missing or malformed", batches
+    pytest_summary = _pytest_result_summary(batch["stdout_tail"])
+    if pytest_summary is None or pytest_summary[0] < 1:
+        return False, "runner pytest output does not contain a valid nonzero pass summary", batches
+    batch["_round6_pytest_passed_count"] = pytest_summary[0]
+    batch["_round6_pytest_subtests_passed_count"] = pytest_summary[1]
     if (
         batch.get("status") != "passed"
         or type(batch.get("exit_code")) is not int
@@ -1308,7 +1568,7 @@ def run(
     require_checkout_match: bool = False,
 ) -> int:
     root = root.resolve()
-    report_path = _contained_path(root, report_path, "report path")
+    report_path = _lexically_contained_path(root, report_path, "report path")
     always_components = list(dict.fromkeys(always_components))
     unknown_always = sorted(set(always_components) - set(COMPONENTS))
     if unknown_always:
@@ -1317,6 +1577,12 @@ def run(
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
         raise ValueError("workflow SHA must be a full commit SHA")
+    if event_name == "workflow_dispatch":
+        for label, sha in (("diff base", diff_base_sha), ("diff head", diff_head_sha)):
+            if not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError(
+                    f"workflow_dispatch requires an explicit full commit SHA for {label}"
+                )
     changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
     relevant_paths = sorted({
@@ -1343,7 +1609,17 @@ def run(
         "components": [],
         "statement": "No scientific or empirical validity is assessed by this CI report.",
     }
-    report_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        report_file_identity = _prepare_contained_output(
+            root, report_path, "report path"
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(json.dumps({
+            "status": "BLOCKED",
+            "failure_classification": "unsafe_or_unavailable_report_path",
+            "report_path_error": str(exc),
+        }, sort_keys=True, allow_nan=False))
+        return 1
     if require_checkout_match:
         actual = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=root, check=False,
@@ -1356,7 +1632,11 @@ def run(
                 "status": "BLOCKED",
                 "selection_error": "checked-out commit does not match the declared tested checkout SHA",
             })
-            report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+            _write_contained_text(
+                root, report_path,
+                json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+                "report path", report_file_identity,
+            )
             print(json.dumps({"status": report["status"], "selection_error": report["selection_error"]}, sort_keys=True))
             return 1
 
@@ -1365,14 +1645,22 @@ def run(
             "status": "BLOCKED",
             "selection_error": "unmapped candidate code, configuration, or fixture paths exist without a registered component selection",
         })
-        report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        _write_contained_text(
+            root, report_path,
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            "report path", report_file_identity,
+        )
         print(json.dumps({"status": report["status"], "unmapped_candidate_paths": report["unmapped_candidate_paths"]}, sort_keys=True))
         return 1
     if not selected and not relevant_paths and not always_components and not report["unmapped_candidate_paths"]:
         report["statement"] = (
             "No candidate code or test path changed; this result does not certify any experimental lane."
         )
-        report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        _write_contained_text(
+            root, report_path,
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            "report path", report_file_identity,
+        )
         print(json.dumps({
             "status": "NOT_APPLICABLE",
             "diff_base_sha": diff_base_sha,
@@ -1388,12 +1676,43 @@ def run(
     if relevant_paths and not selected and not always_components:
         report["status"] = "BLOCKED"
         report["selection_error"] = "relevant candidate changes produced an empty component selection"
-        report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        _write_contained_text(
+            root, report_path,
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            "report path", report_file_identity,
+        )
         print(json.dumps({"status": report["status"], "selection_error": report["selection_error"]}, sort_keys=True))
         return 1
 
     saw_blocked = bool(report["unmapped_candidate_paths"])
     saw_failure = False
+
+    def block_artifact_read(
+        entry: dict[str, Any],
+        execution: dict[str, Any],
+        exc: BaseException,
+    ) -> None:
+        nonlocal saw_blocked
+        execution.update({
+            "status": "BLOCKED",
+            "timeout": False,
+            "failure_classification": "unsafe_or_unavailable_log_path",
+            "log_path_error": str(exc),
+            "result_counts": {
+                "collected": 0, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+            },
+        })
+        entry["executions"].append(execution)
+        entry["status"] = "BLOCKED"
+        entry["blockers"].append("test artifacts could not be safely opened under their checked roots")
+        saw_blocked = True
+        print(json.dumps({
+            "selected_component": execution["selected_component"],
+            "test_file": execution["test_file"],
+            "status": "BLOCKED",
+            "failure_classification": execution["failure_classification"],
+        }, sort_keys=True, allow_nan=False))
+
     run_components = list(selected)
     for name in always_components:
         if name not in run_components:
@@ -1456,14 +1775,15 @@ def run(
             for test_index, test_file in enumerate(entry["tests_to_run"], start=1):
                 logs_candidate = report_path.parent / "round6-experimental-logs" / f"{index:02d}-{name}-{test_index:02d}"
                 try:
-                    logs = _contained_path(root, logs_candidate, "test log directory")
-                    logs.mkdir(parents=True, exist_ok=True)
-                    # Re-resolve after creation so pre-existing symlink components
-                    # cannot redirect the report outside the checkout.
-                    logs = _contained_path(root, logs, "test log directory")
-                    junit = _contained_path(root, logs / "junit.xml", "JUnit report path")
-                    stdout_log = _contained_path(root, logs / "runner.stdout.log", "runner stdout path")
-                    stderr_log = _contained_path(root, logs / "runner.stderr.log", "runner stderr path")
+                    logs = _lexically_contained_path(root, logs_candidate, "test log directory")
+                    _ensure_contained_directories(root, logs, "test log directory")
+                    stdout_log = _lexically_contained_path(root, logs / "runner.stdout.log", "runner stdout path")
+                    stderr_log = _lexically_contained_path(root, logs / "runner.stderr.log", "runner stderr path")
+                    junit = _lexically_contained_path(
+                        temp, temp / f"{index:02d}-{name}-{test_index:02d}.junit.xml",
+                        "JUnit report path",
+                    )
+                    junit_identity = _prepare_contained_output(temp, junit, "JUnit report path")
                 except (OSError, RuntimeError, ValueError) as exc:
                     execution = {
                         "selected_component": name,
@@ -1503,7 +1823,6 @@ def run(
                     "--batch-size", "1",
                     "--timeout-s", "120",
                     "--report", str(telemetry),
-                    "--report-dir", str(logs),
                     f"--pytest-arg=--junitxml={junit}",
                     test_file,
                 ]
@@ -1532,7 +1851,17 @@ def run(
                     "errors": None,
                 }
                 try:
-                    with stdout_log.open("wb") as stdout_stream, stderr_log.open("wb") as stderr_stream:
+                    with contextlib.ExitStack() as stack:
+                        stdout_fd = _open_contained_file(
+                            root, stdout_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                            "runner stdout path", mode=0o600,
+                        )
+                        stdout_stream = stack.enter_context(os.fdopen(stdout_fd, "wb"))
+                        stderr_fd = _open_contained_file(
+                            root, stderr_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                            "runner stderr path", mode=0o600,
+                        )
+                        stderr_stream = stack.enter_context(os.fdopen(stderr_fd, "wb"))
                         completed = subprocess.run(
                             cmd, cwd=root, timeout=130, check=False,
                             stdout=stdout_stream, stderr=stderr_stream,
@@ -1595,15 +1924,46 @@ def run(
                         "status": "ERROR",
                     }, sort_keys=True, allow_nan=False))
                     continue
+                try:
+                    # Candidate code can mutate workspace paths while pytest
+                    # runs. Keep lexical paths intact so no-follow opens can
+                    # detect in-repository symlinks instead of resolving them.
+                    logs = _lexically_contained_path(root, logs_candidate, "test log directory")
+                    stdout_log = _lexically_contained_path(root, logs / "runner.stdout.log", "runner stdout path")
+                    stderr_log = _lexically_contained_path(root, logs / "runner.stderr.log", "runner stderr path")
+                    junit = _lexically_contained_path(temp, junit, "JUnit report path")
+                    telemetry = _lexically_contained_path(temp, telemetry, "runner telemetry path")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    block_artifact_read(entry, execution, exc)
+                    continue
                 execution["runner_exit_code"] = completed.returncode
-                runner_stderr_tail = _tail_text(stderr_log)
+                try:
+                    runner_stderr_tail = _read_contained_tail_text(
+                        root, stderr_log, "runner stderr path",
+                        tail_bytes=MAX_RUNNER_STDERR_TAIL_BYTES,
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    block_artifact_read(entry, execution, exc)
+                    continue
                 if runner_stderr_tail:
                     execution["runner_stderr_tail"] = runner_stderr_tail[-2000:]
                 telemetry_ok = False
                 telemetry_error = None
-                if telemetry.is_file():
+                batches: list[dict[str, Any]] = []
+                telemetry_bytes: bytes | None = None
+                try:
+                    telemetry_bytes = _read_contained_bytes(
+                        temp, telemetry, "runner telemetry path",
+                        max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
+                    )
+                except FileNotFoundError:
+                    pass
+                except (OSError, RuntimeError, ValueError) as exc:
+                    block_artifact_read(entry, execution, exc)
+                    continue
+                if telemetry_bytes is not None:
                     try:
-                        batch_report = _strict_json_loads(telemetry.read_text(encoding="utf-8"))
+                        batch_report = _strict_json_loads(telemetry_bytes.decode("utf-8"))
                         telemetry_ok, telemetry_error, batches = _isolated_runner_report_is_valid(batch_report, test_file)
                         execution["runner_batches"] = [
                             batch.get("status", "unknown") if isinstance(batch, dict) else "malformed"
@@ -1616,11 +1976,47 @@ def run(
                 execution["isolated_runner_telemetry_valid"] = telemetry_ok
                 if telemetry_error:
                     execution["runner_telemetry_error"] = telemetry_error
-                if junit.is_file():
+                junit_bytes: bytes | None = None
+                try:
+                    junit_bytes = _read_contained_bytes(
+                        temp, junit, "JUnit report path", max_bytes=MAX_JUNIT_XML_BYTES,
+                        expected_identity=junit_identity,
+                    )
+                except FileNotFoundError:
+                    pass
+                except (OSError, RuntimeError, ValueError) as exc:
+                    block_artifact_read(entry, execution, exc)
+                    continue
+                junit_error = False
+                if junit_bytes is not None:
                     try:
-                        counts, cases = junit_details(junit)
+                        counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        runner_passed_count = (
+                            batches[0].get("_round6_pytest_passed_count")
+                            if batches and isinstance(batches[0], dict)
+                            else None
+                        )
+                        runner_subtests_passed_count = (
+                            batches[0].get("_round6_pytest_subtests_passed_count")
+                            if batches and isinstance(batches[0], dict)
+                            else None
+                        )
+                        if runner_passed_count != counts[0]:
+                            raise ValueError(
+                                f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                            )
+                        if (
+                            type(runner_subtests_passed_count) is not int
+                            or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
+                        ):
+                            raise ValueError(
+                                "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                            )
                         execution.update({
                             "tests_collected": counts[0],
+                            "runner_passed_tests": runner_passed_count,
+                            "runner_passed_subtests": runner_subtests_passed_count,
+                            "junit_reported_test_outcomes": junit_reported_tests,
                             "skipped": counts[1],
                             "failed": counts[2],
                             "errors": counts[3],
@@ -1628,7 +2024,8 @@ def run(
                         })
                     except (ET.ParseError, OSError, ValueError) as exc:
                         execution["junit_error"] = str(exc)
-                has_junit = junit.is_file() and "junit_error" not in execution
+                        junit_error = True
+                has_junit = junit_bytes is not None and not junit_error
                 counts = (
                     execution.get("tests_collected", 0),
                     execution.get("skipped", 0),
@@ -1705,7 +2102,22 @@ def run(
         "NOT_APPLICABLE" if not run_components and not relevant_paths else "PASS"
     )
 
-    report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    try:
+        _write_contained_text(
+            root,
+            report_path,
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n",
+            "report path",
+            report_file_identity,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        report["status"] = "BLOCKED"
+        report["report_path_error"] = str(exc)
+        print(json.dumps({
+            "status": report["status"],
+            "report_path_error": report["report_path_error"],
+        }, sort_keys=True, allow_nan=False))
+        return 1
     print(json.dumps({
         "status": report["status"],
         "diff_base_sha": report["diff_base_sha"],

@@ -60,7 +60,7 @@ def _write_valid_runner_telemetry(command):
             "duration_s": 0.1,
             "peak_memory_mb": None,
             "failures": [],
-            "stdout_tail": "",
+            "stdout_tail": "1 passed in 0.01s\n",
             "stderr_tail": "",
             "files": [test_file],
             "test_files": [test_file],
@@ -867,7 +867,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
                 "batch_index": 1, "batch_number": 1,
                 "status": "passed", "exit_code": 0, "test_files": [expected],
                 "duration_s": 0.1, "peak_memory_mb": None, "failures": [],
-                "stdout_tail": "", "stderr_tail": "", "files": [expected],
+                "stdout_tail": "1 passed in 0.01s\n", "stderr_tail": "", "files": [expected],
                 "timed_out": False, "timeout_status": "completed",
             }],
         }
