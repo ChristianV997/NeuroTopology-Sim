@@ -117,6 +117,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "triggers": (
             "physics/eeg_forward/",
             "tests/physics/eeg_forward/",
+            "tests/physics/test_four_sphere_oracle.py",
             "tools/experimental_audits/four_shell_bvp_oracle.py",
             "tests/experimental_audits/test_four_shell_bvp_oracle.py",
         ),
@@ -126,14 +127,16 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "tests": (
             "tests/physics/eeg_forward/test_four_sphere.py",
+            "tests/physics/test_four_sphere_oracle.py",
             "tests/experimental_audits/test_four_shell_bvp_oracle.py",
         ),
         "candidate_pairs": (
             {"implementation": "physics/eeg_forward/four_sphere.py", "test": "tests/physics/eeg_forward/test_four_sphere.py"},
+            {"implementation": "physics/eeg_forward/four_sphere.py", "test": "tests/physics/test_four_sphere_oracle.py"},
             {"implementation": "tools/experimental_audits/four_shell_bvp_oracle.py", "test": "tests/experimental_audits/test_four_shell_bvp_oracle.py"},
         ),
         "implementation_roots": ("physics/eeg_forward/", "tools/experimental_audits/"),
-        "test_roots": ("tests/physics/eeg_forward/", "tests/experimental_audits/"),
+        "test_roots": ("tests/physics/eeg_forward/", "tests/physics/test_four_sphere_oracle.py", "tests/experimental_audits/"),
     },
     "phase_winding": {
         "triggers": (
@@ -162,6 +165,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/surrogate_nulls/test_cholesky_csd.py",
             "tests/surrogate_nulls/test_edge_cases.py",
             "tests/surrogate_nulls/test_hardening_diagnostics.py",
+            "tests/surrogate_nulls/test_real_part_and_validity.py",
         ),
         "candidate_pairs": (
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_phase_nulls.py"},
@@ -170,6 +174,9 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/surrogate_nulls/csd.py", "test": "tests/surrogate_nulls/test_cholesky_csd.py"},
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_edge_cases.py"},
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_hardening_diagnostics.py"},
+            {"implementation": "tools/surrogate_nulls/csd.py", "test": "tests/surrogate_nulls/test_real_part_and_validity.py"},
+            {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_real_part_and_validity.py"},
+            {"implementation": "tools/surrogate_nulls/spectral.py", "test": "tests/surrogate_nulls/test_real_part_and_validity.py"},
         ),
         "implementation_roots": ("tools/surrogate_nulls/",),
         "test_roots": ("tests/surrogate_nulls/",),
@@ -346,6 +353,27 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "implementation_roots": ("tools/experimental_audits/winding_charge_round6/",),
         "test_roots": ("tests/experimental_audits/",),
+    },
+    "dmd_crouzeix": {
+        "triggers": (
+            "neurotopology_sim/experimental/dynamics/",
+            "tests/dmd_crouzeix_contract/",
+            "tests/experimental/test_dmd_crouzeix.py",
+        ),
+        "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
+        "tests": (
+            "tests/dmd_crouzeix_contract/test_production_contract.py",
+            "tests/experimental/test_dmd_crouzeix.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_crouzeix_contract/test_production_contract.py"},
+            {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
+        ),
+        "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
+        "test_roots": (
+            "tests/dmd_crouzeix_contract/",
+            "tests/experimental/test_dmd_crouzeix.py",
+        ),
     },
 }
 

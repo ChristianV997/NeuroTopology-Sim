@@ -443,19 +443,78 @@
               "type": "object"
             },
             "helper_path": {"$ref": "#/$defs/repo_path"},
-            "hosted_candidate_execution": {"enum": ["not_observed", "observed"]},
+            "hosted_candidate_execution": {"enum": ["not_observed", "observed", "unknown"]},
+            "hosted_candidate_runs": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_pr_numbers": {"items": {"minimum": 1, "type": "integer"}, "minItems": 1, "type": "array", "uniqueItems": true},
+                  "candidate_test_paths": {"items": {"$ref": "#/$defs/repo_path"}, "minItems": 1, "type": "array", "uniqueItems": true},
+                  "conclusion": {"enum": ["success", "failure", "cancelled", "timed_out", "action_required", "unknown"]},
+                  "head_sha": {"$ref": "#/$defs/sha"},
+                  "job_name": {"minLength": 1, "type": "string"},
+                  "log_url": {"format": "uri", "type": "string"},
+                  "run_id": {"minimum": 1, "type": "integer"},
+                  "isolated_batches_skipped": {"minimum": 0, "type": "integer"},
+                  "isolated_batches_total": {"minimum": 0, "type": "integer"},
+                  "isolated_batches_failed": {"minimum": 0, "type": "integer"}
+                },
+                "required": ["candidate_pr_numbers", "candidate_test_paths", "head_sha", "run_id", "job_name", "conclusion", "isolated_batches_total", "isolated_batches_failed", "isolated_batches_skipped", "log_url"],
+                "type": "object"
+              },
+              "type": "array"
+            },
             "local_candidate_probe": {
               "additionalProperties": false,
               "properties": {
-                "candidate_head_sha": {"$ref": "#/$defs/sha"},
-                "candidate_pr_number": {"minimum": 1, "type": "integer"},
-                "direct_test_command": {"minLength": 1, "type": "string"},
-                "direct_test_result": {"minLength": 1, "type": "string"},
-                "isolated_runner_blocker": {"minLength": 1, "type": "string"},
-                "isolated_runner_result": {"minLength": 1, "type": "string"},
-                "test_file": {"$ref": "#/$defs/repo_path"}
+                "candidate_probes": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "candidate_refs": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "head_sha": {"$ref": "#/$defs/sha"},
+                            "pr_number": {"minimum": 1, "type": "integer"}
+                          },
+                          "required": ["pr_number", "head_sha"],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "combined_worktree_commit": {"$ref": "#/$defs/sha"},
+                      "collected_test_count": {"minimum": 0, "type": "integer"},
+                      "candidate_tests_executed": {"type": "boolean"},
+                      "isolated_file_attempts": {"minimum": 0, "type": "integer"},
+                      "lane": {"minLength": 1, "type": "string"},
+                      "note": {"minLength": 1, "type": "string"},
+                      "result_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "MERGE_CONFLICT"]},
+                      "runner_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "TIMEOUT"]},
+                      "selected_components": {"items": {"minLength": 1, "type": "string"}, "type": "array"}
+                    },
+                    "required": ["lane", "candidate_refs", "combined_worktree_commit", "selected_components", "isolated_file_attempts", "collected_test_count", "runner_status", "result_status", "candidate_tests_executed", "note"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "environment": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dependency_install_performed": {"const": false},
+                    "pytest_available": {"type": "boolean"},
+                    "pytest_timeout_available": {"type": "boolean"},
+                    "python_version": {"minLength": 1, "type": "string"}
+                  },
+                  "required": ["python_version", "pytest_available", "pytest_timeout_available", "dependency_install_performed"],
+                  "type": "object"
+                },
+                "retrieved_at_utc": {"format": "date-time", "type": "string"},
+                "status": {"enum": ["complete", "partial", "blocked", "inconclusive", "unknown"]},
+                "summary": {"minLength": 1, "type": "string"}
               },
-              "required": ["candidate_pr_number", "candidate_head_sha", "test_file", "direct_test_command", "direct_test_result", "isolated_runner_result", "isolated_runner_blocker"],
+              "required": ["retrieved_at_utc", "status", "environment", "candidate_probes", "summary"],
               "type": "object"
             }
           },
