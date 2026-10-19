@@ -471,6 +471,9 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": (".dockerignore",),
         "test_roots": ("tests/docker_context/",),
         "candidate_test_roots": ("tests/docker_context/",),
+        "external_test_paths": {
+            "tests/docker_context/test_docker_engine_build_context.py": "docker-context-engine",
+        },
     },
     "bids_inventory_audit": {
         "triggers": (
@@ -1167,6 +1170,7 @@ def _is_component_relevant(
         for path in (pair["implementation"], pair["test"])
     }
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
+    mapped.update(normalize_repo_path(path).casefold() for path in spec.get("external_test_paths", {}))
     if include_package_initializers:
         mapped.update(normalize_repo_path(path).casefold() for path in spec.get("package_initializers", {}))
     return any(normalize_repo_path(path).casefold() in mapped for path in changed_paths)
@@ -1226,18 +1230,23 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path).casefold()
         for path in spec.get("support_files", {})
     }
+    external_test_paths = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("external_test_paths", {})
+    }
     package_initializer_paths = {
         normalize_repo_path(path).casefold()
         for path in spec.get("package_initializers", {})
     }
     mapped_support_paths = support_paths | package_initializer_paths
     known.update(support_paths)
+    known.update(external_test_paths)
     known.update(package_initializer_paths)
     known_exact = {
         normalize_repo_path(path)
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
-    } | {normalize_repo_path(path) for path in mapped_support_paths}
+    } | {normalize_repo_path(path) for path in mapped_support_paths | external_test_paths}
     unmapped = _case_mismatched_known_paths(changed_paths, known_exact)
     for original in changed_paths:
         path = normalize_repo_path(original)
@@ -1291,6 +1300,10 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
         for candidate in spec.get("package_initializers", {})
+    } | {
+        normalize_repo_path(candidate)
+        for spec in COMPONENTS.values()
+        for candidate in spec.get("external_test_paths", {})
     }
     mapped_paths_casefold = {path.casefold() for path in mapped_paths}
     guard_roots = tuple(UNMAPPED_CANDIDATE_ROOTS)
@@ -1393,6 +1406,21 @@ def inspect_component(
         if not selected_pairs and pairs:
             selected_pairs = [pairs[0]]
 
+    external_tests = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("external_test_paths", {})
+    }
+    if (
+        any(normalize_repo_path(pair["test"]).casefold() in external_tests for pair in selected_pairs)
+        and not any(normalize_repo_path(pair["test"]).casefold() not in external_tests for pair in selected_pairs)
+    ):
+        generic_pair = next(
+            (pair for pair in pairs if normalize_repo_path(pair["test"]).casefold() not in external_tests),
+            None,
+        )
+        if generic_pair is not None:
+            selected_pairs.append(generic_pair)
+
     missing_implementations = sorted({
         pair["implementation"] for pair in selected_pairs
         if not (root / pair["implementation"]).is_file()
@@ -1402,7 +1430,15 @@ def inspect_component(
         if not (root / pair["test"]).is_file()
     } | {pair["test"] for pair in unavailable_companion_pairs})
     tests = [path for path in spec["tests"] if (root / path).is_file()]
-    pair_tests = [pair["test"] for pair in selected_pairs if (root / pair["test"]).is_file()]
+    pair_tests = [
+        pair["test"] for pair in selected_pairs
+        if normalize_repo_path(pair["test"]).casefold() not in external_tests
+        and (root / pair["test"]).is_file()
+    ]
+    delegated_tests = sorted(
+        pair["test"] for pair in selected_pairs
+        if normalize_repo_path(pair["test"]).casefold() in external_tests
+    )
     tests_to_run = list(dict.fromkeys(pair_tests))
     active_support_files = {
         support_path: mapped_tests
@@ -1501,6 +1537,7 @@ def inspect_component(
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,
+        "delegated_tests": delegated_tests,
         "executions": [],
     }
 
@@ -1887,6 +1924,13 @@ def run(
                 )
     changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
+    changed_casefold = {normalize_repo_path(path).casefold() for path in changed}
+    delegated_test_owners = {
+        normalize_repo_path(path): job
+        for spec in COMPONENTS.values()
+        for path, job in spec.get("external_test_paths", {}).items()
+        if normalize_repo_path(path).casefold() in changed_casefold
+    }
     relevant_paths = sorted({
         normalize_repo_path(path)
         for path in changed
@@ -1902,6 +1946,7 @@ def run(
         "status": "NOT_APPLICABLE" if not selected and not relevant_paths else "INCONCLUSIVE",
         "changed_paths": sorted(changed),
         "relevant_paths": relevant_paths,
+        "delegated_test_owners": delegated_test_owners,
         "selected_components": selected,
         "always_components": always_components,
         "not_applicable_components": [],
@@ -2363,9 +2408,12 @@ def run(
                     continue
                 _close_open_fds(pinned_output_fds)
                 junit_error = False
+                execution["junit_reconciliation"] = "not_attempted_no_junit"
                 if junit_bytes is not None:
+                    junit_parsed = False
                     try:
                         counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        junit_parsed = True
                         execution.update({
                             "tests_collected": counts[0],
                             "skipped": counts[1],
@@ -2385,34 +2433,44 @@ def run(
                         execution["junit_case_failures_truncated"] = (
                             len(failure_cases) > MAX_JUNIT_FAILURE_CASES
                         )
-                        runner_passed_count = (
-                            batches[0].get("_round6_pytest_passed_count")
-                            if batches and isinstance(batches[0], dict)
-                            else None
-                        )
-                        runner_subtests_passed_count = (
-                            batches[0].get("_round6_pytest_subtests_passed_count")
-                            if batches and isinstance(batches[0], dict)
-                            else None
-                        )
-                        if runner_passed_count != counts[0]:
-                            raise ValueError(
-                                f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                        if telemetry_ok:
+                            runner_passed_count = (
+                                batches[0].get("_round6_pytest_passed_count")
+                                if batches and isinstance(batches[0], dict)
+                                else None
                             )
-                        if (
-                            type(runner_subtests_passed_count) is not int
-                            or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
-                        ):
-                            raise ValueError(
-                                "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                            runner_subtests_passed_count = (
+                                batches[0].get("_round6_pytest_subtests_passed_count")
+                                if batches and isinstance(batches[0], dict)
+                                else None
                             )
-                        execution.update({
-                            "runner_passed_tests": runner_passed_count,
-                            "runner_passed_subtests": runner_subtests_passed_count,
-                            "test_cases": cases,
-                        })
+                            if runner_passed_count != counts[0]:
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                                )
+                            if (
+                                type(runner_subtests_passed_count) is not int
+                                or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
+                            ):
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                                )
+                            execution.update({
+                                "runner_passed_tests": runner_passed_count,
+                                "runner_passed_subtests": runner_subtests_passed_count,
+                                "test_cases": cases,
+                                "junit_reconciliation": "matched",
+                            })
+                        else:
+                            execution["junit_reconciliation"] = "not_attempted_runner_telemetry_invalid"
                     except (ET.ParseError, OSError, ValueError) as exc:
                         execution["junit_error"] = str(exc)
+                        if junit_parsed:
+                            execution["junit_reconciliation"] = "mismatch"
+                        else:
+                            execution["junit_reconciliation"] = "invalid_junit"
                         junit_error = True
                 has_junit = junit_bytes is not None and not junit_error
                 runner_dependency_unavailable = (
@@ -2519,6 +2577,7 @@ def run(
         "selected_components": report["selected_components"],
         "not_applicable_components": report["not_applicable_components"],
         "unmapped_candidate_paths": report["unmapped_candidate_paths"],
+        "delegated_test_owners": report["delegated_test_owners"],
         "candidate_test_executions": sum(len(item.get("executions", ())) for item in report["components"]),
         "component_statuses": {item["component"]: item["status"] for item in report["components"]},
     }, sort_keys=True, allow_nan=False))
