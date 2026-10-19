@@ -724,6 +724,13 @@ def _verify_ledger_export(ctx: _Context, doc: _Document) -> dict[str, Any] | Non
         if not isinstance(record, Mapping):
             ctx.add("malformed_ledger_record", subject, "record must be an object", "error")
             continue
+        if record.get("schema_version") != LEDGER_SCHEMA_VERSION:
+            ctx.add(
+                "unverifiable_ledger_record_schema",
+                subject,
+                f"record schema_version {record.get('schema_version')!r} is not the supported {LEDGER_SCHEMA_VERSION!r}; no record identity or typed relationships were inferred",
+            )
+            continue
         record_type = record.get("record_type")
         id_field = _LEDGER_RECORD_ID_FIELDS.get(record_type) if isinstance(record_type, str) else None
         if id_field is not None:
@@ -813,6 +820,9 @@ def _verify_ledger_events(ctx: _Context, source: str, cycle_id: str, events: lis
         seen.add(event_id)
         if event.get("cycle_id") != cycle_id or event.get("schema_version") != LEDGER_EVENT_SCHEMA_VERSION:
             ctx.add("malformed_ledger_event", event_id, "event cycle or schema version is inconsistent", "error")
+        sequence = event.get("sequence")
+        if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            ctx.add("malformed_ledger_event", event_id, "sequence must be a positive integer; boolean values are not accepted", "error")
         basis = {key: event.get(key) for key in ("cycle_id", "event_id", "sequence", "event_type", "producer", "status", "payload", "previous_hash", "schema_version")}
         try:
             expected = sha256_json(basis)
@@ -823,7 +833,15 @@ def _verify_ledger_events(ctx: _Context, source: str, cycle_id: str, events: lis
         if expected is None or not _is_sha256(actual) or actual.lower() != expected:
             ctx.add("checksum_mismatch", event_id, "event_hash differs under ResearchCycleLedger canonical_json", "error")
         parsed.append(event)
-    ordered = sorted(parsed, key=lambda event: (event.get("sequence") if isinstance(event.get("sequence"), int) else -1, str(event.get("event_id"))))
+    ordered = sorted(
+        parsed,
+        key=lambda event: (
+            event.get("sequence")
+            if isinstance(event.get("sequence"), int) and not isinstance(event.get("sequence"), bool)
+            else -1,
+            str(event.get("event_id")),
+        ),
+    )
     previous: str | None = None
     for expected_sequence, event in enumerate(ordered, 1):
         if event.get("sequence") != expected_sequence or event.get("previous_hash") != previous:
@@ -844,7 +862,10 @@ def _verify_ledger_links(
     for record in records:
         if not isinstance(record, Mapping):
             continue
-        if record.get("record_type") not in _KNOWN_LEDGER_RECORD_TYPES:
+        if (
+            record.get("schema_version") != LEDGER_SCHEMA_VERSION
+            or record.get("record_type") not in _KNOWN_LEDGER_RECORD_TYPES
+        ):
             continue
         record_id = _record_type_id(record)
         if not record_id:
@@ -1152,15 +1173,14 @@ def _check_source_and_config_links(ctx: _Context, docs: list[_Document], ledger_
         local_root = doc.raw.get("local_root")
         if isinstance(local_root, str) and local_root:
             try:
-                local_path = Path(local_root)
-                if local_path.is_absolute():
-                    raise ValueError("absolute local_root is not accepted for artifact-root joins")
-                parts = _path_parts(local_root)
-                relative = PurePosixPath(*parts).as_posix()
-                ctx.source_tree_prefixes.add(relative)
-                resolved, _ = _resolve_relative(ctx.root, relative)
+                resolved, relative = _resolve_relative(ctx.root, local_root)
                 if not resolved.is_dir():
                     ctx.add("missing_source_root", doc.relative_path, f"declared local_root {relative!r} is not a directory")
+                else:
+                    # Use the path spelling returned by the filesystem. On
+                    # case-insensitive filesystems the manifest's spelling
+                    # may differ from the inventory's entry spelling.
+                    ctx.source_tree_prefixes.add(relative)
             except (OSError, ValueError, RuntimeError) as exc:
                 ctx.add("source_root_unverifiable", doc.relative_path, str(exc))
         declared_source_checksum = doc.raw.get("source_checksum")

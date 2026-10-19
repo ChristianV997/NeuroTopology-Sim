@@ -34,6 +34,10 @@ unchanged. Redirect the report only to a destination outside the audited root.
   links, and materialized `record_links` are cross-checked. When a referenced
   ancestor cycle is not supplied, the report says it is unresolved rather than
   inventing a record.
+  Only records with the current ledger record `schema_version` can participate
+  in joins; missing or unknown record versions are reported as unverifiable.
+  Event sequence values must be positive integers; JSON booleans are rejected
+  even though Python treats `bool` as a subclass of `int`.
 - `NTS.IntegrationArtifactManifest.v1` entries are verified against raw file
   bytes and declared sizes, matching `tools.integration_bridge.artifact_manifest`.
 - `NeuroTopologySim.SimulationArtifactLineage.v1` report checksums,
@@ -109,8 +113,9 @@ absolute paths in embedded references, traversal, and references outside the
 root are rejected. Explicit CLI input manifests may be absolute only when they
 resolve beneath the supplied artifact root. JSON duplicate keys and non-finite
 values are rejected. Artifact hashing is streamed in 1 MiB blocks. A declared
-`local_root` source subtree is recognized as input and not recursively read or
-inventoried.
+`local_root` source subtree is resolved beneath the artifact root, then
+excluded using the filesystem-resolved relative path so case-insensitive path
+spellings do not cause the subtree to be inventoried.
 
 On platforms exposing `O_NOFOLLOW`, file opens reject a final-component symlink
 at open time, in addition to pre/post `lstat` and descriptor `fstat` identity

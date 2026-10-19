@@ -175,6 +175,81 @@ def test_malformed_duplicate_key_and_non_finite_json_are_rejected(tmp_path: Path
     assert "malformed_manifest" in _codes(report)
 
 
+def test_boolean_event_sequence_is_rejected_even_with_a_valid_hash_chain(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    ledger = json.loads(paths[3].read_text(encoding="utf-8"))
+    first, second = ledger["events"]
+    first["sequence"] = True
+    first["event_hash"] = sha({key: value for key, value in first.items() if key != "event_hash"})
+    second["previous_hash"] = first["event_hash"]
+    second["event_hash"] = sha({key: value for key, value in second.items() if key != "event_hash"})
+    ledger.pop("export_checksum")
+    ledger["export_checksum"] = sha(ledger)
+    ledger_path = write_json(tmp_path / "boolean-sequence-ledger.json", ledger)
+
+    report = audit_provenance(tmp_path, [paths[0], paths[1], paths[2], ledger_path, paths[4]])
+
+    assert report["status"] == "INVALID"
+    assert "malformed_ledger_event" in _codes(report)
+    assert any(
+        item["code"] == "malformed_ledger_event"
+        and "positive integer" in item["detail"]
+        for item in report["findings"]
+    )
+
+
+def test_unknown_record_schema_cannot_satisfy_a_typed_reference(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    ledger = json.loads(paths[3].read_text(encoding="utf-8"))
+    source = ledger["records"][0]
+    source["schema_version"] = "awareness-studio-research-cycle.v0"
+    source["checksum"] = sha({key: value for key, value in source.items() if key != "checksum"})
+
+    previous_hash = None
+    for event in ledger["events"]:
+        event.pop("event_hash", None)
+        if event["event_type"] == "source_snapshot":
+            event["payload"] = source
+        event["previous_hash"] = previous_hash
+        event["event_hash"] = sha(event)
+        previous_hash = event["event_hash"]
+    ledger.pop("export_checksum")
+    ledger["export_checksum"] = sha(ledger)
+    ledger_path = write_json(tmp_path / "unknown-record-schema-ledger.json", ledger)
+
+    report = audit_provenance(tmp_path, [paths[0], paths[1], paths[2], ledger_path, paths[4]])
+
+    assert "unverifiable_ledger_record_schema" in _codes(report)
+    assert any(
+        item["code"] == "unresolved_ledger_reference"
+        and item["subject"] == "evidence-fixture-1.source_snapshot_ids"
+        for item in report["findings"]
+    )
+
+
+def test_local_root_exclusion_uses_case_resolved_path_on_case_insensitive_filesystem(tmp_path: Path) -> None:
+    paths = valid_fixture(tmp_path)
+    actual_source_root = tmp_path / "source_data"
+    if not (tmp_path / "SOURCE_DATA").is_dir():
+        pytest.skip("case-sensitive filesystem; case-aliased local_root cannot be exercised")
+    (actual_source_root / "local-input.fixture").write_bytes(b"synthetic local input\n")
+
+    source_manifest = json.loads(paths[2].read_text(encoding="utf-8"))
+    source_manifest["local_root"] = "SOURCE_DATA"
+    source_manifest_path = write_json(tmp_path / "case-aliased-source-manifest.json", source_manifest)
+
+    report = audit_provenance(
+        tmp_path,
+        [paths[0], paths[1], source_manifest_path, paths[3], paths[4]],
+    )
+
+    assert not any(path.lower().endswith("local-input.fixture") for path in report["orphan_artifacts"])
+    assert not any(
+        item["code"] == "orphan_artifact" and "local-input.fixture" in item["subject"]
+        for item in report["findings"]
+    )
+
+
 def test_ledger_cross_cycle_parent_reference_resolves_only_with_declared_ancestor(tmp_path: Path) -> None:
     parent_source = ledger_record(
         "source_snapshot",
