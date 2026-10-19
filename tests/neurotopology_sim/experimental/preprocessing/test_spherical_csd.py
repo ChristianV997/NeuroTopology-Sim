@@ -260,50 +260,29 @@ def test_full_matrix_snapshot_recorded_generation():
 
 
 # ---------------------------------------------------------------------------
-# Optional live-MNE full-matrix parity (skip if MNE absent — no install here)
+# Offline MNE-pin gate (no live importorskip — Round-6 treats skips as FAIL)
+# Live MNE identity-matrix parity remains optional outside this candidate file;
+# recorded fixtures + test_full_matrix_snapshot_recorded_generation are the
+# CI-authoritative full-matrix check under HOLD / SYNTHETIC_ONLY.
 # ---------------------------------------------------------------------------
 
 
-def test_optional_live_mne_full_matrix_parity():
-    mne = pytest.importorskip("mne", reason="MNE not installed; parity skipped (no install)")
-    # Pin check: warn but still compare if version differs
-    ver = getattr(mne, "__version__", "unknown")
-    pos = _asymmetric_cap(9, seed=21) * 0.095
-    names = [f"EEG{i:02d}" for i in range(len(pos))]
-    cfg = _cfg(radius=0.095)
-    ours = compute_spherical_csd_transform(pos, cfg, channel_names=names)
-
-    # Build a minimal Raw-like path: use MNE's public CSD on Evoked with montage
-    info = mne.create_info(names, sfreq=100.0, ch_types="eeg")
-    # Digitized positions in head frame (meters)
-    dig = []
-    for i, (name, xyz) in enumerate(zip(names, pos)):
-        dig.append(
-            dict(
-                kind=mne.io.constants.FIFF.FIFFV_POINT_EEG,
-                ident=i + 1,
-                r=np.asarray(xyz, dtype=float),
-                coord_frame=mne.io.constants.FIFF.FIFFV_COORD_HEAD,
-            )
-        )
-        info["chs"][i]["loc"][:3] = xyz
-    info["dig"] = dig
-    data = np.eye(len(names))
-    evoked = mne.EvokedArray(data, info, tmin=0.0)
-    # Apply MNE CSD with explicit sphere matching ours
-    csd = mne.preprocessing.compute_current_source_density(
-        evoked,
-        sphere=(0.0, 0.0, 0.0, 0.095),
-        lambda2=1e-5,
-        stiffness=4,
-        n_legendre_terms=50,
-        copy=True,
-        verbose="ERROR",
+def test_offline_mne_pin_fixture_is_ci_authoritative_gate():
+    """Ensure the offline fixture gate exists so CI never needs pytest.skip."""
+    matrix_path = FIXTURE_DIR / "tetrahedron_csd_matrix_mne_1_13_2.npy"
+    meta_path = FIXTURE_DIR / "tetrahedron_csd_matrix_mne_1_13_2.json"
+    assert matrix_path.is_file(), "missing recorded MNE 1.13.2 full-matrix fixture"
+    assert meta_path.is_file(), "missing recorded MNE 1.13.2 fixture metadata"
+    gen = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert gen["mne_pin_version"] == MNE_PIN["version"] == "1.13.2"
+    assert gen["mne_pin_commit"] == MNE_PIN["commit"]
+    # Production transform must still match the recorded pin fixture.
+    pos = np.asarray(gen["positions_m"], dtype=float)
+    names = list(gen["channel_names"])
+    sphere = tuple(gen["sphere_xyzr_m"])
+    result = compute_spherical_csd_transform(
+        pos, SphericalCSDConfig(sphere=sphere), channel_names=names
     )
-    mne_matrix = csd.get_data()  # because input was identity → columns are transform
-    # EvokedArray stores (n_channels, n_times); identity times → transform columns
-    rel = np.linalg.norm(ours.transform - mne_matrix) / np.linalg.norm(mne_matrix)
-    assert rel < 1e-10, (
-        f"full-matrix mismatch vs live MNE {ver}: rel={rel}; "
-        f"pin={MNE_PIN['version']}"
-    )
+    expected = np.load(matrix_path)
+    rel = np.linalg.norm(result.transform - expected) / np.linalg.norm(expected)
+    assert rel < 1e-9
