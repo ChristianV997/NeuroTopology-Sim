@@ -3,6 +3,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from numpy.polynomial.legendre import legval
+
 from tools.mne_csd_reference_audit.kkt import (
     OperatorInputError,
     apply_csd,
@@ -30,6 +32,32 @@ def _positions(name: str) -> np.ndarray:
 
 def _scale(M: np.ndarray) -> float:
     return float(np.max(np.abs(M)))
+
+
+def _mne_code_path(pos: np.ndarray, radius: float, lambda2: float) -> tuple[np.ndarray, np.ndarray]:
+    """MNE 1.13.2 compute_current_source_density, transcribed from the verified sdist.
+
+    Sources: mne/preprocessing/_csd.py (_prepare_G, _compute_csd) and
+    mne/channels/interpolation.py (_calc_g, _calc_h). Written with numpy.polynomial.legendre.legval
+    and not via the package, so it is an independent oracle for the code path, including the
+    TC = Gi.sum(0) ordering that the package's projection form does not use.
+    """
+    u = pos / np.linalg.norm(pos, axis=1, keepdims=True)
+    cos = np.clip(u @ u.T, -1, 1)
+    g = [0.0] + [(2 * n + 1) / (n**4 * (n + 1) ** 4 * 4 * np.pi) for n in range(1, 51)]
+    h = [0.0] + [(2 * n + 1) / (n**3 * (n + 1) ** 3 * 4 * np.pi) for n in range(1, 51)]
+    G = legval(cos, g)
+    H = legval(cos, h)
+    G.flat[:: len(G) + 1] += lambda2
+    Gi = np.linalg.inv(G)
+    TC = Gi.sum(0)
+    sgi = np.sum(TC)
+    n = G.shape[0]
+    Z = np.eye(n) - np.eye(n).mean(0)
+    Cp2 = np.dot(Gi, Z)
+    c02 = np.sum(Cp2, axis=0) / sgi
+    C2 = Cp2 - np.dot(TC[:, np.newaxis], c02[np.newaxis, :])
+    return (np.dot(C2.T, H).T / radius**2), G
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -182,3 +210,42 @@ def test_operator_wiring_matches_inline_formula_with_explicit_lambda(name):
     expected = H.T @ C / RADIUS**2
     actual = csd_operator(RADIUS * unit, radius=RADIUS, lambda2=LAMBDA2)
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12 * _scale(expected))
+
+
+@pytest.mark.parametrize("name", ALL)
+def test_kkt_and_projection_match_the_mne_code_path_within_conditioning(name):
+    # The package's projection form uses TC = Gi @ 1; MNE 1.13.2 uses TC = Gi.sum(0). They agree in exact
+    # arithmetic (Gi is symmetric) and differ only by float64 asymmetry of the inverse. Bound: 10 * cond * eps.
+    # Measured error / (cond * eps) is at most 0.88 here (ring_apex_9), so the bound has about an order of
+    # magnitude of headroom and is not tuned to pass.
+    pos = _positions(name)
+    M_mne, G_reg = _mne_code_path(pos, RADIUS, LAMBDA2)
+    bound = 10 * np.linalg.cond(G_reg) * np.finfo(float).eps
+    for method in ("kkt", "projection"):
+        M = csd_operator(pos, radius=RADIUS, lambda2=LAMBDA2, method=method)
+        assert np.linalg.norm(M - M_mne) / np.linalg.norm(M_mne) <= bound, (method, name)
+
+
+@pytest.mark.parametrize("variant", [csd_operator_regularised_after_inverse, csd_operator_without_sum_constraint])
+@pytest.mark.parametrize("radius", [0.0, -0.095, float("nan"), float("inf")])
+def test_discriminator_variants_refuse_invalid_radius_as_the_reference_does(variant, radius):
+    # Regression: both variants once skipped the radius guard, so radius = 0 returned inf/nan with a warning.
+    with pytest.raises(OperatorInputError, match="radius"):
+        variant(_positions("tetrahedron_4"), radius=radius)
+
+
+@pytest.mark.parametrize("stiffness", [-1.0, -0.5])
+def test_negative_stiffness_is_refused_as_mne_refuses_it(stiffness):
+    # MNE 1.13.2 _csd.py:130-131: "stiffness must be non-negative". Regression: the reference returned a
+    # finite matrix for negative stiffness, so a parity check on such input would report agreement.
+    with pytest.raises(OperatorInputError, match="stiffness"):
+        csd_operator(_positions("tetrahedron_4"), radius=RADIUS, stiffness=stiffness)
+
+
+@pytest.mark.parametrize("offset", [0.0, 1e-9])
+def test_sensor_at_the_raw_origin_is_refused_as_mne_refuses_it(offset):
+    # MNE 1.13.2 _csd.py:158 applies np.isclose(loc, 0).all(1) to the raw locations, before the sphere centre
+    # is subtracted. Regression: a sensor at 1e-9 passed the post-centring check and was accepted.
+    pos = np.vstack([_positions("tetrahedron_4"), [offset, offset, offset]])
+    with pytest.raises(OperatorInputError, match="zero"):
+        csd_operator(pos, radius=RADIUS)

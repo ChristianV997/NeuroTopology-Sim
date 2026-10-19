@@ -15,12 +15,15 @@ from tools.mne_csd_reference_audit.legendre import (
 )
 
 
+# The brief gives each constant to 15 significant digits, so representation error alone is up to
+# ~3.3e-15 relative (G(0) = -1.519e-4). 1e-14 leaves a factor of three over that. The bound is
+# relative: an absolute bound admits ~1e-12 relative drift for H(0) ~ 9e-4.
 @pytest.mark.parametrize("name", sorted(PROPOSAL_CONSTANTS))
 def test_proposal_constant_matches_fifty_term_series(name):
     x, shift, claimed = PROPOSAL_CONSTANTS[name]
     fn = g_function if shift == 0 else h_function
     computed = float(fn(np.array([x]), 4.0, 50)[0])
-    assert abs(computed - claimed) < 1e-15, (name, computed, claimed)
+    assert abs(computed - claimed) / abs(claimed) < 1e-14, (name, computed, claimed)
 
 
 def test_recurrence_agrees_with_numpy_legval_on_the_same_formula():
@@ -47,6 +50,32 @@ def test_h_with_stiffness_m_equals_g_with_stiffness_m_minus_one():
 def test_fifty_term_truncation_is_part_of_the_h_constant():
     shift = h_function(np.array([1.0]), 4.0, 4000)[0] - h_function(np.array([1.0]), 4.0, 50)[0]
     assert 1e-9 < abs(shift) < 1e-8, shift
+
+
+def test_h1_truncation_shift_matches_the_documented_relative_figure():
+    # docs/mne_csd_reference_audit.md states H(1) moves ~1.8e-7 relative between N = 50 and N = 4000.
+    # Measured 1.829e-7; the window allows for evaluation differences, not for a different claim.
+    h50 = h_function(np.array([1.0]), 4.0, 50)[0]
+    h4000 = h_function(np.array([1.0]), 4.0, 4000)[0]
+    rel = abs(h4000 - h50) / abs(h50)
+    assert 1.7e-7 < rel < 1.9e-7, rel
+
+
+def _coefficients(shift: int, n_terms: int) -> list[float]:
+    # MNE 1.13.2 _calc_g (shift 0) / _calc_h (shift 1), written here directly, not via the package.
+    return [0.0] + [(2 * n + 1) / ((n * (n + 1)) ** (4 - shift) * 4.0 * math.pi) for n in range(1, n_terms + 1)]
+
+
+def test_legendre_ode_links_package_h_to_the_laplacian_of_g():
+    # G is evaluated from coefficients written here, not from the package. The sphere Laplacian of a function
+    # of x = cos(theta) is (1 - x^2) f'' - 2 x f', and it maps P_n to -n(n+1) P_n. So -Lap G = H term by term,
+    # with exponents m and m - 1. The package's H is compared against it, so an exponent error in h_function
+    # fails here. The residual is rounding only: 2.2e-16 relative at N = 50 when measured.
+    x = np.linspace(-0.999, 0.999, 401)
+    cg = np.array(_coefficients(0, 50))
+    lap_g = (1 - x**2) * npl.legval(x, npl.legder(cg, 2)) - 2 * x * npl.legval(x, npl.legder(cg, 1))
+    h = h_function(x, 4.0, 50)
+    assert np.max(np.abs(-lap_g - h)) / np.max(np.abs(h)) < 1e-13
 
 
 def test_g_constant_is_insensitive_to_truncation_at_fifteen_digits():

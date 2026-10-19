@@ -1,13 +1,17 @@
 """Pinned MNE-Python source used as the reference for this audit.
 
-Every value here was verified in the audit session:
-- version, sdist filename and SHA-256: PyPI JSON for mne 1.13.2; the downloaded
-  sdist's SHA-256 matched the PyPI digest exactly.
-- tag commit: `git ls-remote` of refs/tags/v1.13.2 on mne-tools/mne-python.
-- source-file SHA-256 values: computed from the extracted sdist members.
+Provenance and its status:
+- version, sdist filename and SHA-256: PyPI JSON for mne 1.13.2, recorded in the original audit
+  (2026-10-17). Re-verified 2026-10-19 against https://pypi.org/pypi/mne/1.13.2/json, which gives the
+  sdist digest 729829e35010a7273cce8608d61d930c973fbead6edc1a70316c01e3a5551521.
+- tag commit: `git ls-remote` of refs/tags/v1.13.2 on mne-tools/mne-python, recorded 2026-10-17. NOT
+  re-verified on 2026-10-19; mne-tools/mne-python was outside that session's repository access.
+- source-file SHA-256 values: computed from the extracted sdist members. Re-verified 2026-10-19 from a
+  fresh extraction of the same sdist.
 
-The reference implementation here was written from the mathematical
-formulas. No MNE code is copied into this package.
+The reference implementation here was written from the mathematical formulas. No MNE code is copied
+into this package. The independent MNE code-path transcription in tests/mne_csd_reference_audit/
+is test-only and is cited to the same source lines.
 """
 from __future__ import annotations
 

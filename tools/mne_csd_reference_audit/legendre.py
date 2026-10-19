@@ -59,8 +59,8 @@ def numpy_crosscheck_coefficients(stiffness: float, n_terms: int, shift: int) ->
     ]
 
 
-# Values exactly as stated in the Round 6 brief. The brief is the only source for
-# them: no branch or file in the repository contains them (see the report).
+# Values exactly as stated in the Round 6 brief. The brief is their only source: the
+# literal does not appear on origin/main (checked 2026-10-19). Tests in this PR reproduce them.
 PROPOSAL_CONSTANTS: dict[str, tuple[float, int, float]] = {
     "G(1)": (1.0, 0, 0.0152607616970611),
     "G(0)": (0.0, 0, -0.000151919699050514),

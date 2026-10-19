@@ -36,6 +36,18 @@ class OperatorInputError(ValueError):
     """Positions, radius, or regularisation outside the reference's domain."""
 
 
+def _check_radius(radius: float) -> None:
+    if not (math.isfinite(radius) and radius > 0.0):
+        raise OperatorInputError("radius must be finite and > 0")
+
+
+def _check_stiffness(stiffness: float) -> None:
+    # MNE 1.13.2 _csd.py:130-131 rejects stiffness < 0. Non-finite values are refused here too,
+    # which is stricter than MNE (MNE would propagate NaN).
+    if not (math.isfinite(stiffness) and stiffness >= 0.0):
+        raise OperatorInputError("stiffness must be finite and non-negative")
+
+
 def unit_vectors(positions, origin: Sequence[float] = (0.0, 0.0, 0.0)) -> np.ndarray:
     pos = np.asarray(positions, dtype=float)
     if pos.ndim != 2 or pos.shape[1] != 3:
@@ -44,6 +56,10 @@ def unit_vectors(positions, origin: Sequence[float] = (0.0, 0.0, 0.0)) -> np.nda
         raise OperatorInputError("at least two channels are required for an average reference")
     if not np.all(np.isfinite(pos)):
         raise OperatorInputError("positions must be finite")
+    # MNE 1.13.2 _csd.py:158 rejects np.isclose(loc, 0).all(1) on the raw locations, before the sphere
+    # centre is subtracted. Mirror that, so a sensor MNE refuses is refused here too.
+    if np.isclose(pos, 0.0).all(axis=1).any():
+        raise OperatorInputError("zero (0,0,0) sensor coordinate(s) rejected, as MNE does")
     centred = pos - np.asarray(origin, dtype=float)
     norms = np.linalg.norm(centred, axis=1)
     if np.any(norms <= 0.0):
@@ -99,8 +115,8 @@ def csd_operator(
     n_terms: int = 50,
     method: Method = "kkt",
 ) -> np.ndarray:
-    if not (math.isfinite(radius) and radius > 0.0):
-        raise OperatorInputError("radius must be finite and > 0")
+    _check_radius(radius)
+    _check_stiffness(stiffness)
     unit = unit_vectors(positions, origin)
     G, H = legendre_matrices(unit, stiffness=stiffness, n_terms=n_terms)
     G_reg = regularise(G, lambda2)
@@ -126,6 +142,8 @@ def csd_operator_regularised_after_inverse(
     lambda2: float = 1e-5, stiffness: float = 4.0, n_terms: int = 50,
 ) -> np.ndarray:
     """Discriminating variant: lambda2 added to inv(G) instead of G (not the reference)."""
+    _check_radius(radius)
+    _check_stiffness(stiffness)
     unit = unit_vectors(positions, origin)
     G, H = legendre_matrices(unit, stiffness=stiffness, n_terms=n_terms)
     Gi = np.linalg.inv(G) + lambda2 * np.eye(G.shape[0])
@@ -144,6 +162,8 @@ def csd_operator_without_sum_constraint(
     lambda2: float = 1e-5, stiffness: float = 4.0, n_terms: int = 50,
 ) -> np.ndarray:
     """Discriminating variant: centring kept, zero-sum coefficient constraint dropped."""
+    _check_radius(radius)
+    _check_stiffness(stiffness)
     unit = unit_vectors(positions, origin)
     G, H = legendre_matrices(unit, stiffness=stiffness, n_terms=n_terms)
     G_reg = regularise(G, lambda2)
