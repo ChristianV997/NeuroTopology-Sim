@@ -2363,9 +2363,12 @@ def run(
                     continue
                 _close_open_fds(pinned_output_fds)
                 junit_error = False
+                execution["junit_reconciliation"] = "not_attempted_no_junit"
                 if junit_bytes is not None:
+                    junit_parsed = False
                     try:
                         counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        junit_parsed = True
                         execution.update({
                             "tests_collected": counts[0],
                             "skipped": counts[1],
@@ -2385,34 +2388,44 @@ def run(
                         execution["junit_case_failures_truncated"] = (
                             len(failure_cases) > MAX_JUNIT_FAILURE_CASES
                         )
-                        runner_passed_count = (
-                            batches[0].get("_round6_pytest_passed_count")
-                            if batches and isinstance(batches[0], dict)
-                            else None
-                        )
-                        runner_subtests_passed_count = (
-                            batches[0].get("_round6_pytest_subtests_passed_count")
-                            if batches and isinstance(batches[0], dict)
-                            else None
-                        )
-                        if runner_passed_count != counts[0]:
-                            raise ValueError(
-                                f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                        if telemetry_ok:
+                            runner_passed_count = (
+                                batches[0].get("_round6_pytest_passed_count")
+                                if batches and isinstance(batches[0], dict)
+                                else None
                             )
-                        if (
-                            type(runner_subtests_passed_count) is not int
-                            or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
-                        ):
-                            raise ValueError(
-                                "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                            runner_subtests_passed_count = (
+                                batches[0].get("_round6_pytest_subtests_passed_count")
+                                if batches and isinstance(batches[0], dict)
+                                else None
                             )
-                        execution.update({
-                            "runner_passed_tests": runner_passed_count,
-                            "runner_passed_subtests": runner_subtests_passed_count,
-                            "test_cases": cases,
-                        })
+                            if runner_passed_count != counts[0]:
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                                )
+                            if (
+                                type(runner_subtests_passed_count) is not int
+                                or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
+                            ):
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                                )
+                            execution.update({
+                                "runner_passed_tests": runner_passed_count,
+                                "runner_passed_subtests": runner_subtests_passed_count,
+                                "test_cases": cases,
+                                "junit_reconciliation": "matched",
+                            })
+                        else:
+                            execution["junit_reconciliation"] = "not_attempted_runner_telemetry_invalid"
                     except (ET.ParseError, OSError, ValueError) as exc:
                         execution["junit_error"] = str(exc)
+                        if junit_parsed:
+                            execution["junit_reconciliation"] = "mismatch"
+                        else:
+                            execution["junit_reconciliation"] = "invalid_junit"
                         junit_error = True
                 has_junit = junit_bytes is not None and not junit_error
                 runner_dependency_unavailable = (

@@ -576,6 +576,11 @@ def test_fixture():
         self.assertEqual(result, 1)
         self.assertEqual(report["status"], "FAIL")
         self.assertEqual(execution["failure_classification"], "test_or_collection_failure")
+        self.assertEqual(
+            execution["junit_reconciliation"],
+            "not_attempted_runner_telemetry_invalid",
+        )
+        self.assertNotIn("junit_error", execution)
         self.assertEqual(execution["result_counts"], {
             "collected": helper.MAX_JUNIT_FAILURE_CASES + 1,
             "skipped": 0,
@@ -628,6 +633,7 @@ def test_fixture():
         self.assertEqual(execution["runner_passed_tests"], 2)
         self.assertEqual(execution["runner_passed_subtests"], 2)
         self.assertEqual(execution["junit_reported_test_outcomes"], 4)
+        self.assertEqual(execution["junit_reconciliation"], "matched")
         self.assertEqual(len(execution["test_cases"]), 2)
 
     def test_runner_rejects_inflated_stdout_pass_count(self):
