@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -55,6 +56,16 @@ def _write(root: Path, relative: str, value: str) -> None:
     path.write_text(value, encoding="utf-8")
 
 
+def _workspace_path_for_output_arg(value: str) -> Path:
+    """Resolve a descriptor-path argument to its original workspace filename for race fixtures."""
+    if value.startswith("/proc/"):
+        try:
+            return Path(os.readlink(value))
+        except OSError:
+            pass
+    return Path(value)
+
+
 def _repo(root: Path, *, with_candidate: bool = True) -> str:
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "CI Fixture")
@@ -89,7 +100,7 @@ def _valid_telemetry(test_file: str) -> str:
             "duration_s": 0.1,
             "peak_memory_mb": None,
             "failures": [],
-            "stdout_tail": "",
+            "stdout_tail": "1 passed in 0.01s\n",
             "stderr_tail": "",
             "files": [test_file],
             "test_files": [test_file],
@@ -129,15 +140,219 @@ class Round6DiscoveryTests(unittest.TestCase):
     def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}",
             workflow,
         )
         self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}",
             workflow,
         )
+        self.assertIn("diff_base_sha:\n        description:", workflow)
+        self.assertIn("diff_head_sha:\n        description:", workflow)
+        self.assertIn("required: true\n        type: string", workflow)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
+
+    def test_workflow_dispatch_without_explicit_diff_shas_fails_closed(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root)
+            with self.assertRaisesRegex(ValueError, "workflow_dispatch requires an explicit"):
+                helper.run(
+                    root, "", "", root / "outputs/report.json",
+                    tested_checkout_sha="1" * 40,
+                    workflow_sha="2" * 40,
+                    event_name="workflow_dispatch",
+                )
+
+    def test_contained_artifact_reads_are_size_bounded(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            artifact = root / "diagnostics.bin"
+            artifact.write_bytes(b"x" * 33)
+            with self.assertRaisesRegex(ValueError, "exceeds the 32-byte read limit"):
+                helper._read_contained_bytes(root, artifact, "fixture artifact", max_bytes=32)
+            artifact.write_bytes(b"0123456789")
+            self.assertEqual(
+                helper._read_contained_tail_text(root, artifact, "fixture log", tail_bytes=4),
+                "6789",
+            )
+
+    def test_contained_artifact_open_survives_parent_symlink_swap(self):
+        helper = _helper()
+        if (
+            helper.os.name == "nt"
+            or helper.os.open not in getattr(helper.os, "supports_dir_fd", set())
+            or not getattr(helper.os, "O_NOFOLLOW", 0)
+            or not getattr(helper.os, "O_DIRECTORY", 0)
+        ):
+            self.skipTest("openat-style no-follow directory descriptors are unavailable")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            original_parent = root / "logs"
+            outside_parent = Path(td) / "outside"
+            original_parent.mkdir(parents=True)
+            outside_parent.mkdir()
+            (original_parent / "junit.xml").write_text("trusted-tree", encoding="utf-8")
+            (outside_parent / "junit.xml").write_text("outside-tree", encoding="utf-8")
+            real_open = helper.os.open
+            swapped = False
+
+            def open_and_swap(file, flags, *args, **kwargs):
+                nonlocal swapped
+                fd = real_open(file, flags, *args, **kwargs)
+                if file == "logs" and kwargs.get("dir_fd") is not None and not swapped:
+                    swapped = True
+                    original_parent.rename(root / "logs-held")
+                    (root / "logs").symlink_to(outside_parent, target_is_directory=True)
+                return fd
+
+            with patch.object(helper.os, "open", open_and_swap):
+                # The helper checks whether the active os.open callable supports
+                # dir_fd. Keep the replacement callable in that capability set
+                # so this test exercises the POSIX descriptor-relative branch.
+                supported_dir_fd = set(helper.os.supports_dir_fd)
+                supported_dir_fd.add(open_and_swap)
+                with patch.object(helper.os, "supports_dir_fd", supported_dir_fd):
+                    observed = helper._read_contained_bytes(
+                        root, root / "logs" / "junit.xml", "JUnit path", max_bytes=64
+                    )
+        self.assertTrue(swapped)
+        self.assertEqual(observed, b"trusted-tree")
+
+    def test_pinned_report_descriptors_prevent_symlink_redirected_writes(self):
+        helper = _helper()
+        if not helper._supports_pinned_output_transport():
+            self.skipTest("Linux procfs descriptor transport is unavailable")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            temp = root / "private"
+            temp.mkdir()
+            telemetry = temp / "telemetry.json"
+            junit = temp / "junit.xml"
+            outside_telemetry = Path(td) / "outside-telemetry.json"
+            outside_junit = Path(td) / "outside-junit.xml"
+            outside_telemetry.write_text("preserve telemetry\n", encoding="utf-8")
+            outside_junit.write_text("preserve junit\n", encoding="utf-8")
+            telemetry_fd = helper._open_contained_file(
+                root, telemetry, helper.os.O_RDWR | helper.os.O_CREAT | helper.os.O_TRUNC,
+                "runner telemetry path",
+            )
+            junit_fd = helper._open_contained_file(
+                root, junit, helper.os.O_RDWR | helper.os.O_CREAT | helper.os.O_TRUNC,
+                "JUnit report path",
+            )
+            try:
+                telemetry_proc_path = helper._proc_fd_path(telemetry_fd)
+                junit_proc_path = helper._proc_fd_path(junit_fd, pid=helper.os.getpid())
+                code = (
+                    "from pathlib import Path; import sys; "
+                    "Path(sys.argv[1]).unlink(); Path(sys.argv[1]).symlink_to(sys.argv[3]); "
+                    "Path(sys.argv[2]).unlink(); Path(sys.argv[2]).symlink_to(sys.argv[4]); "
+                    "Path(sys.argv[5]).write_text('{\\\"completed\\\":true}', encoding='utf-8'); "
+                    "Path(sys.argv[6]).write_text('<testsuite/>', encoding='utf-8')"
+                )
+                subprocess.run(
+                    [
+                        helper.sys.executable, "-c", code, str(telemetry), str(junit),
+                        str(outside_telemetry), str(outside_junit),
+                        telemetry_proc_path, junit_proc_path,
+                    ],
+                    check=True,
+                    pass_fds=(telemetry_fd,),
+                )
+                telemetry_bytes = helper._read_pinned_output_bytes(
+                    telemetry_fd, "runner telemetry path", max_bytes=1024
+                )
+                junit_bytes = helper._read_pinned_output_bytes(
+                    junit_fd, "JUnit report path", max_bytes=1024
+                )
+                self.assertEqual(
+                    outside_telemetry.read_text(encoding="utf-8"), "preserve telemetry\n"
+                )
+                self.assertEqual(
+                    outside_junit.read_text(encoding="utf-8"), "preserve junit\n"
+                )
+            finally:
+                os.close(telemetry_fd)
+                os.close(junit_fd)
+        self.assertEqual(telemetry_bytes, b'{"completed":true}')
+        self.assertEqual(junit_bytes, b"<testsuite/>")
+
+    def test_real_isolated_runner_and_pytest_writers_do_not_follow_swapped_outputs(self):
+        helper = _helper()
+        if not helper._supports_pinned_output_transport():
+            self.skipTest("Linux procfs descriptor transport is unavailable")
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            _write(root, pair["implementation"], "# local synthetic candidate fixture\n")
+            runner = ROOT / "scripts/run_tests_isolated.py"
+            _write(root, "scripts/run_tests_isolated.py", runner.read_text(encoding="utf-8"))
+            outside = Path(td) / "outside"
+            outside.mkdir()
+            outside_telemetry = outside / "telemetry.txt"
+            outside_junit = outside / "junit.txt"
+            outside_telemetry.write_text("preserve telemetry\n", encoding="utf-8")
+            outside_junit.write_text("preserve junit\n", encoding="utf-8")
+            _write(
+                root,
+                pair["test"],
+                """import os
+from pathlib import Path
+
+runner_pid = os.getppid()
+status = Path(f"/proc/{runner_pid}/status").read_text(encoding="utf-8")
+helper_pid = int(next(line.split()[1] for line in status.splitlines() if line.startswith("PPid:")))
+fd_dir = Path(f"/proc/{helper_pid}/fd")
+outside = Path(os.environ["ROUND6_OUTPUT_RACE_DIR"])
+found = set()
+for descriptor in fd_dir.iterdir():
+    try:
+        target = Path(os.readlink(descriptor))
+    except OSError:
+        continue
+    if target.name.endswith(".junit.xml"):
+        kind = "junit"
+    elif target.parent.name.startswith("round6-ci-") and target.suffix == ".json":
+        kind = "telemetry"
+    else:
+        continue
+    if kind not in found:
+        target.unlink()
+        target.symlink_to(outside / f"{kind}.txt")
+        found.add(kind)
+assert found == {"telemetry", "junit"}, found
+
+def test_fixture():
+    Path(os.environ["ROUND6_OUTPUT_RACE_MARKER"]).write_text("candidate ran\\n", encoding="utf-8")
+    assert True
+""",
+            )
+            report_path = root / "outputs/report.json"
+            candidate_marker = root / "candidate-ran.txt"
+            with patch.dict(os.environ, {
+                "ROUND6_OUTPUT_RACE_DIR": str(outside),
+                "ROUND6_OUTPUT_RACE_MARKER": str(candidate_marker),
+            }), patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ):
+                exit_code = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            candidate_marker_text = candidate_marker.read_text(encoding="utf-8")
+            telemetry_text = outside_telemetry.read_text(encoding="utf-8")
+            junit_text = outside_junit.read_text(encoding="utf-8")
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["runner_exit_code"], 0)
+        self.assertEqual(candidate_marker_text, "candidate ran\n")
+        self.assertEqual(telemetry_text, "preserve telemetry\n")
+        self.assertEqual(junit_text, "preserve junit\n")
 
     def test_candidate_implementation_and_test_change_runs_the_explicit_pair(self):
         helper = _helper()
@@ -164,6 +379,12 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertEqual(execution["implementation_paths"], [IMPLEMENTATION])
         self.assertEqual(execution["diff_base_sha"], base)
         self.assertEqual(execution["diff_head_sha"], head)
+        executed_command = report["executed_commands"][0]
+        self.assertNotIn("--report-dir", executed_command)
+        junit_arg = next(arg for arg in executed_command if arg.startswith("--pytest-arg=--junitxml="))
+        junit_path = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+        with self.assertRaises(ValueError):
+            junit_path.relative_to(root)
         self.assertEqual(execution["tested_checkout_sha"], head)
         self.assertEqual(execution["workflow_sha"], base)
         self.assertEqual(execution["result_counts"], {
@@ -255,6 +476,96 @@ class Round6DiscoveryTests(unittest.TestCase):
             )
             counts, _ = helper.junit_details(report)
         self.assertEqual(counts, (2, 0, 1, 0))
+
+    def test_junit_accepts_pytest_unittest_subtest_total(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            report = Path(td) / "junit.xml"
+            report.write_text(
+                '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                '<testcase/><testcase/></testsuite>',
+                encoding="utf-8",
+            )
+            counts, cases = helper.junit_details(report)
+        self.assertEqual(counts, (2, 0, 0, 0))
+        self.assertEqual(len(cases), 2)
+
+    def test_isolated_pass_reconciles_pytest_subtest_total_with_junit_summary(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # unittest subtest fixture\n")
+            head = _commit(root, "unittest subtest fixture")
+            report_path = root / "outputs/report.json"
+
+            def subtest_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                telemetry_path = Path(command[command.index("--report") + 1])
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["batches"][0]["stdout_tail"] = "2 passed, 2 subtests passed in 0.01s\n"
+                telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = _workspace_path_for_output_arg(
+                    junit_arg.removeprefix("--pytest-arg=--junitxml=")
+                )
+                junit.write_text(
+                    '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                    '<testcase/><testcase/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=subtest_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(execution["tests_collected"], 2)
+        self.assertEqual(execution["runner_passed_tests"], 2)
+        self.assertEqual(execution["runner_passed_subtests"], 2)
+        self.assertEqual(execution["junit_reported_test_outcomes"], 4)
+        self.assertEqual(len(execution["test_cases"]), 2)
+
+    def test_runner_rejects_inflated_stdout_pass_count(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # inflated summary probe\n")
+            head = _commit(root, "inflated pytest summary probe")
+            report_path = root / "outputs/report.json"
+
+            def inflated_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                telemetry_path = Path(command[command.index("--report") + 1])
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["batches"][0]["stdout_tail"] = "4 passed in 0.01s\n"
+                telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = _workspace_path_for_output_arg(
+                    junit_arg.removeprefix("--pytest-arg=--junitxml=")
+                )
+                junit.write_text(
+                    '<testsuite tests="4" skipped="0" failures="0" errors="0">'
+                    '<testcase/><testcase/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=inflated_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+        self.assertIn("testcase records", execution["junit_error"])
 
     def test_unknown_data_suffixes_under_candidate_roots_fail_closed(self):
         helper = _helper()
@@ -381,6 +692,175 @@ class Round6DiscoveryTests(unittest.TestCase):
             execution = report["components"][0]["executions"][0]
             self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
             self.assertFalse((outside / "stdout.log").exists())
+
+    def test_junit_symlink_escape_created_by_candidate_is_blocked_after_runner(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside-junit.xml"
+            outside.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            report_path = root / "outputs/report.json"
+
+            def replace_junit_after_launch(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                try:
+                    junit.unlink()
+                    junit.symlink_to(outside)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper, "collect_changed_paths", return_value={pair["implementation"]}), patch.object(
+                helper.subprocess, "run", side_effect=replace_junit_after_launch
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertNotIn("tests_collected", execution)
+
+    def test_junit_symlink_to_in_repo_report_is_not_followed_after_runner(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            preserved = root / "preserved.xml"
+            preserved.write_text(
+                '<testsuite tests="1" skipped="0" failures="0" errors="0">'
+                "<testcase/></testsuite>",
+                encoding="utf-8",
+            )
+            report_path = root / "outputs/report.json"
+
+            def replace_junit_with_in_repo_symlink(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                try:
+                    junit.unlink()
+                    junit.symlink_to(preserved)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ), patch.object(
+                helper.subprocess, "run", side_effect=replace_junit_with_in_repo_symlink
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertNotIn("tests_collected", execution)
+
+    def test_preexisting_log_directory_symlink_to_in_repo_path_is_blocked(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            report_parent = root / "outputs"
+            report_parent.mkdir()
+            linked_parent = report_parent / "round6-experimental-logs"
+            target_parent = root / "preserved-logs"
+            target_parent.mkdir()
+            target = target_parent / "runner.stdout.log"
+            target.write_text("preserve this file\n", encoding="utf-8")
+            try:
+                linked_parent.symlink_to(target_parent, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            with patch.object(
+                helper, "collect_changed_paths", return_value={pair["implementation"]}
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_parent / "report.json")
+            report = json.loads((report_parent / "report.json").read_text(encoding="utf-8"))
+            captured = target.read_text(encoding="utf-8")
+
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+        self.assertEqual(captured, "preserve this file\n")
+
+    def test_report_symlink_escape_created_by_candidate_is_not_written(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside-report.json"
+            outside.write_text("preserve this file\n", encoding="utf-8")
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # report symlink probe\n")
+            head = _commit(root, "report symlink probe")
+            report_path = root / "outputs/report.json"
+
+            def replace_report_after_launch(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = Path(command[command.index("--report") + 1])
+                telemetry.write_text(_valid_telemetry(command[-1]), encoding="utf-8")
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit.write_text('<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8")
+                try:
+                    report_path.unlink()
+                    report_path.symlink_to(outside)
+                except (OSError, NotImplementedError) as exc:
+                    self.skipTest(f"symlink creation unavailable: {exc}")
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=replace_report_after_launch):
+                result = helper.run(root, base, head, report_path)
+            captured = outside.read_text(encoding="utf-8")
+        self.assertEqual(result, 1)
+        self.assertEqual(captured, "preserve this file\n")
+
+    def test_preexisting_report_symlink_to_in_repo_file_is_not_followed(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            base = _repo(root)
+            report_parent = root / "outputs"
+            report_parent.mkdir()
+            preserved = report_parent / "preserved.json"
+            preserved.write_text("preserve this file\n", encoding="utf-8")
+            report_path = report_parent / "round6-experimental-report.json"
+            try:
+                report_path.symlink_to(preserved)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlink creation unavailable: {exc}")
+
+            result = helper.run(root, base, base, report_path)
+            captured = preserved.read_text(encoding="utf-8")
+
+        self.assertEqual(result, 1)
+        self.assertEqual(captured, "preserve this file\n")
 
     def test_stale_base_uses_pr_base_and_pr_head_while_testing_merge_checkout(self):
         helper = _helper()
@@ -637,6 +1117,77 @@ class Round6DiscoveryTests(unittest.TestCase):
         # changed Python file is a package initializer.
         self.assertIn("tests/nuisance_scenarios/__init__.py", helper._unmapped_candidate_paths({"tests/nuisance_scenarios/__init__.py"}))
         self.assertNotIn("tests/surrogate_nulls/__init__.py", helper._unmapped_candidate_paths({"tests/surrogate_nulls/__init__.py"}))
+
+    def test_package_initializers_require_exact_test_support_mappings(self):
+        helper = _helper()
+        for component, initializer_paths in helper.PACKAGE_INITIALIZER_SUPPORT_PATHS.items():
+            spec = helper.COMPONENTS[component]
+            expected_tests = tuple(dict.fromkeys(
+                pair["test"] for pair in spec["candidate_pairs"]
+            ))
+            self.assertTrue(expected_tests, component)
+            for initializer in initializer_paths:
+                with self.subTest(component=component, initializer=initializer):
+                    self.assertEqual(spec["package_initializers"][initializer], expected_tests)
+                    self.assertIn(component, helper.select_components({initializer}))
+                    self.assertEqual(helper._changed_candidate_paths(spec, {initializer}), [])
+                    self.assertEqual(helper._unmapped_candidate_paths({initializer}), [])
+                    with tempfile.TemporaryDirectory() as td:
+                        root = Path(td)
+                        init_path = root / initializer
+                        init_path.parent.mkdir(parents=True, exist_ok=True)
+                        init_path.write_text("# package initializer fixture\n", encoding="utf-8")
+                        for pair in spec["candidate_pairs"]:
+                            for relative in (pair["implementation"], pair["test"]):
+                                candidate = root / relative
+                                candidate.parent.mkdir(parents=True, exist_ok=True)
+                                candidate.write_text("# deterministic candidate fixture\n", encoding="utf-8")
+                        for support_path in spec.get("support_files", {}):
+                            support_file = root / support_path
+                            support_file.parent.mkdir(parents=True, exist_ok=True)
+                            support_file.write_text("# deterministic support fixture\n", encoding="utf-8")
+                        result = helper.inspect_component(component, root, {initializer})
+                    self.assertEqual(result["status"], "READY_TO_RUN", result["blockers"])
+                    self.assertEqual(result["tests_to_run"], list(expected_tests))
+                    self.assertEqual(result["selected_package_initializers"], [initializer])
+
+        for unregistered_initializer in (
+            "tools/surrogate_nulls/unregistered/__init__.py",
+            "tests/surrogate_nulls/unregistered/__init__.py",
+        ):
+            with self.subTest(initializer=unregistered_initializer):
+                self.assertIn(
+                    unregistered_initializer,
+                    helper._unmapped_candidate_paths({unregistered_initializer}),
+                )
+
+        geometry_pair = helper.COMPONENTS["planar_geometry"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "neurotopology_sim/__init__.py",
+                geometry_pair["implementation"],
+                geometry_pair["test"],
+            }),
+            ["planar_geometry"],
+        )
+        roc_pair = helper.COMPONENTS["synthetic_roc"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "neurotopology_sim/__init__.py",
+                roc_pair["implementation"],
+                roc_pair["test"],
+            }),
+            ["synthetic_roc"],
+        )
+        dmd_pair = helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "tests/experimental/__init__.py",
+                dmd_pair["implementation"],
+                dmd_pair["test"],
+            }),
+            ["dmd_crouzeix"],
+        )
 
     def test_candidate_support_only_changes_select_their_declared_tests(self):
         helper = _helper()
