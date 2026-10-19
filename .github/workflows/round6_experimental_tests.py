@@ -24,6 +24,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "neurotopology_sim/experimental/geometry/",
             "tests/neurotopology_sim/experimental/geometry/",
             "tests/experimental/test_planar_triangulation.py",
+            "tests/experimental/planar_mesh_test_helpers.py",
         ),
         "implementation": "neurotopology_sim/experimental/geometry/planar_triangulation.py",
         "tests": (
@@ -34,6 +35,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "neurotopology_sim/experimental/geometry/planar_triangulation.py", "test": "tests/neurotopology_sim/experimental/geometry/test_planar_triangulation.py"},
             {"implementation": "neurotopology_sim/experimental/geometry/planar_triangulation.py", "test": "tests/experimental/test_planar_triangulation.py"},
         ),
+        "support_files": {
+            "tests/experimental/planar_mesh_test_helpers.py": (
+                "tests/experimental/test_planar_triangulation.py",
+            ),
+        },
         "implementation_roots": ("neurotopology_sim/experimental/geometry/",),
         "test_roots": ("tests/neurotopology_sim/experimental/geometry/", "tests/experimental/"),
         "candidate_test_roots": ("tests/neurotopology_sim/experimental/geometry/",),
@@ -84,6 +90,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "neurotopology_sim/experimental/preprocessing/",
             "tests/neurotopology_sim/experimental/preprocessing/",
             "tests/experimental/test_spherical_csd_parity.py",
+            "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
             "tools/mne_csd_reference_audit/",
             "tests/mne_csd_reference_audit/",
         ),
@@ -112,6 +119,15 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_mne_integration_optional.py"},
         ),
         "support_files": {
+            "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
+                "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            ),
+            "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.npy": (
+                "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            ),
+            "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json": (
+                "tests/experimental/test_spherical_csd_parity.py",
+            ),
             "tests/mne_csd_reference_audit/conftest.py": (
                 "tests/mne_csd_reference_audit/test_kkt_operator.py",
                 "tests/mne_csd_reference_audit/test_legendre_constants.py",
@@ -415,7 +431,241 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/experimental/test_dmd_crouzeix.py",
         ),
     },
+    "docker_context_policy": {
+        "triggers": (
+            ".dockerignore",
+            "tests/docker_context/",
+        ),
+        "implementation": ".dockerignore",
+        "tests": (
+            "tests/docker_context/test_build_context_policy.py",
+            "tests/docker_context/test_docker_engine_build_context.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": ".dockerignore", "test": "tests/docker_context/test_build_context_policy.py"},
+            {"implementation": ".dockerignore", "test": "tests/docker_context/test_docker_engine_build_context.py"},
+        ),
+        "implementation_roots": (".dockerignore",),
+        "test_roots": ("tests/docker_context/",),
+        "candidate_test_roots": ("tests/docker_context/",),
+    },
+    "bids_inventory_audit": {
+        "triggers": (
+            "shared/bids_inventory_audit/",
+            "tests/bids_inventory_audit/",
+        ),
+        "implementation_any": (
+            "shared/bids_inventory_audit/checksum.py",
+            "shared/bids_inventory_audit/findings.py",
+            "shared/bids_inventory_audit/inventory.py",
+            "shared/bids_inventory_audit/license.py",
+            "shared/bids_inventory_audit/manifest.py",
+            "shared/bids_inventory_audit/paths.py",
+            "shared/bids_inventory_audit/schema.py",
+            "shared/bids_inventory_audit/tsv.py",
+        ),
+        "tests": (
+            "tests/bids_inventory_audit/test_analysis_record.py",
+            "tests/bids_inventory_audit/test_bids_paths.py",
+            "tests/bids_inventory_audit/test_boundary_guards.py",
+            "tests/bids_inventory_audit/test_checksum_boundary.py",
+            "tests/bids_inventory_audit/test_inventory_audit.py",
+            "tests/bids_inventory_audit/test_license_reconciliation.py",
+            "tests/bids_inventory_audit/test_license_sources.py",
+            "tests/bids_inventory_audit/test_listing_digest.py",
+            "tests/bids_inventory_audit/test_privacy_boundary.py",
+            "tests/bids_inventory_audit/test_registration_scope.py",
+            "tests/bids_inventory_audit/test_tsv_parsing.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "shared/bids_inventory_audit/checksum.py", "test": "tests/bids_inventory_audit/test_checksum_boundary.py"},
+            {"implementation": "shared/bids_inventory_audit/checksum.py", "test": "tests/bids_inventory_audit/test_listing_digest.py"},
+            {"implementation": "shared/bids_inventory_audit/findings.py", "test": "tests/bids_inventory_audit/test_analysis_record.py"},
+            {"implementation": "shared/bids_inventory_audit/findings.py", "test": "tests/bids_inventory_audit/test_inventory_audit.py"},
+            {"implementation": "shared/bids_inventory_audit/inventory.py", "test": "tests/bids_inventory_audit/test_inventory_audit.py"},
+            {"implementation": "shared/bids_inventory_audit/inventory.py", "test": "tests/bids_inventory_audit/test_registration_scope.py"},
+            {"implementation": "shared/bids_inventory_audit/license.py", "test": "tests/bids_inventory_audit/test_license_reconciliation.py"},
+            {"implementation": "shared/bids_inventory_audit/license.py", "test": "tests/bids_inventory_audit/test_license_sources.py"},
+            {"implementation": "shared/bids_inventory_audit/manifest.py", "test": "tests/bids_inventory_audit/test_analysis_record.py"},
+            {"implementation": "shared/bids_inventory_audit/manifest.py", "test": "tests/bids_inventory_audit/test_inventory_audit.py"},
+            {"implementation": "shared/bids_inventory_audit/paths.py", "test": "tests/bids_inventory_audit/test_bids_paths.py"},
+            {"implementation": "shared/bids_inventory_audit/paths.py", "test": "tests/bids_inventory_audit/test_boundary_guards.py"},
+            {"implementation": "shared/bids_inventory_audit/paths.py", "test": "tests/bids_inventory_audit/test_privacy_boundary.py"},
+            {"implementation": "shared/bids_inventory_audit/schema.py", "test": "tests/bids_inventory_audit/test_analysis_record.py"},
+            {"implementation": "shared/bids_inventory_audit/schema.py", "test": "tests/bids_inventory_audit/test_registration_scope.py"},
+            {"implementation": "shared/bids_inventory_audit/inventory.py", "test": "tests/bids_inventory_audit/test_privacy_boundary.py"},
+            {"implementation": "shared/bids_inventory_audit/tsv.py", "test": "tests/bids_inventory_audit/test_tsv_parsing.py"},
+            {"implementation": "shared/bids_inventory_audit/tsv.py", "test": "tests/bids_inventory_audit/test_privacy_boundary.py"},
+        ),
+        "support_files": {
+            "tests/bids_inventory_audit/conftest.py": (
+                "tests/bids_inventory_audit/test_analysis_record.py",
+                "tests/bids_inventory_audit/test_bids_paths.py",
+                "tests/bids_inventory_audit/test_boundary_guards.py",
+                "tests/bids_inventory_audit/test_checksum_boundary.py",
+                "tests/bids_inventory_audit/test_inventory_audit.py",
+                "tests/bids_inventory_audit/test_license_reconciliation.py",
+                "tests/bids_inventory_audit/test_license_sources.py",
+                "tests/bids_inventory_audit/test_listing_digest.py",
+                "tests/bids_inventory_audit/test_privacy_boundary.py",
+                "tests/bids_inventory_audit/test_registration_scope.py",
+                "tests/bids_inventory_audit/test_tsv_parsing.py",
+            ),
+        },
+        "implementation_roots": ("shared/bids_inventory_audit/",),
+        "test_roots": ("tests/bids_inventory_audit/",),
+        "candidate_test_roots": ("tests/bids_inventory_audit/",),
+    },
+    "finite_jitter_geometry_audit": {
+        "triggers": (
+            "tools/audit_finite_jitter_triangulation.py",
+            "tests/test_finite_jitter_triangulation_audit.py",
+        ),
+        "implementation": "tools/audit_finite_jitter_triangulation.py",
+        "tests": ("tests/test_finite_jitter_triangulation_audit.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/audit_finite_jitter_triangulation.py",
+                "test": "tests/test_finite_jitter_triangulation_audit.py",
+            },
+        ),
+        "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
+        "candidate_test_roots": ("tests/test_finite_jitter_triangulation_audit.py",),
+    },
 }
+
+
+# These PR numbers identify implementation/test provenance for registered
+# pairs, including merged implementation PRs and open independent-test PRs.
+# They are ownership evidence, not approval or merge state.
+COMPONENT_OWNER_PRS = {
+    "planar_geometry": (416, 421),
+    "hodge_2d": (423, 396, 385),
+    "spherical_csd": (414, 419, 402),
+    "four_sphere": (418, 409),
+    "phase_winding": (413,),
+    "surrogate_nulls": (417, 430),
+    "phase_uncertainty": (403,),
+    "surrogate_audit": (398,),
+    "synthetic_roc": (426, 427),
+    "simulation_grid_planner": (424,),
+    "report_firewall": (390,),
+    "provenance_join": (392,),
+    "topology_backend_conformance": (389,),
+    "finite_chain_audit": (397,),
+    "winding_charge_audit": (399,),
+    "dmd_crouzeix": (415, 420),
+    "docker_context_policy": (431, 434),
+    "bids_inventory_audit": (401,),
+    "finite_jitter_geometry_audit": (410,),
+}
+
+
+# Known candidate suites in the live open-PR inventory that do not yet have a
+# reviewed implementation/test pair. Explicit pair/support mappings override
+# these guard roots; any other changed Python source/test path under a guard
+# root blocks discovery until an owner registers a pair. Such changes are never
+# silently classified NOT_APPLICABLE.
+UNMAPPED_CANDIDATE_ROOTS = (
+    "sim/nuisance_scenarios/",
+    "tests/nuisance_scenarios/",
+    "tools/whitening_audit/",
+    "tests/whitening_audit/",
+    "adapters/mne_csd/",
+    "tests/adapters/mne_csd/",
+    "adapters/mne_signal_blocks/",
+    "tests/adapters/mne_signal_blocks/",
+    "tools/moabb_protocol_conformance/",
+    "tests/tools/moabb_protocol_conformance/",
+    "tools/higher_order_runtime/",
+    "tests/higher_order_runtime_contract/",
+    "dual_engine/forward_model_contract.py",
+    "tests/forward_model_contract/",
+    "tools/synthetic_pipeline_replay/",
+    "tests/integration/synthetic_pipeline_replay/",
+    "tools/batch3_offline_integration/",
+    "tests/tools/batch3_offline_integration/",
+    "tools/benchmarks/batch2_pipeline/",
+    "tests/benchmarks/batch2_pipeline/",
+    "tools/release_readiness/batch2_security/",
+    "tests/release_readiness/batch2_security/",
+    "shared/bids_inventory_audit/",
+    "tests/bids_inventory_audit/",
+    "data/bids_ingest.py",
+    "data/dandi_nwb_ingest.py",
+    "tests/data_access/bids_adapter/",
+    "tests/data_access/dandi_nwb_bounded/",
+    "tools/streaming/base_runner.py",
+    "tests/streaming/",
+    "tests/performance/streaming_optimization/",
+    "tools/export_ds005620_evidence_packet.py",
+    "tests/btc_icft/test_ds005620_evidence_packet.py",
+    "data/openneuro_loader.py",
+    "tools/stream_process_dandi000458.py",
+    "tools/stream_pitnn_cohort_ds005620.py",
+    "tests/test_pitnn_cohort_ds005620.py",
+    "tests/dmd_ep2_oracle/",
+    "scripts/audit_round6_whitening.py",
+    "scripts/run_batch2_security_audit.py",
+    "scripts/benchmark_batch2_pipeline.py",
+    "scripts/run_batch3_offline_integration.py",
+    # Open PR test gaps outside the currently assigned experimental pairs.
+    "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
+    "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
+    "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
+    "tests/research/batch3/test_claim_matrix.py",  # PR #393
+    "tools/public_repo_harvest/",
+    "tests/tools/test_public_repo_harvest_source_pack.py",  # PR #391
+    "oss_opportunities/",
+    "tests/test_oss_adoption_gates.py",  # PR #386
+    "shared/measurement_hypothesis/",
+    "tests/measurement_hypothesis/",  # PR #384
+    "tools/research_plan_quality_eval/",
+    "tests/research_plan_quality_eval/",  # PR #383
+    "tests/source_mining_integration/",  # PR #382
+    "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+    "tests/scientific_falsification/test_batch3_falsification_matrix.py",  # PR #376
+    "configs/research/batch3_source_registry.yaml",
+    "tests/research/test_batch3_source_registry.py",  # PR #375
+    "dual_engine/fusion_validation.py",
+    "tests/test_fusion_null_models.py",
+    "tests/test_fusion_validation.py",  # PR #374
+    "sciencer_d/btc_icft/level_t/base_real_topology.py",
+    "tests/test_base_real_topology_missingness.py",
+    "tests/test_cohort_missingness.py",  # PR #373
+    "tools/higher_order_integration/",
+    "tests/higher_order_integration/",  # PR #357
+    "analysis/empirical_higher_order/",
+    "tests/empirical_higher_order/",
+    "analysis/transition_forecasting/",
+    "tests/transition_forecasting/",
+    "tests/research_claim_gate/",
+    "tests/literature_evidence/",
+    "tests/release_manifest/",
+    "tests/science_contracts/",
+    "tests/test_bayesian_falsification_consumers.py",
+    "tests/test_bayesian_falsification_hardening.py",
+    "tests/test_falsification_artifact_semantics.py",
+    "tests/test_bids_provenance.py",
+    "tests/test_dandi_nwb_ingest.py",
+    "tests/test_fetch_ds000245.py",
+    "tests/test_test_isolation.py",
+    "shared/data_loaders/physiology_stream.py",
+    "tests/data_loaders/",
+    "sciencer_d/btc_icft/level_m/dandi000458_windows_real.py",
+    "tools/data_access/policy_enforcement/",
+    "tests/data_access/policy_enforcement/",
+    "tests/data_access/legacy_migration_streaming/",
+    "sim/pitnn/api_bridge.py",
+    "sim/pitnn/bayesian_falsification.py",
+    "tests/simulation_execution/",
+    "tests/research_cycle_preflight/",
+    "tests/research_cycle_release/",
+    "tests/integration_reconciliation/",
+    "scripts/build_release_manifest.py",
+    "scripts/run_registered_fhn.py",
+    "scripts/validate_research_cycle_preflight.py",
+)
 
 
 def normalize_repo_path(path: str) -> str:
@@ -424,6 +674,18 @@ def normalize_repo_path(path: str) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
+
+
+def _contained_path(root: Path, path: Path, label: str) -> Path:
+    """Resolve symlinks and reject paths that escape the checked-out repository."""
+    resolved_root = root.resolve()
+    candidate = path if path.is_absolute() else resolved_root / path
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(f"{label} must remain inside the checked-out repository") from exc
+    return resolved
 
 
 def _trigger_matches(path: str, trigger: str) -> bool:
@@ -436,6 +698,19 @@ def _path_in_root(path: str, root: str) -> bool:
     path = normalize_repo_path(path).casefold()
     root = normalize_repo_path(root).casefold()
     return path.startswith(root) if root.endswith("/") else path == root
+
+
+_DOCUMENTATION_SUFFIXES = {".md", ".mdx", ".rst", ".adoc"}
+
+
+def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[str] | None = None) -> bool:
+    """Treat files under candidate roots as inputs unless they are documentation."""
+    normalized = normalize_repo_path(path)
+    if explicit_paths and normalized.casefold() in explicit_paths:
+        return True
+    if not any(_path_in_root(normalized, root) for root in roots):
+        return False
+    return Path(normalized).suffix.casefold() not in _DOCUMENTATION_SUFFIXES
 
 
 def _is_component_relevant(name: str, changed_paths: set[str]) -> bool:
@@ -451,6 +726,7 @@ def _is_component_relevant(name: str, changed_paths: set[str]) -> bool:
         for pair in spec.get("candidate_pairs", ())
         for path in (pair["implementation"], pair["test"])
     }
+    mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
     return any(normalize_repo_path(path).casefold() in mapped for path in changed_paths)
 
 
@@ -479,7 +755,10 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
             _path_in_root(path, root)
             for root in (*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))
         )
-        if not in_candidate_root or not path.endswith(".py") or path.rsplit("/", 1)[-1] == "__init__.py":
+        if not in_candidate_root or not _is_candidate_file(
+            path, tuple((*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))),
+            support_paths,
+        ) or path.rsplit("/", 1)[-1] == "__init__.py":
             continue
         is_test = path.rsplit("/", 1)[-1].startswith("test_")
         if is_test or lower in support_paths or any(_path_in_root(path, root) for root in spec.get("implementation_roots", ())):
@@ -491,26 +770,42 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
 def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
     """Fail closed on candidate paths without an explicit pair/support mapping."""
     unmapped = []
+    registered_roots = tuple(
+        root
+        for spec in COMPONENTS.values()
+        for root in (*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))
+    )
+    mapped_paths = {
+        normalize_repo_path(candidate).casefold()
+        for spec in COMPONENTS.values()
+        for pair in spec.get("candidate_pairs", ())
+        for candidate in (pair["implementation"], pair["test"])
+    } | {
+        normalize_repo_path(candidate).casefold()
+        for spec in COMPONENTS.values()
+        for candidate in spec.get("support_files", {})
+    }
+    guard_roots = tuple(UNMAPPED_CANDIDATE_ROOTS)
+    explicit_guard_files = {
+        normalize_repo_path(root).casefold()
+        for root in guard_roots
+        if not normalize_repo_path(root).endswith("/")
+    }
     for original in changed_paths:
         path = normalize_repo_path(original)
-        if not path.endswith(".py") or path.rsplit("/", 1)[-1] == "__init__.py":
-            continue
-        belongs_to_registered_root = any(
-            _path_in_root(path, root)
-            for spec in COMPONENTS.values()
-            for root in (*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))
+        belongs_to_registered_root = _is_candidate_file(path, registered_roots, mapped_paths)
+        belongs_to_unmapped_candidate_root = _is_candidate_file(
+            path, guard_roots, explicit_guard_files
         )
-        mapped = any(
-            normalize_repo_path(candidate).casefold() == path.casefold()
-            for spec in COMPONENTS.values()
-            for pair in spec.get("candidate_pairs", ())
-            for candidate in (pair["implementation"], pair["test"])
-        ) or any(
-            normalize_repo_path(candidate).casefold() == path.casefold()
-            for spec in COMPONENTS.values()
-            for candidate in spec.get("support_files", {})
+        mapped = path.casefold() in mapped_paths
+        registered_package_init = (
+            path.rsplit("/", 1)[-1] == "__init__.py"
+            and belongs_to_registered_root
         )
-        if belongs_to_registered_root and not mapped:
+        if (
+            belongs_to_unmapped_candidate_root and not mapped and not registered_package_init
+            or belongs_to_registered_root and not mapped and not registered_package_init
+        ):
             unmapped.append(path)
     return sorted(unmapped)
 
@@ -553,13 +848,31 @@ def inspect_component(
     selected_pair_ids = {
         (pair["implementation"], pair["test"]) for pair in selected_pairs
     }
-    selected_pairs.extend(
-        pair for pair in pairs
-        if normalize_repo_path(pair["implementation"]).casefold() in changed_sources
-        and (pair["implementation"], pair["test"]) not in selected_pair_ids
-    )
+    unavailable_companion_pairs = []
+    for pair in pairs:
+        pair_id = (pair["implementation"], pair["test"])
+        if normalize_repo_path(pair["implementation"]).casefold() not in changed_sources:
+            continue
+        if pair_id in selected_pair_ids:
+            continue
+        test_path = normalize_repo_path(pair["test"])
+        if (root / test_path).is_file() or test_path.casefold() in changes:
+            selected_pairs.append(pair)
+            selected_pair_ids.add(pair_id)
+        else:
+            # A companion test may live in another still-open PR, but a source
+            # change cannot pass until every registered pair is present. Keep
+            # the missing pair explicit so discovery fails closed.
+            unavailable_companion_pairs.append(pair)
     # A docs/init-only touch still validates an extant implementation/test pair;
     # an absent candidate never turns this fallback into a pass.
+    if not selected_pairs and changed_sources:
+        missing_source_pairs = [
+            pair for pair in pairs
+            if normalize_repo_path(pair["implementation"]).casefold() in changed_sources
+        ]
+        if missing_source_pairs:
+            selected_pairs = [missing_source_pairs[0]]
     if not selected_pairs:
         selected_pairs = [
             pair for pair in pairs
@@ -575,7 +888,7 @@ def inspect_component(
     missing_required_tests = sorted({
         pair["test"] for pair in selected_pairs
         if not (root / pair["test"]).is_file()
-    })
+    } | {pair["test"] for pair in unavailable_companion_pairs})
     tests = [path for path in spec["tests"] if (root / path).is_file()]
     pair_tests = [pair["test"] for pair in selected_pairs if (root / pair["test"]).is_file()]
     tests_to_run = list(dict.fromkeys(pair_tests))
@@ -633,6 +946,7 @@ def inspect_component(
         blockers.append("no registered implementation-test pair exists")
     return {
         "component": name,
+        "owner_prs": list(COMPONENT_OWNER_PRS.get(name, ())),
         "status": "BLOCKED" if blockers else "READY_TO_RUN",
         "blockers": blockers,
         "selected_paths": sorted({
@@ -640,6 +954,7 @@ def inspect_component(
         } | set(selected_support_files)),
         "selected_support_files": selected_support_files,
         "required_pairs": selected_pairs,
+        "unavailable_companion_pairs": unavailable_companion_pairs,
         "require_all_pairs": require_all_pairs,
         "implementations": implementations,
         "missing_implementations": missing_implementations,
@@ -654,28 +969,59 @@ def inspect_component(
 
 
 def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str, str]]]:
-    """Return counts and explicit testcase outcomes from a JUnit XML report."""
+    """Validate JUnit structure and return reconciled testcase outcomes."""
     root = ET.parse(path).getroot()
+    if root.tag not in {"testsuite", "testsuites"}:
+        raise ValueError(f"unsupported JUnit root element: {root.tag!r}")
     cases = list(root.iter("testcase"))
     details: list[dict[str, str]] = []
     skipped = failed = errors = 0
+    case_outcomes: dict[int, str] = {}
     for case in cases:
-        outcome = "passed"
+        outcomes = []
         for tag, label in (("skipped", "skipped"), ("failure", "failed"), ("error", "error")):
-            node = case.find(tag)
-            if node is not None:
-                outcome = label
-                if label == "skipped":
-                    skipped += 1
-                elif label == "failed":
-                    failed += 1
-                else:
-                    errors += 1
-                break
+            nodes = case.findall(tag)
+            if len(nodes) > 1:
+                raise ValueError(f"JUnit testcase has multiple {tag} elements")
+            if nodes:
+                outcomes.append(label)
+        if len(outcomes) > 1:
+            raise ValueError("JUnit testcase has conflicting skipped/failure/error outcomes")
+        outcome = outcomes[0] if outcomes else "passed"
+        skipped += outcome == "skipped"
+        failed += outcome == "failed"
+        errors += outcome == "error"
+        case_outcomes[id(case)] = outcome
         details.append({
             "name": ".".join(filter(None, (case.attrib.get("classname", ""), case.attrib.get("name", "")))),
             "status": outcome,
         })
+
+    suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+    suite_case_ids = {id(case) for suite in suites for case in suite.iter("testcase")}
+    if any(id(case) not in suite_case_ids for case in cases):
+        raise ValueError("JUnit report contains testcases outside every testsuite")
+    scopes = list(suites)
+    if root.tag == "testsuites":
+        scopes.append(root)
+    for suite in scopes:
+        suite_cases = list(suite.iter("testcase"))
+        observed = {
+            "tests": len(suite_cases),
+            "skipped": sum(case_outcomes[id(case)] == "skipped" for case in suite_cases),
+            "failures": sum(case_outcomes[id(case)] == "failed" for case in suite_cases),
+            "errors": sum(case_outcomes[id(case)] == "error" for case in suite_cases),
+        }
+        for key, actual in observed.items():
+            if key not in suite.attrib:
+                continue
+            raw = suite.attrib[key]
+            if not re.fullmatch(r"\d+", raw):
+                raise ValueError(f"JUnit {key} summary must be a non-negative integer")
+            if int(raw) != actual:
+                raise ValueError(
+                    f"JUnit {key} summary {raw} does not match {actual} testcase outcomes"
+                )
     return (len(cases), skipped, failed, errors), details
 
 
@@ -836,17 +1182,29 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
     summary = batch_report.get("summary")
     if not isinstance(batches, list) or not isinstance(summary, dict):
         return False, "runner telemetry is missing batches or summary", []
-    if batch_report.get("completed") is not True or batch_report.get("exit_code") != 0:
+    if (
+        batch_report.get("completed") is not True
+        or type(batch_report.get("exit_code")) is not int
+        or batch_report.get("exit_code") != 0
+    ):
         return False, "runner telemetry does not report completed exit zero", batches
-    if len(batches) != 1 or summary.get("total_batches") != 1 or summary.get("total_files") != 1:
+    if len(batches) != 1:
         return False, "runner telemetry is not one complete singleton batch", batches
-    if summary.get("overall_exit_code") != 0:
-        return False, "runner summary exit code is not zero", batches
-    for key in ("passed_batches", "skipped_batches", "failed_batches", "timeout_batches"):
-        if not isinstance(summary.get(key), int):
+    integer_fields = {
+        "total_batches": 1,
+        "total_files": 1,
+        "overall_exit_code": 0,
+        "passed_batches": 1,
+        "skipped_batches": 0,
+        "failed_batches": 0,
+        "timeout_batches": 0,
+    }
+    for key, expected in integer_fields.items():
+        value = summary.get(key)
+        if type(value) is not int:
             return False, f"runner summary field {key} is missing or malformed", batches
-    if (summary["passed_batches"], summary["skipped_batches"], summary["failed_batches"], summary["timeout_batches"]) != (1, 0, 0, 0):
-        return False, "runner summary contains skipped, failed, or timed-out batches", batches
+        if value != expected:
+            return False, f"runner summary field {key} is not the required value", batches
     batch = batches[0]
     if not isinstance(batch, dict):
         return False, "runner batch entry is not an object", batches
@@ -854,7 +1212,11 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
     files = batch.get("test_files")
     if not isinstance(files, list) or [normalize_repo_path(str(path)) for path in files] != [expected_file]:
         return False, "runner batch did not execute exactly the selected test file", batches
-    if batch.get("status") != "passed" or batch.get("exit_code") != 0:
+    if (
+        batch.get("status") != "passed"
+        or type(batch.get("exit_code")) is not int
+        or batch.get("exit_code") != 0
+    ):
         return False, "runner batch did not report passed exit zero", batches
     if batch.get("timed_out") is not False or batch.get("timeout_status") != "completed":
         return False, "runner batch timeout state is missing or non-completed", batches
@@ -863,26 +1225,27 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
 
 def run(
     root: Path,
-    base: str,
-    head: str,
+    diff_base_sha: str,
+    diff_head_sha: str,
     report_path: Path,
     *,
     always_components: list[str] | tuple[str, ...] = (),
-    tested_commit_sha: str | None = None,
+    tested_checkout_sha: str | None = None,
+    workflow_sha: str | None = None,
+    event_name: str | None = None,
     require_checkout_match: bool = False,
 ) -> int:
     root = root.resolve()
-    report_path = report_path if report_path.is_absolute() else root / report_path
-    report_path = report_path.resolve()
-    try:
-        report_path.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("report path must remain inside the checked-out repository") from exc
+    report_path = _contained_path(root, report_path, "report path")
     always_components = list(dict.fromkeys(always_components))
     unknown_always = sorted(set(always_components) - set(COMPONENTS))
     if unknown_always:
         raise ValueError(f"unknown always-run components: {unknown_always}")
-    changed = collect_changed_paths(base, head, root)
+    if tested_checkout_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", tested_checkout_sha):
+        raise ValueError("tested checkout must be a full commit SHA")
+    if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
+        raise ValueError("workflow SHA must be a full commit SHA")
+    changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
     relevant_paths = sorted({
         normalize_repo_path(path)
@@ -891,15 +1254,17 @@ def run(
     })
     report: dict[str, Any] = {
         "schema_version": "round6-experimental-ci-report-v1",
-        "base_sha": base,
-        "head_sha": head,
+        "event_name": event_name,
+        "diff_base_sha": diff_base_sha,
+        "diff_head_sha": diff_head_sha,
+        "tested_checkout_sha": tested_checkout_sha,
+        "workflow_sha": workflow_sha,
         "status": "NOT_APPLICABLE" if not selected and not relevant_paths else "INCONCLUSIVE",
         "changed_paths": sorted(changed),
         "relevant_paths": relevant_paths,
         "selected_components": selected,
         "always_components": always_components,
         "not_applicable_components": [],
-        "tested_commit_sha": tested_commit_sha,
         "unmapped_candidate_paths": _unmapped_candidate_paths(changed),
         "selected_paths": {},
         "executed_commands": [],
@@ -914,10 +1279,10 @@ def run(
         )
         actual_sha = actual.stdout.strip() if actual.returncode == 0 else None
         report["actual_checkout_sha"] = actual_sha
-        if not tested_commit_sha or actual_sha != tested_commit_sha or tested_commit_sha != head:
+        if not tested_checkout_sha or actual_sha != tested_checkout_sha:
             report.update({
                 "status": "BLOCKED",
-                "selection_error": "checked-out commit does not match the workflow-tested head SHA",
+                "selection_error": "checked-out commit does not match the declared tested checkout SHA",
             })
             report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
             print(json.dumps({"status": report["status"], "selection_error": report["selection_error"]}, sort_keys=True))
@@ -926,14 +1291,27 @@ def run(
     if report["unmapped_candidate_paths"] and not selected and not always_components:
         report.update({
             "status": "BLOCKED",
-            "selection_error": "unmapped Python candidate paths exist without a registered component selection",
+            "selection_error": "unmapped candidate code, configuration, or fixture paths exist without a registered component selection",
         })
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         print(json.dumps({"status": report["status"], "unmapped_candidate_paths": report["unmapped_candidate_paths"]}, sort_keys=True))
         return 1
     if not selected and not relevant_paths and not always_components and not report["unmapped_candidate_paths"]:
+        report["statement"] = (
+            "No candidate code or test path changed; this result does not certify any experimental lane."
+        )
         report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
-        print("No mapped Round 6 candidate files changed; this does not certify any experimental lane.")
+        print(json.dumps({
+            "status": "NOT_APPLICABLE",
+            "diff_base_sha": diff_base_sha,
+            "diff_head_sha": diff_head_sha,
+            "tested_checkout_sha": tested_checkout_sha,
+            "workflow_sha": workflow_sha,
+            "event_name": event_name,
+            "selected_components": [],
+            "candidate_test_executions": 0,
+            "statement": "No candidate code or test path changed; this does not certify any experimental lane.",
+        }, sort_keys=True, allow_nan=False))
         return 0
     if relevant_paths and not selected and not always_components:
         report["status"] = "BLOCKED"
@@ -993,9 +1371,9 @@ def run(
                 entry["blockers"].append("no candidate tests are available to execute")
                 saw_blocked = True
                 continue
-            if tested_commit_sha:
+            if tested_checkout_sha:
                 source_check = verify_candidate_source_identity(
-                    root, name, entry["implementations"], tested_commit_sha
+                    root, name, entry["implementations"], tested_checkout_sha
                 )
                 entry["source_verification"] = source_check
                 if source_check["status"] != "PASS":
@@ -1004,11 +1382,47 @@ def run(
                     saw_blocked = True
                     continue
             for test_index, test_file in enumerate(entry["tests_to_run"], start=1):
-                logs = report_path.parent / "round6-experimental-logs" / f"{index:02d}-{name}-{test_index:02d}"
-                logs.mkdir(parents=True, exist_ok=True)
-                junit = logs / "junit.xml"
-                stdout_log = logs / "runner.stdout.log"
-                stderr_log = logs / "runner.stderr.log"
+                logs_candidate = report_path.parent / "round6-experimental-logs" / f"{index:02d}-{name}-{test_index:02d}"
+                try:
+                    logs = _contained_path(root, logs_candidate, "test log directory")
+                    logs.mkdir(parents=True, exist_ok=True)
+                    # Re-resolve after creation so pre-existing symlink components
+                    # cannot redirect the report outside the checkout.
+                    logs = _contained_path(root, logs, "test log directory")
+                    junit = _contained_path(root, logs / "junit.xml", "JUnit report path")
+                    stdout_log = _contained_path(root, logs / "runner.stdout.log", "runner stdout path")
+                    stderr_log = _contained_path(root, logs / "runner.stderr.log", "runner stderr path")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    execution = {
+                        "selected_component": name,
+                        "owner_prs": entry["owner_prs"],
+                        "implementation_paths": entry["implementations"],
+                        "test_file": test_file,
+                        "diff_base_sha": diff_base_sha,
+                        "diff_head_sha": diff_head_sha,
+                        "tested_checkout_sha": tested_checkout_sha,
+                        "workflow_sha": workflow_sha,
+                        "event_name": event_name,
+                        "status": "BLOCKED",
+                        "timeout": False,
+                        "artifact_path": None,
+                        "failure_classification": "unsafe_or_unavailable_log_path",
+                        "log_path_error": str(exc),
+                        "result_counts": {
+                            "collected": 0, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+                        },
+                    }
+                    entry["executions"].append(execution)
+                    entry["status"] = "BLOCKED"
+                    entry["blockers"].append("test logs could not be created within the checked-out repository")
+                    saw_blocked = True
+                    print(json.dumps({
+                        "selected_component": name,
+                        "test_file": test_file,
+                        "status": "BLOCKED",
+                        "failure_classification": execution["failure_classification"],
+                    }, sort_keys=True, allow_nan=False))
+                    continue
                 telemetry = temp / f"{index:02d}-{name}-{test_index:02d}.json"
                 cmd = [
                     sys.executable,
@@ -1021,12 +1435,21 @@ def run(
                     f"--pytest-arg=--junitxml={junit}",
                     test_file,
                 ]
+                if name == "docker_context_policy":
+                    # The host-side Docker Engine probe reports the daemon
+                    # version; keep that evidence visible in the job log.
+                    cmd.insert(-1, "--pytest-arg=-s")
                 report["executed_commands"].append(cmd)
                 execution: dict[str, Any] = {
                     "selected_component": name,
+                    "owner_prs": entry["owner_prs"],
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
-                    "tested_commit_sha": tested_commit_sha,
+                    "diff_base_sha": diff_base_sha,
+                    "diff_head_sha": diff_head_sha,
+                    "tested_checkout_sha": tested_checkout_sha,
+                    "workflow_sha": workflow_sha,
+                    "event_name": event_name,
                     "artifact_path": logs.relative_to(root).as_posix(),
                     "stdout_log_path": stdout_log.relative_to(root).as_posix(),
                     "stderr_log_path": stderr_log.relative_to(root).as_posix(),
@@ -1052,9 +1475,14 @@ def run(
                     saw_failure = True
                     print(json.dumps({
                         "selected_component": name,
+                        "owner_prs": entry["owner_prs"],
                         "implementation_paths": entry["implementations"],
                         "test_file": test_file,
-                        "tested_commit_sha": tested_commit_sha,
+                        "diff_base_sha": diff_base_sha,
+                        "diff_head_sha": diff_head_sha,
+                        "tested_checkout_sha": tested_checkout_sha,
+                        "workflow_sha": workflow_sha,
+                        "event_name": event_name,
                         "tests_collected": 0,
                         "skipped": 0,
                         "failed": 0,
@@ -1078,9 +1506,14 @@ def run(
                     saw_failure = True
                     print(json.dumps({
                         "selected_component": name,
+                        "owner_prs": entry["owner_prs"],
                         "implementation_paths": entry["implementations"],
                         "test_file": test_file,
-                        "tested_commit_sha": tested_commit_sha,
+                        "diff_base_sha": diff_base_sha,
+                        "diff_head_sha": diff_head_sha,
+                        "tested_checkout_sha": tested_checkout_sha,
+                        "workflow_sha": workflow_sha,
+                        "event_name": event_name,
                         "tests_collected": 0,
                         "skipped": 0,
                         "failed": 0,
@@ -1121,7 +1554,7 @@ def run(
                             "errors": counts[3],
                             "test_cases": cases,
                         })
-                    except (ET.ParseError, OSError) as exc:
+                    except (ET.ParseError, OSError, ValueError) as exc:
                         execution["junit_error"] = str(exc)
                 has_junit = junit.is_file() and "junit_error" not in execution
                 counts = (
@@ -1174,9 +1607,13 @@ def run(
                 entry["executions"].append(execution)
                 print(json.dumps({
                     "selected_component": name,
+                    "owner_prs": entry["owner_prs"],
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
-                    "tested_commit_sha": tested_commit_sha,
+                    "diff_base_sha": diff_base_sha,
+                    "diff_head_sha": diff_head_sha,
+                    "tested_checkout_sha": tested_checkout_sha,
+                    "workflow_sha": workflow_sha,
                     "tests_collected": counts[0],
                     "skipped": counts[1],
                     "failed": counts[2],
@@ -1199,6 +1636,10 @@ def run(
     report_path.write_text(json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print(json.dumps({
         "status": report["status"],
+        "diff_base_sha": report["diff_base_sha"],
+        "diff_head_sha": report["diff_head_sha"],
+        "tested_checkout_sha": report["tested_checkout_sha"],
+        "workflow_sha": report["workflow_sha"],
         "selected_components": report["selected_components"],
         "not_applicable_components": report["not_applicable_components"],
         "unmapped_candidate_paths": report["unmapped_candidate_paths"],
@@ -1210,8 +1651,15 @@ def run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", required=True)
-    parser.add_argument("--head", required=True)
+    parser.add_argument("--base", "--diff-base", dest="diff_base_sha", required=True,
+                        help="PR base (or push before) SHA used only for changed-path discovery")
+    parser.add_argument("--head", "--diff-head", dest="diff_head_sha", required=True,
+                        help="PR head (or push SHA) used only for changed-path discovery")
+    parser.add_argument("--tested-checkout", required=True,
+                        help="SHA checked out for test execution; may be a PR merge ref")
+    parser.add_argument("--workflow-sha", required=True,
+                        help="GitHub workflow-file commit SHA, recorded separately from the tested checkout")
+    parser.add_argument("--event-name", required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument(
@@ -1220,14 +1668,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        actual = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=args.root, check=True,
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
         return run(
-            args.root, args.base, args.head, args.report,
+            args.root, args.diff_base_sha, args.diff_head_sha, args.report,
             always_components=args.always_component,
-            tested_commit_sha=actual,
+            tested_checkout_sha=args.tested_checkout,
+            workflow_sha=args.workflow_sha,
+            event_name=args.event_name,
             require_checkout_match=True,
         )
     except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
