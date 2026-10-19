@@ -86,6 +86,14 @@ def test_invalid_participant_identifiers_are_excluded(bad_id):
     assert bad_id not in repr(result)
 
 
+def test_prefix_only_invalid_participant_is_not_echoed_by_generic_finding():
+    bad_id = "sub-"
+    result = parse_participants_tsv(f"participant_id\tage\n{bad_id}\t20\nsub-02\t22\n")
+    assert result.accepted_rows == 1
+    assert "INVALID_PARTICIPANT_ID" in _codes(result)
+    assert bad_id not in repr(result)
+
+
 def test_empty_participant_cell_is_invalid():
     result = parse_participants_tsv("participant_id\tage\n\t20\nsub-02\t22\n")
     assert result.accepted_rows == 1

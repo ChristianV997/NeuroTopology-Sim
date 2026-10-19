@@ -104,7 +104,7 @@ def _parse_participants_tsv(text: Any) -> tuple[TsvResult, tuple[str, ...]]:
             rejected += 1
             findings.append(make_finding(
                 "INVALID_PARTICIPANT_ID", "error",
-                "participant_id must match sub-<alphanumeric>", line=line_no))
+                "participant identifier does not match the required format", line=line_no))
             continue
         candidates.append((participant, line_no))
 
