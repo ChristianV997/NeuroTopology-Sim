@@ -293,7 +293,8 @@ def _parse_simplex_index(value: Any, *, n_points: int, context: str) -> int:
         )
     if value >= n_points:
         raise ValueError(
-            f"{context}: out-of-range index {value} for n_points={n_points}"
+            f"{context}: out-of-range index {value} "
+            f"(out of range for n_points={n_points})"
         )
     return value
 

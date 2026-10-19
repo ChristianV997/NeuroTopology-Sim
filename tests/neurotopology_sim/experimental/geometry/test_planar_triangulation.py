@@ -16,11 +16,21 @@ from neurotopology_sim.experimental.geometry.planar_triangulation import (
     ClaimLayer,
     DegeneracyPolicy,
     FailureKind,
+    _orient_value,
     incircle,
     orient2d,
     triangulate_2d,
     validate_planar_mesh,
 )
+
+
+def _exact_signed_area(points, triangle):
+    """Independent twice-area / 2 via Fraction orientation (recomputed, not prose)."""
+    i, j, k = triangle
+    a = (Fraction(points[i][0]), Fraction(points[i][1]))
+    b = (Fraction(points[j][0]), Fraction(points[j][1]))
+    c = (Fraction(points[k][0]), Fraction(points[k][1]))
+    return _orient_value(a, b, c) / 2
 
 
 def test_schema_and_hold_posture():
@@ -206,6 +216,11 @@ def test_user_counterexample_a_overlap_despite_positive_areas():
     """
     points = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (2.0, 1.0)]
     faces = [(0, 1, 2), (0, 1, 4), (1, 2, 4), (0, 4, 3)]
+    # Recompute areas independently (do not trust fixture prose).
+    areas = [_exact_signed_area(points, t) for t in faces]
+    assert areas == [Fraction(8), Fraction(2), Fraction(4), Fraction(4)]
+    assert sum(areas) == Fraction(18)  # exceeds hull area 16 due to overlap
+    assert all(a > 0 for a in areas)
     report = validate_planar_mesh(points, faces, check_delaunay=False)
     assert report.ok is False
     assert report.status == "rejected"
@@ -224,6 +239,16 @@ def test_user_counterexample_b_full_validator_bypass():
     """
     points = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0), (3.0, 1.0)]
     faces = [(0, 1, 3), (0, 1, 4), (1, 2, 4), (2, 0, 4)]
+    areas = [_exact_signed_area(points, t) for t in faces]
+    assert areas == [Fraction(8), Fraction(2), Fraction(2), Fraction(4)]
+    assert sum(areas) == Fraction(16)  # equals hull area yet still invalid
+    # Independent crossing check: open segments (0,2) and (1,3) meet at (2,2).
+    a0 = (Fraction(0), Fraction(0))
+    a2 = (Fraction(4), Fraction(4))
+    a1 = (Fraction(4), Fraction(0))
+    a3 = (Fraction(0), Fraction(4))
+    assert orient2d(a0, a2, a1) * orient2d(a0, a2, a3) < 0
+    assert orient2d(a1, a3, a0) * orient2d(a1, a3, a2) < 0
     report = validate_planar_mesh(points, faces, check_delaunay=False)
     assert report.ok is False
     assert report.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
@@ -234,6 +259,21 @@ def test_user_counterexample_b_full_validator_bypass():
     assert any("boundary edges" in i for i in report.issues)
     assert any("edge crossing" in i for i in report.issues)
     assert any("overlapping triangle" in i for i in report.issues)
+
+
+def test_oob_and_integral_float_indices_fail_closed_phrases():
+    """Failing-contract probe: OOB/float indices before dereference; no IndexError."""
+    pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+    oob = validate_planar_mesh(pts, [(0, 1, 99)], check_delaunay=False)
+    assert oob.ok is False
+    assert oob.failure_kind == FailureKind.MALFORMED_INPUT.value
+    blob = " ".join(oob.issues)
+    assert "out-of-range index" in blob
+    assert "out of range for n_points" in blob  # phrase shared with #421 adversarial suite
+    # Integral-valued floats are still floats — reject before casting.
+    integral_float = validate_planar_mesh(pts, [(0, 1, 2.0)], check_delaunay=False)
+    assert integral_float.ok is False
+    assert any("floating-point simplex index" in i for i in integral_float.issues)
 
 
 def test_counterexample_b_rejected_as_supplied_mesh():

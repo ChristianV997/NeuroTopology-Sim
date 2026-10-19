@@ -13,14 +13,27 @@ result = triangulate_2d(coords, degeneracy_policy="reject", require_delaunay=Tru
 report = validate_planar_mesh(coords, simplices, check_delaunay=False)
 ```
 
+### Planar vs Delaunay (names and defaults)
+
+| Entry point | Planar embedding | Empty-circle / cocircular policy |
+|---|---|---|
+| `triangulate_2d(..., require_delaunay=...)` | Always constructed/validated as a planar hull triangulation | **Default `True`**: also require Delaunay layer + apply `degeneracy_policy` to cocircularity |
+| `validate_planar_mesh(..., check_delaunay=...)` | Always validates planar hull triangulation of a *supplied* mesh | **Default `False`**: Delaunay layer skipped unless explicitly enabled |
+
+These flags are intentionally separate. Disabling Delaunay must not reject an otherwise valid planar triangulation of a cocircular point set. Enabling Delaunay applies the documented degeneracy policy without weakening planar checks.
+
+Coordinates may be sequences or NumPy arrays of shape `(N, 2)` with finite values. Simplex indices must be actual integers (not `bool`, not float — including integral-valued floats such as `1.0`); repeated / negative / OOB indices are rejected before coordinate dereference (no `IndexError`, no negative wrap).
+
 `PlanarTriangulationResult` includes `simplices`, ordered `hull_cycle` / `hull_boundary_cycle`,
 `edge_incidences`, structured `failure_kind`, and **separate** diagnostics for:
 
 1. `abstract_chain` — `D1 @ D0 == 0` (incidence only; never certifies geometric validity)
-2. `planar_hull_triangulation` — planar straight-line embedding of the convex hull
+2. `planar_hull_triangulation` — planar straight-line embedding of the convex hull (orientation, incidences, hull-boundary cycle, nonincident crossings/overlaps, vertex-on-edge)
 3. `delaunay_empty_circle` — empty-circumcircle property (optional)
 
 `failure_kind` values: `none` | `malformed_input` | `invalid_planar_embedding` | `delaunay_policy_failure`.
+
+Positive triangle areas, Euler counts, `D1 @ D0 == 0`, and area-sum equality are **not** sufficient proofs of a valid planar embedding.
 
 ## Degeneracy policy and claim separation
 
