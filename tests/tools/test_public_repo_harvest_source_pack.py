@@ -179,6 +179,14 @@ def test_malformed_manifest_duplicate_keys_and_missing_provenance_are_rejected(t
         validate_source_manifest(
             source_manifest(["README.md"], license_record={"caller_assertions": {"review_status": 7}})
         )
+    path.write_text(
+        '{"schema_version":"PublicRepoSourceManifest.v1","source_url":"https://github.com/a/b",'
+        '"source_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","selected_paths":["README.md"],'
+        '"license_record":{"license_hint":NaN}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(SourcePackError, match="non-finite JSON constant"):
+        load_source_manifest(path)
     date_only = validate_source_manifest(
         {
             "schema_version": SOURCE_MANIFEST_SCHEMA,
@@ -208,7 +216,11 @@ def test_selected_file_identity_change_between_stat_and_open_is_rejected(tmp_pat
     source = make_tree(tmp_path / "source", {"README.md": b"AAAAAAAAAA"})
     target = source / "README.md"
     replacement = tmp_path / "replacement"
-    replacement.write_bytes(b"replacement-content")
+    replacement.write_bytes(b"BBBBBBBBBB")
+    original_identity = target.stat()
+    replacement_identity = replacement.stat()
+    assert original_identity.st_size == replacement_identity.st_size
+    assert original_identity.st_ino != replacement_identity.st_ino
     original_check = source_pack._check_regular_file
     replaced = False
 
@@ -253,6 +265,33 @@ def test_zip_archive_traversal_and_ambiguous_paths_are_rejected(tmp_path):
         archive.writestr("src/a.py", b"b")
     with pytest.raises(SourcePackError, match="case-ambiguous"):
         pack_static_source(ambiguous, source_manifest(["src/A.py"]), tmp_path / "ambiguous-out.zip")
+
+
+@pytest.mark.parametrize(
+    "member_type,member_name,link_name,expected_error",
+    [
+        (tarfile.SYMTYPE, "escape/link.txt", "../../outside.txt", "symlink or hardlink"),
+        (tarfile.LNKTYPE, "escape/hardlink.txt", "README.md", "symlink or hardlink"),
+        (tarfile.REGTYPE, "../outside.txt", "", "traversal"),
+    ],
+)
+def test_tar_links_and_traversal_are_rejected(tmp_path, member_type, member_name, link_name, expected_error):
+    archive_path = tmp_path / "unsafe.tar"
+    with tarfile.open(archive_path, mode="w:") as archive:
+        info = tarfile.TarInfo(member_name)
+        info.type = member_type
+        if member_type == tarfile.REGTYPE:
+            body = b"x"
+            info.size = len(body)
+            archive.addfile(info, io.BytesIO(body))
+        else:
+            info.linkname = link_name
+            archive.addfile(info)
+    output = tmp_path / "unsafe-out.zip"
+    with pytest.raises(SourcePackError, match=expected_error):
+        selected_path = "README.md" if member_type == tarfile.REGTYPE else member_name
+        pack_static_source(archive_path, source_manifest([selected_path]), output)
+    assert not output.exists()
 
 
 def test_malformed_archive_is_rejected_without_output(tmp_path):
@@ -559,6 +598,38 @@ def test_caller_asserted_human_review_never_marks_license_compatible(tmp_path):
     assert blocked["reuse_status"] == "blocked"
     assert blocked["source_bytes_included"] is False
     assert "conflicting_caller_license_assertions" in blocked["license_evaluation"]["reuse_block_reasons"]
+
+
+def test_nested_conflicting_license_and_permission_assertions_stay_unverified(tmp_path):
+    source = make_tree(tmp_path / "source", {"README.md": b"synthetic documentation\n"})
+    license_record = {
+        "caller_assertions": {
+            "license_labels": ["MIT", "GPL-3.0-only"],
+            "review_status": "human_reviewed_compatible",
+            "can_copy_docs": True,
+        }
+    }
+    output = tmp_path / "nested-claims.zip"
+    result = pack_static_source(
+        source,
+        source_manifest(["README.md"], license_record=license_record),
+        output,
+    )
+
+    evaluation = result["license_evaluation"]
+    assert result["reuse_status"] == "blocked"
+    assert result["reusable"] is False
+    assert evaluation["conflicting"] is True
+    assert evaluation["caller_asserted_license_labels"] == ["GPL-3.0-only", "MIT"]
+    assert evaluation["review_status"] == "unreviewed"
+    assert evaluation["caller_assertions"]["nested_review_status"] == "human_reviewed_compatible"
+    assert evaluation["copy_permission_assertions"]["documentation"]["caller_asserted"] is True
+    assert evaluation["copy_permission_assertions"]["documentation"]["effective"] is False
+    assert "conflicting_caller_license_assertions" in evaluation["reuse_block_reasons"]
+    assert "caller_asserted_restricted_license" in evaluation["reuse_block_reasons"]
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [PACK_MANIFEST_PATH]
+        assert b"synthetic documentation" not in archive.read(PACK_MANIFEST_PATH)
 
 
 @pytest.mark.parametrize(

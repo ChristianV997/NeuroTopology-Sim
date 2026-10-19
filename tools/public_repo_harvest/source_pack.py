@@ -334,10 +334,16 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         raise SourcePackError("license_record.conflicting_licenses must be a string array")
     if len(conflict_list) > 64 or any(len(item) > 128 for item in conflict_list):
         raise SourcePackError("conflicting license identifiers must be short and bounded")
+    canonical_conflict_labels: list[str] = []
+    for item in conflict_list:
+        cleaned = _license_alias(item)
+        if not re.fullmatch(r"[A-Za-z0-9.+ -]{1,128}", cleaned):
+            raise SourcePackError("conflicting license identifiers must be printable license labels")
+        if cleaned.upper() not in {"UNKNOWN", "UNLICENSED", "NOASSERTION"}:
+            canonical_conflict_labels.append(cleaned)
     evidence_status = record.get("license_evidence_status", "caller_supplied_unverified")
     if not isinstance(evidence_status, str) or len(evidence_status) > 64:
         raise SourcePackError("license_record.license_evidence_status must be a short string")
-    is_conflicting = bool(record.get("conflicting", False)) or bool(conflict_list) or len(canonical_asserted_labels) > 1
 
     hint = record.get("license_hint", record.get("likely_license", "unknown"))
     if not isinstance(hint, str) or len(hint) > 64 or not re.fullmatch(r"[A-Za-z0-9.+ -]+", hint or ""):
@@ -369,9 +375,29 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
             or any(not isinstance(item, str) or len(item) > 128 for item in nested_claims[key])
         ):
             raise SourcePackError(f"license_record.caller_assertions.{key} must be a bounded string array")
+    nested_license_labels: list[str] = []
+    for key in ("license_labels", "conflicting_licenses"):
+        for item in nested_claims.get(key, []):
+            cleaned = _license_alias(item)
+            if not re.fullmatch(r"[A-Za-z0-9.+ -]{1,128}", cleaned):
+                raise SourcePackError(f"license_record.caller_assertions.{key} must contain printable license labels")
+            if cleaned.upper() not in {"UNKNOWN", "UNLICENSED", "NOASSERTION"}:
+                nested_license_labels.append(cleaned)
+    canonical_asserted_labels = sorted(
+        set(canonical_asserted_labels + canonical_conflict_labels + nested_license_labels),
+        key=lambda item: (item.casefold(), item),
+    )
+    nested_conflict_list = nested_claims.get("conflicting_licenses", [])
+    is_conflicting = (
+        bool(record.get("conflicting", False))
+        or bool(conflict_list)
+        or bool(nested_conflict_list)
+        or len(canonical_asserted_labels) > 1
+    )
     claims = {
         "license_evidence_status": evidence_status,
         "license_labels": canonical_asserted_labels,
+        "conflicting_licenses": canonical_conflict_labels,
         "license_status": claimed_license_status,
         "compatibility_status": claimed_compatibility_status,
         "review_status": claimed_review_status,
@@ -400,9 +426,14 @@ def _normalize_license_record(value: object) -> dict[str, Any]:
         for label in canonical_asserted_labels
     ):
         reasons.append("caller_asserted_restricted_license")
-    if claimed_review_status != "unreviewed":
+    if claimed_review_status != "unreviewed" or nested_claims.get("review_status") not in (None, "unreviewed"):
         reasons.append("caller_review_status_not_authenticated")
-    if record.get("can_copy_code") is True or record.get("can_copy_docs") is True:
+    if (
+        record.get("can_copy_code") is True
+        or record.get("can_copy_docs") is True
+        or nested_claims.get("can_copy_code") is True
+        or nested_claims.get("can_copy_docs") is True
+    ):
         reasons.append("caller_copy_permission_not_authenticated")
     return {
         "license_evidence_status": "caller_supplied_unverified",
