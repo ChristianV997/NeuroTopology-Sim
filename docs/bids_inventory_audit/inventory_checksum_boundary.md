@@ -178,6 +178,5 @@ From the repository root:
 python -m pytest tests/bids_inventory_audit -q
 ```
 
-Focused tests construct synthetic TSV text, path strings, and metadata mappings in memory; they do not
-open files under `tests/bids_inventory_audit/fixtures/`. Existing fixture files are not relied on as
-provenance evidence by these tests.
+Focused tests construct synthetic TSV text, path strings, and metadata mappings in memory. No
+repository fixture files are included or opened by this test suite.
