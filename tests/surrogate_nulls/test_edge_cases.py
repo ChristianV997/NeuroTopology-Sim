@@ -9,6 +9,7 @@ import pathlib
 import random
 import unittest
 
+from tools.surrogate_nulls import csd as C
 from tools.surrogate_nulls import nulls as N
 from tools.surrogate_nulls import spectral as sp
 
@@ -204,6 +205,47 @@ class HermitianScaleTests(unittest.TestCase):
             for j in range(2):
                 got = sum(factor[i][k] * factor[j][k].conjugate() for k in range(2))
                 self.assertLess(abs(got - m[i][j]), 1e-12 * s, msg=f"({i},{j})")
+
+
+class PublicHelperValidationTests(unittest.TestCase):
+    """Public helpers that take raw arrays validate them the way the null generators do."""
+
+    RAGGED = [[1.0, 2.0, 3.0, 4.0], [1.0, 2.0]]
+    NON_FINITE = [[1.0, float("nan"), 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]]
+    BOOLEAN = [[True, False, True, False]]
+
+    @staticmethod
+    def _identity_generator(x, seed):
+        return x, None
+
+    def test_estimate_csd_rejects_ragged_non_finite_and_boolean_input(self):
+        for bad in (self.RAGGED, self.NON_FINITE, self.BOOLEAN):
+            with self.subTest(data=bad):
+                with self.assertRaises(sp.SurrogateInputError):
+                    C.estimate_csd(bad, "multitaper", n_tapers=2)
+
+    def test_winding_variation_rejects_ragged_and_non_finite_input(self):
+        for bad in (self.RAGGED, self.NON_FINITE):
+            with self.subTest(data=bad):
+                with self.assertRaises(sp.SurrogateInputError):
+                    C.winding_variation(bad, self._identity_generator, [0], 1)
+
+    def test_relative_phase_spread_rejects_ragged_input(self):
+        with self.assertRaises(sp.SurrogateInputError):
+            C.relative_phase_spread(self.RAGGED, self._identity_generator, [0], 1)
+
+    def test_zero_or_pi_distance_rejects_ragged_and_empty_channels(self):
+        with self.assertRaises(sp.SurrogateInputError):
+            C.zero_or_pi_distance(self.RAGGED)
+        with self.assertRaises(sp.SurrogateInputError):
+            C.zero_or_pi_distance([[]])
+
+    def test_validate_supplied_csd_rejects_boolean_dimensions(self):
+        csd = [[[1 + 0j]]] * sp.n_freq(4)
+        with self.assertRaises(sp.SurrogateInputError):
+            C.validate_supplied_csd(csd, True, 4)
+        with self.assertRaises(sp.SurrogateInputError):
+            C.validate_supplied_csd(csd, 1, True)
 
 
 if __name__ == "__main__":

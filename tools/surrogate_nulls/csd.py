@@ -268,6 +268,7 @@ def estimate_csd(data, estimator, *, n_tapers=None, smoothing_halfwidth=1, shrin
         raise sp.SurrogateInputError(
             f"estimator must be one of {tuple(e for e in ESTIMATORS if e != 'supplied')}, got {estimator!r}"
         )
+    data = sp.as_float_matrix(data)
     n_channels = len(data)
     n_time = len(data[0])
     info = {"estimator": estimator, "n_tapers": None, "smoothing_halfwidth": None,
@@ -297,6 +298,9 @@ def estimate_csd(data, estimator, *, n_tapers=None, smoothing_halfwidth=1, shrin
 
 def validate_supplied_csd(csd_by_bin, n_channels, n_time):
     """Shape and Hermitian checks for a caller-supplied spectral estimate."""
+    for name, value in (("n_channels", n_channels), ("n_time", n_time)):
+        if isinstance(value, bool) or not isinstance(value, numbers.Integral) or value < 1:
+            raise sp.SurrogateInputError(f"{name} must be a positive integer, got {value!r}")
     expected_bins = sp.n_freq(n_time)
     if len(csd_by_bin) != expected_bins:
         raise sp.SurrogateInputError(
@@ -344,6 +348,7 @@ def winding_variation(x, generator, seeds, bin_k, *, statistic=phase_loop_windin
     seeds = list(seeds)
     if not seeds:
         raise sp.SurrogateInputError("seeds must be non-empty")
+    x = sp.as_float_matrix(x)
     original_spectra = [sp.rfft(channel) for channel in x]
     original = statistic(original_spectra, bin_k)
     values = []
@@ -391,6 +396,7 @@ def relative_phase_spread(x, generator, seeds, bin_k):
     seeds = list(seeds)
     if not seeds:
         raise sp.SurrogateInputError("seeds must be non-empty")
+    x = sp.as_float_matrix(x)
     original = pairwise_relative_phases([sp.rfft(c) for c in x], bin_k)
     angles = {pair: [] for pair in original}
     for seed in seeds:
@@ -422,6 +428,7 @@ def zero_or_pi_distance(signals, bins=None, rel_amplitude_floor=1e-10):
     amplitude is below ``rel_amplitude_floor`` times the largest amplitude are skipped, because
     their phase is undefined. Returns ``0.0`` when no bin is checked.
     """
+    signals = sp.as_float_matrix(signals)
     spectra = [sp.rfft(s) for s in signals]
     n = len(signals[0])
     if bins is None:
