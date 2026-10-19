@@ -3,9 +3,9 @@
     "facts": [
       "GitHub and origin reported main at ed9c6426e8f1cb614b58e6588a80b184592eecb7 during this snapshot.",
       "The inventory contains 64 unique open PRs; changed-file paths were checked against changedFiles counts.",
-      "PR #425 was open at head 35529dd6b972c504dc524ceaffba3d2a6188fee5 on base ed9c6426e8f1cb614b58e6588a80b184592eecb7 at capture; its observed checks passed.",
+      "PR #425 was open at head f0e4766e482fbdcb44ffce4ebb389a10e3ec9ff3 on base ed9c6426e8f1cb614b58e6588a80b184592eecb7 at capture; its observed checks passed.",
       "PR #429 remains open at head 18ba01d6f852502cb82aa612f47891070353ccc0 on base 25c5afeac33f5fac219d1e78453549dc0143d316; its core-tests check passed while awareness-tests failed on the sampled head.",
-      "PR #433 was draft at head 8a9ff995d1ca5319aea7c721a813771d829ab785; hosted run 39203534499 tested checkout 075a09ca5079535b2c3a5d1825c7c9229cb8bb29 and records 150 collected tests across eight singleton files, zero skips/failures/timeouts.",
+      "PR #433 was draft at head 7b5a0e2e09eee388a2a3f78382d42c9b8769d092; hosted run 39203534499 tested checkout fbac0b51c89f36be03d1f843c65cc64b40f57aa5 and records 150 collected tests across eight singleton files, zero skips/failures/timeouts.",
       "Current main Required Checks, Smoke, and Ontology Claim Language runs at ed9c6426e8f1cb614b58e6588a80b184592eecb7 concluded success.",
       "PRs #422/#428 are merged; latest associated Awareness and CPU/base image jobs passed and production-root jobs were skipped/manual.",
       "PR #405 merged at 19c3203573082f8bc41f7da226b52dc20a49fdb0; Wilson export verified at current main ed9c6426e8f1cb614b58e6588a80b184592eecb7."
@@ -1663,7 +1663,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1686,7 +1686,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1712,7 +1712,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1735,7 +1735,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1761,7 +1761,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1784,7 +1784,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1810,7 +1810,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1833,7 +1833,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1859,7 +1859,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1882,7 +1882,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1908,7 +1908,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1931,7 +1931,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1957,7 +1957,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -1980,7 +1980,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2006,7 +2006,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2029,7 +2029,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2055,7 +2055,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2078,7 +2078,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2104,7 +2104,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2127,7 +2127,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2153,7 +2153,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2176,7 +2176,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2202,7 +2202,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2225,7 +2225,7 @@
         },
         {
           "head_branch": "codex/round6-surrogate-discovery-canary-20261019",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "pr_number": 433,
           "pr_state": "open",
           "writer": {
@@ -2643,7 +2643,7 @@
       "test_path": "tests/experimental_audits/test_winding_charge_round6_oracle.py"
     }
   ],
-  "captured_at_utc": "2026-10-19T05:39:27Z",
+  "captured_at_utc": "2026-10-19T05:46:52Z",
   "ci_failure_groups": [
     {
       "check_evidence": [
@@ -2697,7 +2697,7 @@
       "classification": "hosted_surrogate_canary_pass_other_lanes_locally_blocked",
       "id": "round6_candidate_test_discovery",
       "main_equivalent_status": "not_exercised_on_main",
-      "notes": "PR #425 helper returned NOT_APPLICABLE with 0 candidate executions. Draft #433 tested surrogate_nulls from #417/#430 on 075a09ca5079535b2c3a5d1825c7c9229cb8bb29: 8 singleton files, 150 collected, all passing. The other six local probes were blocked before collection by missing pytest/pytest-timeout; no other lane is claimed hosted.",
+      "notes": "PR #425 helper returned NOT_APPLICABLE with 0 candidate executions. Draft #433 tested surrogate_nulls from #417/#430 on fbac0b51c89f36be03d1f843c65cc64b40f57aa5: 8 singleton files, 150 collected, all passing. The other six local probes were blocked before collection by missing pytest/pytest-timeout; no other lane is claimed hosted.",
       "pr_numbers": [
         425,
         433
@@ -2815,8 +2815,8 @@
   "evidence_retrieval_window_utc": {
     "live_metadata_refreshed": true,
     "notes": "Fetched live main, open PR inventory and complete changed-file paths, review decisions/submissions, status rollups, branch rules/protection response, current main jobs, PR #425 helper output, PR #433 candidate report, and latest #422/#428 checks; no dataset access.",
-    "retrieval_started_at_utc": "2026-10-19T05:39:16Z",
-    "retrieval_timestamp_utc": "2026-10-19T05:39:27Z"
+    "retrieval_started_at_utc": "2026-10-19T05:46:41Z",
+    "retrieval_timestamp_utc": "2026-10-19T05:46:52Z"
   },
   "evidence_sources": [
     {
@@ -2825,7 +2825,7 @@
       "url": "https://github.com/ChristianV997/NeuroTopology-Sim/commit/ed9c6426e8f1cb614b58e6588a80b184592eecb7"
     },
     {
-      "claim": "All 64 open PRs, bases/heads, drafts, reviews, status rollups, and full changed paths captured at 2026-10-19T05:39:27Z.",
+      "claim": "All 64 open PRs, bases/heads, drafts, reviews, status rollups, and full changed paths captured at 2026-10-19T05:46:52Z.",
       "kind": "github_api",
       "url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls?state=open&per_page=100"
     },
@@ -2845,14 +2845,14 @@
       "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202526614"
     },
     {
-      "claim": "PR #425 helper returned NOT_APPLICABLE with zero candidate executions on checkout c85479e17c3f6f58d8686d7599c037d213d874bf.",
+      "claim": "PR #425 helper returned NOT_APPLICABLE with zero candidate executions on checkout 0bf523457f9f58a0004649affd308d76c106ca7e.",
       "kind": "github_actions",
-      "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203278891/job/117900600942"
+      "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205966570/job/117908758609"
     },
     {
       "claim": "Draft #433 passed eight surrogate files and 150 tests; report artifact retrieved.",
       "kind": "github_actions",
-      "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499/artifacts/12164138554"
+      "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945/artifacts/12165686541"
     },
     {
       "claim": "Latest associated PR #422 Awareness and CPU/base image jobs passed; production-root image skipped/manual.",
@@ -3242,7 +3242,7 @@
   ],
   "main_ci": {
     "awareness_failure": {
-      "checked_at_utc": "2026-10-19T05:39:27Z",
+      "checked_at_utc": "2026-10-19T05:46:52Z",
       "classification": "no_current_main_failure_observed",
       "failed_tests": [],
       "job_conclusion": "success",
@@ -3279,8 +3279,8 @@
         "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202526666"
       }
     ],
-    "checked_at_utc": "2026-10-19T05:39:27Z",
-    "experimental_test_coverage": "Main ed9c6426e8f1cb614b58e6588a80b184592eecb7 passes Required Checks, Smoke, and Ontology Claim Language but does not contain PR #425 helper. PR #425 helper returned NOT_APPLICABLE with 0 candidate executions on checkout c85479e17c3f6f58d8686d7599c037d213d874bf. Draft #433 hosted only surrogate_nulls: 8 singleton files and 150 collected; other six lanes lack hosted direct execution in this snapshot.",
+    "checked_at_utc": "2026-10-19T05:46:52Z",
+    "experimental_test_coverage": "Main ed9c6426e8f1cb614b58e6588a80b184592eecb7 passes Required Checks, Smoke, and Ontology Claim Language but does not contain PR #425 helper. PR #425 helper returned NOT_APPLICABLE with 0 candidate executions on checkout 0bf523457f9f58a0004649affd308d76c106ca7e. Draft #433 hosted only surrogate_nulls: 8 singleton files and 150 collected; other six lanes lack hosted direct execution in this snapshot.",
     "head_sha": "ed9c6426e8f1cb614b58e6588a80b184592eecb7",
     "job_runs": [
       {
@@ -3952,7 +3952,7 @@
         }
       ],
       "coverage_audit": {
-        "checked_at_utc": "2026-10-19T05:39:27Z",
+        "checked_at_utc": "2026-10-19T05:46:52Z",
         "open_pr_count": 64,
         "relevant_pr_numbers": [
           385,
@@ -3996,7 +3996,7 @@
       "hosted_candidate_execution": "observed",
       "hosted_candidate_runs": [
         {
-          "artifact_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499/artifacts/12164138554",
+          "artifact_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945/artifacts/12165686541",
           "candidate_pr_numbers": [
             417,
             430
@@ -4014,16 +4014,16 @@
           "candidate_tests_executed": true,
           "component_status": "PASS",
           "conclusion": "success",
-          "head_sha": "8a9ff995d1ca5319aea7c721a813771d829ab785",
+          "head_sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092",
           "isolated_batches_failed": 0,
           "isolated_batches_skipped": 0,
           "isolated_batches_total": 8,
           "job_name": "core-tests",
-          "log_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499/job/117901369608",
-          "run_id": 39203534499,
+          "log_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945/job/117908819807",
+          "run_id": 39205985945,
           "test_case_count": 150,
-          "tested_checkout_sha": "075a09ca5079535b2c3a5d1825c7c9229cb8bb29",
-          "workflow_run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499"
+          "tested_checkout_sha": "fbac0b51c89f36be03d1f843c65cc64b40f57aa5",
+          "workflow_run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945"
         }
       ],
       "local_candidate_probe": {
@@ -4044,7 +4044,7 @@
             "combined_worktree_commit": "94aa749e071f9e4bb9a77bbcd7f07576106f035d",
             "isolated_file_attempts": 2,
             "lane": "geometry",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4067,7 +4067,7 @@
             "combined_worktree_commit": "38dbe68081bf4b06a28f74f047fcd8c27ee16753",
             "isolated_file_attempts": 2,
             "lane": "spherical_csd",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4090,7 +4090,7 @@
             "combined_worktree_commit": "f31c26c131510b5325c9ac4dc6ae68ea88b4baad",
             "isolated_file_attempts": 3,
             "lane": "four_sphere",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4113,7 +4113,7 @@
             "combined_worktree_commit": "e2a1772c63558954507294347ffdcba5f4b42cbd",
             "isolated_file_attempts": 2,
             "lane": "winding_hodge",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4137,7 +4137,7 @@
             "combined_worktree_commit": "1244d09726bf3ab334d65ad08daab8851e60ae2e",
             "isolated_file_attempts": 2,
             "lane": "dmd",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4160,7 +4160,7 @@
             "combined_worktree_commit": "a598781623602f80201e4980cb7c5e8582f9fe9d",
             "isolated_file_attempts": 8,
             "lane": "surrogate",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4183,7 +4183,7 @@
             "combined_worktree_commit": "a1d783dac0bbfe12eabc339df7c4d723ab0d369f",
             "isolated_file_attempts": 2,
             "lane": "synthetic_roc",
-            "note": "Exact current PR heads were combined with #425 helper head 35529dd and main ed9c6426. The bounded runner was invoked for each mapped file and explicitly reported runner_dependency_unavailable before collection because bundled Python lacks pytest and pytest-timeout. Zero tests ran; no packages installed.",
+            "note": "Exact candidate heads and combined trees were probed previously with #425 helper head 35529dd and main ed9c6426. Every bounded attempt stopped before collection because bundled Python lacked pytest and pytest-timeout; zero tests ran. This is not a probe of the updated helper head f0e4766; current helper mapping is covered by the 34-test structural suite and latest hosted surrogate canary only. No packages were installed.",
             "result_status": "BLOCKED",
             "runner_status": "BLOCKED",
             "selected_components": [
@@ -4197,9 +4197,10 @@
           "pytest_timeout_available": false,
           "python_version": "3.12.14"
         },
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "helper_head_sha": "35529dd6b972c504dc524ceaffba3d2a6188fee5",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "status": "blocked",
-        "summary": "21 singleton attempts across 7 exact candidate combinations; zero collected. All are BLOCKED before collection because bundled Python lacks pytest and pytest-timeout; no packages installed."
+        "summary": "21 historical singleton attempts across 7 exact candidate combinations used helper 35529dd; all BLOCKED before collection because bundled Python lacks pytest and pytest-timeout. They do not certify helper f0e4766 or candidate execution; the current 34-test structural suite and hosted surrogate canary provide separate, narrower evidence. No packages installed."
       }
     },
     "workflow_runs": [
@@ -4936,7 +4937,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": null,
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": []
       },
       "draft": false,
@@ -4963,7 +4964,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/357/reviews",
         "state": "no_reviews",
         "submission_count": 0,
@@ -4996,7 +4997,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "failure",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5064,7 +5065,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/366/reviews",
         "state": "no_reviews",
         "submission_count": 0,
@@ -5100,7 +5101,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "failure",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5168,7 +5169,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/367/reviews",
         "state": "no_reviews",
         "submission_count": 0,
@@ -5206,7 +5207,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5304,7 +5305,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/368/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -5350,7 +5351,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5448,7 +5449,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/369/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -5503,7 +5504,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5601,7 +5602,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/370/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -5650,7 +5651,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5748,7 +5749,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/371/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -5788,7 +5789,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -5906,7 +5907,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/372/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -5941,7 +5942,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6049,7 +6050,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/373/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6084,7 +6085,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6182,7 +6183,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/374/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6216,7 +6217,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6314,7 +6315,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/375/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6348,7 +6349,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6446,7 +6447,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/376/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6486,7 +6487,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6584,7 +6585,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/377/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6629,7 +6630,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6727,7 +6728,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/378/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6773,7 +6774,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -6871,7 +6872,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/379/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -6911,7 +6912,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7009,7 +7010,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/380/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -7058,7 +7059,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7156,7 +7157,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/381/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -7189,7 +7190,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7287,7 +7288,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/382/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -7349,7 +7350,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7447,7 +7448,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/383/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -7500,7 +7501,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7598,7 +7599,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/384/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -7640,7 +7641,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7738,7 +7739,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/385/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -7775,7 +7776,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -7873,7 +7874,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/386/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -7914,7 +7915,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8012,7 +8013,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/387/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -8047,7 +8048,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8145,7 +8146,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/388/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -8190,7 +8191,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8288,7 +8289,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/389/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -8328,7 +8329,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8426,7 +8427,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/390/reviews",
         "state": "automated_comment_only",
         "submission_count": 3,
@@ -8463,7 +8464,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8561,7 +8562,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/391/reviews",
         "state": "automated_comment_only",
         "submission_count": 3,
@@ -8601,7 +8602,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8700,7 +8701,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/392/reviews",
         "state": "automated_comment_only",
         "submission_count": 6,
@@ -8734,7 +8735,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8832,7 +8833,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/393/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -8866,7 +8867,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -8964,7 +8965,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/394/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -9003,7 +9004,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9111,7 +9112,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/395/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -9154,7 +9155,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9252,7 +9253,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/396/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -9297,7 +9298,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9395,7 +9396,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/397/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -9439,7 +9440,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9537,7 +9538,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/398/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -9578,7 +9579,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9676,7 +9677,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/399/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -9709,7 +9710,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9807,7 +9808,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/400/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -9866,7 +9867,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -9964,7 +9965,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/401/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -10010,7 +10011,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10108,7 +10109,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/402/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -10149,7 +10150,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10247,7 +10248,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/403/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -10279,7 +10280,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10378,7 +10379,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/404/reviews",
         "state": "automated_comment_only",
         "submission_count": 6,
@@ -10412,7 +10413,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10510,7 +10511,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/406/reviews",
         "state": "automated_comment_only",
         "submission_count": 2,
@@ -10552,7 +10553,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10650,7 +10651,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/407/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -10695,7 +10696,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10813,7 +10814,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/408/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -10848,7 +10849,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -10946,7 +10947,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/409/reviews",
         "state": "automated_comment_only",
         "submission_count": 3,
@@ -10980,7 +10981,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11078,7 +11079,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/410/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -11112,7 +11113,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11210,7 +11211,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/411/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -11242,7 +11243,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11340,7 +11341,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/412/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -11380,7 +11381,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11479,7 +11480,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/413/reviews",
         "state": "automated_comment_only",
         "submission_count": 5,
@@ -11519,7 +11520,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11618,7 +11619,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/414/reviews",
         "state": "automated_comment_only",
         "submission_count": 5,
@@ -11655,7 +11656,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11754,7 +11755,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/415/reviews",
         "state": "automated_comment_only",
         "submission_count": 4,
@@ -11794,7 +11795,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -11892,7 +11893,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/416/reviews",
         "state": "automated_comment_only",
         "submission_count": 4,
@@ -11935,7 +11936,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12034,7 +12035,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/417/reviews",
         "state": "automated_comment_only",
         "submission_count": 5,
@@ -12069,7 +12070,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12167,7 +12168,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/418/reviews",
         "state": "automated_comment_only",
         "submission_count": 7,
@@ -12200,7 +12201,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12298,7 +12299,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/419/reviews",
         "state": "automated_comment_only",
         "submission_count": 3,
@@ -12331,7 +12332,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12429,7 +12430,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/420/reviews",
         "state": "automated_comment_only",
         "submission_count": 3,
@@ -12473,7 +12474,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12572,7 +12573,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/421/reviews",
         "state": "automated_comment_only",
         "submission_count": 5,
@@ -12612,7 +12613,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12711,7 +12712,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/423/reviews",
         "state": "automated_comment_only",
         "submission_count": 4,
@@ -12745,7 +12746,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -12844,7 +12845,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/424/reviews",
         "state": "automated_comment_only",
         "submission_count": 10,
@@ -12881,74 +12882,74 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:12:04Z",
+            "completed_at_utc": "2026-10-19T05:43:00Z",
             "conclusion": "success",
             "name": "ontology-claim-language",
-            "started_at_utc": "2026-10-19T05:11:54Z",
+            "started_at_utc": "2026-10-19T05:42:53Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203278945/job/117900601047",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205966620/job/117908758625",
             "workflow_name": "Ontology Claim Language"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:12:54Z",
+            "completed_at_utc": "2026-10-19T05:43:43Z",
             "conclusion": "success",
             "name": "core-tests",
-            "started_at_utc": "2026-10-19T05:11:53Z",
+            "started_at_utc": "2026-10-19T05:42:54Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203278891/job/117900600942",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205966570/job/117908758609",
             "workflow_name": "Required Checks"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:12:27Z",
+            "completed_at_utc": "2026-10-19T05:43:27Z",
             "conclusion": "success",
             "name": "Cross-system smoke",
-            "started_at_utc": "2026-10-19T05:11:54Z",
+            "started_at_utc": "2026-10-19T05:42:54Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203278915/job/117900600941",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205966590/job/117908758551",
             "workflow_name": "Smoke"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:12:11Z",
+            "completed_at_utc": "2026-10-19T05:43:14Z",
             "conclusion": "success",
             "name": "awareness-tests",
-            "started_at_utc": "2026-10-19T05:11:53Z",
+            "started_at_utc": "2026-10-19T05:42:53Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203278891/job/117900600844",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205966570/job/117908758448",
             "workflow_name": "Required Checks"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:11:54Z",
+            "completed_at_utc": "2026-10-19T05:43:21Z",
             "conclusion": "neutral",
             "name": "Mergify Merge Protections",
-            "started_at_utc": "2026-10-19T05:11:52Z",
+            "started_at_utc": "2026-10-19T05:43:20Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/activity-log?pull_request=425",
             "workflow_name": ""
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:11:54Z",
+            "completed_at_utc": "2026-10-19T05:43:22Z",
             "conclusion": "neutral",
             "name": "Mergify Merge Queue",
-            "started_at_utc": "2026-10-19T05:11:54Z",
+            "started_at_utc": "2026-10-19T05:43:22Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/queues/status?branch=main&pull=425",
             "workflow_name": ""
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:11:53Z",
+            "completed_at_utc": "2026-10-19T05:43:21Z",
             "conclusion": "success",
             "name": "Summary",
-            "started_at_utc": "2026-10-19T05:11:53Z",
+            "started_at_utc": "2026-10-19T05:43:21Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/activity-log?pull_request=425",
             "workflow_name": ""
@@ -12958,7 +12959,7 @@
       "draft": false,
       "head": {
         "branch": "codex/live-repo-pr-ownership-map-20261017",
-        "sha": "35529dd6b972c504dc524ceaffba3d2a6188fee5"
+        "sha": "f0e4766e482fbdcb44ffce4ebb389a10e3ec9ff3"
       },
       "mergeability": {
         "conflict_detail": "No GitHub conflict signal; path overlap is not a Git conflict.",
@@ -12980,15 +12981,15 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/425/reviews",
         "state": "automated_comment_only",
-        "submission_count": 7,
+        "submission_count": 8,
         "unresolved_inline_threads": "unknown"
       },
       "state": "open",
       "title": "docs(audits): snapshot live PR ownership and CI state",
-      "updated_at_utc": "2026-10-19T05:11:52Z",
+      "updated_at_utc": "2026-10-19T05:42:53Z",
       "url": "https://github.com/ChristianV997/NeuroTopology-Sim/pull/425",
       "writer": {
         "identity_state": "known",
@@ -13016,7 +13017,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -13114,7 +13115,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/426/reviews",
         "state": "automated_comment_only",
         "submission_count": 4,
@@ -13146,7 +13147,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -13244,7 +13245,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/429/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -13276,7 +13277,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -13374,7 +13375,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/430/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -13408,7 +13409,7 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
@@ -13537,7 +13538,7 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/431/reviews",
         "state": "automated_comment_only",
         "submission_count": 1,
@@ -13587,74 +13588,74 @@
         "required_check_reason": "Required branch-policy configuration is not established; a green status rollup is not proof that all required checks passed.",
         "required_check_state": "unknown",
         "required_checks_workflow_conclusion": "success",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "workflow_runs": [
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:14:59Z",
+            "completed_at_utc": "2026-10-19T05:43:16Z",
             "conclusion": "success",
             "name": "ontology-claim-language",
-            "started_at_utc": "2026-10-19T05:14:50Z",
+            "started_at_utc": "2026-10-19T05:43:08Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534517/job/117901369449",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985899/job/117908819829",
             "workflow_name": "Ontology Claim Language"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:58Z",
+            "completed_at_utc": "2026-10-19T05:44:33Z",
             "conclusion": "success",
             "name": "core-tests",
-            "started_at_utc": "2026-10-19T05:14:51Z",
+            "started_at_utc": "2026-10-19T05:43:09Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499/job/117901369608",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945/job/117908819807",
             "workflow_name": "Required Checks"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:32Z",
+            "completed_at_utc": "2026-10-19T05:43:45Z",
             "conclusion": "success",
             "name": "Cross-system smoke",
-            "started_at_utc": "2026-10-19T05:14:50Z",
+            "started_at_utc": "2026-10-19T05:43:08Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534554/job/117901369539",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985961/job/117908820311",
             "workflow_name": "Smoke"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:11Z",
+            "completed_at_utc": "2026-10-19T05:43:30Z",
             "conclusion": "success",
             "name": "awareness-tests",
-            "started_at_utc": "2026-10-19T05:14:51Z",
+            "started_at_utc": "2026-10-19T05:43:08Z",
             "status": "completed",
-            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39203534499/job/117901369489",
+            "url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39205985945/job/117908819923",
             "workflow_name": "Required Checks"
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:21Z",
+            "completed_at_utc": "2026-10-19T05:43:35Z",
             "conclusion": "neutral",
             "name": "Mergify Merge Protections",
-            "started_at_utc": "2026-10-19T05:15:19Z",
+            "started_at_utc": "2026-10-19T05:43:33Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/activity-log?pull_request=433",
             "workflow_name": ""
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:22Z",
+            "completed_at_utc": "2026-10-19T05:44:05Z",
             "conclusion": "neutral",
             "name": "Mergify Merge Queue",
-            "started_at_utc": "2026-10-19T05:15:22Z",
+            "started_at_utc": "2026-10-19T05:44:05Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/queues/status?branch=main&pull=433",
             "workflow_name": ""
           },
           {
             "check_type": "CheckRun",
-            "completed_at_utc": "2026-10-19T05:15:20Z",
+            "completed_at_utc": "2026-10-19T05:43:34Z",
             "conclusion": "success",
             "name": "Summary",
-            "started_at_utc": "2026-10-19T05:15:19Z",
+            "started_at_utc": "2026-10-19T05:43:34Z",
             "status": "completed",
             "url": "https://dashboard.mergify.com/orgs/ChristianV997/repos/NeuroTopology-Sim/activity-log?pull_request=433",
             "workflow_name": ""
@@ -13664,7 +13665,7 @@
       "draft": true,
       "head": {
         "branch": "codex/round6-surrogate-discovery-canary-20261019",
-        "sha": "8a9ff995d1ca5319aea7c721a813771d829ab785"
+        "sha": "7b5a0e2e09eee388a2a3f78382d42c9b8769d092"
       },
       "mergeability": {
         "conflict_detail": "No GitHub conflict signal; path overlap is not a Git conflict.",
@@ -13685,15 +13686,15 @@
         "changes_requested_count": 0,
         "human_submission_count": 0,
         "pull_request_review_decision": "unknown",
-        "retrieved_at_utc": "2026-10-19T05:39:27Z",
+        "retrieved_at_utc": "2026-10-19T05:46:52Z",
         "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/pulls/433/reviews",
         "state": "automated_comment_only",
-        "submission_count": 1,
+        "submission_count": 2,
         "unresolved_inline_threads": "unknown"
       },
       "state": "open",
       "title": "ci: canary Round 6 surrogate candidate discovery",
-      "updated_at_utc": "2026-10-19T05:15:06Z",
+      "updated_at_utc": "2026-10-19T05:44:06Z",
       "url": "https://github.com/ChristianV997/NeuroTopology-Sim/pull/433",
       "writer": {
         "identity_state": "known",
@@ -13821,7 +13822,7 @@
     ],
     "http_status": 200,
     "reason": "Classic branch-protection API returned HTTP 404. Available repository rules list deletion, non_fast_forward, and copilot_code_review only; required status checks and organization-level gates remain unknown.",
-    "retrieved_at_utc": "2026-10-19T05:39:27Z",
+    "retrieved_at_utc": "2026-10-19T05:46:52Z",
     "source_url": "https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/rules/branches/main",
     "state": "unknown"
   },
