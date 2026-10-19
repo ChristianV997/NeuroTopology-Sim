@@ -1,1 +1,1 @@
-"""Experimental geometry and topology test surface."""
+"""Experimental geometry, topology, and dynamics testing surface."""
