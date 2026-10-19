@@ -3,7 +3,7 @@
 **Status:** HOLD / SYNTHETIC_ONLY<br/>
 **Branch:** `batch2/antigravity-a-planar-triangulation`<br/>
 **Base Commit:** `19c3203573082f8bc41f7da226b52dc20a49fdb0` (`origin/main`)<br/>
-**Candidate PR #416 Commit:** `88b21ccd22576939f88865cc4cf20f788cbbf1b4` (`batch2/cursor-a-planar-triangulation`)<br/>
+**Candidate PR #416 Commit:** `e4a44f6ec2fca634e3c37bcb189f76246bf6891e` (`batch2/cursor-a-planar-triangulation`)<br/>
 **Scope:** Independent adversarial test surface for planar sensor triangulation and embedding validity (`tests/experimental/test_planar_triangulation.py` and `tests/experimental/planar_mesh_test_helpers.py`).
 
 ---
@@ -13,9 +13,10 @@
 - **Project Posture:** `HOLD / SYNTHETIC_ONLY`. The tests in this suite establish geometric and topological properties of 2D sensor-coordinate planar meshes. They do not establish cortical topology, functional localization, or scientific/consciousness claims.
 - **Gemini Revision 8 Status:** Treated strictly as unverified research input, not mathematical ground truth.
 - **Candidate PR #416 Integration:**
-  - Audited and executed directly against PR #416's candidate production module (`neurotopology_sim/experimental/geometry/planar_triangulation.py` at commit `88b21ccd22576939f88865cc4cf20f788cbbf1b4`).
+  - Audited and executed directly against PR #416's candidate production module (`neurotopology_sim/experimental/geometry/planar_triangulation.py` at commit `e4a44f6ec2fca634e3c37bcb189f76246bf6891e`).
   - No mocks, stubs, or local replacement validators were used for candidate tests.
   - Candidate implements exact-sign predicates on IEEE-754 binary floats via `Fraction.from_float`, separating `input_validation`, `abstract_chain`, `planar_hull_triangulation`, and `delaunay_empty_circle` diagnostic layers.
+  - Candidate v3 (`e4a44f6`) introduces the `FailureKind` enum (`MALFORMED_INPUT`, `INVALID_PLANAR_EMBEDDING`, `DELAUNAY_POLICY_FAILURE`, `NONE`), top-level `failure_kind` attribute on `PlanarTriangulationResult`, and structured vertex-on-open-edge / T-junction detection (`edge_touch`).
 
 ---
 
@@ -54,10 +55,15 @@ $$B_1 B_2 = 0 \quad (\text{or } D_1 D_0 = 0)$$
   - Hull area of $[0,4] \times [0,4]$ square is 16.
   - Rational area sum: $8 + 2 + 4 + 4 = 18$.
   - **Analysis of Prompt Specification:** The prompt states "Verify positive areas and total area 16, then assert rejection for the actual geometric/mesh defect." The square convex hull area is indeed 16, but programmatically evaluating the declared triangles with exact rational arithmetic reveals an area sum of 18. This disparity occurs because triangles $(0,1,4)$ (area 2) and $(1,2,4)$ (area 4) are strictly contained inside triangle $(0,1,2)$ (area 8), creating internal double-coverage. This precisely illustrates why hand-written area claims must be verified with exact rational arithmetic.
+  - Exact pairwise overlaps against triangle $(0,1,2)$:
+    - $\text{Area}((0,1,4) \cap (0,1,2)) = 2$ (fully interior)
+    - $\text{Area}((1,2,4) \cap (0,1,2)) = 4$ (fully interior)
+    - $\text{Area}((0,4,3) \cap (0,1,2)) = \frac{4}{5}$ (crosses hypotenuse $y=x$)
+  - Exact crossing intersection: segment $(2,1) \to (0,4)$ crosses diagonal $(0,0) \to (4,4)$ at exact rational coordinates $(\frac{8}{5}, \frac{8}{5})$ ($t = \frac{1}{5}, u = \frac{2}{5}$).
   - Simplicial boundary identity $D_1 @ D_0 == 0$ holds identically.
-- **Candidate Validator Verdict:** REJECTED (`ok=False`, `status="rejected"`).
+- **Candidate Validator Verdict:** REJECTED (`ok=False`, `status="rejected"`, `failure_kind="invalid_planar_embedding"`).
   - Flags overlapping triangle pairs: $(0,1,4)$ and $(1,2,4)$ inside $(0,1,2)$.
-  - Flags nonincident edge crossings: edge $(0,2)$ crosses $(1,4)$ at $(2,1)$.
+  - Flags nonincident edge crossings: edge $(0,2)$ crosses $(1,4)$ at $(2,1)$, and edge $(4,3)$ crosses $(0,2)$ at $(8/5, 8/5)$.
   - Flags boundary edge mismatch: hull edges $(0,1)$ and $(1,2)$ have incidence 2 instead of 1, and hull edge $(2,3)$ is unreferenced.
 
 ### 3.2 Counterexample B: 5-Vertex Square with Interior Vertex $(3, 1)$
@@ -68,11 +74,18 @@ $$B_1 B_2 = 0 \quad (\text{or } D_1 D_0 = 0)$$
   - Counts: 5 vertices, 4 faces, 8 unique edges.
   - All edge incidences are in $\{1, 2\}$, and incidence-1 vertices are exactly $\{0, 1, 2, 3\}$.
   - Simplicial boundary identity $D_1 @ D_0 == 0$ holds identically.
+- **Exact Pairwise Overlaps & Uncovered Area:**
+  - $\text{Area}((0,1,4) \cap (0,1,3)) = 2$ (triangle $(0,1,4)$ fully inside $(0,1,3)$).
+  - $\text{Area}((2,0,4) \cap (0,1,3)) = 2$ (overlap region inside $(0,1,3)$).
+  - All other 4 triangle pairs have zero mutual interior overlap.
+  - Total overlap area: $2 + 2 = 4$.
+  - Total union area covered: $\sum \text{areas} - \text{overlap} = 16 - 4 = 12$.
+  - Uncovered area: $\text{Area}(\text{Hull}) - \text{Union} = 16 - 12 = 4$.
 - **Geometric Embedding Failures:**
-  - Non-incident edges $(1, 3)$ and $(2, 0)$ cross at $(2, 2)$.
-  - Triangle interiors overlap (e.g. $(0,1,4)$ inside $(0,1,3)$ with overlap area $2$).
+  - Non-incident edges $(1, 3)$ and $(2, 0)$ cross at $(2, 2)$ ($t=1/2, u=1/2$).
+  - Triangle interiors overlap (overlap area $4$).
   - Boundary edges $\{(1,3), (3,0), (1,2), (2,0)\}$ do not match the convex hull cycle.
-- **Candidate Validator Verdict:** REJECTED (`ok=False`, `status="rejected"`).
+- **Candidate Validator Verdict:** REJECTED (`ok=False`, `status="rejected"`, `failure_kind="invalid_planar_embedding"`).
 
 ### 3.3 Exact Segment Intersection Derivation
 For line-segment parametric forms:
@@ -93,24 +106,30 @@ Verified on canonical crossing segment $S=(0, -1) \to E=(0, 1)$ against clip lin
 
 ---
 
-## 4. Input & Simplex Index Validation Hardening (PR #416 v2)
+## 4. Input & Simplex Index Validation Hardening (PR #416 v2 & v3)
 
-In commit `88b21ccd22576939f88865cc4cf20f788cbbf1b4`, Cursor Agent A hardened simplex index parsing and coordinate validation:
+In commits `88b21ccd` and `e4a44f6e`, Cursor Agent A hardened simplex index parsing, coordinate validation, and failure classification:
+- **`FailureKind` Structured Classification (v3):**
+  - Rejections carry an explicit `failure_kind`: `MALFORMED_INPUT`, `INVALID_PLANAR_EMBEDDING`, or `DELAUNAY_POLICY_FAILURE`.
+  - Non-failing results return `FailureKind.NONE`.
 - **Simplex Index Rejection Before Array Indexing:**
-  - Float indices (e.g. `(0.9, 1.0, 2.0)`): rejected (`floating-point simplex index is not allowed`).
-  - Boolean indices (e.g. `(True, 1, 2)`): rejected (`boolean is not a valid simplex index`).
-  - Repeated vertices (e.g. `(0, 0, 1)`): rejected (`repeated vertices are not allowed`).
-  - Negative indices (e.g. `(-1, 0, 1)`): rejected (`negative simplex index`).
-  - Out-of-range indices (e.g. `(0, 1, 99)`): rejected (`out of range for n_points`).
+  - Float indices (e.g. `(0.9, 1.0, 2.0)`): rejected (`floating-point simplex index is not allowed`, `failure_kind=malformed_input`).
+  - Boolean indices (e.g. `(True, 1, 2)`): rejected (`boolean is not a valid simplex index`, `failure_kind=malformed_input`).
+  - Repeated vertices (e.g. `(0, 0, 1)`): rejected (`repeated vertices are not allowed`, `failure_kind=malformed_input`).
+  - Negative indices (e.g. `(-1, 0, 1)`): rejected (`negative simplex index`, `failure_kind=malformed_input`).
+  - Out-of-range indices (e.g. `(0, 1, 99)`): rejected (`out-of-range index 99 for n_points`, `failure_kind=malformed_input`).
   - All malformed indices return a structured rejection in `validate_planar_mesh` without unhandled `IndexError` exception crashes or negative index wraparound.
+- **T-Junction & Vertex-on-Edge Detection (v3):**
+  - Vertices lying on open edges of triangles (e.g. `(1,0)` on edge `(0,0)-(2,0)`) are detected and rejected (`failure_kind=invalid_planar_embedding`).
+  - T-junction configurations without matching edge subdivision are rejected.
 - **NumPy Coordinate Array Acceptance:**
   - 2D NumPy arrays of shape `(n, 2)` are accepted and validated directly.
-  - Malformed shapes (`(3, 3)` or 1D arrays) return structured rejections.
+  - Malformed shapes (`(3, 3)` or 1D arrays) return structured rejections (`failure_kind=malformed_input`).
 - **Non-Finite Coordinates:**
-  - Coordinates with `NaN`, `+Inf`, or `-Inf` return structured rejections.
+  - Coordinates with `NaN`, `+Inf`, or `-Inf` return structured rejections (`failure_kind=malformed_input`).
 - **Cocircular Policy Separation (Delaunay Enabled vs. Disabled):**
   - `triangulate_2d` with `require_delaunay=False, degeneracy_policy="reject"`: accepts cocircular point sets as valid planar triangulations.
-  - `triangulate_2d` with `require_delaunay=True, degeneracy_policy="reject"`: rejects represented cocircularity.
+  - `triangulate_2d` with `require_delaunay=True, degeneracy_policy="reject"`: rejects represented cocircularity (`failure_kind=delaunay_policy_failure`).
   - `triangulate_2d` with `require_delaunay=True, degeneracy_policy="lexicographic_tiebreak"`: accepts via deterministic tie-breaking.
 
 ---
@@ -129,7 +148,7 @@ In commit `88b21ccd22576939f88865cc4cf20f788cbbf1b4`, Cursor Agent A hardened si
 ## 6. Test Suite Verification & Merge Readiness
 
 - **Focused Test Execution:**
-  - `pytest tests/experimental/test_planar_triangulation.py -v`: 34 passed in 3.30s.
-  - Combined suite (`tests/neurotopology_sim/experimental/geometry/` + `tests/experimental/`): 57 passed in 3.78s.
+  - `pytest tests/experimental/test_planar_triangulation.py -v`: 36 passed in 7.22s.
+  - Combined suite (`tests/neurotopology_sim/experimental/geometry/` + `tests/experimental/`): 63 passed in 15.23s (36 adversarial + 27 candidate).
 - **Git Hygiene:** `git diff --check` clean (0 warnings, 0 whitespace errors).
-- **Merge Disposition:** Candidate PR #416 successfully passes all 34 adversarial tests and all 23 candidate tests. PR #421 is merge-ready for review. In accordance with project instructions and branch protection policies, PR #421 remains open and is NOT merged into `origin/main`.
+- **Merge Disposition:** Candidate PR #416 successfully passes all 36 adversarial tests and all 27 candidate tests. PR #421 is merge-ready for review. In accordance with project instructions and branch protection policies, PR #421 remains open and is NOT merged into `origin/main`.

@@ -16,6 +16,7 @@ import pytest
 from neurotopology_sim.experimental.geometry.planar_triangulation import (
     ClaimLayer,
     DegeneracyPolicy,
+    FailureKind,
     PlanarTriangulationResult,
     triangulate_2d,
     validate_planar_mesh,
@@ -121,10 +122,21 @@ class TestCounterexampleAFullValidator:
         poly_012 = [points[i] for i in (0, 1, 2)]
         poly_014 = [points[i] for i in (0, 1, 4)]
         poly_124 = [points[i] for i in (1, 2, 4)]
+        poly_043 = [points[i] for i in (0, 4, 3)]
         inter_014 = clip_polygon_with_convex_polygon(poly_014, poly_012)
         inter_124 = clip_polygon_with_convex_polygon(poly_124, poly_012)
+        inter_043 = clip_polygon_with_convex_polygon(poly_043, poly_012)
         assert polygon_area_exact(inter_014) == Fraction(2)  # fully interior to (0,1,2)
         assert polygon_area_exact(inter_124) == Fraction(4)  # fully interior to (0,1,2)
+        assert polygon_area_exact(inter_043) == Fraction(4, 5)  # crosses hypotenuse y=x
+
+        # 6. Recomputed intersection: edge (4,3) crosses edge (0,2) at (8/5, 8/5)
+        s, e = points[4], points[3]    # (2, 1) -> (0, 4)
+        c1, c2 = points[0], points[2]  # (0, 0) -> (4, 4)
+        t, u, inter = exact_segment_line_intersection(s, e, c1, c2)
+        assert t == Fraction(1, 5)
+        assert u == Fraction(2, 5)
+        assert inter == (Fraction(8, 5), Fraction(8, 5))
 
 
 class TestMandatoryFullValidatorCounterexample:
@@ -155,6 +167,7 @@ class TestMandatoryFullValidatorCounterexample:
         assert not result.ok
         assert result.status == "rejected"
         assert result.scientific_pass is False
+        assert result.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
 
         # Extract diagnostics by layer
         diags = {d.layer: d for d in result.diagnostics}
@@ -180,19 +193,19 @@ class TestMandatoryFullValidatorCounterexample:
         points = [to_fraction_point(p) for p in fixture["points"]]
         triangles = fixture["triangles"]
 
-        # 1. Verify signed areas: 8, 2, 2, 4
+        # 1. Verify signed areas: 8, 2, 2, 4 (sum is 16, matching convex hull area)
         areas = [triangle_signed_area_twice(points[t[0]], points[t[1]], points[t[2]]) / 2 for t in triangles]
         assert areas == [Fraction(8), Fraction(2), Fraction(2), Fraction(4)]
         assert sum(areas) == Fraction(16)
 
-        # 2. Hull area of the square (0,0), (4,0), (4,4), (0,4)
+        # 2. Hull area of the square (0,0), (4,0), (4,4), (0,4) is 16
         hull = exact_convex_hull(points)
         assert hull["hull_area_twice"] / 2 == Fraction(16)
         assert sum(areas) == hull["hull_area_twice"] / 2
 
-        # 3. Edge incidences: all edges have incidence 1 or 2
+        # 3. Edge incidences: all 8 unique edges have incidence 1 or 2
         _, b1, b2, is_zero = build_simplicial_boundary_matrices(len(points), triangles)
-        assert is_zero  # D1 @ D0 == 0 is exact
+        assert is_zero  # D1 @ D0 == 0 holds identically
 
         # 4. Crossing edges (1, 3) and (2, 0) cross at (2, 2)
         s, e = points[1], points[3]    # (4, 0) -> (0, 4)
@@ -202,11 +215,31 @@ class TestMandatoryFullValidatorCounterexample:
         assert u == Fraction(1, 2)
         assert inter == (Fraction(2), Fraction(2))
 
-        # 5. Overlap detection via exact polygon clipping
-        poly_014 = [points[i] for i in (0, 1, 4)]
-        poly_013 = [points[i] for i in (0, 1, 3)]
-        inter_poly = clip_polygon_with_convex_polygon(poly_014, poly_013)
-        assert polygon_area_exact(inter_poly) == Fraction(2)  # triangle (0,1,4) fully inside (0,1,3)
+        # 5. Exact pairwise overlap detection via polygon clipper
+        p_tris = [[points[v] for v in t] for t in triangles]
+        inter_0_1 = clip_polygon_with_convex_polygon(p_tris[1], p_tris[0])
+        inter_0_3 = clip_polygon_with_convex_polygon(p_tris[3], p_tris[0])
+        inter_0_2 = clip_polygon_with_convex_polygon(p_tris[2], p_tris[0])
+        inter_1_2 = clip_polygon_with_convex_polygon(p_tris[2], p_tris[1])
+        inter_1_3 = clip_polygon_with_convex_polygon(p_tris[3], p_tris[1])
+        inter_2_3 = clip_polygon_with_convex_polygon(p_tris[3], p_tris[2])
+
+        assert polygon_area_exact(inter_0_1) == Fraction(2)  # (0,1,4) fully inside (0,1,3)
+        assert polygon_area_exact(inter_0_3) == Fraction(2)  # (2,0,4) overlaps (0,1,3)
+        assert polygon_area_exact(inter_0_2) == Fraction(0)
+        assert polygon_area_exact(inter_1_2) == Fraction(0)
+        assert polygon_area_exact(inter_1_3) == Fraction(0)
+        assert polygon_area_exact(inter_2_3) == Fraction(0)
+
+        # 6. Uncovered area: total covered union area is 12; uncovered area is 4
+        # Area(T0 union T1 union T2 union T3) = 8 + 2 + 2 = 12
+        # Uncovered area = Area(Hull) - Area(Union) = 16 - 12 = 4
+        total_overlap_area = polygon_area_exact(inter_0_1) + polygon_area_exact(inter_0_3)
+        assert total_overlap_area == Fraction(4)
+        union_area = sum(areas) - total_overlap_area
+        assert union_area == Fraction(12)
+        uncovered_area = Fraction(16) - union_area
+        assert uncovered_area == Fraction(4)
 
 
 class TestFractionClipperAndIntersectionDerivation:
@@ -285,6 +318,7 @@ class TestIndexValidationAdversarial:
         simplices = [(0, 0, 1)]
         result = validate_planar_mesh(coords, simplices)
         assert not result.ok
+        assert result.failure_kind == FailureKind.MALFORMED_INPUT.value
         assert any("repeated vertices" in issue for issue in result.issues)
 
     def test_negative_simplex_index_rejected(self):
@@ -292,6 +326,7 @@ class TestIndexValidationAdversarial:
         simplices = [(-1, 0, 1)]
         result = validate_planar_mesh(coords, simplices)
         assert not result.ok
+        assert result.failure_kind == FailureKind.MALFORMED_INPUT.value
         assert any("negative simplex index" in issue for issue in result.issues)
 
     def test_out_of_range_index_rejected_before_indexing(self):
@@ -299,18 +334,21 @@ class TestIndexValidationAdversarial:
         simplices = [(0, 1, 99)]
         result = validate_planar_mesh(coords, simplices)
         assert not result.ok
-        assert any("out of range for n_points" in issue for issue in result.issues)
+        assert result.failure_kind == FailureKind.MALFORMED_INPUT.value
+        assert any("out-of-range index" in issue or "out of range" in issue for issue in result.issues)
 
     def test_float_and_boolean_simplex_indices_rejected_before_indexing(self):
         coords = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         float_simplices = [(0.9, 1.0, 2.0)]
         res_float = validate_planar_mesh(coords, float_simplices)
         assert not res_float.ok
+        assert res_float.failure_kind == FailureKind.MALFORMED_INPUT.value
         assert any("floating-point simplex index is not allowed" in issue for issue in res_float.issues)
 
         bool_simplices = [(True, 1, 2)]
         res_bool = validate_planar_mesh(coords, bool_simplices)
         assert not res_bool.ok
+        assert res_bool.failure_kind == FailureKind.MALFORMED_INPUT.value
         assert any("boolean is not a valid simplex index" in issue for issue in res_bool.issues)
 
 
@@ -362,6 +400,28 @@ class TestMalformedAndNonFiniteInputs:
         assert not result.ok
         assert result.status == "rejected"
         assert any("globally collinear point set" in issue for issue in result.issues)
+
+
+class TestVertexOnEdgeAndTJunction:
+    """Verify structured rejection of T-junctions and vertex-on-edge degeneracies."""
+
+    def test_vertex_on_edge_touch_rejected(self):
+        """Point (1,0) lies on open edge (0,0)-(2,0) of a coarse triangle — reject."""
+        coords = [(0.0, 0.0), (2.0, 0.0), (1.0, 1.0), (1.0, 0.0)]
+        simplices = [(0, 1, 2)]
+        result = validate_planar_mesh(coords, simplices, check_delaunay=False)
+        assert not result.ok
+        assert result.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
+        assert any("vertex-on-edge" in i or "uncovered" in i for i in result.issues)
+
+    def test_t_junction_interior_contact_rejected(self):
+        """Two triangles meeting at a T-junction without edge subdivision — reject."""
+        coords = [(0.0, 0.0), (2.0, 0.0), (1.0, 1.0), (1.0, 0.0), (1.0, -1.0)]
+        simplices = [(0, 1, 2), (0, 3, 4)]
+        result = validate_planar_mesh(coords, simplices, check_delaunay=False)
+        assert not result.ok
+        assert result.failure_kind == FailureKind.INVALID_PLANAR_EMBEDDING.value
+        assert any("vertex-on-edge" in i for i in result.issues)
 
 
 class TestCocircularPolicyDelaunayEnabledVsDisabled:
