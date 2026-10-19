@@ -51,6 +51,12 @@ def _shrunken_multitaper_gaussian(data, seed):
     )
 
 
+def _boxcar_shrunken_gaussian(data, seed):
+    return N.cholesky_gaussian_csd(
+        data, seed, estimator="periodogram_boxcar", smoothing_halfwidth=1, shrinkage=0.15
+    )
+
+
 def _sample_csd_ensemble(data, generator, seeds, **kwargs):
     n = len(data[0])
     d = len(data)
@@ -118,13 +124,32 @@ class RankOneEstimatorTests(unittest.TestCase):
         # At the designed nonzero bin, the unsmoothed single-epoch CSD is rank one.
         # Near-zero off-tone bins can be dominated by transform round-off and are not
         # evidence about the rank of the target bin.
-        assert report.effective_rank_per_bin is not None
+        self.assertIsNotNone(report.effective_rank_per_bin)
         effective_ranks = report.effective_rank_per_bin
         self.assertEqual(effective_ranks[k], 1)
+        self.assertEqual(report.estimator_dof_per_bin, tuple(2 for _ in range(sp.n_freq(n))))
+        self.assertIsNotNone(report.condition_per_bin)
+        self.assertTrue(math.isinf(report.condition_per_bin[k]))
+        self.assertIsNotNone(report.ridge_rel)
         self.assertIn(k, report.ridge_applied_bins)
         self.assertEqual(report.rank_status, N.RANK_STATUS)
+        self.assertEqual(
+            report.status["estimator_validity"],
+            "DIAGNOSTIC_RANK_ONE_NOT_A_PHASE_RANDOMISING_NULL",
+        )
+
+        seeds = range(32)
+        phase_variation = C.relative_phase_spread(signal, _single_periodogram_gaussian, seeds, k)
+        self.assertEqual(phase_variation["n_seeds"], 32)
+        max_phase_drift = max(
+            pair["max_deviation_from_original"] for pair in phase_variation["pairs"].values()
+        )
+        # Ridge regularisation adds small coefficient noise; bound the phase drift at
+        # its square-root scale rather than falsely requiring exact invariance.
+        self.assertLessEqual(max_phase_drift, 10.0 * math.sqrt(report.ridge_rel))
 
         variation = C.winding_variation(signal, _single_periodogram_gaussian, range(32), k)
+        self.assertEqual(variation["n_seeds"], 32)
         self.assertFalse(variation["varies_from_original"], msg=f"diagnostics={report}")
         self.assertEqual(set(variation["distinct_values"]), {variation["original_value"]})
 
@@ -148,6 +173,24 @@ class NearSingularMatrixTests(unittest.TestCase):
                             for channel in spectra for value in channel))
 
 
+class InvalidCovarianceTests(unittest.TestCase):
+    def test_nonfinite_and_nonhermitian_matrices_are_rejected(self):
+        n = 4
+        bins = sp.n_freq(n)
+        identity = [[1 + 0j, 0j], [0j, 1 + 0j]]
+        invalid_cases = (
+            ([[complex(math.nan, 0.0), 0j], [0j, 1 + 0j]], sp.SurrogateInputError),
+            ([[1 + 0j, 1j], [1j, 1 + 0j]], sp.SurrogateInputError),
+            ([[1 + 0j, 0j], [0j, -0.5 + 0j]], sp.NonPositiveDefiniteError),
+        )
+        for matrix, error in invalid_cases:
+            with self.subTest(error=error.__name__):
+                target = [identity for _ in range(bins)]
+                target[1] = matrix
+                with self.assertRaises(error):
+                    N.draw_from_csd(target, n, seed=5)
+
+
 class ShrunkenMultitaperTests(unittest.TestCase):
     def test_shrunken_full_rank_estimate_varies_relative_phase_and_reports_diagnostics(self):
         n, d, k = 32, 3, 4
@@ -158,14 +201,22 @@ class ShrunkenMultitaperTests(unittest.TestCase):
         )
 
         self.assertTrue(variation["varies"], msg=f"diagnostics={report}")
-        self.assertGreater(variation["max_spread"], 0.1)
+        self.assertGreater(variation["max_spread"], C.VARIATION_TOL)
         self.assertEqual(report.estimator, "multitaper")
         self.assertEqual(report.estimator_source, "estimated_from_input")
         self.assertEqual(report.n_tapers, 5)
         self.assertEqual(report.shrinkage, 0.2)
+        self.assertEqual(
+            report.status["estimator_validity"],
+            "MULTIWINDOW_ESTIMATE_WITH_RANK_HEADROOM_REPORTED_PER_BIN",
+        )
         self.assertEqual(report.estimator_dof_per_bin, tuple(10 for _ in range(sp.n_freq(n))))
         self.assertEqual(set(report.effective_rank_per_bin), {d})
+        self.assertTrue(all(math.isfinite(value) and value >= 1.0
+                            for value in report.condition_per_bin))
+        self.assertTrue(all(value >= -C.DEFAULT_PSD_TOL for value in report.min_eig_rel_per_bin))
         self.assertEqual(report.ridge_applied_bins, ())
+        self.assertEqual(variation["n_seeds"], 24)
         self.assertEqual(
             report.status["cross_spectrum"],
             "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
@@ -174,6 +225,31 @@ class ShrunkenMultitaperTests(unittest.TestCase):
             report.status["intended_use"],
             "SECOND_ORDER_GAUSSIAN_NULL_UNDER_STATIONARITY_AND_LINEAR_GAUSSIAN_MODEL",
         )
+
+
+class BoxcarSmoothedEstimatorTests(unittest.TestCase):
+    def test_boxcar_smoothing_shrinkage_and_seeded_phase_variation(self):
+        n, d, k = 32, 2, 4
+        signal = _independent(n, d, 43)
+        _, report = _boxcar_shrunken_gaussian(signal, 0)
+        variation = C.relative_phase_spread(signal, _boxcar_shrunken_gaussian, range(24), k)
+
+        self.assertEqual(report.estimator, "periodogram_boxcar")
+        self.assertEqual(report.smoothing_halfwidth, 1)
+        self.assertEqual(report.shrinkage, 0.15)
+        self.assertEqual(
+            report.status["estimator_validity"],
+            "SMOOTHED_PERIODOGRAM_RANK_UP_TO_2H_PLUS_1_REPORTED_PER_BIN",
+        )
+        self.assertEqual(report.estimator_dof_per_bin[k], 6)
+        self.assertEqual(report.effective_rank_per_bin[k], d)
+        self.assertTrue(math.isfinite(report.condition_per_bin[k]))
+        self.assertGreaterEqual(report.condition_per_bin[k], 1.0)
+        self.assertGreaterEqual(report.min_eig_rel_per_bin[k], -C.DEFAULT_PSD_TOL)
+        self.assertNotIn(k, report.ridge_applied_bins)
+        self.assertEqual(variation["n_seeds"], 24)
+        self.assertTrue(variation["varies"])
+        self.assertGreater(variation["max_spread"], C.VARIATION_TOL)
 
 
 class EnsembleMomentTests(unittest.TestCase):
@@ -193,6 +269,7 @@ class EnsembleMomentTests(unittest.TestCase):
             n_tapers=4,
             shrinkage=0.15,
         )
+        self.assertEqual(len(samples[0][0][0]), ENSEMBLE_SEEDS)
         _assert_mean_within_mc_error(self, samples, self.target, "Gaussian CSD")
 
     def test_real_part_null_matches_real_target_in_ensemble(self):
@@ -208,6 +285,7 @@ class EnsembleMomentTests(unittest.TestCase):
             n_tapers=4,
             shrinkage=0.15,
         )
+        self.assertEqual(len(samples[0][0][0]), ENSEMBLE_SEEDS)
         # The assertion is about the ensemble mean only, not every realization's phases.
         _assert_mean_within_mc_error(self, samples, real_target, "real-part CSD")
 
@@ -230,10 +308,16 @@ class ReportContractTests(unittest.TestCase):
 
         self.assertEqual(gaussian.null_id, "cholesky_gaussian_csd")
         self.assertEqual(gaussian.status["cross_spectrum"], "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT")
+        self.assertEqual(
+            gaussian.status["estimator_validity"],
+            "MULTIWINDOW_ESTIMATE_WITH_RANK_HEADROOM_REPORTED_PER_BIN",
+        )
         self.assertIn("linear-Gaussian", N.CONTRACTS["cholesky_gaussian_cross_spectral"]["intended_use"])
         self.assertIn("IN EXPECTATION", N.CONTRACTS["cholesky_gaussian_cross_spectral"]["preserved"])
 
         self.assertEqual(real_part.null_id, "zero_lag_real_part_gaussian")
+        self.assertNotIn("realization_relative_phase", real_part.status)
+        self.assertIn("NOT_PART_OF_NULL_DEFINITION", real_part.status["generator_relative_phase_observed"])
         self.assertEqual(real_part.status["cross_spectrum_real_part"], "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT")
         self.assertEqual(
             real_part.status["intended_use"],
