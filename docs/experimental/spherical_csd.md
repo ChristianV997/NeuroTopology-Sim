@@ -102,7 +102,7 @@ exact. Malformed NaN/Inf/zero/coincident/bad-radius → `SphericalCSDError`.
 
 ### Diagnosis of #419 suite failures (not production)
 
-Combined worktree (`#414` @ `fc68735` + `#419` @ `fa8f0f7`, merge-base
+Combined worktree (`#414` @ `7c59ada` + `#419` @ `fa8f0f7`, merge-base
 `19c3203`) reports oracle↔fixture fails at **rtol/atol `1e-12`** on
 asymmetric_cap_8 / synthetic_cap_12 / cap_20 / cap_64. Independent
 reproduction:
@@ -125,7 +125,7 @@ reproduction:
 Optional live-MNE parity in owned tests skips when MNE is not installed (no
 unauthorized install).
 
-### CI note (discovery live on main @ `518e66e`)
+### CI note (discovery live on main @ `02520d4`)
 
 `.github/workflows/round6_experimental_tests.py` (merged via #425) selects
 component `spherical_csd` when this leaf changes and **requires** both:
@@ -133,10 +133,12 @@ component `spherical_csd` when this leaf changes and **requires** both:
 1. `tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py`
 2. `tests/experimental/test_spherical_csd_parity.py` (#419-owned)
 
-Hosted Required Checks on merge tip of this PR
-([run 39210140610](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39210140610)):
+Hosted Required Checks after rebase onto `02520d4`
+([run 39223928979](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39223928979)):
 `spherical_csd` **BLOCKED** — `missing_required_tests:
 tests/experimental/test_spherical_csd_parity.py`;
 `candidate_test_executions: 0` (no #419 path executed). Surrogate canary
 `NOT_APPLICABLE` is not CSD evidence. Pairing / stack of #419 is an
 integration blocker; this lane does not edit workflows or #419 paths.
+Shared package `__init__.py` files are no longer part of this PR diff
+(main’s versions retained at rebase).
