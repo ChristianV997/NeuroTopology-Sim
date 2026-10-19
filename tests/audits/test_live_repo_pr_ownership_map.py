@@ -466,7 +466,8 @@ class OwnershipSnapshotTests(unittest.TestCase):
             report = _load(report_path)
         execution = report["components"][0]["executions"][0]
         self.assertEqual(result, 1)
-        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(execution["status"], "BLOCKED")
         self.assertEqual(execution["failure_classification"], "runner_dependency_unavailable")
         self.assertEqual(execution["result_counts"]["collected"], 0)
         self.assertFalse(execution["isolated_runner_telemetry_valid"])
@@ -775,6 +776,20 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertIn("does not match", report["selection_error"])
         self.assertEqual(report["executed_commands"], [])
+
+    def test_report_and_artifact_paths_cannot_escape_checkout_root(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            parent = Path(td)
+            root = parent / "checkout"
+            root.mkdir()
+            outside_report = parent / "escaped-report.json"
+            with patch.object(
+                helper, "collect_changed_paths",
+                side_effect=AssertionError("path containment must be checked before git/test execution"),
+            ):
+                with self.assertRaisesRegex(ValueError, "inside the checked-out repository"):
+                    helper.run(root, "0" * 40, "1" * 40, outside_report)
 
     def test_discovery_helper_has_no_dataset_or_network_client_imports(self):
         tree = ast.parse(HELPER.read_text(encoding="utf-8"))

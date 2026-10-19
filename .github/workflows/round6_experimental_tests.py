@@ -1062,10 +1062,12 @@ def run(
                     execution["status"] = "PASS"
                     execution["failure_classification"] = None
                 else:
-                    execution["status"] = "FAIL"
-                    execution["failure_classification"] = (
+                    failure_classification = (
                         "timeout" if execution["timeout"]
-                        else "runner_dependency_unavailable" if "pytest-timeout is required" in runner_stderr_tail
+                        else "runner_dependency_unavailable" if (
+                            "pytest-timeout is required" in runner_stderr_tail
+                            or "No module named 'pytest'" in runner_stderr_tail
+                        )
                         else "test_or_collection_failure" if counts[2] or counts[3]
                         else "candidate_tests_skipped" if counts[1]
                         else "nonzero_runner_or_test_exit" if completed.returncode
@@ -1073,8 +1075,16 @@ def run(
                         else "missing_or_invalid_junit" if not has_junit
                         else "empty_test_collection"
                     )
-                    saw_failure = True
-                    entry["status"] = "FAIL"
+                    execution["failure_classification"] = failure_classification
+                    if failure_classification == "runner_dependency_unavailable":
+                        execution["status"] = "BLOCKED"
+                        entry["status"] = "BLOCKED"
+                        entry["blockers"].append("bounded test-runner dependency is unavailable")
+                        saw_blocked = True
+                    else:
+                        execution["status"] = "FAIL"
+                        saw_failure = True
+                        entry["status"] = "FAIL"
                 entry["executions"].append(execution)
                 print(json.dumps({
                     "selected_component": name,
@@ -1088,6 +1098,7 @@ def run(
                     "timeouts": int(execution["timeout"]),
                     "artifact_path": execution["artifact_path"],
                     "status": execution.get("status"),
+                    "failure_classification": execution.get("failure_classification"),
                 }, sort_keys=True, allow_nan=False))
             if entry["status"] == "READY_TO_RUN":
                 entry["status"] = "PASS" if all(item["status"] == "PASS" for item in entry["executions"]) else "FAIL"
