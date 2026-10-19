@@ -313,6 +313,26 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("duplicate JSON object key", error)
         self.assertEqual(total, 0)
 
+    def test_docker_engine_artifacts_reject_exponent_overflow(self):
+        helper = _helper()
+        test_file = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            telemetry_path = root / "runner.json"
+            junit_path = root / "runner.junit.xml"
+            telemetry = _valid_telemetry(test_file).rstrip("\n")
+            telemetry = telemetry[:-1] + ',"ignored_extra":1e999}'
+            telemetry_path.write_text(telemetry, encoding="utf-8")
+            junit_path.write_text(
+                '<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8"
+            )
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root, telemetry_path, junit_path, test_file
+            )
+        self.assertFalse(valid)
+        self.assertIn("non-finite JSON number", error)
+        self.assertEqual(total, 0)
+
     def test_docker_engine_artifacts_reject_paths_outside_checkout(self):
         helper = _helper()
         test_file = "tests/docker_context/test_docker_engine_build_context.py"

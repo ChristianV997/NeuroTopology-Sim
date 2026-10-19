@@ -1795,6 +1795,12 @@ def _strict_json_loads(raw: str) -> Any:
     def reject_constant(value: str) -> None:
         raise ValueError(f"non-finite JSON constant: {value}")
 
+    def parse_finite_float(value: str) -> float:
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError("non-finite JSON number")
+        return parsed
+
     def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -1806,6 +1812,7 @@ def _strict_json_loads(raw: str) -> Any:
     return json.loads(
         raw,
         parse_constant=reject_constant,
+        parse_float=parse_finite_float,
         object_pairs_hook=reject_duplicate_keys,
     )
 
