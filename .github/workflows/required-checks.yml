@@ -218,6 +218,7 @@ jobs:
           expected_file = "tests/docker_context/test_docker_engine_build_context.py"
           helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
           valid, reason, test_count = helper["validate_docker_engine_test_artifacts"](
+              Path.cwd(),
               Path("outputs/docker_context_engine_test_report.json"),
               Path("outputs/docker_context_engine_test_report.junit.xml"),
               expected_file,

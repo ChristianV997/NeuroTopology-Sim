@@ -275,7 +275,7 @@ class Round6DiscoveryTests(unittest.TestCase):
             )
 
             valid, error, total = helper.validate_docker_engine_test_artifacts(
-                telemetry_path, junit_path, test_file
+                root, telemetry_path, junit_path, test_file
             )
             self.assertTrue(valid, error)
             self.assertEqual(total, 1)
@@ -286,11 +286,69 @@ class Round6DiscoveryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             valid, error, total = helper.validate_docker_engine_test_artifacts(
-                telemetry_path, junit_path, test_file
+                root, telemetry_path, junit_path, test_file
             )
 
         self.assertFalse(valid)
         self.assertIn("JUnit test total does not match", error)
+        self.assertEqual(total, 0)
+
+    def test_docker_engine_artifacts_reject_duplicate_json_keys(self):
+        helper = _helper()
+        test_file = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            telemetry_path = root / "runner.json"
+            junit_path = root / "runner.junit.xml"
+            telemetry_path.write_text(
+                '{"completed":true,"completed":false}', encoding="utf-8"
+            )
+            junit_path.write_text(
+                '<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8"
+            )
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root, telemetry_path, junit_path, test_file
+            )
+        self.assertFalse(valid)
+        self.assertIn("duplicate JSON object key", error)
+        self.assertEqual(total, 0)
+
+    def test_docker_engine_artifacts_reject_paths_outside_checkout(self):
+        helper = _helper()
+        test_file = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            outside = Path(td) / "outside.json"
+            root.mkdir()
+            outside.write_text(_valid_telemetry(test_file), encoding="utf-8")
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root,
+                outside,
+                root / "runner.junit.xml",
+                test_file,
+            )
+        self.assertFalse(valid)
+        self.assertIn("must remain inside", error)
+        self.assertEqual(total, 0)
+
+    def test_docker_engine_artifacts_reject_oversized_telemetry(self):
+        helper = _helper()
+        test_file = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            telemetry_path = root / "runner.json"
+            junit_path = root / "runner.junit.xml"
+            telemetry_path.write_bytes(
+                b" " * (helper.MAX_RUNNER_TELEMETRY_BYTES + 1)
+            )
+            junit_path.write_text(
+                '<testsuite tests="1"><testcase/></testsuite>', encoding="utf-8"
+            )
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root, telemetry_path, junit_path, test_file
+            )
+        self.assertFalse(valid)
+        self.assertIn("read limit", error)
         self.assertEqual(total, 0)
 
     def test_contained_artifact_reads_are_size_bounded(self):

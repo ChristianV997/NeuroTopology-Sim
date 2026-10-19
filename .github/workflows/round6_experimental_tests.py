@@ -1795,7 +1795,19 @@ def _strict_json_loads(raw: str) -> Any:
     def reject_constant(value: str) -> None:
         raise ValueError(f"non-finite JSON constant: {value}")
 
-    return json.loads(raw, parse_constant=reject_constant)
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON object key: {key}")
+            result[key] = value
+        return result
+
+    return json.loads(
+        raw,
+        parse_constant=reject_constant,
+        object_pairs_hook=reject_duplicate_keys,
+    )
 
 
 def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple[bool, str | None, list[dict[str, Any]]]:
@@ -1902,13 +1914,20 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
 
 
 def validate_docker_engine_test_artifacts(
+    root: Path,
     telemetry_path: Path,
     junit_path: Path,
     test_file: str,
 ) -> tuple[bool, str | None, int]:
     """Require Docker test telemetry and JUnit to report the same passing total."""
     try:
-        telemetry = _strict_json_loads(telemetry_path.read_text(encoding="utf-8"))
+        telemetry_bytes = _read_contained_bytes(
+            root,
+            telemetry_path,
+            "Docker Engine telemetry path",
+            max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
+        )
+        telemetry = _strict_json_loads(telemetry_bytes.decode("utf-8"))
         valid, error, batches = _isolated_runner_report_is_valid(telemetry, test_file)
         if not valid:
             return False, f"invalid isolated-runner telemetry: {error}", 0
@@ -1919,7 +1938,13 @@ def validate_docker_engine_test_artifacts(
             batch["_round6_pytest_passed_count"]
             + batch["_round6_pytest_subtests_passed_count"]
         )
-        counts, _, junit_total = _junit_details_with_total(junit_path)
+        junit_bytes = _read_contained_bytes(
+            root,
+            junit_path,
+            "Docker Engine JUnit path",
+            max_bytes=MAX_JUNIT_XML_BYTES,
+        )
+        counts, _, junit_total = _junit_details_from_bytes(junit_bytes)
         cases, skipped, failed, errors = counts
         if cases < 1 or skipped or failed or errors:
             return False, (
