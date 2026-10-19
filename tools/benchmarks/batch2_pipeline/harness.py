@@ -40,10 +40,8 @@ def _ratio(candidate: Optional[float], baseline: Optional[float]) -> Optional[fl
 
 
 def _counter_view(m: Dict[str, Any]) -> Dict[str, Any]:
-    return {key: m.get(key) for key in COUNTER_KEYS} | {
-        "process_work_s": m.get("process_work_s"),
-        "checkpoint_s": m.get("checkpoint_s"),
-    }
+    """Engineering counters only. Advisory timing never lives here."""
+    return {key: m.get(key) for key in COUNTER_KEYS}
 
 
 def _telemetry_view(m: Dict[str, Any]) -> Dict[str, Any]:
@@ -55,6 +53,9 @@ def _telemetry_view(m: Dict[str, Any]) -> Dict[str, Any]:
         "disk_bytes": m.get("disk_bytes"),
         "input_size": m.get("input_size"),
         "worker_count": m.get("worker_count"),
+        # Checkpoint timing is host-dependent advisory telemetry, not a counter.
+        "process_work_s": m.get("process_work_s"),
+        "checkpoint_s": m.get("checkpoint_s"),
         "counters": _counter_view(m),
     }
 

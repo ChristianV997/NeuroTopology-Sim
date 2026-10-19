@@ -24,6 +24,28 @@ def test_deterministic_checksums_stable_across_runs():
         assert ra["deterministic"]["checksum_match"] is True
 
 
+def test_engineering_counters_exclude_advisory_timing_and_are_stable():
+    """Regression: timing must not live in counters or break counter determinism."""
+    from tools.benchmarks.batch2_pipeline.schema import COUNTER_KEYS
+
+    huge = ResourceBudgets(memory_bytes=10**12, disk_bytes=10**12, max_workers=1)
+    a = run_all(huge, seed=11, size=12, repetitions=1)
+    b = run_all(huge, seed=11, size=12, repetitions=1)
+    for ra, rb in zip(a["results"], b["results"]):
+        for side in ("baseline", "candidate"):
+            counters = ra["telemetry"][side]["counters"]
+            assert set(counters) <= set(COUNTER_KEYS)
+            assert "process_work_s" not in counters
+            assert "checkpoint_s" not in counters
+            other = rb["telemetry"][side]["counters"]
+            assert {k: counters[k] for k in COUNTER_KEYS} == {
+                k: other[k] for k in COUNTER_KEYS
+            }
+        # Advisory timing remains available on the telemetry object when measured.
+        tel = ra["telemetry"]["baseline"]
+        assert "process_work_s" in tel and "checkpoint_s" in tel
+
+
 def test_full_recording_reread_reduces_reads():
     rec = run_target(
         TARGETS["full_recording_reread"],
@@ -60,9 +82,11 @@ def test_checkpoint_splits_process_and_fsync():
         size=12,
         repetitions=1,
     )
-    base = rec["telemetry"]["baseline"]["counters"]
-    cand = rec["telemetry"]["candidate"]["counters"]
-    assert base["fsync_calls"] > cand["fsync_calls"]
+    base_c = rec["telemetry"]["baseline"]["counters"]
+    cand_c = rec["telemetry"]["candidate"]["counters"]
+    base = rec["telemetry"]["baseline"]
+    cand = rec["telemetry"]["candidate"]
+    assert base_c["fsync_calls"] > cand_c["fsync_calls"]
     assert base["process_work_s"] is not None
     assert base["checkpoint_s"] is not None
     assert cand["checkpoint_s"] is not None

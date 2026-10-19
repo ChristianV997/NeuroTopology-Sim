@@ -34,9 +34,10 @@ compare baseline/candidate → budgets → finite JSON → isolated child).
 | `worker_bound_enforcement` | Planned workers ≫ 1 | `worker_count=1` |
 
 Baseline and candidate return the same deterministic checksum for a fixed
-seed. Telemetry (runtime, tracemalloc, RSS, disk) is stored separately from
-counters (`read_counts`, `preprocess_calls`, `cache_hits`, `manifest_writes`,
-`fsync_calls`).
+seed. Engineering counters (`read_counts`, `preprocess_calls`, `cache_hits`,
+`manifest_writes`, `fsync_calls`, `worker_count`) are deterministic for a fixed
+seed. Advisory timing (`runtime_*`, `process_work_s`, `checkpoint_s`) and
+tracemalloc/RSS/disk live on the telemetry object, never inside `counters`.
 
 ## Schema
 
