@@ -251,7 +251,7 @@ def test_local_root_exclusion_uses_filesystem_resolved_path(tmp_path: Path) -> N
     else:
         # On a case-sensitive filesystem the wrong-case declaration must not
         # be treated as an alias for the real directory.
-        assert any(item["code"] == "missing_source_root" for item in report["findings"])
+        assert any(item["code"] == "source_root_unverifiable" for item in report["findings"])
 
 
 def test_ledger_cross_cycle_parent_reference_resolves_only_with_declared_ancestor(tmp_path: Path) -> None:
