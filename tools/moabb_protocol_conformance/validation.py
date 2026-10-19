@@ -54,6 +54,8 @@ def validate_protocol_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
         violations.append("exclusions_must_be_list")
 
     dataset = manifest.get("dataset") or {}
+    for issue in dataset.get("metadata_issues") or []:
+        violations.append(f"invalid_dataset_metadata:{issue}")
     if not (dataset.get("dataset_identifier") or {}).get("value"):
         violations.append("missing_dataset_identifier")
 

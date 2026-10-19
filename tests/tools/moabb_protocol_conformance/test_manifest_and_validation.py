@@ -354,12 +354,27 @@ def test_infinite_sampling_rate_is_not_verified(value):
     fields = extract_dataset_fields({"source_dataset_id": "synthetic", "sampling_rate_hz": value})
     assert fields["sampling"]["sampling_rate_hz"] is None
     assert fields["sampling"]["trust"] == "unknown"
+    assert "invalid_sampling_rate_hz" in fields["metadata_issues"]
 
 
 def test_fractional_count_is_not_silently_truncated():
     fields = extract_dataset_fields({"source_dataset_id": "synthetic", "subject_count": 2.5})
     assert fields["subjects"]["count"] is None
     assert fields["subjects"]["trust"] == "unknown"
+    assert "invalid_subject_count" in fields["metadata_issues"]
+
+
+def test_malformed_declared_metadata_prevents_conforming_status():
+    candidate = {
+        "source_dataset_id": "synthetic-metadata-only",
+        "task_labels": ["imagery"],
+        "modalities": ["EEG"],
+        "condition_labels": ["left", "right"],
+        "subject_count": 2.5,
+    }
+    result = build_from_candidate_dict(candidate, _protocol()).to_dict()
+    assert result["conformance"]["status"] != ConformanceStatus.CONFORMING.value
+    assert "invalid_dataset_metadata:invalid_subject_count" in result["conformance"]["violations"]
 
 
 def test_boolean_sampling_rate_is_not_coerced_to_one_hertz():

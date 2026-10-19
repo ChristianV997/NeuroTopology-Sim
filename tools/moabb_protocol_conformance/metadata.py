@@ -44,6 +44,7 @@ def _trust(present: bool, *, conflicting: bool = False) -> str:
 
 def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
     """Normalize a DatasetCandidateRecordV1 dict or fixture entry."""
+    metadata_issues: List[str] = []
     # Candidate record shape
     dataset_id = _as_optional_str(
         source.get("source_dataset_id") or source.get("code") or source.get("dataset_id")
@@ -66,9 +67,18 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
         condition_labels = sorted(str(k) for k in source["event_id"].keys())
     condition_labels = [str(c) for c in condition_labels if str(c).strip()]
 
-    subject_count = _as_optional_int(source.get("subject_count"))
-    session_count = _as_optional_int(source.get("session_count") or source.get("n_sessions"))
-    channel_count = _as_optional_int(source.get("channel_count") or source.get("n_channels"))
+    count_inputs = {
+        "subject_count": source.get("subject_count"),
+        "session_count": source.get("session_count") if source.get("session_count") is not None else source.get("n_sessions"),
+        "channel_count": source.get("channel_count") if source.get("channel_count") is not None else source.get("n_channels"),
+    }
+    normalized_counts = {key: _as_optional_int(value) for key, value in count_inputs.items()}
+    for key, value in count_inputs.items():
+        if value is not None and normalized_counts[key] is None:
+            metadata_issues.append(f"invalid_{key}")
+    subject_count = normalized_counts["subject_count"]
+    session_count = normalized_counts["session_count"]
+    channel_count = normalized_counts["channel_count"]
     channels = source.get("channels")
     if channels is not None and not isinstance(channels, list):
         channels = None
@@ -82,9 +92,10 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
                 raise ValueError("boolean is not a sampling rate")
             sampling_rate_hz = float(sampling_rate_hz)
             if not math.isfinite(sampling_rate_hz) or sampling_rate_hz <= 0:
-                sampling_rate_hz = None
+                raise ValueError("sampling rate must be finite and positive")
         except (TypeError, ValueError):
             sampling_rate_hz = None
+            metadata_issues.append("invalid_sampling_rate_hz")
 
     license_value = _as_optional_str(source.get("license")) or "unknown"
     access_status = _as_optional_str(source.get("access_status")) or "unknown"
@@ -167,6 +178,7 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
         "candidate_id": _as_optional_str(source.get("candidate_id")),
         "source_catalog": _as_optional_str(source.get("source_catalog")) or "moabb",
         "provenance": _as_optional_str(source.get("provenance")),
+        "metadata_issues": metadata_issues,
     }
 
 
