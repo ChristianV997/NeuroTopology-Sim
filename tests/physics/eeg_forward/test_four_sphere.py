@@ -779,6 +779,26 @@ def test_cached_transfer_table_matches_a_fresh_computation():
     assert fresh.diagnostics == cached.diagnostics
 
 
+# --- P_10 nodal regression: a vanishing term cannot certify convergence ----------------------
+
+def test_p10_roots_agree_with_numpy_legroots():
+    roots = _legendre_roots_bracketed(10)
+    reference = np.sort(np.polynomial.legendre.legroots(np.eye(11)[10]).real)
+    np.testing.assert_allclose(roots, reference, rtol=0.0, atol=1e-12)
+
+
+def test_zero_nodal_term_cannot_establish_a_small_tail():
+    # At each root of P_10, a radial dipole's degree-10 term is exactly zero at the sensor. A rule that
+    # accepted convergence from one vanishing term would accept here. The tail is large at L = 16, so the
+    # gate must refuse.
+    roots = _legendre_roots_bracketed(10)
+    sensors = R4 * np.column_stack([np.sqrt(1.0 - roots**2), np.zeros(10), roots])
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    with pytest.raises(FourSphereQualityError, match="truncation tail"):
+        forward_potentials(geometry, np.array([0.0, 0.0, 0.87 * RADII[0]]), [0.0, 0.0, 1e-8], sensors,
+                           max_degree=16)
+
+
 # --- Oracle cross-check -----------------------------------------------------------
 
 @pytest.mark.skip(reason=(

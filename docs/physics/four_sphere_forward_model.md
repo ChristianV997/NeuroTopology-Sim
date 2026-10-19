@@ -10,7 +10,7 @@ data, EEG datasets, or dataset downloads.
 | Level | Status |
 |---|---|
 | Implemented | `physics/eeg_forward/four_sphere.py`, NumPy only |
-| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 113 offline tests pass, 1 skipped (the oracle test, by design; see the oracle section). Counts are from the head commit, so re-run to confirm. |
+| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 115 offline tests pass, 1 skipped (the oracle test, by design; see the oracle section). Counts are from the head commit, so re-run to confirm. |
 | Cross-checked against an independent oracle | Done out of tree, against the Hermes Agent A oracle on PR #409 (branch `batch1/hermes-a-shell-bvp-oracle`). Agreement at round-off. Not imported into the repository |
 | Integration-tested | Not applicable. No pipeline or CLI consumes this module |
 | Live-validated | **No.** No recording, no measured potential, no published benchmark was used |
