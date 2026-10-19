@@ -5,7 +5,13 @@ import json
 import logging
 from collections.abc import Mapping
 
-from shared.bids_inventory_audit import audit_inventory, parse_bids_relpath, parse_participants_tsv
+from shared.bids_inventory_audit import (
+    audit_inventory,
+    metadata_evidence,
+    parse_bids_relpath,
+    parse_participants_tsv,
+    reconcile_license,
+)
 
 
 def test_default_audit_json_omits_ids_paths_and_file_to_subject_mappings(caplog, capsys):
@@ -75,6 +81,52 @@ def test_identifier_like_filename_extension_is_rejected_without_echoing():
 
     report = audit_inventory(participants_tsv=None, file_paths=[path])
     assert marker not in json.dumps(report, sort_keys=True, allow_nan=False)
+
+
+def test_public_license_helpers_do_not_echo_untrusted_source_or_evidence_text():
+    marker = "sub-LicensePrivacyMarker72"
+    metadata = metadata_evidence({"license": "CC-BY-4.0"}, source=marker)
+    reconciled = reconcile_license([{
+        "source": marker,
+        "status": "RECOGNIZED",
+        "tokens": ["CC-BY-4.0", marker],
+        "note": marker,
+    }])
+
+    rendered = json.dumps([metadata, reconciled], sort_keys=True, allow_nan=False)
+    assert marker not in rendered
+    assert metadata["source"] == "unspecified"
+    assert reconciled["state"] == "UNRESOLVED"
+    assert reconciled["sources"] == [{
+        "source": "unspecified", "status": "NOT_TEXT", "tokens": [],
+    }]
+
+
+def test_public_license_helpers_redact_caller_exception_text():
+    marker = "sub-LicenseErrorMarker73"
+
+    class BrokenMetadata(Mapping):
+        def __getitem__(self, key):
+            raise ValueError(marker)
+
+        def __iter__(self):
+            return iter(("license",))
+
+        def __len__(self):
+            return 1
+
+    metadata = metadata_evidence(BrokenMetadata())
+    assert metadata["status"] == "NOT_TEXT"
+    assert marker not in repr(metadata)
+
+    class BrokenEvidence:
+        def __iter__(self):
+            raise ValueError(marker)
+
+    reconciled = reconcile_license(BrokenEvidence())
+    rendered = json.dumps(reconciled, sort_keys=True, allow_nan=False)
+    assert reconciled["state"] == "UNRESOLVED"
+    assert marker not in rendered
 
 
 def test_unreadable_caller_iterable_returns_generic_error_without_echoing_exception(caplog):

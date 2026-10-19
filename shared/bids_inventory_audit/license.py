@@ -20,10 +20,69 @@ _TOKEN_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 _LICENSE_WORD = re.compile(r"licen[cs]", re.IGNORECASE)
 LICENSE_FIELD_NAMES: tuple[str, ...] = ("License", "license", "Licence", "licence")
+_EVIDENCE_SOURCES = frozenset({
+    "readme", "metadata", "nemar_metadata", "dataset_description", "catalog_metadata",
+})
+_EVIDENCE_STATUSES = frozenset({
+    "NOT_PROVIDED", "NOT_TEXT", "NO_LICENSE_STATEMENT", "NO_LICENSE_FIELD",
+    "UNRECOGNIZED_LICENSE_TEXT", "CONFLICT_WITHIN_SOURCE", "RECOGNIZED",
+})
+_LICENSE_TOKENS = frozenset(token for _, token in _TOKEN_PATTERNS)
 
 
 def tokens_in(text: str) -> set[str]:
     return {token for pattern, token in _TOKEN_PATTERNS if pattern.search(text)}
+
+
+def _safe_source(source: Any) -> str:
+    """Keep only fixed package labels; caller text must not enter report fields."""
+    if type(source) is str and source in _EVIDENCE_SOURCES:
+        return source
+    return "unspecified"
+
+
+def _invalid_evidence() -> dict[str, Any]:
+    return {"source": "unspecified", "status": "NOT_TEXT", "tokens": []}
+
+
+def _normalize_evidence(evidence: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Copy only known license evidence fields and values into the public report."""
+    try:
+        supplied = list(evidence)
+    except Exception:
+        return [_invalid_evidence()]
+
+    normalized: list[dict[str, Any]] = []
+    for item in supplied:
+        try:
+            if not isinstance(item, Mapping):
+                normalized.append(_invalid_evidence())
+                continue
+            source = item["source"]
+            status = item["status"]
+            tokens = item["tokens"]
+        except Exception:
+            normalized.append(_invalid_evidence())
+            continue
+
+        if (type(source) is not str or source not in _EVIDENCE_SOURCES
+                or type(status) is not str or status not in _EVIDENCE_STATUSES
+                or type(tokens) not in (list, tuple)
+                or any(type(token) is not str or token not in _LICENSE_TOKENS for token in tokens)):
+            normalized.append(_invalid_evidence())
+            continue
+
+        clean_tokens = sorted(set(tokens))
+        valid_shape = (
+            (status == "RECOGNIZED" and len(clean_tokens) == 1)
+            or (status == "CONFLICT_WITHIN_SOURCE" and len(clean_tokens) > 1)
+            or (status not in ("RECOGNIZED", "CONFLICT_WITHIN_SOURCE") and not clean_tokens)
+        )
+        if not valid_shape:
+            normalized.append(_invalid_evidence())
+            continue
+        normalized.append({"source": source, "status": status, "tokens": clean_tokens})
+    return normalized
 
 
 def readme_evidence(text: Optional[str]) -> dict[str, Any]:
@@ -50,28 +109,33 @@ def metadata_evidence(metadata: Optional[Mapping[str, Any]], source: str = "meta
 
     ``source`` names the record the mapping came from, so a disagreement can be traced back to it.
     """
+    safe_source = _safe_source(source)
     if metadata is None:
-        return {"source": source, "status": "NOT_PROVIDED", "tokens": []}
+        return {"source": safe_source, "status": "NOT_PROVIDED", "tokens": []}
     if not isinstance(metadata, Mapping):
-        return {"source": source, "status": "NOT_TEXT", "tokens": []}
-    present = [name for name in LICENSE_FIELD_NAMES if name in metadata]
-    if not present:
-        return {"source": source, "status": "NO_LICENSE_FIELD", "tokens": []}
-    if not all(isinstance(metadata[name], str) for name in present):
-        return {"source": source, "status": "NOT_TEXT", "tokens": []}
+        return {"source": safe_source, "status": "NOT_TEXT", "tokens": []}
+    try:
+        present = [name for name in LICENSE_FIELD_NAMES if name in metadata]
+        if not present:
+            return {"source": safe_source, "status": "NO_LICENSE_FIELD", "tokens": []}
+        values = [metadata[name] for name in present]
+    except Exception:
+        return {"source": safe_source, "status": "NOT_TEXT", "tokens": []}
+    if not all(type(value) is str for value in values):
+        return {"source": safe_source, "status": "NOT_TEXT", "tokens": []}
     tokens: set[str] = set()
-    for name in present:
-        tokens |= tokens_in(metadata[name])
+    for value in values:
+        tokens |= tokens_in(value)
     if not tokens:
-        return {"source": source, "status": "UNRECOGNIZED_LICENSE_TEXT", "tokens": []}
+        return {"source": safe_source, "status": "UNRECOGNIZED_LICENSE_TEXT", "tokens": []}
     if len(tokens) > 1:
-        return {"source": source, "status": "CONFLICT_WITHIN_SOURCE", "tokens": sorted(tokens)}
-    return {"source": source, "status": "RECOGNIZED", "tokens": sorted(tokens)}
+        return {"source": safe_source, "status": "CONFLICT_WITHIN_SOURCE", "tokens": sorted(tokens)}
+    return {"source": safe_source, "status": "RECOGNIZED", "tokens": sorted(tokens)}
 
 
 def reconcile_license(evidence: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Summarize source evidence without choosing between sources."""
-    sources = list(evidence)
+    sources = _normalize_evidence(evidence)
     provided = [item for item in sources if item["status"] != "NOT_PROVIDED"]
     all_tokens = sorted({token for item in provided for token in item["tokens"]})
     unresolved = [item for item in provided if item["status"] != "RECOGNIZED"]

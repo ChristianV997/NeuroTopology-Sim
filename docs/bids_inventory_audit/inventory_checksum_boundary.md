@@ -116,10 +116,14 @@ File-level task presence is not analysis or completion evidence. `tasks.completi
 ## License evidence
 
 Four sources are read: a README's license lines, the NEMAR-style metadata mapping, a `dataset_description`
-mapping, and a catalog metadata mapping. Each is read only from its license field, which is `License` or
-`license`. Only a closed set of tokens is recognized (`CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`). Anything
-else stays unrecognized. Every source is reported with its name, and `sources_by_token` lists which
-sources name each token, so a disagreement can be traced without being resolved.
+mapping, and a catalog metadata mapping. Metadata is read only from `License`, `license`, `Licence`, or
+`licence`. Only a closed set of tokens is recognized (`CC0-1.0`, `CC-BY-4.0`, `CC-BY-SA-4.0`). Anything
+else stays unrecognized. Reports retain only the package's fixed source labels and recognized token
+values. The public reconciliation helper drops extra caller-supplied fields and converts malformed or
+unknown source evidence to a generic `unspecified` / `NOT_TEXT` record; it does not echo arbitrary
+labels or exception text. `sources_by_token` lists which recognized sources name each token, so a
+disagreement can be traced without being resolved. These labels and tokens remain caller-supplied
+assertions, not verified source provenance or a legal determination.
 
 | State | Meaning |
 |---|---|
