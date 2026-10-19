@@ -62,22 +62,58 @@ python -m pytest tests/neurotopology_sim/experimental/preprocessing/test_spheric
 
 Antigravity Agent C owns independent parity tests/fixtures (PR #419;
 `tests/experimental/test_spherical_csd_parity.py`). Do not edit that lane.
-Local cross-check against their pinned MNE 1.13.2 full-matrix fixtures
-(tetrahedron_4, octahedron_6, asymmetric_cap_8, synthetic_cap_12):
 
-| Check | Result |
-|---|---|
-| Production vs #419 fixtures | PASS at rtol/atol `1e-9` (actual rel ≤ ~3e-13) |
-| Production vs #419 NumPy oracle | rel ≤ ~8e-14 |
-| `M @ 1` null | ≤ ~1e-10 on those montages |
-| `1/R²` scaling / permutation | covered in owned tests |
+### Transform (from this implementation)
 
-Optional live-MNE full-matrix parity skips when MNE is not installed (this
-lane does not install optional EEG deps).
+With unit vectors \(u_i\) after subtracting sphere center, cosine matrix
+\(X=uu^\top\), Legendre kernels \(G=g_m(X)\), \(H=h_m(X)\) (MNE `_calc_g` /
+`_calc_h`, stiffness \(m\), truncation \(N\)):
 
-### CI note
+1. \(G_{\mathrm{reg}}=G+\lambda^2 I\) (diagonal add, MNE `_prepare_G`)
+2. \(G_i=G_{\mathrm{reg}}^{-1}\), \(t_c=\mathbf{1}^\top G_i\), \(s_{gi}=\mathbf{1}^\top G_i\mathbf{1}\)
+3. \(Z=I-\frac{1}{n}\mathbf{1}\mathbf{1}^\top\), \(C=G_i Z - t_c^\top\otimes(\mathrm{sum}(G_i Z)/s_{gi})\)
+4. \(M=(C^\top H)^\top / R^2\)
 
-Required `core-tests` uses an explicit allowlist and does **not** currently
-include `tests/neurotopology_sim/**` or `tests/experimental/**`. Editing
-`.github/workflows` is outside this PR’s ownership. Until a separate CI
-wiring change lands, these suites are local / Antigravity-lane evidence only.
+Positions and \(R\) are meters; for volt inputs, \(M\) maps to **V/m²**.
+Radius scaling: \(M\propto 1/R^2\) (verified exact for \(R\to 2R\) on the
+octahedron). This is a sensor-space transform — not inverse localization and
+not a claim that volume conduction is eliminated.
+
+### Full-matrix conformance vs #419 @ `fa8f0f7`
+
+Fixture provenance (from #419 JSON): identity \(X=I_N\) through **live**
+MNE-Python 1.13.2 `compute_current_source_density` (BSD-3-Clause). Montages:
+tetrahedron_4, octahedron_6, asymmetric_cap_8, synthetic_cap_12, **cap_20**,
+**cap_64**.
+
+| Montage | prod vs fixture rel Frobenius | prod gate `1e-9` |
+|---|---|---|
+| tetrahedron_4 | 1.16e-14 | PASS |
+| octahedron_6 | 3.19e-16 | PASS |
+| asymmetric_cap_8 | 5.72e-14 | PASS |
+| synthetic_cap_12 | 3.24e-13 | PASS |
+| cap_20 | 1.88e-13 | PASS |
+| cap_64 | 1.35e-12 | PASS |
+
+Also: `‖M@1‖_∞` ≤ ~5e-10 (cap_64); channel-permutation rel ≤ ~1e-12; `1/R²`
+exact. Malformed NaN/Inf/zero/coincident/bad-radius → `SphericalCSDError`.
+
+### Diagnosis of #419 suite failures (not production)
+
+Combined worktree (`#414` @ `241b078` + `#419` @ `fa8f0f7`, merge-base
+`19c3203`) reports oracle↔fixture fails at **rtol/atol `1e-12`**. Root cause:
+float64 `inv(G_reg)` is only symmetric to ~1e-9; MNE uses `Gi.sum(0)` while
+the #419 oracle uses `Gi@1`, and entrywise residuals vs saved MNE matrices
+reach ~1e-10 abs / ~1e-12 rel Frobenius — **below** the production gate
+(`1e-9`) but **above** the oracle’s `1e-12` gate. Production is not the
+mismatching side. Do not relax #419 tolerances from this lane; report to
+Antigravity with this numerical justification.
+
+Optional live-MNE parity in owned tests skips when MNE is not installed (no
+unauthorized install).
+
+### CI note (workflow owner)
+
+Required `core-tests` allowlist in `.github/workflows/required-checks.yml`
+does **not** include `tests/neurotopology_sim/**` or `tests/experimental/**`.
+CI discovery gap — not edited here.

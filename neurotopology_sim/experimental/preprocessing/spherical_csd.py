@@ -37,8 +37,15 @@ Average-reference constraint
 ----------------------------
 Matches the pinned MNE path: the RHS is column-centered
 (``Z = I - mean``) and coefficient columns are corrected so that
-``1^T c = 0`` via the projection form in ``_prepare_G`` / ``_compute_csd``.
-The resulting transform annihilates constant potentials (null-vector check).
+``1^T c = 0`` via the projection form in ``_prepare_G`` / ``_compute_csd``
+(``TC = Gi.sum(0)``, not a separate ``Gi @ 1`` path). The resulting
+transform annihilates constant potentials (null-vector check).
+
+Float64 note: ``inv(G+λ²I)`` is only symmetric to roughly 1e-9 on larger
+montages, so entrywise residuals versus a live-MNE identity-matrix fixture
+can sit near 1e-12 relative Frobenius without indicating an algorithmic
+mismatch. Production parity gates should use tolerances justified by that
+conditioning (e.g. 1e-9), not assume bitwise identity.
 
 Relationship to ``adapters/mne_csd``
 -----------------------------------
