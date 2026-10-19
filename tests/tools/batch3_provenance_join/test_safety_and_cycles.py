@@ -4,6 +4,7 @@ import ast
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +27,41 @@ def test_path_traversal_is_rejected(tmp_path: Path) -> None:
 
     assert report["status"] == "INVALID"
     assert "unsafe_or_missing_reference" in _codes(report)
+
+
+def test_windows_reparse_point_is_detected_without_pathlib_junction_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LegacyWindowsPath:
+        # Python versions before 3.12 do not expose Path.is_junction().
+        is_junction = None
+
+        def __init__(self, info: SimpleNamespace) -> None:
+            self.info = info
+
+        def lstat(self) -> SimpleNamespace:
+            return self.info
+
+    monkeypatch.setattr(
+        provenance_auditor.stat,
+        "FILE_ATTRIBUTE_REPARSE_POINT",
+        0x400,
+        raising=False,
+    )
+
+    for info in (
+        SimpleNamespace(
+            st_mode=provenance_auditor.stat.S_IFDIR,
+            st_file_attributes=0x400,
+            st_reparse_tag=0,
+        ),
+        SimpleNamespace(
+            st_mode=provenance_auditor.stat.S_IFDIR,
+            st_file_attributes=0,
+            st_reparse_tag=0xA0000003,
+        ),
+    ):
+        assert provenance_auditor._is_link(LegacyWindowsPath(info))
 
 
 def test_absolute_embedded_artifact_reference_is_rejected(tmp_path: Path) -> None:

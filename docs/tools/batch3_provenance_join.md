@@ -63,9 +63,12 @@ unchanged. Redirect the report only to a destination outside the audited root.
   as unsupported rather than joined. Unknown or malformed typed references are
   reported; they are not silently reinterpreted.
 - Unknown or non-join-classifiable present `origin`, `data_mode`,
-  `artifact_type`, ledger record type, or document schema values are emitted as structured `unverifiable_*`
-  findings with a JSON-pointer source location, including null values and
-  nested fields. Current-main artifact schemas do not define `artifact_type`,
+  `artifact_type`, ledger record type, or document schema values are emitted as
+  structured `unverifiable_*` findings. Recursively traversed fields use RFC
+  6901 JSON Pointer locations; unknown ledger record types identify the record
+  index, and unknown document schemas identify the input document. Null values
+  and nested fields are retained rather than silently omitted. Current-main
+  artifact schemas do not define `artifact_type`,
   so any such field is reported as unverifiable. The source-manifest schema's
   `external_solver` and `unavailable` origins are recognized labels but are
   not mapped to synthetic/empirical comparison classes. `UNVERIFIABLE` is never a
@@ -100,13 +103,14 @@ Default limits are 2 MiB per input manifest or referenced JSON record, 64 MiB
 per referenced artifact, 256 MiB total bytes read/hashed, 10,000 regular files,
 and 50,000 filesystem entries encountered during root inventory (including
 directories and special entries). Directory enumeration stops at the entry
-limit without retaining a partial inventory. Symlinks, junctions, absolute
-paths in embedded references, traversal, and references outside the root are
-rejected. Explicit CLI input
-manifests may be absolute only when they resolve beneath the supplied artifact
-root. JSON duplicate keys and non-finite values are rejected. Artifact hashing
-is streamed in 1 MiB blocks. A declared `local_root` source subtree is
-recognized as input and not recursively read or inventoried.
+limit without retaining a partial inventory. Symlinks, detectable Windows
+reparse points (including junctions, using reparse metadata where exposed),
+absolute paths in embedded references, traversal, and references outside the
+root are rejected. Explicit CLI input manifests may be absolute only when they
+resolve beneath the supplied artifact root. JSON duplicate keys and non-finite
+values are rejected. Artifact hashing is streamed in 1 MiB blocks. A declared
+`local_root` source subtree is recognized as input and not recursively read or
+inventoried.
 
 On platforms exposing `O_NOFOLLOW`, file opens reject a final-component symlink
 at open time, in addition to pre/post `lstat` and descriptor `fstat` identity

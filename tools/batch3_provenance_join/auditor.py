@@ -144,10 +144,27 @@ def _reject_constant(token: str) -> Any:
 
 
 def _is_link(path: Path) -> bool:
-    if path.is_symlink():
+    """Detect symlinks and Windows reparse points across supported runtimes."""
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    reparse_attribute = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(info, "st_file_attributes", 0)
+    if (
+        (reparse_attribute and file_attributes & reparse_attribute)
+        or getattr(info, "st_reparse_tag", 0)
+    ):
         return True
     junction_check = getattr(path, "is_junction", None)
-    return bool(junction_check()) if callable(junction_check) else False
+    if not callable(junction_check):
+        return False
+    try:
+        return bool(junction_check())
+    except OSError:
+        return False
 
 
 def _root_path(value: str | Path) -> Path:
