@@ -253,14 +253,45 @@ class Round6DiscoveryTests(unittest.TestCase):
             "--pytest-arg=--junitxml=outputs/docker_context_engine_test_report.junit.xml",
             job,
         )
-        self.assertIn('helper["_isolated_runner_report_is_valid"]', job)
-        self.assertIn('helper["junit_details"]', job)
-        self.assertIn("JUnit must contain passing tests only", job)
+        self.assertIn('helper["validate_docker_engine_test_artifacts"]', job)
         self.assertIn("Upload Docker-context diagnostics", job)
         self.assertLess(
             job.index("git diff --name-only"),
             job.index("git merge-base --is-ancestor"),
         )
+
+    def test_docker_engine_artifact_validator_reconciles_junit_and_runner_totals(self):
+        helper = _helper()
+        test_file = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            telemetry_path = root / "runner.json"
+            junit_path = root / "runner.junit.xml"
+            telemetry_path.write_text(_valid_telemetry(test_file), encoding="utf-8")
+            junit_path.write_text(
+                '<testsuite tests="1" skipped="0" failures="0" errors="0">'
+                "<testcase /></testsuite>",
+                encoding="utf-8",
+            )
+
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                telemetry_path, junit_path, test_file
+            )
+            self.assertTrue(valid, error)
+            self.assertEqual(total, 1)
+
+            junit_path.write_text(
+                '<testsuite tests="2" skipped="0" failures="0" errors="0">'
+                "<testcase /></testsuite>",
+                encoding="utf-8",
+            )
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                telemetry_path, junit_path, test_file
+            )
+
+        self.assertFalse(valid)
+        self.assertIn("JUnit test total does not match", error)
+        self.assertEqual(total, 0)
 
     def test_contained_artifact_reads_are_size_bounded(self):
         helper = _helper()
