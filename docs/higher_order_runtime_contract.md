@@ -41,7 +41,8 @@ other paths and was left untouched.
 | Warm-up / overlap | Default tumbling (`stride = chunk_size`). Overlap mode uses explicit `stride < chunk_size`; warm-up = `chunk_size - stride`. |
 | End-of-stream | Non-overlap: uneven final allowed iff `allow_uneven_final`. Overlap: partial final window is **not** padded. Spectral segments already drop incomplete tails (no implicit zero-pad). |
 | State reset | `StreamSession.reset(run_id)` clears accumulators. Updating with a different `run_id` without reset fails closed. |
-| Shape drift | Channel-count changes mid-stream raise `ShapeContractError`. |
+| Shape drift | Channel-count changes mid-stream raise `ShapeContractError`. Chunks must be 2-D `(samples, channels)`. Column *identity* / permutation is caller-owned (not fingerprint-checked). |
+| Tumbling alias | `ChunkingPolicy(chunk_size)` (`stride is None`) ≡ `stride == chunk_size`. |
 | Batch ↔ stream parity | Rolling covariance matches `np.cov(..., ddof=1)` within declared `atol`/`rtol` across chunk sizes (engineering parity only). |
 | Memory | `deterministic_accumulator_bytes(C)` is an O(C²) accumulator-size check, not an RSS/speed claim. |
 

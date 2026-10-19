@@ -92,3 +92,29 @@ def test_spectral_incomplete_tail_dropped_not_padded():
 def test_oversize_chunk_policy_rejected(signal, bounds):
     with pytest.raises(ChunkBoundError, match="exceeds max_chunk_samples"):
         list(iter_contract_windows(signal, ChunkingPolicy(chunk_size=65), bounds))
+
+
+def test_stride_none_matches_explicit_nonoverlap(signal, bounds):
+    """Regression: ``stride is None`` must equal ``stride == chunk_size`` tumbling."""
+    tumbling = list(iter_contract_windows(signal, ChunkingPolicy(chunk_size=8), bounds))
+    explicit = list(
+        iter_contract_windows(signal, ChunkingPolicy(chunk_size=8, stride=8), bounds)
+    )
+    assert [(w[2], w[3], w[0].shape) for w in tumbling] == [
+        (w[2], w[3], w[0].shape) for w in explicit
+    ]
+    np.testing.assert_array_equal(tumbling[0][0], explicit[0][0])
+
+
+def test_overlap_remainder_not_emitted_even_when_uneven_final_allowed(signal):
+    """Overlap mode must not emit a short final window even if uneven finals are on."""
+    bounds = StreamBounds(max_chunk_samples=64, max_channels=8, allow_uneven_final=True)
+    policy = ChunkingPolicy(chunk_size=16, stride=10)
+    windows = list(iter_contract_windows(signal, policy, bounds))
+    assert windows
+    assert all(w[0].shape[0] == 16 for w in windows)
+    assert windows[-1][3] < signal.shape[0] or windows[-1][3] == signal.shape[0]
+    # If a remainder exists below chunk_size, it was dropped (not padded).
+    remainder = signal.shape[0] - windows[-1][3]
+    if remainder:
+        assert remainder < policy.chunk_size

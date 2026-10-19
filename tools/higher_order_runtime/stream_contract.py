@@ -38,7 +38,10 @@ class TimelineContractError(StreamContractError):
 
 
 class ShapeContractError(StreamContractError):
-    """Raised when channel count/order assumptions are violated mid-stream."""
+    """Raised when channel count or 2-D (samples, channels) layout is violated.
+
+    Column identity / permutation is caller-owned and is not fingerprint-checked.
+    """
 
 
 class EmptyInputError(StreamContractError):
