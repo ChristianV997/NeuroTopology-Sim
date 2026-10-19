@@ -15,6 +15,17 @@ sys.modules[_spec.name] = _mod
 _spec.loader.exec_module(_mod)
 build_evidence_packet = _mod.build_evidence_packet
 
+
+@pytest.fixture(autouse=True)
+def _isolate_default_ontology_root(tmp_path, monkeypatch):
+    """Keep omitted ontology roots inside a missing temporary fixture path."""
+    monkeypatch.setattr(
+        _mod,
+        "_DEFAULT_ONTOLOGY_ROOT",
+        str(tmp_path / "missing-ontology-fixture"),
+    )
+
+
 _BANNED = [
     "proves consciousness", "consciousness proven", "soul proven",
     "afterlife proven", "liberation detected", "ontology solved",
@@ -191,6 +202,20 @@ def test_evidence_packet_created(tmp_path):
     assert _artifact_path(tmp_path / "out", artifacts, "evidence_packet.json").exists()
     assert _artifact_path(tmp_path / "out", artifacts, "evidence_packet.md").exists()
     assert _artifact_path(tmp_path / "out", artifacts, "notion_import_payload.json").exists()
+
+
+def test_implicit_ontology_root_is_confined_to_temporary_fixture(tmp_path, monkeypatch):
+    manifest_path = _setup_manifest(tmp_path)
+    observed_roots = []
+
+    def observe_ontology_root(root):
+        observed_roots.append(Path(root))
+        return {"ontology_available": False}
+
+    monkeypatch.setattr(_mod, "summarize_ontology_for_packet", observe_ontology_root)
+    build_evidence_packet(str(manifest_path), str(tmp_path / "out"))
+
+    assert observed_roots == [tmp_path / "missing-ontology-fixture"]
 
 
 def test_evidence_packet_payload_is_deterministic_except_generated_at(tmp_path):

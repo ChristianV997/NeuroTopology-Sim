@@ -4,6 +4,21 @@ The exporter creates engineering evidence-packet files from explicitly supplied
 local artifact and metadata roots. It does not download data, execute a solver,
 or establish that a dataset or cohort is authorized for use.
 
+Its filesystem reads are fixed-path and non-recursive: it reads the supplied
+artifact manifest, then `ds005620_real_benchmark_execution.json` and
+`omega_event.json` under the manifest's declared `artifact_root` (or beside the
+manifest when that field is absent). When `metadata_root` is supplied, it reads
+the fixed metadata names `participants.tsv`, `dataset_description.json`,
+`README.txt`/`README.md`/`README`, `nemar_metadata.json`, and
+`published_counts.json`, plus `file_inventory.json` and `preregistered_plan.json`
+when present. The ontology root (the API argument or CLI option, defaulting to
+`outputs/btc_icft/ds005620_ontology_evaluation_mock` when omitted) is read through
+the fixed `ontology_claim_evaluation.json`,
+`ontology_promotion_decision.json`, and `bridge_claim_status.json` contract
+files. The exporter does not enumerate directories or open EEG/signal payloads
+or other dataset files. These are local filesystem reads only; they are not
+dataset acquisition or source verification.
+
 ## Data minimization
 
 `participants.tsv` identifiers are processed transiently for duplicate checks and
