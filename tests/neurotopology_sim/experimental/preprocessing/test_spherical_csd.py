@@ -273,13 +273,15 @@ def test_offline_mne_pin_fixture_is_ci_authoritative_gate():
     meta_path = FIXTURE_DIR / "tetrahedron_csd_matrix_mne_1_13_2.json"
     assert matrix_path.is_file(), "missing recorded MNE 1.13.2 full-matrix fixture"
     assert meta_path.is_file(), "missing recorded MNE 1.13.2 fixture metadata"
-    gen = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    gen = meta["generation"]
     assert gen["mne_pin_version"] == MNE_PIN["version"] == "1.13.2"
     assert gen["mne_pin_commit"] == MNE_PIN["commit"]
+    assert gen.get("generated_by_candidate") is False
     # Production transform must still match the recorded pin fixture.
     pos = np.asarray(gen["positions_m"], dtype=float)
-    names = list(gen["channel_names"])
-    sphere = tuple(gen["sphere_xyzr_m"])
+    names = tuple(gen["channel_names"])
+    sphere = tuple(float(x) for x in gen["sphere_m"])
     result = compute_spherical_csd_transform(
         pos, SphericalCSDConfig(sphere=sphere), channel_names=names
     )
