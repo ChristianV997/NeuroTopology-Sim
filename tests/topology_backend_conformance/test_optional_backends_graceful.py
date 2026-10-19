@@ -62,9 +62,8 @@ def test_missing_backend_returns_unavailable_status() -> None:
         assert len(cmp_res.non_comparable_reasons) > 0
 
 
-@pytest.mark.skipif(not is_module_installed("ripser"), reason="ripser optional package not installed")
-def test_ripser_conformance_if_installed() -> None:
-    """If ripser is installed, it must conform to the reference engine on the unit square fixture."""
+def test_ripser_conformance_or_graceful_status() -> None:
+    """If ripser is installed, verify conformance; if absent, verify graceful unavailable report."""
     ref_adapter = ReferenceSimplicialAdapter()
     rips_adapter = RipserAdapter()
     fix = make_known_loop_fixture()
@@ -73,15 +72,21 @@ def test_ripser_conformance_if_installed() -> None:
     run_ref = ref_adapter.compute(fix.data, cfg)
     run_rips = rips_adapter.compute(fix.data, cfg)
 
-    assert run_rips.success is True
-    cmp_res = compare_conformance_runs(run_ref, run_rips, dimension=1, tolerance=1e-4)
-    assert cmp_res.status == ComparabilityStatus.COMPARABLE
-    assert cmp_res.passed_tolerance is True
+    if rips_adapter.is_available():
+        assert run_rips.success is True
+        cmp_res = compare_conformance_runs(run_ref, run_rips, dimension=1, tolerance=1e-4)
+        assert cmp_res.status == ComparabilityStatus.COMPARABLE
+        assert cmp_res.passed_tolerance is True
+    else:
+        assert run_rips.success is False
+        assert run_rips.backend_meta.is_available is False
+        cmp_res = compare_conformance_runs(run_ref, run_rips, dimension=1)
+        assert cmp_res.status == ComparabilityStatus.BACKEND_UNAVAILABLE
+        assert cmp_res.is_comparable is False
 
 
-@pytest.mark.skipif(not is_module_installed("gudhi"), reason="gudhi optional package not installed")
-def test_gudhi_rips_conformance_if_installed() -> None:
-    """If gudhi is installed, its RipsComplex must conform to the reference engine on the unit square fixture."""
+def test_gudhi_rips_conformance_or_graceful_status() -> None:
+    """If gudhi is installed, its RipsComplex must conform; if absent, verify graceful unavailable report."""
     ref_adapter = ReferenceSimplicialAdapter()
     gudhi_adapter = GudhiRipsAdapter()
     fix = make_known_loop_fixture()
@@ -90,7 +95,14 @@ def test_gudhi_rips_conformance_if_installed() -> None:
     run_ref = ref_adapter.compute(fix.data, cfg)
     run_gudhi = gudhi_adapter.compute(fix.data, cfg)
 
-    assert run_gudhi.success is True
-    cmp_res = compare_conformance_runs(run_ref, run_gudhi, dimension=1, tolerance=1e-4)
-    assert cmp_res.status == ComparabilityStatus.COMPARABLE
-    assert cmp_res.passed_tolerance is True
+    if gudhi_adapter.is_available():
+        assert run_gudhi.success is True
+        cmp_res = compare_conformance_runs(run_ref, run_gudhi, dimension=1, tolerance=1e-4)
+        assert cmp_res.status == ComparabilityStatus.COMPARABLE
+        assert cmp_res.passed_tolerance is True
+    else:
+        assert run_gudhi.success is False
+        assert run_gudhi.backend_meta.is_available is False
+        cmp_res = compare_conformance_runs(run_ref, run_gudhi, dimension=1)
+        assert cmp_res.status == ComparabilityStatus.BACKEND_UNAVAILABLE
+        assert cmp_res.is_comparable is False
