@@ -796,3 +796,29 @@ def test_scale_aware_numerical_closure():
         assert res.relative_reconstruction_error < 1e-10
         assert res.relative_energy_error < 1e-10
         assert abs(res.orthogonality_exact_coexact) / (res.energy_total + 1e-12) < 1e-10
+
+
+def test_interop_merged_phase_winding_omega_into_hodge():
+    """Compose already-merged phase_winding omega into hodge_decompose.
+
+    HOLD / SYNTHETIC_ONLY: algebraic interoperability only — not a biological
+    vortex / traveling-wave claim. Uses the production winding API on main.
+    """
+    from neurotopology_sim.experimental.topology.winding import phase_winding
+
+    d0, d1 = fixture_single_triangle()
+    # CCW unit winding → integer face charge +1; omega is the wrapped 1-cochain.
+    theta = np.array([0.0, 2.0 * np.pi / 3.0, 4.0 * np.pi / 3.0])
+    winding = phase_winding(theta, d0, d1)
+    assert winding.face_charge.dtype == np.int64
+    assert winding.face_charge.tolist() == [1]
+
+    res = hodge_decompose(winding.omega, d0, d1)
+    assert res.relative_reconstruction_error < 1e-12
+    assert abs(res.orthogonality_exact_coexact) < 1e-12
+    assert abs(res.orthogonality_exact_harmonic) < 1e-12
+    assert abs(res.orthogonality_coexact_harmonic) < 1e-12
+    # Circulation of omega equals 2π q; coexact + harmonic carry the closed part.
+    circ = float(np.asarray(d1 @ winding.omega).reshape(()))
+    assert abs(circ - 2.0 * np.pi) < 1e-12
+    assert abs(float(np.asarray(d1 @ res.exact).reshape(()))) < 1e-12
