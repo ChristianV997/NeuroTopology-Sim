@@ -35,14 +35,23 @@ def parse_args(argv=None):
     p.add_argument("--moabb-fixture", help="MOABB importer fixture JSON (datasets[])")
     p.add_argument("--protocol-json", required=True, help="Protocol field object JSON")
     p.add_argument("--output", default=None, help="Write manifest JSON here")
-    p.add_argument("--limit", type=int, default=1)
+    def positive_limit(value: str) -> int:
+        try:
+            limit = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("limit must be a positive integer") from exc
+        if limit <= 0:
+            raise argparse.ArgumentTypeError("limit must be a positive integer")
+        return limit
+
+    p.add_argument("--limit", type=positive_limit, default=1)
     return p.parse_args(argv)
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
     protocol_fields = load_json(args.protocol_json)
-    candidates = _load_candidates(args)[: max(1, args.limit)]
+    candidates = _load_candidates(args)[: args.limit]
     manifests = []
     for candidate in candidates:
         manifest = build_from_candidate_dict(candidate, protocol_fields)

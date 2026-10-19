@@ -292,6 +292,15 @@ def test_deterministic_checksum_and_serialization():
     assert sha256_hex({"a": 1, "b": [2, 3]}) == sha256_hex({"b": [2, 3], "a": 1})
 
 
+def test_manifest_is_deterministic_without_wall_clock_timestamp():
+    fields = _protocol()
+    fields.pop("created_at")
+    first = build_from_candidate_dict(_bnci_candidate().to_dict(), fields).to_json()
+    second = build_from_candidate_dict(_bnci_candidate().to_dict(), fields).to_json()
+    assert first == second
+    assert json.loads(first)["created_at"] is None
+
+
 def test_forbidden_claim_phrases_fail_validation():
     candidate = {
         "source_dataset_id": "Claims",
@@ -338,6 +347,25 @@ def test_raw_fixture_preserves_sampling_and_channels_when_supplied():
     assert fields["channels"]["count"] == 22
     assert fields["channels"]["trust"] == "verified"
     assert fields["event_label_mapping"]["source"] == "fixture_event_id"
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+def test_infinite_sampling_rate_is_not_verified(value):
+    fields = extract_dataset_fields({"source_dataset_id": "synthetic", "sampling_rate_hz": value})
+    assert fields["sampling"]["sampling_rate_hz"] is None
+    assert fields["sampling"]["trust"] == "unknown"
+
+
+def test_fractional_count_is_not_silently_truncated():
+    fields = extract_dataset_fields({"source_dataset_id": "synthetic", "subject_count": 2.5})
+    assert fields["subjects"]["count"] is None
+    assert fields["subjects"]["trust"] == "unknown"
+
+
+def test_boolean_sampling_rate_is_not_coerced_to_one_hertz():
+    fields = extract_dataset_fields({"source_dataset_id": "synthetic", "sampling_rate_hz": True})
+    assert fields["sampling"]["sampling_rate_hz"] is None
+    assert fields["sampling"]["trust"] == "unknown"
 
 
 def test_cli_conforming_and_leaky_exit_codes(tmp_path):
@@ -388,6 +416,28 @@ def test_cli_conforming_and_leaky_exit_codes(tmp_path):
     assert r_bad.returncode == 1
     bad = json.loads(out_bad.read_text(encoding="utf-8"))
     assert bad["conformance"]["status"] == "failed"
+
+
+def test_cli_rejects_nonpositive_limit():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.moabb_protocol_conformance",
+            "--moabb-fixture",
+            str(FIXTURES / "moabb_metadata_fixture.json"),
+            "--protocol-json",
+            str(FIXTURES / "protocol_conforming.json"),
+            "--limit",
+            "0",
+        ],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "limit must be a positive integer" in result.stderr
 
 
 def test_claims_block_never_asserts_benchmark_ran():

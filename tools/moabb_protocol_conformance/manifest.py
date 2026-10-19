@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from dataset_importers.candidate_record import DatasetCandidateRecordV1
@@ -63,7 +62,9 @@ def build_protocol_manifest(
 
     candidate = _candidate_to_mapping(source)
     dataset_fields = extract_dataset_fields(candidate)
-    ts = created_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # A wall-clock default makes repeated offline builds differ. Preserve a
+    # timestamp only when the caller explicitly supplies one.
+    ts = created_at
 
     protocol = {
         "protocol_version": str(protocol_version).strip(),

@@ -32,7 +32,7 @@ REA / PaperGym / AutoResearch / OpenResearch are **not** runtime dependencies.
 
 ## Manifest fields
 
-Dataset side (verified vs unknown):
+Dataset side (declared vs unknown):
 
 - dataset identifier, task/paradigm, modality
 - subjects / sessions (counts or ids only when supplied)
@@ -40,7 +40,18 @@ Dataset side (verified vs unknown):
 - event/label mapping source + labels (never invented)
 - sampling metadata (only when supplied)
 - license / access evidence (unknown preserved; conflicting blocked)
-- local availability stays `unknown` unless explicitly verified
+- local availability stays `unknown` unless explicitly supplied
+
+`trust: verified` means only that a non-empty value was explicitly supplied
+and was not found internally conflicting by this metadata check. It is not
+independent source verification. A manifest does not prove data access, data
+use rights, participant/cohort identity, or scientific validity; license and
+access values are declarations for review, not legal clearance. The tool does
+not access a MOABB dataset or verify any source catalog at runtime.
+
+Manifest output is deterministic for identical inputs when callers either
+omit `created_at` (serialized as `null`) or provide the same explicit
+timestamp. No wall-clock timestamp is silently injected.
 
 Protocol side (required):
 

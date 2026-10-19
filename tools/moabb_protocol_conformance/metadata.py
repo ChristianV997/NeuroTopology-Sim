@@ -5,6 +5,7 @@ availability. Absent values stay unknown.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Mapping, Optional
 
 from tools.moabb_protocol_conformance.schema import MetadataTrust
@@ -25,6 +26,8 @@ def _as_optional_int(value: Any) -> Optional[int]:
     if isinstance(value, bool):
         return None
     try:
+        if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
+            return None
         number = int(value)
     except (TypeError, ValueError):
         return None
@@ -75,8 +78,10 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
     sampling_rate_hz = source.get("sampling_rate_hz")
     if sampling_rate_hz is not None:
         try:
+            if isinstance(sampling_rate_hz, bool):
+                raise ValueError("boolean is not a sampling rate")
             sampling_rate_hz = float(sampling_rate_hz)
-            if sampling_rate_hz != sampling_rate_hz or sampling_rate_hz <= 0:
+            if not math.isfinite(sampling_rate_hz) or sampling_rate_hz <= 0:
                 sampling_rate_hz = None
         except (TypeError, ValueError):
             sampling_rate_hz = None
