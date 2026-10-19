@@ -111,6 +111,14 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/mne_csd_reference_audit/report.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
             {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_mne_integration_optional.py"},
         ),
+        "support_files": {
+            "tests/mne_csd_reference_audit/conftest.py": (
+                "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                "tests/mne_csd_reference_audit/test_legendre_constants.py",
+                "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+            ),
+        },
         "implementation_roots": ("neurotopology_sim/experimental/preprocessing/", "tools/mne_csd_reference_audit/"),
         "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/"),
         "candidate_test_roots": (
@@ -235,6 +243,13 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/surrogate_audit/report.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
             {"implementation": "tools/surrogate_audit/status.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
         ),
+        "support_files": {
+            "tests/surrogate_audit/fixtures.py": (
+                "tests/surrogate_audit/test_mv_fpr.py",
+                "tests/surrogate_audit/test_mv_iaaft.py",
+                "tests/surrogate_audit/test_invalid_inputs.py",
+            ),
+        },
         "implementation_roots": ("tools/surrogate_audit/",),
         "test_roots": ("tests/surrogate_audit/",),
     },
@@ -293,6 +308,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/batch3_provenance_join/auditor.py", "test": "tests/tools/batch3_provenance_join/test_audit.py"},
             {"implementation": "tools/batch3_provenance_join/models.py", "test": "tests/tools/batch3_provenance_join/test_safety_and_cycles.py"},
         ),
+        "support_files": {
+            "tests/tools/batch3_provenance_join/helpers.py": (
+                "tests/tools/batch3_provenance_join/test_audit.py",
+                "tests/tools/batch3_provenance_join/test_safety_and_cycles.py",
+            ),
+        },
         "implementation_roots": ("tools/batch3_provenance_join/",),
         "test_roots": ("tests/tools/batch3_provenance_join/",),
     },
@@ -445,6 +466,11 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
     }
+    support_paths = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("support_files", {})
+    }
+    known.update(support_paths)
     unmapped = []
     for original in changed_paths:
         path = normalize_repo_path(original)
@@ -456,14 +482,14 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         if not in_candidate_root or not path.endswith(".py") or path.rsplit("/", 1)[-1] == "__init__.py":
             continue
         is_test = path.rsplit("/", 1)[-1].startswith("test_")
-        if is_test or any(_path_in_root(path, root) for root in spec.get("implementation_roots", ())):
+        if is_test or lower in support_paths or any(_path_in_root(path, root) for root in spec.get("implementation_roots", ())):
             if lower not in known:
                 unmapped.append(path)
     return sorted(unmapped)
 
 
 def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
-    """Fail closed on Python paths in registered candidate roots with no pair."""
+    """Fail closed on candidate paths without an explicit pair/support mapping."""
     unmapped = []
     for original in changed_paths:
         path = normalize_repo_path(original)
@@ -479,6 +505,10 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
             for spec in COMPONENTS.values()
             for pair in spec.get("candidate_pairs", ())
             for candidate in (pair["implementation"], pair["test"])
+        ) or any(
+            normalize_repo_path(candidate).casefold() == path.casefold()
+            for spec in COMPONENTS.values()
+            for candidate in spec.get("support_files", {})
         )
         if belongs_to_registered_root and not mapped:
             unmapped.append(path)
@@ -509,6 +539,20 @@ def inspect_component(
     selected_pair_ids = {
         (pair["implementation"], pair["test"]) for pair in selected_pairs
     }
+    changed_support_tests = {
+        normalize_repo_path(test).casefold()
+        for support_path, mapped_tests in spec.get("support_files", {}).items()
+        if normalize_repo_path(support_path).casefold() in changes
+        for test in mapped_tests
+    }
+    selected_pairs.extend(
+        pair for pair in pairs
+        if normalize_repo_path(pair["test"]).casefold() in changed_support_tests
+        and (pair["implementation"], pair["test"]) not in selected_pair_ids
+    )
+    selected_pair_ids = {
+        (pair["implementation"], pair["test"]) for pair in selected_pairs
+    }
     selected_pairs.extend(
         pair for pair in pairs
         if normalize_repo_path(pair["implementation"]).casefold() in changed_sources
@@ -535,6 +579,41 @@ def inspect_component(
     tests = [path for path in spec["tests"] if (root / path).is_file()]
     pair_tests = [pair["test"] for pair in selected_pairs if (root / pair["test"]).is_file()]
     tests_to_run = list(dict.fromkeys(pair_tests))
+    active_support_files = {
+        support_path: mapped_tests
+        for support_path, mapped_tests in spec.get("support_files", {}).items()
+        if normalize_repo_path(support_path).casefold() in changes
+        or any(normalize_repo_path(test_path).casefold() in {normalize_repo_path(test).casefold() for test in tests_to_run}
+               for test_path in mapped_tests)
+    }
+    missing_support_files = sorted({
+        support_path for support_path in active_support_files
+        if not (root / support_path).is_file()
+    })
+    invalid_support_test_mappings = sorted({
+        test_path
+        for mapped_tests in active_support_files.values()
+        for test_path in mapped_tests
+        if (
+            test_path not in spec.get("tests", ())
+            or not (root / test_path).is_file()
+            or normalize_repo_path(test_path).casefold()
+            not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
+        )
+    } | {
+        test_path
+        for mapped_tests in spec.get("support_files", {}).values()
+        for test_path in mapped_tests
+        if (
+            test_path not in spec.get("tests", ())
+            or normalize_repo_path(test_path).casefold()
+            not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
+        )
+    })
+    selected_support_files = sorted(
+        support_path for support_path in spec.get("support_files", {})
+        if normalize_repo_path(support_path).casefold() in changes
+    )
     implementations = sorted({
         pair["implementation"] for pair in selected_pairs
         if (root / pair["implementation"]).is_file()
@@ -544,6 +623,10 @@ def inspect_component(
         blockers.append("required candidate implementation is absent")
     if missing_required_tests:
         blockers.append("required candidate test is absent")
+    if missing_support_files:
+        blockers.append("required candidate test support file is absent")
+    if invalid_support_test_mappings:
+        blockers.append("candidate test support mapping is invalid or mapped test is absent")
     if unmapped:
         blockers.append("changed candidate source/test path has no explicit implementation-test mapping")
     if not selected_pairs:
@@ -554,12 +637,15 @@ def inspect_component(
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        }),
+        } | set(selected_support_files)),
+        "selected_support_files": selected_support_files,
         "required_pairs": selected_pairs,
         "require_all_pairs": require_all_pairs,
         "implementations": implementations,
         "missing_implementations": missing_implementations,
         "missing_required_tests": missing_required_tests,
+        "missing_support_files": missing_support_files,
+        "invalid_support_test_mappings": invalid_support_test_mappings,
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,

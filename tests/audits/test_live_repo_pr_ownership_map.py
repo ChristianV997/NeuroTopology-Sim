@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import ast
+import copy
 import json
 import re
 import subprocess
@@ -73,6 +74,17 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertIsNotNone(datetime.fromisoformat(doc["captured_at_utc"].replace("Z", "+00:00")).tzinfo)
         self.assertRegex(doc["repository"]["main_sha"], r"^[0-9a-f]{40}$")
 
+    def test_snapshot_explicitly_separates_facts_inferences_and_unknowns(self):
+        doc = _load(AUDIT)
+        boundaries = doc["assessment_boundaries"]
+        self.assertEqual(set(boundaries), {"facts", "inferences", "unknowns"})
+        for category in boundaries.values():
+            self.assertTrue(category)
+            self.assertTrue(all(isinstance(item, str) and item.strip() for item in category))
+        self.assertTrue(any("required" in item.lower() and "unknown" in item.lower() for item in boundaries["unknowns"]))
+        schema = _load(SCHEMA)
+        self.assertEqual(set(schema["properties"]["assessment_boundaries"]["required"]), set(boundaries))
+
     def test_open_inventory_ids_shas_and_relative_paths_are_valid(self):
         doc = _load(AUDIT)
         prs = doc["pull_requests"]
@@ -82,6 +94,9 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertEqual(len(numbers), doc["scope"]["open_pr_count"])
         self.assertIn(425, numbers)
         for pr in prs:
+            self.assertEqual(set(pr["writer"]), {"login", "identity_state"})
+            self.assertIn(pr["writer"]["identity_state"], {"known", "unknown"})
+            self.assertEqual(pr["writer"]["identity_state"] == "known", bool(pr["writer"]["login"]))
             for key in ("base_sha", "head_sha"):
                 self.assertRegex(pr["base"]["sha"] if key == "base_sha" else pr["head"]["sha"], r"^[0-9a-f]{40}$")
             for path in pr["changed_paths"]:
@@ -90,6 +105,45 @@ class OwnershipSnapshotTests(unittest.TestCase):
                 self.assertFalse(PureWindowsPath(path).is_absolute())
                 self.assertFalse(PureWindowsPath(path).drive)
                 self.assertNotIn("..", PurePosixPath(path).parts)
+
+    def test_candidate_test_ownership_is_derived_from_exact_pr_changed_paths(self):
+        doc = _load(AUDIT)
+        by_number = {pr["number"]: pr for pr in doc["pull_requests"]}
+        helper = _helper()
+        pair_records = doc["candidate_pair_ownership"]
+        self.assertEqual(
+            len(pair_records),
+            sum(len(spec.get("candidate_pairs", ())) for spec in helper.COMPONENTS.values()),
+        )
+        self.assertTrue(any(owner["pr_number"] == 427 and owner["pr_state"] == "merged"
+                            for pair in pair_records for owner in pair["test_owners"]))
+        for record in pair_records:
+            self.assertIn(record["component"], helper.COMPONENTS)
+            for path_key, owners_key in (("implementation_path", "implementation_owners"), ("test_path", "test_owners")):
+                path = record[path_key]
+                self.assertFalse(PurePosixPath(path).is_absolute())
+                self.assertFalse(PureWindowsPath(path).drive)
+                self.assertNotIn("..", PurePosixPath(path).parts)
+                seen = set()
+                for owner in record[owners_key]:
+                    self.assertNotIn(owner["pr_number"], seen)
+                    seen.add(owner["pr_number"])
+                    self.assertRegex(owner["head_sha"], r"^[0-9a-f]{40}$")
+                    self.assertIn(owner["writer"]["identity_state"], {"known", "unknown"})
+                    if owner["pr_state"] == "open":
+                        pr = by_number[owner["pr_number"]]
+                        self.assertIn(path, pr["changed_paths"])
+                        self.assertEqual(owner["head_sha"], pr["head"]["sha"])
+                        self.assertEqual(owner["writer"], pr["writer"])
+                    else:
+                        self.assertEqual((owner["pr_number"], owner["pr_state"]), (427, "merged"))
+        schema = _load(SCHEMA)
+        self.assertIn("candidate_pair_ownership", schema["required"])
+        self.assertIn("writer", schema["$defs"]["pull_request"]["required"])
+        self.assertEqual(
+            set(schema["properties"]["candidate_pair_ownership"]["items"]["required"]),
+            {"component", "implementation_path", "implementation_owners", "test_path", "test_owners"},
+        )
 
     def test_path_overlaps_are_exact_ownership_collisions_not_git_conflicts(self):
         doc = _load(AUDIT)
@@ -130,9 +184,20 @@ class OwnershipSnapshotTests(unittest.TestCase):
         if all(pr["review"]["approval_count"] == 0 for pr in doc["pull_requests"]):
             self.assertEqual(ready_numbers, [])
 
+    def test_pr_failure_groups_are_classified_against_main_without_root_cause_inference(self):
+        doc = _load(AUDIT)
+        awareness = next(item for item in doc["ci_failure_groups"] if item["id"] == "check_awareness_tests")
+        self.assertIn(429, awareness["pr_numbers"])
+        self.assertEqual(awareness["main_equivalent_status"], "success")
+        self.assertEqual(awareness["classification"], "confirmed_only_on_PR_heads")
+        self.assertIn("3 failures", awareness["notes"])
+        self.assertIn("ENGINEERING_EXECUTION_COMPLETE", awareness["notes"])
+        self.assertIn("EXECUTION_FAILED", awareness["notes"])
+
     def test_candidate_discovery_snapshot_is_complete_and_reports_local_limitations(self):
         doc = _load(AUDIT)
         helper = _helper()
+        by_number = {pr["number"]: pr for pr in doc["pull_requests"]}
         discovery = doc["main_ci"]["round6_candidate_discovery"]
         self.assertEqual(discovery["helper_path"], ".github/workflows/round6_experimental_tests.py")
         self.assertEqual(discovery["component_count"], len(helper.COMPONENTS))
@@ -145,6 +210,15 @@ class OwnershipSnapshotTests(unittest.TestCase):
         for name, spec in helper.COMPONENTS.items():
             self.assertEqual(recorded[name]["candidate_pairs"], list(spec["candidate_pairs"]))
             self.assertEqual(recorded[name]["test_files"], list(spec["tests"]))
+            support_records = recorded[name]["support_files"]
+            self.assertEqual(
+                [(item["path"], item["test_files"]) for item in support_records],
+                [(path, list(tests)) for path, tests in sorted(spec.get("support_files", {}).items())],
+            )
+            for support in support_records:
+                for owner in support["owners"]:
+                    if owner["pr_state"] == "open":
+                        self.assertIn(support["path"], by_number[owner["pr_number"]]["changed_paths"])
         self.assertEqual(discovery["coverage_audit"]["unmapped_candidate_paths"], [])
         contract = discovery["execution_contract"]
         self.assertEqual(contract["empty_collection"], "fail")
@@ -167,11 +241,20 @@ class OwnershipSnapshotTests(unittest.TestCase):
         )
         for run in discovery.get("hosted_candidate_runs", []):
             self.assertRegex(run["head_sha"], r"^[0-9a-f]{40}$")
+            self.assertRegex(run["tested_checkout_sha"], r"^[0-9a-f]{40}$")
             self.assertGreater(run["run_id"], 0)
             self.assertGreater(run["isolated_batches_total"], 0)
             self.assertGreaterEqual(run["isolated_batches_failed"], 0)
             self.assertGreaterEqual(run["isolated_batches_skipped"], 0)
             self.assertTrue(run["candidate_test_paths"])
+            self.assertTrue(run["candidate_tests_executed"])
+            self.assertGreater(run["test_case_count"], 0)
+            self.assertTrue(run["workflow_run_url"].startswith("https://github.com/"))
+            self.assertTrue(run["artifact_url"].startswith("https://github.com/"))
+            if run["conclusion"] == "success":
+                self.assertEqual(run["component_status"], "PASS")
+                self.assertEqual(run["isolated_batches_failed"], 0)
+                self.assertEqual(run["isolated_batches_skipped"], 0)
 
     def test_unknown_branch_gate_and_candidate_blockage_are_not_reported_as_pass(self):
         doc = _load(AUDIT)
@@ -182,7 +265,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
         for probe in discovery["local_candidate_probe"]["candidate_probes"]:
             self.assertEqual(probe["collected_test_count"], 0)
             self.assertEqual(probe["result_status"], "BLOCKED")
-            self.assertEqual(probe["runner_status"], "FAIL")
+            self.assertEqual(probe["runner_status"], "BLOCKED")
         self.assertEqual(doc["readiness_summary"]["ready_pr_numbers"], [])
         self.assertGreaterEqual(doc["readiness_summary"]["counts"]["unknown"], 0)
 
@@ -203,7 +286,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
             self.assertEqual(missing, sorted(set(missing)))
             self.assertFalse(set(present) & set(missing))
             self.assertEqual(lane["main_candidate_files_present"], not missing)
-            self.assertRegex(lane["note"], r"\d+/\d+ candidate source/test files exist")
+            self.assertRegex(lane["note"], r"\d+/\d+ mapped candidate source/test files exist")
 
     def test_workflow_runs_mapped_candidate_tests_and_does_not_call_absence_a_pass(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
@@ -325,6 +408,71 @@ class OwnershipSnapshotTests(unittest.TestCase):
                     [],
                     f"PR #{pr['number']} has an unmapped candidate path in {name}",
                 )
+
+    def test_test_support_files_map_to_real_test_pairs_and_fail_closed(self):
+        helper = _helper()
+        expected = {
+            "spherical_csd": "tests/mne_csd_reference_audit/conftest.py",
+            "surrogate_audit": "tests/surrogate_audit/fixtures.py",
+            "provenance_join": "tests/tools/batch3_provenance_join/helpers.py",
+        }
+        for component, support_path in expected.items():
+            with self.subTest(component=component):
+                spec = helper.COMPONENTS[component]
+                mapped_tests = spec["support_files"][support_path]
+                self.assertTrue(mapped_tests)
+                self.assertTrue(set(mapped_tests) <= set(spec["tests"]))
+                self.assertEqual(helper._unmapped_candidate_paths({support_path}), [])
+                with TemporaryDirectory() as td:
+                    root = Path(td)
+                    support = root / support_path
+                    support.parent.mkdir(parents=True, exist_ok=True)
+                    support.write_text("# test support fixture\n", encoding="utf-8")
+                    relevant_pairs = [pair for pair in spec["candidate_pairs"] if pair["test"] in mapped_tests]
+                    for pair in relevant_pairs:
+                        for relative in (pair["implementation"], pair["test"]):
+                            target = root / relative
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_text("# mapped candidate fixture\n", encoding="utf-8")
+                    result = helper.inspect_component(component, root, {support_path})
+                    self.assertEqual(result["status"], "READY_TO_RUN", result["blockers"])
+                    self.assertEqual(result["tests_to_run"], list(dict.fromkeys(pair["test"] for pair in relevant_pairs)))
+                    self.assertEqual(result["selected_support_files"], [support_path])
+                    self.assertIn(support_path, result["selected_paths"])
+
+                    support.unlink()
+                    missing = helper.inspect_component(component, root, {support_path})
+                    self.assertEqual(missing["status"], "BLOCKED")
+                    self.assertEqual(missing["missing_support_files"], [support_path])
+
+    def test_support_mapping_to_unpaired_test_is_blocked(self):
+        helper = _helper()
+        component_spec = copy.deepcopy(helper.COMPONENTS["spherical_csd"])
+        support_path = "tests/mne_csd_reference_audit/conftest.py"
+        unpaired_test = "tests/mne_csd_reference_audit/test_unpaired_candidate.py"
+        component_spec["tests"] = (*component_spec["tests"], unpaired_test)
+        component_spec["support_files"][support_path] = (
+            *component_spec["support_files"][support_path],
+            unpaired_test,
+        )
+        with patch.dict(helper.COMPONENTS, {"spherical_csd": component_spec}):
+            with TemporaryDirectory() as td:
+                root = Path(td)
+                support = root / support_path
+                support.parent.mkdir(parents=True, exist_ok=True)
+                support.write_text("# support fixture\n", encoding="utf-8")
+                for pair in component_spec["candidate_pairs"]:
+                    if pair["test"] not in component_spec["support_files"][support_path]:
+                        continue
+                    for relative in (pair["implementation"], pair["test"]):
+                        target = root / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text("# candidate fixture\n", encoding="utf-8")
+
+                result = helper.inspect_component("spherical_csd", root, {support_path})
+
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn(unpaired_test, result["invalid_support_test_mappings"])
 
     def test_windows_separators_select_the_same_candidate_lane(self):
         helper = _helper()

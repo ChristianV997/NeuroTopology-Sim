@@ -1,5 +1,25 @@
 {
   "$defs": {
+    "candidate_path_owner": {
+      "additionalProperties": false,
+      "properties": {
+        "head_branch": {"minLength": 1, "type": "string"},
+        "head_sha": {"$ref": "#/$defs/sha"},
+        "pr_number": {"minimum": 1, "type": "integer"},
+        "pr_state": {"enum": ["open", "merged"]},
+        "writer": {
+          "additionalProperties": false,
+          "properties": {
+            "identity_state": {"enum": ["known", "unknown"]},
+            "login": {"minLength": 1, "type": ["string", "null"]}
+          },
+          "required": ["login", "identity_state"],
+          "type": "object"
+        }
+      },
+      "required": ["pr_number", "pr_state", "head_branch", "head_sha", "writer"],
+      "type": "object"
+    },
     "pull_request": {
       "additionalProperties": true,
       "properties": {
@@ -245,6 +265,15 @@
           "format": "date-time",
           "type": "string"
         },
+        "writer": {
+          "additionalProperties": false,
+          "properties": {
+            "identity_state": {"enum": ["known", "unknown"]},
+            "login": {"minLength": 1, "type": ["string", "null"]}
+          },
+          "required": ["login", "identity_state"],
+          "type": "object"
+        },
         "url": {
           "format": "uri",
           "type": "string"
@@ -261,6 +290,7 @@
         "head",
         "changed_paths",
         "changed_path_count",
+        "writer",
         "mergeability",
         "review",
         "ci",
@@ -294,6 +324,31 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "properties": {
+    "candidate_pair_ownership": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {"minLength": 1, "type": "string"},
+          "implementation_path": {"$ref": "#/$defs/repo_path"},
+          "implementation_owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"},
+          "test_path": {"$ref": "#/$defs/repo_path"},
+          "test_owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"}
+        },
+        "required": ["component", "implementation_path", "implementation_owners", "test_path", "test_owners"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "assessment_boundaries": {
+      "additionalProperties": false,
+      "properties": {
+        "facts": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"},
+        "inferences": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"},
+        "unknowns": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"}
+      },
+      "required": ["facts", "inferences", "unknowns"],
+      "type": "object"
+    },
     "captured_at_utc": {
       "format": "date-time",
       "type": "string"
@@ -392,6 +447,19 @@
                     "type": "array"
                   },
                   "name": {"minLength": 1, "type": "string"},
+                  "support_files": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"},
+                        "path": {"$ref": "#/$defs/repo_path"},
+                        "test_files": {"items": {"$ref": "#/$defs/repo_path"}, "minItems": 1, "type": "array"}
+                      },
+                      "required": ["path", "test_files", "owners"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "test_files": {
                     "items": {"$ref": "#/$defs/repo_path"},
                     "minItems": 1,
@@ -403,7 +471,7 @@
                     "type": "array"
                   }
                 },
-                "required": ["name", "triggers", "candidate_pairs", "test_files"],
+                "required": ["name", "triggers", "candidate_pairs", "support_files", "test_files"],
                 "type": "object"
               },
               "minItems": 1,
@@ -450,16 +518,22 @@
                 "properties": {
                   "candidate_pr_numbers": {"items": {"minimum": 1, "type": "integer"}, "minItems": 1, "type": "array", "uniqueItems": true},
                   "candidate_test_paths": {"items": {"$ref": "#/$defs/repo_path"}, "minItems": 1, "type": "array", "uniqueItems": true},
+                  "candidate_tests_executed": {"type": "boolean"},
                   "conclusion": {"enum": ["success", "failure", "cancelled", "timed_out", "action_required", "unknown"]},
+                  "component_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_APPLICABLE", "UNKNOWN"]},
+                  "artifact_url": {"format": "uri", "type": "string"},
                   "head_sha": {"$ref": "#/$defs/sha"},
                   "job_name": {"minLength": 1, "type": "string"},
                   "log_url": {"format": "uri", "type": "string"},
                   "run_id": {"minimum": 1, "type": "integer"},
                   "isolated_batches_skipped": {"minimum": 0, "type": "integer"},
                   "isolated_batches_total": {"minimum": 0, "type": "integer"},
-                  "isolated_batches_failed": {"minimum": 0, "type": "integer"}
+                  "isolated_batches_failed": {"minimum": 0, "type": "integer"},
+                  "test_case_count": {"minimum": 0, "type": "integer"},
+                  "tested_checkout_sha": {"$ref": "#/$defs/sha"},
+                  "workflow_run_url": {"format": "uri", "type": "string"}
                 },
-                "required": ["candidate_pr_numbers", "candidate_test_paths", "head_sha", "run_id", "job_name", "conclusion", "isolated_batches_total", "isolated_batches_failed", "isolated_batches_skipped", "log_url"],
+                "required": ["candidate_pr_numbers", "candidate_test_paths", "candidate_tests_executed", "head_sha", "tested_checkout_sha", "run_id", "job_name", "conclusion", "component_status", "test_case_count", "isolated_batches_total", "isolated_batches_failed", "isolated_batches_skipped", "workflow_run_url", "log_url", "artifact_url"],
                 "type": "object"
               },
               "type": "array"
@@ -761,7 +835,7 @@
       "type": "object"
     },
     "schema_version": {
-      "const": "neurotopology.live-repo-pr-ownership-map.v3"
+      "const": "neurotopology.live-repo-pr-ownership-map.v4"
     },
     "scope": {
       "additionalProperties": true,
@@ -794,6 +868,8 @@
     }
   },
   "required": [
+    "assessment_boundaries",
+    "candidate_pair_ownership",
     "schema_version",
     "snapshot_kind",
     "captured_at_utc",
