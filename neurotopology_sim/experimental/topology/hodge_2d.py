@@ -479,6 +479,51 @@ def weighted_norm_sq(
     return weighted_inner_product(metric, u, u, is_diagonal=is_diagonal)
 
 
+def _as_vertex_boundary_mask(boundary_vertices: ArrayLike, num_verts: int) -> np.ndarray:
+    """Interpret ``boundary_vertices`` as a boolean mask or integer index list.
+
+    Rules (fail-closed):
+    - bool dtype / boolean array of shape ``(|V|,)`` → used as mask.
+    - integer/float array of shape ``(|V|,)`` with only {0,1} values → 0/1 mask.
+    - any other 1-D integer index array (including length ``|V|`` with values
+      outside {0,1}, e.g. ``[0,1,2]``) → index list (those vertices True).
+    - duplicate indices allowed; out-of-range indices raise.
+    """
+    arr = np.asarray(boundary_vertices)
+    if arr.ndim != 1:
+        raise BoundaryConditionError(
+            f"boundary_vertices must be 1-D; got shape {arr.shape}"
+        )
+    if arr.dtype == bool or arr.dtype == np.bool_:
+        if arr.shape != (num_verts,):
+            raise BoundaryConditionError(
+                f"boundary_vertices mask shape {arr.shape} != ({num_verts},)"
+            )
+        return arr.astype(bool, copy=False)
+
+    if not np.issubdtype(arr.dtype, np.number) or not np.all(np.isfinite(arr)):
+        raise BoundaryConditionError("boundary_vertices must be finite numeric or bool")
+
+    # Same-length {0,1}-only arrays are treated as explicit 0/1 masks.
+    if arr.shape == (num_verts,) and np.all((arr == 0) | (arr == 1)):
+        return arr.astype(bool)
+
+    # Otherwise interpret as vertex indices.
+    if not np.allclose(arr, np.rint(arr), rtol=0.0, atol=0.0):
+        raise BoundaryConditionError(
+            "boundary_vertices index list must be integer-valued"
+        )
+    idx = np.rint(arr).astype(np.int64, copy=False)
+    if idx.size and (np.any(idx < 0) or np.any(idx >= num_verts)):
+        raise BoundaryConditionError(
+            f"boundary_vertices indices out of range for num_verts={num_verts}"
+        )
+    mask = np.zeros(num_verts, dtype=bool)
+    if idx.size:
+        mask[idx] = True
+    return mask
+
+
 def _apply_metric_w1(
     w1: np.ndarray,
     is_diagonal: bool,
@@ -554,9 +599,18 @@ def hodge_decompose(
             - `GaugePolicy.PINNED_VERTEX` / `"pinned_vertex"`: Pinned reference vertex (alpha[0]=0).
             - `GaugePolicy.ZERO_MEAN` / `"zero_mean"`: Shifts alpha to zero mean.
         face_metric: Optional positive diagonal weights on 2-cells (faces), shape (|F|,).
-        vertex_metric: Optional positive diagonal weights on 0-cells (vertices), shape (|V|,).
-        boundary_vertices: Optional boolean mask or indices of boundary vertices.
-            If None, automatically detected from d0 and d1.
+        vertex_metric: Optional positive diagonal weights on 0-cells (vertices),
+            shape (|V|,). Validated when provided. Used for weighted ZERO_MEAN
+            gauge. Note: the W1 exact normal equation
+            ``(d0.T W1 d0) α = d0.T W1 ω`` is independent of a diagonal ``*0``
+            (it cancels), so NATURAL / PINNED_VERTEX exact components are
+            unchanged by ``vertex_metric``; this is recorded in diagnostics
+            rather than silently dropped.
+        boundary_vertices: Optional boolean mask (shape ``(|V|,)``) **or** a
+            1-D list/array of integer vertex indices to constrain under
+            ``DIRICHLET_POTENTIAL``. Same-length integer index vectors are
+            interpreted as indices, not as 0/1 masks. If None, automatically
+            detected from d0 and d1.
         cond_reject: Rejection threshold for condition numbers of normal operators.
         fail_on_ill_conditioned: If True, raises IllConditionedMetricError when
             conditioning exceeds cond_reject; if False, flags diagnostics.
@@ -643,6 +697,17 @@ def hodge_decompose(
     else:
         w_faces = np.ones(num_faces, dtype=float)
 
+    # Validate vertex metric (*0 diagonal). Not silently ignored.
+    w_verts: Optional[np.ndarray]
+    if vertex_metric is not None:
+        w_verts = np.asarray(vertex_metric, dtype=float)
+        if w_verts.ndim != 1 or w_verts.shape != (num_verts,):
+            raise MetricError(f"vertex_metric shape {w_verts.shape} != ({num_verts},)")
+        if not np.all(np.isfinite(w_verts)) or np.any(w_verts <= 0.0):
+            raise MetricError("vertex_metric must contain strictly positive finite values.")
+    else:
+        w_verts = None
+
     # Base diagnostics
     diagnostics: Dict[str, Any] = {
         "num_vertices": num_verts,
@@ -652,6 +717,9 @@ def hodge_decompose(
         "gauge": gp.value,
         "metric_type": m_type.value,
         "is_diagonal_metric": is_diag,
+        "vertex_metric_provided": w_verts is not None,
+        "vertex_metric_used_for_zero_mean_gauge": False,
+        "vertex_metric_alters_W1_exact_normal_equations": False,
         "hold_posture": "HOLD / SYNTHETIC_ONLY",
         "scientific_claim_disclaimer": "Algebraic 2D Hodge decomposition; no biological or clinical claims.",
         "planar_embedding_proven": False,
@@ -764,11 +832,7 @@ def hodge_decompose(
     if bc == BoundaryCondition.DIRICHLET_POTENTIAL:
         # Dirichlet potential: alpha = 0 on boundary vertices
         if boundary_vertices is not None:
-            dirichlet_mask = np.asarray(boundary_vertices, dtype=bool)
-            if dirichlet_mask.shape != (num_verts,):
-                raise BoundaryConditionError(
-                    f"boundary_vertices shape {dirichlet_mask.shape} != ({num_verts},)"
-                )
+            dirichlet_mask = _as_vertex_boundary_mask(boundary_vertices, num_verts)
         else:
             dirichlet_mask = b_verts_mask
 
@@ -807,9 +871,14 @@ def hodge_decompose(
             else:
                 alpha = np.zeros(1, dtype=float)
         elif gp == GaugePolicy.ZERO_MEAN:
-            # Solve minimum-norm and then center mean to 0
+            # Solve minimum-norm and then center mean to 0 (optionally mass-weighted)
             alpha, _, _, _ = np.linalg.lstsq(L0, rhs_alpha, rcond=None)
-            alpha = alpha - float(np.mean(alpha))
+            if w_verts is not None:
+                mass = float(np.sum(w_verts))
+                alpha = alpha - float(np.sum(w_verts * alpha) / mass)
+                diagnostics["vertex_metric_used_for_zero_mean_gauge"] = True
+            else:
+                alpha = alpha - float(np.mean(alpha))
 
     omega_exact = d0_arr @ alpha
 

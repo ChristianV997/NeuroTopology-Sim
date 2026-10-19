@@ -616,7 +616,7 @@ def test_boundary_vertices_shape_mismatch():
     d0, d1 = fixture_single_triangle()
     omega = np.ones(3)
 
-    with pytest.raises(BoundaryConditionError, match="boundary_vertices shape"):
+    with pytest.raises(BoundaryConditionError, match="boundary_vertices mask shape"):
         hodge_decompose(
             omega, d0, d1,
             boundary_condition=BoundaryCondition.DIRICHLET_POTENTIAL,
@@ -796,6 +796,56 @@ def test_scale_aware_numerical_closure():
         assert res.relative_reconstruction_error < 1e-10
         assert res.relative_energy_error < 1e-10
         assert abs(res.orthogonality_exact_coexact) / (res.energy_total + 1e-12) < 1e-10
+
+
+def test_dirichlet_boundary_vertices_index_list_not_bool_mask():
+    """Same-length index list [0,1,2] must constrain those vertices, not mask-decode."""
+    d0, d1 = fixture_single_triangle()
+    omega = np.array([0.3, -0.1, 0.2])
+    # Index list naming all vertices → zero-interior Dirichlet → exact ≡ 0
+    res = hodge_decompose(
+        omega,
+        d0,
+        d1,
+        boundary_condition=BoundaryCondition.DIRICHLET_POTENTIAL,
+        boundary_vertices=[0, 1, 2],
+    )
+    assert np.allclose(res.exact, 0.0, atol=1e-12)
+    assert res.diagnostics.get("dirichlet_all_boundary") is True
+
+    # Explicit 0/1 mask with only vertex 0 free (interior) differs from index list
+    # when values are not a pure {0,1} mask of "which are boundary".
+    with pytest.raises(BoundaryConditionError, match="out of range|integer"):
+        hodge_decompose(
+            omega,
+            d0,
+            d1,
+            boundary_condition=BoundaryCondition.DIRICHLET_POTENTIAL,
+            boundary_vertices=[0, 1, 99],
+        )
+
+
+def test_vertex_metric_validated_and_used_for_zero_mean_gauge():
+    """vertex_metric must not be silently ignored: validate + weighted zero-mean."""
+    d0, d1 = fixture_quad_fan()
+    omega = np.arange(d0.shape[0], dtype=float) + 0.5
+    with pytest.raises(MetricError, match="vertex_metric"):
+        hodge_decompose(omega, d0, d1, vertex_metric=[-1.0] * d0.shape[1])
+
+    m = np.ones(d0.shape[1], dtype=float)
+    m[0] = 10.0  # heavy center vertex
+    res = hodge_decompose(
+        omega,
+        d0,
+        d1,
+        vertex_metric=m,
+        gauge=GaugePolicy.ZERO_MEAN,
+    )
+    assert res.diagnostics["vertex_metric_provided"] is True
+    assert res.diagnostics["vertex_metric_used_for_zero_mean_gauge"] is True
+    assert res.diagnostics["vertex_metric_alters_W1_exact_normal_equations"] is False
+    # Weighted mean of alpha is ~0
+    assert abs(float(np.sum(m * res.potential))) < 1e-9 * float(np.sum(m))
 
 
 def test_interop_merged_phase_winding_omega_into_hodge():

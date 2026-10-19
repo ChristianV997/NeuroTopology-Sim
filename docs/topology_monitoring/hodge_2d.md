@@ -105,7 +105,13 @@ $$\text{RelEnergyErr} = \frac{|\|\omega\|_{W_1}^2 - (E_{\text{exact}} + E_{\text
 - `DIRICHLET_POTENTIAL`:
   Potential $\alpha$ is constrained to zero on boundary vertices $\partial V$.
   Boundary vertices are detected automatically from $(d_0, d_1)$ (edges incident to
-  exactly 1 face) or supplied by the caller.
+  exactly 1 face) or supplied by the caller via `boundary_vertices`:
+  - boolean mask of shape $(|V|,)$ → used as-is;
+  - same-length numeric array with only $\{0,1\}$ values → treated as a 0/1 mask;
+  - any other 1-D integer index array (including length-$|V|$ lists such as
+    `[0,1,2]`) → those vertex indices are marked boundary (not bool-cast).
+  Out-of-range indices and non-integer values fail closed with
+  `BoundaryConditionError`.
 
 ### 4.2 Zero-Interior-Node Complexes
 For complexes such as a single triangle or an open fan where every vertex touches
@@ -142,7 +148,19 @@ $\alpha$ is determined up to an additive constant per component.
 Supported policies (`GaugePolicy`):
 - `MINIMUM_NORM`: Solves for the minimum Euclidean norm potential $\alpha$.
 - `PINNED_VERTEX`: Pins reference vertex $\alpha[0] = 0$.
-- `ZERO_MEAN`: Shifts $\alpha$ such that $\sum_v \alpha_v = 0$.
+- `ZERO_MEAN`: Shifts $\alpha$ such that $\sum_v \alpha_v = 0$, or, when
+  `vertex_metric` $w_v > 0$ is supplied, the mass-weighted mean
+  $\sum_v w_v \alpha_v / \sum_v w_v = 0$.
+
+### 5.1 Vertex metric (`vertex_metric`)
+Optional positive diagonal weights on 0-cells, shape $(|V|,)$. Validated for
+shape, finiteness, and strict positivity (never silently ignored). Used for the
+weighted `ZERO_MEAN` gauge. The $W_1$ exact normal equation
+$(d_0^T W_1 d_0)\alpha = d_0^T W_1 \omega$ is independent of a diagonal $*_0$,
+so `NATURAL` / `PINNED_VERTEX` exact components are unchanged by `vertex_metric`;
+diagnostics record `vertex_metric_provided`,
+`vertex_metric_used_for_zero_mean_gauge`, and
+`vertex_metric_alters_W1_exact_normal_equations=False`.
 
 **Gauge Invariance Invariant:**
 For all gauge policies, the physical exact 1-cochain is strictly invariant:
@@ -151,7 +169,27 @@ Verified across all test suites to machine precision ($\Delta < 10^{-12}$).
 
 ---
 
-## 6. Numerical Conditioning & Fail-Closed Diagnostics
+## 6. Dense Arrays, Tolerances, and Disconnected Complexes
+
+- **Dense-only incidence:** `d0` / `d1` are coerced with `np.asarray(..., dtype=float)`.
+  SciPy sparse matrices are not accepted as first-class inputs in this module;
+  callers must densify before calling `hodge_decompose`.
+- **Cochain exactness:** $\|d_1 @ d_0\|_\infty \le \texttt{atol}$ (default `1e-8` on
+  `hodge_decompose`; `0.0` on `validate_cochain_complex`).
+- **Reconstruction residual:** $\|\omega - (\omega_{\text{exact}}+\omega_{\text{coexact}}+\omega_{\text{harm}})\|_{W_1}$
+  is returned; tests require near-machine closure (typically $<10^{-10}$ relative).
+- **Pairwise orthogonality:** the three $W_1$ inner products among
+  exact/coexact/harmonic are returned and checked against energy scale
+  (relative $<10^{-10}$ in the suite).
+- **Disconnected components:** fixtures include two disjoint triangles; gauge
+  kernels may grow with the number of components; harmonic/exact recovery still
+  obeys energy closure and orthogonality under the chosen gauge.
+- **Malformed / non-finite inputs:** non-finite $\omega$, metrics, or incidence
+  entries fail closed (`HodgeError` / `MetricError` / `CochainComplexError`).
+
+---
+
+## 7. Numerical Conditioning & Fail-Closed Diagnostics
 
 The effective condition number $\kappa_{\text{eff}}(A) = \sigma_{\max} / \sigma_{\min, > 0}$
 is computed for $L_0$ and $M$ over their non-gauge positive spectrum.
@@ -167,7 +205,7 @@ Conditioning criteria:
 
 ---
 
-## 7. Python API Quickstart
+## 8. Python API Quickstart
 
 ```python
 import numpy as np
