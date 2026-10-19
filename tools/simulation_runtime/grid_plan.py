@@ -115,7 +115,8 @@ BLOCKING_GATE_IDS: tuple[str, ...] = (
     "planar_geometry",
     "winding_hodge",
     "csd_full_matrix_pinned_mne",
-    "phase_dispersion",
+    "phase_dispersion_module",
+    "phase_score_limitations_recorded",
     "surrogate_null",
     "roc_metrics",
     "ci_discovery",
@@ -123,7 +124,9 @@ BLOCKING_GATE_IDS: tuple[str, ...] = (
 NONBLOCKING_GATE_IDS: tuple[str, ...] = ("dmd_crouzeix",)
 REQUIRED_GATE_IDS: tuple[str, ...] = BLOCKING_GATE_IDS
 CI_DISCOVERY_GATE_ID = "ci_discovery"
-PHASE_DISPERSION_GATE_ID = "phase_dispersion"
+PHASE_DISPERSION_MODULE_GATE_ID = "phase_dispersion_module"
+PHASE_SCORE_LIMITATIONS_GATE_ID = "phase_score_limitations_recorded"
+UNIT_SCORE_RULE = "max_window_score"
 
 # Candidate refs only. An open PR head is not a promotion record on main.
 # #427 moved off 27d451fa; that head is not a gate pin.
@@ -132,9 +135,35 @@ REQUIRED_SOURCE_SHA: Dict[str, str] = {
     "planar_geometry": "04d5af7321ff002bb88d75353e59aec73eabbf56",
     "winding_hodge": "3328dd15a995a62759c4256de944e2dd8e7c9364",
     "csd_full_matrix_pinned_mne": "24ad946c1cd6142846e19e9db8b7a5325d49ef46",
-    "phase_dispersion": "42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98",
+    "phase_dispersion_module": "42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98",
     "surrogate_null": "f8939eec66e585d00966d433cc563d3d34ca0b11",
     "roc_metrics": ROC_API_HEAD,
+}
+# Source pull requests for the pins above. Not evidence, and not a refresh.
+PIN_SOURCE_PR: Dict[str, int] = {
+    "four_sphere_forward_model": 418,
+    "planar_geometry": 416,
+    "winding_hodge": 413,
+    "csd_full_matrix_pinned_mne": 414,
+    "phase_dispersion_module": 403,
+    "surrogate_null": 417,
+    "roc_metrics": 426,
+}
+# These pins are behind the open PR heads. Fail closed. Refresh only when
+# that dependency merges. Do not replace the pin with the open head.
+PINS_BEHIND_OPEN_PR_HEADS: Dict[str, Dict[str, str]] = {
+    "four_sphere_forward_model": {
+        "pinned_sha": REQUIRED_SOURCE_SHA["four_sphere_forward_model"],
+        "source_pr": "418",
+        "open_pr_head": "e316933282e469795d9c69fd50adc5a51ea9d5be",
+        "refresh": "only_when_dependency_merges",
+    },
+    "surrogate_null": {
+        "pinned_sha": REQUIRED_SOURCE_SHA["surrogate_null"],
+        "source_pr": "417",
+        "open_pr_head": "25c5afeac33f5fac219d1e78453549dc0143d316",
+        "refresh": "only_when_dependency_merges",
+    },
 }
 OPEN_PR_HEADS_NOT_EVIDENCE: Dict[str, str] = {
     "426": ROC_API_HEAD,
@@ -148,7 +177,8 @@ GATE_INTEGRATION_STATE: Dict[str, str] = {
     "planar_geometry": "NOT_INTEGRATED",
     "winding_hodge": "NOT_INTEGRATED",
     "csd_full_matrix_pinned_mne": "NOT_INTEGRATED",
-    "phase_dispersion": "NOT_INTEGRATED",
+    "phase_dispersion_module": "NOT_INTEGRATED",
+    "phase_score_limitations_recorded": "NOT_INTEGRATED",
     "surrogate_null": "NOT_INTEGRATED",
     "roc_metrics": "NOT_INTEGRATED",
     "ci_discovery": "BLOCKED",
@@ -514,10 +544,21 @@ def _count_matches_ids(count: int, unit_ids: Sequence[str], nested_per_unit: int
         )
 
 
-def _derive_unit_ids(seed: int, count: int, role: str) -> List[str]:
-    """Independent-unit ids from a seed. Window indexes are not part of the id."""
+def _derive_class_unit_ids(seed: int, count: int, role: str, polarity: str) -> List[str]:
+    """Per-class independent-unit ids. Window indexes are not part of the id."""
 
-    return [f"{role}-seed{seed}-u{index:06d}" for index in range(count)]
+    return [f"{role}-{polarity}-seed{seed}-u{index:06d}" for index in range(count)]
+
+
+def _class_sets_are_disjoint(groups: Sequence[Sequence[str]]) -> bool:
+    """Pairwise disjointness. This is computed, never assigned."""
+
+    sets = [set(group) for group in groups]
+    for index, left in enumerate(sets):
+        for right in sets[index + 1 :]:
+            if not left.isdisjoint(right):
+                return False
+    return True
 
 
 def _unit_aggregation_spec(raw: Any, nested_per_unit: int) -> Dict[str, Any]:
@@ -566,10 +607,16 @@ def _freeze_threshold(
     score_definition_id: str,
     threshold: Mapping[str, Any],
     calibration_unit_ids: Sequence[str],
+    calibration_positive_unit_ids: Sequence[str],
+    calibration_negative_unit_ids: Sequence[str],
     calibration_seed: int,
     estimand: str,
     interval_method: str,
     unit_aggregation: str,
+    n_positive_calibration: int,
+    n_negative_calibration: int,
+    nested_per_unit: int,
+    unit_score_rule: str,
 ) -> str:
     """Hash the decision rule. This function does not read evaluation ids.
 
@@ -583,10 +630,16 @@ def _freeze_threshold(
             "score_definition_id": score_definition_id,
             "threshold": threshold,
             "calibration_unit_ids": list(calibration_unit_ids),
+            "calibration_positive_unit_ids": list(calibration_positive_unit_ids),
+            "calibration_negative_unit_ids": list(calibration_negative_unit_ids),
             "calibration_seed": calibration_seed,
             "estimand": estimand,
             "interval_method": interval_method,
             "unit_aggregation": unit_aggregation,
+            "n_positive_calibration": n_positive_calibration,
+            "n_negative_calibration": n_negative_calibration,
+            "nested_per_unit": nested_per_unit,
+            "unit_score_rule": unit_score_rule,
         }
     )
 
@@ -618,10 +671,11 @@ def _read_evaluation_side(
     *,
     threshold_hash: str,
     score_definition_id: str,
-    calibration_unit_ids: Sequence[str],
+    calibration_positive_unit_ids: Sequence[str],
+    calibration_negative_unit_ids: Sequence[str],
     evaluation_seed: int,
     nested_per_unit: int,
-) -> Tuple[List[str], int, bool, Dict[str, Any], int, int]:
+) -> Tuple[List[str], List[str], List[str], int, bool, Dict[str, Any], int, int]:
     """Derive evaluation ids only after ``threshold_hash`` exists."""
 
     if "n_independent_evaluation" not in config:
@@ -650,20 +704,31 @@ def _read_evaluation_side(
         n_independent_evaluation,
         "evaluation",
     )
-    evaluation_unit_ids = _derive_unit_ids(
-        evaluation_seed, n_independent_evaluation, "evaluation"
+    evaluation_positive_unit_ids = _derive_class_unit_ids(
+        evaluation_seed, n_positive_evaluation, "evaluation", "pos"
     )
+    evaluation_negative_unit_ids = _derive_class_unit_ids(
+        evaluation_seed, n_negative_evaluation, "evaluation", "neg"
+    )
+    evaluation_unit_ids = list(evaluation_positive_unit_ids) + list(evaluation_negative_unit_ids)
     _count_matches_ids(
         n_independent_evaluation,
         evaluation_unit_ids,
         nested_per_unit,
         "n_independent_evaluation",
     )
-    roles_are_disjoint = set(calibration_unit_ids).isdisjoint(evaluation_unit_ids)
+    roles_are_disjoint = _class_sets_are_disjoint(
+        (
+            calibration_positive_unit_ids,
+            calibration_negative_unit_ids,
+            evaluation_positive_unit_ids,
+            evaluation_negative_unit_ids,
+        )
+    )
     if not roles_are_disjoint:
         _reject(
             "unit_id_overlap",
-            "a unit id is in both calibration_unit_ids and evaluation_unit_ids",
+            "a unit id is shared across calibration and evaluation or across classes",
         )
     manifest = _evaluation_manifest(
         threshold_hash=threshold_hash,
@@ -673,6 +738,8 @@ def _read_evaluation_side(
     )
     return (
         evaluation_unit_ids,
+        evaluation_positive_unit_ids,
+        evaluation_negative_unit_ids,
         n_independent_evaluation,
         roles_are_disjoint,
         manifest,
@@ -770,9 +837,13 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         n_independent_calibration,
         "calibration",
     )
-    calibration_unit_ids = _derive_unit_ids(
-        calibration_seed, n_independent_calibration, "calibration"
+    calibration_positive_unit_ids = _derive_class_unit_ids(
+        calibration_seed, n_positive_calibration, "calibration", "pos"
     )
+    calibration_negative_unit_ids = _derive_class_unit_ids(
+        calibration_seed, n_negative_calibration, "calibration", "neg"
+    )
+    calibration_unit_ids = list(calibration_positive_unit_ids) + list(calibration_negative_unit_ids)
     nested_unit = config["nested_unit"]
     if nested_unit not in NESTED_UNITS:
         _reject("invalid_nested", "nested_unit must be window, trial, or none")
@@ -821,14 +892,22 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         score_definition_id=score_definition_id,
         threshold=threshold,
         calibration_unit_ids=calibration_unit_ids,
+        calibration_positive_unit_ids=calibration_positive_unit_ids,
+        calibration_negative_unit_ids=calibration_negative_unit_ids,
         calibration_seed=calibration_seed,
         estimand=estimand,
         interval_method=interval_method,
         unit_aggregation=str(unit_aggregation["value"]),
+        n_positive_calibration=n_positive_calibration,
+        n_negative_calibration=n_negative_calibration,
+        nested_per_unit=nested_per_unit,
+        unit_score_rule=UNIT_SCORE_RULE,
     )
 
     (
         evaluation_unit_ids,
+        evaluation_positive_unit_ids,
+        evaluation_negative_unit_ids,
         n_independent_evaluation,
         roles_are_disjoint,
         evaluation_manifest,
@@ -838,7 +917,8 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         config,
         threshold_hash=threshold_hash,
         score_definition_id=score_definition_id,
-        calibration_unit_ids=calibration_unit_ids,
+        calibration_positive_unit_ids=calibration_positive_unit_ids,
+        calibration_negative_unit_ids=calibration_negative_unit_ids,
         evaluation_seed=evaluation_seed,
         nested_per_unit=nested_per_unit,
     )
@@ -886,7 +966,12 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         "evaluation_seed": evaluation_seed,
         "independent_unit": independent_unit,
         "calibration_unit_ids": calibration_unit_ids,
+        "calibration_positive_unit_ids": calibration_positive_unit_ids,
+        "calibration_negative_unit_ids": calibration_negative_unit_ids,
         "evaluation_unit_ids": evaluation_unit_ids,
+        "evaluation_positive_unit_ids": evaluation_positive_unit_ids,
+        "evaluation_negative_unit_ids": evaluation_negative_unit_ids,
+        "unit_score_rule": UNIT_SCORE_RULE,
         "n_independent_calibration": n_independent_calibration,
         "n_independent_evaluation": n_independent_evaluation,
         "n_positive_calibration": n_positive_calibration,
@@ -943,15 +1028,23 @@ def _wilson_bound(normalized: Mapping[str, Any]) -> SampleSizePlanResult:
             f"({search_cap})",
         )
     required = int(result.required_n)
-    if (
-        int(normalized["n_independent_calibration"]) < required
-        or int(normalized["n_independent_evaluation"]) < required
-    ):
+    floored = (
+        "n_positive_calibration",
+        "n_negative_calibration",
+        "n_positive_evaluation",
+        "n_negative_evaluation",
+        "n_independent_calibration",
+        "n_independent_evaluation",
+    )
+    short = [name for name in floored if int(normalized[name]) < required]
+    if short:
         _reject(
             "invalid_sample_count",
-            "n_independent_calibration and n_independent_evaluation must each be >= "
-            f"Wilson required_n {required}. Counts below that #405 floor are rejected "
-            "and are not emitted. "
+            "each of n_positive_calibration, n_negative_calibration, "
+            "n_positive_evaluation, n_negative_evaluation, "
+            "n_independent_calibration, and n_independent_evaluation must be >= "
+            f"Wilson required_n {required}. Short: {short}. Counts below that #405 "
+            "floor are rejected and are not emitted. "
             f"{UNDERPOWERED_DRY_RUN} is only an emitted plan whose "
             "n_positive_calibration, n_negative_calibration, n_positive_evaluation, "
             f"or n_negative_evaluation is below {ENGINEERING_THRESHOLD_N}. "
@@ -1042,6 +1135,14 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
         "source_pr": ROC_API_PR,
         "source_head": ROC_API_HEAD,
         "unit_aggregation": copy.deepcopy(dict(unit_aggregation)),
+        "unit_score_rule": UNIT_SCORE_RULE,
+        "unit_score_rule_consistent_with": "cluster_any_event_rate",
+        "fpr_depends_on_nested_per_unit": True,
+        "fpr_dependence_note": (
+            "The any-event rule makes FPR depend on nested_per_unit. "
+            "max_window_score is the per-unit score declared for AUC and AP, "
+            "consistent with cluster_any_event_rate."
+        ),
         "metrics": [
             _proportion_declaration(
                 "tpr",
@@ -1070,6 +1171,7 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
             {
                 "metric_id": "auc",
                 "named_on_pr_426": True,
+                "unit_score_rule": UNIT_SCORE_RULE,
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
                 "source_head": ROC_API_HEAD,
@@ -1091,6 +1193,7 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
             {
                 "metric_id": "average_precision",
                 "named_on_pr_426": True,
+                "unit_score_rule": UNIT_SCORE_RULE,
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
                 "source_head": ROC_API_HEAD,
@@ -1192,7 +1295,12 @@ def _hash_payload(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "evaluation_seed": normalized["evaluation_seed"],
         "independent_unit": normalized["independent_unit"],
         "calibration_unit_ids": list(normalized["calibration_unit_ids"]),
+        "calibration_positive_unit_ids": list(normalized["calibration_positive_unit_ids"]),
+        "calibration_negative_unit_ids": list(normalized["calibration_negative_unit_ids"]),
         "evaluation_unit_ids": list(normalized["evaluation_unit_ids"]),
+        "evaluation_positive_unit_ids": list(normalized["evaluation_positive_unit_ids"]),
+        "evaluation_negative_unit_ids": list(normalized["evaluation_negative_unit_ids"]),
+        "unit_score_rule": UNIT_SCORE_RULE,
         "n_independent_calibration": normalized["n_independent_calibration"],
         "n_independent_evaluation": normalized["n_independent_evaluation"],
         "n_positive_calibration": normalized["n_positive_calibration"],
@@ -1251,7 +1359,12 @@ def _independence_block(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "estimand": normalized["estimand"],
         "power_claim": normalized["power_claim"],
         "calibration_unit_ids": list(normalized["calibration_unit_ids"]),
+        "calibration_positive_unit_ids": list(normalized["calibration_positive_unit_ids"]),
+        "calibration_negative_unit_ids": list(normalized["calibration_negative_unit_ids"]),
         "evaluation_unit_ids": list(normalized["evaluation_unit_ids"]),
+        "evaluation_positive_unit_ids": list(normalized["evaluation_positive_unit_ids"]),
+        "evaluation_negative_unit_ids": list(normalized["evaluation_negative_unit_ids"]),
+        "unit_score_rule": UNIT_SCORE_RULE,
         "roles_are_disjoint": normalized["roles_are_disjoint"],
         "roles_are_disjoint_is_statistical_independence": False,
         "roles_are_disjoint_note": ROLES_DISJOINT_NOTE,
@@ -1389,7 +1502,11 @@ def _limits() -> Dict[str, Any]:
         "candidate_is_evidence": False,
         "open_pr_is_evidence": False,
         "required_source_sha": dict(REQUIRED_SOURCE_SHA),
+        "pin_source_pr": dict(PIN_SOURCE_PR),
+        "pins_behind_open_pr_heads": copy.deepcopy(PINS_BEHIND_OPEN_PR_HEADS),
         "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
+        "data_lock": "string_denylist_not_a_complete_guard",
+        "data_paths_opened": False,
         "metrics_are_computed": False,
         "roc_api_integrated": False,
         "ci_discovery": "BLOCKED",
@@ -1415,7 +1532,14 @@ def _wilson_dict(result: SampleSizePlanResult) -> Dict[str, Any]:
         "confidence_level": result.confidence_level,
         "design_proportion": result.design_proportion,
         "achieved_metric_value": result.achieved_metric_value,
-        "applied_to": ["n_independent_calibration", "n_independent_evaluation"],
+        "applied_to": [
+            "n_positive_calibration",
+            "n_negative_calibration",
+            "n_positive_evaluation",
+            "n_negative_evaluation",
+            "n_independent_calibration",
+            "n_independent_evaluation",
+        ],
         "nested_per_unit_ignored": True,
         "source": "analysis.binomial_planning.plan_sample_size",
     }
@@ -1797,7 +1921,7 @@ def _resolve_one(
                 "source_sha": recorded,
                 "required_source_sha": required_sha,
             }
-    if gate_id == PHASE_DISPERSION_GATE_ID and row.get("limitations_recorded") is not True:
+    if gate_id == PHASE_SCORE_LIMITATIONS_GATE_ID and row.get("limitations_recorded") is not True:
         return {**base, "status": "limitations_missing"}
     path = row.get("_path")
     if not isinstance(path, str) or not _path_tracked(main_sha, path):
@@ -2132,6 +2256,8 @@ class GridPlan:
             "limits": self.limits,
             "null_model_note": NULL_MODEL_NOTE,
             "required_source_sha": dict(REQUIRED_SOURCE_SHA),
+            "pin_source_pr": dict(PIN_SOURCE_PR),
+            "pins_behind_open_pr_heads": copy.deepcopy(PINS_BEHIND_OPEN_PR_HEADS),
             "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
         }
 
@@ -2159,7 +2285,12 @@ class GridPlan:
             },
             "splits": {
                 "calibration_unit_ids": list(cell["calibration_unit_ids"]),
+                "calibration_positive_unit_ids": list(cell["calibration_positive_unit_ids"]),
+                "calibration_negative_unit_ids": list(cell["calibration_negative_unit_ids"]),
                 "evaluation_unit_ids": list(cell["evaluation_unit_ids"]),
+                "evaluation_positive_unit_ids": list(cell["evaluation_positive_unit_ids"]),
+                "evaluation_negative_unit_ids": list(cell["evaluation_negative_unit_ids"]),
+                "unit_score_rule": cell["unit_score_rule"],
                 "n_positive_calibration": cell["n_positive_calibration"],
                 "n_negative_calibration": cell["n_negative_calibration"],
                 "n_positive_evaluation": cell["n_positive_evaluation"],
@@ -2198,9 +2329,15 @@ class GridPlan:
         if "configuration" not in document:
             _reject("unknown_field", "configuration is required")
         execution = document.get("execution") if isinstance(document.get("execution"), Mapping) else {}
+        stored_aborted = execution.get("aborted") is True or bool(execution.get("abort_gate"))
         # An execution attempt is re-resolved from writer reports. Stored
-        # gate_evidence is not passed through.
-        if execution.get("requested") is True or document.get("gate_resolution") not in (None, []):
+        # gate_evidence is not passed through. An aborted document is never
+        # rebuilt as a dry-run planned list.
+        if (
+            stored_aborted
+            or execution.get("requested") is True
+            or document.get("gate_resolution") not in (None, [])
+        ):
             plan = execute(
                 document["configuration"],
                 simulation=simulation,
@@ -2214,6 +2351,11 @@ class GridPlan:
             _reject(
                 "hash_mismatch",
                 "stored config_hash does not match compute_config_hash(configuration)",
+            )
+        if stored_aborted and plan.run_state == "planned":
+            _reject(
+                "self_declared_state",
+                "an aborted plan cannot be reloaded as planned",
             )
         return plan
 

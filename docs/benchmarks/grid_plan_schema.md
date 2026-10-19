@@ -125,34 +125,48 @@ Every cell carries:
 | `estimand` | Required text. |
 | `power_claim` | Always `none`. |
 
-`calibration_unit_ids` and `evaluation_unit_ids` are derived inside the
-planner from `calibration_seed` / `evaluation_seed` and the independent
-counts: `{role}-seed{seed}-u{index:06d}`. Caller-supplied id lists are
-`caller_unit_ids_rejected`. Window-style ids such as `s1_w0` and `s1_w1`
-cannot be passed in and cannot inflate N. `roles_are_disjoint` is
-`set(calibration).isdisjoint(set(evaluation))`. A unit id in both derived
-sets is `unit_id_overlap`. `n` equal to `len(unit ids) * nested_per_unit`
-when `nested_per_unit > 1` is `windows_counted_in_n`. Trial and compute
-budgets use the independent-unit counts only. Derived id lists are not
-stored on the re-parseable configuration input.
+Per-class ids are derived inside the planner from the seeds:
+`calibration-pos-seed{seed}-u{index:06d}`, `calibration-neg-seed{seed}-u{index:06d}`,
+and the same shape for `evaluation-pos` and `evaluation-neg`. The combined
+`calibration_unit_ids` list is the positive ids followed by the negative
+ids. Caller-supplied id lists are `caller_unit_ids_rejected`. Window-style
+ids such as `s1_w0` and `s1_w1` cannot be passed in and cannot inflate N.
+`roles_are_disjoint` is the computed pairwise disjointness of the four
+class sets. A shared id is `unit_id_overlap`. `n` equal to
+`len(unit ids) * nested_per_unit` when `nested_per_unit > 1` is
+`windows_counted_in_n`. Trial and compute budgets use the independent-unit
+counts only. Derived id lists are not stored on the re-parseable
+configuration input.
 
 `h0`, `h1`, and `score_definition_id` are required. The score id is a
 reference. This module does not compute a score. The threshold is a
 non-empty finite mapping. `threshold_hash` covers `h0`, `h1`,
-`score_definition_id`, `threshold`, `calibration_unit_ids`,
-`calibration_seed`, `estimand`, `interval_method`, and `unit_aggregation`.
+`score_definition_id`, `threshold`, `calibration_unit_ids`, the calibration
+positive and negative id lists, `calibration_seed`, `estimand`,
+`interval_method`, `unit_aggregation`, `n_positive_calibration`,
+`n_negative_calibration`, `nested_per_unit`, and `unit_score_rule`.
 Calibration ids are derived before that hash. Evaluation ids,
 `n_independent_evaluation`, and the evaluation class counts are read only
 after it. That ordering is in-process only. It is not a preregistration
 record. A caller-supplied `evaluation_manifest` is rejected. Changing
-`estimand`, `interval_method`, or `unit_aggregation` changes
-`threshold_hash`. Changing `evaluation_seed` or an evaluation class count
-changes `config_hash` and does not change `threshold_hash`.
+`estimand`, `interval_method`, `unit_aggregation`, a calibration class
+count, or `nested_per_unit` changes `threshold_hash`. Changing
+`evaluation_seed` or an evaluation class count changes `config_hash` and
+does not change `threshold_hash`.
+
+`unit_score_rule` is the declaration `max_window_score`. It is the
+per-unit score for AUC and average precision and is consistent with
+`cluster_any_event_rate`. Nothing is scored. The any-event rule makes FPR
+depend on `nested_per_unit`: a longer window nest can raise the chance
+that a negative unit's max window score crosses the threshold. That
+dependence is recorded on `metric_spec`. It is not a computed FPR.
 
 Wilson floors come from `analysis.binomial_planning.plan_sample_size`.
-There is no second sample-size helper. Counts below the #405 required n
-are rejected and are not emitted. They are not labeled
-`UNDERPOWERED_DRY_RUN`.
+There is no second sample-size helper. `required_n` is applied separately
+to `n_positive_calibration`, `n_negative_calibration`,
+`n_positive_evaluation`, `n_negative_evaluation`, and to each independent
+total. A count below that #405 floor is rejected and is not emitted. It
+is not labeled `UNDERPOWERED_DRY_RUN`.
 
 The engineering minimum, not a power guarantee, is at least 100
 independent positive units and 100 independent negative units in
@@ -304,9 +318,11 @@ for the ancestor check, or `unresolved`), `audited_main_sha`,
 `code_version_id`, `worktree_dirty`, and `config_digest`. Provenance does
 not contain `code_commit`.
 
-A string in the config or in `record_root` that names `ds005620`, BIDS,
-a participant, or an empirical input is `locked_input`. The path is not
-opened.
+The data lock is a string denylist, not a complete guard. A config string
+or `record_root` string that names `ds005620`, BIDS, a participant, or an
+empirical input is `locked_input`. The planner opens no data paths.
+`record_root` is not opened. A renamed or encoded empirical path can pass
+the denylist and still cannot be read, because this module never opens it.
 
 `would_execute` lists cells, seeds, splits, and cost with `executed`
 false. `execute` sets `aborted` and `abort_gate` at the first blocking
@@ -315,27 +331,35 @@ No cell is launched.
 
 ## Gate ids
 
-Blocking. Each gate except `ci_discovery` has a recorded candidate SHA.
-That SHA is not evidence. A gate opens only when a direct-candidate
+Blocking. Each dependency gate except `phase_score_limitations_recorded`
+and `ci_discovery` has a recorded candidate SHA. That SHA is not evidence.
+A pin match never opens a gate. A gate opens only when a direct-candidate
 promotion report for that one `case_id` is a git blob on local main, the
-report `source_sha` equals the pin, and the usual ancestor and
-`ADMISSIBLE_*` checks pass. An open pull request, a local test pass, or a
-green unrelated workflow is not enough. A different `source_sha` is
-`stale_source`. A missing `source_sha` is `missing_dependency`.
-`phase_dispersion` also requires `limitations_recorded: true`.
+report `source_sha` equals the pin when the gate has one, and the usual
+ancestor and `ADMISSIBLE_*` checks pass. An open pull request, a local
+test pass, or a green unrelated workflow is not enough. A different
+`source_sha` is `stale_source`. A missing `source_sha` on a pinned gate is
+`missing_dependency`. `phase_score_limitations_recorded` has no pin. It
+blocks on its own and requires `limitations_recorded: true`.
+`phase_dispersion_module` does not satisfy that limitations row.
 `ci_discovery` has no candidate SHA and stays blocked until the CI change
 lands after this repair.
 
-| Gate | Candidate SHA | Note |
-| --- | --- | --- |
-| `four_sphere_forward_model` | `4b04df0bed9d34e1f4de4bb920933aa84df3a724` | Open PR head, not on main. |
-| `planar_geometry` | `04d5af7321ff002bb88d75353e59aec73eabbf56` | Open PR head, not on main. |
-| `winding_hodge` | `3328dd15a995a62759c4256de944e2dd8e7c9364` | Split from the old combined id. |
-| `csd_full_matrix_pinned_mne` | `24ad946c1cd6142846e19e9db8b7a5325d49ef46` | Open PR head, not on main. |
-| `phase_dispersion` | `42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98` | Limitations record required. |
-| `surrogate_null` | `f8939eec66e585d00966d433cc563d3d34ca0b11` | Open PR head, not on main. |
-| `roc_metrics` | `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | Pinned #426 SHA. |
-| `ci_discovery` | none | `BLOCKED`. |
+Abort order is the blocking-id order. The first blocking gate that is not
+`admissible_on_ancestor` is `abort_gate`. The two phase rows each block
+when the other does not.
+
+| Gate | Source PR | Candidate SHA | Note |
+| --- | --- | --- | --- |
+| `four_sphere_forward_model` | #418 | `4b04df0bed9d34e1f4de4bb920933aa84df3a724` | Behind open head `e316933282e469795d9c69fd50adc5a51ea9d5be`. Fail closed. Refresh only when #418 merges. |
+| `planar_geometry` | #416 | `04d5af7321ff002bb88d75353e59aec73eabbf56` | Open PR head, not on main. |
+| `winding_hodge` | #413 | `3328dd15a995a62759c4256de944e2dd8e7c9364` | Split from the old combined id. |
+| `csd_full_matrix_pinned_mne` | #414 | `24ad946c1cd6142846e19e9db8b7a5325d49ef46` | Open PR head, not on main. |
+| `phase_dispersion_module` | #403 | `42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98` | Module pin. Does not open the limitations row. |
+| `phase_score_limitations_recorded` | none | none | `NOT_INTEGRATED`. Requires `limitations_recorded`. Blocks alone. |
+| `surrogate_null` | #417 | `f8939eec66e585d00966d433cc563d3d34ca0b11` | Behind open head `25c5afeac33f5fac219d1e78453549dc0143d316`. Fail closed. Refresh only when #417 merges. |
+| `roc_metrics` | #426 | `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | Pinned #426 SHA. |
+| `ci_discovery` | none | none | `BLOCKED`. |
 
 `#427` head `e64304087dba4205ee2211963a3cf40025695e9c` moved off
 `27d451fa`. It is not a gate pin and not evidence.
@@ -344,8 +368,10 @@ Nonblocking:
 
 - `dmd_crouzeix` — `NONBLOCKING`
 
-`GATE_INTEGRATION_STATE` marks the seven dependency gates `NOT_INTEGRATED`
-and `ci_discovery` `BLOCKED`. Those labels are not evidence.
+`GATE_INTEGRATION_STATE` marks the dependency gates, including both phase
+rows, `NOT_INTEGRATED`, and `ci_discovery` `BLOCKED`. Those labels are not
+evidence. The four-sphere and surrogate pins stay at the SHAs above while
+their open PR heads have moved. This planner does not chase those heads.
 
 Verdict of a plan produced with this module while those reports are absent
 and `ci_discovery` is blocked: **BLOCKED**. HOLD / SYNTHETIC_ONLY. The

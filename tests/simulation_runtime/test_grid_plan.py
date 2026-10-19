@@ -111,12 +111,12 @@ def _base_config(**overrides):
         "calibration_seed": 11,
         "evaluation_seed": 29,
         "independent_unit": "simulation_seed",
-        "n_independent_calibration": 12,
-        "n_positive_calibration": 6,
-        "n_negative_calibration": 6,
-        "n_independent_evaluation": 12,
-        "n_positive_evaluation": 6,
-        "n_negative_evaluation": 6,
+        "n_independent_calibration": 24,
+        "n_positive_calibration": 12,
+        "n_negative_calibration": 12,
+        "n_independent_evaluation": 24,
+        "n_positive_evaluation": 12,
+        "n_negative_evaluation": 12,
         "nested_unit": "none",
         "nested_per_unit": 1,
         "interval_method": "wilson_on_independent_unit",
@@ -314,6 +314,12 @@ class GridPlanTests(unittest.TestCase):
             "estimand": raw["estimand"],
             "interval_method": raw["interval_method"],
             "unit_aggregation": "not_required",
+            "n_positive_calibration": raw["n_positive_calibration"],
+            "n_negative_calibration": raw["n_negative_calibration"],
+            "nested_per_unit": raw["nested_per_unit"],
+            "unit_score_rule": "max_window_score",
+            "calibration_positive_unit_ids": list(forward.cells[0]["calibration_positive_unit_ids"]),
+            "calibration_negative_unit_ids": list(forward.cells[0]["calibration_negative_unit_ids"]),
         }
         self.assertEqual(forward.threshold_hash, compute_config_hash(binding))
         self.assertNotIn("evaluation_unit_ids", binding)
@@ -351,9 +357,19 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("winding_hodge", original.hash_payload["blocking_gate_ids"])
         self.assertNotIn("four_sphere_oracle", original.hash_payload["blocking_gate_ids"])
         self.assertNotIn("planar_embedding_winding_hodge", original.hash_payload["blocking_gate_ids"])
-        leaked = _base_config(n_positive_evaluation=7, n_negative_evaluation=5)
+        leaked = _base_config(
+            n_independent_evaluation=25,
+            n_positive_evaluation=13,
+            n_negative_evaluation=12,
+        )
         self.assertEqual(original.threshold_hash, dry_run(leaked).threshold_hash)
         self.assertNotEqual(original.config_hash, dry_run(leaked).config_hash)
+        changed_class = _base_config(
+            n_independent_calibration=25,
+            n_positive_calibration=13,
+            n_negative_calibration=12,
+        )
+        self.assertNotEqual(original.threshold_hash, dry_run(changed_class).threshold_hash)
 
     def test_evaluation_ids_are_read_only_after_the_threshold_hash(self):
         probe = _Probe(_base_config())
@@ -368,7 +384,10 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.evaluation_manifest["threshold_hash"], plan.threshold_hash)
         self.assertTrue(plan.evaluation_manifest["built_after_threshold_hash"])
         self.assertEqual(plan.evaluation_manifest["threshold_order"], "in_process_only_not_preregistration")
-        self.assertEqual(plan.evaluation_manifest["evaluation_unit_ids"][0], "evaluation-seed29-u000000")
+        self.assertEqual(
+            plan.evaluation_manifest["evaluation_unit_ids"][0],
+            "evaluation-pos-seed29-u000000",
+        )
         self.assertNotIn("calibration_unit_ids", plan.configuration)
         self.assertNotIn("evaluation_unit_ids", plan.configuration)
 
@@ -392,8 +411,25 @@ class GridPlanTests(unittest.TestCase):
         ev = plan.cells[0]["evaluation_unit_ids"]
         self.assertEqual(plan.cells[0]["roles_are_disjoint"], set(cal).isdisjoint(ev))
         self.assertTrue(set(cal).isdisjoint(set(ev)))
-        self.assertTrue(all(item.startswith("calibration-seed11-u") for item in cal))
-        self.assertTrue(all(item.startswith("evaluation-seed29-u") for item in ev))
+        positive = plan.cells[0]["calibration_positive_unit_ids"]
+        negative = plan.cells[0]["calibration_negative_unit_ids"]
+        self.assertTrue(all(item.startswith("calibration-pos-seed11-u") for item in positive))
+        self.assertTrue(all(item.startswith("calibration-neg-seed11-u") for item in negative))
+        self.assertEqual(len(positive), 12)
+        self.assertEqual(len(negative), 12)
+        self.assertEqual(cal, positive + negative)
+        self.assertTrue(all(item.startswith("evaluation-pos-seed29-u") for item in plan.cells[0]["evaluation_positive_unit_ids"]))
+        self.assertTrue(all(item.startswith("evaluation-neg-seed29-u") for item in plan.cells[0]["evaluation_negative_unit_ids"]))
+        groups = [
+            set(positive),
+            set(negative),
+            set(plan.cells[0]["evaluation_positive_unit_ids"]),
+            set(plan.cells[0]["evaluation_negative_unit_ids"]),
+        ]
+        for index, left in enumerate(groups):
+            for right in groups[index + 1 :]:
+                self.assertTrue(left.isdisjoint(right))
+        self.assertEqual(plan.cells[0]["roles_are_disjoint"], True)
         self.assertEqual(len(cal), plan.cells[0]["n_independent_calibration"])
         self.assertNotIn("calibration_trial_index_start", plan.cells[0])
         self.assertNotIn("evaluation_trial_index_start", plan.cells[0])
@@ -413,13 +449,20 @@ class GridPlanTests(unittest.TestCase):
             unit_aggregation="cluster_any_event_rate",
         )
         plan = dry_run(nested)
-        self.assertEqual(plan.trial_count, plan.cell_count * (12 + 12))
-        self.assertNotEqual(plan.trial_count, plan.cell_count * (12 + 12) * 10)
+        self.assertEqual(plan.trial_count, plan.cell_count * (24 + 24))
+        self.assertNotEqual(plan.trial_count, plan.cell_count * (24 + 24) * 10)
         self.assertFalse(plan.cells[0]["nested_counted_in_n"])
         self.assertEqual(plan.wilson.required_n, 12)
         self.assertEqual(
             plan.to_dict()["wilson_bound"]["applied_to"],
-            ["n_independent_calibration", "n_independent_evaluation"],
+            [
+                "n_positive_calibration",
+                "n_negative_calibration",
+                "n_positive_evaluation",
+                "n_negative_evaluation",
+                "n_independent_calibration",
+                "n_independent_evaluation",
+            ],
         )
         self.assertTrue(plan.to_dict()["wilson_bound"]["nested_per_unit_ignored"])
         bare = dry_run(_base_config())
@@ -444,15 +487,16 @@ class GridPlanTests(unittest.TestCase):
                 unit_aggregation="cluster_any_event_rate",
             )
         )
-        self.assertEqual(nested_ids.cells[0]["n_independent_calibration"], 12)
-        self.assertEqual(len(nested_ids.cells[0]["calibration_unit_ids"]), 12)
-        self.assertEqual(nested_ids.trial_count, nested_ids.cell_count * (12 + 12))
+        self.assertEqual(nested_ids.cells[0]["n_independent_calibration"], 24)
+        self.assertEqual(len(nested_ids.cells[0]["calibration_unit_ids"]), 24)
+        self.assertEqual(len(nested_ids.cells[0]["calibration_positive_unit_ids"]), 12)
+        self.assertEqual(nested_ids.trial_count, nested_ids.cell_count * (24 + 24))
         self.assertFalse(any("_w" in item for item in nested_ids.cells[0]["calibration_unit_ids"]))
         self.assertTrue(
-            nested_ids.cells[0]["calibration_unit_ids"][0].startswith("calibration-seed11-u")
+            nested_ids.cells[0]["calibration_unit_ids"][0].startswith("calibration-pos-seed11-u")
         )
         self.assertTrue(
-            nested_ids.cells[0]["evaluation_unit_ids"][0].startswith("evaluation-seed29-u")
+            nested_ids.cells[0]["evaluation_unit_ids"][0].startswith("evaluation-pos-seed29-u")
         )
         with self.assertRaises(GridPlanError) as caught:
             grid_plan_module._count_matches_ids(120, ["cal"] * 12, 10, "n_independent_calibration")
@@ -483,7 +527,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(plan.gate_check["opened"])
         self.assertEqual(plan.status_label, "HOLD_SYNTHETIC_ONLY")
         self.assertEqual(plan.cell_count, 3)
-        self.assertEqual(plan.trial_count, 3 * 24)
+        self.assertEqual(plan.trial_count, 3 * 48)
         self.assertEqual(plan.cells[0]["parameter_case"]["axes"], {"snr_db": -6})
         self.assertEqual(plan.toy_fixture["label"], TOY_FIXTURE_LABEL)
         self.assertIsNone(plan.toy_fixture["detector_roc"])
@@ -504,7 +548,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(would["executed"])
         self.assertEqual(len(would["cells"]), plan.cell_count)
         self.assertEqual(would["seeds"]["calibration_seed"], 11)
-        self.assertEqual(would["splits"]["n_positive_calibration"], 6)
+        self.assertEqual(would["splits"]["n_positive_calibration"], 12)
         self.assertEqual(would["cost"]["label"], "DECLARED_ESTIMATE")
         self.assertEqual(manifest.units[0].command, [])
         self.assertFalse(manifest.environment["launches_simulation"])
@@ -1138,6 +1182,10 @@ class GridPlanTests(unittest.TestCase):
             self.assertEqual(metric["undefined_value"], "UNDEFINED")
             self.assertFalse(metric["silent_zero"])
             self.assertFalse(metric["silent_nan"])
+        self.assertEqual(by_id["auc"]["unit_score_rule"], "max_window_score")
+        self.assertEqual(by_id["average_precision"]["unit_score_rule"], "max_window_score")
+        self.assertTrue(spec["fpr_depends_on_nested_per_unit"])
+        self.assertIn("nested_per_unit", spec["fpr_dependence_note"])
         self.assertEqual(by_id["auc"]["tie_rule"], "ties_count_0.5")
         self.assertEqual(by_id["auc"]["undefined_reason"], "auc_undefined_empty_class")
         self.assertEqual(by_id["auc"]["interval_method"], "cluster_bootstrap_over_independent_unit")
@@ -1155,7 +1203,7 @@ class GridPlanTests(unittest.TestCase):
             self.assertFalse(metric["computed"])
         cost = plan.cost_estimate
         self.assertTrue(cost["computed_without_running"])
-        product = plan.cell_count * (12 + 12) * 1
+        product = plan.cell_count * (24 + 24) * 1
         self.assertEqual(cost["cells_times_independent_units_times_nested"], product)
         self.assertEqual(cost["estimated_callback_invocations"], product)
         self.assertEqual(cost["output_records"], product)
@@ -1302,10 +1350,9 @@ class GridPlanTests(unittest.TestCase):
         ]
         phase_rows = [
             {
-                "case_id": "phase_dispersion",
+                "case_id": "phase_score_limitations_recorded",
                 "_source": "git_blob",
                 "_path": "absent.json",
-                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion"],
                 "limitations_recorded": False,
                 "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
                 "scientific_pass": False,
@@ -1313,11 +1360,10 @@ class GridPlanTests(unittest.TestCase):
         ]
         pinned_but_untracked = [
             {
-                "case_id": "phase_dispersion",
+                "case_id": "phase_dispersion_module",
                 "_source": "git_blob",
                 "_path": "absent.json",
-                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion"],
-                "limitations_recorded": True,
+                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion_module"],
                 "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
                 "scientific_pass": False,
             }
@@ -1352,11 +1398,15 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(missing_status["roc_metrics"], "missing_source_sha")
         self.assertIn("missing_dependency", {item["code"] for item in missing_blockers})
         phase_status = {item["gate_id"]: item["status"] for item in phase}
-        self.assertEqual(phase_status["phase_dispersion"], "limitations_missing")
+        self.assertEqual(phase_status["phase_score_limitations_recorded"], "limitations_missing")
+        self.assertEqual(phase_status["phase_dispersion_module"], "missing")
         self.assertIn("limitations_missing", {item["code"] for item in phase_blockers})
         untracked_status = {item["gate_id"]: item["status"] for item in untracked}
-        self.assertEqual(untracked_status["phase_dispersion"], "not_on_main")
-        self.assertNotEqual(untracked_status["phase_dispersion"], "admissible_on_ancestor")
+        self.assertEqual(untracked_status["phase_dispersion_module"], "not_on_main")
+        self.assertEqual(untracked_status["phase_score_limitations_recorded"], "missing")
+        self.assertNotEqual(untracked_status["phase_dispersion_module"], "admissible_on_ancestor")
+        self.assertNotIn("phase_score_limitations_recorded", grid_plan_module.REQUIRED_SOURCE_SHA)
+        self.assertEqual(grid_plan_module.PIN_SOURCE_PR["phase_dispersion_module"], 403)
 
         plan = execute(_base_config(), simulation=spy)
         self.assertEqual(calls, [])
@@ -1435,6 +1485,104 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(blocked.execution["partial_launch"])
         self.assertEqual(blocked.run_state, "blocked")
         _assert_all_cells_blocked(self, blocked)
+
+    def test_imbalanced_splits_stay_smoke_only_and_wilson_rejects_a_short_class(self):
+        wide = {
+            "wilson_target_full_width": 0.6,
+            "max_trials": 5000,
+            "max_compute_units": 100000.0,
+            "max_cells": 16,
+        }
+        for positive, negative in ((150, 50), (190, 10)):
+            plan = dry_run(
+                _base_config(
+                    n_independent_calibration=positive + negative,
+                    n_positive_calibration=positive,
+                    n_negative_calibration=negative,
+                    n_independent_evaluation=positive + negative,
+                    n_positive_evaluation=positive,
+                    n_negative_evaluation=negative,
+                    **wide,
+                )
+            )
+            self.assertGreaterEqual(min(positive, negative), plan.wilson.required_n)
+            self.assertEqual(plan.sample_size_label, "UNDERPOWERED_DRY_RUN")
+            self.assertEqual(plan.execution_mode, "smoke_only")
+            self.assertEqual(plan.engineering_minimum_note, "engineering minimum, not a power guarantee")
+            self.assertFalse(plan.would_execute()["executed"])
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(
+                _base_config(
+                    n_independent_calibration=23,
+                    n_positive_calibration=11,
+                    n_negative_calibration=12,
+                )
+            )
+        self.assertEqual(caught.exception.code, "invalid_sample_count")
+        self.assertIn("n_positive_calibration", str(caught.exception))
+        self.assertNotIn("below either floor", str(caught.exception))
+
+    def test_phase_gates_block_independently_and_aborted_plan_cannot_reload_as_planned(self):
+        ids = list(BLOCKING_GATE_IDS)
+        self.assertLess(ids.index("phase_dispersion_module"), ids.index("phase_score_limitations_recorded"))
+        self.assertEqual(GATE_INTEGRATION_STATE["phase_dispersion_module"], "NOT_INTEGRATED")
+        self.assertEqual(GATE_INTEGRATION_STATE["phase_score_limitations_recorded"], "NOT_INTEGRATED")
+        module_only = [
+            {
+                "case_id": "phase_dispersion_module",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion_module"],
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        limitations_only = [
+            {
+                "case_id": "phase_score_limitations_recorded",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "limitations_recorded": True,
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        with patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+            module_resolved, _module_blockers = grid_plan_module._resolve_gates_from_rows(
+                module_only,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+            limitations_resolved, _limitations_blockers = grid_plan_module._resolve_gates_from_rows(
+                limitations_only,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+        module_status = {item["gate_id"]: item["status"] for item in module_resolved}
+        limitations_status = {item["gate_id"]: item["status"] for item in limitations_resolved}
+        self.assertEqual(module_status["phase_dispersion_module"], "not_on_main")
+        self.assertEqual(module_status["phase_score_limitations_recorded"], "missing")
+        self.assertEqual(limitations_status["phase_score_limitations_recorded"], "not_on_main")
+        self.assertEqual(limitations_status["phase_dispersion_module"], "missing")
+        self.assertNotEqual(module_status["phase_dispersion_module"], "admissible_on_ancestor")
+        self.assertNotEqual(limitations_status["phase_score_limitations_recorded"], "admissible_on_ancestor")
+
+        calls, spy = _spy_calls()
+        plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertTrue(plan.execution["aborted"])
+        document = plan.to_dict()
+        document["run_state"] = "planned"
+        document["execution"]["requested"] = False
+        document["gate_resolution"] = []
+        restored = GridPlan.from_dict(document)
+        self.assertEqual(calls, [])
+        self.assertNotEqual(restored.run_state, "planned")
+        self.assertEqual(restored.run_state, "blocked")
+        self.assertTrue(restored.execution["aborted"])
+        self.assertFalse(restored.execution["partial_launch"])
+        self.assertFalse(restored.execution["executed"])
+        _assert_all_cells_blocked(self, restored)
 
 
 if __name__ == "__main__":
