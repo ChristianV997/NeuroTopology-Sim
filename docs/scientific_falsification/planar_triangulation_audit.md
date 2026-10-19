@@ -2,8 +2,8 @@
 
 **Status:** HOLD / SYNTHETIC_ONLY<br/>
 **Branch:** `batch2/antigravity-a-planar-triangulation`<br/>
-**Base Commit:** `19c3203573082f8bc41f7da226b52dc20a49fdb0` (`origin/main`)<br/>
-**Candidate PR #416 Commit:** `e4a44f6ec2fca634e3c37bcb189f76246bf6891e` (`batch2/cursor-a-planar-triangulation`)<br/>
+**Base Commit:** `f6951115bcbf83b75bf20481085a5dad9c25c7e6` (`origin/main`)<br/>
+**Candidate PR #416 Commit:** `04d5af7321ff002bb88d75353e59aec73eabbf56` (`batch2/cursor-a-planar-triangulation`)<br/>
 **Scope:** Independent adversarial test surface for planar sensor triangulation and embedding validity (`tests/experimental/test_planar_triangulation.py` and `tests/experimental/planar_mesh_test_helpers.py`).
 
 ---
@@ -13,10 +13,10 @@
 - **Project Posture:** `HOLD / SYNTHETIC_ONLY`. The tests in this suite establish geometric and topological properties of 2D sensor-coordinate planar meshes. They do not establish cortical topology, functional localization, or scientific/consciousness claims.
 - **Gemini Revision 8 Status:** Treated strictly as unverified research input, not mathematical ground truth.
 - **Candidate PR #416 Integration:**
-  - Audited and executed directly against PR #416's candidate production module (`neurotopology_sim/experimental/geometry/planar_triangulation.py` at commit `e4a44f6ec2fca634e3c37bcb189f76246bf6891e`).
+  - Audited and executed directly against PR #416's candidate production module (`neurotopology_sim/experimental/geometry/planar_triangulation.py` at commit `04d5af7321ff002bb88d75353e59aec73eabbf56`).
   - No mocks, stubs, or local replacement validators were used for candidate tests.
   - Candidate implements exact-sign predicates on IEEE-754 binary floats via `Fraction.from_float`, separating `input_validation`, `abstract_chain`, `planar_hull_triangulation`, and `delaunay_empty_circle` diagnostic layers.
-  - Candidate v3 (`e4a44f6`) introduces the `FailureKind` enum (`MALFORMED_INPUT`, `INVALID_PLANAR_EMBEDDING`, `DELAUNAY_POLICY_FAILURE`, `NONE`), top-level `failure_kind` attribute on `PlanarTriangulationResult`, and structured vertex-on-open-edge / T-junction detection (`edge_touch`).
+  - Candidate v3/v4 (`e4a44f6`, `04d5af7`) introduces the `FailureKind` enum (`MALFORMED_INPUT`, `INVALID_PLANAR_EMBEDDING`, `DELAUNAY_POLICY_FAILURE`, `NONE`), top-level `failure_kind` attribute on `PlanarTriangulationResult`, structured vertex-on-open-edge / T-junction detection (`edge_touch`), and unified out-of-range index diagnostics matching adversarial parity.
 
 ---
 
@@ -148,7 +148,7 @@ In commits `88b21ccd` and `e4a44f6e`, Cursor Agent A hardened simplex index pars
 ## 6. Test Suite Verification & Merge Readiness
 
 - **Focused Test Execution:**
-  - `pytest tests/experimental/test_planar_triangulation.py -v`: 36 passed in 7.22s.
-  - Combined suite (`tests/neurotopology_sim/experimental/geometry/` + `tests/experimental/`): 63 passed in 15.23s (36 adversarial + 27 candidate).
+  - `pytest tests/experimental/test_planar_triangulation.py -v`: 36 passed.
+  - Combined suite (`tests/neurotopology_sim/experimental/geometry/` + `tests/experimental/`): 64 passed in 40.53s (36 adversarial + 28 candidate).
 - **Git Hygiene:** `git diff --check` clean (0 warnings, 0 whitespace errors).
-- **Merge Disposition:** Candidate PR #416 successfully passes all 36 adversarial tests and all 27 candidate tests. PR #421 is merge-ready for review. In accordance with project instructions and branch protection policies, PR #421 remains open and is NOT merged into `origin/main`.
+- **Merge Disposition:** Candidate PR #416 successfully passes all 36 adversarial tests and all 28 candidate tests. PR #421 is merge-ready for review. In accordance with project instructions and branch protection policies, PR #421 remains open and is NOT merged into `origin/main`.
