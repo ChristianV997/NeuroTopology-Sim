@@ -66,6 +66,13 @@ jobs:
           tests/btc_icft/test_report_guardrails.py
           tests/btc_icft/test_ontology_schema.py
           tests/runner/test_runner_isolation.py
+          tests/surrogate_nulls/test_phase_nulls.py
+          tests/surrogate_nulls/test_cholesky_csd.py
+          tests/surrogate_nulls/test_mv_iaaft.py
+          tests/surrogate_nulls/test_edge_cases.py
+          tests/surrogate_nulls/test_csd_estimators.py
+          tests/surrogate_nulls/test_hardening_diagnostics.py
+          tests/surrogate_nulls/test_real_part_and_validity.py
 
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic
