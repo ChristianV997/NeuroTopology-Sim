@@ -63,11 +63,23 @@ _LEDGER_TYPED_REFERENCE_FIELDS: dict[str, dict[str, str]] = {
         "validation_report_ids": "validation_report",
     },
 }
-_KNOWN_LEDGER_RECORD_TYPES = frozenset({
-    "source_snapshot", "evidence_record", "claim", "hypothesis",
-    "experiment_spec", "run_record", "artifact_manifest",
-    "validation_report", "theory_revision",
-})
+_LEDGER_RECORD_ID_FIELDS = {
+    "source_snapshot": "snapshot_id",
+    "evidence_record": "evidence_id",
+    "claim": "claim_id",
+    "hypothesis": "hypothesis_id",
+    "experiment_spec": "experiment_id",
+    "run_record": "run_record_id",
+    "artifact_manifest": "artifact_manifest_id",
+    "validation_report": "validation_report_id",
+    "theory_revision": "revision_id",
+}
+_KNOWN_LEDGER_RECORD_TYPES = frozenset(_LEDGER_RECORD_ID_FIELDS)
+_LEDGER_REFERENCE_FIELD_NAMES = frozenset(
+    field_name
+    for fields in _LEDGER_TYPED_REFERENCE_FIELDS.values()
+    for field_name in fields
+)
 
 
 class AuditInputError(ValueError):
@@ -649,10 +661,6 @@ def _record_type_id(record: Mapping[str, Any]) -> str | None:
     value = record.get("record_id")
     if isinstance(value, str) and value:
         return value
-    for key in ("snapshot_id", "evidence_id", "claim_id", "hypothesis_id", "experiment_id", "run_record_id", "artifact_manifest_id", "validation_report_id", "revision_id"):
-        value = record.get(key)
-        if isinstance(value, str) and value:
-            return value
     return None
 
 
@@ -679,6 +687,15 @@ def _verify_ledger_export(ctx: _Context, doc: _Document) -> dict[str, Any] | Non
     if not isinstance(cycle, Mapping) or not isinstance(cycle.get("cycle_id"), str):
         ctx.add("malformed_ledger_export", doc.relative_path, "cycle.cycle_id is required", "error")
         return None
+    parent_cycle_id = cycle.get("parent_cycle_id")
+    if parent_cycle_id is not None and (not isinstance(parent_cycle_id, str) or not parent_cycle_id):
+        ctx.add(
+            "malformed_cycle_parent_reference",
+            f"{doc.relative_path}#/cycle/parent_cycle_id",
+            "parent_cycle_id must be null or a non-empty string; no cycle relationship was inferred",
+            "error",
+        )
+        return None
     if not all(isinstance(items, list) for items in (records, events, links)):
         ctx.add("malformed_ledger_export", doc.relative_path, "records, events, and links must be arrays", "error")
         return None
@@ -690,13 +707,41 @@ def _verify_ledger_export(ctx: _Context, doc: _Document) -> dict[str, Any] | Non
         if not isinstance(record, Mapping):
             ctx.add("malformed_ledger_record", subject, "record must be an object", "error")
             continue
-        record_id = _record_type_id(record)
         record_type = record.get("record_type")
+        id_field = _LEDGER_RECORD_ID_FIELDS.get(record_type) if isinstance(record_type, str) else None
+        if id_field is not None:
+            record_id_value = record.get("record_id")
+            typed_id_value = record.get(id_field)
+            if (
+                not isinstance(record_id_value, str)
+                or not record_id_value
+                or not isinstance(typed_id_value, str)
+                or not typed_id_value
+                or record_id_value != typed_id_value
+            ):
+                ctx.add(
+                    "ledger_record_identity_mismatch",
+                    subject,
+                    f"{record_type}.record_id must equal its non-empty typed identifier field {id_field!r}; no identifier was inferred",
+                    "error",
+                )
+                continue
+        record_id = _record_type_id(record)
         if not record_id or not isinstance(record_type, str):
             ctx.add("malformed_ledger_record", subject, "record_type and stable record identifier are required", "error")
             continue
         if record_type not in _KNOWN_LEDGER_RECORD_TYPES:
             ctx.add("unverifiable_ledger_record_type", subject, f"record_type {record_type!r} is not part of the supported research-cycle record contract; typed relationships are not inferred")
+        declared_reference_fields = set(_LEDGER_TYPED_REFERENCE_FIELDS.get(record_type, {}))
+        primary_id_field = _LEDGER_RECORD_ID_FIELDS.get(record_type)
+        for field_name in sorted(_LEDGER_REFERENCE_FIELD_NAMES.intersection(record)):
+            if field_name == primary_id_field or field_name in declared_reference_fields:
+                continue
+            ctx.add(
+                "unsupported_typed_reference",
+                f"{subject}#/{field_name}",
+                f"field {field_name!r} is not a contract-defined typed edge for record type {record_type!r}; no relationship was inferred",
+            )
         if record_id in record_ids_seen:
             ctx.add("duplicate_record_id", record_id, "ledger export contains this record ID more than once", "error")
         record_ids_seen.add(record_id)
@@ -713,7 +758,8 @@ def _verify_ledger_export(ctx: _Context, doc: _Document) -> dict[str, Any] | Non
             ctx.add("checksum_mismatch", record_id, "record checksum differs under ResearchCycleLedger canonical_json", "error")
         normalized = dict(record)
         normalized["record_id"] = record_id
-        record_index[record_id] = normalized
+        if record_type in _KNOWN_LEDGER_RECORD_TYPES:
+            record_index[record_id] = normalized
 
     _verify_ledger_events(ctx, doc.relative_path, cycle_id, events)
     _verify_ledger_links(ctx, doc.relative_path, cycle_id, records, record_index, links)
@@ -781,6 +827,8 @@ def _verify_ledger_links(
     for record in records:
         if not isinstance(record, Mapping):
             continue
+        if record.get("record_type") not in _KNOWN_LEDGER_RECORD_TYPES:
+            continue
         record_id = _record_type_id(record)
         if not record_id:
             continue
@@ -825,7 +873,7 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
     for record in all_records:
         record_id = record.get("record_id")
         record_type = record.get("record_type")
-        if not isinstance(record_id, str) or not record_id:
+        if not isinstance(record_id, str) or not record_id or record_type not in _KNOWN_LEDGER_RECORD_TYPES:
             continue
         generic_key = ReferenceKey("research_cycle_record", "record_id", record_id)
         prior = generic_index.setdefault(generic_key, [])
@@ -890,7 +938,7 @@ def _ledger_refs(ctx: _Context, exports: list[dict[str, Any]]) -> tuple[list[dic
     for record in all_records:
         record_id = record.get("record_id")
         record_type = record.get("record_type")
-        if not isinstance(record_id, str) or not record_id:
+        if not isinstance(record_id, str) or not record_id or record_type not in _KNOWN_LEDGER_RECORD_TYPES:
             continue
         source_cycle = record.get("cycle_id")
         refs: list[str] = []
@@ -1427,59 +1475,77 @@ def _check_gate_claims(ctx: _Context, docs: list[_Document], ledger_records: lis
 def _inventory_root(ctx: _Context) -> None:
     if not ctx.root.exists():
         return
-    count = 0
-    def on_walk_error(exc: OSError) -> None:
-        filename = getattr(exc, "filename", None)
-        subject = str(filename) if filename else "."
-        try:
-            subject = Path(subject).relative_to(ctx.root).as_posix()
-        except ValueError:
-            subject = "."
-        ctx.add("inventory_read_error", subject, str(exc), "error")
+    entry_count = 0
+    file_count = 0
+    pending: list[tuple[str, str, str, str]] = []
+    inventory: list[dict[str, Any]] = []
+    stack = [ctx.root]
 
-    for current, directories, filenames in os.walk(ctx.root, topdown=True, onerror=on_walk_error, followlinks=False):
-        current_path = Path(current)
-        current_rel = current_path.relative_to(ctx.root).as_posix()
-        if current_rel == ".":
-            current_rel = ""
-        skip_tree = any(current_rel == prefix or current_rel.startswith(prefix + "/") for prefix in ctx.source_tree_prefixes)
-        if skip_tree:
-            directories[:] = []
-            continue
-        kept_dirs: list[str] = []
-        for name in sorted(directories):
-            path = current_path / name
-            rel = path.relative_to(ctx.root).as_posix()
-            if _is_link(path):
-                ctx.add("symlink_rejected", rel, "directory symlinks and junctions are not followed", "error")
-                continue
-            if any(rel == prefix or rel.startswith(prefix + "/") for prefix in ctx.source_tree_prefixes):
-                # local_root is a declared input subtree; do not enumerate or read its contents.
-                continue
-            kept_dirs.append(name)
-        directories[:] = kept_dirs
-        for name in sorted(filenames):
-            path = current_path / name
-            relative = path.relative_to(ctx.root).as_posix()
-            if _is_link(path):
-                ctx.add("symlink_rejected", relative, "file symlinks and junctions are not followed", "error")
-                continue
+    while stack:
+        current_path = stack.pop()
+        try:
+            with os.scandir(current_path) as iterator:
+                entries = []
+                for entry in iterator:
+                    entry_count += 1
+                    if entry_count > ctx.limits.max_inventory_entries:
+                        ctx.add(
+                            "inventory_entry_limit_exceeded",
+                            ".",
+                            f"root traversal exceeds {ctx.limits.max_inventory_entries} filesystem entries; inventory was discarded",
+                            "error",
+                        )
+                        return
+                    entries.append(entry)
+        except OSError as exc:
             try:
+                subject = current_path.relative_to(ctx.root).as_posix() or "."
+            except ValueError:
+                subject = "."
+            pending.append(("inventory_read_error", subject, str(exc), "error"))
+            continue
+
+        child_directories: list[Path] = []
+        for entry in sorted(entries, key=lambda item: item.name):
+            path = Path(entry.path)
+            relative = "."
+            try:
+                relative = path.relative_to(ctx.root).as_posix()
+                if _is_link(path):
+                    pending.append(("symlink_rejected", relative, "symlink and junction entries are not followed", "error"))
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    if any(relative == prefix or relative.startswith(prefix + "/") for prefix in ctx.source_tree_prefixes):
+                        # local_root is a declared input subtree; do not enumerate or read its contents.
+                        continue
+                    child_directories.append(path)
+                    continue
                 info = path.lstat()
             except OSError as exc:
-                ctx.add("inventory_read_error", relative, str(exc), "error")
+                pending.append(("inventory_read_error", relative, str(exc), "error"))
                 continue
+
             if not stat.S_ISREG(info.st_mode):
                 continue
-            count += 1
-            if count > ctx.limits.max_files:
-                ctx.add("file_count_limit_exceeded", relative, f"inventory exceeds {ctx.limits.max_files} files", "error")
-                directories[:] = []
+            file_count += 1
+            if file_count > ctx.limits.max_files:
+                ctx.add(
+                    "file_count_limit_exceeded",
+                    ".",
+                    f"inventory exceeds {ctx.limits.max_files} regular files; inventory was discarded",
+                    "error",
+                )
                 return
             if info.st_size > ctx.limits.max_artifact_bytes:
-                ctx.add("artifact_size_limit_exceeded", relative, f"{info.st_size} > {ctx.limits.max_artifact_bytes}", "error")
+                pending.append(("artifact_size_limit_exceeded", relative, f"{info.st_size} > {ctx.limits.max_artifact_bytes}", "error"))
                 continue
-            ctx.inventory.append({"relative_path": relative, "size_bytes": info.st_size})
+            inventory.append({"relative_path": relative, "size_bytes": info.st_size})
+
+        stack.extend(reversed(child_directories))
+
+    for code, subject, detail, severity in pending:
+        ctx.add(code, subject, detail, severity)
+    ctx.inventory.extend(inventory)
 
 
 def _finalize_findings(ctx: _Context) -> list[Finding]:
@@ -1650,6 +1716,7 @@ def audit_provenance(
             "max_artifact_bytes": selected_limits.max_artifact_bytes,
             "max_total_bytes": selected_limits.max_total_bytes,
             "max_files": selected_limits.max_files,
+            "max_inventory_entries": selected_limits.max_inventory_entries,
             "bytes_read_or_hashed": ctx.total_bytes,
         },
         "input_manifests": [

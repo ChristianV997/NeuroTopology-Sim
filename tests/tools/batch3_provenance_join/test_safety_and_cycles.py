@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools.batch3_provenance_join import AuditLimits, audit_provenance
+from tools.batch3_provenance_join import auditor as provenance_auditor
 from tests.tools.batch3_provenance_join.helpers import ledger_export, ledger_record, sha, valid_fixture, write_json
 
 
@@ -75,6 +76,53 @@ def test_manifest_artifact_and_total_size_limits_are_enforced(tmp_path: Path) ->
     )
     assert report["status"] == "INVALID"
     assert "total_size_limit_exceeded" in _codes(report)
+
+    report = audit_provenance(
+        tmp_path,
+        paths,
+        limits=AuditLimits(
+            max_manifest_bytes=1024 * 1024,
+            max_artifact_bytes=1024,
+            max_total_bytes=1024 * 1024,
+            max_files=1,
+        ),
+    )
+    assert report["status"] == "INVALID"
+    assert "file_count_limit_exceeded" in _codes(report)
+
+
+def test_directory_only_tree_is_bounded_by_inventory_entry_limit(tmp_path: Path) -> None:
+    path = write_json(tmp_path / "manifest.json", {"schema": "unknown"})
+    for index in range(5):
+        (tmp_path / f"directory-{index}").mkdir()
+
+    report = audit_provenance(
+        tmp_path,
+        [path],
+        limits=AuditLimits(
+            max_manifest_bytes=1024 * 1024,
+            max_artifact_bytes=1024,
+            max_total_bytes=1024 * 1024,
+            max_files=100,
+            max_inventory_entries=3,
+        ),
+    )
+    repeated = audit_provenance(
+        tmp_path,
+        [path],
+        limits=AuditLimits(
+            max_manifest_bytes=1024 * 1024,
+            max_artifact_bytes=1024,
+            max_total_bytes=1024 * 1024,
+            max_files=100,
+            max_inventory_entries=3,
+        ),
+    )
+
+    assert report["status"] == "INVALID"
+    assert "inventory_entry_limit_exceeded" in _codes(report)
+    assert report == repeated
+    assert report["orphan_artifacts"] == []
 
 
 def test_malformed_duplicate_key_and_non_finite_json_are_rejected(tmp_path: Path) -> None:
@@ -161,6 +209,28 @@ def test_sibling_cycle_reference_is_invalid(tmp_path: Path) -> None:
     assert "cross_cycle_reference_invalid" in _codes(report)
 
 
+def test_cycle_parent_loop_is_reported(tmp_path: Path) -> None:
+    first = write_json(tmp_path / "cycle-a.json", ledger_export("cycle-a", [], parent_cycle_id="cycle-b"))
+    second = write_json(tmp_path / "cycle-b.json", ledger_export("cycle-b", [], parent_cycle_id="cycle-a"))
+
+    report = audit_provenance(tmp_path, [first, second])
+
+    assert report["status"] == "INVALID"
+    assert "cycle_parent_loop" in _codes(report)
+
+
+def test_malformed_cycle_parent_is_reported_instead_of_crashing(tmp_path: Path) -> None:
+    path = write_json(
+        tmp_path / "malformed-parent.json",
+        ledger_export("cycle-malformed-parent", [], parent_cycle_id=[]),
+    )
+
+    report = audit_provenance(tmp_path, [path])
+
+    assert report["status"] == "INVALID"
+    assert "malformed_cycle_parent_reference" in _codes(report)
+
+
 def test_typed_ledger_reference_does_not_resolve_other_record_type(tmp_path: Path) -> None:
     cycle_id = "cycle-typed-collision"
     claim_with_collision_id = ledger_record(
@@ -195,6 +265,198 @@ def test_typed_ledger_reference_does_not_resolve_other_record_type(tmp_path: Pat
     assert finding["subject"] == "claim-referrer.evidence_ids"
     assert "evidence_record" in finding["detail"]
     assert "claim" in finding["detail"]
+
+
+def test_unsupported_typed_field_is_reported_without_joining(tmp_path: Path) -> None:
+    cycle_id = "cycle-unsupported-edge"
+    snapshot = ledger_record(
+        "source_snapshot",
+        cycle_id,
+        snapshot_id="shared-namespace-text",
+        source_uri="local:fixture",
+        source_sha256="c" * 64,
+        data_mode="synthetic",
+        evidence_class="synthetic_demonstration",
+        claim_scope="fixture",
+        scientific_limitations=["Fixture only."],
+    )
+    claim = ledger_record(
+        "claim",
+        cycle_id,
+        claim_id="claim-with-wrong-edge",
+        statement="Fixture claim only.",
+        evidence_ids=[],
+        source_snapshot_ids=["shared-namespace-text"],
+        evidence_class="hypothesis",
+        claim_scope="fixture",
+        scientific_limitations=["Not evidence."],
+    )
+    path = write_json(tmp_path / "unsupported-edge.json", ledger_export(cycle_id, [snapshot, claim]))
+
+    report = audit_provenance(tmp_path, [path])
+
+    finding = next(item for item in report["findings"] if item["code"] == "unsupported_typed_reference")
+    assert finding["subject"] == "unsupported-edge.json:record[1]#/source_snapshot_ids"
+    assert "no relationship was inferred" in finding["detail"]
+
+
+def test_unknown_record_type_cannot_satisfy_a_generic_record_reference(tmp_path: Path) -> None:
+    cycle_id = "cycle-unknown-generic-target"
+    unknown = {
+        "record_type": "source_pack_record",
+        "record_id": "unknown-target-id",
+        "cycle_id": cycle_id,
+        "parent_ids": [],
+        "child_ids": [],
+        "status": "COMPLETED",
+        "schema_version": "awareness-studio-research-cycle.v1",
+    }
+    unknown["checksum"] = sha(unknown)
+    claim = ledger_record(
+        "claim",
+        cycle_id,
+        claim_id="known-source-record",
+        statement="Fixture claim only.",
+        evidence_ids=[],
+        parent_ids=["unknown-target-id"],
+        evidence_class="hypothesis",
+        claim_scope="fixture",
+        scientific_limitations=["Not evidence."],
+    )
+    path = write_json(
+        tmp_path / "unknown-generic-target.json",
+        ledger_export(
+            cycle_id,
+            [unknown, claim],
+            links=[{"parent_id": "unknown-target-id", "child_id": "known-source-record"}],
+        ),
+    )
+
+    report = audit_provenance(tmp_path, [path])
+
+    assert "unverifiable_ledger_record_type" in _codes(report)
+    unresolved = next(item for item in report["findings"] if item["code"] == "unresolved_ledger_reference")
+    assert "unknown-target-id" in unresolved["detail"]
+    assert "unresolved_ledger_link" in _codes(report)
+
+
+def test_typed_join_rejects_record_id_mismatching_record_type_identifier(tmp_path: Path) -> None:
+    cycle_id = "cycle-record-id-mismatch"
+    snapshot = ledger_record(
+        "source_snapshot",
+        cycle_id,
+        snapshot_id="canonical-snapshot-id",
+        source_uri="local:fixture",
+        source_sha256="a" * 64,
+        data_mode="synthetic",
+        evidence_class="synthetic_demonstration",
+        claim_scope="fixture",
+        scientific_limitations=["Fixture only."],
+    )
+    snapshot["record_id"] = "forged-record-id"
+    snapshot["checksum"] = sha({key: value for key, value in snapshot.items() if key != "checksum"})
+    evidence = ledger_record(
+        "evidence_record",
+        cycle_id,
+        evidence_id="evidence-identity-check",
+        source_snapshot_ids=["forged-record-id"],
+        observation="Fixture only.",
+        data_mode="synthetic",
+        evidence_class="synthetic_demonstration",
+        claim_scope="fixture",
+        scientific_limitations=["Not scientific evidence."],
+        metrics={},
+    )
+    path = write_json(tmp_path / "identity-mismatch.json", ledger_export(cycle_id, [snapshot, evidence]))
+
+    report = audit_provenance(tmp_path, [path])
+
+    assert report["status"] == "INVALID"
+    assert "ledger_record_identity_mismatch" in _codes(report)
+    assert "unresolved_ledger_reference" in _codes(report)
+
+
+def test_missing_serialized_record_id_is_not_inferred_from_typed_identifier(tmp_path: Path) -> None:
+    cycle_id = "cycle-record-id-missing"
+    snapshot = ledger_record(
+        "source_snapshot",
+        cycle_id,
+        snapshot_id="snapshot-without-record-id",
+        source_uri="local:fixture",
+        source_sha256="b" * 64,
+        data_mode="synthetic",
+        evidence_class="synthetic_demonstration",
+        claim_scope="fixture",
+        scientific_limitations=["Fixture only."],
+    )
+    snapshot.pop("record_id")
+    snapshot["checksum"] = sha({key: value for key, value in snapshot.items() if key != "checksum"})
+    path = write_json(tmp_path / "missing-record-id.json", ledger_export(cycle_id, [snapshot]))
+
+    report = audit_provenance(tmp_path, [path])
+
+    assert report["status"] == "INVALID"
+    assert "ledger_record_identity_mismatch" in _codes(report)
+
+
+def test_file_identity_change_between_lstat_and_open_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "stable-file.json"
+    path.write_bytes(b"before")
+    original_open = os.open
+    changed = False
+
+    def replace_before_open(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        nonlocal changed
+        if Path(candidate) == path and not changed:
+            changed = True
+            path.write_bytes(b"replacement with a different length")
+        return original_open(candidate, flags, *args, **kwargs)
+
+    monkeypatch.setattr(provenance_auditor.os, "open", replace_before_open)
+
+    with pytest.raises(ValueError, match="file changed between validation and open"):
+        provenance_auditor._read_stable_file(path, maximum=1024)
+
+
+def test_final_component_symlink_swap_is_rejected_when_platform_allows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "selected.json"
+    target = tmp_path / "target.json"
+    path.write_bytes(b"selected-before-open")
+    target.write_bytes(b"outside-target")
+    original_open = os.open
+    swapped = False
+
+    def replace_with_symlink(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        nonlocal swapped
+        if Path(candidate) == path and not swapped:
+            swapped = True
+            path.unlink()
+            try:
+                os.symlink(target, path)
+            except (OSError, NotImplementedError):
+                pytest.skip("symbolic links are unavailable in this environment")
+        return original_open(candidate, flags, *args, **kwargs)
+
+    monkeypatch.setattr(provenance_auditor.os, "open", replace_with_symlink)
+
+    with pytest.raises((OSError, ValueError)):
+        provenance_auditor._read_stable_file(path, maximum=1024)
 
 
 def test_malformed_typed_reference_is_not_silently_omitted(tmp_path: Path) -> None:

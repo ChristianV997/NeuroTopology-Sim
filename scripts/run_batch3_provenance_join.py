@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-artifact-bytes", type=int, default=64 * 1024 * 1024)
     parser.add_argument("--max-total-bytes", type=int, default=256 * 1024 * 1024)
     parser.add_argument("--max-files", type=int, default=10_000)
+    parser.add_argument("--max-inventory-entries", type=int, default=50_000)
     return parser
 
 
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             max_artifact_bytes=args.max_artifact_bytes,
             max_total_bytes=args.max_total_bytes,
             max_files=args.max_files,
+            max_inventory_entries=args.max_inventory_entries,
         )
         report = audit_provenance(args.artifact_root, args.input_manifest, limits=limits)
     except (AuditInputError, ValueError) as exc:

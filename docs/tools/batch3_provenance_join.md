@@ -55,8 +55,13 @@ unchanged. Redirect the report only to a destination outside the audited root.
   does not create a join. Typed ledger edges are resolved against the target
   record type declared by the research-cycle model; generic `parent_ids`,
   `child_ids`, and materialized `record_links` use only the ledger's canonical
-  `record_id` namespace. Unknown or malformed typed references are reported;
-  they are not silently reinterpreted.
+  `record_id` namespace. For each known ledger record type, serialized
+  `record_id` must be present and equal its type-specific identifier field;
+  mismatched or missing identifiers are errors and are never inferred. Unknown
+  record types are not used as generic or typed join endpoints, and a typed
+  reference field on a record type that does not define that edge is reported
+  as unsupported rather than joined. Unknown or malformed typed references are
+  reported; they are not silently reinterpreted.
 - Unknown or non-join-classifiable present `origin`, `data_mode`,
   `artifact_type`, ledger record type, or document schema values are emitted as structured `unverifiable_*`
   findings with a JSON-pointer source location, including null values and
@@ -92,9 +97,12 @@ unchanged. Redirect the report only to a destination outside the audited root.
 ## Bounds and outcomes
 
 Default limits are 2 MiB per input manifest or referenced JSON record, 64 MiB
-per referenced artifact, 256 MiB total bytes read/hashed, and 10,000
-inventoried files. Symlinks, junctions, absolute paths in embedded references,
-traversal, and references outside the root are rejected. Explicit CLI input
+per referenced artifact, 256 MiB total bytes read/hashed, 10,000 regular files,
+and 50,000 filesystem entries encountered during root inventory (including
+directories and special entries). Directory enumeration stops at the entry
+limit without retaining a partial inventory. Symlinks, junctions, absolute
+paths in embedded references, traversal, and references outside the root are
+rejected. Explicit CLI input
 manifests may be absolute only when they resolve beneath the supplied artifact
 root. JSON duplicate keys and non-finite values are rejected. Artifact hashing
 is streamed in 1 MiB blocks. A declared `local_root` source subtree is
@@ -102,9 +110,12 @@ recognized as input and not recursively read or inventoried.
 
 On platforms exposing `O_NOFOLLOW`, file opens reject a final-component symlink
 at open time, in addition to pre/post `lstat` and descriptor `fstat` identity
-checks. These checks detect ordinary replacement and concurrent-write races;
-they are not a portable defense against a hostile process that races parent
-directory components or restores file metadata. Run the auditor over a stable,
+checks. `O_NOFOLLOW` applies only to that final component; it does not prevent
+parent-directory races. Identity checks detect ordinary replacement and
+concurrent-write races, but they are not a defense against a hostile process
+that races parent components or restores file metadata. Bounded inventory
+skips links visible during enumeration, but is likewise intended for a stable
+root rather than a concurrently hostile tree. Run the auditor over a stable,
 read-only artifact snapshot when concurrent adversarial mutation is in scope.
 
 `CLEAN` means no structural findings under the supplied inputs and limits.

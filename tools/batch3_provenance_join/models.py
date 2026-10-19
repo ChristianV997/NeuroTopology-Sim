@@ -26,6 +26,7 @@ class AuditLimits:
     max_artifact_bytes: int = 64 * 1024 * 1024
     max_total_bytes: int = 256 * 1024 * 1024
     max_files: int = 10_000
+    max_inventory_entries: int = 50_000
 
     def __post_init__(self) -> None:
         values = asdict(self)
