@@ -119,7 +119,8 @@ INTERVAL_METHODS: tuple[str, ...] = (
 BLOCKING_GATE_IDS: tuple[str, ...] = (
     "four_sphere_forward_model",
     "planar_geometry",
-    "winding_hodge",
+    "winding",
+    "hodge",
     "csd_full_matrix_pinned_mne",
     "phase_dispersion_module",
     "phase_score_limitations_recorded",
@@ -134,29 +135,33 @@ PHASE_DISPERSION_MODULE_GATE_ID = "phase_dispersion_module"
 PHASE_SCORE_LIMITATIONS_GATE_ID = "phase_score_limitations_recorded"
 UNIT_SCORE_RULE = "max_window_score"
 
-# Declared production path. ``tools/phase_uncertainty/`` (pull request #403)
-# is a rejected substitute and cannot satisfy this gate.
-PHASE_DISPERSION_EXPECTED_PATH = "tools/phase_dispersion/phase_dispersion.py"
+# ``tools/phase_uncertainty/`` (pull request #403) is a rejected substitute.
 PHASE_SUBSTITUTE_PREFIX = "tools/phase_uncertainty/"
+CONTRACT_SOURCE_OBSERVED = "candidate_head_observed"
+CONTRACT_SOURCE_UNOBSERVED = "contract_declared_unobserved"
+HODGE_GATE_ID = "hodge"
 
 
 def _contract_row(
     path: Optional[str],
     symbols: Sequence[str],
+    *,
+    contract_source: str,
     candidate_pr: Optional[int] = None,
     candidate_head: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One gate contract.
 
-    Gate evaluation reads ``pinned_commit``, ``required_module_path``, and
-    ``required_api_symbols`` only. ``informational_candidate`` is copied
-    onto blocker records and is not a pin.
+    Gate evaluation reads ``pinned_commit``, ``required_module_path``,
+    ``required_api_symbols``, and ``contract_source``. It does not read
+    ``informational_candidate``. Heads stored there are observations, not pins.
     """
 
     return {
         "pinned_commit": None,
         "required_module_path": path,
         "required_api_symbols": tuple(symbols),
+        "contract_source": contract_source,
         "informational_candidate": {
             "candidate_pr": candidate_pr,
             "candidate_head_observed": candidate_head,
@@ -165,59 +170,182 @@ def _contract_row(
     }
 
 
-# Pins stay null until the dependency commit is an ancestor of main.
-# Candidate prefixes below are observations, not commits this module pins.
+# Pins stay null. The 40-character values below are informational candidate
+# SHAs observed on unmerged pull-request heads. They are not pins.
 GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
     "four_sphere_forward_model": _contract_row(
-        "tools/forward/four_sphere_forward_model.py",
-        ("four_sphere_forward_field",),
-        418,
-        "9e198b86",
+        "physics/eeg_forward/four_sphere.py",
+        (
+            "MAX_DEGREE",
+            "DEFAULT_MAX_DEGREE",
+            "DEFAULT_RESIDUAL_TOL",
+            "DEFAULT_TAIL_TOL",
+            "MAX_SCALE_RADIUS_M",
+            "MIN_RADIUS_M",
+            "CONDUCTIVITY_BOUNDS_SM",
+            "TAIL_VALIDATED_MIN_DEGREE",
+            "FourSphereError",
+            "FourSphereInputError",
+            "FourSphereQualityError",
+            "FourSphereGeometry",
+            "FourSphereResult",
+            "NAESS2017_TABLE1_K_VALUES",
+            "naess2017_table1_geometry",
+            "legendre_and_derivative",
+            "shell_transfer",
+            "transfer_ratios",
+            "forward_potentials",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=418,
+        candidate_head="9e198b86064b1a7caa132e5d0480cfea130a1248",
     ),
     "planar_geometry": _contract_row(
-        "tools/geometry/planar_geometry.py",
-        ("planar_geometry",),
-        416,
-        "04d5af73",
+        "neurotopology_sim/experimental/geometry/planar_triangulation.py",
+        (
+            "SCHEMA_VERSION",
+            "PROJECT_STATUS",
+            "DATA_POLICY",
+            "Point",
+            "Triangle",
+            "Edge",
+            "DegeneracyPolicy",
+            "ClaimLayer",
+            "FailureKind",
+            "LayerDiagnostic",
+            "PlanarTriangulationResult",
+            "orient2d",
+            "incircle",
+            "convex_hull_extreme",
+            "hull_boundary_with_collinear",
+            "validate_layers",
+            "triangulate_2d",
+            "validate_planar_mesh",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=416,
+        candidate_head="04d5af7321ff002bb88d75353e59aec73eabbf56",
     ),
-    "winding_hodge": _contract_row(
-        "tools/geometry/winding_hodge.py",
-        ("winding_hodge",),
-        413,
-        "e7aaf355",
+    "winding": _contract_row(
+        "neurotopology_sim/experimental/topology/winding.py",
+        (
+            "TWO_PI",
+            "SUPPORTED_WRAP_INTERVALS",
+            "DEFAULT_TIE_TOL",
+            "DEFAULT_IDENTITY_ATOL",
+            "SUPPORTS_SPARSE_INCIDENCE",
+            "ORIGIN_SHIFT_COORDINATE_MAP",
+            "ArrayLike",
+            "WindingError",
+            "WindingResult",
+            "ChargeMomentResult",
+            "branch_index_floor",
+            "phase_winding",
+            "signed_first_moment",
+            "origin_shifted_moment",
+            "charge_moments",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=413,
+        candidate_head="e7aaf355eda0957a213e15295c9114bd0adac607",
+    ),
+    "hodge": _contract_row(
+        None,
+        (),
+        contract_source=CONTRACT_SOURCE_UNOBSERVED,
     ),
     "csd_full_matrix_pinned_mne": _contract_row(
-        "tools/csd/csd_full_matrix.py",
-        ("csd_full_matrix",),
-        414,
-        "403c7cd2",
+        "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
+        (
+            "MNE_PIN",
+            "DEFAULT_LAMBDA2",
+            "DEFAULT_STIFFNESS",
+            "DEFAULT_N_LEGENDRE_TERMS",
+            "OUTPUT_UNIT_SI",
+            "DEFAULT_COINCIDENT_COS_TOL",
+            "DEFAULT_CONDITION_MAX",
+            "DEFAULT_AVG_REF_NULL_ATOL",
+            "SphericalCSDError",
+            "SphericalCSDConfig",
+            "SphericalCSDResult",
+            "compute_spherical_csd_transform",
+            "apply_spherical_csd",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=414,
+        candidate_head="1b37d419d3580309946606b218ccabf6468ab51d",
     ),
     "phase_dispersion_module": _contract_row(
-        PHASE_DISPERSION_EXPECTED_PATH,
-        ("phase_dispersion",),
-        403,
-        "42f8f9cc",
+        None,
+        (),
+        contract_source=CONTRACT_SOURCE_UNOBSERVED,
     ),
-    "phase_score_limitations_recorded": _contract_row(None, ()),
+    "phase_score_limitations_recorded": _contract_row(
+        None,
+        (),
+        contract_source="limitations_record",
+    ),
     "surrogate_null": _contract_row(
-        "tools/surrogate/surrogate_null.py",
-        ("surrogate_null",),
-        417,
-        "25c5afea",
+        "tools/surrogate_nulls/nulls.py",
+        (
+            "AUTO_SPECTRUM_TOL",
+            "CROSS_SPECTRUM_STRICT_TOL",
+            "MARGINAL_EXACT_TOL",
+            "NULL_IDS",
+            "EXPLORATORY_NULL_IDS",
+            "RANK_STATUS",
+            "CONTRACTS",
+            "SurrogateReport",
+            "common_phase_prichard_theiler",
+            "independent_phase_univariate_ft",
+            "draw_from_csd",
+            "cholesky_gaussian_cross_spectral",
+            "cholesky_gaussian_csd",
+            "zero_lag_real_part_gaussian",
+            "mv_iaaft_rank_adjusted",
+            "GENERATORS",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=417,
+        candidate_head="c95e82978557151788a679168688da31bf24c799",
     ),
     "roc_metrics": _contract_row(
-        "tools/metrics/roc_metrics.py",
-        ("operating_point", "compute_roc"),
-        426,
-        "55115149",
+        "neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py",
+        (
+            "PROJECT_STATUS",
+            "HIGHER_SCORE_IS_POSITIVE",
+            "HASH_NOTE",
+            "BenchmarkError",
+            "ConfusionCounts",
+            "fingerprint_sample_ids",
+            "cluster_any_event_rate",
+            "confusion_at_threshold",
+            "operating_point",
+            "compute_roc",
+            "select_threshold_on_calibration",
+            "assert_no_sample_overlap",
+            "evaluate_held_out",
+            "REQUIRED_PREREQUISITES",
+            "prerequisite_gate_report",
+            "SyntheticRunnerConfig",
+            "run_synthetic_operating_characteristics",
+            "json_safe",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=426,
+        candidate_head="55115149c7443ca8b325dc4dbf65d6900c9fdd79",
     ),
     "ci_discovery": _contract_row(
         "tests/simulation_runtime/test_grid_plan.py",
         ("GridPlanTests",),
-        425,
-        "ae3f7958",
+        contract_source="ci_collection",
+        candidate_pr=425,
     ),
-    "dmd_crouzeix": _contract_row(None, ()),
+    "dmd_crouzeix": _contract_row(
+        None,
+        (),
+        contract_source="nonblocking",
+    ),
 }
 
 # Audit labels for this main SHA. Not a registry, and not a substitute
@@ -225,7 +353,8 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
 GATE_INTEGRATION_STATE: Dict[str, str] = {
     "four_sphere_forward_model": "NOT_INTEGRATED",
     "planar_geometry": "NOT_INTEGRATED",
-    "winding_hodge": "NOT_INTEGRATED",
+    "winding": "NOT_INTEGRATED",
+    "hodge": "NOT_INTEGRATED",
     "csd_full_matrix_pinned_mne": "NOT_INTEGRATED",
     "phase_dispersion_module": "NOT_INTEGRATED",
     "phase_score_limitations_recorded": "NOT_INTEGRATED",
@@ -1905,6 +2034,7 @@ def _gate_contract_for_hash() -> List[Dict[str, Any]]:
             {
                 "gate_id": gate_id,
                 "pinned_commit": row["pinned_commit"],
+                "contract_source": row["contract_source"],
                 "required_module_path": row["required_module_path"],
                 "required_api_symbols": list(row["required_api_symbols"]),
             }
@@ -1927,11 +2057,15 @@ def _informational_candidates() -> Dict[str, Dict[str, Any]]:
 
 
 def _defined_names(source: str) -> set[str]:
-    """Names a blob defines. The blob is parsed and not imported or executed."""
+    """Public and private names bound on the module body.
+
+    Nested definitions are ignored. The blob is parsed and not imported
+    or executed.
+    """
 
     tree = ast.parse(source)
     names: set[str] = set()
-    for node in ast.walk(tree):
+    for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
         elif isinstance(node, ast.Assign):
@@ -1967,19 +2101,16 @@ def _contract_reasons(gate_id: str, main_sha: str) -> List[str]:
     elif not _is_ancestor_of_main(str(pinned), main_sha):
         reasons.append("pin_not_ancestor_of_main")
     path = row["required_module_path"]
-    if (
-        gate_id == PHASE_DISPERSION_MODULE_GATE_ID
-        and isinstance(path, str)
-        and PHASE_SUBSTITUTE_PREFIX in path.replace("\\", "/")
-    ):
+    normalized_path = path.replace("\\", "/") if isinstance(path, str) else ""
+    if gate_id == PHASE_DISPERSION_MODULE_GATE_ID and PHASE_SUBSTITUTE_PREFIX in normalized_path:
         reasons.append("substitute_module_rejected")
+    elif row.get("contract_source") == CONTRACT_SOURCE_UNOBSERVED:
+        reasons.append("module_missing_on_main")
     elif isinstance(path, str):
         if not _path_tracked(main_sha, path):
             reasons.append("module_missing_on_main")
         elif not _symbols_present(main_sha, path, row["required_api_symbols"]):
             reasons.append("symbols_missing_on_main")
-    elif gate_id == PHASE_DISPERSION_MODULE_GATE_ID:
-        reasons.append("module_missing_on_main")
     return reasons
 
 
@@ -2003,6 +2134,7 @@ def _contract_blocker(
         "pinned_commit": row.get("pinned_commit"),
         "required_module_path": row.get("required_module_path"),
         "required_api_symbols": list(symbols),
+        "contract_source": row.get("contract_source"),
         "candidate_pr": info.get("candidate_pr"),
         "candidate_head_observed": info.get("candidate_head_observed"),
         "main_sha_checked": main_sha,
@@ -2768,9 +2900,11 @@ __all__ = [
     "ENGINEERING_THRESHOLD_N",
     "EXECUTION_MODE_HELD",
     "EXECUTION_MODE_SMOKE",
+    "CONTRACT_SOURCE_OBSERVED",
+    "CONTRACT_SOURCE_UNOBSERVED",
     "GATE_CONTRACT",
     "GRID_EXECUTION",
-    "PHASE_DISPERSION_EXPECTED_PATH",
+    "HODGE_GATE_ID",
     "POWER_CLAIM",
     "PROJECT_STATUS",
     "REQUIRED_GATE_IDS",

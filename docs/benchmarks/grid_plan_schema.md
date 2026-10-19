@@ -349,8 +349,9 @@ A gate is eligible only when all of these hold:
 1. `pinned_commit` is non-null and an ancestor of main.
 2. `required_module_path` is a blob in that main tree
    (`module_missing_on_main` when it is not).
-3. `required_api_symbols` are defined in that blob. The check is
-   `ast.parse` of `git show`. The module is not imported
+3. `required_api_symbols` are bound on the module body of that blob.
+   The check is `ast.parse` of `git show` and reads only top-level
+   names. Nested definitions do not count. The module is not imported
    (`symbols_missing_on_main` when a name is absent).
 4. A promotion report at the `write_report` default path is a blob on
    main and passes the one-`case_id` admissibility checks. A matching
@@ -358,37 +359,62 @@ A gate is eligible only when all of these hold:
 5. Direct tests are collected by CI. `ci_discovery` stays blocked.
    Pull request #425 owns that workflow edit.
 
-`phase_dispersion_module` expects `tools/phase_dispersion/phase_dispersion.py`.
-A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
-Pull request #403 is not that module. `phase_score_limitations_recorded`
-is a separate row and still requires `limitations_recorded: true` once
-its pin is an ancestor. One phase row does not satisfy the other.
+There are ten blocking gates. `winding_hodge` is split. `winding` is the
+module `neurotopology_sim/experimental/topology/winding.py` observed on
+pull request #413. `hodge` has no path and no symbols
+(`contract_declared_unobserved`) because none of the fetched heads ship a
+Hodge module. `phase_dispersion_module` likewise has no path and no
+symbols. A path under `tools/phase_uncertainty/` is
+`substitute_module_rejected`. Pull request #403 is not that module.
+`contract_declared_unobserved` rows stay `module_missing_on_main` and
+cannot become admissible. `phase_score_limitations_recorded` is a
+separate limitations row and still requires `limitations_recorded: true`
+once its pin is an ancestor.
+
+Observed rows use `contract_source: candidate_head_observed`. The head
+SHA on that row is informational. It is not a pin, gate status does not
+read it, and it is not part of `config_hash`. Symbols are the public
+top-level names parsed from `git show <head>:<path>`.
 
 `grid_execution` is `NOT_RUN`. `opened` stays false, and the simulation
-callback is refused, including when a document says otherwise.
+callback is refused, including when a document says otherwise. A module
+blob with the declared names at an ancestor of main does not open a gate
+when the promotion report is not a blob on main.
 
 Abort order is the blocking-id order. The first blocking gate that is not
 `admissible_on_ancestor` is `abort_gate`.
 
-| Gate | Expected module | Symbols | Pin |
+| Gate | Source | Module | Pin |
 | --- | --- | --- | --- |
-| `four_sphere_forward_model` | `tools/forward/four_sphere_forward_model.py` | `four_sphere_forward_field` | null |
-| `planar_geometry` | `tools/geometry/planar_geometry.py` | `planar_geometry` | null |
-| `winding_hodge` | `tools/geometry/winding_hodge.py` | `winding_hodge` | null |
-| `csd_full_matrix_pinned_mne` | `tools/csd/csd_full_matrix.py` | `csd_full_matrix` | null |
-| `phase_dispersion_module` | `tools/phase_dispersion/phase_dispersion.py` | `phase_dispersion` | null |
-| `phase_score_limitations_recorded` | none | none | null |
-| `surrogate_null` | `tools/surrogate/surrogate_null.py` | `surrogate_null` | null |
-| `roc_metrics` | `tools/metrics/roc_metrics.py` | `operating_point`, `compute_roc` | null |
-| `ci_discovery` | `tests/simulation_runtime/test_grid_plan.py` | `GridPlanTests` | null, and blocked |
+| `four_sphere_forward_model` | candidate_head_observed, #418 `9e198b86064b1a7caa132e5d0480cfea130a1248` | `physics/eeg_forward/four_sphere.py` | null |
+| `planar_geometry` | candidate_head_observed, #416 `04d5af7321ff002bb88d75353e59aec73eabbf56` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null |
+| `winding` | candidate_head_observed, #413 `e7aaf355eda0957a213e15295c9114bd0adac607` | `neurotopology_sim/experimental/topology/winding.py` | null |
+| `hodge` | contract_declared_unobserved | none | null |
+| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `1b37d419d3580309946606b218ccabf6468ab51d` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null |
+| `phase_dispersion_module` | contract_declared_unobserved | none | null |
+| `phase_score_limitations_recorded` | limitations_record | none | null |
+| `surrogate_null` | candidate_head_observed, #417 `c95e82978557151788a679168688da31bf24c799` | `tools/surrogate_nulls/nulls.py` | null |
+| `roc_metrics` | candidate_head_observed, #426 `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | null |
+| `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked |
+
+Public top-level symbols, in blob order:
+
+- `four_sphere_forward_model`: `MAX_DEGREE`, `DEFAULT_MAX_DEGREE`, `DEFAULT_RESIDUAL_TOL`, `DEFAULT_TAIL_TOL`, `MAX_SCALE_RADIUS_M`, `MIN_RADIUS_M`, `CONDUCTIVITY_BOUNDS_SM`, `TAIL_VALIDATED_MIN_DEGREE`, `FourSphereError`, `FourSphereInputError`, `FourSphereQualityError`, `FourSphereGeometry`, `FourSphereResult`, `NAESS2017_TABLE1_K_VALUES`, `naess2017_table1_geometry`, `legendre_and_derivative`, `shell_transfer`, `transfer_ratios`, `forward_potentials`
+- `planar_geometry`: `SCHEMA_VERSION`, `PROJECT_STATUS`, `DATA_POLICY`, `Point`, `Triangle`, `Edge`, `DegeneracyPolicy`, `ClaimLayer`, `FailureKind`, `LayerDiagnostic`, `PlanarTriangulationResult`, `orient2d`, `incircle`, `convex_hull_extreme`, `hull_boundary_with_collinear`, `validate_layers`, `triangulate_2d`, `validate_planar_mesh`
+- `winding`: `TWO_PI`, `SUPPORTED_WRAP_INTERVALS`, `DEFAULT_TIE_TOL`, `DEFAULT_IDENTITY_ATOL`, `SUPPORTS_SPARSE_INCIDENCE`, `ORIGIN_SHIFT_COORDINATE_MAP`, `ArrayLike`, `WindingError`, `WindingResult`, `ChargeMomentResult`, `branch_index_floor`, `phase_winding`, `signed_first_moment`, `origin_shifted_moment`, `charge_moments`
+- `csd_full_matrix_pinned_mne`: `MNE_PIN`, `DEFAULT_LAMBDA2`, `DEFAULT_STIFFNESS`, `DEFAULT_N_LEGENDRE_TERMS`, `OUTPUT_UNIT_SI`, `DEFAULT_COINCIDENT_COS_TOL`, `DEFAULT_CONDITION_MAX`, `DEFAULT_AVG_REF_NULL_ATOL`, `SphericalCSDError`, `SphericalCSDConfig`, `SphericalCSDResult`, `compute_spherical_csd_transform`, `apply_spherical_csd`
+- `surrogate_null`: `AUTO_SPECTRUM_TOL`, `CROSS_SPECTRUM_STRICT_TOL`, `MARGINAL_EXACT_TOL`, `NULL_IDS`, `EXPLORATORY_NULL_IDS`, `RANK_STATUS`, `CONTRACTS`, `SurrogateReport`, `common_phase_prichard_theiler`, `independent_phase_univariate_ft`, `draw_from_csd`, `cholesky_gaussian_cross_spectral`, `cholesky_gaussian_csd`, `zero_lag_real_part_gaussian`, `mv_iaaft_rank_adjusted`, `GENERATORS`
+- `roc_metrics`: `PROJECT_STATUS`, `HIGHER_SCORE_IS_POSITIVE`, `HASH_NOTE`, `BenchmarkError`, `ConfusionCounts`, `fingerprint_sample_ids`, `cluster_any_event_rate`, `confusion_at_threshold`, `operating_point`, `compute_roc`, `select_threshold_on_calibration`, `assert_no_sample_overlap`, `evaluate_held_out`, `REQUIRED_PREREQUISITES`, `prerequisite_gate_report`, `SyntheticRunnerConfig`, `run_synthetic_operating_characteristics`, `json_safe`
+
+`cluster_any_event_rate` is the same name cited by the unit-aggregation note at `synthetic_forward_roc.py:194`.
 
 Nonblocking:
 
 - `dmd_crouzeix` — `NONBLOCKING`, pin null
 
-`GATE_INTEGRATION_STATE` marks the dependency gates, including both phase
-rows, `NOT_INTEGRATED`, and `ci_discovery` `BLOCKED`. Those labels are not
-evidence.
+`GATE_INTEGRATION_STATE` marks the dependency gates, including `winding`,
+`hodge`, and both phase rows, `NOT_INTEGRATED`, and `ci_discovery`
+`BLOCKED`. Those labels are not evidence.
 
 Verdict of a plan produced with this module: **BLOCKED**. HOLD /
 SYNTHETIC_ONLY. `GRID_EXECUTION=NOT_RUN`. The planner can certify a
