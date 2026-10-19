@@ -5,7 +5,8 @@ data, no subprocess, no network. A null that preserves a chosen statistic is not
 biologically valid for any scientific question. Nothing here establishes a result.
 
 Code: `tools/surrogate_nulls/` (stdlib only; no NumPy or SciPy).
-Tests: `tests/surrogate_nulls/` (52 tests, `unittest`).
+Tests: `tests/surrogate_nulls/` (121 tests in seven modules, `unittest`). See the CI discovery
+note below for how they are run.
 
 ## Conventions
 
@@ -96,6 +97,26 @@ Tests: `tests/surrogate_nulls/` (52 tests, `unittest`).
   is never claimed.
 - **Convergence.** Reported. A run that reaches `max_iter` is labelled `NO_MAX_ITER_REACHED`.
 
+## API-to-null map
+
+Each public surface, the null hypothesis it encodes, what it assumes, what it estimates, what it
+returns, and how it fails. The diagnostics are listed last. They are not nulls.
+
+| API | Null hypothesis | Assumptions | Estimand | Outputs | Failure behaviour |
+|---|---|---|---|---|---|
+| `common_phase_prichard_theiler(x, seed)` | One common phase per randomized bin, identical across channels. A control that keeps all complex cross-spectra. | Stationary record | None (control only) | `(signals, report)`; `status.role = CONTROL_DIAGNOSTIC_ONLY` | `SurrogateInputError` for invalid arrays. Not a winding null. |
+| `independent_phase_univariate_ft(x, seed)` | Independent phase per channel and bin. Destroys cross-channel coupling. | Stationary record | Per-channel power spectrum (exact per bin) | `(signals, report)` | `SurrogateInputError` for invalid arrays |
+| `draw_from_csd(csd_by_bin, n_time, seed, ...)` | Gaussian draw per bin with covariance equal to the target. | Target is Hermitian PSD; linear-Gaussian model. With `real_coefficients=True` the target must be real. | `E[X X^H]/n` equals the target (in expectation) | `(spectra, info)`, including ridge and rank-deficient bins | `NonPositiveDefiniteError` if materially indefinite. `SurrogateInputError` for shape, Hermitian, or real-only violations. |
+| `estimate_csd(data, estimator, ...)` | None (this is the estimator) | Stationarity; the estimator's stated resolution | The named CSD per bin | `(csd, info)`; `info["dof_per_bin"]` | `SurrogateInputError` for invalid inputs |
+| `validate_supplied_csd(csd, n_channels, n_time)` | None (validation only) | None | Validated copy | The validated matrices | `SurrogateInputError` for shape, finiteness, or Hermitian violations. The data are not checked. |
+| `cholesky_gaussian_csd(x, seed, estimator=..., ...)` | Linear-Gaussian stationary model whose covariance is the chosen estimate | Stationarity; linear-Gaussian; the estimator's resolution | `E[X X^H/n]` equals the estimate (in expectation) | `(signals, report)` with `estimator_validity`, `rank`, and per-bin diagnostics | Materially indefinite: `NonPositiveDefiniteError`. Rounding-level failure: ridge, reported. Supplied estimate: labelled `SUPPLIED_NOT_VALIDATED_AGAINST_DATA`. |
+| `cholesky_gaussian_cross_spectral(x, seed, smoothing_halfwidth, ridge_rel)` | As above, with a boxcar-smoothed periodogram target | As above | As above, boxcar only | `(signals, report)` | As above. Halfwidth 0 is labelled as a diagnostic. |
+| `zero_lag_real_part_gaussian(x, seed, ...)` (exploratory) | Ensemble zero-lag / real-covariance null: the expected real covariance equals `Re C` | Stationarity; zero-lag (real) structure is the only structure of interest; the imaginary part is discarded | `Re C(f)` in expectation over seeds | `(signals, report)`; listed in `EXPLORATORY_NULL_IDS` | As `draw_from_csd`. It makes no volume-conduction claim. |
+| `mv_iaaft_rank_adjusted(x, seed, max_iter)` | Marginal-preserving null with approximately preserved auto-spectra | Stationarity; the iteration may not converge | Exact sorted values; approximate auto-spectra; cross-spectrum not targeted | `(signals, report)` with convergence and strict-gate status | `SurrogateInputError` for `max_iter < 1`. Non-convergence is reported (`NO_MAX_ITER_REACHED`), not raised. |
+| `phase_loop_winding`, `winding_variation` | Not a null. A toy statistic and a check of whether a procedure varies it. | Designed signals | None | Winding value; `varies_from_original`, `varies_across_ensemble` | Not specified beyond input validation |
+| `matrix_diagnostics`, `diagnose_csd` | Diagnostic | None | Effective rank, minimum eigenvalue, condition, participation | Per-bin values | `NonPositiveDefiniteError` if materially indefinite |
+| `relative_phase_spread`, `zero_or_pi_distance` | Diagnostic | None | Circular spread across seeds; distance from {0, pi} | Per-pair statistics; per-realisation distance | `SurrogateInputError` for an empty seed set |
+
 ## Declared tolerances
 
 | Name | Value | Used for |
@@ -143,9 +164,23 @@ The Gaussian nulls take an explicit spectral estimate. The estimator is named in
 - Default multitaper count: `K = min(n, max(4, d + 2))`, so the estimate keeps rank headroom.
 - The orthonormality of the sine tapers is tested (Gram error about 1e-16).
 - `single_periodogram` is rank one, so the cross-channel structure of a single epoch cannot be
-  represented. The null reports rank one at every bin and applies ridge at every bin. This is
-  the rank-one collapse: each draw is then a scalar multiple of the periodogram direction, and it
-  reproduces the phase problem that the common-phase null has.
+  represented. The null reports rank one at every bin and applies ridge at every bin. Its draws
+  then stay close to the periodogram direction, so the relative phases of the periodogram are
+  largely kept. It is labelled `DIAGNOSTIC_RANK_ONE_NOT_A_PHASE_RANDOMISING_NULL` and is not a
+  phase-randomising null.
+
+### Estimator validity labels
+
+Every estimated-CSD report carries `estimator_validity`. The label describes what the estimate can
+support. It does not change how the draw is made.
+
+| Label | When |
+|---|---|
+| `MULTIWINDOW_ESTIMATE_WITH_RANK_HEADROOM_REPORTED_PER_BIN` | multitaper with `K >= d + 1` |
+| `MULTIWINDOW_ESTIMATE_LOW_RANK_REPORTED_PER_BIN` | multitaper with `K < d + 1` |
+| `SMOOTHED_PERIODOGRAM_RANK_UP_TO_2H_PLUS_1_REPORTED_PER_BIN` | boxcar with `smoothing_halfwidth >= 1` |
+| `DIAGNOSTIC_RANK_ONE_NOT_A_PHASE_RANDOMISING_NULL` | `single_periodogram`, or boxcar with halfwidth 0 |
+| `SUPPLIED_NOT_VALIDATED_AGAINST_DATA` | caller-supplied estimate |
 
 ## Shrinkage, PSD policy, and conditioning
 
@@ -178,13 +213,21 @@ and it appears in `EXPLORATORY_NULL_IDS` and `CONTRACTS`.
   covariance `Re C(f)` at every bin. `draw_from_csd(..., real_coefficients=True)` enforces the
   real target.
 - Preserved, in expectation over seeds: the real part `Re C(f)` of the estimated cross-spectrum.
-- **Exact, per realisation, by construction:** each realisation's bin coefficients are real, so
-  every inter-channel relative phase of every realisation is exactly 0 or pi at each bin (tested:
-  the largest distance from {0, pi} is below 1e-12 for every realisation checked).
-- This is a stronger property than the ensemble statement. A real covariance matrix on its own
-  constrains only the ensemble imaginary parts. This construction makes the per-realisation
-  constraint exact, and that is a property of the surrogate. It is not evidence about the
-  recording.
+  This is an **ensemble zero-lag / real-covariance null**. It constrains the ensemble real
+  covariance and does not define a per-realisation phase constraint.
+- The imaginary part of the estimate is discarded. Each realisation's bin coefficients are real
+  by construction, so every imaginary part of the drawn spectra is exactly zero (tested). Across
+  seeds, the mean cross-spectral imaginary part is zero, and the mean real part matches `Re C` within
+  a 5-standard-error tolerance (tested: 400 seeds, N = 16, two channels, non-zero target imaginary part).
+- **Observed generator property, not part of the null.** Because the draws are real, this
+  generator's realisations have relative phases of 0 or pi at every bin (largest distance from
+  {0, pi} below 1e-12 in the tests). That is an implementation fact about these draws. The report
+  records it under `generator_relative_phase_observed`. The null does not impose it on each
+  realisation, and it is not evidence about any recording.
+- **PSD.** For real vectors `v`, `v^T Re C v = Re(v^H C v) >= 0`, so `Re C` of a Hermitian PSD
+  estimate is real symmetric PSD. The tests check this for multitaper, boxcar, and single-periodogram
+  estimates on synthetic data, with the same `psd_tol` as the rest of the package. An indefinite real
+  matrix is rejected by the same check (negative control).
 - Assumption-dependent. It does **not** model volume conduction, source geometry, filtering, or
   lagged coupling. It is **not** a volume-conduction detector, and it must not be used to claim
   that any of these is controlled.
@@ -220,7 +263,7 @@ statistic is blind to a common phase shift.
 | `common_phase_prichard_theiler` (control) | auto-spectra; complex cross-spectrum per bin; every same-frequency relative phase; DC/Nyquist real | - | marginal (measured) |
 | `independent_phase_univariate_ft` | auto-spectra per channel | cross-spectrum tends to zero | marginal (measured) |
 | `cholesky_gaussian_csd` (multitaper default) and `cholesky_gaussian_cross_spectral` | DC/Nyquist real; Hermitian and conjugate symmetry | `E[X X^H / n]` equals the estimate | single-realisation deviation (measured); marginal (measured); relative phases unconstrained |
-| `zero_lag_real_part_gaussian` (exploratory) | every inter-channel relative phase is 0 or pi; every imaginary part is zero; DC/Nyquist real | `E` equals `Re` of the estimate | real-part deviation (measured); marginal (measured) |
+| `zero_lag_real_part_gaussian` (exploratory) | every drawn imaginary part is zero; DC/Nyquist real | `E` of the real part equals `Re C` of the estimate (ensemble zero-lag / real-covariance null) | real-part deviation (measured); marginal (measured); observed 0-or-pi relative phases are a generator property, not part of the null |
 | `mv_iaaft_rank_adjusted` | per-channel sorted values (marginal) after the final rank step | - | auto-spectra and cross-spectra measured before and after the rank step; strict cross gate reported UNMET when missed |
 
 Reproducibility: every random draw comes from `rng_for(seed, label)`. Each (seed, label) pair
@@ -244,8 +287,30 @@ matrix leaves every other bin's coefficients bit-identical (tested).
   the common-phase control gives zero spread for every pair. The Cholesky null on independent
   three-channel noise gives a maximum spread of about 0.87 at bin 3.
 - `zero_or_pi_distance(signals)` gives, for one realisation, the largest distance of any
-  inter-channel relative phase from {0, pi}. Measured: about 2e-15 for the zero-lag null, and about
-  1.55 rad for the Cholesky null on the same data.
+  inter-channel relative phase from {0, pi}. Measured: about 2e-15 for the zero-lag generator's
+  real-coefficient draws, an observed property and not part of the null definition, and about
+  1.55 rad for the Cholesky null on the same data. Use this diagnostic to describe a generator,
+  not to define a null.
+
+## Blocked: random dipole-cloud forward null
+
+**Status: BLOCKED, not implemented.** The random dipole-cloud forward null needs an exact lead
+field and a validated cross-spectral-density (CSD) model. Both are the subject of the four-shell
+forward model in PR #418, which is open and unmerged. Until #418's lead field and CSD are available
+and validated, this null is not implemented here. There is no mock lead field, no re-derived
+physics, and no copy of #418's model. Its absence from the API map is deliberate.
+
+## CI discovery
+
+- The required check `core-tests` (`.github/workflows/required-checks.yml`) runs an explicit file
+  list through `scripts/run_tests_isolated.py`. That list does not include `tests/surrogate_nulls/`.
+  The hosted required check therefore does not discover these tests.
+- `awareness-tests` runs only in `apps/awareness_studio`. It does not cover this package. Its
+  failure on `main` is pre-existing and unrelated to this package.
+- A local run is not a hosted check. The local command is to name the seven test modules explicitly
+  from the repository root (`python -m unittest tests.surrogate_nulls.<module> ...`). Discovery on
+  `tests/surrogate_nulls` is not importable in this layout. Hosted results are reported separately,
+  with the commit SHA.
 
 ## Limitations
 

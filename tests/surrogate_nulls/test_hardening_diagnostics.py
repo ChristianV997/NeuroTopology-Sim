@@ -88,7 +88,10 @@ class RelativePhaseDiagnosticTests(unittest.TestCase):
 
 
 class ZeroLagRealisationTests(unittest.TestCase):
-    def test_every_zero_lag_realisation_has_relative_phases_at_zero_or_pi(self):
+    """The zero-or-pi pattern here is an OBSERVED property of this generator's real-coefficient
+    draws. It is pinned as an implementation fact, not as part of the null's definition."""
+
+    def test_zero_lag_generator_draws_show_observed_zero_or_pi_relative_phases(self):
         x = _independent(32, 3, 8)
         for seed in range(6):
             signals, _ = N.zero_lag_real_part_gaussian(x, seed, estimator="multitaper", n_tapers=5)
@@ -99,13 +102,18 @@ class ZeroLagRealisationTests(unittest.TestCase):
         signals, _ = N.cholesky_gaussian_csd(x, 1)
         self.assertGreater(C.zero_or_pi_distance(signals), 0.1)
 
-    def test_report_states_the_realisation_property_and_the_limits(self):
+    def test_report_labels_the_zero_or_pi_pattern_as_observed_not_definitional(self):
         x = _independent(32, 3, 8)
         _, report = N.zero_lag_real_part_gaussian(x, 0)
-        self.assertEqual(report.status["realization_relative_phase"], "EXACT_0_OR_PI_EACH_REALISATION_BY_CONSTRUCTION")
+        self.assertNotIn("realization_relative_phase", report.status)
+        self.assertIn("NOT_PART_OF_NULL_DEFINITION", report.status["generator_relative_phase_observed"])
         self.assertLess(report.max_relative_phase_distance_from_zero_or_pi, 1e-12)
+
+    def test_zero_lag_contract_states_an_ensemble_property_and_the_limits(self):
         contract = N.CONTRACTS["zero_lag_real_part_gaussian"]
-        self.assertIn("EVERY realisation", contract["preserved"])
+        self.assertIn("IN EXPECTATION", contract["preserved"])
+        self.assertIn("ensemble zero-lag / real-covariance null", contract["preserved"])
+        self.assertNotIn("EVERY realisation", contract["preserved"])
         self.assertIn("not a volume-conduction detector", contract["assumptions"])
 
 

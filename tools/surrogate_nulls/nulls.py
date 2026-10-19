@@ -110,13 +110,13 @@ CONTRACTS = {
             "Draw REAL Gaussian Fourier coefficients with covariance Re C(f) at every bin, "
             "including the randomized bins. Inverse rFFT."
         ),
-        "preserved": "the real part of the estimated cross-spectrum IN EXPECTATION over seeds. "
-                     "Each realisation's bin coefficients are real by construction, so EVERY realisation "
-                     "has inter-channel relative phases of exactly 0 or pi at each bin (a stronger, "
-                     "per-realisation property of this construction, not a generic consequence of a real "
-                     "covariance). The estimate's imaginary part is discarded.",
-        "randomized": "the real coefficients at every bin; all phase relations between channels are "
-                      "forced to 0 or pi",
+        "preserved": "the real part Re C(f) of the estimated cross-spectrum, IN EXPECTATION over seeds. "
+                     "This is an ensemble zero-lag / real-covariance null. Its definition constrains only "
+                     "the ensemble real covariance. It does not define a per-realisation phase constraint, "
+                     "and the estimate's imaginary part is discarded.",
+        "randomized": "the real Gaussian Fourier coefficients at every bin. This generator draws real "
+                      "coefficients, so its draws show 0-or-pi relative phases; that is an observed "
+                      "implementation property, not part of the null's definition",
         "intended_use": "EXPLORATORY and assumption-dependent: a probe of zero-lag in-phase "
                         "structure under a stationary linear-Gaussian model",
         "invalid_for": "any claim about volume conduction, source geometry, filtering, or lagged "
@@ -497,6 +497,11 @@ def cholesky_gaussian_cross_spectral(x, seed, smoothing_halfwidth=1, ridge_rel=1
             "marginal": "NOT_PRESERVED_MEASURED",
             "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "cross_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
+            "estimator_validity": (
+                "SMOOTHED_PERIODOGRAM_RANK_UP_TO_2H_PLUS_1_REPORTED_PER_BIN"
+                if smoothing_halfwidth >= 1
+                else "DIAGNOSTIC_RANK_ONE_NOT_A_PHASE_RANDOMISING_NULL"
+            ),
             "intended_use": "SECOND_ORDER_GAUSSIAN_NULL_UNDER_STATIONARITY_AND_LINEAR_GAUSSIAN_MODEL",
         },
         marginal=_marginal_error(signals, data),
@@ -527,6 +532,26 @@ def _estimate_for_null(data, *, estimator, n_tapers, smoothing_halfwidth, shrink
         return target, info
     return csdlib.estimate_csd(data, estimator, n_tapers=n_tapers,
                                smoothing_halfwidth=smoothing_halfwidth, shrinkage=shrinkage)
+
+
+def _estimator_validity(est, n_channels):
+    """What the chosen spectral estimate can and cannot support, stated in every report.
+
+    A single unsmoothed periodogram is rank one for more than one channel, so it is a diagnostic
+    and is never presented as phase-randomising. The labels describe the estimate; they do not
+    change how the draw is made.
+    """
+    if est["source"] == "explicitly_supplied":
+        return "SUPPLIED_NOT_VALIDATED_AGAINST_DATA"
+    if est["estimator"] == "single_periodogram" or (
+        est["estimator"] == "periodogram_boxcar" and est["smoothing_halfwidth"] == 0
+    ):
+        return "DIAGNOSTIC_RANK_ONE_NOT_A_PHASE_RANDOMISING_NULL"
+    if est["estimator"] == "multitaper":
+        if est["n_tapers"] >= n_channels + 1:
+            return "MULTIWINDOW_ESTIMATE_WITH_RANK_HEADROOM_REPORTED_PER_BIN"
+        return "MULTIWINDOW_ESTIMATE_LOW_RANK_REPORTED_PER_BIN"
+    return "SMOOTHED_PERIODOGRAM_RANK_UP_TO_2H_PLUS_1_REPORTED_PER_BIN"
 
 
 def cholesky_gaussian_csd(x, seed, *, estimator="multitaper", n_tapers=None, smoothing_halfwidth=1,
@@ -562,6 +587,7 @@ def cholesky_gaussian_csd(x, seed, *, estimator="multitaper", n_tapers=None, smo
             "cross_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "spectral_estimate_source": est["source"].upper(),
             "rank": RANK_STATUS,
+            "estimator_validity": _estimator_validity(est, n_ch),
             "intended_use": "SECOND_ORDER_GAUSSIAN_NULL_UNDER_STATIONARITY_AND_LINEAR_GAUSSIAN_MODEL",
         },
         marginal=_marginal_error(signals, data),
@@ -604,9 +630,13 @@ def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=Non
     """EXPLORATORY, assumption-dependent null: real Gaussian coefficients with covariance Re C(f).
 
     Keeps only the real part of the estimated cross-spectrum and draws real Fourier
-    coefficients, so every imaginary part is zero and channels are in phase or anti-phase at
-    each bin. It does not model volume conduction, source geometry, filtering, or lagged
-    coupling. It must not be used to claim that any of those is controlled.
+    coefficients. The target is an ensemble zero-lag / real-covariance null: it constrains
+    E[X X^T] in expectation over seeds. It does not constrain each realisation's phases.
+    Because this generator draws real coefficients, its realisations have zero imaginary
+    parts, so their relative phases are 0 or pi. That is an observed implementation property
+    (reported in the status), not part of the null definition. The null does not model volume
+    conduction, source geometry, filtering, or lagged coupling, and must not be used to claim
+    that any of those is controlled.
     """
     seed = sp.check_seed(seed)
     data = sp.as_float_matrix(x)
@@ -631,9 +661,12 @@ def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=Non
             "auto_spectrum": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "cross_spectrum_real_part": "EXPECTATION_ONLY_SINGLE_REALISATION_NOT_EXACT",
             "imaginary_part": "SET_TO_ZERO_BY_CONSTRUCTION",
-            "realization_relative_phase": "EXACT_0_OR_PI_EACH_REALISATION_BY_CONSTRUCTION",
+            "generator_relative_phase_observed": (
+                "REAL_COEFFICIENT_DRAWS_MEASURED_0_OR_PI_IMPLEMENTATION_DIAGNOSTIC_NOT_PART_OF_NULL_DEFINITION"
+            ),
             "spectral_estimate_source": est["source"].upper(),
             "rank": RANK_STATUS,
+            "estimator_validity": _estimator_validity(est, n_ch),
             "intended_use": "EXPLORATORY_ASSUMPTION_DEPENDENT_ZERO_LAG_REAL_PART_NULL",
             "volume_conduction": "NOT_MODELLED",
         },
@@ -662,7 +695,8 @@ def zero_lag_real_part_gaussian(x, seed, *, estimator="multitaper", n_tapers=Non
         notes=[
             f"real part of the {est['estimator']} estimate ({est['source']}); imaginary parts are zero",
             "EXPLORATORY and assumption-dependent: not a volume-conduction, geometry, or filter model",
-            "phase relations between channels are forced to 0 or pi at every bin",
+            "generator draws real coefficients: measured relative phases are 0 or pi (observed "
+            "diagnostic; not part of the ensemble null definition)",
         ],
     )
     return signals, report
