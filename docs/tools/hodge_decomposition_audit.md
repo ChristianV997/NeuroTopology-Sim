@@ -8,7 +8,14 @@ This lane does **not**:
 - validate Delaunay geometry or finite-jitter mesh quality (separate lane)
 - edit winding-charge metric implementations
 - import or claim pass/fail for open PR `#385` (`experimental/phase_cochain_reference/`)
+- import production `#413`/`#423` (`phase_winding` / `hodge_2d`) as its own oracle
 - emit scientific VALIDATED claims
+
+**Complementarity:** `#396` reimplements the weighted Hodge solve and charge
+checks so expected values are independent of the code under audit. `#385`
+provides a complex-centric reference API/builders; production `#423` is the
+merged product kernel. Overlap of incidence/fixtures is intentional duplication
+for oracle independence — do not collapse `#396` into `#385` or `#423`.
 
 Owned paths:
 
@@ -24,6 +31,7 @@ Owned paths:
 | `disk_quad_fan` | disk_with_boundary | Four triangles; outer 4-cycle boundary |
 | `closed_cycle_complex` | closed_cycle_complex | C3 1-skeleton, zero triangles; harmonic not assumed zero |
 | `annulus_like_band` | annulus_like | Band with b1 > 0; harmonic not assumed zero |
+| `disconnected_two_triangles` | disk_with_boundary | Two disjoint faces; multi-component gauge |
 
 ## Algebraic vs numerical
 

@@ -110,9 +110,34 @@ def annulus_like_band() -> OrientedComplex:
     )
 
 
+def disconnected_two_triangles() -> OrientedComplex:
+    """Two disjoint oriented triangles (disconnected 2-complex).
+
+    Gauge kernel of L0 grows with the number of connected components.
+    Used to exercise reconstruction/orthogonality without assuming a single
+    connected mesh. Independently listed; not imported from PR #385.
+    """
+    triangles = tuple(
+        canonicalize_triangle(*t) for t in ((0, 1, 2), (3, 4, 5))
+    )
+    edges = edges_from_triangles(triangles)
+    return OrientedComplex(
+        name="disconnected_two_triangles",
+        boundary_class=BoundaryClass.DISK_WITH_BOUNDARY.value,
+        num_vertices=6,
+        edges=edges,
+        triangles=triangles,
+        notes=(
+            "Two disjoint filled triangles. Disconnected; harmonic residual "
+            "still measured numerically; do not assume single-component gauge."
+        ),
+    )
+
+
 ALL_FIXTURES = (
     disk_single_triangle,
     disk_quad_fan,
     closed_cycle_complex,
     annulus_like_band,
+    disconnected_two_triangles,
 )

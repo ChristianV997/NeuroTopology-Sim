@@ -20,7 +20,11 @@ def phase_like_omega_from_vertex_potential(
     complex_: OrientedComplex,
     theta: Sequence[float],
 ) -> np.ndarray:
-    """omega = wrap(d0 @ theta) into (-pi, pi]."""
+    """omega = wrap(d0 @ theta) into [-pi, pi).
+
+    Uses ``((raw + π) mod 2π) - π``. At the half-turn ``raw = +π`` this yields
+    ``-π`` (not ``+π``). Computed locally; does not call production topology modules.
+    """
     d0 = complex_.d0()
     raw = d0 @ np.asarray(theta, dtype=float)
     return (raw + np.pi) % TWO_PI - np.pi

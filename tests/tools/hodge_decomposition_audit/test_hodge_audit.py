@@ -19,6 +19,7 @@ from tools.hodge_decomposition_audit.charges import (
 from tools.hodge_decomposition_audit.fixtures import (
     annulus_like_band,
     closed_cycle_complex,
+    disconnected_two_triangles,
     disk_quad_fan,
     disk_single_triangle,
 )
@@ -32,7 +33,13 @@ ATOL = 1e-10
 
 @pytest.mark.parametrize(
     "builder",
-    [disk_single_triangle, disk_quad_fan, closed_cycle_complex, annulus_like_band],
+    [
+        disk_single_triangle,
+        disk_quad_fan,
+        closed_cycle_complex,
+        annulus_like_band,
+        disconnected_two_triangles,
+    ],
 )
 def test_incidence_d1_d0_zero_and_dimensions(builder):
     c = builder()
@@ -186,6 +193,55 @@ def test_cli_and_deterministic_json(tmp_path: Path):
     assert "Infinity" not in text or data["fixtures"]  # cond may be null only
     # Finite JSON: no non-finite floats in serialized dump except we null them
     json.loads(text)
+
+
+def test_disconnected_two_triangles_reconstruction_and_orthogonality():
+    """Disconnected mesh: energy closure + pairwise W1 orthogonality still hold."""
+    c = disconnected_two_triangles()
+    rng = np.random.default_rng(11)
+    omega = rng.normal(size=c.num_edges)
+    w_e = rng.uniform(0.5, 2.0, size=c.num_edges)
+    decomp = decompose(c, omega, weights_edges=w_e)
+    assert decomp.accepted
+    assert decomp.relative_reconstruction_error < ATOL
+    assert decomp.relative_energy_error < ATOL
+    assert abs(decomp.ortho_exact_coexact) < ATOL
+    assert abs(decomp.ortho_exact_harmonic) < ATOL
+    assert abs(decomp.ortho_coexact_harmonic) < ATOL
+
+
+def test_malformed_omega_fails_closed():
+    c = disk_single_triangle()
+    with pytest.raises(ValueError, match="nonfinite|shape"):
+        decompose(c, [float("nan"), 0.0, 0.0])
+    with pytest.raises(ValueError, match="shape"):
+        decompose(c, [1.0, 2.0])
+
+
+def test_oracle_does_not_import_production_or_proposal_as_self_oracle():
+    """Independent expected values: never import production topology / #385 / scipy."""
+    import ast
+
+    root = REPO / "tools" / "hodge_decomposition_audit"
+    banned_prefixes = (
+        "experimental.phase_cochain_reference",
+        "neurotopology_sim",
+        "scipy",
+    )
+    for path in sorted(root.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                for prefix in banned_prefixes:
+                    assert not name.startswith(prefix), (
+                        f"{path.name} must not import {name!r} (oracle independence)"
+                    )
 
 
 def test_does_not_touch_proposal_or_mesh_lanes():
