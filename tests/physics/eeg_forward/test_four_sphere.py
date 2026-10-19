@@ -530,11 +530,144 @@ def test_naess_preset_rejects_other_skull_ratios(bad):
         fs.naess2017_table1_geometry(bad)
 
 
+# --- Hardening: orientation, units, nodal truncation, malformed inputs -------------------
+
+@pytest.mark.parametrize("k", [20, 40, 80])
+def test_table1_residuals_stay_at_round_off_for_every_skull_ratio(k):
+    rng = np.random.default_rng(51 + k)
+    geometry = fs.naess2017_table1_geometry(k)
+    result = forward_potentials(geometry, _source_in_brain(rng), [1e-8, -1e-8, 2e-8],
+                                _scalp_points(rng, 8), max_degree=256)
+    d = result.diagnostics
+    assert d["interface_potential_residual"] < 1e-12
+    assert d["interface_current_residual"] < 1e-12
+    assert d["scalp_zero_current_residual"] < 1e-12
+
+
+def test_forty_five_degree_dipole_superposes_radial_and_tangential_parts():
+    # Dipole at 45 degrees to the source axis, with equal radial and tangential parts.
+    rng = np.random.default_rng(53)
+    geometry = FourSphereGeometry(RADII, HOMOGENEOUS)
+    source = np.array([0.0, 0.0, 0.05])
+    radial = 2e-8 * np.array([0.0, 0.0, 1.0])
+    tangential = 2e-8 * np.array([1.0, 0.0, 0.0])
+    sensors = _scalp_points(rng, 20)
+    full = forward_potentials(geometry, source, radial + tangential, sensors, max_degree=256).potentials_v
+    ref = _closed_form_potentials(source, radial + tangential, sensors)
+    assert np.max(np.abs(full - ref)) / _scale(ref) < 1e-11
+    parts = (forward_potentials(geometry, source, radial, sensors, max_degree=256).potentials_v
+             + forward_potentials(geometry, source, tangential, sensors, max_degree=256).potentials_v)
+    np.testing.assert_allclose(full, parts, rtol=1e-12, atol=1e-30)
+
+
+def test_length_scaling_gives_inverse_square_potential():
+    # Scaling radii, source, and sensors by s with q and sigma fixed scales V by 1/s^2.
+    rng = np.random.default_rng(55)
+    s = 2.0
+    base = FourSphereGeometry(RADII, LAYERED)
+    scaled = FourSphereGeometry(tuple(s * r for r in RADII), LAYERED)
+    source = _source_in_brain(rng, max_fraction=0.8)
+    moment = rng.normal(size=3) * 1e-8
+    sensors = _scalp_points(rng, 10)
+    v = forward_potentials(base, source, moment, sensors, max_degree=256).potentials_v
+    v_scaled = forward_potentials(scaled, s * source, moment, s * sensors, max_degree=256).potentials_v
+    np.testing.assert_allclose(v_scaled, v / s**2, rtol=1e-12, atol=1e-30)
+
+
+def test_conductivity_scaling_gives_inverse_potential():
+    # All sigma scaled by s, geometry fixed: transfer ratios are unchanged and V scales as 1/s.
+    rng = np.random.default_rng(57)
+    s = 3.0
+    base = FourSphereGeometry(RADII, LAYERED)
+    scaled = FourSphereGeometry(RADII, tuple(s * sig for sig in LAYERED))
+    source = _source_in_brain(rng)
+    moment = rng.normal(size=3) * 1e-8
+    sensors = _scalp_points(rng, 10)
+    v = forward_potentials(base, source, moment, sensors, max_degree=256).potentials_v
+    v_scaled = forward_potentials(scaled, source, moment, sensors, max_degree=256).potentials_v
+    np.testing.assert_allclose(v_scaled, v / s, rtol=1e-12, atol=1e-30)
+
+
+def test_tangential_dipole_is_positive_toward_the_side_it_points():
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = np.array([0.0, 0.0, 0.05])
+    moment = np.array([1e-8, 0.0, 0.0])
+    sensors = np.array([[R4, 0.0, 0.0], [-R4, 0.0, 0.0]])
+    toward, away = forward_potentials(geometry, source, moment, sensors, max_degree=256).potentials_v
+    assert toward > 0.0 > away
+
+
+def _legendre_roots_bracketed(degree: int) -> np.ndarray:
+    # Roots of P_degree found independently of the production code: a sign scan on a fine
+    # grid of legval, then bisection inside each bracket.
+    coeff = np.zeros(degree + 1)
+    coeff[degree] = 1.0
+    grid = np.linspace(-1.0, 1.0, 40001)
+    values = np.polynomial.legendre.legval(grid, coeff)
+    brackets = np.nonzero(np.sign(values[:-1]) * np.sign(values[1:]) < 0)[0]
+    roots = []
+    for i in brackets:
+        lo, hi, f_lo = grid[i], grid[i + 1], values[i]
+        for _ in range(80):
+            mid = 0.5 * (lo + hi)
+            f_mid = np.polynomial.legendre.legval(mid, coeff)
+            if np.sign(f_mid) == np.sign(f_lo):
+                lo, f_lo = mid, f_mid
+            else:
+                hi = mid
+        roots.append(0.5 * (lo + hi))
+    return np.array(roots)
+
+
+def test_p10_nodal_sensors_do_not_end_the_series_early():
+    # At a root of P_10 a radial dipole's degree-10 term is exactly zero at the sensor. A rule that
+    # stops on one vanishing term would end the sum there. The tail must still be bounded.
+    roots = _legendre_roots_bracketed(10)
+    assert len(roots) == 10
+    coeff = np.zeros(11)
+    coeff[10] = 1.0
+    assert np.max(np.abs(np.polynomial.legendre.legval(roots, coeff))) < 1e-12
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = np.array([0.0, 0.0, 0.7 * RADII[0]])
+    moment = np.array([0.0, 0.0, 1e-8])
+    sensors = R4 * np.column_stack([np.sqrt(1.0 - roots**2), np.zeros(10), roots])
+    reference = forward_potentials(geometry, source, moment, sensors, max_degree=512,
+                                   tail_tol=1.0).potentials_v
+    result = forward_potentials(geometry, source, moment, sensors, max_degree=64)
+    actual = np.max(np.abs(result.potentials_v - reference)) / _scale(reference)
+    assert result.diagnostics["tail_relative"] >= actual
+    cut_at_ten = forward_potentials(geometry, source, moment, sensors, max_degree=10, tail_tol=1.0)
+    cut_error = np.max(np.abs(cut_at_ten.potentials_v - reference)) / _scale(reference)
+    assert cut_error > 1e-3  # a 10-term cut really is wrong at these sensors
+
+
+@pytest.mark.parametrize("build", [
+    lambda: FourSphereGeometry((np.nan, 0.080, 0.085, 0.090), HOMOGENEOUS),
+    lambda: FourSphereGeometry(RADII, (np.inf, 1.65, 0.0165, 0.33)),
+    lambda: FourSphereGeometry(("a", 0.080, 0.085, 0.090), HOMOGENEOUS),
+    lambda: FourSphereGeometry((None, 0.080, 0.085, 0.090), HOMOGENEOUS),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, np.inf], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [np.inf, 0, 0],
+                                  np.array([[0.0, 0.0, R4]])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[np.nan, 0.0, R4]])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([0.0, 0.0, R4])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]]), residual_tol=np.inf),
+])
+def test_malformed_inputs_fail_closed_with_library_error(build):
+    with pytest.raises(FourSphereInputError):
+        build()
+
+
 # --- Oracle cross-check -----------------------------------------------------------
 
 @pytest.mark.skip(reason=(
-    "Independent oracle (Hermes Agent A, PR #409) is not on main. The cross-check is run "
-    "out of tree from a scratch copy and reported in the handoff; it is never imported here."
+    "Independent oracle (Hermes Agent A, PR #409) is not on main and is not wired into CI. "
+    "The cross-check runs in a disposable combined worktree and is recorded in the docs; it is "
+    "never imported here."
 ))
 def test_independent_oracle_cross_check():
     pass

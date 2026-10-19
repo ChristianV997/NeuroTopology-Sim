@@ -121,6 +121,19 @@ Non-convergence is reported, not hidden. A source at `d / r4 = 0.87` with a radi
 `L = 16` with a truncation-tail error. The tail decays roughly as `(d / r4)^(L-1)`, so depths near
 `r1 / r4 ≈ 0.88` need larger `L`.
 
+Nodal sensors. Sensors at the ten roots of P_10 (found by a sign scan and bisection, independent of the
+production code) are tested with a radial dipole. The degree-10 term is exactly zero there, so a rule that
+stopped on a vanishing term would end the sum early. The tail estimate still bounds the actual error against
+a degree-512 reference, and a 10-term cut is measurably wrong at those sensors.
+
+Estimator attack, scratch. Across K = 20, 40, 80; depths 0 to 0.95 r1; radial, tangential, and 45-degree
+dipoles; P_10 nodal sensors; and L = 32, 64, 128, 256, the estimate was never below the actual error against a
+degree-512 reference. The smallest estimate-to-actual ratio was 5.5. This is evidence for the tested family,
+not a proof.
+
+**Certification status: uncertified.** Every bound above is conditional on `|T_l|` remaining comparable beyond
+`L`, which is not proven. No certified maximum degree is claimed.
+
 ## Orientation
 
 - `q_r` and `q_t` are defined relative to `e_s`. Rotating the source, moment, and sensors together
@@ -167,21 +180,25 @@ Acceptance categories and tests:
 The layered T_l reference is an independent seven-unknown linear solve written in the test file. It
 shares no code with the production propagation.
 
-### Oracle cross-check (out of tree)
+### Oracle cross-check (combined worktree, not a repository test)
 
-The Hermes Agent A oracle (PR #409, `tools/experimental_audits/four_shell_bvp_oracle.py`) was fetched into
-a scratch directory, not into the repository. It solves its own seven-equation system and projects
-dipoles with its own mapping. Results on identical inputs:
+The Hermes Agent A oracle (PR #409, `tools/experimental_audits/four_shell_bvp_oracle.py`) was run from a
+disposable combined worktree: the candidate head `330f8f6` merged with oracle head `7ccc59a`, merge base
+`19c3203`. Neither lane's files were edited. The oracle's own 17 unit tests pass in that tree, and the
+candidate's 72 pass with 1 skipped. Both implementations were imported from that tree. The oracle's
+`solve_four_shell_mode` and `project_dipole_oracle` supplied all expectations.
 
-| Geometry (r1, r2, r3, r4; sigma) | max rel diff, T_l, l <= 32 | max rel diff, sensor potentials (12 sensors, L = 128) |
-|---|---|---|
-| (0.079, 0.080, 0.085, 0.090); (0.33, 1.79, 0.0042, 0.33) | 1.5e-15 | 8e-16 |
-| (0.078, 0.080, 0.086, 0.095); (0.33, 1.79, 0.0042, 0.33) (oracle default) | 1.4e-15 | 1.2e-15 |
+Table 1 preset, K = 20, 40, 80 (brief values), 96 cases in total:
 
-The agreement is between two independent derivations. It is **not** validation against a physical
-reference. The two implementations share the convention choices: the `V_inf` normalisation, the sign,
-and the placement of the factor `l` on the radial term. Those choices are checked against the free-space
-closed form and the homogeneous limit, not against a recording.
+| Sweep | Max rel diff |
+|---|---|
+| `T_l`, l <= 48 | 1.5e-15 |
+| Sensor potentials, L = 256; depths 0 to 0.95 r1; radial, tangential, 45-degree dipoles; sensors at P_10 nodal angles and random points | 2.9e-15 |
+
+The agreement is between two implementations that use the same brief values and share the convention
+choices: the `V_inf` normalisation, the sign, and the placement of the factor `l` on the radial term. It is
+**not** validation against the paper, whose Table 1 and equations were not readable in this session. It
+does not validate a recording either.
 
 ## Attribution
 
