@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import re
 import sys
@@ -29,7 +28,6 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sciencer_d.btc_icft.ontology.artifact_reader import (
-    summarize_ontology_for_markdown,
     summarize_ontology_for_packet,
 )
 from tools.research_cycle_bridge.models import BridgeContractError, canonical_hash
@@ -45,6 +43,81 @@ _PROMOTION_DECISION = "engineering_runtime_validated_only"
 
 _DEFAULT_ONTOLOGY_ROOT = "outputs/btc_icft/ds005620_ontology_evaluation_mock"
 _EMPTY_BYTES_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+_SAFE_MODES = {
+    "mock_e2e",
+    "real_preflight",
+    "real_data",
+    "real_benchmark",
+    "engineering_only",
+    "synthetic_demo",
+}
+
+_ONTOLOGY_ENUMS = {
+    "max_claim_scope": {
+        "engineering_runtime",
+        "empirical_marker",
+        "empirical_topology",
+        "mechanism_candidate",
+        "theory_consistency",
+        "ontology_candidate",
+    },
+    "promotion_state": {
+        "engineering_validated",
+        "pending_review",
+        "quarantined",
+        "blocked",
+        "promoted",
+        "not_available",
+    },
+    "ontology_claim_status": {
+        "ontology_quarantined",
+        "review_required",
+        "blocked",
+        "ready_for_review",
+        "not_available",
+    },
+}
+
+
+def _safe_ontology_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    """Keep ontology output to allowlisted states, booleans, and counts."""
+    safe: dict[str, Any] = {"ontology_available": summary.get("ontology_available") is True}
+    for key, allowed in _ONTOLOGY_ENUMS.items():
+        value = summary.get(key)
+        safe[key] = value if isinstance(value, str) and value in allowed else "unknown"
+    for key in (
+        "ontology_promotion",
+        "empirical_marker_promotion",
+        "empirical_topology_promotion",
+        "mechanism_promotion",
+        "metaphysical_promotion",
+    ):
+        safe[key] = summary.get(key) is True
+    counts = summary.get("bridge_status_counts")
+    safe["bridge_status_count"] = (
+        sum(value for value in counts.values() if isinstance(value, int) and value >= 0)
+        if isinstance(counts, dict)
+        else 0
+    )
+    safe["blocked_claim_count"] = len(summary.get("blocked_claims", []))
+    safe["required_next_evidence_count"] = len(summary.get("required_next_evidence", []))
+    safe["safe_claim_available"] = isinstance(summary.get("safe_claim"), str)
+    return safe
+
+
+def _ontology_markdown(summary: dict[str, Any]) -> str:
+    lines = [
+        "## Ontology Claim Scope",
+        "",
+        f"- Availability: {summary['ontology_available']}",
+        f"- Max claim scope: `{summary['max_claim_scope']}`",
+        f"- Promotion state: `{summary['promotion_state']}`",
+        f"- Contract status: `{summary['ontology_claim_status']}`",
+        f"- Blocked claims counted: {summary['blocked_claim_count']}",
+        f"- Bridge statuses counted: {summary['bridge_status_count']}",
+        "- Free-text claims, identifiers, and blocker details are omitted.",
+    ]
+    return "\n".join(lines)
 
 
 def _load_json(path: Path) -> dict:
@@ -60,7 +133,9 @@ def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate JSON key: {key}")
+            # A JSON key may itself contain a participant identifier.  Keep
+            # parser diagnostics structural and value-free.
+            raise ValueError("duplicate JSON key")
         result[key] = value
     return result
 
@@ -121,7 +196,9 @@ def _parse_participant_table(
                     valid = False
                     continue
                 if participant_id in seen:
-                    validation_errors.append(f"participants_tsv_duplicate_subject:{participant_id}")
+                    validation_errors.append(
+                        f"participants_tsv_duplicate_subject:row:{row_number}"
+                    )
                     valid = False
                     continue
                 seen.add(participant_id)
@@ -234,10 +311,12 @@ def _validate_task_requirements(
 
 
 def _validate_preregistered_plan(plan: dict[str, Any] | None, supplied: bool) -> dict[str, Any]:
+    synthetic_plan = bool(plan and plan.get("is_synthetic") is True)
     result: dict[str, Any] = {
         "status": "not_supplied" if not supplied else "invalid",
         "plan_integrity_verified": False,
         "authority_asserted": False,
+        "synthetic_demo_only": synthetic_plan,
         "registration_reference": None,
         "plan_sha256": None,
         "expected_task_requirements": None,
@@ -278,23 +357,26 @@ def _validate_preregistered_plan(plan: dict[str, Any] | None, supplied: bool) ->
         result["errors"].append("empty_bytes_sha256_is_not_plan_provenance")
     if plan.get("schema_version") != "ExperimentPlan.v1":
         result["errors"].append("plan_schema_version_not_ExperimentPlan.v1")
-    if str(plan.get("data_source", "")).casefold() != "ds005620":
-        result["errors"].append("plan_dataset_not_ds005620")
-    if plan.get("is_synthetic") is not False:
-        result["errors"].append("plan_must_not_be_synthetic")
-    if not isinstance(reference, str) or not reference.startswith("https://"):
-        result["errors"].append("preregistration_reference_missing_or_not_https")
-    if not isinstance(provenance.get("registered_at"), str) or not provenance["registered_at"].strip():
-        result["errors"].append("preregistration_registered_at_missing")
-    if not result["authority_asserted"]:
-        result["errors"].append("authoritative_source_not_asserted_verified")
+    if not synthetic_plan:
+        if str(plan.get("data_source", "")).casefold() != "ds005620":
+            result["errors"].append("plan_dataset_not_ds005620")
+        if not isinstance(reference, str) or not reference.startswith("https://"):
+            result["errors"].append("preregistration_reference_missing_or_not_https")
+        if not isinstance(provenance.get("registered_at"), str) or not provenance["registered_at"].strip():
+            result["errors"].append("preregistration_registered_at_missing")
+        if not result["authority_asserted"]:
+            result["errors"].append("authoritative_source_not_asserted_verified")
 
     variables = plan.get("variables")
     requirements_value = variables.get("expected_task_requirements") if isinstance(variables, dict) else None
     requirements, requirement_errors = _validate_task_requirements(requirements_value)
     result["errors"].extend(requirement_errors)
     if not result["errors"]:
-        result["status"] = "verified"
+        result["status"] = (
+            "synthetic_demo_only"
+            if synthetic_plan
+            else "declared_protocol_integrity_checked"
+        )
         result["expected_task_requirements"] = requirements
         result["expected_task_set"] = sorted(
             {item["task_label"] for item in requirements if item["task_label"] is not None}
@@ -306,6 +388,32 @@ def _validate_preregistered_plan(plan: dict[str, Any] | None, supplied: bool) ->
     return result
 
 
+def _public_preregistration_summary(preregistration: dict[str, Any]) -> dict[str, Any]:
+    """Return only aggregate protocol metadata; never expose row identifiers."""
+    requirements = preregistration.get("expected_task_requirements")
+    task_count = None
+    requirement_count = None
+    if isinstance(requirements, list):
+        requirement_count = len(requirements)
+        task_count = len(
+            {
+                item.get("task_label")
+                for item in requirements
+                if isinstance(item, dict) and isinstance(item.get("task_label"), str)
+            }
+        )
+    return {
+        "status": preregistration.get("status", "invalid"),
+        "plan_integrity_verified": preregistration.get("plan_integrity_verified") is True,
+        "authority_asserted": preregistration.get("authority_asserted") is True,
+        "synthetic_demo_only": preregistration.get("synthetic_demo_only") is True,
+        "registration_reference_supplied": bool(preregistration.get("registration_reference")),
+        "expected_task_requirement_count": requirement_count,
+        "expected_task_count": task_count,
+        "errors": list(preregistration.get("errors", [])),
+    }
+
+
 def _inventory_summary(
     inventory: dict[str, Any] | None,
     supplied: bool,
@@ -313,13 +421,10 @@ def _inventory_summary(
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "status": "not_supplied" if not supplied else "invalid",
-        "observed_task_session_run_coverage": [],
-        "inventory_subject_ids": [],
-        "inventory_subjects_not_in_participants_tsv": None,
-        "participants_without_inventory_files": None,
-        "subject_id_comparison": "not_performed_identifiers_preserved_verbatim",
-        "missing_task_requirements": [],
-        "unexpected_task_labels": [],
+        "observed_task_session_run_coverage_count": 0,
+        "inventory_subject_count": 0,
+        "missing_task_requirement_count": None,
+        "unexpected_task_label_count": 0,
         "unclassified_inventory_records": 0,
         "file_inventory_complete_against_declared_requirements": None,
         "errors": [],
@@ -362,18 +467,17 @@ def _inventory_summary(
             subject_ids.add(current["subject_id"])
         valid_records.append(current)
 
-    result["observed_task_session_run_coverage"] = [
-        {"task_label": task, "session_id": session, "run_id": run}
-        for task, session, run in sorted(
-            coverage, key=lambda item: (item[0], item[1] or "", item[2] or "")
-        )
-    ]
-    result["inventory_subject_ids"] = sorted(subject_ids)
+    result["observed_task_session_run_coverage_count"] = len(coverage)
+    result["inventory_subject_count"] = len(subject_ids)
     requirements = preregistration.get("expected_task_requirements")
-    if preregistration.get("status") != "verified" or not isinstance(requirements, list):
+    if preregistration.get("status") not in {
+        "declared_protocol_integrity_checked",
+        "synthetic_demo_only",
+    } or not isinstance(requirements, list):
         result["status"] = "not_evaluable_without_verified_protocol"
         return result
 
+    missing_requirement_count = 0
     for requirement in requirements:
         if not any(
             record["task_label"] == requirement["task_label"]
@@ -382,36 +486,36 @@ def _inventory_summary(
             and (requirement["subject_id"] is None or record["subject_id"] == requirement["subject_id"])
             for record in valid_records
         ):
-            result["missing_task_requirements"].append(requirement)
+            missing_requirement_count += 1
     expected_tasks = set(preregistration.get("expected_task_set") or [])
-    result["unexpected_task_labels"] = sorted(observed_tasks - expected_tasks)
+    unexpected_task_count = len(observed_tasks - expected_tasks)
+    result["missing_task_requirement_count"] = missing_requirement_count
+    result["unexpected_task_label_count"] = unexpected_task_count
     complete = (
         not result["errors"]
         and result["unclassified_inventory_records"] == 0
-        and not result["missing_task_requirements"]
-        and not result["unexpected_task_labels"]
+        and missing_requirement_count == 0
+        and unexpected_task_count == 0
     )
     result["file_inventory_complete_against_declared_requirements"] = complete
+    suffix = "_synthetic_demo_only" if preregistration.get("synthetic_demo_only") is True else ""
     result["status"] = (
-        "complete_against_declared_requirements"
-        if complete
-        else "incomplete_against_declared_requirements"
+        ("complete_against_declared_requirements" if complete else "incomplete_against_declared_requirements")
+        + suffix
     )
     return result
 
 
 def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
     if metadata_root is None:
-        preregistration = _validate_preregistered_plan(None, False)
-        inventory = _inventory_summary(None, False, preregistration)
+        plan_details = _validate_preregistered_plan(None, False)
+        inventory = _inventory_summary(None, False, plan_details)
         return {
             "metadata_parsed": False,
             "metadata_parse_errors": ["metadata_root_not_supplied"],
             "metadata_validation_errors": [],
-            "metadata_file_sha256": {},
-            "participant_ids": [],
             "participants_tsv_count": None,
-            "declared_excluded_ids": [],
+            "excluded_participant_count": None,
             "bids_subject_count_match": None,
             "nemar_participant_count_match": None,
             "published_counts": {
@@ -420,32 +524,36 @@ def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
                 "awakening_trials": None,
                 "attempted_awakenings": None,
             },
-            "published_count_source_claims": None,
+            "published_count_source_claims_supplied": False,
+            "published_count_source_claim_count": None,
             "participant_count_difference": None,
-            "cohort_reconciled": None,
-            "cohort_reconciliation_status": "not_evaluated",
-            "subject_level_analysis_ids_supplied": False,
+            "cohort_count_consistent": None,
+            "cohort_reconciliation_status": "not_evaluated_identity_unverified",
+            "analysis_identifier_list_supplied": False,
+            "analysis_identifier_count": None,
+            "analysis_identifier_count_matches_published_count": None,
             "license_declarations": {
-                "dataset_description": None,
-                "readme": None,
-                "nemar": None,
+                "dataset_description_supplied": False,
+                "readme_supplied": False,
+                "nemar_supplied": False,
             },
             "source_metadata": {
-                "dataset_description": None,
-                "readme_license_text": None,
-                "nemar": None,
+                "dataset_description_supplied": False,
+                "readme_supplied": False,
+                "nemar_metadata_supplied": False,
             },
-            "license_resolved": False,
+            "license_declaration_count": 0,
+            "license_declarations_consistent": False,
             "license_conflict": False,
             "data_use_ready": False,
             "data_use_readiness_blockers": [
                 "metadata_audit_not_authorized_to_grant_data_use",
                 "metadata_root_not_supplied",
             ],
-            "preregistration": preregistration,
+            "preregistration": _public_preregistration_summary(plan_details),
             "task_session_run_coverage": inventory,
             "file_inventory_complete_against_declared_requirements": None,
-            "expected_task_set": None,
+            "expected_task_count": None,
         }
 
     root = Path(metadata_root)
@@ -489,11 +597,11 @@ def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
         _nonnegative_int(published.get("attempted_awakenings")) if published else None
     )
     published_source_claims = published.get("source_claims") if published else None
-    if published is not None and "source_claims" in published and not isinstance(
-        published_source_claims, dict
-    ):
+    if published is not None and "source_claims" in published and not isinstance(published_source_claims, dict):
         validation_errors.append("published_counts_invalid_source_claims")
         published_source_claims = None
+    source_claims_supplied = isinstance(published_source_claims, dict)
+    source_claim_count = len(published_source_claims) if source_claims_supplied else None
     participants_count = len(participant_ids) if participants_valid else None
     nemar_participant_count = _nonnegative_int(nemar.get("participants")) if nemar else None
     bids_subject_count_match = (
@@ -513,108 +621,73 @@ def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
     )
     analysis_ids_value = published.get("analyzed_subject_ids") if published else None
     subject_ids_supplied = isinstance(analysis_ids_value, list)
-    cohort_reconciled: bool | None = None
-    cohort_status = "not_evaluated"
+    analysis_identifier_count = len(analysis_ids_value) if subject_ids_supplied else None
+    analysis_ids_valid: bool | None = None
+    analysis_id_count_matches: bool | None = None
+    cohort_count_consistent: bool | None = None
+    cohort_status = "not_evaluated_identity_unverified"
+    if subject_ids_supplied:
+        analysis_ids_valid = all(
+            isinstance(item, str) and item and item == item.strip()
+            for item in analysis_ids_value
+        ) and len(set(analysis_ids_value)) == len(analysis_ids_value)
+        if not analysis_ids_valid:
+            validation_errors.append("published_counts_invalid_analyzed_subject_ids")
+        elif analyzed_count is not None:
+            analysis_id_count_matches = analysis_identifier_count == analyzed_count
     if participants_count is not None and analyzed_count is not None:
-        cohort_status = "unresolved"
-        if subject_ids_supplied:
-            valid_analysis_ids = all(
-                isinstance(item, str) and item and item == item.strip()
-                for item in analysis_ids_value
-            )
-            if valid_analysis_ids and len(set(analysis_ids_value)) == len(analysis_ids_value):
-                analyzed_ids = set(analysis_ids_value)
-                participant_ids_set = set(participant_ids)
-                cohort_reconciled = (
-                    len(analysis_ids_value) == analyzed_count
-                    and analyzed_ids.issubset(participant_ids_set)
-                    and participant_ids_set - analyzed_ids == set(excluded_ids)
-                )
-                cohort_status = "reconciled" if cohort_reconciled else "unresolved"
-            else:
-                validation_errors.append("published_counts_invalid_analyzed_subject_ids")
-        elif participant_difference:
-            cohort_reconciled = False
-            cohort_status = "unresolved_count_discrepancy_without_subject_mapping"
+        cohort_count_consistent = (
+            participants_count - len(excluded_ids) == analyzed_count
+        )
+        if subject_ids_supplied and analysis_ids_valid is False:
+            cohort_status = "invalid_analysis_identifier_list_identity_unverified"
+            cohort_count_consistent = False
+        elif subject_ids_supplied and analysis_id_count_matches is False:
+            cohort_status = "identifier_count_mismatch_identity_unverified"
+            cohort_count_consistent = False
+        elif cohort_count_consistent:
+            cohort_status = "count_consistent_identity_unverified"
         else:
-            cohort_status = "unresolved_subject_mapping"
+            cohort_status = "count_discrepancy_identity_unverified"
 
     description_license = description.get("License") if description else None
     nemar_license = (nemar.get("license") or nemar.get("License")) if nemar else None
+    raw_license_values = [
+        value.strip()
+        for value in (description_license, readme_license, nemar_license)
+        if isinstance(value, str) and value.strip()
+    ]
+    license_conflict = len({value.casefold() for value in raw_license_values}) > 1
     license_declarations = {
-        "dataset_description": (
-            description_license.strip() if isinstance(description_license, str) else None
+        "dataset_description_supplied": bool(
+            isinstance(description_license, str) and description_license.strip()
         ),
-        "readme": readme_license,
-        "nemar": nemar_license.strip() if isinstance(nemar_license, str) else None,
+        "readme_supplied": bool(readme_license),
+        "nemar_supplied": bool(isinstance(nemar_license, str) and nemar_license.strip()),
     }
-    supplied_licenses = [value for value in license_declarations.values() if value]
-    license_conflict = len({value.casefold() for value in supplied_licenses}) > 1
-    license_resolved = len(supplied_licenses) == 3 and not license_conflict
+    license_declarations_consistent = (
+        sum(license_declarations.values()) == 3 and not license_conflict
+    )
     source_metadata = {
-        "dataset_description": (
-            {
-                "name": description.get("Name"),
-                "bids_version": description.get("BIDSVersion"),
-                "dataset_type": description.get("DatasetType"),
-                "dataset_doi": description.get("DatasetDOI"),
-                "license": license_declarations["dataset_description"],
-            }
-            if description
-            else None
-        ),
-        "readme_license_text": readme_license,
-        "nemar": (
-            {
-                "dataset_id": nemar.get("dataset_id"),
-                "participants": nemar_participant_count,
-                "reported_tasks": nemar.get("tasks"),
-                "license": license_declarations["nemar"],
-            }
-            if nemar
-            else None
-        ),
+        "dataset_description_supplied": description is not None,
+        "readme_supplied": readme_parsed,
+        "nemar_metadata_supplied": nemar is not None,
     }
-
-    source_paths: dict[str, Path | None] = {
-        "participants.tsv": participants_path,
-        "dataset_description.json": root / "dataset_description.json",
-        "readme": next(
-            (
-                root / name
-                for name in ("README.txt", "README.md", "README")
-                if (root / name).is_file()
-            ),
-            None,
-        ),
-        "nemar_metadata.json": root / "nemar_metadata.json",
-        "published_counts.json": root / "published_counts.json",
-    }
-    for name, path in (("file_inventory.json", inventory_path), ("preregistered_plan.json", plan_path)):
-        if path.is_file():
-            source_paths[name] = path
-    source_hashes: dict[str, str] = {}
-    for name, path in source_paths.items():
-        if path is not None and path.is_file():
-            try:
-                source_hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-            except OSError:
-                pass
 
     metadata_parsed = (
         participants_parsed
+        and participants_valid
         and description is not None
         and readme_parsed
         and nemar is not None
         and published is not None
     )
     blockers = ["metadata_audit_not_authorized_to_grant_data_use"]
-    if not license_resolved:
-        blockers.append("license_unresolved")
+    if not license_declarations_consistent:
+        blockers.append("license_declarations_incomplete_or_conflicting")
     if license_conflict:
         blockers.append("license_conflict")
-    if cohort_reconciled is not True:
-        blockers.append("cohort_not_reconciled")
+    blockers.append("cohort_identity_not_verified")
     if inventory_summary["file_inventory_complete_against_declared_requirements"] is not True:
         blockers.append("file_inventory_not_complete_against_verified_protocol")
 
@@ -622,10 +695,8 @@ def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
         "metadata_parsed": metadata_parsed,
         "metadata_parse_errors": parse_errors,
         "metadata_validation_errors": validation_errors,
-        "metadata_file_sha256": source_hashes,
-        "participant_ids": participant_ids,
         "participants_tsv_count": participants_count,
-        "declared_excluded_ids": excluded_ids,
+        "excluded_participant_count": len(excluded_ids) if participants_valid else None,
         "bids_subject_count_match": bids_subject_count_match,
         "nemar_participant_count_match": nemar_participant_count_match,
         "published_counts": {
@@ -634,23 +705,29 @@ def _metadata_reconciliation(metadata_root: str | None) -> dict[str, Any]:
             "awakening_trials": awakening_trial_count,
             "attempted_awakenings": attempted_awakening_count,
         },
-        "published_count_source_claims": published_source_claims,
+        "published_count_source_claims_supplied": source_claims_supplied,
+        "published_count_source_claim_count": source_claim_count,
         "participant_count_difference": participant_difference,
-        "cohort_reconciled": cohort_reconciled,
+        "cohort_count_consistent": cohort_count_consistent,
         "cohort_reconciliation_status": cohort_status,
-        "subject_level_analysis_ids_supplied": subject_ids_supplied,
+        "analysis_identifier_list_supplied": subject_ids_supplied,
+        "analysis_identifier_count": analysis_identifier_count,
+        "analysis_identifier_count_matches_published_count": analysis_id_count_matches,
         "license_declarations": license_declarations,
         "source_metadata": source_metadata,
-        "license_resolved": license_resolved,
+        "license_declaration_count": sum(license_declarations.values()),
+        "license_declarations_consistent": license_declarations_consistent,
         "license_conflict": license_conflict,
         "data_use_ready": False,
         "data_use_readiness_blockers": blockers,
-        "preregistration": preregistration,
+        "preregistration": _public_preregistration_summary(preregistration),
         "task_session_run_coverage": inventory_summary,
         "file_inventory_complete_against_declared_requirements": inventory_summary[
             "file_inventory_complete_against_declared_requirements"
         ],
-        "expected_task_set": preregistration.get("expected_task_set"),
+        "expected_task_count": _public_preregistration_summary(preregistration)[
+            "expected_task_count"
+        ],
     }
 
 
@@ -670,30 +747,37 @@ def build_evidence_packet(
     omega = _load_json(root / "omega_event.json")
 
     benchmark_completed = execution.get("benchmark_completed", False)
-    mode = execution.get("mode", "unknown")
-    p12_ok = execution.get("p12_succeeded", False)
-    p13_ok = execution.get("p13_succeeded", False)
-    p11_ok = execution.get("p11_succeeded", False)
+    mode_value = execution.get("mode")
+    mode = mode_value if isinstance(mode_value, str) and mode_value in _SAFE_MODES else "unknown"
+    benchmark_completed = benchmark_completed is True
+    p12_ok = execution.get("p12_succeeded") is True
+    p13_ok = execution.get("p13_succeeded") is True
+    p11_ok = execution.get("p11_succeeded") is True
 
     omega_invariants = {
-        "labels_inferred": omega.get("labels_inferred", False),
-        "targets_fabricated": omega.get("targets_fabricated", False),
-        "source_contracts_modified": omega.get("source_contracts_modified", False),
-        "legacy_mt_real_modified": omega.get("legacy_mt_real_modified", False),
-        "contracts_activated_by_executor": omega.get("contracts_activated_by_executor", False),
-        "p11_promotion_gate_modified": omega.get("p11_promotion_gate_modified", False),
-        "consciousness_claims_made": omega.get("consciousness_claims_made", False),
+        key: omega.get(key) is True
+        for key in (
+            "labels_inferred",
+            "targets_fabricated",
+            "source_contracts_modified",
+            "legacy_mt_real_modified",
+            "contracts_activated_by_executor",
+            "p11_promotion_gate_modified",
+            "consciousness_claims_made",
+        )
     }
     all_invariants_false = all(not v for v in omega_invariants.values())
 
     # Ontology summary
     _ontology_root = Path(ontology_root) if ontology_root else Path(_DEFAULT_ONTOLOGY_ROOT)
-    ontology_summary = summarize_ontology_for_packet(_ontology_root)
+    ontology_summary = _safe_ontology_summary(
+        summarize_ontology_for_packet(_ontology_root)
+    )
     warnings: list[str] = []
     if not ontology_summary["ontology_available"]:
         if require_ontology:
             raise SystemExit(
-                f"--require-ontology is set but ontology evaluation not found at {_ontology_root}"
+                "--require-ontology is set but ontology evaluation is unavailable"
             )
         warnings.append("ontology_evaluation_missing")
 
@@ -702,8 +786,8 @@ def build_evidence_packet(
         warnings.append("ds005620_metadata_not_fully_parsed")
     if metadata_reconciliation["license_conflict"]:
         warnings.append("ds005620_license_conflict_unresolved")
-    if metadata_reconciliation["cohort_reconciled"] is not True:
-        warnings.append("ds005620_cohort_not_reconciled")
+    if metadata_reconciliation["cohort_count_consistent"] is not True:
+        warnings.append("ds005620_cohort_count_consistency_unavailable_or_mismatched")
 
     claim_scope = {
         "engineering_runtime": True,
@@ -728,9 +812,9 @@ def build_evidence_packet(
         "omega_invariants": omega_invariants,
         "all_omega_invariants_false": all_invariants_false,
         "promotion_decision": _PROMOTION_DECISION,
-        "artifact_count": manifest.get("artifact_count", 0),
+        "artifact_count": _nonnegative_int(manifest.get("artifact_count")) or 0,
         "safe_claim": _SAFE_CLAIM,
-        "source_manifest": str(manifest_p),
+        "source_manifest_supplied": bool(str(manifest_p)),
         "warnings": warnings,
         "ontology_summary": ontology_summary,
         "metadata_reconciliation": metadata_reconciliation,
@@ -740,13 +824,17 @@ def build_evidence_packet(
     }
 
     out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
+    try:
+        out.mkdir(parents=True, exist_ok=True)
 
-    packet_path = out / "evidence_packet.json"
-    packet_path.write_text(json.dumps(packet, indent=2), encoding="utf-8")
+        packet_path = out / "evidence_packet.json"
+        packet_path.write_text(json.dumps(packet, indent=2, allow_nan=False), encoding="utf-8")
 
-    # Markdown
-    ontology_md = summarize_ontology_for_markdown(_ontology_root)
+    except OSError as exc:
+        raise RuntimeError(f"evidence packet write failed: {type(exc).__name__}") from None
+
+    # Markdown contains only the sanitized ontology allowlist, never source text.
+    ontology_md = _ontology_markdown(ontology_summary)
 
     md_lines = [
         "# DS005620 Evidence Packet",
@@ -766,12 +854,13 @@ def build_evidence_packet(
         "",
         f"- Metadata parsed: {metadata_reconciliation['metadata_parsed']}",
         f"- File inventory complete against verified declared requirements: {metadata_reconciliation['file_inventory_complete_against_declared_requirements']}",
-        f"- Cohort reconciled: {metadata_reconciliation['cohort_reconciled']}",
-        f"- License resolved: {metadata_reconciliation['license_resolved']}",
+        f"- Aggregate count consistency: {metadata_reconciliation['cohort_count_consistent']}",
+        f"- License declarations internally consistent: {metadata_reconciliation['license_declarations_consistent']}",
         f"- License conflict: {metadata_reconciliation['license_conflict']}",
         f"- Data-use ready: {metadata_reconciliation['data_use_ready']}",
+        "- This is aggregate metadata consistency only; it does not establish cohort identity or data-use rights.",
+        "- Raw participant and excluded identifiers, free-text metadata, and source hashes are not exported.",
         "- Metadata reconciliation is not empirical evidence and does not grant permission to use data.",
-        "- No participant EEG data was downloaded or analyzed; only metadata inputs were read.",
         "",
         "## Omega Invariants (all must be false)",
         "",
@@ -799,7 +888,6 @@ def build_evidence_packet(
         "_P18.2 / O4 evidence export — no pipeline stages executed during this export._",
     ]
     md_path = out / "evidence_packet.md"
-    md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
     notion_payload = {
         "title": "DS005620 Evidence Packet",
@@ -815,29 +903,30 @@ def build_evidence_packet(
             "Ontology Claim Scope": ontology_summary.get("max_claim_scope", "engineering_runtime"),
             "Ontology Promotion State": ontology_summary.get("promotion_state", "engineering_validated"),
             "Ontology Status": ontology_summary.get("ontology_claim_status", "ontology_quarantined"),
-            "Ontology Next Actions": ", ".join(ontology_summary.get("required_next_evidence", [])),
-            "Bridge Status Summary": str(ontology_summary.get("bridge_status_counts", {})),
-            "Ontology Evaluation Root": str(_ontology_root),
+            "Ontology Next Evidence Items": ontology_summary["required_next_evidence_count"],
+            "Bridge Status Count": ontology_summary["bridge_status_count"],
         },
         "ontology_claim_scope": ontology_summary.get("max_claim_scope", "engineering_runtime"),
         "ontology_promotion_state": ontology_summary.get("promotion_state", "engineering_validated"),
         "ontology_status": ontology_summary.get("ontology_claim_status", "ontology_quarantined"),
-        "ontology_next_actions": ontology_summary.get("required_next_evidence", []),
-        "bridge_status_summary": ontology_summary.get("bridge_status_counts", {}),
-        "claim_scope_matrix_path": str(_ontology_root / "claim_scope_matrix.json"),
-        "ontology_evaluation_root": str(_ontology_root),
+        "ontology_next_evidence_count": ontology_summary["required_next_evidence_count"],
+        "bridge_status_count": ontology_summary["bridge_status_count"],
         "metadata_reconciliation": metadata_reconciliation,
         "metadata_is_empirical_evidence": False,
         "participant_eeg_data_downloaded_or_analyzed": False,
         "content_md": "\n".join(md_lines),
     }
     notion_path = out / "notion_import_payload.json"
-    notion_path.write_text(json.dumps(notion_payload, indent=2), encoding="utf-8")
+    try:
+        md_path.write_text("\n".join(md_lines), encoding="utf-8")
+        notion_path.write_text(json.dumps(notion_payload, indent=2, allow_nan=False), encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"evidence packet write failed: {type(exc).__name__}") from None
 
     return {
-        "evidence_packet.json": str(packet_path),
-        "evidence_packet.md": str(md_path),
-        "notion_import_payload.json": str(notion_path),
+        "evidence_packet.json": packet_path.name,
+        "evidence_packet.md": md_path.name,
+        "notion_import_payload.json": notion_path.name,
     }
 
 
@@ -864,15 +953,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     out_dir = args.out or str(Path(args.manifest).parent)
-    artifacts = build_evidence_packet(
-        args.manifest,
-        out_dir,
-        ontology_root=args.ontology_root,
-        require_ontology=args.require_ontology,
-        metadata_root=args.metadata_root,
-    )
+    try:
+        artifacts = build_evidence_packet(
+            args.manifest,
+            out_dir,
+            ontology_root=args.ontology_root,
+            require_ontology=args.require_ontology,
+            metadata_root=args.metadata_root,
+        )
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"evidence packet export failed: {type(exc).__name__}", file=sys.stderr)
+        return 2
     for name, path in artifacts.items():
-        print(f"{name}: {path}")
+        print(f"{name}: written")
     return 0
 
 
