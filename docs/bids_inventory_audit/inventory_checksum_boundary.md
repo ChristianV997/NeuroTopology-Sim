@@ -159,8 +159,9 @@ fixtures in #395 were not opened.
   are not validated, and the catalog record's identity is not checked against any dataset.
 - The analysis record check is internal. Nothing here confirms that a declared N or exclusion list came
   from an analysis, a preregistration, or an authoritative manifest.
-- The extension is recorded as written. It is checked only for backup and temporary suffixes, not
-  against the BIDS registry.
+- Extensions must be dot-separated alphanumeric tokens; malformed caller-controlled extension text
+  is rejected and omitted from public summaries. Extension syntax is not checked against the BIDS
+  registry.
 - The TSV reader is tab-separated with no quoting or escaping. The caller supplies decoded text, and
   encoding is not detected.
 - Subject and task labels are case-sensitive. Unicode normalization is not performed.

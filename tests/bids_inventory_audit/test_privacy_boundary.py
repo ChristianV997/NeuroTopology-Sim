@@ -5,7 +5,7 @@ import json
 import logging
 from collections.abc import Mapping
 
-from shared.bids_inventory_audit import audit_inventory, parse_participants_tsv
+from shared.bids_inventory_audit import audit_inventory, parse_bids_relpath, parse_participants_tsv
 
 
 def test_default_audit_json_omits_ids_paths_and_file_to_subject_mappings(caplog, capsys):
@@ -62,6 +62,19 @@ def test_malformed_rows_and_missing_columns_do_not_echo_supplied_values():
     assert "HEADER_MISSING_PARTICIPANT_ID" in [finding["code"] for finding in missing.findings]
     assert marker not in repr(malformed)
     assert marker not in repr(missing)
+
+
+def test_identifier_like_filename_extension_is_rejected_without_echoing():
+    marker = "sub-ExtensionPrivacyMarker99"
+    path = f"sub-01/eeg/sub-01_task-rest_eeg.{marker}"
+    parsed = parse_bids_relpath(path)
+    assert not parsed.valid
+    assert "EXTENSION_MALFORMED" in parsed.problems
+    assert parsed.extension is None
+    assert marker not in repr(parsed)
+
+    report = audit_inventory(participants_tsv=None, file_paths=[path])
+    assert marker not in json.dumps(report, sort_keys=True, allow_nan=False)
 
 
 def test_unreadable_caller_iterable_returns_generic_error_without_echoing_exception(caplog):

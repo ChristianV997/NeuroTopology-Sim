@@ -13,6 +13,7 @@ from typing import Any, Optional
 from .schema import BACKUP_SUFFIXES, ENTITY_RE, SUBJECT_RE, SUFFIX_RE
 
 _DRIVE_RE = re.compile(r"^[A-Za-z]:")
+_EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*$")
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ def _parse_bids_relpath(relpath: Any) -> _ParsedPath:
     extension = f".{rest}" if dot and rest else None
     if extension is None:
         problems.append("EXTENSION_MISSING")
+    elif _EXTENSION_RE.fullmatch(extension) is None:
+        # Extensions are caller-controlled filename text too. Do not return malformed
+        # values in the public summary, where they could carry an identifier.
+        problems.append("EXTENSION_MALFORMED")
+        extension = None
     elif rest.rsplit(".", 1)[-1] in BACKUP_SUFFIXES:
         problems.append("EXTENSION_BACKUP_OR_TEMP")
 
