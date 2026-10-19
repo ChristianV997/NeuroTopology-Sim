@@ -245,10 +245,14 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
         image_tag = f"docker-context-policy-probe:{token}"
         container_name = f"docker-context-policy-probe-{token}"
         archive_path = temp_root / "synthetic-image-rootfs.tar"
-        image_created = False
-        container_created = False
+        image_cleanup_required = False
+        container_cleanup_required = False
 
         try:
+            # A timed-out client may not know whether the daemon completed the
+            # operation. Arm cleanup before each mutating request so an
+            # ambiguous response cannot leave a tagged image/container behind.
+            image_cleanup_required = True
             _run_docker(
                 [
                     "build",
@@ -263,13 +267,12 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                 ],
                 env=docker_environment,
             )
-            image_created = True
 
+            container_cleanup_required = True
             _run_docker(
                 ["create", "--name", container_name, image_tag],
                 env=docker_environment,
             )
-            container_created = True
             _run_docker(
                 ["export", "--output", str(archive_path), container_name],
                 env=docker_environment,
@@ -289,8 +292,16 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
         finally:
             cleanup_failures: list[str] = []
             for should_remove, args, label in (
-                (container_created, ["rm", "--force", container_name], "container"),
-                (image_created, ["image", "rm", "--force", image_tag], "image"),
+                (
+                    container_cleanup_required,
+                    ["rm", "--force", container_name],
+                    "container",
+                ),
+                (
+                    image_cleanup_required,
+                    ["image", "rm", "--force", image_tag],
+                    "image",
+                ),
             ):
                 if not should_remove:
                     continue
@@ -317,6 +328,63 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                 pytest.fail(
                     "Docker resource cleanup failed: " + "; ".join(cleanup_failures)
                 )
+
+
+@pytest.mark.parametrize(
+    ("failed_operation", "expected_cleanup"),
+    [
+        ("build", "image"),
+        ("create", "rm"),
+    ],
+    ids=("ambiguous-build-outcome", "ambiguous-create-outcome"),
+)
+def test_docker_resources_are_cleanup_armed_before_mutating_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_operation: str,
+    expected_cleanup: str,
+) -> None:
+    """Attempt cleanup when Docker acted but its client response was lost."""
+    monkeypatch.setattr(shutil, "which", lambda _: "docker-fixture")
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_select_local_docker_context",
+        lambda: ("local-fixture", {"DOCKER_CONTEXT": "local-fixture"}),
+    )
+
+    def fake_run_docker(args: list[str], **_: object) -> str:
+        operation = args[0]
+        if operation == "version":
+            return "synthetic-engine"
+        if operation == failed_operation:
+            # Model a lost/timeout response after a daemon-side effect.
+            raise RuntimeError("synthetic ambiguous Docker response")
+        return "synthetic-result"
+
+    cleanup_commands: list[list[str]] = []
+
+    def fake_subprocess_run(
+        args: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        cleanup_commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(sys.modules[__name__], "_run_docker", fake_run_docker)
+    monkeypatch.setattr(subprocess, "run", fake_subprocess_run)
+    request = type(
+        "SyntheticRequest",
+        (),
+        {"node": type("SyntheticNode", (), {"user_properties": []})()},
+    )()
+
+    with pytest.raises(RuntimeError, match="ambiguous Docker response"):
+        test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
+            request
+        )
+
+    cleanup_operations = [command[1] for command in cleanup_commands]
+    assert expected_cleanup in cleanup_operations
+    if failed_operation == "create":
+        assert "image" in cleanup_operations
 
 
 @pytest.mark.parametrize(
