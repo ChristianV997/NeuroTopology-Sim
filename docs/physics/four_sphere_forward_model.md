@@ -10,7 +10,7 @@ data, EEG datasets, or dataset downloads.
 | Level | Status |
 |---|---|
 | Implemented | `physics/eeg_forward/four_sphere.py`, NumPy only |
-| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 115 offline tests pass, 1 skipped (the oracle test, by design; see the oracle section). Counts are from the head commit, so re-run to confirm. |
+| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 130 offline tests pass, 0 skipped. The oracle cross-check is not a skipped test in this file; it runs from the combined worktree (see the oracle section). Counts are from the head commit, so re-run to confirm. |
 | Cross-checked against an independent oracle | Done out of tree, against the Hermes Agent A oracle on PR #409 (branch `batch1/hermes-a-shell-bvp-oracle`). Agreement at round-off. Not imported into the repository |
 | Integration-tested | Not applicable. No pipeline or CLI consumes this module |
 | Live-validated | **No.** No recording, no measured potential, no published benchmark was used |
@@ -151,6 +151,21 @@ very thin: about 0.05% at L = 64. `TAIL_VALIDATED_MIN_DEGREE = 64` marks that ra
 `L`, which is not proven. The diagnostic `tail_certified` is always 0. No certified maximum degree is claimed.
 This is sampled evidence, not a proof.
 
+**Conditional analytic bound (diagnostic only).** If `|T_l| <= |T_L|` for every `l > L`, each omitted term is
+bounded by its envelope with `|T_L|` in place of `|T_l|`. Summing that envelope over `l > L` gives a
+conditional bound, reported as `tail_bound_conditional_relative`. The monotone condition is checked over
+`L < l <= 512` and reported as `tail_monotone_lookahead_ok`. A value of 0 means the bound does not apply.
+That includes `L = 512`, where no lookahead exists. Beyond 512 the condition is assumed, not verified.
+
+Measured on the Table 1 family, with sensors at axis and equator and moments radial, tangential, and 45-degree,
+the bound was never below the actual error where the flag was 1: minimum bound/actual ratio 1.32 at L = 4,
+1.18 at L = 8, 1.07 at L = 16, 1.03 at L = 32, 1.02 at L = 64, and 1.003 at L = 128. The monotone condition
+is geometry-dependent. On the contrast geometry `(0.06931, 0.07318, 0.0736, 0.0809) m`,
+`(0.0004, 5.2088, 0.0365, 0.0199) S/m`, it fails at L = 16 (first violation at l = 156), and the flag reports
+0 there. The conditional bound is not used by the gate. The gate keeps the heuristic that Agent B's contract
+tests check. Gating on the conditional bound would refuse results that those tests expect to succeed. Resolving
+that conflict belongs to the owners of those tests.
+
 ## Orientation
 
 - `q_r` and `q_t` are defined relative to `e_s`. Rotating the source, moment, and sensors together
@@ -192,7 +207,7 @@ Acceptance categories and tests:
 | Reproducibility | `test_repeated_calls_are_bitwise_identical` |
 | Finite output | `test_outputs_are_finite_over_geometry_and_depth_grid` |
 | Clean import, numpy only | `test_package_import_is_clean_and_numpy_only` |
-| Oracle cross-check | Out of tree (see below). The in-repository test is skipped with a stated reason |
+| Oracle cross-check | Combined worktree against the exact candidate head (see below). Not a skipped test in this file |
 
 The layered T_l reference is an independent seven-unknown linear solve written in the test file. It
 shares no code with the production propagation.
@@ -201,9 +216,10 @@ shares no code with the production propagation.
 
 The Hermes Agent A oracle (PR #409, `tools/experimental_audits/four_shell_bvp_oracle.py`) was run from a
 disposable combined worktree: the candidate head `330f8f6` merged with oracle head `7ccc59a`, merge base
-`19c3203`. Neither lane's files were edited. The oracle's own 17 unit tests pass in that tree, and the
-candidate's 72 pass with 1 skipped. Both implementations were imported from that tree. The oracle's
-`solve_four_shell_mode` and `project_dipole_oracle` supplied all expectations.
+`19c3203`. Neither lane's files were edited. This section describes an earlier head (`330f8f6`). The
+exact SHAs and results for the current head are recorded in the PR description. Both implementations were
+imported from that tree. The oracle's `solve_four_shell_mode` and `project_dipole_oracle` supplied all
+expectations.
 
 Table 1 preset, K = 20, 40, 80 (brief values), 96 cases in total:
 

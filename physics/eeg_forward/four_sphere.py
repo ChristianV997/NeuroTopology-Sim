@@ -493,6 +493,29 @@ def forward_potentials(
     # conservative only from TAIL_VALIDATED_MIN_DEGREE upward, and the flag records that.
     diagnostics["tail_certified"] = 0.0
     diagnostics["tail_validated_range"] = 1.0 if L >= TAIL_VALIDATED_MIN_DEGREE else 0.0
+    # Conditional analytic bound. For every degree l > L, the omitted term is bounded by its envelope
+    # with |T_l| replaced by |T_L|. That is valid if |T_l| <= |T_L| for all l > L (the monotone
+    # condition). The condition is checked here only for L < l <= MAX_DEGREE, a finite lookahead. Beyond
+    # MAX_DEGREE it is assumed, not verified, so the bound is conditional, not certified.
+    full_table, _ = _cached_transfer_table(geometry, MAX_DEGREE)
+    abs_full = np.abs(np.array(full_table))
+    monotone_checked = L < MAX_DEGREE and bool(np.all(abs_full[L:] <= abs_full[L - 1]))
+    # The sum is cut at L + 4096. The ratio is at most r1 / r4 < 0.88, so the neglected part is below 1e-200
+    # relative to the first omitted term, far below double precision.
+    omitted = np.arange(L + 1, L + 4097, dtype=float)
+    omitted_weight = float(np.sum(
+        ratio ** (omitted - 1.0) * (omitted * abs(q_r) + omitted * (omitted + 1.0) / 2.0 * q_t_norm)
+    ))
+    tail_abs_bound = float(abs_full[L - 1]) * prefactor * omitted_weight
+    scale_now = float(np.max(np.abs(potentials)))
+    if tail_abs_bound == 0.0:
+        conditional_rel = 0.0
+    elif scale_now > 0.0:
+        conditional_rel = tail_abs_bound / scale_now
+    else:
+        conditional_rel = math.inf
+    diagnostics["tail_bound_conditional_relative"] = conditional_rel
+    diagnostics["tail_monotone_lookahead_ok"] = 1.0 if monotone_checked else 0.0
     if not tail_rel <= tail_tol:
         raise FourSphereQualityError(
             f"truncation tail estimate {tail_rel:.3e} exceeds tail_tol {tail_tol}; increase max_degree (now {L})"
