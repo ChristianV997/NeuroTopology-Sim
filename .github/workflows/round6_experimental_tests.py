@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+from functools import lru_cache
 import json
 import math
 import os
@@ -33,6 +34,9 @@ from typing import Any
 MAX_RUNNER_TELEMETRY_BYTES = 4 * 1024 * 1024
 MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
 MAX_RUNNER_STDERR_TAIL_BYTES = 4096
+PINNED_OUTPUT_PROBE_MARKER = b"round6-pinned-output-probe-v1"
+PINNED_OUTPUT_PROBE_TIMEOUT_S = 3
+_PROBE_SUBPROCESS_RUN = subprocess.run
 
 
 COMPONENTS: dict[str, dict[str, Any]] = {
@@ -929,9 +933,45 @@ def _prepare_contained_output(root: Path, path: Path, label: str) -> tuple[int, 
         os.close(fd)
 
 
+@lru_cache(maxsize=1)
 def _supports_pinned_output_transport() -> bool:
-    """Whether child report writers can address parent-pinned descriptors."""
-    return os.name == "posix" and Path("/proc/self/fd").is_dir()
+    """Whether a child process can read a descriptor pinned by this process."""
+    if os.name != "posix" or not sys.platform.startswith("linux"):
+        return False
+    if not Path("/proc/self/fd").is_dir():
+        return False
+
+    try:
+        with tempfile.TemporaryFile(mode="w+b") as probe_file:
+            probe_file.write(PINNED_OUTPUT_PROBE_MARKER)
+            probe_file.flush()
+            parent_fd_path = _proc_fd_path(probe_file.fileno(), pid=os.getpid())
+            completed = _PROBE_SUBPROCESS_RUN(
+                [
+                    sys.executable,
+                    "-I",
+                    "-S",
+                    "-c",
+                    (
+                        "import os, sys; "
+                        "fd = os.open(sys.argv[1], os.O_RDONLY); "
+                        "data = os.read(fd, 4096); os.close(fd); "
+                        "sys.stdout.write(data.hex())"
+                    ),
+                    parent_fd_path,
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=PINNED_OUTPUT_PROBE_TIMEOUT_S,
+                env={},
+            )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return (
+        completed.returncode == 0
+        and completed.stdout.strip() == PINNED_OUTPUT_PROBE_MARKER.hex()
+    )
 
 
 def _proc_fd_path(fd: int, *, pid: int | None = None) -> str:

@@ -137,6 +137,38 @@ def _fake_runner(
 
 
 class Round6DiscoveryTests(unittest.TestCase):
+    def test_pinned_transport_requires_child_access_to_parent_descriptor(self):
+        helper = _helper()
+        if (
+            not helper.sys.platform.startswith("linux")
+            or not helper.Path("/proc/self/fd").is_dir()
+        ):
+            self.skipTest("Linux procfs descriptor transport is unavailable")
+
+        helper._supports_pinned_output_transport.cache_clear()
+        accessible = SimpleNamespace(
+            returncode=0,
+            stdout=helper.PINNED_OUTPUT_PROBE_MARKER.hex() + "\n",
+            stderr="",
+        )
+        inaccessible = SimpleNamespace(returncode=1, stdout="", stderr="denied")
+        try:
+            with patch.object(
+                helper, "_PROBE_SUBPROCESS_RUN", return_value=accessible
+            ) as probe:
+                self.assertTrue(helper._supports_pinned_output_transport())
+            self.assertIn("/proc/", probe.call_args.args[0][-1])
+            self.assertEqual(
+                probe.call_args.kwargs["timeout"],
+                helper.PINNED_OUTPUT_PROBE_TIMEOUT_S,
+            )
+
+            helper._supports_pinned_output_transport.cache_clear()
+            with patch.object(helper, "_PROBE_SUBPROCESS_RUN", return_value=inaccessible):
+                self.assertFalse(helper._supports_pinned_output_transport())
+        finally:
+            helper._supports_pinned_output_transport.cache_clear()
+
     def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn(
