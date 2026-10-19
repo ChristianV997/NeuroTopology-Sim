@@ -1624,15 +1624,22 @@ def _junit_details_from_bytes(
     return (len(cases), skipped, failed, errors), details, total_tests
 
 
-def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str, str]]]:
-    """Validate a JUnit file and return explicit testcase-element outcomes."""
+def _junit_details_with_total(
+    path: Path,
+) -> tuple[tuple[int, int, int, int], list[dict[str, str]], int]:
+    """Validate bounded JUnit bytes and retain the declared pytest test total."""
     if path.stat().st_size > MAX_JUNIT_XML_BYTES:
         raise ValueError(f"JUnit report exceeds the {MAX_JUNIT_XML_BYTES}-byte read limit")
     with path.open("rb") as stream:
         content = stream.read(MAX_JUNIT_XML_BYTES + 1)
     if len(content) > MAX_JUNIT_XML_BYTES:
         raise ValueError(f"JUnit report exceeds the {MAX_JUNIT_XML_BYTES}-byte read limit")
-    counts, details, _ = _junit_details_from_bytes(content)
+    return _junit_details_from_bytes(content)
+
+
+def junit_details(path: Path) -> tuple[tuple[int, int, int, int], list[dict[str, str]]]:
+    """Validate a JUnit file and return explicit testcase-element outcomes."""
+    counts, details, _ = _junit_details_with_total(path)
     return counts, details
 
 
@@ -1892,6 +1899,41 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
     if batch.get("timed_out") is not False or batch.get("timeout_status") != "completed":
         return False, "runner batch timeout state is missing or non-completed", batches
     return True, None, batches
+
+
+def validate_docker_engine_test_artifacts(
+    telemetry_path: Path,
+    junit_path: Path,
+    test_file: str,
+) -> tuple[bool, str | None, int]:
+    """Require Docker test telemetry and JUnit to report the same passing total."""
+    try:
+        telemetry = _strict_json_loads(telemetry_path.read_text(encoding="utf-8"))
+        valid, error, batches = _isolated_runner_report_is_valid(telemetry, test_file)
+        if not valid:
+            return False, f"invalid isolated-runner telemetry: {error}", 0
+        if len(batches) != 1:
+            return False, "expected exactly one isolated-runner batch", 0
+        batch = batches[0]
+        runner_total = (
+            batch["_round6_pytest_passed_count"]
+            + batch["_round6_pytest_subtests_passed_count"]
+        )
+        counts, _, junit_total = _junit_details_with_total(junit_path)
+        cases, skipped, failed, errors = counts
+        if cases < 1 or skipped or failed or errors:
+            return False, (
+                "JUnit must contain passing tests only: "
+                f"cases={cases} skipped={skipped} failed={failed} errors={errors}"
+            ), 0
+        if junit_total != runner_total:
+            return False, (
+                "JUnit test total does not match isolated-runner pytest pass total: "
+                f"junit={junit_total} runner={runner_total}"
+            ), 0
+        return True, None, junit_total
+    except (OSError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
+        return False, f"malformed Docker Engine test artifacts: {exc}", 0
 
 
 def run(

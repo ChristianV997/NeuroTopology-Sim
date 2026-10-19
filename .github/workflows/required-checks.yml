@@ -217,23 +217,15 @@ jobs:
 
           expected_file = "tests/docker_context/test_docker_engine_build_context.py"
           helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
-          report = helper["_strict_json_loads"](
-              Path("outputs/docker_context_engine_test_report.json").read_text(encoding="utf-8")
+          valid, reason, test_count = helper["validate_docker_engine_test_artifacts"](
+              Path("outputs/docker_context_engine_test_report.json"),
+              Path("outputs/docker_context_engine_test_report.junit.xml"),
+              expected_file,
           )
-          valid, reason, _ = helper["_isolated_runner_report_is_valid"](report, expected_file)
           if not valid:
-              raise SystemExit(f"invalid isolated-runner telemetry: {reason}")
-          counts, _ = helper["junit_details"](
-              Path("outputs/docker_context_engine_test_report.junit.xml")
-          )
-          cases, skipped, failed, errors = counts
-          if cases < 1 or skipped or failed or errors:
-              raise SystemExit(
-                  f"JUnit must contain passing tests only: cases={cases} "
-                  f"skipped={skipped} failed={failed} errors={errors}"
-              )
+              raise SystemExit(reason)
           print(
-              f"Docker Engine candidate suite PASS: {cases} cases, "
+              f"Docker Engine candidate suite PASS: {test_count} tests, "
               "0 skipped, 0 failures, 0 errors, 0 timeouts"
           )
           PY
