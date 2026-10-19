@@ -183,18 +183,37 @@ class SphericalCSDConfig:
             raise SphericalCSDError(
                 f"n_legendre_terms must be >= 1, got {self.n_legendre_terms!r}"
             )
-        if float(self.coincident_cos_tol) < 0.0:
+        cos_tol = float(self.coincident_cos_tol)
+        cond_max = float(self.condition_max)
+        null_atol = float(self.avg_ref_null_atol)
+        # NaN/Inf must fail closed: IEEE comparisons against NaN never trip the
+        # ill-conditioning / avg-ref null guards, which would silently bypass them.
+        if not np.isfinite(cos_tol):
+            raise SphericalCSDError(
+                f"coincident_cos_tol must be finite, got {self.coincident_cos_tol!r}"
+            )
+        if cos_tol < 0.0:
             raise SphericalCSDError("coincident_cos_tol must be non-negative")
-        if float(self.condition_max) <= 0.0:
+        if not np.isfinite(cond_max):
+            raise SphericalCSDError(
+                f"condition_max must be finite, got {self.condition_max!r}"
+            )
+        if cond_max <= 0.0:
             raise SphericalCSDError("condition_max must be positive")
+        if not np.isfinite(null_atol):
+            raise SphericalCSDError(
+                f"avg_ref_null_atol must be finite, got {self.avg_ref_null_atol!r}"
+            )
+        if null_atol < 0.0:
+            raise SphericalCSDError("avg_ref_null_atol must be non-negative")
         return SphericalCSDConfig(
             sphere=(x, y, z, r),
             lambda2=float(self.lambda2),
             stiffness=float(self.stiffness),
             n_legendre_terms=n_terms,
-            coincident_cos_tol=float(self.coincident_cos_tol),
-            condition_max=float(self.condition_max),
-            avg_ref_null_atol=float(self.avg_ref_null_atol),
+            coincident_cos_tol=cos_tol,
+            condition_max=cond_max,
+            avg_ref_null_atol=null_atol,
             enforce_avg_ref_null=bool(self.enforce_avg_ref_null),
         )
 

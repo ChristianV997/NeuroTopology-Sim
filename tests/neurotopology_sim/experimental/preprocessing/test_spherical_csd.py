@@ -158,6 +158,24 @@ def test_rejects_non_positive_radius():
         SphericalCSDConfig(sphere=(0, 0, 0, 0.0)).validated()
 
 
+def test_rejects_non_finite_guard_tolerances():
+    """NaN/Inf tolerances must not silently disable fail-closed guards."""
+    with pytest.raises(SphericalCSDError, match="condition_max must be finite"):
+        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), condition_max=float("nan")).validated()
+    with pytest.raises(SphericalCSDError, match="condition_max must be finite"):
+        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), condition_max=float("inf")).validated()
+    with pytest.raises(SphericalCSDError, match="coincident_cos_tol must be finite"):
+        SphericalCSDConfig(
+            sphere=(0, 0, 0, 0.1), coincident_cos_tol=float("nan")
+        ).validated()
+    with pytest.raises(SphericalCSDError, match="avg_ref_null_atol must be finite"):
+        SphericalCSDConfig(
+            sphere=(0, 0, 0, 0.1), avg_ref_null_atol=float("nan")
+        ).validated()
+    with pytest.raises(SphericalCSDError, match="avg_ref_null_atol must be non-negative"):
+        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), avg_ref_null_atol=-1.0).validated()
+
+
 # ---------------------------------------------------------------------------
 # Operator properties (MNE convention)
 # ---------------------------------------------------------------------------
