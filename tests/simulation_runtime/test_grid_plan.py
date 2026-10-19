@@ -112,7 +112,11 @@ def _base_config(**overrides):
         "evaluation_seed": 29,
         "independent_unit": "simulation_seed",
         "n_independent_calibration": 12,
+        "n_positive_calibration": 6,
+        "n_negative_calibration": 6,
         "n_independent_evaluation": 12,
+        "n_positive_evaluation": 6,
+        "n_negative_evaluation": 6,
         "nested_unit": "none",
         "nested_per_unit": 1,
         "interval_method": "wilson_on_independent_unit",
@@ -309,6 +313,7 @@ class GridPlanTests(unittest.TestCase):
             "calibration_seed": raw["calibration_seed"],
             "estimand": raw["estimand"],
             "interval_method": raw["interval_method"],
+            "unit_aggregation": "not_required",
         }
         self.assertEqual(forward.threshold_hash, compute_config_hash(binding))
         self.assertNotIn("evaluation_unit_ids", binding)
@@ -341,8 +346,14 @@ class GridPlanTests(unittest.TestCase):
         payload = dict(original.hash_payload)
         payload["blocking_gate_ids"] = list(payload["blocking_gate_ids"][:-1])
         self.assertNotEqual(original.config_hash, compute_config_hash(payload))
-        self.assertIn("four_sphere_oracle", original.hash_payload["blocking_gate_ids"])
-        self.assertNotIn("four_sphere_forward_model", original.hash_payload["blocking_gate_ids"])
+        self.assertIn("four_sphere_forward_model", original.hash_payload["blocking_gate_ids"])
+        self.assertIn("planar_geometry", original.hash_payload["blocking_gate_ids"])
+        self.assertIn("winding_hodge", original.hash_payload["blocking_gate_ids"])
+        self.assertNotIn("four_sphere_oracle", original.hash_payload["blocking_gate_ids"])
+        self.assertNotIn("planar_embedding_winding_hodge", original.hash_payload["blocking_gate_ids"])
+        leaked = _base_config(n_positive_evaluation=7, n_negative_evaluation=5)
+        self.assertEqual(original.threshold_hash, dry_run(leaked).threshold_hash)
+        self.assertNotEqual(original.config_hash, dry_run(leaked).config_hash)
 
     def test_evaluation_ids_are_read_only_after_the_threshold_hash(self):
         probe = _Probe(_base_config())
@@ -396,7 +407,11 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "caller_unit_ids_rejected")
 
     def test_windows_are_not_counted_in_n_or_toward_wilson_floors(self):
-        nested = _base_config(nested_unit="window", nested_per_unit=10)
+        nested = _base_config(
+            nested_unit="window",
+            nested_per_unit=10,
+            unit_aggregation="cluster_any_event_rate",
+        )
         plan = dry_run(nested)
         self.assertEqual(plan.trial_count, plan.cell_count * (12 + 12))
         self.assertNotEqual(plan.trial_count, plan.cell_count * (12 + 12) * 10)
@@ -422,7 +437,13 @@ class GridPlanTests(unittest.TestCase):
         with self.assertRaises(GridPlanError) as caught:
             dry_run(window_ids)
         self.assertEqual(caught.exception.code, "caller_unit_ids_rejected")
-        nested_ids = dry_run(_base_config(nested_unit="window", nested_per_unit=2))
+        nested_ids = dry_run(
+            _base_config(
+                nested_unit="window",
+                nested_per_unit=2,
+                unit_aggregation="cluster_any_event_rate",
+            )
+        )
         self.assertEqual(nested_ids.cells[0]["n_independent_calibration"], 12)
         self.assertEqual(len(nested_ids.cells[0]["calibration_unit_ids"]), 12)
         self.assertEqual(nested_ids.trial_count, nested_ids.cell_count * (12 + 12))
@@ -475,7 +496,16 @@ class GridPlanTests(unittest.TestCase):
         manifest = plan.campaign_manifest
         self.assertEqual(manifest.schema_version, "simulation_campaign_manifest_v1")
         self.assertEqual(manifest.configuration_hash, plan.config_hash)
-        self.assertEqual(manifest.code_commit, "not_recorded")
+        self.assertEqual(manifest.code_commit, plan.code_version_id)
+        self.assertNotEqual(manifest.code_commit, "not_recorded")
+        self.assertNotIn("code_commit", plan.provenance)
+        self.assertIn("worktree_dirty", plan.provenance)
+        would = plan.would_execute()
+        self.assertFalse(would["executed"])
+        self.assertEqual(len(would["cells"]), plan.cell_count)
+        self.assertEqual(would["seeds"]["calibration_seed"], 11)
+        self.assertEqual(would["splits"]["n_positive_calibration"], 6)
+        self.assertEqual(would["cost"]["label"], "DECLARED_ESTIMATE")
         self.assertEqual(manifest.units[0].command, [])
         self.assertFalse(manifest.environment["launches_simulation"])
         self.assertIsNone(manifest.environment["detector_roc"])
@@ -580,10 +610,24 @@ class GridPlanTests(unittest.TestCase):
                 "maximum": 6,
             }]}),
             ("invalid_range", {"wilson_design_p": 1.5}),
-            ("unknown_null_model", {"null_model_ids": ["empirical_surrogate"]}),
+            ("unknown_null_model", {"null_model_ids": ["not_a_null_model"]}),
             ("unknown_source_model", {"source_model_ids": ["synthetic_iaaft"]}),
             ("duplicate_identifier", {"null_model_ids": ["synthetic_iaaft", "synthetic_iaaft"]}),
-            ("invalid_sample_count", {"n_independent_calibration": 11}),
+            (
+                "invalid_sample_count",
+                {
+                    "n_independent_calibration": 11,
+                    "n_positive_calibration": 5,
+                    "n_negative_calibration": 6,
+                },
+            ),
+            (
+                "n_class_mismatch",
+                {
+                    "n_positive_calibration": 5,
+                    "n_negative_calibration": 6,
+                },
+            ),
             ("invalid_sample_count", {"n_independent_evaluation": True}),
             ("invalid_sample_count", {"n_independent_evaluation": 12.0}),
             ("invalid_seed", {"calibration_seed": 29}),
@@ -738,7 +782,7 @@ class GridPlanTests(unittest.TestCase):
                 root,
                 [
                     {
-                        "case_id": "four_sphere_oracle",
+                        "case_id": "four_sphere_forward_model",
                         "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
                         "verified_at_commit": head_sha,
                     }
@@ -752,9 +796,10 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(plan.caller_gate_decision_rejected)
         self.assertFalse(plan.gate_check["opened"])
         self.assertEqual(plan.run_state, "blocked")
-        self.assertEqual(_statuses(plan)["four_sphere_oracle"], "missing")
-        self.assertNotEqual(_statuses(plan)["four_sphere_oracle"], "admissible_on_ancestor")
-        self.assertEqual(_statuses(plan)["planar_embedding_winding_hodge"], "missing")
+        self.assertEqual(_statuses(plan)["four_sphere_forward_model"], "missing")
+        self.assertNotEqual(_statuses(plan)["four_sphere_forward_model"], "admissible_on_ancestor")
+        self.assertEqual(_statuses(plan)["planar_geometry"], "missing")
+        self.assertEqual(_statuses(plan)["winding_hodge"], "missing")
         self.assertEqual(_statuses(plan)["ci_discovery"], "ci_discovery_blocked")
         self.assertNotIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
         _assert_all_cells_blocked(self, plan)
@@ -774,7 +819,7 @@ class GridPlanTests(unittest.TestCase):
                         "scientific_pass": False,
                         "cases": [
                             {
-                                "case_id": "four_sphere_oracle",
+                                "case_id": "four_sphere_forward_model",
                                 "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
                             }
                         ],
@@ -836,7 +881,7 @@ class GridPlanTests(unittest.TestCase):
             root = Path(tmp)
             _write_forged_reports(root, main_sha)
             on_main = subprocess.run(
-                ["git", "cat-file", "-e", f"{main_sha}:_forged_four_sphere_oracle.json"],
+                ["git", "cat-file", "-e", f"{main_sha}:_forged_four_sphere_forward_model.json"],
                 cwd=str(_REPO_ROOT),
                 capture_output=True,
                 text=True,
@@ -909,19 +954,24 @@ class GridPlanTests(unittest.TestCase):
             "_source": "git_blob",
         }
         duplicate_rows = [
-            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/a.json"},
-            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/b.json"},
+            {**admissible, "case_id": "four_sphere_forward_model", "_path": "reports/a.json"},
+            {**admissible, "case_id": "four_sphere_forward_model", "_path": "reports/b.json"},
         ]
         multi_rows = [
-            {**admissible, "case_id": "four_sphere_oracle", "_path": "reports/both.json"},
+            {**admissible, "case_id": "four_sphere_forward_model", "_path": "reports/both.json"},
             {
                 **admissible,
-                "case_id": "planar_embedding_winding_hodge",
+                "case_id": "planar_geometry",
                 "_path": "reports/both.json",
             },
         ]
         single_rows = [
-            {**admissible, "case_id": "four_sphere_oracle", "_path": "not/on/main.json"},
+            {
+                **admissible,
+                "case_id": "four_sphere_forward_model",
+                "_path": "not/on/main.json",
+                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["four_sphere_forward_model"],
+            },
         ]
         with patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
             duplicated, duplicate_blockers = grid_plan_module._resolve_gates_from_rows(
@@ -940,20 +990,20 @@ class GridPlanTests(unittest.TestCase):
                 git_failure=None,
             )
         by_id = {item["gate_id"]: item for item in duplicated}
-        self.assertEqual(by_id["four_sphere_oracle"]["status"], "duplicate_record")
-        self.assertNotEqual(by_id["four_sphere_oracle"]["status"], "admissible_on_ancestor")
-        self.assertEqual(by_id["planar_embedding_winding_hodge"]["status"], "missing")
+        self.assertEqual(by_id["four_sphere_forward_model"]["status"], "duplicate_record")
+        self.assertNotEqual(by_id["four_sphere_forward_model"]["status"], "admissible_on_ancestor")
+        self.assertEqual(by_id["planar_geometry"]["status"], "missing")
         self.assertIn("duplicate_gate_record", {item["code"] for item in duplicate_blockers})
         self.assertTrue(
             all(item["status"] != "admissible_on_ancestor" for item in duplicated)
         )
         multi_status = {item["gate_id"]: item["status"] for item in multi}
-        self.assertEqual(multi_status["four_sphere_oracle"], "missing")
-        self.assertEqual(multi_status["planar_embedding_winding_hodge"], "missing")
+        self.assertEqual(multi_status["four_sphere_forward_model"], "missing")
+        self.assertEqual(multi_status["planar_geometry"], "missing")
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in multi))
         single_status = {item["gate_id"]: item["status"] for item in single}
-        self.assertEqual(single_status["four_sphere_oracle"], "not_on_main")
-        self.assertEqual(single_status["planar_embedding_winding_hodge"], "missing")
+        self.assertEqual(single_status["four_sphere_forward_model"], "not_on_main")
+        self.assertEqual(single_status["planar_geometry"], "missing")
         self.assertEqual(single_status["ci_discovery"], "missing")
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in single))
 
@@ -1025,7 +1075,8 @@ class GridPlanTests(unittest.TestCase):
         source = Path(grid_plan.__file__).read_text(encoding="utf-8")
         self.assertNotIn("import neurotopology_sim", source)
         self.assertNotIn("from neurotopology_sim", source)
-        self.assertNotIn("synthetic_forward_roc", source)
+        self.assertNotIn("import synthetic_forward_roc", source)
+        self.assertIn("synthetic_forward_roc.py:194", source)
         self.assertNotIn("wilson_score_interval", source)
         self.assertNotIn("simulation(", source)
         self.assertNotIn("def sweep", source)
@@ -1045,6 +1096,9 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.run_state, "planned")
         _assert_all_cells_blocked(self, plan)
         self.assertEqual(plan.sample_size_label, "UNDERPOWERED_DRY_RUN")
+        self.assertEqual(plan.execution_mode, "smoke_only")
+        self.assertEqual(plan.engineering_minimum_note, "engineering minimum, not a power guarantee")
+        self.assertFalse(plan.would_execute()["executed"])
         self.assertEqual(plan.code_version_id, _git("rev-parse", "HEAD"))
         self.assertEqual(plan.to_dict()["config_digest"], plan.config_hash)
         self.assertEqual(plan.provenance["config_digest"], plan.config_hash)
@@ -1110,6 +1164,8 @@ class GridPlanTests(unittest.TestCase):
             cost["expected_artifact_count"],
             len(plan.planned_outputs) + plan.cell_count,
         )
+        self.assertEqual(cost["label"], "DECLARED_ESTIMATE")
+        self.assertNotIn("BOUND_NOT_A_MEASUREMENT", source)
         self.assertGreater(cost["estimated_disk_mb"], 0.0)
         self.assertGreater(cost["estimated_memory_mb"], 0.0)
         self.assertNotEqual(plan.campaign_manifest.units[0].estimated_disk_mb, 0.0)
@@ -1131,8 +1187,12 @@ class GridPlanTests(unittest.TestCase):
 
         met = dry_run(
             _base_config(
-                n_independent_calibration=100,
-                n_independent_evaluation=100,
+                n_independent_calibration=200,
+                n_positive_calibration=100,
+                n_negative_calibration=100,
+                n_independent_evaluation=200,
+                n_positive_evaluation=100,
+                n_negative_evaluation=100,
                 max_trials=5000,
                 max_compute_units=100000.0,
             ),
@@ -1140,6 +1200,8 @@ class GridPlanTests(unittest.TestCase):
         )
         self.assertEqual(calls, [])
         self.assertEqual(met.sample_size_label, "ENGINEERING_THRESHOLD_MET")
+        self.assertEqual(met.execution_mode, "held")
+        self.assertEqual(met.engineering_minimum_note, "engineering minimum, not a power guarantee")
         self.assertEqual(met.cells[0]["power_claim"], "none")
         self.assertFalse(met.gate_check["opened"])
         self.assertFalse(met.execution["sweep_reachable"])
@@ -1163,6 +1225,216 @@ class GridPlanTests(unittest.TestCase):
         with self.assertRaises(GridPlanError) as caught:
             execute(_base_config(), record_root=object())
         self.assertEqual(caught.exception.code, "invalid_record_root")
+
+    def test_same_config_has_the_same_digest(self):
+        first = dry_run(_base_config())
+        second = dry_run(_base_config())
+        self.assertEqual(first.config_hash, second.config_hash)
+        self.assertEqual(first.threshold_hash, second.threshold_hash)
+        self.assertEqual(first.to_dict()["config_digest"], first.config_hash)
+
+    def test_missing_unit_aggregation_is_rejected_when_nested(self):
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(_base_config(nested_unit="window", nested_per_unit=2))
+        self.assertEqual(caught.exception.code, "missing_unit_aggregation")
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(
+                _base_config(
+                    nested_unit="window",
+                    nested_per_unit=2,
+                    unit_aggregation="mean_of_windows",
+                )
+            )
+        self.assertEqual(caught.exception.code, "invalid_unit_aggregation")
+        named = dry_run(
+            _base_config(
+                nested_unit="window",
+                nested_per_unit=2,
+                unit_aggregation="cluster_any_event_rate",
+            )
+        )
+        spec = named.metric_spec["unit_aggregation"]
+        self.assertEqual(spec["value"], "cluster_any_event_rate")
+        self.assertTrue(spec["named_on_pr_426"])
+        self.assertEqual(spec["source_citation"], "synthetic_forward_roc.py:194")
+        self.assertEqual(spec["cluster_ids_parameters"], ["operating_point", "compute_roc"])
+        self.assertNotEqual(named.threshold_hash, dry_run(_base_config()).threshold_hash)
+        bare = dry_run(_base_config())
+        self.assertEqual(bare.metric_spec["unit_aggregation"]["value"], "not_required")
+        self.assertFalse(bare.metric_spec["unit_aggregation"]["named_on_pr_426"])
+
+    def test_wilson_reject_is_not_labeled_underpowered(self):
+        with self.assertRaises(GridPlanError) as caught:
+            dry_run(
+                _base_config(
+                    n_independent_calibration=11,
+                    n_positive_calibration=5,
+                    n_negative_calibration=6,
+                )
+            )
+        self.assertEqual(caught.exception.code, "invalid_sample_count")
+        message = str(caught.exception)
+        self.assertNotIn("below either floor", message)
+        self.assertIn("n_positive_calibration", message)
+        self.assertIn("engineering minimum, not a power guarantee", message)
+
+    def test_dependency_pins_staleness_and_abort(self):
+        calls, spy = _spy_calls()
+        wrong = "0" * 40
+        stale_rows = [
+            {
+                "case_id": "roc_metrics",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "source_sha": wrong,
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        missing_rows = [
+            {
+                "case_id": "roc_metrics",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        phase_rows = [
+            {
+                "case_id": "phase_dispersion",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion"],
+                "limitations_recorded": False,
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        pinned_but_untracked = [
+            {
+                "case_id": "phase_dispersion",
+                "_source": "git_blob",
+                "_path": "absent.json",
+                "source_sha": grid_plan_module.REQUIRED_SOURCE_SHA["phase_dispersion"],
+                "limitations_recorded": True,
+                "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                "scientific_pass": False,
+            }
+        ]
+        with patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False):
+            stale, stale_blockers = grid_plan_module._resolve_gates_from_rows(
+                stale_rows,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+            missing, missing_blockers = grid_plan_module._resolve_gates_from_rows(
+                missing_rows,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+            phase, phase_blockers = grid_plan_module._resolve_gates_from_rows(
+                phase_rows,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+            untracked, _untracked_blockers = grid_plan_module._resolve_gates_from_rows(
+                pinned_but_untracked,
+                main_sha="a" * 40,
+                git_failure=None,
+            )
+        stale_status = {item["gate_id"]: item for item in stale}
+        self.assertEqual(stale_status["roc_metrics"]["status"], "stale_source")
+        self.assertFalse(stale_status["roc_metrics"]["candidate_is_evidence"])
+        self.assertIn("stale_source", {item["code"] for item in stale_blockers})
+        self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in stale))
+        missing_status = {item["gate_id"]: item["status"] for item in missing}
+        self.assertEqual(missing_status["roc_metrics"], "missing_source_sha")
+        self.assertIn("missing_dependency", {item["code"] for item in missing_blockers})
+        phase_status = {item["gate_id"]: item["status"] for item in phase}
+        self.assertEqual(phase_status["phase_dispersion"], "limitations_missing")
+        self.assertIn("limitations_missing", {item["code"] for item in phase_blockers})
+        untracked_status = {item["gate_id"]: item["status"] for item in untracked}
+        self.assertEqual(untracked_status["phase_dispersion"], "not_on_main")
+        self.assertNotEqual(untracked_status["phase_dispersion"], "admissible_on_ancestor")
+
+        plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertTrue(plan.execution["aborted"])
+        self.assertEqual(plan.execution["abort_gate"], BLOCKING_GATE_IDS[0])
+        self.assertFalse(plan.execution["partial_launch"])
+        self.assertFalse(plan.execution["executed"])
+        self.assertFalse(plan.would_execute()["executed"])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertEqual(plan.run_state, "blocked")
+        _assert_all_cells_blocked(self, plan)
+        self.assertFalse(plan.limits["candidate_is_evidence"])
+        self.assertFalse(plan.limits["open_pr_is_evidence"])
+        self.assertEqual(
+            plan.limits["required_source_sha"]["roc_metrics"],
+            "55115149c7443ca8b325dc4dbf65d6900c9fdd79",
+        )
+        self.assertNotIn("ci_discovery", plan.limits["required_source_sha"])
+
+    def test_locked_dataset_arguments_are_rejected(self):
+        locked = [
+            {"h0": "scores from ds005620"},
+            {"h1": "a BIDS subject contrast"},
+            {"estimand": "participant level contrast"},
+            {"estimand": "an empirical contrast"},
+            {"score_definition_id": "participant-score"},
+        ]
+        for updates in locked:
+            with self.subTest(updates=sorted(updates)):
+                with self.assertRaises(GridPlanError) as caught:
+                    dry_run(_base_config(**updates))
+                self.assertEqual(caught.exception.code, "locked_input")
+        for root in (
+            "/tmp/ds005620/sub-01",
+            "bids/sub-01",
+            "study/participant/01",
+            "empirical/input.npy",
+        ):
+            with self.subTest(record_root=root):
+                with self.assertRaises(GridPlanError) as caught:
+                    execute(_base_config(), record_root=root)
+                self.assertEqual(caught.exception.code, "locked_input")
+
+    def test_provenance_round_trip_rebuilds_code_version(self):
+        plan = dry_run(_base_config())
+        document = plan.to_dict()
+        document["provenance"]["code_version_id"] = "c" * 40
+        document["provenance"]["worktree_dirty"] = not plan.worktree_dirty
+        document["provenance"]["code_commit"] = "not_recorded"
+        restored = GridPlan.from_dict(document)
+        self.assertEqual(restored.config_hash, plan.config_hash)
+        self.assertEqual(restored.code_version_id, plan.code_version_id)
+        self.assertEqual(restored.worktree_dirty, plan.worktree_dirty)
+        self.assertNotEqual(restored.code_version_id, "c" * 40)
+        self.assertIn("code_version_id", restored.provenance)
+        self.assertIn("worktree_dirty", restored.provenance)
+        self.assertNotIn("code_commit", restored.provenance)
+        self.assertFalse(restored.would_execute()["executed"])
+        self.assertEqual(restored.provenance["config_digest"], restored.config_hash)
+
+    def test_dirty_or_unknown_head_blocks_execute_only(self):
+        calls, spy = _spy_calls()
+        with patch.object(grid_plan_module, "_worktree_dirty", return_value=True):
+            listed = dry_run(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertEqual(listed.run_state, "planned")
+        self.assertTrue(listed.worktree_dirty)
+        self.assertFalse(listed.would_execute()["executed"])
+        self.assertNotIn("dirty_worktree", {item["code"] for item in listed.gate_check["blockers"]})
+        with _resolved_main(), patch.object(grid_plan_module, "_worktree_dirty", return_value=True):
+            blocked = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertTrue(blocked.worktree_dirty)
+        self.assertIn("dirty_worktree", {item["code"] for item in blocked.gate_check["blockers"]})
+        self.assertFalse(blocked.execution["executed"])
+        self.assertFalse(blocked.execution["partial_launch"])
+        self.assertEqual(blocked.run_state, "blocked")
+        _assert_all_cells_blocked(self, blocked)
 
 
 if __name__ == "__main__":

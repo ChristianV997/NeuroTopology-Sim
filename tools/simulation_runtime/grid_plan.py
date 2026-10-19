@@ -14,6 +14,10 @@ default location and every gate stays missing. Untracked files and
 
 ``ci_discovery`` is blocking and stays blocked: the CI lists do not
 collect ``tests/simulation_runtime``. ``dmd_crouzeix`` is nonblocking.
+
+Dependency gates record a candidate commit. An open pull request, a
+local pass, or a green unrelated workflow is not evidence. A report
+whose ``source_sha`` differs from the recorded pin is stale and blocked.
 """
 
 from __future__ import annotations
@@ -57,6 +61,10 @@ PROJECT_STATUS = "HOLD / SYNTHETIC_ONLY"
 ENGINEERING_THRESHOLD_N = 100
 UNDERPOWERED_DRY_RUN = "UNDERPOWERED_DRY_RUN"
 ENGINEERING_THRESHOLD_MET = "ENGINEERING_THRESHOLD_MET"
+ENGINEERING_MINIMUM_NOTE = "engineering minimum, not a power guarantee"
+EXECUTION_MODE_SMOKE = "smoke_only"
+EXECUTION_MODE_HELD = "held"
+DECLARED_ESTIMATE = "DECLARED_ESTIMATE"
 DECLARED_BYTES_PER_RECORD = 4096
 CODE_VERSION_UNKNOWN = "UNKNOWN"
 ROC_API_PR = 426
@@ -103,29 +111,58 @@ INTERVAL_METHODS: tuple[str, ...] = (
 
 # Blocking gates. ci_discovery cannot be opened by a promotion record.
 BLOCKING_GATE_IDS: tuple[str, ...] = (
-    "four_sphere_oracle",
-    "planar_embedding_winding_hodge",
+    "four_sphere_forward_model",
+    "planar_geometry",
+    "winding_hodge",
     "csd_full_matrix_pinned_mne",
-    "phase_score_limitations_recorded",
-    "surrogate_randomizes_target_statistic",
-    "roc_split_threshold_api",
+    "phase_dispersion",
+    "surrogate_null",
+    "roc_metrics",
     "ci_discovery",
 )
 NONBLOCKING_GATE_IDS: tuple[str, ...] = ("dmd_crouzeix",)
 REQUIRED_GATE_IDS: tuple[str, ...] = BLOCKING_GATE_IDS
 CI_DISCOVERY_GATE_ID = "ci_discovery"
+PHASE_DISPERSION_GATE_ID = "phase_dispersion"
+
+# Candidate refs only. An open PR head is not a promotion record on main.
+# #427 moved off 27d451fa; that head is not a gate pin.
+REQUIRED_SOURCE_SHA: Dict[str, str] = {
+    "four_sphere_forward_model": "4b04df0bed9d34e1f4de4bb920933aa84df3a724",
+    "planar_geometry": "04d5af7321ff002bb88d75353e59aec73eabbf56",
+    "winding_hodge": "3328dd15a995a62759c4256de944e2dd8e7c9364",
+    "csd_full_matrix_pinned_mne": "24ad946c1cd6142846e19e9db8b7a5325d49ef46",
+    "phase_dispersion": "42f8f9ccdb126fafaf429e7e8b20ac4e8ff5aa98",
+    "surrogate_null": "f8939eec66e585d00966d433cc563d3d34ca0b11",
+    "roc_metrics": ROC_API_HEAD,
+}
+OPEN_PR_HEADS_NOT_EVIDENCE: Dict[str, str] = {
+    "426": ROC_API_HEAD,
+    "427": "e64304087dba4205ee2211963a3cf40025695e9c",
+}
 
 # Audit labels for this main SHA. Not a registry, and not a substitute
 # for a promotion-gate report. Only ci_discovery is unconditionally blocked.
 GATE_INTEGRATION_STATE: Dict[str, str] = {
-    "four_sphere_oracle": "NOT_INTEGRATED",
-    "planar_embedding_winding_hodge": "NOT_INTEGRATED",
+    "four_sphere_forward_model": "NOT_INTEGRATED",
+    "planar_geometry": "NOT_INTEGRATED",
+    "winding_hodge": "NOT_INTEGRATED",
     "csd_full_matrix_pinned_mne": "NOT_INTEGRATED",
-    "phase_score_limitations_recorded": "NOT_INTEGRATED",
-    "surrogate_randomizes_target_statistic": "NOT_INTEGRATED",
-    "roc_split_threshold_api": "NOT_INTEGRATED",
+    "phase_dispersion": "NOT_INTEGRATED",
+    "surrogate_null": "NOT_INTEGRATED",
+    "roc_metrics": "NOT_INTEGRATED",
     "ci_discovery": "BLOCKED",
     "dmd_crouzeix": "NONBLOCKING",
+}
+
+# Name citation only. This module does not import the ROC module.
+_UNIT_AGGREGATION_NAMED = {
+    "cluster_any_event_rate": {
+        "named_on_pr_426": True,
+        "symbol": "cluster_any_event_rate",
+        "source_citation": "synthetic_forward_roc.py:194",
+        "cluster_ids_parameters": ["operating_point", "compute_roc"],
+    }
 }
 
 ADMISSIBLE_GATE_DECISIONS: tuple[str, ...] = tuple(
@@ -159,6 +196,7 @@ _AXIS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,200}$")
 _NUISANCE_ID = re.compile(r"^[A-Za-z0-9_.:+-]{1,200}$")
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
+_LOCKED_INPUT = re.compile(r"ds005620|\bbids\b|participant|empirical", re.IGNORECASE)
 _ROC_KEYS = frozenset({"auc", "roc", "fpr", "tpr", "detector_roc", "roc_curve"})
 _CALLER_GATE_DECISION = object()
 
@@ -173,8 +211,11 @@ _CONFIG_KEYS = frozenset(
         "evaluation_seed",
         "independent_unit",
         "n_independent_calibration",
+        "n_positive_calibration",
+        "n_negative_calibration",
         "nested_unit",
         "nested_per_unit",
+        "unit_aggregation",
         "interval_method",
         "estimand",
         "power_claim",
@@ -194,9 +235,18 @@ _CONFIG_KEYS = frozenset(
 )
 # n_independent_evaluation is read only after the threshold hash is recorded.
 # Unit id lists are derived inside the planner. Caller-supplied id lists are rejected.
-_EVALUATION_KEYS = frozenset({"n_independent_evaluation"})
+_EVALUATION_KEYS = frozenset(
+    {
+        "n_independent_evaluation",
+        "n_positive_evaluation",
+        "n_negative_evaluation",
+    }
+)
 _CALLER_UNIT_ID_KEYS = frozenset({"calibration_unit_ids", "evaluation_unit_ids"})
-_REQUIRED_BEFORE_THRESHOLD = (_CONFIG_KEYS - {"wilson_design_p", "nuisance_scenario_id"}) - _EVALUATION_KEYS
+_OPTIONAL_CONFIG_KEYS = frozenset(
+    {"wilson_design_p", "nuisance_scenario_id", "unit_aggregation"}
+)
+_REQUIRED_BEFORE_THRESHOLD = (_CONFIG_KEYS - _OPTIONAL_CONFIG_KEYS) - _EVALUATION_KEYS
 _INPUT_KEYS = _CONFIG_KEYS | _EVALUATION_KEYS
 _AXIS_KEYS = frozenset({"name", "unit", "values", "minimum", "maximum"})
 _RUNTIME_OUTCOMES = frozenset(item.value for item in Outcome)
@@ -217,6 +267,27 @@ class GridPlanError(ValueError):
 
 def _reject(code: str, message: str) -> None:
     raise GridPlanError(code, message)
+
+
+def _reject_locked_inputs(value: Any, label: str = "config") -> None:
+    """Refuse dataset, BIDS, participant, and empirical input strings."""
+
+    if isinstance(value, str):
+        if _LOCKED_INPUT.search(value):
+            _reject(
+                "locked_input",
+                f"{label} references ds005620, BIDS, participant, or empirical inputs",
+            )
+        return
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if isinstance(key, str):
+                _reject_locked_inputs(key, label)
+            _reject_locked_inputs(item, label)
+        return
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            _reject_locked_inputs(item, label)
 
 
 def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
@@ -449,6 +520,45 @@ def _derive_unit_ids(seed: int, count: int, role: str) -> List[str]:
     return [f"{role}-seed{seed}-u{index:06d}" for index in range(count)]
 
 
+def _unit_aggregation_spec(raw: Any, nested_per_unit: int) -> Dict[str, Any]:
+    """Map a caller aggregation onto the named #426 contract, or reject it."""
+
+    if nested_per_unit > 1 and raw is None:
+        _reject(
+            "missing_unit_aggregation",
+            "unit_aggregation is required when nested_per_unit > 1",
+        )
+    if raw is None:
+        return {
+            "value": "not_required",
+            "named_on_pr_426": False,
+            "required": False,
+        }
+    if not isinstance(raw, str) or raw not in _UNIT_AGGREGATION_NAMED:
+        _reject(
+            "invalid_unit_aggregation",
+            "unit_aggregation must be cluster_any_event_rate "
+            "(synthetic_forward_roc.py:194; cluster_ids on operating_point and compute_roc)",
+        )
+    named = _UNIT_AGGREGATION_NAMED[raw]
+    return {
+        "value": raw,
+        "required": nested_per_unit > 1,
+        "named_on_pr_426": named["named_on_pr_426"],
+        "symbol": named["symbol"],
+        "source_citation": named["source_citation"],
+        "cluster_ids_parameters": list(named["cluster_ids_parameters"]),
+    }
+
+
+def _class_pair(positive: int, negative: int, total: int, role: str) -> None:
+    if positive + negative != total:
+        _reject(
+            "n_class_mismatch",
+            f"n_positive_{role} + n_negative_{role} must equal n_independent_{role}",
+        )
+
+
 def _freeze_threshold(
     *,
     h0: str,
@@ -459,6 +569,7 @@ def _freeze_threshold(
     calibration_seed: int,
     estimand: str,
     interval_method: str,
+    unit_aggregation: str,
 ) -> str:
     """Hash the decision rule. This function does not read evaluation ids.
 
@@ -475,6 +586,7 @@ def _freeze_threshold(
             "calibration_seed": calibration_seed,
             "estimand": estimand,
             "interval_method": interval_method,
+            "unit_aggregation": unit_aggregation,
         }
     )
 
@@ -509,7 +621,7 @@ def _read_evaluation_side(
     calibration_unit_ids: Sequence[str],
     evaluation_seed: int,
     nested_per_unit: int,
-) -> Tuple[List[str], int, bool, Dict[str, Any]]:
+) -> Tuple[List[str], int, bool, Dict[str, Any], int, int]:
     """Derive evaluation ids only after ``threshold_hash`` exists."""
 
     if "n_independent_evaluation" not in config:
@@ -518,6 +630,25 @@ def _read_evaluation_side(
         config["n_independent_evaluation"],
         "n_independent_evaluation",
         "invalid_sample_count",
+    )
+    for key in ("n_positive_evaluation", "n_negative_evaluation"):
+        if key not in config:
+            _reject("unknown_field", f"missing config fields ['{key}']")
+    n_positive_evaluation = _as_positive_int(
+        config["n_positive_evaluation"],
+        "n_positive_evaluation",
+        "invalid_sample_count",
+    )
+    n_negative_evaluation = _as_positive_int(
+        config["n_negative_evaluation"],
+        "n_negative_evaluation",
+        "invalid_sample_count",
+    )
+    _class_pair(
+        n_positive_evaluation,
+        n_negative_evaluation,
+        n_independent_evaluation,
+        "evaluation",
     )
     evaluation_unit_ids = _derive_unit_ids(
         evaluation_seed, n_independent_evaluation, "evaluation"
@@ -540,12 +671,20 @@ def _read_evaluation_side(
         evaluation_unit_ids=evaluation_unit_ids,
         n_independent_evaluation=n_independent_evaluation,
     )
-    return evaluation_unit_ids, n_independent_evaluation, roles_are_disjoint, manifest
+    return (
+        evaluation_unit_ids,
+        n_independent_evaluation,
+        roles_are_disjoint,
+        manifest,
+        n_positive_evaluation,
+        n_negative_evaluation,
+    )
 
 
 def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, Mapping):
         _reject("unsupported_schema_version", "config must be a mapping")
+    _reject_locked_inputs(config)
     if _CALLER_UNIT_ID_KEYS.intersection(config):
         _reject(
             "caller_unit_ids_rejected",
@@ -615,6 +754,22 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         "n_independent_calibration",
         "invalid_sample_count",
     )
+    n_positive_calibration = _as_positive_int(
+        config["n_positive_calibration"],
+        "n_positive_calibration",
+        "invalid_sample_count",
+    )
+    n_negative_calibration = _as_positive_int(
+        config["n_negative_calibration"],
+        "n_negative_calibration",
+        "invalid_sample_count",
+    )
+    _class_pair(
+        n_positive_calibration,
+        n_negative_calibration,
+        n_independent_calibration,
+        "calibration",
+    )
     calibration_unit_ids = _derive_unit_ids(
         calibration_seed, n_independent_calibration, "calibration"
     )
@@ -626,6 +781,9 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
     )
     if nested_unit == "none" and nested_per_unit != 1:
         _reject("invalid_nested", "nested_unit none requires nested_per_unit 1")
+    unit_aggregation = _unit_aggregation_spec(
+        config.get("unit_aggregation"), nested_per_unit
+    )
     _count_matches_ids(
         n_independent_calibration,
         calibration_unit_ids,
@@ -666,6 +824,7 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         calibration_seed=calibration_seed,
         estimand=estimand,
         interval_method=interval_method,
+        unit_aggregation=str(unit_aggregation["value"]),
     )
 
     (
@@ -673,6 +832,8 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         n_independent_evaluation,
         roles_are_disjoint,
         evaluation_manifest,
+        n_positive_evaluation,
+        n_negative_evaluation,
     ) = _read_evaluation_side(
         config,
         threshold_hash=threshold_hash,
@@ -728,8 +889,14 @@ def _normalize_config(config: Mapping[str, Any]) -> Dict[str, Any]:
         "evaluation_unit_ids": evaluation_unit_ids,
         "n_independent_calibration": n_independent_calibration,
         "n_independent_evaluation": n_independent_evaluation,
+        "n_positive_calibration": n_positive_calibration,
+        "n_negative_calibration": n_negative_calibration,
+        "n_positive_evaluation": n_positive_evaluation,
+        "n_negative_evaluation": n_negative_evaluation,
         "nested_unit": nested_unit,
         "nested_per_unit": nested_per_unit,
+        "unit_aggregation": config["unit_aggregation"] if "unit_aggregation" in config else None,
+        "unit_aggregation_spec": unit_aggregation,
         "nested_counted_in_n": False,
         "roles_are_disjoint": roles_are_disjoint,
         "interval_method": interval_method,
@@ -783,9 +950,12 @@ def _wilson_bound(normalized: Mapping[str, Any]) -> SampleSizePlanResult:
         _reject(
             "invalid_sample_count",
             "n_independent_calibration and n_independent_evaluation must each be >= "
-            f"Wilson required_n {required}. N>={ENGINEERING_THRESHOLD_N} and the "
-            "#405 floor are engineering thresholds, not a power guarantee. A plan "
-            f"below either floor is {UNDERPOWERED_DRY_RUN}",
+            f"Wilson required_n {required}. Counts below that #405 floor are rejected "
+            "and are not emitted. "
+            f"{UNDERPOWERED_DRY_RUN} is only an emitted plan whose "
+            "n_positive_calibration, n_negative_calibration, n_positive_evaluation, "
+            f"or n_negative_evaluation is below {ENGINEERING_THRESHOLD_N}. "
+            f"That label is an {ENGINEERING_MINIMUM_NOTE}.",
         )
     return result
 
@@ -861,7 +1031,7 @@ def _proportion_declaration(
     }
 
 
-def _metric_spec() -> Dict[str, Any]:
+def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
     """Metric declarations included in the plan hash. Nothing is scored."""
 
     return {
@@ -871,6 +1041,7 @@ def _metric_spec() -> Dict[str, Any]:
         "integration": "NOT_INTEGRATED",
         "source_pr": ROC_API_PR,
         "source_head": ROC_API_HEAD,
+        "unit_aggregation": copy.deepcopy(dict(unit_aggregation)),
         "metrics": [
             _proportion_declaration(
                 "tpr",
@@ -943,16 +1114,24 @@ def _metric_spec() -> Dict[str, Any]:
     }
 
 
-def _sample_size_label(n_calibration: int, n_evaluation: int, wilson_required: int) -> str:
-    """Engineering label. This is not a power analysis."""
+def _sample_size_label(
+    n_positive_calibration: int,
+    n_negative_calibration: int,
+    n_positive_evaluation: int,
+    n_negative_evaluation: int,
+) -> str:
+    """Engineering label. This is not a power analysis.
 
-    below = (
-        n_calibration < ENGINEERING_THRESHOLD_N
-        or n_evaluation < ENGINEERING_THRESHOLD_N
-        or n_calibration < wilson_required
-        or n_evaluation < wilson_required
+    Wilson counts below required_n are rejected before this label is applied.
+    """
+
+    counts = (
+        n_positive_calibration,
+        n_negative_calibration,
+        n_positive_evaluation,
+        n_negative_evaluation,
     )
-    if below:
+    if any(count < ENGINEERING_THRESHOLD_N for count in counts):
         return UNDERPOWERED_DRY_RUN
     return ENGINEERING_THRESHOLD_MET
 
@@ -981,7 +1160,7 @@ def _cost_estimate(normalized: Mapping[str, Any], cell_count: int) -> Dict[str, 
     per_cell_disk_bytes = per_cell_bytes + DECLARED_BYTES_PER_RECORD
     return {
         "computed_without_running": True,
-        "label": "BOUND_NOT_A_MEASUREMENT",
+        "label": DECLARED_ESTIMATE,
         "cell_count": cell_count,
         "n_independent_calibration": n_calibration,
         "n_independent_evaluation": n_evaluation,
@@ -1016,17 +1195,25 @@ def _hash_payload(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "evaluation_unit_ids": list(normalized["evaluation_unit_ids"]),
         "n_independent_calibration": normalized["n_independent_calibration"],
         "n_independent_evaluation": normalized["n_independent_evaluation"],
+        "n_positive_calibration": normalized["n_positive_calibration"],
+        "n_negative_calibration": normalized["n_negative_calibration"],
+        "n_positive_evaluation": normalized["n_positive_evaluation"],
+        "n_negative_evaluation": normalized["n_negative_evaluation"],
         "nested_unit": normalized["nested_unit"],
         "nested_per_unit": normalized["nested_per_unit"],
+        "unit_aggregation": normalized["unit_aggregation_spec"],
         "interval_method": normalized["interval_method"],
         "estimand": normalized["estimand"],
         "power_claim": normalized["power_claim"],
         "sample_size_label": normalized["sample_size_label"],
+        "execution_mode": normalized["execution_mode"],
+        "engineering_minimum_note": ENGINEERING_MINIMUM_NOTE,
         "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
         "power_analysis_supplied": False,
         "engineering_threshold_is_power_guarantee": False,
         "declared_bytes_per_record": DECLARED_BYTES_PER_RECORD,
-        "metric_spec": _metric_spec(),
+        "metric_spec": _metric_spec(normalized["unit_aggregation_spec"]),
+        "required_source_sha": dict(REQUIRED_SOURCE_SHA),
         "h0": normalized["h0"],
         "h1": normalized["h1"],
         "score_definition_id": normalized["score_definition_id"],
@@ -1053,6 +1240,11 @@ def _independence_block(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "independent_unit": normalized["independent_unit"],
         "n_independent_calibration": normalized["n_independent_calibration"],
         "n_independent_evaluation": normalized["n_independent_evaluation"],
+        "n_positive_calibration": normalized["n_positive_calibration"],
+        "n_negative_calibration": normalized["n_negative_calibration"],
+        "n_positive_evaluation": normalized["n_positive_evaluation"],
+        "n_negative_evaluation": normalized["n_negative_evaluation"],
+        "unit_aggregation": normalized["unit_aggregation_spec"]["value"],
         "nested_unit": normalized["nested_unit"],
         "nested_per_unit": normalized["nested_per_unit"],
         "interval_method": normalized["interval_method"],
@@ -1064,6 +1256,8 @@ def _independence_block(normalized: Mapping[str, Any]) -> Dict[str, Any]:
         "roles_are_disjoint_is_statistical_independence": False,
         "roles_are_disjoint_note": ROLES_DISJOINT_NOTE,
         "sample_size_label": normalized["sample_size_label"],
+        "execution_mode": normalized["execution_mode"],
+        "engineering_minimum_note": ENGINEERING_MINIMUM_NOTE,
         "nested_counted_in_n": False,
     }
 
@@ -1144,7 +1338,7 @@ def _campaign_manifest(
         schema_version=CAMPAIGN_MANIFEST_SCHEMA_VERSION,
         campaign_id=f"grid-plan-v2-{config_hash[:12]}",
         created_at=_CREATED_AT,
-        code_commit="not_recorded",
+        code_commit=_code_version_id(),
         configuration_hash=config_hash,
         seed=int(normalized["master_seed"]),
         units=units,
@@ -1191,6 +1385,11 @@ def _limits() -> Dict[str, Any]:
         "windows_count_toward_wilson_n": False,
         "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
         "engineering_threshold_is_power_guarantee": False,
+        "engineering_minimum_note": ENGINEERING_MINIMUM_NOTE,
+        "candidate_is_evidence": False,
+        "open_pr_is_evidence": False,
+        "required_source_sha": dict(REQUIRED_SOURCE_SHA),
+        "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
         "metrics_are_computed": False,
         "roc_api_integrated": False,
         "ci_discovery": "BLOCKED",
@@ -1279,18 +1478,31 @@ def _code_version_id() -> str:
     return _resolve_head_sha() or CODE_VERSION_UNKNOWN
 
 
+def _worktree_dirty() -> bool:
+    """True when HEAD is dirty, or when status cannot be read. Fail closed."""
+
+    try:
+        completed = _git(["status", "--porcelain"])
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if completed.returncode != 0:
+        return True
+    return bool(completed.stdout.strip())
+
+
 def _provenance(
     main_sha: Optional[str],
     code_version_id: str,
     config_hash: str,
+    worktree_dirty: bool,
 ) -> Dict[str, Any]:
     return {
         "schema_version": GRID_PLAN_SCHEMA_VERSION,
         "generator": GENERATOR,
         "base_sha": main_sha or "unresolved",
         "audited_main_sha": AUDITED_MAIN_SHA,
-        "code_commit": "not_recorded",
         "code_version_id": code_version_id,
+        "worktree_dirty": bool(worktree_dirty),
         "config_digest": config_hash,
         "failure_policy": FAILURE_POLICY,
     }
@@ -1336,7 +1548,9 @@ def _writer_result_keys() -> frozenset[str]:
 
 _PAYLOAD_KEYS = frozenset({"schema_version", "scientific_pass", "case_count", "results"})
 _RESULT_KEYS = _writer_result_keys()
-_EXTRA_RESULT_KEYS = frozenset({"verified_at_commit"})
+_EXTRA_RESULT_KEYS = frozenset(
+    {"verified_at_commit", "source_sha", "limitations_recorded"}
+)
 
 
 def _reporting_hash_callable() -> Optional[Callable[..., Any]]:
@@ -1541,6 +1755,8 @@ def _resolve_one(
         "role": role,
         "integration": integration,
         "integration_is_evidence": False,
+        "candidate_is_evidence": False,
+        "required_source_sha": REQUIRED_SOURCE_SHA.get(gate_id),
         "verified_at_commit": None,
         "resolved_from": "none",
         "report_hash": None,
@@ -1569,6 +1785,20 @@ def _resolve_one(
     row = matched[0]
     if row.get("_source") != "git_blob":
         return {**base, "status": "missing", "label": TEST_FIXTURE_NOT_EVIDENCE}
+    required_sha = REQUIRED_SOURCE_SHA.get(gate_id)
+    if required_sha is not None:
+        recorded = row.get("source_sha")
+        if not isinstance(recorded, str) or _COMMIT_SHA.fullmatch(recorded) is None:
+            return {**base, "status": "missing_source_sha", "source_sha": recorded}
+        if recorded != required_sha:
+            return {
+                **base,
+                "status": "stale_source",
+                "source_sha": recorded,
+                "required_source_sha": required_sha,
+            }
+    if gate_id == PHASE_DISPERSION_GATE_ID and row.get("limitations_recorded") is not True:
+        return {**base, "status": "limitations_missing"}
     path = row.get("_path")
     if not isinstance(path, str) or not _path_tracked(main_sha, path):
         return {**base, "status": "not_on_main"}
@@ -1683,6 +1913,9 @@ def _resolve_gates_from_rows(
             "duplicate_record": "duplicate_gate_record",
             "report_opens_multiple_gates": "report_opens_multiple_gates",
             "ci_discovery_blocked": "ci_discovery_blocked",
+            "stale_source": "stale_source",
+            "missing_source_sha": "missing_dependency",
+            "limitations_missing": "limitations_missing",
         }.get(status, "missing_gate")
         if git_failure is not None:
             code = git_failure
@@ -1713,11 +1946,16 @@ def _prepare(
     _refuse_callback(simulation)
     normalized = _normalize_config(config)
     wilson = _wilson_bound(normalized)
-    required = int(wilson.required_n) if wilson.required_n is not None else ENGINEERING_THRESHOLD_N
     normalized["sample_size_label"] = _sample_size_label(
-        int(normalized["n_independent_calibration"]),
-        int(normalized["n_independent_evaluation"]),
-        required,
+        int(normalized["n_positive_calibration"]),
+        int(normalized["n_negative_calibration"]),
+        int(normalized["n_positive_evaluation"]),
+        int(normalized["n_negative_evaluation"]),
+    )
+    normalized["execution_mode"] = (
+        EXECUTION_MODE_SMOKE
+        if normalized["sample_size_label"] == UNDERPOWERED_DRY_RUN
+        else EXECUTION_MODE_HELD
     )
     normalized["power_analysis_supplied"] = False
     budget = _enforce_budget(normalized)
@@ -1793,7 +2031,10 @@ class GridPlan:
         self.test_fixture_label = test_fixture_label
         self.gate_source_failure = gate_source_failure
         self.code_version_id = str(provenance["code_version_id"])
+        self.worktree_dirty = bool(provenance["worktree_dirty"])
         self.sample_size_label = str(normalized["sample_size_label"])
+        self.execution_mode = str(normalized["execution_mode"])
+        self.engineering_minimum_note = ENGINEERING_MINIMUM_NOTE
         self.cost_estimate = copy.deepcopy(dict(cost_estimate))
         self.metric_spec = copy.deepcopy(dict(hash_payload["metric_spec"]))
         self.limits = _limits()
@@ -1812,8 +2053,11 @@ class GridPlan:
             "run_state": self.run_state,
             "project_status": PROJECT_STATUS,
             "code_version_id": self.code_version_id,
+            "worktree_dirty": self.worktree_dirty,
             "config_hash": self.config_hash,
             "config_digest": self.config_hash,
+            "execution_mode": self.execution_mode,
+            "engineering_minimum_note": self.engineering_minimum_note,
             "threshold_hash": self.threshold_hash,
             "evidence_hash": self.evidence_hash,
             "checked_at": self.checked_at,
@@ -1846,15 +2090,19 @@ class GridPlan:
             },
             "evaluation_manifest": self.evaluation_manifest,
             "sample_size_label": self.sample_size_label,
+            "execution_mode": self.execution_mode,
+            "engineering_minimum_note": self.engineering_minimum_note,
             "engineering_threshold_n": ENGINEERING_THRESHOLD_N,
             "power_analysis_supplied": False,
             "engineering_threshold_is_power_guarantee": False,
             "metric_spec": self.metric_spec,
+            "would_execute": self.would_execute(),
             "cost_estimate": self.cost_estimate,
             "audit": {
                 "project_status": PROJECT_STATUS,
                 "status_label": self.status_label,
                 "code_version_id": self.code_version_id,
+                "worktree_dirty": self.worktree_dirty,
                 "config_digest": self.config_hash,
                 "seeds": {
                     "master_seed": self.configuration["master_seed"],
@@ -1883,6 +2131,44 @@ class GridPlan:
             "toy_fixture": self.toy_fixture,
             "limits": self.limits,
             "null_model_note": NULL_MODEL_NOTE,
+            "required_source_sha": dict(REQUIRED_SOURCE_SHA),
+            "open_pr_heads_not_evidence": dict(OPEN_PR_HEADS_NOT_EVIDENCE),
+        }
+
+    def would_execute(self) -> Dict[str, Any]:
+        """Cells, seeds, splits, and cost that a launch would use. Nothing runs."""
+
+        cell = self.cells[0]
+        return {
+            "executed": False,
+            "execution_mode": self.execution_mode,
+            "cells": [
+                {
+                    "cell_id": item["cell_id"],
+                    "cell_index": item["cell_index"],
+                    "blocked": True,
+                    "null_model_id": item["null_model_id"],
+                    "source_model_id": item["source_model_id"],
+                }
+                for item in self.cells
+            ],
+            "seeds": {
+                "master_seed": self.configuration["master_seed"],
+                "calibration_seed": self.configuration["calibration_seed"],
+                "evaluation_seed": self.configuration["evaluation_seed"],
+            },
+            "splits": {
+                "calibration_unit_ids": list(cell["calibration_unit_ids"]),
+                "evaluation_unit_ids": list(cell["evaluation_unit_ids"]),
+                "n_positive_calibration": cell["n_positive_calibration"],
+                "n_negative_calibration": cell["n_negative_calibration"],
+                "n_positive_evaluation": cell["n_positive_evaluation"],
+                "n_negative_evaluation": cell["n_negative_evaluation"],
+                "n_independent_calibration": cell["n_independent_calibration"],
+                "n_independent_evaluation": cell["n_independent_evaluation"],
+                "roles_are_disjoint": cell["roles_are_disjoint"],
+            },
+            "cost": self.cost_estimate,
         }
 
     @classmethod
@@ -1947,6 +2233,7 @@ def dry_run(
     )
     main_sha = _resolve_main_sha()
     code_version_id = _code_version_id()
+    worktree_dirty = _worktree_dirty() if code_version_id != CODE_VERSION_UNKNOWN else True
     blockers = [
         _blocker(
             "not_checked",
@@ -1983,9 +2270,13 @@ def dry_run(
             "completed": False,
             "reason": "dry-run does not execute",
             "sweep_reachable": False,
+            "executed": False,
+            "aborted": False,
+            "abort_gate": None,
+            "partial_launch": False,
         },
         gate_resolution=[],
-        provenance=_provenance(main_sha, code_version_id, config_hash),
+        provenance=_provenance(main_sha, code_version_id, config_hash, worktree_dirty),
         toy_fixture=_toy_fixture(toy_scores),
         evidence_hash=None,
         checked_at=None,
@@ -2018,6 +2309,8 @@ def execute(
     caller_rejected = gate_evidence is not _CALLER_GATE_DECISION
     if record_root is not None and not isinstance(record_root, (str, os.PathLike)):
         _reject("invalid_record_root", "record_root must be a directory path")
+    if record_root is not None:
+        _reject_locked_inputs(os.fspath(record_root), label="record_root")
     test_fixture_label = None if record_root is None else TEST_FIXTURE_NOT_EVIDENCE
     normalized, wilson, budget, cells, manifest, config_hash, payload, cost = _prepare(
         config,
@@ -2026,14 +2319,33 @@ def execute(
     )
     resolved, main_sha, git_failure, blockers = _resolve_gates()
     code_version_id = _code_version_id()
-    if code_version_id == CODE_VERSION_UNKNOWN and git_failure is None:
-        blockers = list(blockers)
-        blockers.append(
-            _blocker(
-                "code_version_unknown",
-                "HEAD did not resolve; code_version_id is UNKNOWN and the plan stays closed",
+    blockers = list(blockers)
+    worktree_dirty = False
+    if git_failure is None:
+        worktree_dirty = _worktree_dirty()
+        if code_version_id == CODE_VERSION_UNKNOWN:
+            blockers.append(
+                _blocker(
+                    "code_version_unknown",
+                    "HEAD did not resolve; code_version_id is UNKNOWN and the plan stays closed",
+                )
             )
-        )
+        if worktree_dirty:
+            blockers.append(
+                _blocker(
+                    "dirty_worktree",
+                    "worktree is dirty; code_version_id is not a clean HEAD and the plan stays closed",
+                )
+            )
+    aborted = False
+    abort_gate = None
+    for item in resolved:
+        if item["role"] != "blocking":
+            continue
+        if item["status"] != "admissible_on_ancestor":
+            aborted = True
+            abort_gate = str(item["gate_id"])
+            break
     gates_clear = code_version_id != CODE_VERSION_UNKNOWN and not blockers and all(
         item["status"] == "admissible_on_ancestor"
         for item in resolved
@@ -2075,6 +2387,10 @@ def execute(
         "sweep_reachable": False,
         "caller_gate_decision_rejected": caller_rejected,
         "checked_at_is_caller_set": True,
+        "executed": False,
+        "aborted": aborted,
+        "abort_gate": abort_gate,
+        "partial_launch": False,
     }
     return GridPlan(
         normalized=normalized,
@@ -2092,7 +2408,7 @@ def execute(
         },
         execution=execution,
         gate_resolution=resolved,
-        provenance=_provenance(main_sha, code_version_id, config_hash),
+        provenance=_provenance(main_sha, code_version_id, config_hash, worktree_dirty),
         toy_fixture=_toy_fixture(None),
         evidence_hash=evidence_hash,
         checked_at=checked_text,
@@ -2121,8 +2437,14 @@ __all__ = [
     "NULL_MODEL_NOTE",
     "CODE_VERSION_UNKNOWN",
     "DECLARED_BYTES_PER_RECORD",
+    "DECLARED_ESTIMATE",
+    "ENGINEERING_MINIMUM_NOTE",
     "ENGINEERING_THRESHOLD_MET",
     "ENGINEERING_THRESHOLD_N",
+    "EXECUTION_MODE_HELD",
+    "EXECUTION_MODE_SMOKE",
+    "OPEN_PR_HEADS_NOT_EVIDENCE",
+    "REQUIRED_SOURCE_SHA",
     "POWER_CLAIM",
     "PROJECT_STATUS",
     "REQUIRED_GATE_IDS",
