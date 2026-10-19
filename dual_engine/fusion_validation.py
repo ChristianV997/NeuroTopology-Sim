@@ -429,6 +429,93 @@ def audit_null_model(embeddings: np.ndarray, null_type: Union[str, NullModelType
     }
 
 
+def _fit_predict_logistic_fallback(
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    test_x: np.ndarray,
+    max_iter: int = 1000,
+    seed: Optional[int] = 42,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Pure NumPy/SciPy fallback for binary logistic regression."""
+    import scipy.optimize
+
+    n_train, n_features = train_x.shape
+    mean = np.mean(train_x, axis=0)
+    std = np.std(train_x, axis=0)
+    std = np.where(std < 1e-12, 1.0, std)
+
+    x_train_std = (train_x - mean) / std
+    x_test_std = (test_x - mean) / std
+
+    x_train_aug = np.column_stack([x_train_std, np.ones(n_train)])
+    x_test_aug = np.column_stack([x_test_std, np.ones(len(test_x))])
+
+    def obj_func(w):
+        z = np.clip(x_train_aug @ w, -30.0, 30.0)
+        p = 1.0 / (1.0 + np.exp(-z))
+        eps = 1e-15
+        p = np.clip(p, eps, 1.0 - eps)
+        loss = -np.mean(train_y * np.log(p) + (1.0 - train_y) * np.log(1.0 - p)) + 0.5 * 1e-4 * np.sum(w[:-1] ** 2)
+        grad = (x_train_aug.T @ (p - train_y)) / n_train
+        grad[:-1] += 1e-4 * w[:-1]
+        return loss, grad
+
+    w0 = np.zeros(n_features + 1, dtype=np.float64)
+    res = scipy.optimize.minimize(obj_func, w0, jac=True, method="L-BFGS-B", options={"maxiter": max_iter})
+
+    z_test = np.clip(x_test_aug @ res.x, -30.0, 30.0)
+    prob_test = 1.0 / (1.0 + np.exp(-z_test))
+    pred_test = (prob_test >= 0.5).astype(int)
+    return pred_test, prob_test
+
+
+def _accuracy_score_fallback(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    return float(np.mean(y_true == y_pred)) if len(y_true) > 0 else 0.0
+
+
+def _roc_auc_score_fallback(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    pos = y_prob[y_true == 1]
+    neg = y_prob[y_true == 0]
+    if len(pos) == 0 or len(neg) == 0:
+        return 0.5
+    diff = pos[:, None] - neg[None, :]
+    return float((np.sum(diff > 0) + 0.5 * np.sum(diff == 0)) / (len(pos) * len(neg)))
+
+
+def _f1_score_fallback(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    classes = np.unique(np.concatenate([y_true, y_pred]))
+    if len(classes) == 0:
+        return 0.0
+    f1_weighted = 0.0
+    total = len(y_true)
+    for c in classes:
+        tp = np.sum((y_pred == c) & (y_true == c))
+        fp = np.sum((y_pred == c) & (y_true != c))
+        fn = np.sum((y_pred != c) & (y_true == c))
+        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1_c = (2 * prec * rec) / (prec + rec) if (prec + rec) > 0 else 0.0
+        f1_weighted += f1_c * (np.sum(y_true == c) / total)
+    return float(f1_weighted)
+
+
+def _stratified_kfold_fallback(labels: np.ndarray, n_splits: int, seed: Optional[int] = 42):
+    rng = np.random.default_rng(seed)
+    unique_classes = np.unique(labels)
+    class_splits = {}
+    for c in unique_classes:
+        idx = np.where(labels == c)[0]
+        rng.shuffle(idx)
+        class_splits[c] = np.array_split(idx, n_splits)
+
+    folds = []
+    for k in range(n_splits):
+        val_idx = np.concatenate([class_splits[c][k] for c in unique_classes])
+        train_idx = np.setdiff1d(np.arange(len(labels)), val_idx)
+        folds.append((train_idx, val_idx))
+    return folds
+
+
 class FusionValidator:
     """Validates cross-modal fusion embeddings against structure-sensitive null controls.
 
@@ -809,9 +896,6 @@ class FusionValidator:
         Returns:
             dict with accuracy, AUC, F1, status, and metadata
         """
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-
         if (not np.all(np.isfinite(train_embeddings)) or not np.all(np.isfinite(train_labels)) or
                 not np.all(np.isfinite(test_embeddings)) or not np.all(np.isfinite(test_labels))):
             return {
@@ -822,23 +906,42 @@ class FusionValidator:
                 "error": "Non-finite values in generalization dataset",
             }
 
-        clf = LogisticRegression(max_iter=1000, random_state=seed)
-        clf.fit(train_embeddings, train_labels)
+        try:
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+            has_sklearn = True
+        except ImportError:
+            has_sklearn = False
 
-        test_pred = clf.predict(test_embeddings)
+        if has_sklearn:
+            clf = LogisticRegression(max_iter=1000, random_state=seed)
+            clf.fit(train_embeddings, train_labels)
 
-        unique_test_classes = np.unique(test_labels)
-        if len(unique_test_classes) > 1 and hasattr(clf, "predict_proba"):
-            try:
-                test_pred_proba = clf.predict_proba(test_embeddings)[:, 1]
-                auc = float(roc_auc_score(test_labels, test_pred_proba))
-            except Exception:
+            test_pred = clf.predict(test_embeddings)
+
+            unique_test_classes = np.unique(test_labels)
+            if len(unique_test_classes) > 1 and hasattr(clf, "predict_proba"):
+                try:
+                    test_pred_proba = clf.predict_proba(test_embeddings)[:, 1]
+                    auc = float(roc_auc_score(test_labels, test_pred_proba))
+                except Exception:
+                    auc = 0.5
+            else:
                 auc = 0.5
-        else:
-            auc = 0.5
 
-        acc = float(accuracy_score(test_labels, test_pred))
-        f1 = float(f1_score(test_labels, test_pred, average="weighted", zero_division=0))
+            acc = float(accuracy_score(test_labels, test_pred))
+            f1 = float(f1_score(test_labels, test_pred, average="weighted", zero_division=0))
+        else:
+            test_pred, test_pred_proba = _fit_predict_logistic_fallback(
+                train_embeddings, train_labels, test_embeddings, max_iter=1000, seed=seed
+            )
+            unique_test_classes = np.unique(test_labels)
+            if len(unique_test_classes) > 1:
+                auc = _roc_auc_score_fallback(test_labels, test_pred_proba)
+            else:
+                auc = 0.5
+            acc = _accuracy_score_fallback(test_labels, test_pred)
+            f1 = _f1_score_fallback(test_labels, test_pred)
 
         return {
             "accuracy": _sanitize_float(acc),
@@ -856,10 +959,6 @@ class FusionValidator:
 
         Returns mean and fold-level generalization metrics.
         """
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-        from sklearn.model_selection import StratifiedKFold
-
         if not np.all(np.isfinite(embeddings)) or not np.all(np.isfinite(labels)):
             return {
                 "accuracy_mean": 0.0,
@@ -879,27 +978,51 @@ class FusionValidator:
                 "error": "Insufficient samples or classes for stratified k-fold",
             }
 
-        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+        try:
+            from sklearn.linear_model import LogisticRegression
+            from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+            from sklearn.model_selection import StratifiedKFold
+            has_sklearn = True
+        except ImportError:
+            has_sklearn = False
+
         fold_metrics: List[Dict[str, float]] = []
 
-        for train_idx, val_idx in skf.split(embeddings, labels):
-            x_train, x_val = embeddings[train_idx], embeddings[val_idx]
-            y_train, y_val = labels[train_idx], labels[val_idx]
+        if has_sklearn:
+            skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
-            clf = LogisticRegression(max_iter=1000, random_state=seed)
-            clf.fit(x_train, y_train)
+            for train_idx, val_idx in skf.split(embeddings, labels):
+                x_train, x_val = embeddings[train_idx], embeddings[val_idx]
+                y_train, y_val = labels[train_idx], labels[val_idx]
 
-            preds = clf.predict(x_val)
-            acc = float(accuracy_score(y_val, preds))
-            f1 = float(f1_score(y_val, preds, average="weighted", zero_division=0))
+                clf = LogisticRegression(max_iter=1000, random_state=seed)
+                clf.fit(x_train, y_train)
 
-            try:
-                probs = clf.predict_proba(x_val)[:, 1]
-                auc = float(roc_auc_score(y_val, probs))
-            except Exception:
-                auc = 0.5
+                preds = clf.predict(x_val)
+                acc = float(accuracy_score(y_val, preds))
+                f1 = float(f1_score(y_val, preds, average="weighted", zero_division=0))
 
-            fold_metrics.append({"accuracy": acc, "auc": auc, "f1": f1})
+                try:
+                    probs = clf.predict_proba(x_val)[:, 1]
+                    auc = float(roc_auc_score(y_val, probs))
+                except Exception:
+                    auc = 0.5
+
+                fold_metrics.append({"accuracy": acc, "auc": auc, "f1": f1})
+        else:
+            splits = _stratified_kfold_fallback(labels, n_splits=n_splits, seed=seed)
+            for train_idx, val_idx in splits:
+                x_train, x_val = embeddings[train_idx], embeddings[val_idx]
+                y_train, y_val = labels[train_idx], labels[val_idx]
+
+                preds, probs = _fit_predict_logistic_fallback(
+                    x_train, y_train, x_val, max_iter=1000, seed=seed
+                )
+                acc = _accuracy_score_fallback(y_val, preds)
+                f1 = _f1_score_fallback(y_val, preds)
+                auc = _roc_auc_score_fallback(y_val, probs) if len(np.unique(y_val)) > 1 else 0.5
+
+                fold_metrics.append({"accuracy": acc, "auc": auc, "f1": f1})
 
         acc_mean = float(np.mean([f["accuracy"] for f in fold_metrics]))
         auc_mean = float(np.mean([f["auc"] for f in fold_metrics]))

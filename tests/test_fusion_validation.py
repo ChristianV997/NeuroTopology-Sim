@@ -205,6 +205,42 @@ class TestHeldOutGeneralization:
         assert "f1_mean" in res
         assert len(res["folds"]) == 5
 
+    def test_generalization_fallback_without_sklearn(self, sample_embeddings: np.ndarray,
+                                                    condition_labels: np.ndarray, tmp_path: Path):
+        """Regression test: verify fallback solver functions directly."""
+        from dual_engine.fusion_validation import (
+            _fit_predict_logistic_fallback,
+            _accuracy_score_fallback,
+            _roc_auc_score_fallback,
+            _f1_score_fallback,
+            _stratified_kfold_fallback,
+        )
+
+        train_emb = sample_embeddings[:60]
+        train_lbl = condition_labels[:60]
+        test_emb = sample_embeddings[60:]
+        test_lbl = condition_labels[60:]
+
+        pred, prob = _fit_predict_logistic_fallback(train_emb, train_lbl, test_emb, seed=42)
+        assert len(pred) == len(test_lbl)
+        assert len(prob) == len(test_lbl)
+        assert np.all((prob >= 0.0) & (prob <= 1.0))
+
+        acc = _accuracy_score_fallback(test_lbl, pred)
+        assert 0.0 <= acc <= 1.0
+
+        auc = _roc_auc_score_fallback(test_lbl, prob)
+        assert 0.0 <= auc <= 1.0
+
+        f1 = _f1_score_fallback(test_lbl, pred)
+        assert 0.0 <= f1 <= 1.0
+
+        splits = _stratified_kfold_fallback(condition_labels, n_splits=5, seed=42)
+        assert len(splits) == 5
+        for train_idx, val_idx in splits:
+            assert len(train_idx) + len(val_idx) == len(condition_labels)
+            assert len(np.intersect1d(train_idx, val_idx)) == 0
+
 
 class TestSerializationAndGovernance:
     """Verify serialization to finite JSON and governance outputs."""
