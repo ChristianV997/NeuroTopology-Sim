@@ -66,100 +66,90 @@ def _git(*args: str) -> str:
     return completed.stdout.strip()
 
 
-def _local_main_sha(test: unittest.TestCase) -> str:
-    """Prefer origin/main, then main. Skip when neither ref resolves."""
+def _git_cwd(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(_REPO_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
-    for ref in ("origin/main", "main"):
-        completed = subprocess.run(
-            ["git", "rev-parse", "--verify", ref],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        sha = completed.stdout.strip()
-        if completed.returncode == 0 and len(sha) == 40:
-            return sha
-    test.skipTest("neither origin/main nor main resolves; ancestry fixtures skipped")
+
+def _local_main_sha(test: unittest.TestCase) -> str:
+    """Prefer origin/main, then main.
+
+    ``skipTest`` only when the git binary is missing. An unresolvable ref
+    or any other git error fails the test.
+    """
+
+    errors: list[str] = []
+    try:
+        for ref in ("origin/main", "main"):
+            completed = _git_cwd("rev-parse", "--verify", ref)
+            sha = completed.stdout.strip()
+            if completed.returncode == 0 and len(sha) == 40:
+                return sha
+            detail = (completed.stderr or completed.stdout).strip() or "unresolved"
+            errors.append(f"{ref}: {detail}")
+    except FileNotFoundError:
+        test.skipTest("git binary not available")
+    test.fail(
+        "unresolvable origin/main and main; a local main ref is required. "
+        + "; ".join(errors)
+    )
     return ""
 
 
-def _git_cwd(*args: str) -> subprocess.CompletedProcess[str] | None:
-    try:
-        return subprocess.run(
-            ["git", *args],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError:
-        return None
-
-
-def _shallow_or_unavailable() -> str | None:
-    """A message when this checkout cannot answer ancestry, else None."""
-
-    probe = _git_cwd("rev-parse", "--is-shallow-repository")
-    if probe is None:
-        return "git is not available"
-    if probe.returncode != 0:
-        detail = (probe.stderr or probe.stdout).strip() or "git rev-parse failed"
-        if "not a git repository" in detail.lower():
-            return detail
-        return None
-    if probe.stdout.strip() == "true":
-        return "this clone is shallow"
-    return None
-
-
 def _require_audited_main_ancestor(test: unittest.TestCase) -> str:
-    """Return local main after checking ``AUDITED_MAIN_SHA`` is its ancestor.
+    """Return local main when ``AUDITED_MAIN_SHA`` is an ancestor of it.
 
-    Skip only when git history is unavailable. A resolved non-shallow
-    checkout that does not contain that commit fails.
+    ``skipTest`` only when the git binary is missing. A shallow clone, a
+    non-repository, an unresolvable main ref, a missing object, a
+    non-ancestor, or any other git error fails the test.
     """
 
+    try:
+        shallow = _git_cwd("rev-parse", "--is-shallow-repository")
+    except FileNotFoundError:
+        test.skipTest("git binary not available")
+    if shallow.returncode != 0:
+        detail = (shallow.stderr or shallow.stdout).strip() or "git rev-parse failed"
+        test.fail(
+            "git error: ancestry of AUDITED_MAIN_SHA cannot be verified "
+            f"({detail})"
+        )
+    if shallow.stdout.strip() == "true":
+        test.fail(
+            "shallow clone: ancestry of AUDITED_MAIN_SHA cannot be verified; "
+            "fetch full history"
+        )
     main_sha = ""
+    ref_errors: list[str] = []
     for ref in ("origin/main", "main"):
         completed = _git_cwd("rev-parse", "--verify", ref)
-        if completed is None:
-            test.skipTest(
-                "git is not available; cannot check that AUDITED_MAIN_SHA is an ancestor of main"
-            )
         sha = completed.stdout.strip()
         if completed.returncode == 0 and len(sha) == 40:
             main_sha = sha
             break
-    unavailable = _shallow_or_unavailable()
+        detail = (completed.stderr or completed.stdout).strip() or "unresolved"
+        ref_errors.append(f"{ref}: {detail}")
     if not main_sha:
-        if unavailable:
-            test.skipTest(
-                f"{unavailable}; cannot resolve main to check AUDITED_MAIN_SHA ancestry"
-            )
         test.fail(
-            "main ref did not resolve in a non-shallow git checkout; "
-            f"AUDITED_MAIN_SHA {AUDITED_MAIN_SHA} ancestry was not checked"
+            "unresolvable origin/main and main: ancestry of AUDITED_MAIN_SHA "
+            "cannot be verified. " + "; ".join(ref_errors)
         )
     present = _git_cwd("cat-file", "-e", AUDITED_MAIN_SHA)
-    if present is None or present.returncode != 0:
-        if unavailable:
-            test.skipTest(
-                f"{unavailable}; AUDITED_MAIN_SHA {AUDITED_MAIN_SHA} is not present locally"
-            )
+    if present.returncode != 0:
+        detail = (present.stderr or present.stdout).strip()
         test.fail(
-            f"AUDITED_MAIN_SHA {AUDITED_MAIN_SHA} is not present in this non-shallow clone"
+            f"missing AUDITED_MAIN_SHA object {AUDITED_MAIN_SHA}; "
+            "ancestry cannot be verified; fetch full history"
+            + (f" ({detail})" if detail else "")
         )
     ancestor = _git_cwd("merge-base", "--is-ancestor", AUDITED_MAIN_SHA, main_sha)
-    if ancestor is None or ancestor.returncode != 0:
-        if unavailable:
-            test.skipTest(
-                f"{unavailable}; cannot confirm AUDITED_MAIN_SHA {AUDITED_MAIN_SHA} "
-                f"is an ancestor of main {main_sha}"
-            )
-        detail = ""
-        if ancestor is not None:
-            detail = (ancestor.stderr or ancestor.stdout).strip()
+    if ancestor.returncode != 0:
+        detail = (ancestor.stderr or ancestor.stdout).strip()
         test.fail(
             f"AUDITED_MAIN_SHA {AUDITED_MAIN_SHA} is not an ancestor of main {main_sha}"
             + (f" ({detail})" if detail else "")
