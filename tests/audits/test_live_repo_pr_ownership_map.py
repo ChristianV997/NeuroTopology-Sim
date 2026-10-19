@@ -444,6 +444,34 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
         self.assertIn("junit_error", execution)
 
+    def test_missing_bounded_runner_dependency_is_explicit_and_not_a_skip_or_pass(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            for relative in (pair["implementation"], pair["test"]):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# fixture\n", encoding="utf-8")
+
+            def missing_timeout_plugin(command, **kwargs):
+                kwargs["stderr"].write(b"RuntimeError: pytest-timeout is required for bounded isolated execution\n")
+                return SimpleNamespace(returncode=1)
+
+            report_path = root / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={pair["implementation"]}), patch.object(
+                helper.subprocess, "run", side_effect=missing_timeout_plugin
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = _load(report_path)
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "runner_dependency_unavailable")
+        self.assertEqual(execution["result_counts"]["collected"], 0)
+        self.assertFalse(execution["isolated_runner_telemetry_valid"])
+        self.assertIn("pytest-timeout is required", execution["runner_stderr_tail"])
+
     def test_relevant_change_with_empty_component_selection_fails_closed(self):
         helper = _helper()
         with TemporaryDirectory() as td:

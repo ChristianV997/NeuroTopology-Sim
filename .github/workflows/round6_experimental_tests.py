@@ -732,6 +732,16 @@ def _strict_json_loads(raw: str) -> Any:
     return json.loads(raw, parse_constant=reject_constant)
 
 
+def _tail_text(path: Path, max_bytes: int = 4096) -> str:
+    if not path.is_file():
+        return ""
+    with path.open("rb") as stream:
+        stream.seek(0, 2)
+        size = stream.tell()
+        stream.seek(max(0, size - max_bytes))
+        return stream.read(max_bytes).decode("utf-8", errors="replace")
+
+
 def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple[bool, str | None, list[dict[str, Any]]]:
     """Require one completed, successful singleton batch for the requested test."""
     if not isinstance(batch_report, dict):
@@ -911,6 +921,8 @@ def run(
                 logs = report_path.parent / "round6-experimental-logs" / f"{index:02d}-{name}-{test_index:02d}"
                 logs.mkdir(parents=True, exist_ok=True)
                 junit = logs / "junit.xml"
+                stdout_log = logs / "runner.stdout.log"
+                stderr_log = logs / "runner.stderr.log"
                 telemetry = temp / f"{index:02d}-{name}-{test_index:02d}.json"
                 cmd = [
                     sys.executable,
@@ -930,6 +942,8 @@ def run(
                     "test_file": test_file,
                     "tested_commit_sha": tested_commit_sha,
                     "artifact_path": logs.relative_to(root).as_posix(),
+                    "stdout_log_path": stdout_log.relative_to(root).as_posix(),
+                    "stderr_log_path": stderr_log.relative_to(root).as_posix(),
                     "command": cmd,
                     "timeout": False,
                     "skipped": None,
@@ -937,7 +951,11 @@ def run(
                     "errors": None,
                 }
                 try:
-                    completed = subprocess.run(cmd, cwd=root, timeout=130, check=False)
+                    with stdout_log.open("wb") as stdout_stream, stderr_log.open("wb") as stderr_stream:
+                        completed = subprocess.run(
+                            cmd, cwd=root, timeout=130, check=False,
+                            stdout=stdout_stream, stderr=stderr_stream,
+                        )
                 except subprocess.TimeoutExpired:
                     execution.update({"status": "TIMEOUT", "timeout": True, "failure_classification": "timeout"})
                     execution["result_counts"] = {
@@ -987,6 +1005,9 @@ def run(
                     }, sort_keys=True, allow_nan=False))
                     continue
                 execution["runner_exit_code"] = completed.returncode
+                runner_stderr_tail = _tail_text(stderr_log)
+                if runner_stderr_tail:
+                    execution["runner_stderr_tail"] = runner_stderr_tail[-2000:]
                 telemetry_ok = False
                 telemetry_error = None
                 if telemetry.is_file():
@@ -1044,6 +1065,7 @@ def run(
                     execution["status"] = "FAIL"
                     execution["failure_classification"] = (
                         "timeout" if execution["timeout"]
+                        else "runner_dependency_unavailable" if "pytest-timeout is required" in runner_stderr_tail
                         else "test_or_collection_failure" if counts[2] or counts[3]
                         else "candidate_tests_skipped" if counts[1]
                         else "nonzero_runner_or_test_exit" if completed.returncode
