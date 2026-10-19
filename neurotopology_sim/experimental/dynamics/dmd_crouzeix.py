@@ -78,10 +78,13 @@ function ``f`` holomorphic on a neighborhood of the numerical range ``W(A)``,
     ||f(A)|| ≤ C  max_{z ∈ W(A)} |f(z)| .
 
 The peer-reviewed constant ``C = 1 + √2`` (Crouzeix–Palencia, 2017) is the
-proven fallback used here. A ``C = 2`` claim from the 2026 preprint
-``arXiv:2608.03841v2`` is exposed only as a labeled ``PREPRINT_UNVERIFIED``
-option and is **not** a settled peer-reviewed result in this module.
-Neither constant is a biological or clinical safety certificate.
+proven fallback used here. Lorist & Schwenninger, ``arXiv:2608.03841v2``
+(2026), is a preprint that claims a proof of Crouzeix’s conjecture
+(``C = 2``). That version is verified as the cited preprint artifact, but
+it remains unrefereed; this module exposes ``C = 2`` only under the label
+``PREPRINT_UNVERIFIED`` and does **not** adopt it as a settled peer-reviewed
+production constant. Neither constant is a biological or clinical safety
+certificate.
 
 Hermitian dissipation sign is read from the supplied generator under
 ``ẋ = L x``: the Hermitian part ``(L + L†)/2`` is dissipative when its
@@ -96,8 +99,8 @@ References
   applications. *J. Comput. Dyn.*
 * Crouzeix, M. & Palencia, C. (2017). The numerical range is a
   (1+√2)-spectral set. *SIAM J. Matrix Anal. Appl.*
-* arXiv:2608.03841v2 (2026) — preprint ``C=2`` claim only; not peer-reviewed
-  settled here.
+* Lorist, E. & Schwenninger, F. L. arXiv:2608.03841v2 (2026) — preprint
+  claiming a proof of ``C=2``; unrefereed; not adopted as settled here.
 * SciPy ``scipy.linalg.logm`` (Schur–Parlett algorithm).
 """
 
@@ -163,6 +166,8 @@ class DMDDiagnostics:
     dt: float
     n_pairs: int
     n_state: int
+    sample_rate_hz: Optional[float] = None
+    frequency_units: str = "Hz"
     warnings: Tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
@@ -506,6 +511,16 @@ def estimate_exact_dmd(
         raise DMDValidationError("dt must be a finite positive float (seconds)")
     if not np.isfinite(rcond) or rcond <= 0.0:
         raise DMDValidationError("rcond must be a finite positive float")
+    if sample_rate_hz is not None:
+        if not np.isfinite(sample_rate_hz) or sample_rate_hz <= 0.0:
+            raise DMDValidationError("sample_rate_hz must be finite and positive when provided")
+        implied_fs = 1.0 / float(dt)
+        # Fail closed on inconsistent sampling metadata (would mislabel Nyquist aliases).
+        if abs(float(sample_rate_hz) - implied_fs) > 1e-9 * max(implied_fs, 1.0):
+            raise DMDValidationError(
+                f"sample_rate_hz={sample_rate_hz} inconsistent with dt={dt} "
+                f"(implied fs=1/dt={implied_fs})"
+            )
 
     X, Y, meta = build_snapshot_matrices(trajectories)
     if X.shape[1] < 1:
@@ -535,6 +550,7 @@ def estimate_exact_dmd(
         raise DMDValidationError("estimated A contains non-finite values")
     residual = float(np.linalg.norm(Y - A @ X, ord="fro"))
 
+    fs_report = float(sample_rate_hz) if sample_rate_hz is not None else (1.0 / float(dt))
     diag = DMDDiagnostics(
         rank=r,
         singular_values=tuple(float(v) for v in s),
@@ -543,14 +559,15 @@ def estimate_exact_dmd(
         dt=float(dt),
         n_pairs=meta.n_pairs,
         n_state=meta.n_state,
+        sample_rate_hz=fs_report,
+        frequency_units="Hz",
         warnings=tuple(warnings),
     )
 
     generator = None
     gen_diag = None
     if estimate_generator:
-        fs = sample_rate_hz if sample_rate_hz is not None else (1.0 / dt)
-        generator, gen_diag = _generator_from_A(A, dt, sample_rate_hz=fs)
+        generator, gen_diag = _generator_from_A(A, dt, sample_rate_hz=fs_report)
 
     return DMDResult(
         A=A,
@@ -568,6 +585,9 @@ def ep2_hamiltonian(
     g: float,
 ) -> np.ndarray:
     """Return the exact 2×2 non-Hermitian EP model matrix."""
+    vals = (omega, delta, gamma, g)
+    if not all(np.isfinite(v) for v in vals):
+        raise DMDValidationError("ep2_hamiltonian parameters must be finite")
     return np.array(
         [
             [complex(omega + delta, -gamma), complex(0.0, -g)],
@@ -624,10 +644,15 @@ def diagnose_ep2(
         "operator-entry / nilpotency prioritized over eigenvector conditioning",
         "numerical eig gap may be nonzero under floating-point even at analytic EP",
         "synthetic fixture only; not a biological exceptional-point claim",
+        "large eigenvector condition number alone is not evidence of an EP",
     ]
     if theoretical and gap > tol:
         notes.append(
             f"theoretical coalescence with numerically split eigenvalues (gap={gap:.3e})"
+        )
+    if theoretical and n_norm <= tol:
+        notes.append(
+            "repeated eigenvalue with N≈0 (diagonalizable degeneracy); not a defective EP2"
         )
     if operator_ok:
         notes.append("nonzero nilpotent N with N^2≈0 verified")
@@ -657,6 +682,8 @@ def alias_ambiguity_report(
     fs_hz: float = 250.0,
 ) -> AliasAmbiguityReport:
     """Report the discriminating 240 Hz ↔ −10 Hz alias at fs = 250 Hz."""
+    if not np.isfinite(f_hz):
+        raise DMDValidationError("f_hz must be finite")
     if not np.isfinite(fs_hz) or fs_hz <= 0.0:
         raise DMDValidationError("fs_hz must be finite and positive")
     dt = 1.0 / float(fs_hz)
@@ -723,10 +750,11 @@ def crouzeix_bound_report(
     role :
         ``\"discrete_operator\"`` or ``\"generator\"`` (affects dissipation note).
     use_preprint_c2 :
-        If True, label ``C=2`` from preprint ``arXiv:2608.03841v2`` as
+        If True, label ``C=2`` from preprint ``arXiv:2608.03841v2``
+        (Lorist & Schwenninger; claims a proof of Crouzeix’s conjecture) as
         ``PREPRINT_UNVERIFIED`` instead of using the peer-reviewed
-        ``C=1+√2`` fallback. That preprint claim is **not** treated as a
-        settled peer-reviewed result in this module.
+        ``C=1+√2`` fallback. The preprint version is cited exactly, but it is
+        **not** treated as a settled peer-reviewed production constant here.
     """
     A = np.asarray(matrix, dtype=np.complex128)
     if A.ndim != 2 or A.shape[0] != A.shape[1]:
@@ -749,8 +777,10 @@ def crouzeix_bound_report(
         constant = 2.0
         label = CROUZEIX_PREPRINT_C2_LABEL
         refs = (
-            f"C=2 preprint claim only ({CROUZEIX_PREPRINT_C2_ARXIV}); "
-            "not a settled peer-reviewed result in this module",
+            f"C=2 from preprint {CROUZEIX_PREPRINT_C2_ARXIV} "
+            "(Lorist & Schwenninger; claims a proof of Crouzeix's conjecture); "
+            "PREPRINT_UNVERIFIED / unrefereed; not a settled peer-reviewed "
+            "production constant in this module",
             "Peer-reviewed fallback remains Crouzeix–Palencia 2017 C=1+sqrt(2)",
         )
     else:

@@ -154,3 +154,20 @@ def test_validation_rejects_bad_dt_and_nonfinite():
     bad[0, 0] = np.nan
     with pytest.raises(DMDValidationError):
         estimate_exact_dmd(bad, dt=0.01)
+
+
+def test_sample_rate_hz_must_match_dt():
+    traj = np.array([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]], dtype=float)
+    with pytest.raises(DMDValidationError, match="inconsistent"):
+        estimate_exact_dmd(traj, dt=0.01, sample_rate_hz=1.0)
+    ok = estimate_exact_dmd(traj, dt=0.01, sample_rate_hz=100.0)
+    assert ok.diagnostics.sample_rate_hz == pytest.approx(100.0)
+    assert ok.diagnostics.frequency_units == "Hz"
+
+
+def test_diagonalizable_repeated_eigenvalue_not_defective_ep():
+    H = np.eye(2, dtype=complex) * 3.0
+    rep = diagnose_ep2(H)
+    assert rep.theoretical_coalesced
+    assert not rep.operator_entry_ok
+    assert any("diagonalizable degeneracy" in n for n in rep.notes)
