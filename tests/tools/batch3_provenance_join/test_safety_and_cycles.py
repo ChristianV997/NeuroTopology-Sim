@@ -227,11 +227,10 @@ def test_unknown_record_schema_cannot_satisfy_a_typed_reference(tmp_path: Path) 
     )
 
 
-def test_local_root_exclusion_uses_case_resolved_path_on_case_insensitive_filesystem(tmp_path: Path) -> None:
+def test_local_root_exclusion_uses_filesystem_resolved_path(tmp_path: Path) -> None:
     paths = valid_fixture(tmp_path)
     actual_source_root = tmp_path / "source_data"
-    if not (tmp_path / "SOURCE_DATA").is_dir():
-        pytest.skip("case-sensitive filesystem; case-aliased local_root cannot be exercised")
+    case_alias_resolves = (tmp_path / "SOURCE_DATA").is_dir()
     (actual_source_root / "local-input.fixture").write_bytes(b"synthetic local input\n")
 
     source_manifest = json.loads(paths[2].read_text(encoding="utf-8"))
@@ -243,11 +242,16 @@ def test_local_root_exclusion_uses_case_resolved_path_on_case_insensitive_filesy
         [paths[0], paths[1], source_manifest_path, paths[3], paths[4]],
     )
 
-    assert not any(path.lower().endswith("local-input.fixture") for path in report["orphan_artifacts"])
-    assert not any(
-        item["code"] == "orphan_artifact" and "local-input.fixture" in item["subject"]
-        for item in report["findings"]
-    )
+    if case_alias_resolves:
+        assert not any(path.lower().endswith("local-input.fixture") for path in report["orphan_artifacts"])
+        assert not any(
+            item["code"] == "orphan_artifact" and "local-input.fixture" in item["subject"]
+            for item in report["findings"]
+        )
+    else:
+        # On a case-sensitive filesystem the wrong-case declaration must not
+        # be treated as an alias for the real directory.
+        assert any(item["code"] == "missing_source_root" for item in report["findings"])
 
 
 def test_ledger_cross_cycle_parent_reference_resolves_only_with_declared_ancestor(tmp_path: Path) -> None:
