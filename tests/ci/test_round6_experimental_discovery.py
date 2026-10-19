@@ -270,11 +270,15 @@ class Round6DiscoveryTests(unittest.TestCase):
                 junit_bytes = helper._read_pinned_output_bytes(
                     junit_fd, "JUnit report path", max_bytes=1024
                 )
+                self.assertEqual(
+                    outside_telemetry.read_text(encoding="utf-8"), "preserve telemetry\n"
+                )
+                self.assertEqual(
+                    outside_junit.read_text(encoding="utf-8"), "preserve junit\n"
+                )
             finally:
                 os.close(telemetry_fd)
                 os.close(junit_fd)
-        self.assertEqual(outside_telemetry.read_text(encoding="utf-8"), "preserve telemetry\n")
-        self.assertEqual(outside_junit.read_text(encoding="utf-8"), "preserve junit\n")
         self.assertEqual(telemetry_bytes, b'{"completed":true}')
         self.assertEqual(junit_bytes, b"<testsuite/>")
 
