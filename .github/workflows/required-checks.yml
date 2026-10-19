@@ -80,6 +80,7 @@ jobs:
           python .github/workflows/round6_experimental_tests.py
           --base "$BASE_SHA"
           --head "$HEAD_SHA"
+          --always-component surrogate_nulls
           --report outputs/round6_experimental_ci_report.json
 
       - name: Smoke-test synthetic mode
@@ -110,6 +111,7 @@ jobs:
           path: |
             outputs/required_core_test_report.json
             outputs/round6_experimental_ci_report.json
+            outputs/round6-experimental-logs/**
             test-results-core-failure.txt
           if-no-files-found: warn
 

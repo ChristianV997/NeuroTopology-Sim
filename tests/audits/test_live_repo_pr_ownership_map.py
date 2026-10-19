@@ -35,6 +35,31 @@ def _helper():
     return module
 
 
+def _write_valid_runner_telemetry(command):
+    report_path = Path(command[command.index("--report") + 1])
+    test_file = command[-1]
+    report_path.write_text(json.dumps({
+        "completed": True,
+        "exit_code": 0,
+        "summary": {
+            "total_files": 1,
+            "total_batches": 1,
+            "passed_batches": 1,
+            "skipped_batches": 0,
+            "failed_batches": 0,
+            "timeout_batches": 0,
+            "overall_exit_code": 0,
+        },
+        "batches": [{
+            "status": "passed",
+            "exit_code": 0,
+            "test_files": [test_file],
+            "timed_out": False,
+            "timeout_status": "completed",
+        }],
+    }), encoding="utf-8")
+
+
 class OwnershipSnapshotTests(unittest.TestCase):
     def test_snapshot_is_canonical_finite_json_and_schema_versioned(self):
         raw = AUDIT.read_text(encoding="utf-8")
@@ -184,7 +209,9 @@ class OwnershipSnapshotTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn("round6_experimental_tests.py", workflow)
         self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("--always-component surrogate_nulls", workflow)
         self.assertIn("outputs/round6_experimental_ci_report.json", workflow)
+        self.assertIn("outputs/round6-experimental-logs/**", workflow)
         helper = _helper()
         expected = {
             "planar_geometry", "hodge_2d", "spherical_csd", "four_sphere",
@@ -257,6 +284,17 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertIn(
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
             helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"],
+        )
+
+    def test_unmapped_candidate_scan_ignores_shared_unrelated_test_roots(self):
+        helper = _helper()
+        self.assertEqual(
+            helper._unmapped_candidate_paths({"tests/experimental/test_unrelated_suite.py"}),
+            [],
+        )
+        self.assertEqual(
+            helper._unmapped_candidate_paths({"tests/surrogate_nulls/test_unregistered.py"}),
+            ["tests/surrogate_nulls/test_unregistered.py"],
         )
         self.assertIn(
             {"implementation": "physics/eeg_forward/four_sphere.py", "test": "tests/physics/test_four_sphere_oracle.py"},
@@ -390,12 +428,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
             self.assertIn("runner_telemetry_error", report["components"][0]["executions"][0])
 
             def invalid_junit(command, **kwargs):
-                telemetry = Path(command[command.index("--report") + 1])
-                telemetry.write_text(json.dumps({
-                    "exit_code": 0,
-                    "batches": [{"status": "passed"}],
-                    "summary": {"skipped_batches": 0, "failed_batches": 0, "timeout_batches": 0},
-                }), encoding="utf-8")
+                _write_valid_runner_telemetry(command)
                 junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
                 Path(junit_arg.removeprefix("--pytest-arg=--junitxml=")).write_text("<testsuite", encoding="utf-8")
                 return SimpleNamespace(returncode=0)
@@ -497,12 +530,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
 
             def fake_runner(command, **kwargs):
                 calls.append(command)
-                report_path = Path(command[command.index("--report") + 1])
-                report_path.write_text(json.dumps({
-                    "exit_code": 0,
-                    "batches": [{"status": "passed"}],
-                    "summary": {"skipped_batches": 0, "failed_batches": 0, "timeout_batches": 0},
-                }), encoding="utf-8")
+                _write_valid_runner_telemetry(command)
                 junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
                 junit_path = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
                 junit_path.write_text(
@@ -515,7 +543,10 @@ class OwnershipSnapshotTests(unittest.TestCase):
 
             report_path = root / "report.json"
             with patch.object(helper, "collect_changed_paths", return_value={"tools/surrogate_nulls/nulls.py"}), patch.object(helper.subprocess, "run", side_effect=fake_runner):
-                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+                result = helper.run(
+                    root, "0" * 40, "1" * 40, report_path,
+                    always_components=["surrogate_nulls"],
+                )
 
             report = _load(report_path)
             self.assertEqual(result, 1)
@@ -532,6 +563,190 @@ class OwnershipSnapshotTests(unittest.TestCase):
             self.assertEqual(execution["status"], "FAIL")
             self.assertEqual(execution["failure_classification"], "candidate_tests_skipped")
             self.assertEqual(execution["test_cases"], [{"name": "", "status": "skipped"}])
+            self.assertEqual(execution["artifact_path"], "round6-experimental-logs/01-surrogate_nulls-01")
+
+    def test_always_component_is_not_applicable_only_when_its_inventory_is_absent(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            report_path = root / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={"docs/unrelated.md"}), patch.object(
+                helper.subprocess, "run", side_effect=AssertionError("absent optional lane must not execute")
+            ):
+                result = helper.run(
+                    root, "0" * 40, "1" * 40, report_path,
+                    always_components=["surrogate_nulls"],
+                )
+            report = _load(report_path)
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(report["not_applicable_components"], ["surrogate_nulls"])
+        self.assertEqual(report["components"][0]["status"], "NOT_APPLICABLE")
+        self.assertNotEqual(report["components"][0]["status"], "PASS")
+
+    def test_always_component_blocks_partial_inventory_and_requires_every_pair(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["surrogate_nulls"]
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            partial_source = root / spec["implementation_any"][0]
+            partial_source.parent.mkdir(parents=True)
+            partial_source.write_text("# present but incomplete\n", encoding="utf-8")
+            report_path = root / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={"docs/unrelated.md"}), patch.object(
+                helper.subprocess, "run", side_effect=AssertionError("incomplete inventory must not execute")
+            ):
+                result = helper.run(
+                    root, "0" * 40, "1" * 40, report_path,
+                    always_components=["surrogate_nulls"],
+                )
+            report = _load(report_path)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["components"][0]["require_all_pairs"], True)
+        self.assertTrue(report["components"][0]["missing_required_tests"])
+
+    def test_source_identity_binds_git_blob_and_direct_import_paths(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            module_paths = list(helper.COMPONENTS["surrogate_nulls"]["module_imports"].values())
+            for relative in ("tools/surrogate_nulls/__init__.py", *module_paths):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("VALUE = 1\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True, capture_output=True)
+            subprocess.run([
+                "git", "-C", str(root), "-c", "user.name=Fixture", "-c",
+                "user.email=fixture@example.invalid", "commit", "-qm", "fixture",
+            ], check=True, capture_output=True)
+            commit = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
+            result = helper.verify_candidate_source_identity(root, "surrogate_nulls", module_paths, commit)
+            self.assertEqual(result["status"], "PASS", result["errors"])
+            self.assertTrue(all(item["matches_tested_commit"] for item in result["implementation_files"]))
+            self.assertTrue(all(item["matches_expected_source"] for item in result["module_imports"]))
+            self.assertTrue(all(not Path(item["resolved_path"]).is_absolute() for item in result["module_imports"]))
+
+            (root / module_paths[0]).write_text("VALUE = 2\n", encoding="utf-8")
+            changed = helper.verify_candidate_source_identity(root, "surrogate_nulls", module_paths, commit)
+            self.assertEqual(changed["status"], "FAIL")
+            self.assertIn("working source does not match tested commit", changed["errors"][0])
+
+    def test_runner_telemetry_requires_exact_file_singleton_and_zero_skips_failures_and_timeouts(self):
+        helper = _helper()
+        expected = "tests/example/test_contract.py"
+        valid = {
+            "completed": True,
+            "exit_code": 0,
+            "summary": {
+                "total_files": 1, "total_batches": 1, "passed_batches": 1,
+                "skipped_batches": 0, "failed_batches": 0, "timeout_batches": 0,
+                "overall_exit_code": 0,
+            },
+            "batches": [{
+                "status": "passed", "exit_code": 0, "test_files": [expected],
+                "timed_out": False, "timeout_status": "completed",
+            }],
+        }
+        ok, error, _ = helper._isolated_runner_report_is_valid(valid, expected)
+        self.assertTrue(ok, error)
+        for mutation in (
+            {"completed": False},
+            {"exit_code": 1},
+            {"summary": {**valid["summary"], "skipped_batches": 1}},
+            {"summary": {**valid["summary"], "timeout_batches": 1}},
+            {"batches": [{**valid["batches"][0], "test_files": ["tests/other.py"]}]},
+            {"batches": [{**valid["batches"][0], "timed_out": True}]},
+        ):
+            candidate = {**valid, **mutation}
+            ok, error, _ = helper._isolated_runner_report_is_valid(candidate, expected)
+            self.assertFalse(ok, mutation)
+            self.assertTrue(error)
+        with self.assertRaises(ValueError):
+            helper._strict_json_loads('{"memory_mb":NaN}')
+
+    def test_actual_checkout_run_records_exact_sha_source_test_and_counts(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            subprocess.run([
+                "git", "-C", str(root), "-c", "user.name=Fixture", "-c",
+                "user.email=fixture@example.invalid", "commit", "--allow-empty", "-qm", "base",
+            ], check=True, capture_output=True)
+            base = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
+            pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+            for relative, content in (
+                (pair["implementation"], "VALUE = 1\n"),
+                (pair["test"], "# deterministic fixture test\n"),
+            ):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True, capture_output=True)
+            subprocess.run([
+                "git", "-C", str(root), "-c", "user.name=Fixture", "-c",
+                "user.email=fixture@example.invalid", "commit", "-qm", "candidate",
+            ], check=True, capture_output=True)
+            head = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
+            report_path = root / "report.json"
+            real_run = subprocess.run
+
+            def candidate_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return real_run(command, **kwargs)
+                _write_valid_runner_telemetry(command)
+                junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+                Path(junit_arg.removeprefix("--pytest-arg=--junitxml=")).write_text(
+                    '<testsuite tests="1"><testcase classname="fixture" name="passes"/></testsuite>',
+                    encoding="utf-8",
+                )
+                return SimpleNamespace(returncode=0)
+
+            with patch.object(helper.subprocess, "run", side_effect=candidate_runner):
+                result = helper.run(
+                    root, base, head, report_path,
+                    tested_commit_sha=head, require_checkout_match=True,
+                )
+            report = _load(report_path)
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["tested_commit_sha"], head)
+        self.assertEqual(execution["test_file"], pair["test"])
+        self.assertEqual(execution["implementation_paths"], [pair["implementation"]])
+        self.assertEqual(execution["result_counts"], {
+            "collected": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+        })
+        self.assertEqual(execution["artifact_path"], "round6-experimental-logs/01-simulation_grid_planner-01")
+
+    def test_stale_checkout_is_blocked_before_any_test_execution(self):
+        helper = _helper()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            report_path = root / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={"docs/unrelated.md"}), patch.object(
+                helper.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="1" * 40 + "\n")
+            ):
+                result = helper.run(
+                    root, "0" * 40, "2" * 40, report_path,
+                    tested_commit_sha="2" * 40, require_checkout_match=True,
+                )
+            report = _load(report_path)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn("does not match", report["selection_error"])
+        self.assertEqual(report["executed_commands"], [])
 
     def test_discovery_helper_has_no_dataset_or_network_client_imports(self):
         tree = ast.parse(HELPER.read_text(encoding="utf-8"))

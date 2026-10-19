@@ -441,7 +441,7 @@
       }
     ],
     "round6_candidate_discovery": {
-      "candidate_pair_count": 78,
+      "candidate_pair_count": 81,
       "component_count": 16,
       "components": [
         {
@@ -883,6 +883,18 @@
             {
               "implementation": "tools/surrogate_nulls/spectral.py",
               "test": "tests/surrogate_nulls/test_real_part_and_validity.py"
+            },
+            {
+              "implementation": "tools/surrogate_nulls/nulls.py",
+              "test": "tests/surrogate_nulls/test_adversarial_contracts.py"
+            },
+            {
+              "implementation": "tools/surrogate_nulls/spectral.py",
+              "test": "tests/surrogate_nulls/test_adversarial_contracts.py"
+            },
+            {
+              "implementation": "tools/surrogate_nulls/csd.py",
+              "test": "tests/surrogate_nulls/test_adversarial_contracts.py"
             }
           ],
           "name": "surrogate_nulls",
@@ -893,7 +905,8 @@
             "tests/surrogate_nulls/test_cholesky_csd.py",
             "tests/surrogate_nulls/test_edge_cases.py",
             "tests/surrogate_nulls/test_hardening_diagnostics.py",
-            "tests/surrogate_nulls/test_real_part_and_validity.py"
+            "tests/surrogate_nulls/test_real_part_and_validity.py",
+            "tests/surrogate_nulls/test_adversarial_contracts.py"
           ],
           "triggers": [
             "tools/surrogate_nulls/",
