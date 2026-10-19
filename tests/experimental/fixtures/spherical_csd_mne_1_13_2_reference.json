@@ -23,6 +23,7 @@
       "output_unit": "V/m^2"
     },
     "generator_method": "Identity matrix data X = I_N evaluated through MNE-Python 1.13.2 compute_current_source_density to recover the complete N\u00d7N linear operator",
+    "solver_convention": "Pinned MNE 1.13.2 column-sum convention TC = Gi.sum(axis=0) with condition-scaled relative Frobenius tolerance 0.25 * eps * cond(G_reg)",
     "generator_status": "HOLD / SYNTHETIC_ONLY",
     "is_source_localization": false
   },
