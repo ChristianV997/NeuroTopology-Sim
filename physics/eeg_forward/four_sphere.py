@@ -77,6 +77,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Sequence
 
 import numpy as np
@@ -343,10 +344,27 @@ def _checked_degree(degree: int, geometry: FourSphereGeometry) -> tuple[float, d
     return transfer, diag
 
 
+@lru_cache(maxsize=64)
+def _cached_transfer_table(geometry: FourSphereGeometry, max_degree: int) -> tuple[tuple[float, ...], dict[str, float]]:
+    """Per-degree transfer ratios and worst-case diagnostics for one geometry.
+
+    The table depends on the geometry and degree only, not on the source, moment, or sensors, so it is
+    cached per (geometry, max_degree). The cache stores immutable tuples. Callers get copies.
+    """
+    transfer: list[float] = []
+    worst = {key: 0.0 for key in (*_GATED_RESIDUALS, "shell_condition_number")}
+    for l in range(1, max_degree + 1):
+        T, diag = _checked_degree(l, geometry)
+        transfer.append(T)
+        for key in worst:
+            worst[key] = max(worst[key], diag[key])
+    return tuple(transfer), worst
+
+
 def transfer_ratios(geometry: FourSphereGeometry, max_degree: int) -> np.ndarray:
     """Dimensionless transfer ratios T_l for l = 1..max_degree (scale invariant)."""
     degree_max = _degree(max_degree)
-    return np.array([_checked_degree(l, geometry)[0] for l in range(1, degree_max + 1)])
+    return np.array(_cached_transfer_table(geometry, degree_max)[0])
 
 
 def _truncation_tail_estimate(envelopes: np.ndarray, potentials: np.ndarray) -> float:
@@ -406,18 +424,9 @@ def forward_potentials(
     q_dot_e = sensor_dirs @ moment
     q_t_dot_e = q_dot_e - q_r * mu
 
-    transfer = np.zeros(L)
-    diagnostics: dict[str, float] = {
-        "interface_potential_residual": 0.0,
-        "interface_current_residual": 0.0,
-        "scalp_zero_current_residual": 0.0,
-        "shell_condition_number": 0.0,
-    }
-    for l in range(1, L + 1):
-        T, diag = _checked_degree(l, geometry)
-        transfer[l - 1] = T
-        for key in diagnostics:
-            diagnostics[key] = max(diagnostics[key], diag[key])
+    transfer_table, worst = _cached_transfer_table(geometry, L)
+    transfer = np.array(transfer_table)
+    diagnostics: dict[str, float] = dict(worst)
     if diagnostics["interface_potential_residual"] > residual_tol or diagnostics["interface_current_residual"] > residual_tol \
             or diagnostics["scalp_zero_current_residual"] > residual_tol:
         raise FourSphereQualityError(f"boundary residuals exceed {residual_tol}: {diagnostics}")

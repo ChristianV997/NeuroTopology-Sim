@@ -363,6 +363,24 @@ def test_average_reference_gives_zero_mean_over_scalp():
     assert abs(np.sum(weights * values)) / _scale(values) < 1e-9
 
 
+def test_cached_transfer_table_is_not_corrupted_by_callers():
+    # The per-geometry table is cached. A caller that mutates the returned diagnostics or
+    # transfer ratios must not change what later calls see.
+    rng = np.random.default_rng(59)
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = _source_in_brain(rng)
+    moment = rng.normal(size=3) * 1e-8
+    sensors = _scalp_points(rng, 6)
+    first = forward_potentials(geometry, source, moment, sensors, max_degree=64)
+    before = dict(first.diagnostics)
+    first.diagnostics["interface_potential_residual"] = 123.0
+    first.transfer_ratios[:] = 0.0
+    second = forward_potentials(geometry, source, moment, sensors, max_degree=64)
+    assert second.diagnostics["interface_potential_residual"] == before["interface_potential_residual"]
+    assert np.all(second.transfer_ratios > 0.0)
+    np.testing.assert_array_equal(second.potentials_v, first.potentials_v)
+
+
 def test_repeated_calls_are_bitwise_identical():
     rng = np.random.default_rng(20)
     geometry = FourSphereGeometry(RADII, LAYERED)
