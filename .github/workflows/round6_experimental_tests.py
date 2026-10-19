@@ -5,10 +5,13 @@ file mappings so a test-only PR cannot pass by skipping an import that is not
 present on main. Every selected file runs in a fresh bounded pytest process.
 
 Artifact-path checks protect the helper from following redirected report and
-log paths; candidate tests still execute with the workflow job's OS permissions.
-This is not a security sandbox. POSIX CI uses descriptor-relative no-follow
-operations; the Windows local fallback rejects observed reparse points but
-cannot eliminate a concurrent check-then-open race.
+log paths. The isolated runner and pytest also receive temporary telemetry and
+JUnit outputs. On Linux, report writers use pinned descriptor paths so replacing
+the corresponding workspace pathname cannot redirect their write. Candidate
+tests still run with the workflow job's OS permissions and can mutate files
+they can access; this helper is not a security sandbox. The Windows local
+fallback rejects observed reparse points and checks file identity after the
+run, but cannot eliminate a concurrent check-then-open race.
 """
 
 from __future__ import annotations
@@ -178,7 +181,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "physics/eeg_forward/four_sphere.py", "test": "tests/physics/test_four_sphere_oracle.py"},
             {"implementation": "tools/experimental_audits/four_shell_bvp_oracle.py", "test": "tests/experimental_audits/test_four_shell_bvp_oracle.py"},
         ),
-        "implementation_roots": ("physics/eeg_forward/", "tools/experimental_audits/"),
+        "implementation_roots": ("physics/eeg_forward/", "tools/experimental_audits/four_shell_bvp_oracle.py"),
         "test_roots": ("tests/physics/eeg_forward/", "tests/physics/test_four_sphere_oracle.py", "tests/experimental_audits/"),
         "candidate_test_roots": ("tests/physics/eeg_forward/", "tests/physics/test_four_sphere_oracle.py"),
     },
@@ -549,6 +552,107 @@ COMPONENTS: dict[str, dict[str, Any]] = {
 }
 
 
+# Package initializers are executable import surfaces, not automatic exemptions.
+# These exact paths are mapped to the registered tests for their component.
+# A newly added initializer under a candidate root remains unmapped and blocks.
+PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
+    "planar_geometry": (
+        "neurotopology_sim/experimental/geometry/__init__.py",
+        "tests/experimental/__init__.py",
+        "tests/neurotopology_sim/__init__.py",
+        "tests/neurotopology_sim/experimental/__init__.py",
+        "tests/neurotopology_sim/experimental/geometry/__init__.py",
+    ),
+    "hodge_2d": (
+        "experimental/phase_cochain_reference/__init__.py",
+        "tests/experimental/phase_cochain_reference/__init__.py",
+        "tools/hodge_decomposition_audit/__init__.py",
+        "tests/tools/hodge_decomposition_audit/__init__.py",
+        "neurotopology_sim/experimental/topology/__init__.py",
+        "tests/neurotopology_sim/experimental/topology/__init__.py",
+    ),
+    "spherical_csd": (
+        "neurotopology_sim/experimental/preprocessing/__init__.py",
+        "tests/neurotopology_sim/experimental/preprocessing/__init__.py",
+        "tools/mne_csd_reference_audit/__init__.py",
+        "tests/mne_csd_reference_audit/__init__.py",
+    ),
+    "four_sphere": (
+        "physics/eeg_forward/__init__.py",
+        "tests/physics/eeg_forward/__init__.py",
+        "tests/experimental_audits/__init__.py",
+        "tools/experimental_audits/__init__.py",
+    ),
+    "phase_winding": (
+        "neurotopology_sim/__init__.py",
+        "neurotopology_sim/experimental/__init__.py",
+        "neurotopology_sim/experimental/topology/__init__.py",
+        "tests/neurotopology_sim/__init__.py",
+        "tests/neurotopology_sim/experimental/__init__.py",
+        "tests/neurotopology_sim/experimental/topology/__init__.py",
+    ),
+    "surrogate_nulls": (
+        "tools/surrogate_nulls/__init__.py",
+        "tests/surrogate_nulls/__init__.py",
+    ),
+    "phase_uncertainty": (
+        "tools/phase_uncertainty/__init__.py",
+        "tests/phase_uncertainty/__init__.py",
+    ),
+    "surrogate_audit": (
+        "tools/surrogate_audit/__init__.py",
+        "tests/surrogate_audit/__init__.py",
+    ),
+    "synthetic_roc": (
+        "neurotopology_sim/__init__.py",
+        "neurotopology_sim/experimental/__init__.py",
+        "neurotopology_sim/experimental/benchmarks/__init__.py",
+        "tests/neurotopology_sim/__init__.py",
+        "tests/neurotopology_sim/experimental/__init__.py",
+        "tests/neurotopology_sim/experimental/benchmarks/__init__.py",
+    ),
+    "report_firewall": (
+        "tools/batch3_report_firewall/__init__.py",
+        "tests/tools/batch3_report_firewall/__init__.py",
+    ),
+    "provenance_join": (
+        "tools/batch3_provenance_join/__init__.py",
+        "tests/tools/batch3_provenance_join/__init__.py",
+    ),
+    "topology_backend_conformance": (
+        "tools/topology_backend_conformance/__init__.py",
+        "tests/topology_backend_conformance/__init__.py",
+    ),
+    "finite_chain_audit": (
+        "tools/batch2_chain_complex_audit/__init__.py",
+        "tests/batch2_chain_complex_audit/__init__.py",
+    ),
+    "winding_charge_audit": (
+        "tools/experimental_audits/__init__.py",
+        "tests/experimental_audits/__init__.py",
+        "tools/experimental_audits/winding_charge_round6/__init__.py",
+    ),
+    "dmd_crouzeix": (
+        "neurotopology_sim/experimental/dynamics/__init__.py",
+        "tests/dmd_crouzeix_contract/__init__.py",
+        "tests/experimental/__init__.py",
+    ),
+    "bids_inventory_audit": (
+        "shared/bids_inventory_audit/__init__.py",
+        "tests/bids_inventory_audit/__init__.py",
+    ),
+}
+for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.items():
+    _component_spec = COMPONENTS[_component_name]
+    _initializer_tests = tuple(dict.fromkeys(
+        pair["test"] for pair in _component_spec.get("candidate_pairs", ())
+    ))
+    _component_spec["package_initializers"] = {
+        _initializer_path: _initializer_tests
+        for _initializer_path in _initializer_paths
+    }
+
+
 # These PR numbers identify implementation/test provenance for registered
 # pairs, including merged implementation PRs and open independent-test PRs.
 # They are ownership evidence, not approval or merge state.
@@ -825,6 +929,68 @@ def _prepare_contained_output(root: Path, path: Path, label: str) -> tuple[int, 
         os.close(fd)
 
 
+def _supports_pinned_output_transport() -> bool:
+    """Whether child report writers can address parent-pinned descriptors."""
+    return os.name == "posix" and Path("/proc/self/fd").is_dir()
+
+
+def _proc_fd_path(fd: int, *, pid: int | None = None) -> str:
+    """Return a Linux procfs path to an already-open descriptor."""
+    if type(fd) is not int or fd < 0:
+        raise ValueError("file descriptor must be a non-negative integer")
+    if pid is None:
+        return f"/proc/self/fd/{fd}"
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("process id must be a positive integer")
+    return f"/proc/{pid}/fd/{fd}"
+
+
+def _read_pinned_output_bytes(fd: int, label: str, *, max_bytes: int) -> bytes:
+    """Read a size-bounded report from its pinned descriptor, independent of its pathname."""
+    if max_bytes < 0:
+        raise ValueError("max_bytes must be non-negative")
+    before = _assert_regular_file(fd, label)
+    if before.st_size > max_bytes:
+        raise ValueError(f"{label} exceeds the {max_bytes}-byte limit")
+    os.lseek(fd, 0, os.SEEK_SET)
+    chunks: list[bytes] = []
+    remaining = max_bytes + 1
+    while remaining:
+        chunk = os.read(fd, min(1024 * 1024, remaining))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    content = b"".join(chunks)
+    after = _assert_regular_file(fd, label)
+    if len(content) > max_bytes or after.st_size != before.st_size or len(content) != after.st_size:
+        raise ValueError(f"{label} changed while its bounded contents were read")
+    return content
+
+
+def _assert_contained_path_identity(
+    root: Path, path: Path, label: str, expected_identity: tuple[int, int]
+) -> None:
+    """Verify the original pathname still names the pinned regular file."""
+    fd = _open_contained_file(root, path, os.O_RDONLY, label)
+    try:
+        opened = _assert_regular_file(fd, label)
+        if (opened.st_dev, opened.st_ino) != expected_identity:
+            raise ValueError(f"{label} was replaced during candidate execution")
+    finally:
+        os.close(fd)
+
+
+def _close_open_fds(file_descriptors: list[int]) -> None:
+    """Close and clear a small per-test set of pinned output descriptors."""
+    for fd in file_descriptors:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    file_descriptors.clear()
+
+
 def _assert_regular_file(fd: int, label: str) -> os.stat_result:
     opened = os.fstat(fd)
     if not stat.S_ISREG(opened.st_mode) or not opened.st_ino:
@@ -940,7 +1106,12 @@ def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[st
     return Path(normalized).suffix.casefold() not in _DOCUMENTATION_SUFFIXES
 
 
-def _is_component_relevant(name: str, changed_paths: set[str]) -> bool:
+def _is_component_relevant(
+    name: str,
+    changed_paths: set[str],
+    *,
+    include_package_initializers: bool = True,
+) -> bool:
     spec = COMPONENTS[name]
     if any(
         _trigger_matches(path, trigger)
@@ -954,16 +1125,56 @@ def _is_component_relevant(name: str, changed_paths: set[str]) -> bool:
         for path in (pair["implementation"], pair["test"])
     }
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
+    if include_package_initializers:
+        mapped.update(normalize_repo_path(path).casefold() for path in spec.get("package_initializers", {}))
     return any(normalize_repo_path(path).casefold() in mapped for path in changed_paths)
 
 
 def select_components(changed_paths: set[str]) -> list[str]:
     """Return deterministic component names touched by source or test changes."""
-    return [name for name in COMPONENTS if _is_component_relevant(name, changed_paths)]
+    changed_casefold = {
+        normalize_repo_path(path).casefold() for path in changed_paths
+    }
+    direct = {
+        name for name in COMPONENTS
+        if _is_component_relevant(
+            name, changed_paths, include_package_initializers=False
+        )
+    }
+    initializer_owners = {
+        name
+        for name, spec in COMPONENTS.items()
+        if changed_casefold
+        & {
+            normalize_repo_path(initializer).casefold()
+            for initializer in spec.get("package_initializers", {})
+        }
+    }
+    # Shared package initializers can sit above several experimental
+    # components. When a PR changes an actual registered implementation/test,
+    # select that directly changed component instead of blocking it on
+    # unrelated candidate pairs that exist only on other open PR branches.
+    # An initializer-only change remains fail-closed by selecting its explicit
+    # owners; inspect_component will require an available implementation/test.
+    selected = direct if direct else initializer_owners
+    return [name for name in COMPONENTS if name in selected]
 
 
 def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> list[str]:
     pairs = spec.get("candidate_pairs", ())
+    globally_registered_paths = {
+        normalize_repo_path(path).casefold()
+        for candidate_spec in COMPONENTS.values()
+        for pair in candidate_spec.get("candidate_pairs", ())
+        for path in (pair["implementation"], pair["test"])
+    } | {
+        normalize_repo_path(path).casefold()
+        for candidate_spec in COMPONENTS.values()
+        for path in (
+            *candidate_spec.get("support_files", {}).keys(),
+            *candidate_spec.get("package_initializers", {}).keys(),
+        )
+    }
     known = {
         normalize_repo_path(path).casefold()
         for pair in pairs
@@ -973,28 +1184,46 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path).casefold()
         for path in spec.get("support_files", {})
     }
+    package_initializer_paths = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("package_initializers", {})
+    }
+    mapped_support_paths = support_paths | package_initializer_paths
     known.update(support_paths)
+    known.update(package_initializer_paths)
     known_exact = {
         normalize_repo_path(path)
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
-    } | {normalize_repo_path(path) for path in spec.get("support_files", {})}
+    } | {normalize_repo_path(path) for path in mapped_support_paths}
     unmapped = _case_mismatched_known_paths(changed_paths, known_exact)
     for original in changed_paths:
         path = normalize_repo_path(original)
         lower = path.casefold()
-        in_candidate_root = any(
+        in_candidate_root = lower in mapped_support_paths or any(
             _path_in_root(path, root)
             for root in (*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))
         )
         if not in_candidate_root or not _is_candidate_file(
             path, tuple((*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))),
-            support_paths,
-        ) or path.rsplit("/", 1)[-1] == "__init__.py":
+            mapped_support_paths,
+        ):
             continue
         is_test = path.rsplit("/", 1)[-1].startswith("test_")
-        if is_test or lower in support_paths or any(_path_in_root(path, root) for root in spec.get("implementation_roots", ())):
+        is_package_initializer = path.rsplit("/", 1)[-1] == "__init__.py"
+        if (
+            is_test
+            or is_package_initializer
+            or lower in mapped_support_paths
+            or any(_path_in_root(path, root) for root in spec.get("implementation_roots", ()))
+        ):
             if lower not in known:
+                # Broad roots can overlap independent registered components
+                # (for example, a shared topology package). A path explicitly
+                # owned by another component is validated by that component;
+                # it is not an unmapped addition to this one.
+                if lower in globally_registered_paths and path not in unmapped:
+                    continue
                 unmapped.append(path)
     return sorted(unmapped)
 
@@ -1016,6 +1245,10 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
         for candidate in spec.get("support_files", {})
+    } | {
+        normalize_repo_path(candidate)
+        for spec in COMPONENTS.values()
+        for candidate in spec.get("package_initializers", {})
     }
     mapped_paths_casefold = {path.casefold() for path in mapped_paths}
     guard_roots = tuple(UNMAPPED_CANDIDATE_ROOTS)
@@ -1032,14 +1265,10 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
             path, guard_roots, explicit_guard_files
         )
         mapped = path.casefold() in mapped_paths_casefold
-        registered_package_init = (
-            path.rsplit("/", 1)[-1] == "__init__.py"
-            and belongs_to_registered_root
-        )
         if (
             path in mapped_case_mismatches
-            or belongs_to_unmapped_candidate_root and not mapped and not registered_package_init
-            or belongs_to_registered_root and not mapped and not registered_package_init
+            or belongs_to_unmapped_candidate_root and not mapped
+            or belongs_to_registered_root and not mapped
         ):
             unmapped.append(path)
     return sorted(unmapped)
@@ -1075,9 +1304,15 @@ def inspect_component(
         if normalize_repo_path(support_path).casefold() in changes
         for test in mapped_tests
     }
+    changed_initializer_tests = {
+        normalize_repo_path(test).casefold()
+        for initializer_path, mapped_tests in spec.get("package_initializers", {}).items()
+        if normalize_repo_path(initializer_path).casefold() in changes
+        for test in mapped_tests
+    }
     selected_pairs.extend(
         pair for pair in pairs
-        if normalize_repo_path(pair["test"]).casefold() in changed_support_tests
+        if normalize_repo_path(pair["test"]).casefold() in changed_support_tests | changed_initializer_tests
         and (pair["implementation"], pair["test"]) not in selected_pair_ids
     )
     selected_pair_ids = {
@@ -1138,6 +1373,14 @@ def inspect_component(
         support_path for support_path in active_support_files
         if not (root / support_path).is_file()
     })
+    selected_package_initializers = sorted(
+        initializer_path for initializer_path in spec.get("package_initializers", {})
+        if normalize_repo_path(initializer_path).casefold() in changes
+    )
+    missing_package_initializers = sorted(
+        initializer_path for initializer_path in selected_package_initializers
+        if not (root / initializer_path).is_file()
+    )
     invalid_support_test_mappings = sorted({
         test_path
         for mapped_tests in active_support_files.values()
@@ -1151,6 +1394,16 @@ def inspect_component(
     } | {
         test_path
         for mapped_tests in spec.get("support_files", {}).values()
+        for test_path in mapped_tests
+        if (
+            test_path not in spec.get("tests", ())
+            or normalize_repo_path(test_path).casefold()
+            not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
+        )
+    })
+    invalid_initializer_test_mappings = sorted({
+        test_path
+        for mapped_tests in spec.get("package_initializers", {}).values()
         for test_path in mapped_tests
         if (
             test_path not in spec.get("tests", ())
@@ -1173,8 +1426,12 @@ def inspect_component(
         blockers.append("required candidate test is absent")
     if missing_support_files:
         blockers.append("required candidate test support file is absent")
+    if missing_package_initializers:
+        blockers.append("required candidate package initializer is absent")
     if invalid_support_test_mappings:
         blockers.append("candidate test support mapping is invalid or mapped test is absent")
+    if invalid_initializer_test_mappings:
+        blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if unmapped:
         blockers.append("changed candidate source/test path has no explicit implementation-test mapping")
     if not selected_pairs:
@@ -1186,8 +1443,9 @@ def inspect_component(
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        } | set(selected_support_files)),
+        } | set(selected_support_files) | set(selected_package_initializers)),
         "selected_support_files": selected_support_files,
+        "selected_package_initializers": selected_package_initializers,
         "required_pairs": selected_pairs,
         "unavailable_companion_pairs": unavailable_companion_pairs,
         "require_all_pairs": require_all_pairs,
@@ -1195,7 +1453,9 @@ def inspect_component(
         "missing_implementations": missing_implementations,
         "missing_required_tests": missing_required_tests,
         "missing_support_files": missing_support_files,
+        "missing_package_initializers": missing_package_initializers,
         "invalid_support_test_mappings": invalid_support_test_mappings,
+        "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,
@@ -1774,17 +2034,41 @@ def run(
                     continue
             for test_index, test_file in enumerate(entry["tests_to_run"], start=1):
                 logs_candidate = report_path.parent / "round6-experimental-logs" / f"{index:02d}-{name}-{test_index:02d}"
+                telemetry = temp / f"{index:02d}-{name}-{test_index:02d}.json"
+                junit = temp / f"{index:02d}-{name}-{test_index:02d}.junit.xml"
+                pinned_output_fds: list[int] = []
+                telemetry_identity: tuple[int, int] | None = None
+                junit_identity: tuple[int, int] | None = None
+                pinned_output_transport = _supports_pinned_output_transport()
+                path_failure_classification = "unsafe_or_unavailable_log_path"
                 try:
                     logs = _lexically_contained_path(root, logs_candidate, "test log directory")
                     _ensure_contained_directories(root, logs, "test log directory")
                     stdout_log = _lexically_contained_path(root, logs / "runner.stdout.log", "runner stdout path")
                     stderr_log = _lexically_contained_path(root, logs / "runner.stderr.log", "runner stderr path")
-                    junit = _lexically_contained_path(
-                        temp, temp / f"{index:02d}-{name}-{test_index:02d}.junit.xml",
-                        "JUnit report path",
-                    )
-                    junit_identity = _prepare_contained_output(temp, junit, "JUnit report path")
+                    path_failure_classification = "unsafe_or_unavailable_output_path"
+                    if pinned_output_transport:
+                        for output_path, output_label in (
+                            (telemetry, "runner telemetry path"),
+                            (junit, "JUnit report path"),
+                        ):
+                            fd = _open_contained_file(
+                                temp, output_path,
+                                os.O_RDWR | os.O_CREAT | os.O_TRUNC,
+                                output_label, mode=0o600,
+                            )
+                            pinned_output_fds.append(fd)
+                        telemetry_stat = _assert_regular_file(pinned_output_fds[0], "runner telemetry path")
+                        junit_stat = _assert_regular_file(pinned_output_fds[1], "JUnit report path")
+                        telemetry_identity = (telemetry_stat.st_dev, telemetry_stat.st_ino)
+                        junit_identity = (junit_stat.st_dev, junit_stat.st_ino)
+                    else:
+                        telemetry = _lexically_contained_path(temp, telemetry, "runner telemetry path")
+                        junit = _lexically_contained_path(temp, junit, "JUnit report path")
+                        telemetry_identity = _prepare_contained_output(temp, telemetry, "runner telemetry path")
+                        junit_identity = _prepare_contained_output(temp, junit, "JUnit report path")
                 except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
                     execution = {
                         "selected_component": name,
                         "owner_prs": entry["owner_prs"],
@@ -1798,7 +2082,7 @@ def run(
                         "status": "BLOCKED",
                         "timeout": False,
                         "artifact_path": None,
-                        "failure_classification": "unsafe_or_unavailable_log_path",
+                        "failure_classification": path_failure_classification,
                         "log_path_error": str(exc),
                         "result_counts": {
                             "collected": 0, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
@@ -1815,15 +2099,22 @@ def run(
                         "failure_classification": execution["failure_classification"],
                     }, sort_keys=True, allow_nan=False))
                     continue
-                telemetry = temp / f"{index:02d}-{name}-{test_index:02d}.json"
+                telemetry_arg = (
+                    _proc_fd_path(pinned_output_fds[0])
+                    if pinned_output_transport else str(telemetry)
+                )
+                junit_arg = (
+                    _proc_fd_path(pinned_output_fds[1], pid=os.getpid())
+                    if pinned_output_transport else str(junit)
+                )
                 cmd = [
                     sys.executable,
                     "scripts/run_tests_isolated.py",
                     "--root", ".",
                     "--batch-size", "1",
                     "--timeout-s", "120",
-                    "--report", str(telemetry),
-                    f"--pytest-arg=--junitxml={junit}",
+                    "--report", telemetry_arg,
+                    f"--pytest-arg=--junitxml={junit_arg}",
                     test_file,
                 ]
                 if name == "docker_context_policy":
@@ -1845,28 +2136,43 @@ def run(
                     "stdout_log_path": stdout_log.relative_to(root).as_posix(),
                     "stderr_log_path": stderr_log.relative_to(root).as_posix(),
                     "command": cmd,
+                    "output_transport": "pinned_proc_fd" if pinned_output_transport else "path_identity_checked",
                     "timeout": False,
                     "skipped": None,
                     "failed": None,
                     "errors": None,
                 }
+                stdout_fd = None
+                stderr_fd = None
+                try:
+                    stdout_fd = _open_contained_file(
+                        root, stdout_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                        "runner stdout path", mode=0o600,
+                    )
+                    stderr_fd = _open_contained_file(
+                        root, stderr_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                        "runner stderr path", mode=0o600,
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
+                    for fd in (stdout_fd, stderr_fd):
+                        if fd is not None:
+                            os.close(fd)
+                    block_artifact_read(entry, execution, exc)
+                    continue
                 try:
                     with contextlib.ExitStack() as stack:
-                        stdout_fd = _open_contained_file(
-                            root, stdout_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-                            "runner stdout path", mode=0o600,
-                        )
                         stdout_stream = stack.enter_context(os.fdopen(stdout_fd, "wb"))
-                        stderr_fd = _open_contained_file(
-                            root, stderr_log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-                            "runner stderr path", mode=0o600,
-                        )
+                        stdout_fd = None
                         stderr_stream = stack.enter_context(os.fdopen(stderr_fd, "wb"))
+                        stderr_fd = None
                         completed = subprocess.run(
                             cmd, cwd=root, timeout=130, check=False,
                             stdout=stdout_stream, stderr=stderr_stream,
+                            **({"pass_fds": tuple(pinned_output_fds)} if pinned_output_transport else {}),
                         )
                 except subprocess.TimeoutExpired:
+                    _close_open_fds(pinned_output_fds)
                     execution.update({"status": "TIMEOUT", "timeout": True, "failure_classification": "timeout"})
                     execution["result_counts"] = {
                         "collected": 0, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 1,
@@ -1894,6 +2200,7 @@ def run(
                     }, sort_keys=True, allow_nan=False))
                     continue
                 except OSError as exc:
+                    _close_open_fds(pinned_output_fds)
                     execution.update({
                         "status": "ERROR",
                         "failure_classification": "runner_launch_failure",
@@ -1924,6 +2231,10 @@ def run(
                         "status": "ERROR",
                     }, sort_keys=True, allow_nan=False))
                     continue
+                finally:
+                    for fd in (stdout_fd, stderr_fd):
+                        if fd is not None:
+                            os.close(fd)
                 try:
                     # Candidate code can mutate workspace paths while pytest
                     # runs. Keep lexical paths intact so no-follow opens can
@@ -1934,6 +2245,7 @@ def run(
                     junit = _lexically_contained_path(temp, junit, "JUnit report path")
                     telemetry = _lexically_contained_path(temp, telemetry, "runner telemetry path")
                 except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
                     block_artifact_read(entry, execution, exc)
                     continue
                 execution["runner_exit_code"] = completed.returncode
@@ -1943,6 +2255,7 @@ def run(
                         tail_bytes=MAX_RUNNER_STDERR_TAIL_BYTES,
                     )
                 except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
                     block_artifact_read(entry, execution, exc)
                     continue
                 if runner_stderr_tail:
@@ -1952,13 +2265,24 @@ def run(
                 batches: list[dict[str, Any]] = []
                 telemetry_bytes: bytes | None = None
                 try:
-                    telemetry_bytes = _read_contained_bytes(
-                        temp, telemetry, "runner telemetry path",
-                        max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
-                    )
+                    if pinned_output_transport:
+                        _assert_contained_path_identity(
+                            temp, telemetry, "runner telemetry path", telemetry_identity
+                        )
+                        telemetry_bytes = _read_pinned_output_bytes(
+                            pinned_output_fds[0], "runner telemetry path",
+                            max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
+                        )
+                    else:
+                        telemetry_bytes = _read_contained_bytes(
+                            temp, telemetry, "runner telemetry path",
+                            max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
+                            expected_identity=telemetry_identity,
+                        )
                 except FileNotFoundError:
                     pass
                 except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
                     block_artifact_read(entry, execution, exc)
                     continue
                 if telemetry_bytes is not None:
@@ -1978,15 +2302,24 @@ def run(
                     execution["runner_telemetry_error"] = telemetry_error
                 junit_bytes: bytes | None = None
                 try:
-                    junit_bytes = _read_contained_bytes(
-                        temp, junit, "JUnit report path", max_bytes=MAX_JUNIT_XML_BYTES,
-                        expected_identity=junit_identity,
-                    )
+                    if pinned_output_transport:
+                        _assert_contained_path_identity(temp, junit, "JUnit report path", junit_identity)
+                        junit_bytes = _read_pinned_output_bytes(
+                            pinned_output_fds[1], "JUnit report path",
+                            max_bytes=MAX_JUNIT_XML_BYTES,
+                        )
+                    else:
+                        junit_bytes = _read_contained_bytes(
+                            temp, junit, "JUnit report path", max_bytes=MAX_JUNIT_XML_BYTES,
+                            expected_identity=junit_identity,
+                        )
                 except FileNotFoundError:
                     pass
                 except (OSError, RuntimeError, ValueError) as exc:
+                    _close_open_fds(pinned_output_fds)
                     block_artifact_read(entry, execution, exc)
                     continue
+                _close_open_fds(pinned_output_fds)
                 junit_error = False
                 if junit_bytes is not None:
                     try:

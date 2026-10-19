@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -53,6 +54,16 @@ def _write(root: Path, relative: str, value: str) -> None:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value, encoding="utf-8")
+
+
+def _workspace_path_for_output_arg(value: str) -> Path:
+    """Resolve a descriptor-path argument to its original workspace filename for race fixtures."""
+    if value.startswith("/proc/"):
+        try:
+            return Path(os.readlink(value))
+        except OSError:
+            pass
+    return Path(value)
 
 
 def _repo(root: Path, *, with_candidate: bool = True) -> str:
@@ -189,7 +200,7 @@ class Round6DiscoveryTests(unittest.TestCase):
             real_open = helper.os.open
             swapped = False
 
-            def swap_after_open(file, flags, *args, **kwargs):
+            def open_and_swap(file, flags, *args, **kwargs):
                 nonlocal swapped
                 fd = real_open(file, flags, *args, **kwargs)
                 if file == "logs" and kwargs.get("dir_fd") is not None and not swapped:
@@ -198,12 +209,74 @@ class Round6DiscoveryTests(unittest.TestCase):
                     (root / "logs").symlink_to(outside_parent, target_is_directory=True)
                 return fd
 
-            with patch.object(helper.os, "open", side_effect=swap_after_open):
-                observed = helper._read_contained_bytes(
-                    root, root / "logs" / "junit.xml", "JUnit path", max_bytes=64
-                )
+            with patch.object(helper.os, "open", open_and_swap):
+                # The helper checks whether the active os.open callable supports
+                # dir_fd. Keep the replacement callable in that capability set
+                # so this test exercises the POSIX descriptor-relative branch.
+                supported_dir_fd = set(helper.os.supports_dir_fd)
+                supported_dir_fd.add(open_and_swap)
+                with patch.object(helper.os, "supports_dir_fd", supported_dir_fd):
+                    observed = helper._read_contained_bytes(
+                        root, root / "logs" / "junit.xml", "JUnit path", max_bytes=64
+                    )
         self.assertTrue(swapped)
         self.assertEqual(observed, b"trusted-tree")
+
+    def test_pinned_report_descriptors_prevent_symlink_redirected_writes(self):
+        helper = _helper()
+        if not helper._supports_pinned_output_transport():
+            self.skipTest("Linux procfs descriptor transport is unavailable")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            temp = root / "private"
+            temp.mkdir()
+            telemetry = temp / "telemetry.json"
+            junit = temp / "junit.xml"
+            outside_telemetry = Path(td) / "outside-telemetry.json"
+            outside_junit = Path(td) / "outside-junit.xml"
+            outside_telemetry.write_text("preserve telemetry\n", encoding="utf-8")
+            outside_junit.write_text("preserve junit\n", encoding="utf-8")
+            telemetry_fd = helper._open_contained_file(
+                root, telemetry, helper.os.O_RDWR | helper.os.O_CREAT | helper.os.O_TRUNC,
+                "runner telemetry path",
+            )
+            junit_fd = helper._open_contained_file(
+                root, junit, helper.os.O_RDWR | helper.os.O_CREAT | helper.os.O_TRUNC,
+                "JUnit report path",
+            )
+            try:
+                telemetry_proc_path = helper._proc_fd_path(telemetry_fd)
+                junit_proc_path = helper._proc_fd_path(junit_fd, pid=helper.os.getpid())
+                code = (
+                    "from pathlib import Path; import sys; "
+                    "Path(sys.argv[1]).unlink(); Path(sys.argv[1]).symlink_to(sys.argv[3]); "
+                    "Path(sys.argv[2]).unlink(); Path(sys.argv[2]).symlink_to(sys.argv[4]); "
+                    "Path(sys.argv[5]).write_text('{\\\"completed\\\":true}', encoding='utf-8'); "
+                    "Path(sys.argv[6]).write_text('<testsuite/>', encoding='utf-8')"
+                )
+                subprocess.run(
+                    [
+                        helper.sys.executable, "-c", code, str(telemetry), str(junit),
+                        str(outside_telemetry), str(outside_junit),
+                        telemetry_proc_path, junit_proc_path,
+                    ],
+                    check=True,
+                    pass_fds=(telemetry_fd,),
+                )
+                telemetry_bytes = helper._read_pinned_output_bytes(
+                    telemetry_fd, "runner telemetry path", max_bytes=1024
+                )
+                junit_bytes = helper._read_pinned_output_bytes(
+                    junit_fd, "JUnit report path", max_bytes=1024
+                )
+            finally:
+                os.close(telemetry_fd)
+                os.close(junit_fd)
+        self.assertEqual(outside_telemetry.read_text(encoding="utf-8"), "preserve telemetry\n")
+        self.assertEqual(outside_junit.read_text(encoding="utf-8"), "preserve junit\n")
+        self.assertEqual(telemetry_bytes, b'{"completed":true}')
+        self.assertEqual(junit_bytes, b"<testsuite/>")
 
     def test_candidate_implementation_and_test_change_runs_the_explicit_pair(self):
         helper = _helper()
@@ -359,7 +432,9 @@ class Round6DiscoveryTests(unittest.TestCase):
                 telemetry["batches"][0]["stdout_tail"] = "2 passed, 2 subtests passed in 0.01s\n"
                 telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
                 junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
-                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit = _workspace_path_for_output_arg(
+                    junit_arg.removeprefix("--pytest-arg=--junitxml=")
+                )
                 junit.write_text(
                     '<testsuite tests="4" skipped="0" failures="0" errors="0">'
                     '<testcase/><testcase/></testsuite>',
@@ -397,7 +472,9 @@ class Round6DiscoveryTests(unittest.TestCase):
                 telemetry["batches"][0]["stdout_tail"] = "4 passed in 0.01s\n"
                 telemetry_path.write_text(json.dumps(telemetry), encoding="utf-8")
                 junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
-                junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+                junit = _workspace_path_for_output_arg(
+                    junit_arg.removeprefix("--pytest-arg=--junitxml=")
+                )
                 junit.write_text(
                     '<testsuite tests="4" skipped="0" failures="0" errors="0">'
                     '<testcase/><testcase/></testsuite>',
@@ -964,6 +1041,77 @@ class Round6DiscoveryTests(unittest.TestCase):
         # changed Python file is a package initializer.
         self.assertIn("tests/nuisance_scenarios/__init__.py", helper._unmapped_candidate_paths({"tests/nuisance_scenarios/__init__.py"}))
         self.assertNotIn("tests/surrogate_nulls/__init__.py", helper._unmapped_candidate_paths({"tests/surrogate_nulls/__init__.py"}))
+
+    def test_package_initializers_require_exact_test_support_mappings(self):
+        helper = _helper()
+        for component, initializer_paths in helper.PACKAGE_INITIALIZER_SUPPORT_PATHS.items():
+            spec = helper.COMPONENTS[component]
+            expected_tests = tuple(dict.fromkeys(
+                pair["test"] for pair in spec["candidate_pairs"]
+            ))
+            self.assertTrue(expected_tests, component)
+            for initializer in initializer_paths:
+                with self.subTest(component=component, initializer=initializer):
+                    self.assertEqual(spec["package_initializers"][initializer], expected_tests)
+                    self.assertIn(component, helper.select_components({initializer}))
+                    self.assertEqual(helper._changed_candidate_paths(spec, {initializer}), [])
+                    self.assertEqual(helper._unmapped_candidate_paths({initializer}), [])
+                    with tempfile.TemporaryDirectory() as td:
+                        root = Path(td)
+                        init_path = root / initializer
+                        init_path.parent.mkdir(parents=True, exist_ok=True)
+                        init_path.write_text("# package initializer fixture\n", encoding="utf-8")
+                        for pair in spec["candidate_pairs"]:
+                            for relative in (pair["implementation"], pair["test"]):
+                                candidate = root / relative
+                                candidate.parent.mkdir(parents=True, exist_ok=True)
+                                candidate.write_text("# deterministic candidate fixture\n", encoding="utf-8")
+                        for support_path in spec.get("support_files", {}):
+                            support_file = root / support_path
+                            support_file.parent.mkdir(parents=True, exist_ok=True)
+                            support_file.write_text("# deterministic support fixture\n", encoding="utf-8")
+                        result = helper.inspect_component(component, root, {initializer})
+                    self.assertEqual(result["status"], "READY_TO_RUN", result["blockers"])
+                    self.assertEqual(result["tests_to_run"], list(expected_tests))
+                    self.assertEqual(result["selected_package_initializers"], [initializer])
+
+        for unregistered_initializer in (
+            "tools/surrogate_nulls/unregistered/__init__.py",
+            "tests/surrogate_nulls/unregistered/__init__.py",
+        ):
+            with self.subTest(initializer=unregistered_initializer):
+                self.assertIn(
+                    unregistered_initializer,
+                    helper._unmapped_candidate_paths({unregistered_initializer}),
+                )
+
+        geometry_pair = helper.COMPONENTS["planar_geometry"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "neurotopology_sim/__init__.py",
+                geometry_pair["implementation"],
+                geometry_pair["test"],
+            }),
+            ["planar_geometry"],
+        )
+        roc_pair = helper.COMPONENTS["synthetic_roc"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "neurotopology_sim/__init__.py",
+                roc_pair["implementation"],
+                roc_pair["test"],
+            }),
+            ["synthetic_roc"],
+        )
+        dmd_pair = helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][0]
+        self.assertEqual(
+            helper.select_components({
+                "tests/experimental/__init__.py",
+                dmd_pair["implementation"],
+                dmd_pair["test"],
+            }),
+            ["dmd_crouzeix"],
+        )
 
     def test_candidate_support_only_changes_select_their_declared_tests(self):
         helper = _helper()
