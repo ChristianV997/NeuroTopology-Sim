@@ -192,6 +192,21 @@ def test_invalid_montage_coordinates_fail_closed_without_throwing():
     assert result.block.montage_coordinates == (None,)
 
 
+def test_unknown_units_reference_montage_and_channel_types_are_inconclusive():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["units"] = ["unknown"]
+    payload["reference"] = "unspecified"
+    payload["montage_name"] = "unknown"
+    payload["montage_coordinates"] = None
+    payload["channel_types"] = ["unknown"]
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert ReasonCode.MISSING_UNITS.value in result.block.reason_codes
+    assert ReasonCode.MISSING_REFERENCE.value in result.block.reason_codes
+    assert ReasonCode.MISSING_MONTAGE.value in result.block.reason_codes
+    assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
+
+
 def test_never_infers_units_as_volts():
     """Anti-pattern check vs shared MneFifAdapter which hardcodes units='V'."""
     payload = make_missing_units_payload()

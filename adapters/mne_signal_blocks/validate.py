@@ -112,13 +112,20 @@ def validate_block_fields(
 
     if unit_list is None or any(u is None or str(u).strip() == "" for u in unit_list):
         reasons.append(ReasonCode.MISSING_UNITS.value)
+    elif any(
+        not isinstance(unit, str)
+        or unit.strip().lower() in {"unknown", "unspecified", "none", "null", "n/a"}
+        for unit in unit_list
+    ):
+        reasons.append(ReasonCode.MISSING_UNITS.value)
     elif names is not None and len(unit_list) not in {1, len(names)}:
         reasons.append(ReasonCode.SHAPE_MISMATCH.value)
         warnings.append("units length must be 1 or equal to channel count")
 
     if types is not None:
         for item in types:
-            if item is None:
+            if item is None or str(item).strip().lower() in {"unknown", "unspecified", "none", "null", "n/a"}:
+                reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
                 continue
             token = str(item).strip().lower()
             if token not in allowed:
@@ -126,6 +133,9 @@ def validate_block_fields(
                 break
         if names is not None and len(types) != len(names):
             reasons.append(ReasonCode.CHANNEL_ORDER_MISMATCH.value)
+    else:
+        reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
+        warnings.append("channel_types absent; left unknown")
 
     if sample_rate_hz is not None:
         try:
@@ -136,9 +146,17 @@ def validate_block_fields(
         except (TypeError, ValueError):
             reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
 
-    if reference is None or (isinstance(reference, str) and not reference.strip()):
+    if (
+        reference is None
+        or not isinstance(reference, str)
+        or reference.strip().lower() in {"", "unknown", "unspecified", "none", "null", "n/a"}
+    ):
         reasons.append(ReasonCode.MISSING_REFERENCE.value)
-    if (montage_name is None or (isinstance(montage_name, str) and not montage_name.strip())) and montage_coordinates is None:
+    if (
+        montage_name is None
+        or not isinstance(montage_name, str)
+        or montage_name.strip().lower() in {"", "unknown", "unspecified", "none", "null", "n/a"}
+    ) and montage_coordinates is None:
         reasons.append(ReasonCode.MISSING_MONTAGE.value)
 
     if montage_coordinates is not None:

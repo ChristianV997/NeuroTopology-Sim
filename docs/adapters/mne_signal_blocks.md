@@ -31,7 +31,7 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 
 ## Fail-closed / no-inference rules
 
-- Missing or ambiguous units, reference, or montage → explicit `null` and status `inconclusive` (never invent `V`, average-ref, or standard montages).
+- Missing or ambiguous units, channel types, reference, or montage → explicit unknown values and status `inconclusive` (never invent `V`, average-ref, or standard montages). Literal `unknown`/`unspecified` tokens are not treated as verified declarations.
 - Hard failures (`rejected`): empty blocks, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
 - Never silently resample, filter, rereference, interpolate, reorder, or drop channels.
 - Input arrays and metadata mappings are not mutated; data is copied by default.
