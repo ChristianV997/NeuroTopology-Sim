@@ -49,11 +49,20 @@ def _write_valid_runner_telemetry(command):
             "skipped_batches": 0,
             "failed_batches": 0,
             "timeout_batches": 0,
+            "duration_s": 0.1,
             "overall_exit_code": 0,
         },
         "batches": [{
+            "batch_index": 1,
+            "batch_number": 1,
             "status": "passed",
             "exit_code": 0,
+            "duration_s": 0.1,
+            "peak_memory_mb": None,
+            "failures": [],
+            "stdout_tail": "",
+            "stderr_tail": "",
+            "files": [test_file],
             "test_files": [test_file],
             "timed_out": False,
             "timeout_status": "completed",
@@ -851,10 +860,14 @@ class OwnershipSnapshotTests(unittest.TestCase):
             "summary": {
                 "total_files": 1, "total_batches": 1, "passed_batches": 1,
                 "skipped_batches": 0, "failed_batches": 0, "timeout_batches": 0,
+                "duration_s": 0.1,
                 "overall_exit_code": 0,
             },
             "batches": [{
+                "batch_index": 1, "batch_number": 1,
                 "status": "passed", "exit_code": 0, "test_files": [expected],
+                "duration_s": 0.1, "peak_memory_mb": None, "failures": [],
+                "stdout_tail": "", "stderr_tail": "", "files": [expected],
                 "timed_out": False, "timeout_status": "completed",
             }],
         }
@@ -865,8 +878,11 @@ class OwnershipSnapshotTests(unittest.TestCase):
             {"exit_code": 1},
             {"summary": {**valid["summary"], "skipped_batches": 1}},
             {"summary": {**valid["summary"], "timeout_batches": 1}},
+            {"summary": {key: value for key, value in valid["summary"].items() if key != "duration_s"}},
             {"batches": [{**valid["batches"][0], "test_files": ["tests/other.py"]}]},
             {"batches": [{**valid["batches"][0], "timed_out": True}]},
+            {"batches": [{key: value for key, value in valid["batches"][0].items() if key != "batch_number"}]},
+            {"batches": [{**valid["batches"][0], "duration_s": float("nan")}]},
         ):
             candidate = {**valid, **mutation}
             ok, error, _ = helper._isolated_runner_report_is_valid(candidate, expected)

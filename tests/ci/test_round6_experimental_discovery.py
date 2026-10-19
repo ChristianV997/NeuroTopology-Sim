@@ -78,11 +78,20 @@ def _valid_telemetry(test_file: str) -> str:
             "skipped_batches": 0,
             "failed_batches": 0,
             "timeout_batches": 0,
+            "duration_s": 0.1,
             "overall_exit_code": 0,
         },
         "batches": [{
+            "batch_index": 1,
+            "batch_number": 1,
             "status": "passed",
             "exit_code": 0,
+            "duration_s": 0.1,
+            "peak_memory_mb": None,
+            "failures": [],
+            "stdout_tail": "",
+            "stderr_tail": "",
+            "files": [test_file],
             "test_files": [test_file],
             "timed_out": False,
             "timeout_status": "completed",
@@ -260,6 +269,34 @@ class Round6DiscoveryTests(unittest.TestCase):
             helper._unmapped_candidate_paths({"tests/surrogate_nulls/notes.md"}),
             [],
         )
+
+    def test_case_mismatched_registered_paths_fail_closed(self):
+        helper = _helper()
+        wrong_case = "Tools/surrogate_nulls/nulls.py"
+        self.assertEqual(helper.select_components({wrong_case}), ["surrogate_nulls"])
+        self.assertEqual(helper._unmapped_candidate_paths({wrong_case}), [wrong_case])
+        self.assertEqual(
+            helper._changed_candidate_paths(helper.COMPONENTS["surrogate_nulls"], {wrong_case}),
+            [wrong_case],
+        )
+
+    def test_isolated_runner_telemetry_requires_duration_and_batch_identity(self):
+        helper = _helper()
+        baseline = json.loads(_valid_telemetry(TEST))
+        mutations = (
+            ("summary", "duration_s"),
+            ("batch", "duration_s"),
+            ("batch", "batch_index"),
+            ("batch", "batch_number"),
+        )
+        for target, field in mutations:
+            with self.subTest(target=target, field=field):
+                telemetry = json.loads(json.dumps(baseline))
+                container = telemetry["summary"] if target == "summary" else telemetry["batches"][0]
+                del container[field]
+                valid, error, _ = helper._isolated_runner_report_is_valid(telemetry, TEST)
+                self.assertFalse(valid)
+                self.assertIn("missing or malformed", error)
 
     def test_runner_cannot_pass_with_inconsistent_junit_summary(self):
         helper = _helper()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -700,6 +701,20 @@ def _path_in_root(path: str, root: str) -> bool:
     return path.startswith(root) if root.endswith("/") else path == root
 
 
+def _case_mismatched_known_paths(changed_paths: set[str], known_paths: set[str]) -> list[str]:
+    """Return changed paths that only match a registered path by case-folding."""
+    known_by_casefold: dict[str, set[str]] = {}
+    for known_path in known_paths:
+        normalized = normalize_repo_path(known_path)
+        known_by_casefold.setdefault(normalized.casefold(), set()).add(normalized)
+    return sorted(
+        normalized
+        for original in changed_paths
+        if (normalized := normalize_repo_path(original)) not in known_by_casefold.get(normalized.casefold(), set())
+        and normalized.casefold() in known_by_casefold
+    )
+
+
 _DOCUMENTATION_SUFFIXES = {".md", ".mdx", ".rst", ".adoc"}
 
 
@@ -747,7 +762,12 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         for path in spec.get("support_files", {})
     }
     known.update(support_paths)
-    unmapped = []
+    known_exact = {
+        normalize_repo_path(path)
+        for pair in pairs
+        for path in (pair["implementation"], pair["test"])
+    } | {normalize_repo_path(path) for path in spec.get("support_files", {})}
+    unmapped = _case_mismatched_known_paths(changed_paths, known_exact)
     for original in changed_paths:
         path = normalize_repo_path(original)
         lower = path.casefold()
@@ -776,16 +796,18 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
         for root in (*spec.get("implementation_roots", ()), *spec.get("candidate_test_roots", spec.get("test_roots", ())))
     )
     mapped_paths = {
-        normalize_repo_path(candidate).casefold()
+        normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
         for pair in spec.get("candidate_pairs", ())
         for candidate in (pair["implementation"], pair["test"])
     } | {
-        normalize_repo_path(candidate).casefold()
+        normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
         for candidate in spec.get("support_files", {})
     }
+    mapped_paths_casefold = {path.casefold() for path in mapped_paths}
     guard_roots = tuple(UNMAPPED_CANDIDATE_ROOTS)
+    mapped_case_mismatches = set(_case_mismatched_known_paths(changed_paths, mapped_paths))
     explicit_guard_files = {
         normalize_repo_path(root).casefold()
         for root in guard_roots
@@ -793,17 +815,18 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
     }
     for original in changed_paths:
         path = normalize_repo_path(original)
-        belongs_to_registered_root = _is_candidate_file(path, registered_roots, mapped_paths)
+        belongs_to_registered_root = _is_candidate_file(path, registered_roots, mapped_paths_casefold)
         belongs_to_unmapped_candidate_root = _is_candidate_file(
             path, guard_roots, explicit_guard_files
         )
-        mapped = path.casefold() in mapped_paths
+        mapped = path.casefold() in mapped_paths_casefold
         registered_package_init = (
             path.rsplit("/", 1)[-1] == "__init__.py"
             and belongs_to_registered_root
         )
         if (
-            belongs_to_unmapped_candidate_root and not mapped and not registered_package_init
+            path in mapped_case_mismatches
+            or belongs_to_unmapped_candidate_root and not mapped and not registered_package_init
             or belongs_to_registered_root and not mapped and not registered_package_init
         ):
             unmapped.append(path)
@@ -1205,6 +1228,18 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
             return False, f"runner summary field {key} is missing or malformed", batches
         if value != expected:
             return False, f"runner summary field {key} is not the required value", batches
+    duration = summary.get("duration_s")
+    try:
+        duration_is_valid = (
+            isinstance(duration, (int, float))
+            and not isinstance(duration, bool)
+            and math.isfinite(duration)
+            and duration >= 0
+        )
+    except (OverflowError, TypeError):
+        duration_is_valid = False
+    if not duration_is_valid:
+        return False, "runner summary duration_s is missing or malformed", batches
     batch = batches[0]
     if not isinstance(batch, dict):
         return False, "runner batch entry is not an object", batches
@@ -1212,6 +1247,43 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
     files = batch.get("test_files")
     if not isinstance(files, list) or [normalize_repo_path(str(path)) for path in files] != [expected_file]:
         return False, "runner batch did not execute exactly the selected test file", batches
+    raw_files = batch.get("files")
+    if not isinstance(raw_files, list) or [normalize_repo_path(str(path)) for path in raw_files] != [expected_file]:
+        return False, "runner batch files do not match the selected test file", batches
+    if any(type(batch.get(key)) is not int or batch.get(key) != 1 for key in ("batch_index", "batch_number")):
+        return False, "runner batch identity is missing or malformed", batches
+    for key in ("duration_s",):
+        value = batch.get(key)
+        try:
+            valid = (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value >= 0
+            )
+        except (OverflowError, TypeError):
+            valid = False
+        if not valid:
+            return False, f"runner batch {key} is missing or malformed", batches
+    peak_memory = batch.get("peak_memory_mb")
+    if "peak_memory_mb" not in batch:
+        return False, "runner batch peak_memory_mb telemetry is missing", batches
+    if peak_memory is not None:
+        try:
+            valid = (
+                isinstance(peak_memory, (int, float))
+                and not isinstance(peak_memory, bool)
+                and math.isfinite(peak_memory)
+                and peak_memory >= 0
+            )
+        except (OverflowError, TypeError):
+            valid = False
+        if not valid:
+            return False, "runner batch peak_memory_mb is malformed", batches
+    if not isinstance(batch.get("failures"), list) or batch["failures"]:
+        return False, "runner batch failures telemetry is missing or non-empty", batches
+    if not isinstance(batch.get("stdout_tail"), str) or not isinstance(batch.get("stderr_tail"), str):
+        return False, "runner batch output-tail telemetry is missing or malformed", batches
     if (
         batch.get("status") != "passed"
         or type(batch.get("exit_code")) is not int
