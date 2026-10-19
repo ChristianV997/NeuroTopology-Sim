@@ -10,7 +10,7 @@ data, EEG datasets, or dataset downloads.
 | Level | Status |
 |---|---|
 | Implemented | `physics/eeg_forward/four_sphere.py`, NumPy only |
-| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 90 offline tests pass, 1 skipped (the oracle test, by design; see the oracle section). Counts are from the head commit, so re-run to confirm. |
+| Unit-tested | `tests/physics/eeg_forward/test_four_sphere.py`: 113 offline tests pass, 1 skipped (the oracle test, by design; see the oracle section). Counts are from the head commit, so re-run to confirm. |
 | Cross-checked against an independent oracle | Done out of tree, against the Hermes Agent A oracle on PR #409 (branch `batch1/hermes-a-shell-bvp-oracle`). Agreement at round-off. Not imported into the repository |
 | Integration-tested | Not applicable. No pipeline or CLI consumes this module |
 | Live-validated | **No.** No recording, no measured potential, no published benchmark was used |
@@ -19,7 +19,8 @@ data, EEG datasets, or dataset downloads.
 
 - Concentric shells centred on the origin, innermost first: brain `0 <= r < r1` (sigma1), CSF
   `r1 < r < r2` (sigma2), skull `r2 < r < r3` (sigma3), scalp `r3 < r < r4` (sigma4).
-- `radii_m = (r1, r2, r3, r4)` in metres, strictly increasing, `r4 <= 1 m`.
+- `radii_m = (r1, r2, r3, r4)` in metres, strictly increasing, each at least `1e-4 m` (below that, radius
+  powers underflow), and `r4 <= 1 m`.
   `conductivities_sm = (sigma1, sigma2, sigma3, sigma4)` in S/m, each in `[1e-4, 10]`.
   Both bounds fail closed to catch unit errors.
 - Sensors lie on the outer surface `r = r4` (within relative tolerance `1e-9`).
@@ -83,8 +84,10 @@ so `V = (q_r A + (q · e - q_r mu) B) / (4 pi sigma r4^2)` in the homogeneous ca
 Numerical method. The propagation avoids the global 7x7 linear solve, which is ill-conditioned at
 large degree (condition number grows roughly as `rho^(-2l)`). The off-diagonal entries `m12` and
 `m21` are differences of two powers. Their absolute rounding error is near machine epsilon times the
-matrix scale, and their relative error grows for very thin shells. Against the independent 7x7 solve,
-`T_l` agrees to `5e-15` for shells as thin as `1e-9` of the radius.
+matrix scale, and their relative error grows for very thin shells. Against an independent float 7x7 solve,
+`T_l` agrees to about `8e-15` for degrees up to 32, for shells as thin as `1e-9` of the radius. Measured in
+this session, on the Table 1 layered geometry with a thin CSF shell: `4.5e-15` for degrees up to 16 and
+`7.7e-15` for degrees up to 32.
 
 ## Quality gates (fail closed)
 
@@ -126,13 +129,27 @@ production code) are tested with a radial dipole. The degree-10 term is exactly 
 stopped on a vanishing term would end the sum early. The tail estimate still bounds the actual error against
 a degree-512 reference, and a 10-term cut is measurably wrong at those sensors.
 
-Estimator attack, scratch. Across K = 20, 40, 80; depths 0 to 0.95 r1; radial, tangential, and 45-degree
-dipoles; P_10 nodal sensors; and L = 32, 64, 128, 256, the estimate was never below the actual error against a
-degree-512 reference. The smallest estimate-to-actual ratio was 5.5. This is evidence for the tested family,
-not a proof.
+Measured validity of the estimate, against a degree-512 reference. The sample covers six sigma sets, from
+the Table 1 K values to a 1e5 contrast; six depths up to 0.99 r1; radial, tangential, and 45-degree
+dipoles; and two sensor sets (axis and equator, and P_10 nodal angles). Only cases whose actual error
+exceeds 1e-13 are counted. The ratio is the estimate divided by the actual error.
+
+| L | Cases | Underestimates (ratio < 1) | Minimum ratio |
+|---|---|---|---|
+| 8 | 216 | 21 | 0.743 |
+| 16 | 216 | 28 | 0.886 |
+| 32 | 180 | 9 | 0.984 |
+| 63 | 144 | 0 | 1.0004 |
+| 64 | 144 | 0 | 1.0005 |
+| 128 | 80 | 0 | 1.0011 |
+
+The estimate is therefore not conservative below about L = 63 on this sample. Above that, the margin is
+very thin: about 0.05% at L = 64. `TAIL_VALIDATED_MIN_DEGREE = 64` marks that range. The diagnostic
+`tail_validated_range` records whether a given call is inside it.
 
 **Certification status: uncertified.** Every bound above is conditional on `|T_l|` remaining comparable beyond
-`L`, which is not proven. No certified maximum degree is claimed.
+`L`, which is not proven. The diagnostic `tail_certified` is always 0. No certified maximum degree is claimed.
+This is sampled evidence, not a proof.
 
 ## Orientation
 
@@ -229,16 +246,19 @@ validation target.
   individual head shape.
 - Isotropic, piecewise-homogeneous, quasi-static conduction. No capacitive or dispersive effects.
 - Sensors are on the outer surface only. Source is a single point dipole in the brain shell.
-- Truncation is controlled by a per-degree envelope and a geometric tail estimate. In the tested cases the
-  estimate is at least the actual truncation error (checked against degree-512 references), but it is not a
-  proven bound. It assumes `|T_l|` stays comparable beyond `L`, and that is not proven for layered geometries.
+- Truncation is controlled by a per-degree envelope and a geometric tail estimate. On the sampled family it
+  is conservative only from `L` about 63 upward, and the margin there is thin (see the validity table). It is
+  not a proven bound. Below that range, the estimate can fall below the actual error by up to about 26% (ratio
+  0.74 at L = 8), so a caller who uses a loose `tail_tol` at small `L` can accept a result with error above that
+  tolerance. It assumes `|T_l|` stays comparable beyond `L`, and that is not proven for layered geometries.
   A rigorous bound would also need `|T_l|` bounded for all `l`.
 - Accuracy is established against closed forms, an independent 7x7 solve, and one out-of-tree oracle.
   It is not established against measured potentials.
-- A tangential dipole queried only at the poles has exactly zero potential. The tail envelope uses `|q_t|`
-  rather than the sensor-specific `|q_t . e|`, so the call is refused as "truncation tail estimate inf"
-  instead of returning zero. The refusal is fail-closed. Changing it would change the envelope, which other
-  test lanes check against.
+- Pole behaviour of a tangential dipole. Its exact potential at the poles is zero. The tail envelope uses
+  `|q_t|` rather than the sensor-specific `|q_t . e|`. So the outcome depends on whether the envelope at degree
+  `L` underflows to zero. If it does, the call returns exact zeros. If it does not, the call is refused as a
+  truncation-tail error. Both outcomes are fail-closed or correct. The depth-zero case is exact: the tail is
+  identically zero. Changing the envelope would change a formula that another test lane checks.
 - Unresolved provenance question. The task brief gives CSF conductivity 1.65 S/m and skull 0.33/K. A
   search-result snippet, not the paper, describes CSF equal to the brain value (0.33 S/m) and skull equal to
   brain/K. The paper could not be read, so neither reading is verified. The two readings change T_1 by about

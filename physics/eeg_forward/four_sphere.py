@@ -57,8 +57,9 @@ matrices M = Psi(r_a) Psi(r_b)^-1, where Psi(r) = [[r^l, r^-(l+1)],
 T_l = 1 / beta_1, where beta_1 is the coefficient of r^-(l+1) in the brain.
 The off-diagonal entries m12 and m21 are differences of two powers, so their
 absolute rounding error is near machine epsilon times the matrix scale, and their
-relative error grows for very thin shells. Measured against the independent 7x7
-solve in the tests, T_l agrees to 5e-15 for shells as thin as 1e-9 of the radius.
+relative error grows for very thin shells. Measured against an independent float
+7x7 solve, T_l agrees to about 8e-15 for degrees up to 32, for shells as thin as
+1e-9 of the radius.
 The interface residuals do not isolate this effect and are not the evidence for it.
 
 Attribution
@@ -87,8 +88,11 @@ DEFAULT_MAX_DEGREE = 256
 DEFAULT_RESIDUAL_TOL = 1e-9
 DEFAULT_TAIL_TOL = 1e-10
 MAX_SCALE_RADIUS_M = 1.0
+MIN_RADIUS_M = 1e-4  # 0.1 mm. Below this, radius powers underflow and the model is meaningless.
 CONDUCTIVITY_BOUNDS_SM = (1e-4, 10.0)
 _SURFACE_REL_TOL = 1e-9
+# Truncation estimates were measured to be conservative only from this degree upward (see docs).
+TAIL_VALIDATED_MIN_DEGREE = 64
 
 
 class FourSphereError(ValueError):
@@ -113,6 +117,8 @@ class FourSphereGeometry:
         sigmas = _finite_tuple(self.conductivities_sm, 4, "conductivities_sm")
         if any(r <= 0.0 for r in radii):
             raise FourSphereInputError("radii_m must be positive")
+        if any(r < MIN_RADIUS_M for r in radii):
+            raise FourSphereInputError(f"radii_m must be at least {MIN_RADIUS_M} m; check units")
         if not all(radii[i] < radii[i + 1] for i in range(3)):
             raise FourSphereInputError("radii_m must be strictly increasing (brain, CSF, skull, scalp)")
         if radii[3] > MAX_SCALE_RADIUS_M:
@@ -153,10 +159,31 @@ def naess2017_table1_geometry(skull_ratio_k: int) -> FourSphereGeometry:
     )
 
 
-def _finite_tuple(values: Sequence[object], length: int, name: str) -> tuple[float, ...]:
+def _real_scalar(value: object, name: str) -> float:
+    """One real number: no bool, str, bytes, or complex, and representable as a float."""
+    if isinstance(value, (bool, str, bytes, complex, np.complexfloating)) or not isinstance(
+        value, (int, float, np.integer, np.floating)
+    ):
+        raise FourSphereInputError(f"{name} must be a real number")
     try:
-        items = tuple(float(v) for v in values)
-    except (TypeError, ValueError) as exc:
+        return float(value)
+    except OverflowError as exc:
+        raise FourSphereInputError(f"{name} is too large to represent as a float") from exc
+
+
+def _positive_real(value: object, name: str) -> float:
+    number = _real_scalar(value, name)
+    if not (math.isfinite(number) and number > 0.0):
+        raise FourSphereInputError(f"{name} must be finite and positive")
+    return number
+
+
+def _finite_tuple(values: Sequence[object], length: int, name: str) -> tuple[float, ...]:
+    if isinstance(values, (str, bytes)):
+        raise FourSphereInputError(f"{name} must be a sequence of {length} real numbers, not text")
+    try:
+        items = tuple(_real_scalar(v, name) for v in values)
+    except TypeError as exc:
         raise FourSphereInputError(f"{name} must be a sequence of {length} real numbers") from exc
     if len(items) != length:
         raise FourSphereInputError(f"{name} must have exactly {length} entries")
@@ -175,9 +202,11 @@ def _degree(value: object) -> int:
 
 
 def _vector3(values: Sequence[object], name: str) -> np.ndarray:
+    if isinstance(values, (str, bytes)):
+        raise FourSphereInputError(f"{name} must be a 3-vector of real numbers, not text")
     try:
-        arr = np.asarray([float(v) for v in values], dtype=float)
-    except (TypeError, ValueError) as exc:
+        arr = np.asarray([_real_scalar(v, name) for v in values], dtype=float)
+    except TypeError as exc:
         raise FourSphereInputError(f"{name} must be a 3-vector of real numbers") from exc
     if arr.shape != (3,) or not np.all(np.isfinite(arr)):
         raise FourSphereInputError(f"{name} must be a finite 3-vector")
@@ -185,16 +214,25 @@ def _vector3(values: Sequence[object], name: str) -> np.ndarray:
 
 
 def _sensors(sensor_positions_m: object, surface_radius: float) -> np.ndarray:
+    if isinstance(sensor_positions_m, (str, bytes)):
+        raise FourSphereInputError("sensor_positions_m must be an N x 3 array of reals, not text")
     try:
-        arr = np.asarray(sensor_positions_m, dtype=float)
-    except (TypeError, ValueError) as exc:
+        raw = np.asarray(sensor_positions_m)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise FourSphereInputError("sensor_positions_m must be an N x 3 array of reals") from exc
+    if np.iscomplexobj(raw):
+        raise FourSphereInputError("sensor_positions_m must be real, not complex")
+    try:
+        arr = raw.astype(float)
+    except (TypeError, ValueError, OverflowError) as exc:
         raise FourSphereInputError("sensor_positions_m must be an N x 3 array of reals") from exc
     if arr.ndim != 2 or arr.shape[1] != 3 or arr.shape[0] < 1:
         raise FourSphereInputError("sensor_positions_m must have shape (N, 3) with N >= 1")
     if not np.all(np.isfinite(arr)):
         raise FourSphereInputError("sensor_positions_m must be finite")
     norms = np.linalg.norm(arr, axis=1)
-    tol = max(1e-12, surface_radius * _SURFACE_REL_TOL)
+    # Relative tolerance only. An absolute floor would dominate for very small radii.
+    tol = surface_radius * _SURFACE_REL_TOL
     if np.any(np.abs(norms - surface_radius) > tol):
         raise FourSphereInputError("every sensor must lie on the scalp sphere r = radii_m[3]")
     return arr
@@ -339,7 +377,11 @@ def _checked_degree(degree: int, geometry: FourSphereGeometry) -> tuple[float, d
             transfer, diag = _transfer_and_diagnostics(degree, geometry)
         except OverflowError as exc:
             raise FourSphereQualityError(message) from exc
-    if not math.isfinite(transfer) or not all(math.isfinite(diag[key]) for key in _GATED_RESIDUALS):
+    if (
+        not math.isfinite(transfer)
+        or not all(math.isfinite(diag[key]) for key in _GATED_RESIDUALS)
+        or math.isnan(diag["shell_condition_number"])
+    ):
         raise FourSphereQualityError(message)
     return transfer, diag
 
@@ -405,10 +447,8 @@ def forward_potentials(
     the boundary residuals or truncation tail exceed the given tolerances.
     """
     L = _degree(max_degree)
-    if not (math.isfinite(residual_tol) and residual_tol > 0.0):
-        raise FourSphereInputError("residual_tol must be finite and positive")
-    if not (math.isfinite(tail_tol) and tail_tol > 0.0):
-        raise FourSphereInputError("tail_tol must be finite and positive")
+    residual_tol = _positive_real(residual_tol, "residual_tol")
+    tail_tol = _positive_real(tail_tol, "tail_tol")
     source = _vector3(source_position_m, "source_position_m")
     moment = _vector3(dipole_moment_am, "dipole_moment_am")
     r1, r4 = geometry.radii_m[0], geometry.radii_m[3]
@@ -446,8 +486,13 @@ def forward_potentials(
         envelopes[l - 1] = abs(coeff) * (l * abs(q_r) + l * (l + 1) / 2.0 * q_t_norm)
     if not (np.all(np.isfinite(potentials)) and np.all(np.isfinite(envelopes))):
         raise FourSphereQualityError("non-finite potential")
-    tail_rel = _truncation_tail_estimate(envelopes, potentials)
+    # Depth zero: only the degree-1 term exists, so the tail beyond it is exactly zero.
+    tail_rel = 0.0 if ratio == 0.0 else _truncation_tail_estimate(envelopes, potentials)
     diagnostics["tail_relative"] = tail_rel
+    # The remainder has no certified bound. This flag is 0 by design. Estimates are measured
+    # conservative only from TAIL_VALIDATED_MIN_DEGREE upward, and the flag records that.
+    diagnostics["tail_certified"] = 0.0
+    diagnostics["tail_validated_range"] = 1.0 if L >= TAIL_VALIDATED_MIN_DEGREE else 0.0
     if not tail_rel <= tail_tol:
         raise FourSphereQualityError(
             f"truncation tail estimate {tail_rel:.3e} exceeds tail_tol {tail_tol}; increase max_degree (now {L})"

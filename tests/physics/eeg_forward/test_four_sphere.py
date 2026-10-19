@@ -680,6 +680,105 @@ def test_malformed_inputs_fail_closed_with_library_error(build):
         build()
 
 
+# --- Review regressions: every input path fails with the library error ------------------
+
+@pytest.mark.parametrize("build", [
+    lambda: FourSphereGeometry((10**400, 0.080, 0.085, 0.090), HOMOGENEOUS),
+    lambda: FourSphereGeometry(tuple(1e-170 * r for r in RADII), HOMOGENEOUS),
+    lambda: FourSphereGeometry(RADII, "1234"),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], "123",
+                                  np.array([[0.0, 0.0, R4]])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4 + 0j]])),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]]), tail_tol="1e-9"),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]]), tail_tol=None),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]]), residual_tol=10**400),
+    lambda: fs.forward_potentials(FourSphereGeometry(RADII, LAYERED), [0.0, 0.0, 0.01], [1e-8, 0, 0],
+                                  np.array([[0.0, 0.0, R4]]), max_degree=10**400),
+])
+def test_review_input_paths_raise_library_errors_not_builtin_ones(build):
+    with pytest.raises(FourSphereInputError):
+        build()
+
+
+def test_sensor_tolerance_is_relative_not_absolute():
+    # A relative offset of 1e-8 at r4 = 0.09 m is 9e-10 m, far above the relative tolerance of 9e-11 m.
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    # Equator sensors, so the tangential dipole's potential is nonzero and the tail gate is not involved.
+    inside = np.array([[R4 * (1.0 - 1e-12), 0.0, 0.0]])
+    outside = np.array([[R4 * (1.0 - 1e-8), 0.0, 0.0]])
+    forward_potentials(geometry, [0.0, 0.0, 0.01], [1e-8, 0, 0], inside, max_degree=32)
+    with pytest.raises(FourSphereInputError, match="scalp sphere"):
+        forward_potentials(geometry, [0.0, 0.0, 0.01], [1e-8, 0, 0], outside, max_degree=32)
+
+
+def test_depth_zero_is_exact_at_max_degree_one():
+    # Only the degree-1 term exists at depth zero, so the truncated sum is exact and the tail is zero.
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    sensors = np.array([[0.0, 0.0, R4], [R4, 0.0, 0.0]])
+    result = forward_potentials(geometry, [0.0, 0.0, 0.0], [0.0, 0.0, 1e-8], sensors, max_degree=1)
+    assert result.diagnostics["tail_relative"] == 0.0
+    full = forward_potentials(geometry, [0.0, 0.0, 0.0], [0.0, 0.0, 1e-8], sensors, max_degree=64)
+    np.testing.assert_allclose(result.potentials_v, full.potentials_v, rtol=1e-13, atol=1e-30)
+
+
+def test_truncation_flags_are_uncertified_and_report_the_validated_range():
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = np.array([0.0, 0.0, 0.3 * RADII[0]])
+    sensors = _scalp_points(np.random.default_rng(61), 3)
+    small = forward_potentials(geometry, source, [1e-8, 0, 0], sensors, max_degree=32, tail_tol=1e300)
+    large = forward_potentials(geometry, source, [1e-8, 0, 0], sensors, max_degree=64, tail_tol=1e300)
+    assert small.diagnostics["tail_certified"] == 0.0
+    assert large.diagnostics["tail_certified"] == 0.0
+    assert small.diagnostics["tail_validated_range"] == 0.0
+    assert large.diagnostics["tail_validated_range"] == 1.0
+
+
+@pytest.mark.parametrize("k", [20, 40, 80])
+@pytest.mark.parametrize("depth", [0.3, 0.6, 0.9])
+def test_tail_estimate_is_conservative_in_the_validated_range(k, depth):
+    # Measured conservative from L = 63 upward on a wider sample (see docs). Checked here at L = 64 for the
+    # Table 1 family with axis and equator sensors. The margin is thin, so this is a regression sentinel.
+    geometry = fs.naess2017_table1_geometry(k)
+    source = np.array([0.0, 0.0, depth * RADII[0]])
+    sensors = np.array([[0.0, 0.0, R4], [R4, 0.0, 0.0], [0.0, R4, 0.0], [0.0, 0.0, -R4]])
+    for moment in ([0.0, 0.0, 1e-8], [1e-8, 0.0, 0.0]):
+        reference = forward_potentials(geometry, source, moment, sensors, max_degree=512,
+                                       tail_tol=1e300).potentials_v
+        result = forward_potentials(geometry, source, moment, sensors, max_degree=64, tail_tol=1e300)
+        actual = np.max(np.abs(result.potentials_v - reference)) / _scale(reference)
+        assert result.diagnostics["tail_relative"] >= actual
+
+
+def test_tangential_pole_queries_return_exact_zero_or_refuse_never_a_spurious_value():
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    poles = np.array([[0.0, 0.0, R4], [0.0, 0.0, -R4]])
+    for depth in (0.0, 0.001, 0.02, 0.06):
+        source = np.array([0.0, 0.0, depth])
+        try:
+            values = forward_potentials(geometry, source, [1e-8, 0, 0], poles, max_degree=256).potentials_v
+        except FourSphereQualityError:
+            continue
+        assert np.all(values == 0.0)
+
+
+def test_cached_transfer_table_matches_a_fresh_computation():
+    rng = np.random.default_rng(63)
+    geometry = FourSphereGeometry(RADII, LAYERED)
+    source = _source_in_brain(rng)
+    moment = rng.normal(size=3) * 1e-8
+    sensors = _scalp_points(rng, 5)
+    fs._cached_transfer_table.cache_clear()
+    fresh = forward_potentials(geometry, source, moment, sensors, max_degree=48)
+    cached = forward_potentials(geometry, source, moment, sensors, max_degree=48)
+    np.testing.assert_array_equal(fresh.potentials_v, cached.potentials_v)
+    np.testing.assert_array_equal(fresh.transfer_ratios, cached.transfer_ratios)
+    assert fresh.diagnostics == cached.diagnostics
+
+
 # --- Oracle cross-check -----------------------------------------------------------
 
 @pytest.mark.skip(reason=(
