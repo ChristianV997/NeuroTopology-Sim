@@ -7,13 +7,37 @@
       "T2",
       "T3"
     ],
-    "geometry": "regular_tetrahedron_unit * 0.095",
+    "generated_by_candidate": false,
+    "geometry": "regular_tetrahedron positions from #419 fixture tetrahedron_4",
     "hand_edited": false,
     "lambda2": 1e-05,
     "mne_pin_commit": "bf67729b805865b5bb0f2f97621e416278efd1b2",
     "mne_pin_version": "1.13.2",
     "n_legendre_terms": 50,
-    "producer": "neurotopology_sim.experimental.preprocessing.spherical_csd.compute_spherical_csd_transform",
+    "positions_m": [
+      [
+        0.05484827557301446,
+        0.05484827557301446,
+        0.05484827557301446
+      ],
+      [
+        0.05484827557301446,
+        -0.05484827557301446,
+        -0.05484827557301446
+      ],
+      [
+        -0.05484827557301446,
+        0.05484827557301446,
+        -0.05484827557301446
+      ],
+      [
+        -0.05484827557301446,
+        -0.05484827557301446,
+        0.05484827557301446
+      ]
+    ],
+    "producer": "MNE-Python 1.13.2 compute_current_source_density on identity (via PR #419 fixture)",
+    "source_fixture": "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json#montages.tetrahedron_4",
     "sphere_m": [
       0.0,
       0.0,

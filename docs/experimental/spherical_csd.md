@@ -81,10 +81,12 @@ not a claim that volume conduction is eliminated.
 
 ### Full-matrix conformance vs #419 @ `fa8f0f7`
 
-Fixture provenance (from #419 JSON): identity \(X=I_N\) through **live**
-MNE-Python 1.13.2 `compute_current_source_density` (BSD-3-Clause). Montages:
-tetrahedron_4, octahedron_6, asymmetric_cap_8, synthetic_cap_12, **cap_20**,
-**cap_64**.
+Refreshed against live fixture provenance (not a stale summary): identity
+\(X=I_N\) through **live** MNE-Python **1.13.2** commit
+`bf67729b805865b5bb0f2f97621e416278efd1b2` via
+`compute_current_source_density` (BSD-3-Clause); defaults `m=4`, `N=50`,
+`λ²=1e-5`, meters → `V/m²`. Montages: tetrahedron_4, octahedron_6,
+asymmetric_cap_8, synthetic_cap_12, **cap_20**, **cap_64**.
 
 | Montage | prod vs fixture rel Frobenius | prod gate `1e-9` |
 |---|---|---|
