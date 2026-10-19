@@ -7,11 +7,15 @@ recordings.
 """
 from __future__ import annotations
 
+import importlib.util
 import io
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+_HAVE_GUDHI = importlib.util.find_spec("gudhi") is not None
+
 
 from tools.stream_pitnn_cohort_ds005620 import (
     RemoteSidecarBoundError,
@@ -267,7 +271,56 @@ def test_fetch_recording_writes_small_markers_when_present(tmp_path: Path) -> No
     assert vmrk_gets == [f"bytes=0-{len(_MARKER_TEXT) - 1}"]
 
 
+def test_fetch_recording_rejects_non_vhdr_key(tmp_path: Path) -> None:
+    """Must fail closed if the input key is not a .vhdr file."""
+    client = _FakeObjectStore({})
+    with pytest.raises(RemoteSidecarBoundError, match=r"\.vhdr"):
+        fetch_recording(client, "ds005620/sub-1010/eeg/not_a_vhdr.txt", tmp_path, duration_seconds=0.001)
+
+
+def test_fetch_recording_rejects_missing_eeg_size(tmp_path: Path) -> None:
+    """Must fail closed if .eeg object size cannot be determined."""
+    duration = 0.001
+    client = _FakeObjectStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _EEG_KEY: _eeg_bytes_for(duration),
+        },
+        sizes={_EEG_KEY: _MISSING_SIZE},
+    )
+    with pytest.raises(RemoteSidecarBoundError, match="size is unknown"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+
+
+def test_fetch_recording_cleans_up_interrupted_partial_eeg(tmp_path: Path) -> None:
+    """If .eeg download is interrupted by an error, the partial file must not remain on disk."""
+    duration = 0.001
+
+    class FailingBody:
+        def read(self, n=None):
+            raise IOError("connection reset during ranged download")
+
+    class InterruptedStore(_FakeObjectStore):
+        def get_object(self, Bucket: str, Key: str, Range: str | None = None) -> dict:
+            if Key == _EEG_KEY:
+                return {"Body": FailingBody()}
+            return super().get_object(Bucket, Key, Range)
+
+    client = InterruptedStore(
+        {
+            _VHDR_KEY: _HEADER.encode("utf-8"),
+            _EEG_KEY: _eeg_bytes_for(duration),
+        }
+    )
+    with pytest.raises(IOError, match="connection reset"):
+        fetch_recording(client, _VHDR_KEY, tmp_path, duration_seconds=duration)
+    # Ensure no .eeg.part files are left behind
+    part_files = list(tmp_path.glob("*.part*"))
+    assert part_files == [], f"stale partial files found: {part_files}"
+
+
 def test_plv_matrix_matches_naive_definition() -> None:
+
     """The (z @ z^H)/N identity must equal the explicit pairwise-difference mean."""
     rng = np.random.default_rng(0)
     phase = rng.uniform(-np.pi, np.pi, size=(9, 400))
@@ -382,11 +435,14 @@ def test_spatial_defect_snapshot_h1_cycles_indices_valid_in_finite_channel_space
     np.fill_diagonal(plv, 1.0)
     snapshot = spatial_defect_snapshot(phase, montage, last_plv=plv)
     assert snapshot is not None
-    assert snapshot["h1_cycles"] is not None
-    n_finite = len(snapshot["channel_coordinates"])
-    for cycle in snapshot["h1_cycles"]:
-        for r, c in (cycle["birth_cell"], cycle["death_cell"]):
-            assert 0 <= r < n_finite and 0 <= c < n_finite
+    if _HAVE_GUDHI:
+        assert snapshot["h1_cycles"] is not None
+        n_finite = len(snapshot["channel_coordinates"])
+        for cycle in snapshot["h1_cycles"]:
+            for r, c in (cycle["birth_cell"], cycle["death_cell"]):
+                assert 0 <= r < n_finite and 0 <= c < n_finite
+    else:
+        assert snapshot["h1_cycles"] is None
 
 
 def test_spatial_defect_snapshot_h1_cycles_restricted_to_finite_submatrix() -> None:
@@ -415,6 +471,7 @@ def test_h1_cycle_channel_locations_too_few_channels_returns_empty() -> None:
     assert h1_cycle_channel_locations(plv, mask) == []
 
 
+@pytest.mark.skipif(not _HAVE_GUDHI, reason="requires optional gudhi dependency")
 def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> None:
     """A real symmetric PLV matrix must not report the mirror-image (c, r) cell
     as a second, distinct feature from (r, c) -- exercises the actual bug found
@@ -435,6 +492,7 @@ def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> Non
         keys.add(key)
 
 
+@pytest.mark.skipif(not _HAVE_GUDHI, reason="requires optional gudhi dependency")
 def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
     """Directly verify the submatrix restriction: a 5x5 PLV with only 3 channels
     finite must only ever return indices in [0, 3)."""
@@ -447,6 +505,7 @@ def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
     for cycle in cycles:
         for r, c in (cycle["birth_cell"], cycle["death_cell"]):
             assert 0 <= r < 3 and 0 <= c < 3
+
 
 
 def test_zone_band_power_recovers_known_dominant_band_per_zone() -> None:

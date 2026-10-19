@@ -195,3 +195,47 @@ def test_metadata_over_cap_fail_closed_before_get_object(tmp_path, fake_s3_modul
         base_runner.sync_s3_subject("openneuro.org", "dsX", subject, tmp_path)
     assert client.download_calls == []
     assert client.get_object_calls == []
+
+
+def test_path_traversal_key_rejected_fail_closed(tmp_path, fake_s3_modules):
+    subject = "sub-01"
+    escape_key = f"dsX/{subject}/../../escaped.json"
+
+    def handler(kwargs):
+        return _contents({"Key": escape_key, "Size": 100})
+
+    client = FakeS3Client(FakePaginator(handler))
+    fake_s3_modules["client"] = client
+    with pytest.raises(ValueError, match="escape|traversal|invalid"):
+        base_runner.sync_s3_subject("openneuro.org", "dsX", subject, tmp_path)
+    assert not (tmp_path.parent / "escaped.json").exists()
+
+
+def test_incomplete_transfer_cleans_up_partial_file(tmp_path, fake_s3_modules):
+    subject = "sub-01"
+    key = f"dsX/{subject}/test_meta.json"
+
+    class TruncatedBody:
+        def __init__(self):
+            self._called = False
+
+        def read(self, amt):
+            if not self._called:
+                self._called = True
+                return b"12345"
+            return b""
+
+
+    def get_object_impl(**kwargs):
+        return {"Body": TruncatedBody()}
+
+    def handler(kwargs):
+        return _contents({"Key": key, "Size": 10})
+
+    client = FakeS3Client(FakePaginator(handler), get_object_impl=get_object_impl)
+    fake_s3_modules["client"] = client
+    with pytest.raises(IOError, match="incomplete S3 object"):
+        base_runner.sync_s3_subject("openneuro.org", "dsX", subject, tmp_path)
+    # Ensure no .part file was left behind
+    part_files = list((tmp_path / subject).glob("*.part*"))
+    assert part_files == [], f"stale partial files found: {part_files}"

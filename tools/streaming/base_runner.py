@@ -210,7 +210,13 @@ def sync_s3_subject(
         rel = key[len(prefix):]
         if not rel:
             return
-        target = dest / Path(rel)
+        if rel.startswith(("/", "\\")) or Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise ValueError(f"fail-closed: S3 key contains invalid or escaping path component: {key}")
+        target = (dest / Path(rel)).resolve()
+        try:
+            target.relative_to(dest.resolve())
+        except ValueError:
+            raise ValueError(f"fail-closed: S3 object key escapes target directory: {key}")
         target.parent.mkdir(parents=True, exist_ok=True)
         object_size = obj["Size"]
         required_bytes = _required_eeg_bytes(key, object_size if isinstance(object_size, int) else 0)
@@ -249,9 +255,13 @@ def sync_s3_subject(
                     stale.unlink(missing_ok=True)
         if last_error is not None:
             raise last_error
-        if partial.stat().st_size != transfer_bytes:
-            raise IOError(f"incomplete S3 object {key}: {partial.stat().st_size} != {transfer_bytes}")
+        actual_size = partial.stat().st_size if partial.exists() else 0
+        if actual_size != transfer_bytes:
+            partial.unlink(missing_ok=True)
+            raise IOError(f"incomplete S3 object {key}: {actual_size} != {transfer_bytes}")
         os.replace(partial, target)
+
+
 
     def _download_batch(batch: list[dict]) -> None:
         if not batch:

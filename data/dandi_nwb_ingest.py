@@ -499,6 +499,8 @@ def read_bounded_window(
     cache: WindowCache | None = None,
 ) -> WindowReadResult:
     """Read one bounded window with retry, checksum, and lease rules."""
+    if max_retries < 0:
+        raise ValueError("max_retries must be non-negative")
     try:
         request.validate(max_window_bytes=max_window_bytes, max_window_samples=max_window_samples)
     except IngestionContractError as exc:
@@ -691,9 +693,15 @@ def open_nwb_lazy(blob_url: str, *, network_permission: bool = False, offline: b
     only for existing code that performs explicit HDF5 slices and closes the
     handle via the returned :class:`ManagedNwbHandle`.
     """
-    if not str(blob_url).strip():
+    url_str = str(blob_url).strip()
+    if not url_str:
         raise IngestionContractError("blob_url is required")
-    is_remote = str(blob_url).lower().startswith(("http://", "https://", "s3://"))
+    lower_url = url_str.lower()
+    if "://" in lower_url:
+        scheme = lower_url.split("://", 1)[0]
+        if scheme not in {"http", "https", "s3"}:
+            raise IngestionContractError(f"unsupported URL scheme: {scheme}")
+    is_remote = lower_url.startswith(("http://", "https://", "s3://"))
     if is_remote and (offline or not network_permission):
         raise IngestionContractError("remote NWB opening requires explicit network permission")
     import h5py

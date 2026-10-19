@@ -191,6 +191,9 @@ def fetch_recording(client, vhdr_key: str, dest_dir: Path, duration_seconds: flo
     documents for its metadata/EEG phases. Sidecar fetches are size-bounded
     (`_HEADER_MAX_BYTES`); the `.eeg` path remains a declared byte range.
     """
+    if not vhdr_key.lower().endswith(".vhdr"):
+        raise RemoteSidecarBoundError(f"fetch_recording requires a .vhdr key, got {vhdr_key}")
+
     dest_dir.mkdir(parents=True, exist_ok=True)
     stem = Path(vhdr_key).name[: -len(".vhdr")]
 
@@ -208,23 +211,29 @@ def fetch_recording(client, vhdr_key: str, dest_dir: Path, duration_seconds: flo
         pass  # markers are optional for a resting-state amplitude read
 
     eeg_key = vhdr_key[: -len(".vhdr")] + ".eeg"
-    full_size = client.head_object(Bucket=_BUCKET, Key=eeg_key)["ContentLength"]
+    metadata_eeg = client.head_object(Bucket=_BUCKET, Key=eeg_key)
+    full_size = _sidecar_content_length(metadata_eeg, eeg_key)
     want = _eeg_prefix_bytes(vhdr_text, duration_seconds, full_size)
 
     eeg_path = dest_dir / f"{stem}.eeg"
     partial = eeg_path.with_suffix(".eeg.part")
-    body = client.get_object(Bucket=_BUCKET, Key=eeg_key, Range=f"bytes=0-{want - 1}")["Body"]
-    with partial.open("wb") as out:
-        while True:
-            block = body.read(8 * 1024 * 1024)
-            if not block:
-                break
-            out.write(block)
-    if partial.stat().st_size != want:
+    try:
+        body = client.get_object(Bucket=_BUCKET, Key=eeg_key, Range=f"bytes=0-{want - 1}")["Body"]
+        with partial.open("wb") as out:
+            while True:
+                block = body.read(8 * 1024 * 1024)
+                if not block:
+                    break
+                out.write(block)
+        actual_size = partial.stat().st_size if partial.exists() else 0
+        if actual_size != want:
+            raise IOError(f"incomplete ranged download for {eeg_key}: {actual_size} != {want}")
+        partial.replace(eeg_path)
+    except Exception:
         partial.unlink(missing_ok=True)
-        raise IOError(f"incomplete ranged download for {eeg_key}: {partial.stat().st_size} != {want}")
-    partial.replace(eeg_path)
+        raise
     return vhdr_path
+
 
 
 # --------------------------------------------------------------------------- #
@@ -441,6 +450,34 @@ def h1_cycle_channel_locations(plv: np.ndarray, finite_mask: np.ndarray) -> list
     return deduped
 
 
+def zone_of(ch: str) -> str | None:
+    """Map a 10-20 channel name to a coarse scalp zone."""
+    c = ch.upper()
+    if c.startswith(("T", "FT", "TP")):
+        digits = "".join(d for d in c if d.isdigit())
+        if digits:
+            return "temporal_L" if int(digits[-1]) % 2 == 1 else "temporal_R"
+        return "temporal_M"
+    if c.startswith(("O", "I")):
+        return "occipital"
+    if c.startswith("P"):
+        return "parietal"
+    if c.startswith(("C", "FC")):
+        return "central"
+    if c.startswith(("F", "AF")):
+        return "frontal"
+    return None
+
+
+def build_region_labels(channel_names: list[str]) -> dict[str, str]:
+    labels = {}
+    for ch in channel_names:
+        z = zone_of(ch)
+        if z is not None:
+            labels[ch] = z
+    return labels
+
+
 # --------------------------------------------------------------------------- #
 # Real short multi-channel EEG waveform snippet (for real-time playback)
 # --------------------------------------------------------------------------- #
@@ -461,7 +498,6 @@ def extract_waveform_snippet(
     smoothed or synthesized; every sample value is real. Returns `None` when no
     channel maps to a known zone at all.
     """
-    from dual_engine.anesthesia_signed_winding_pipeline import zone_of
     from scipy.signal import decimate
 
     preferred = ["Fz", "Cz", "Pz", "Oz"]
@@ -528,10 +564,10 @@ def zone_band_power(
     so a viewer can place a real, honest "which zone is this" marker rather
     than an approximated one.
     """
-    from dual_engine.anesthesia_signed_winding_pipeline import build_region_labels
     from sciencer_d.btc_icft.level_m.real_features import DEFAULT_BANDS, compute_band_power
 
     labels = build_region_labels(ch_names)
+
     if not labels:
         return None
     zone_bands: dict[str, dict[str, list[float]]] = {}

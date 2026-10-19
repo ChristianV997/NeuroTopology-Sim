@@ -43,13 +43,18 @@ OWNED_PREFIXES = (
     "tools/stream_process_dandi000458.py",
     "tests/data_access/dandi_nwb_bounded/",
     "docs/data_access/dandi_nwb_bounded.md",
+    "tools/stream_pitnn_cohort_ds005620.py",
+    "tests/test_pitnn_cohort_ds005620.py",
+    "tools/streaming/",
+    "tests/streaming/",
+    "tests/performance/streaming_optimization/",
 )
 PROTECTED_PREFIXES = (
     "data/bids_ingest.py",
-    "tools/streaming/",
     "tools/data_access/policy_enforcement/",
     "apps/awareness_studio/",
 )
+
 
 
 def _provenance(**kwargs):
@@ -145,6 +150,20 @@ def test_explicit_opt_in_required_for_remote_window():
     result = read_bounded_window(FakeSource(), remote)
     assert result.state is IngestionState.BLOCKED
     assert "permission" in (result.error or "").lower()
+
+
+def test_open_nwb_lazy_rejects_unsupported_schemes():
+    with pytest.raises(IngestionContractError, match="unsupported|scheme"):
+        open_nwb_lazy("ftp://dandiarchive.org/file.nwb", network_permission=True)
+    with pytest.raises(IngestionContractError, match="unsupported|scheme"):
+        open_nwb_lazy("gcs://bucket/file.nwb", network_permission=True)
+
+
+def test_read_bounded_window_rejects_negative_retries():
+    req = _request()
+    with pytest.raises(ValueError, match="non-negative"):
+        read_bounded_window(FakeSource(), req, max_retries=-1)
+
 
 
 def test_missing_identity_blocked():
