@@ -1,27 +1,31 @@
 # Round 6 DMD / EP2 / matrix-log audit (oracle, synthetic only)
 
-**State: HOLD / SYNTHETIC_ONLY.** Base is verified live `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16`. Branch: `batch1/hermes-bots-dmd-ep2-oracle`. Round 6 candidate code was not found in this base; repository search only located DMD/Koopman mentions in docs and package descriptions. Consequently no claim is made that candidate code was run or reviewed. Primary checkout had pre-existing modifications; this work used a separate worktree and did not touch them.
+**State: HOLD / SYNTHETIC_ONLY.** Independent oracle at `tests/dmd_ep2_oracle/test_oracle.py`. Numerical diagnostics and matrix bounds do **not** establish a biological exceptional point, neural generator branch, or empirical effect.
+
+## Scope
+
+- Pure-Python 2×2 oracle: EP2 splitting / nilpotency, within-trajectory pairing, signed Nyquist alias, principal matrix log (interpolation + repeated-root limit), branch proximity.
+- Optional bridge class `MergedProductionBridgeTests` imports merged `neurotopology_sim.experimental.dynamics.dmd_crouzeix` when present and cross-checks EP2 + 240↔−10 alias. Skips cleanly if the leaf is absent (e.g. this PR's historical base).
+- Owned paths only: `tests/dmd_ep2_oracle/`, `docs/dmd_ep2_oracle_audit.md`. Production DMD is **not** edited here.
 
 ## Reproducible checks
 
-- **Verification:** `python -m unittest discover -s tests/dmd_ep2_oracle -v` — **8 tests passed** after adding the explicit signed Nyquist alias convention. `git diff --check` passed. The tests use synthetic values; no network, datasets, installs into the repository, or third-party code were used.
+```bash
+python -m unittest discover -s tests/dmd_ep2_oracle -v
+python -m compileall -q tests/dmd_ep2_oracle
+git diff --check
+```
 
-The matrix-level oracle now covers diagonalizable, defective repeated-eigenvalue, strongly nonnormal, singular, and near-cut synthetic 2x2 matrices. It uses the closed-form 2x2 primary matrix-function identity (with the repeated-root derivative limit), not the candidate Denman–Beavers/Gregory implementation. For supported matrices, it checks `exp(log(A))` reconstruction and separately checks branch proximity. This is an independent mathematical oracle, not evidence that the candidate engine is correct.
+Oracle suite asserts **full** `N² == 0` (all four entries) plus a regression that the single-entry proxy `n00² + n01·n10 == 0` is insufficient in general.
 
 ## Analytic EP2 result
 
-For the supplied matrix, eigenvalues are `ω0 − iγ ± sqrt(δ² − g²)`, so the theoretical eigenvalue split is `2 sqrt(δ²−g²)` on the real-split side. With δ=1.2: g=.4 gives 2.2627416997969525; g=1.0 gives 1.32664991614216; g=1.2 gives exactly zero analytically. At g=δ, after subtracting `(ω0−iγ)I`, the matrix is nonzero and squares to zero: algebraic multiplicity two and geometric multiplicity one (rank one). This avoids unstable eigenvector-condition-number expectations. A numerical implementation should use a scaled singular-value/rank tolerance tied to matrix norm and machine precision, and report sensitivity across tolerances; a raw floating determinant alone is cancellation-prone.
+Eigenvalues are `ω − iγ ± sqrt(δ² − g²)`. With δ=1.2: g=0.4 → split 2.2627416997969525; g=1.0 → 1.32664991614216; g=1.2 → 0. At g=δ, after subtracting `(ω−iγ)I`, `N ≠ 0` and `N² = 0` (alg. mult. 2, geo. mult. 1).
 
-## Pairing and logs
+## Pairing, logs, Crouzeix language
 
-The pairing test builds adjacent snapshots separately inside each trajectory. It demonstrates the false `(last(A), first(B))` transition introduced by concatenation with no boundary metadata. Preserve trajectory IDs/boundaries in any DMD regression test.
+Pairing builds adjacent snapshots inside each trajectory (no seam pair). Scalar `exp(log(z))` round-trip does **not** identify the branch (`+ 2πik`). Crouzeix `C=2` remains **PREPRINT_UNVERIFIED** on the production leaf; this oracle does not promote it.
 
-The executable checks cover scalar principal logarithms, singular scalar rejection, and a near-negative-real-axis phase warning. They **do not** implement or verify a general 2×2 Denman–Beavers/Gregory matrix logarithm, nor test its behavior on diagonalizable/defective/nonnormal matrices. NumPy is absent in the available interpreter, and installs were prohibited; with no Round 6 candidate available, this requested matrix-level verification remains a blocker. A small scalar `exp(log(z))` round trip is not evidence of correct matrix branch selection or recovery of a continuous-time generator.
+## Discovery note
 
-A near-π principal phase is only a branch-sensitivity diagnostic. It does not establish an unobserved physical frequency, resolve aliasing, or prove the sampling rate adequate. Round-trip residual measures reconstruction consistency only; branch diagnostic measures proximity to the principal cut only. Neither proves generator recovery; compare against known synthetic generator, sampling interval, within-trajectory transitions, and an independently chosen branch.
-
-Crouzeix `C=2` remains **PREPRINT_UNREFEREED**, not used as a validated bound or scientific evidence.
-
-## Ownership and next step
-
-Only `tests/dmd_ep2_oracle/test_oracle.py` is added. No subagents were used. No PR was created: the requested matrix-level suite and candidate comparison cannot be honestly completed in this environment, so the draft-PR gate is not met. No scientific `VALIDATED` or `PASS` claim is made.
+`tests/dmd_ep2_oracle/` is **not** registered in Round-6 `COMPONENTS` and is absent from the Required Checks default allowlist. Path-level hosted execution requires a Codex Agent A mapping/allowlist change (CI not edited in this lane).

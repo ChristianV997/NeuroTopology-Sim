@@ -93,10 +93,34 @@ class OracleTests(unittest.TestCase):
         # At EP, shifted H is nonzero nilpotent: rank one, algebraic mult. two.
         h = model(0, 1.2, 0, 1.2)
         n = ((h[0][0], h[0][1]), (h[1][0], h[1][1]))
-        self.assertAlmostEqual(n[0][0] ** 2 + n[0][1] * n[1][0], 0j)
+        # Full N^2 == 0 (not a single-entry proxy that can pass for non-nilpotent matrices).
+        n2 = (
+            (n[0][0] * n[0][0] + n[0][1] * n[1][0],
+             n[0][0] * n[0][1] + n[0][1] * n[1][1]),
+            (n[1][0] * n[0][0] + n[1][1] * n[1][0],
+             n[1][0] * n[0][1] + n[1][1] * n[1][1]),
+        )
+        for i in range(2):
+            for j in range(2):
+                self.assertAlmostEqual(n2[i][j], 0j)
+        self.assertNotEqual(mat_norm(n), 0)
         self.assertNotEqual(n[0][1], 0)
         # Analytic nullspace has dimension one: one nonzero row, determinant zero.
         self.assertAlmostEqual(n[0][0]*n[1][1] - n[0][1]*n[1][0], 0j)
+
+    def test_single_entry_n2_proxy_is_insufficient(self):
+        """Regression: n00^2 + n01*n10 == 0 does not imply N^2 == 0 in general."""
+        # Trace nonzero ⇒ N²[0,1] = n01*(n00+n11) ≠ 0 while the [0,0] proxy vanishes.
+        n = ((1 + 0j, 1 + 0j), (-1 + 0j, 1 + 0j))
+        proxy = n[0][0] ** 2 + n[0][1] * n[1][0]
+        self.assertAlmostEqual(proxy, 0j)
+        n2 = (
+            (n[0][0] * n[0][0] + n[0][1] * n[1][0],
+             n[0][0] * n[0][1] + n[0][1] * n[1][1]),
+            (n[1][0] * n[0][0] + n[1][1] * n[1][0],
+             n[1][0] * n[0][1] + n[1][1] * n[1][1]),
+        )
+        self.assertGreater(mat_norm(n2), 1e-9)
 
     def test_pairs_do_not_cross_seams(self):
         a, b = [1, 2, 3], [100, 101]
@@ -153,6 +177,47 @@ class OracleTests(unittest.TestCase):
         alternate = principal + 2j * math.pi
         self.assertAlmostEqual(abs(cmath.exp(principal) - z), 0)
         self.assertAlmostEqual(abs(cmath.exp(alternate) - z), 0)
+
+
+class MergedProductionBridgeTests(unittest.TestCase):
+    """Optional cross-check vs merged ``dmd_crouzeix`` (skip if module absent).
+
+    Does not edit production code. HOLD / SYNTHETIC_ONLY — agreement on synthetic
+    fixtures is not a biological exceptional-point claim.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            from neurotopology_sim.experimental.dynamics import dmd_crouzeix as dmd
+        except Exception as exc:  # pragma: no cover - branch without merged leaf
+            raise unittest.SkipTest(
+                f"merged DMD production module unavailable: {exc}"
+            ) from exc
+        cls.dmd = dmd
+
+    def test_ep2_hamiltonian_matches_oracle_and_nilpotency(self):
+        import numpy as np
+
+        h_oracle = model(0.0, 1.2, 0.0, 1.2)
+        h_prod = self.dmd.ep2_hamiltonian(omega=0.0, delta=1.2, gamma=0.0, g=1.2)
+        self.assertTrue(np.allclose(np.asarray(h_oracle), h_prod, atol=1e-12))
+        rep = self.dmd.diagnose_ep2(h_prod)
+        self.assertEqual(rep.algebraic_multiplicity, 2)
+        self.assertEqual(rep.geometric_multiplicity, 1)
+        self.assertGreater(float(rep.nilpotent_norm), 1e-8)
+        self.assertLess(float(rep.nilpotent_square_norm), 1e-10)
+
+    def test_nyquist_alias_matches_production_report(self):
+        import numpy as np
+
+        self.assertAlmostEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
+        dt = 1.0 / 250.0
+        l240 = self.dmd.discrete_eigenvalue_from_frequency_hz(240.0, dt)
+        lm10 = self.dmd.discrete_eigenvalue_from_frequency_hz(-10.0, dt)
+        self.assertTrue(np.allclose(l240, lm10, atol=1e-12))
+        rep = self.dmd.alias_ambiguity_report(f_hz=240.0, fs_hz=250.0)
+        self.assertTrue(rep.phases_match)
 
 
 if __name__ == '__main__':
