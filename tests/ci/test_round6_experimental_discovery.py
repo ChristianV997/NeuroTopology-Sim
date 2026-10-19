@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -197,6 +198,25 @@ class Round6DiscoveryTests(unittest.TestCase):
                     workflow_sha="2" * 40,
                     event_name="workflow_dispatch",
                 )
+
+    def test_docker_engine_suite_is_owned_by_a_dedicated_docker_job(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        docker_job = re.search(
+            r"(?ms)^  docker-context-engine:\n(.*?)^  awareness-tests:", workflow
+        )
+        self.assertIsNotNone(docker_job)
+        job = docker_job.group(1)
+        self.assertIn("runs-on: ubuntu-latest", job)
+        self.assertIn("timeout-minutes: 20", job)
+        self.assertIn("docker info --format", job)
+        self.assertIn("tests/docker_context/test_docker_engine_build_context.py", job)
+        self.assertIn("scripts/run_tests_isolated.py", job)
+        self.assertIn("DIFF_BASE_SHA", job)
+        self.assertIn("DIFF_HEAD_SHA", job)
+        self.assertIn('git diff --name-only "$DIFF_BASE_SHA" "$DIFF_HEAD_SHA"', job)
+        self.assertIn("registered engine test is absent", job)
+        self.assertIn("if: steps.candidate_scope.outputs.docker_context_changed == 'true'", job)
+        self.assertIn("Upload Docker-context diagnostics", job)
 
     def test_contained_artifact_reads_are_size_bounded(self):
         helper = _helper()
@@ -1177,10 +1197,60 @@ def test_fixture():
         docker_tests = {
             pair["test"] for pair in helper.COMPONENTS["docker_context_policy"]["candidate_pairs"]
         }
+        engine_test = "tests/docker_context/test_docker_engine_build_context.py"
         self.assertEqual(docker_tests, {
             "tests/docker_context/test_build_context_policy.py",
-            "tests/docker_context/test_docker_engine_build_context.py",
+            engine_test,
         })
+        self.assertEqual(
+            helper.COMPONENTS["docker_context_policy"]["external_test_paths"],
+            {engine_test: "docker-context-engine"},
+        )
+        self.assertEqual(helper.select_components({engine_test}), ["docker_context_policy"])
+        self.assertEqual(helper._unmapped_candidate_paths({engine_test}), [])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, ".dockerignore", "# synthetic policy\n")
+            _write(root, "tests/docker_context/test_build_context_policy.py", "def test_static(): pass\n")
+            inspection = helper.inspect_component(
+                "docker_context_policy", root, {engine_test}
+            )
+        self.assertEqual(
+            inspection["tests_to_run"],
+            ["tests/docker_context/test_build_context_policy.py"],
+        )
+        self.assertEqual(inspection["delegated_tests"], [engine_test])
+
+    def test_docker_engine_test_change_runs_static_policy_and_is_reported_as_delegated(self):
+        helper = _helper()
+        engine_test = "tests/docker_context/test_docker_engine_build_context.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            _write(root, ".dockerignore", "# synthetic policy\n")
+            _write(root, "tests/docker_context/test_build_context_policy.py", "def test_policy(): pass\n")
+            _write(root, engine_test, "def test_docker_engine_fixture(): pass\n")
+            base = _commit(root, "docker candidate fixtures")
+            _write(root, engine_test, "def test_docker_engine_fixture(): assert True\n")
+            head = _commit(root, "docker engine test-only change")
+            report_path = root / "outputs/report.json"
+            with patch.object(
+                helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs)
+            ):
+                result = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(result, 0)
+        self.assertEqual(report["delegated_test_owners"], {engine_test: "docker-context-engine"})
+        component = report["components"][0]
+        self.assertEqual(component["delegated_tests"], [engine_test])
+        self.assertEqual(
+            [item["test_file"] for item in component["executions"]],
+            ["tests/docker_context/test_build_context_policy.py"],
+        )
         for test_path in (
             "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 is an independent oracle, not a DMD pair.
             "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
