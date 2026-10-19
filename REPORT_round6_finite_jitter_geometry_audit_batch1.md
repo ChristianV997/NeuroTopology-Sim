@@ -8,8 +8,26 @@
 
 **Worktree:** `C:/Users/HP/OneDrive/Documentos/GitHub/.repo-dev-worktrees/mesh-geometry-audit-batch1-20261016`
 
-**Verified base:** `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16` (also confirmed against live `refs/heads/main` during this audit).
+**Verified base (original):** `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16`.
+**Live main (rebased):** `origin/main` at `bc91af19a22783d2721fc881842573f7e08a8925`.
 **Submission note:** The independent reviewer was unavailable through the configured provider route; the user authorized proceeding without that review. Exact final head SHA and PR URL are in the submission handoff.
+
+### Production-import addendum (Cursor Agent C / Batch 2)
+
+Live main now includes
+`neurotopology_sim/experimental/geometry/planar_triangulation.py`.
+Owned comparison tests:
+`tests/test_finite_jitter_production_import.py` hard-import that module,
+assert a production mesh passes this independent auditor, and assert the
+overlapping-face adversarial mesh fails the auditor.
+
+**Round 6 discovery gap → Codex Agent A (do not edit workflows here):**
+`.github/workflows/round6_experimental_tests.py` has **no** component for
+`tools/audit_finite_jitter_triangulation.py` /
+`tests/test_finite_jitter_triangulation_audit.py` /
+`tests/test_finite_jitter_production_import.py`. Proposed mapping name:
+`finite_jitter_triangulation_audit` with those three paths as
+implementation/tests. Without it, hosted Round 6 never collects these suites.
 
 ## Executive finding
 
