@@ -102,20 +102,41 @@ exact. Malformed NaN/Inf/zero/coincident/bad-radius → `SphericalCSDError`.
 
 ### Diagnosis of #419 suite failures (not production)
 
-Combined worktree (`#414` @ `241b078` + `#419` @ `fa8f0f7`, merge-base
-`19c3203`) reports oracle↔fixture fails at **rtol/atol `1e-12`**. Root cause:
-float64 `inv(G_reg)` is only symmetric to ~1e-9; MNE uses `Gi.sum(0)` while
-the #419 oracle uses `Gi@1`, and entrywise residuals vs saved MNE matrices
-reach ~1e-10 abs / ~1e-12 rel Frobenius — **below** the production gate
-(`1e-9`) but **above** the oracle’s `1e-12` gate. Production is not the
-mismatching side. Do not relax #419 tolerances from this lane; report to
-Antigravity with this numerical justification.
+Combined worktree (`#414` @ `fc68735` + `#419` @ `fa8f0f7`, merge-base
+`19c3203`) reports oracle↔fixture fails at **rtol/atol `1e-12`** on
+asymmetric_cap_8 / synthetic_cap_12 / cap_20 / cap_64. Independent
+reproduction:
+
+- Fixture provenance: live MNE **1.13.2** / `bf67729…` identity → full N×N
+  (not corrupted; production matches fixtures with worst rel Frobenius
+  **1.347e-12** on cap_64, gate `1e-9` PASS).
+- Algorithm: production follows MNE `_prepare_G` / `_compute_csd` with
+  `TC = Gi.sum(0)`.
+- #419 oracle uses `TC = Gi @ 1`. Under float64, `inv(G+λ²I)` is not exactly
+  symmetric (`‖Gi−Giᵀ‖_∞` grows with N; ~8e-8 on cap_64), so `Gi@1` and
+  `Gi.sum(0)` diverge (`‖ΔTC‖_∞` ~2e-8 on cap_64).
+- Both oracle and production sit ~1.35e-12 rel Frobenius from the MNE
+  fixtures — **above** the oracle’s strict `< 1e-12` gate and **below** the
+  production `1e-9` gate. Classification: **oracle tolerance / TC definition
+  under float64 inv asymmetry**, not a production defect and not bad fixture
+  provenance. Do not widen tolerances from this lane; #419 owns the oracle fix
+  (align `TC` to `Gi.sum(0)` and/or justify a looser oracle-only gate).
 
 Optional live-MNE parity in owned tests skips when MNE is not installed (no
 unauthorized install).
 
-### CI note (workflow owner)
+### CI note (discovery live on main @ `518e66e`)
 
-Required `core-tests` allowlist in `.github/workflows/required-checks.yml`
-does **not** include `tests/neurotopology_sim/**` or `tests/experimental/**`.
-CI discovery gap — not edited here.
+`.github/workflows/round6_experimental_tests.py` (merged via #425) selects
+component `spherical_csd` when this leaf changes and **requires** both:
+
+1. `tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py`
+2. `tests/experimental/test_spherical_csd_parity.py` (#419-owned)
+
+Hosted Required Checks on merge tip of this PR
+([run 39210140610](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39210140610)):
+`spherical_csd` **BLOCKED** — `missing_required_tests:
+tests/experimental/test_spherical_csd_parity.py`;
+`candidate_test_executions: 0` (no #419 path executed). Surrogate canary
+`NOT_APPLICABLE` is not CSD evidence. Pairing / stack of #419 is an
+integration blocker; this lane does not edit workflows or #419 paths.
