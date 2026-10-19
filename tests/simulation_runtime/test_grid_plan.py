@@ -1955,6 +1955,26 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("operating_point", roc_symbols)
         self.assertIn("compute_roc", roc_symbols)
         self.assertEqual(named["symbol"], "cluster_any_event_rate")
+        hodge = grid_plan_module.GATE_CONTRACT["hodge"]
+        self.assertEqual(
+            hodge["required_module_path"],
+            "neurotopology_sim/experimental/topology/hodge_2d.py",
+        )
+        self.assertEqual(hodge["contract_source"], "candidate_head_observed")
+        self.assertIsNone(hodge["pinned_commit"])
+        self.assertEqual(hodge["informational_candidate"]["candidate_pr"], 423)
+        self.assertEqual(
+            hodge["informational_candidate"]["candidate_head_observed"],
+            "1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
+        )
+        self.assertFalse(hodge["informational_candidate"]["read_by_gate_evaluation"])
+        for symbol in (
+            "hodge_decompose",
+            "HodgeResult",
+            "validate_cochain_complex",
+            "HodgeError",
+        ):
+            self.assertIn(symbol, hodge["required_api_symbols"])
 
         main_sha = _local_main_sha(self)
         ancestor = subprocess.run(
@@ -2013,6 +2033,15 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotIn("symbols_missing_on_main", four["reason_codes"])
         mutated_status = {item["gate_id"]: item["status"] for item in mutated}
         self.assertEqual(mutated_status["roc_metrics"], "dependency_not_merged_on_main")
+        hodge_resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "hodge")
+        self.assertEqual(hodge_resolved["status"], "dependency_not_merged_on_main")
+        self.assertIn("dependency_not_merged_on_main", hodge_resolved["reason_codes"])
+        self.assertIsNone(hodge_resolved["pinned_commit"])
+        self.assertNotEqual(hodge_resolved["status"], "admissible_on_ancestor")
+        self.assertEqual(
+            hodge_resolved["required_module_path"],
+            "neurotopology_sim/experimental/topology/hodge_2d.py",
+        )
 
         forged = {
             "case_id": "hodge",
