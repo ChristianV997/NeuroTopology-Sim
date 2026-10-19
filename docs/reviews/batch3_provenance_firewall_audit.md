@@ -1,87 +1,255 @@
-# Independent audit: report-language, source-pack, and provenance-join PRs
+# Batch 3 provenance-firewall audit snapshot
 
-Audit date: 2026-10-18. This refresh rechecks live PR metadata, branch/base SHAs, changed paths, hosted CI, review state, and #390's focused local behavior. The #391/#392 source-code findings below were previously observed on older heads; their current source diffs were not re-reviewed in this refresh. No participant data was inspected; no harvested content was executed or downloaded; no package was installed; no GitHub review comment or merge was made.
+Evidence cutoff: 2026-10-18 23:03:57 America/Mexico_City (2026-10-19 05:03:57 UTC).
+This snapshot was refreshed from GitHub PR/check metadata and local static review
+in isolated worktrees. CI output was treated as untrusted diagnostic data. No
+participant data, harvested repository content, or external scientific service
+was accessed; no dependency was installed and no PR was merged.
 
 ## Decision
 
-HOLD. Preserve HOLD / SYNTHETIC_ONLY. The four report-firewall regression behaviors covered by #390 are demonstrated by its current tests and the focused suite passes locally. This does not make the checker a truth detector or clear its red required CI. PRs #390 and #404 have failed Required Checks and no approving human review is recorded. Keep both open and do not merge.
+Maintain **HOLD / SYNTHETIC_ONLY**. PR #392 has a narrowly scoped compatibility
+fix on its existing branch and its latest hosted core, Awareness, Smoke, and
+Ontology checks have passed. However, its focused pytest suite could not run in
+the available environment, and the current required workflows do not discover
+that suite. Its branch also targets a stale `main` base and lacks human approval
+evidence. PR #404 is a documentation-only snapshot update; its new head has not
+yet received hosted checks or review. Neither PR is declared integration-ready.
 
-The prior #391/#392 findings remain unresolved for audit purposes, but are historical observations—not assertions that the changed current heads still contain those defects. Their branches and PR states changed since the source review, so current behavior cannot be inferred from the old snapshots or from PR descriptions. None of these tools establishes truth, data rights, source authenticity, cohort identity, model correctness, or scientific validation. Hash/checksum agreement is internal byte/serialization consistency only.
+This audit is not a scientific, legal, provenance-authenticity, or data-rights
+determination. Checksums can establish agreement with specified bytes or
+serialization only; structural joins do not establish honest collection,
+source authenticity, consent, data-use rights, legal compatibility, cohort or
+participant identity, model correctness, biological validity, causation, or
+scientific truth.
 
-Live main and PR refs verified on 2026-10-18:
+## Live refs and PR state
 
-| PR | Current state | Base SHA | Head branch | Head SHA |
+Refs and PR metadata were refreshed at the evidence cutoff. The recorded PR
+base SHA is the base revision GitHub reports for each open PR; it is not the
+current live `main` SHA.
+
+| Ref | State | Base SHA | Head branch | Head SHA at cutoff |
 | --- | --- | --- | --- | --- |
-| #390 | Open, non-draft, unmerged | 19c3203573082f8bc41f7da226b52dc20a49fdb0 | batch3/codex-d-report-firewall | e7fe8252c3a7a9dbd675b324691de803d7d194b6 |
-| #391 | Open, draft, unmerged | 19c3203573082f8bc41f7da226b52dc20a49fdb0 | batch1/hermes-a-safe-source-harvest | ffd24dbc9fe3e1695af1e8d656754f89c4e7f4aa |
-| #392 | Open, non-draft, unmerged | 19c3203573082f8bc41f7da226b52dc20a49fdb0 | batch3/codex-c-provenance-join | bb02e885d38b473123645e0a1b31edbe2ad5ecf9 |
-| #404 | Open, non-draft, unmerged | 19c3203573082f8bc41f7da226b52dc20a49fdb0 | batch3/codex-d-provenance-firewall-review | 6e06ba095fff21757f30a5016684ddb9d09be746 before this audit-document refresh |
+| `main` | live default branch | — | `main` | `ed9c6426e8f1cb614b58e6588a80b184592eecb7` |
+| #390 | open, non-draft | `19c3203573082f8bc41f7da226b52dc20a49fdb0` | `batch3/codex-d-report-firewall` | `53cfbea94e686ce082075b3f3d96c5c02bbfdbf2` |
+| #391 | open, draft | `19c3203573082f8bc41f7da226b52dc20a49fdb0` | `batch1/hermes-a-safe-source-harvest` | `ffd24dbc9fe3e1695af1e8d656754f89c4e7f4aa` |
+| #392 | open, non-draft | `19c3203573082f8bc41f7da226b52dc20a49fdb0` | `batch3/codex-c-provenance-join` | `2bc992d8e455f0426e1050cfe0413135f6ef4bec` |
+| #404 | open, non-draft | `19c3203573082f8bc41f7da226b52dc20a49fdb0` | `batch3/codex-d-provenance-firewall-review` | `5c2c58f1a898ef895f407a5e763c5ed763dbb669` before this document refresh |
 
-The audit worktrees and remote refs were verified against https://github.com/ChristianV997/NeuroTopology-Sim. Live origin/main was 19c3203573082f8bc41f7da226b52dc20a49fdb0. The #404 row identifies the branch head before this document update; the resulting audit commit will have a new head.
+The #392 head includes commit `2bc992d8e455f0426e1050cfe0413135f6ef4bec`,
+fast-forwarded to its existing PR branch from parent
+`5e38aa23342bea05f0a8d144fad4c07ef96ad0bd`. It changes only the existing
+auditor, focused test, and tool-documentation paths. The #404 head above is the
+source snapshot for this document update; the update itself will create a new
+PR head.
 
-## Hosted CI and review evidence
+## Exact paths and relationship
 
-The latest Required Checks runs observed for the listed heads were:
+The refreshed GitHub file list for #392 is:
 
-| Ref | Required Checks | Core | Awareness |
-| --- | --- | --- | --- |
-| #390 head e7fe825 | [39008661251](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661251) | Passed | Failed |
-| #404 pre-refresh head 6e06ba0 | [39008812408](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008812408) | Passed | Failed |
-| #391 head ffd24db | [39009196915](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196915) | Passed | Failed |
-| #392 head bb02e88 | [39115730165](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39115730165) | Passed | Failed |
-| live main 19c3203 | [39001665754](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39001665754) | Passed | Failed |
+- `docs/tools/batch3_provenance_join.md`
+- `scripts/run_batch3_provenance_join.py`
+- `tests/tools/batch3_provenance_join/__init__.py`
+- `tests/tools/batch3_provenance_join/helpers.py`
+- `tests/tools/batch3_provenance_join/test_audit.py`
+- `tests/tools/batch3_provenance_join/test_safety_and_cycles.py`
+- `tools/batch3_provenance_join/__init__.py`
+- `tools/batch3_provenance_join/auditor.py`
+- `tools/batch3_provenance_join/models.py`
 
-For #390, Ontology Claim Language [39008661223](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661223) and Smoke [39008661284](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008661284) passed. For the pre-refresh #404 head, Ontology [39008812423](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008812423) and Smoke [39008812442](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39008812442) passed. For #391, Ontology [39009196922](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196922) and Smoke [39009196945](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196945) passed. For #392's current head, Ontology [39115730115](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39115730115) and Smoke [39115730111](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39115730111) passed. These are successful subsets, not green Required Checks. The first audit-refresh commit 475734278e2220ee3908a2b90119250187497835 later completed Required Checks with core passed and Awareness failed ([39167270249](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167270249)); its Ontology and Smoke checks passed ([39167270263](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167270263), [39167270273](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167270273)). Those results apply to that exact commit, not a subsequent documentation-only update.
+PR #404 changes only `docs/reviews/batch3_provenance_firewall_audit.md`.
+Those paths do not overlap. #404 is downstream documentation about the
+audited PRs and must describe the exact #392 source snapshot it reviewed; it
+does not implement or certify #392 behavior.
 
-Direct Awareness job logs for #390, pre-refresh #404, live main, and current #392 show the same three failures in tests/research_cycle/test_registered_execution.py: two tests receive EXECUTION_FAILED instead of ENGINEERING_EXECUTION_COMPLETE, and the resume test raises KeyError: resumed. The jobs reported 3 failed, 413 passed, and 1 skipped. This establishes the same failure modes on live main and the listed PR heads; it does not turn a failed required check green. #391's Required Checks also failed; its current source/tests were not independently re-run here.
+PR #391 remains a draft and its source-pack contract is not present in the
+current `main` tree at `ed9c6426e8f1cb614b58e6588a80b184592eecb7`. The checked-in
+`tools/public_repo_harvest/` tree has no `source_pack.py`, and a scoped source
+pack search found no source-pack manifest contract (the unrelated HTML report
+pack renderer is not that schema). #392 therefore correctly reports such
+documents as unsupported/unverifiable; no #391 schema support is claimed.
+There is no certified source-pack-to-join adapter or merge order for #391/#392.
 
-Review submissions for #390 and #404 contain only Copilot quota-limit notices. Neither has inline review threads or an approving human review recorded. GitHub reports both PRs mergeable, but mergeable status is not approval or release readiness. The failed required check and missing approval evidence block an authorized merge.
+## #392 current-head audit
 
-## #390 behavior rechecked on current head
+Static inspection was performed against the fetched PR head before the
+compatibility fix, then the exact fix and added test were reviewed in the
+isolated #392 worktree. The following contract behaviors were verified by code
+inspection and existing focused test definitions; pytest execution was not
+available locally:
 
-On 2026-10-18, the exact #390 head e7fe8252c3a7a9dbd675b324691de803d7d194b6 was tested with the bundled Python 3.12.14 runtime:
+- Ledger keys include record type and the `record_id` namespace. Declared
+  dataset joins use `EmpiricalSourceManifest.v1.dataset_identifier`; typed
+  ledger fields resolve only to their contract-declared record type. Generic
+  `parent_ids`, `child_ids`, and materialized links use the ledger's canonical
+  record-ID namespace. Equal text across types/namespaces is not enough to
+  create a join. Unknown record types cannot satisfy those joins; unsupported
+  known typed-reference fields are reported rather than interpreted.
+- Missing, malformed, or mismatched ledger identities are not inferred.
+  Unknown origins, `data_mode`, artifact types, record types, and document
+  schemas are emitted as unverifiable findings. The declared
+  `external_solver` and `unavailable` labels are not mapped to synthetic or
+  empirical. Recursive JSON locations escape `~` and `/` per RFC 6901.
+- License-like keys are detected recursively by `license`/`licence` substring,
+  including compound names such as `licensee_id`, and reported at escaped
+  locations. Current-main schemas do not define typed license records or
+  relationships. License values are therefore unresolved and never joined by
+  text; conflicting or unknown declarations are not treated as a license
+  decision or legal clearance. The report remains structurally incomplete
+  where those warnings are present.
+- Contract-defined checksum rules are applied only at their documented scopes.
+  `SourceSnapshot.source_sha256`, `RunRecordLink.run_record_sha256`, and
+  untyped source-version pins are not assigned guessed scopes or compared to
+  unrelated bytes/metadata. Source URLs are not fetched. A matching hash does
+  not authenticate where bytes came from or who collected them.
+- Explicit path selection, bounded manifest/artifact/total-byte/file/inventory
+  limits, traversal rejection, duplicate-key and non-finite JSON rejection,
+  symlink handling, cycle-loop detection, and deterministic findings are
+  present. Tests define adversarial cases for typed collisions, unsupported
+  edges, malformed inputs, origin/type/license variants, JSON Pointer escaping,
+  checksum scope, cycles, replacement races, traversal, and symlinks where the
+  platform permits.
+- The report describes `CLEAN`, `INCOMPLETE`, and `INVALID` as structural
+  auditor states and sets `scientific_validation` to false. It does not promote
+  evidence or verify citation/source truth.
 
-- python -m unittest discover -s tests/tools/batch3_report_firewall -p 'test_*.py' -v — 28 passed.
-- python -m compileall -q tools/batch3_report_firewall scripts/check_batch3_report_language.py tests/tools/batch3_report_firewall — passed.
-- git diff --check origin/main...HEAD — passed.
-- The CLI help ran. Scanning the explicitly selected local assertions.md fixture emitted advisory findings and exited 0. Selecting a path that traverses outside the fixture root returned structured input_errors and exit 2.
-- Tests cover no-network/no-execution behavior, deterministic output, bounded explicit selection, symlink escape, quotes, negation, code exclusions, JSON status paths, and false-positive safeguards.
+The refreshed fix addresses a reproduced compatibility gap in `_is_link`:
+Python 3.10/3.11 do not provide `Path.is_junction()`, and the earlier helper
+returned false for a modeled directory stat result carrying Windows reparse
+metadata when that method was absent. `_is_link` now checks `lstat` symlink
+mode and available Windows reparse attributes/tag before using
+`Path.is_junction()` when present. The new focused regression fixture models
+both metadata routes without the pathlib junction method. It is not a test on
+an actual Windows junction; the committed test could not be run locally because
+pytest is unavailable.
 
-The current required-check workflow does not demonstrate this focused suite in hosted CI: the core job passes an explicit allowlist of nine test files and omits tests/tools/batch3_report_firewall/test_checker.py, while Awareness runs pytest -q tests with working-directory apps/awareness_studio. Thus the 28-pass result above is local evidence only.
+File-opening limits remain intentionally narrow. On platforms that expose
+`O_NOFOLLOW`, it protects the final path component at open time; it does not
+prevent hostile parent-directory races. Pre/post `lstat` and descriptor
+`fstat` checks detect ordinary identity changes, but not all hostile races or
+metadata restoration. Windows reparse detection depends on metadata exposed by
+the runtime/filesystem. Inventory is for a stable snapshot, not a hostile
+concurrently-mutated tree.
 
-This refresh independently reran Python 3.12.14 only. The PR description reports an earlier Python 3.14.7 run; that version was not rerun during this refresh. No dataset, participant data, external report, or harvested content was used.
+## Local validation and hosted CI
 
-The specific regression tests passed: test_negation_in_prior_compound_clause_does_not_suppress_positive_claim, test_negation_does_not_suppress_assertion_after_comma_clause_boundary, test_multiple_assertive_claims_in_one_sentence_are_checked, test_scientific_validated_is_not_excused_by_software_scope_metadata, test_fenced_and_indented_markdown_code_are_not_scanned, and test_straight_single_quoted_span_is_not_scanned. The JSON status fixture checks the location $/report/scientific_status despite validation_scope: software.
+Local commands were run in the isolated #392 worktree using bundled Python
+3.12.14. No packages were installed.
 
-Static inspection confirms the checker accepts only caller-selected Markdown/JSON paths below a bounded root, rejects traversal and symlinks, enforces file/count/total-size bounds, reads selected bytes, and returns findings to stdout. It does not rewrite reports. The CLI exposes advisory_only and review_recommended with warning findings; it does not emit scientific VALIDATED or any scientific verdict. Citation/evidence references are detected heuristically but are never opened or verified.
+| Command | Result |
+| --- | --- |
+| `python -m pytest -q tests/tools/batch3_provenance_join` | **Not run:** exit 1, `No module named pytest`. |
+| `python scripts/run_tests_isolated.py --root tests/tools/batch3_provenance_join --batch-size 2 --timeout-s 90` | **Not run:** exit 1 before tests, `pytest-timeout is required`. |
+| `python scripts/validate_release_blockers.py --format json` | **Not run:** exit 1, `ModuleNotFoundError: No module named 'yaml'`. |
+| `python -m compileall -q tools/batch3_provenance_join tests/tools/batch3_provenance_join scripts/run_batch3_provenance_join.py` | Passed. |
+| `python scripts/run_batch3_provenance_join.py --help` | Passed. |
+| Manual local-fixture smoke: two legacy Windows reparse-metadata cases and `valid_fixture` audit serialized with `allow_nan=False` | Passed: two metadata detections; fixture report `INCOMPLETE`; finite JSON serialized (9,037 bytes). This is not a pytest-suite pass. |
+| Static scan for network/subprocess/eval/exec imports or calls in auditor and CLI | No matches. This regex scan is not a dedicated security scanner. |
+| `git diff --check` | Passed. |
 
-The compound-clause splitter uses simple punctuation, coordinating conjunctions, and selected comma-led boundaries; quote pairing and Markdown context handling are deterministic heuristics, not a grammar parser. Covered quoted, negated, fenced, and indented-code cases pass, but arbitrary grammar, malformed quotes, nested quotes, and unusual Markdown may still be missed or flagged. Findings are advisory requests for human review, not proof of misconduct, falsity, evidence, or scientific validity. The checker cannot replace the project's evidence gate.
+The core workflows use explicit test-file allowlists:
+`.github/workflows/required-checks.yml:52-68` and
+`.github/workflows/ci.yml:142-157`. They list core test modules but do not list
+`tests/tools/batch3_provenance_join/`; Awareness Studio runs its own package
+tests. Thus the current required workflow does not demonstrate discovery of
+the #392 focused suite. CI-workflow ownership belongs to #425; no workflow was
+edited here.
 
-## Historical findings on older #391/#392 heads — not cleared by this refresh
+On #392 head `2bc992d8e455f0426e1050cfe0413135f6ef4bec`, the hosted checks
+completed successfully by 05:02 UTC: Required Checks run
+[39202337524](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202337524)
+had both core and Awareness pass; Smoke run
+[39202337560](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202337560)
+and Ontology run
+[39202337688](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202337688)
+also passed. This is a green hosted check set, but it does not demonstrate the
+focused #392 suite because that path is omitted from the workflow allowlists.
+On the previous #392 head `5e38aa23342bea05f0a8d144fad4c07ef96ad0bd`, Required Checks run
+[39183762879](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39183762879)
+had a failing Awareness job; core passed, and Smoke and Ontology runs
+[39183762865](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39183762865)
+and
+[39183762883](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39183762883)
+passed. That prior-head result does not predict completion on the new head.
+The connector returned no job-log text for the failure, so no failure signature
+is asserted here.
 
-The following observations were recorded in an earlier static review against base 3f3fe8593303184cb88eef056c1322f3d4e57a16, #391 head 6b48bae73430626f1b09c7863954f728b9b48fa9, and #392 head e7919194823ce28a4ce0074ba723d288cddeb58e. Those are not the current bases/heads above. No claim is made here that the same code remains in the newer heads; each item remains unresolved until independently checked against the live PR diff and regression evidence.
+For comparison, the latest live-main runs at the exact SHA above completed
+successfully: Required Checks
+[39202526614](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202526614),
+Smoke
+[39202526666](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202526666),
+and Ontology Claim Language
+[39202526599](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39202526599).
+These main results do not clear a red or pending PR check. Earlier successful
+runs on `f6951115bcbf83b75bf20481085a5dad9c25c7e6` were superseded when main
+advanced.
 
-- Historical P2, #391 license scope: the earlier source-pack snapshot appeared to gate mixed code/documentation reuse using can_copy_code while omitting can_copy_docs from the pack-level status. Recommendation at that time: make reuse decisions file/content-scope aware or keep mixed packs blocked unless each selected content class has an explicit compatible review. Caller-supplied license status is not legal clearance.
-- Historical P2, #392 typed identifiers: the earlier join snapshot appeared to collapse source_id, source_snapshot_id, source_manifest_id, snapshot_id, dataset_identifier, and dataset_id into untyped strings. Recommendation: define schema-specific keys and allowed edges; collisions between identifier types should remain unverifiable.
-- Historical P2, #392 origins: the earlier snapshot appeared to skip comparison for present but unclassified origins. Recommendation: validate the vocabulary and explicitly label unknown/uncomparable origins unverifiable.
-- Historical P3, #392 limitations: the earlier docs did not explicitly say structural lineage does not establish data rights, cohort identity, or model correctness.
-- Historical P3, #392 file opening: the earlier static review noted a possible lstat/open replacement race. This was a hardening observation, not a demonstrated exploit.
+Before this document refresh, #404 head
+`5c2c58f1a898ef895f407a5e763c5ed763dbb669` had Required Checks run
+[39167669334](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167669334)
+with core passed and Awareness failed; Smoke
+[39167669450](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167669450)
+and Ontology
+[39167669404](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39167669404)
+passed. Those checks apply only to the pre-refresh document head. No hosted
+result for the replacement document commit was available at the cutoff.
 
-These are historical static observations, not reproduced runtime vulnerabilities. Current PR descriptions or author-reported tests do not clear them; current heads need a new source review. No legal conclusion is made.
+## Other PR state: historical evidence is not a current source review
 
-## Current changed paths and integration relationship
+PR #390 advanced from the previously reported `e7fe8252c3a7a9dbd675b324691de803d7d194b6`
+to live head `53cfbea94e686ce082075b3f3d96c5c02bbfdbf2`. Current metadata shows
+core passed in Required Checks run
+[39182948367](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39182948367),
+Awareness failed in that run, and Smoke
+[39182948377](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39182948377)
+and Ontology
+[39182948357](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39182948357)
+passed. The previous report's 28-test local result and named regression cases
+were associated with the older `e7fe…` head. This refresh did not rerun or
+re-review the current #390 source head; those older tests are historical
+evidence only, not proof of current-head behavior.
 
-Changed paths were refreshed from GitHub on 2026-10-18:
+PR #391 remains an open draft at `ffd24dbc9fe3e1695af1e8d656754f89c4e7f4aa`,
+based on `19c3203573082f8bc41f7da226b52dc20a49fdb0`. Its Required Checks run
+[39009196915](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196915)
+had core passed and Awareness failed; Smoke
+[39009196945](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196945)
+and Ontology
+[39009196922](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39009196922)
+passed. The current #391 source diff and historical license-scope observations
+were not re-audited in this refresh. Keep those observations unresolved; do
+not represent them as confirmed current defects or cleared findings.
 
-- #390: docs/tools/batch3_report_firewall.md; scripts/check_batch3_report_language.py; tests/tools/batch3_report_firewall/ (focused test and four fixture files); tools/batch3_report_firewall/ (__init__.py and checker.py).
-- #391: docs/public_repo_harvest_static_source_pack.md; tests/tools/test_public_repo_harvest_source_pack.py; tools/public_repo_harvest/{external_systems_scorecard.py,license_scanner.py,pattern_classifier.py,source_pack.py}.
-- #392: docs/tools/batch3_provenance_join.md; scripts/run_batch3_provenance_join.py; tests/tools/batch3_provenance_join/ (helpers and two test modules); tools/batch3_provenance_join/{__init__.py,auditor.py,models.py}.
-- #404: docs/reviews/batch3_provenance_firewall_audit.md only.
+## Reviews, branch state, and disposition
 
-The current changed-path lists are disjoint. #404 is an audit-document follow-up to #390 and must describe the exact checker head/evidence it reviews. #390 is path-independent of #391/#392. Disjoint paths alone do not establish semantic compatibility. An earlier review found no explicit source-pack-to-provenance-join adapter on the then-audited heads; that integration claim was not rechecked on the new #391/#392 heads. No merge order between #391 and #392 is certified here.
+GitHub reports #392 as `MERGEABLE` and #404 as `UNKNOWN`; both have an empty
+review decision. Their review submissions are Copilot quota-limit notices only; there
+are no inline review threads or approving human reviews in the refreshed data.
+The GitHub branch-protection endpoint for `main` returned HTTP 404, “Branch not
+protected.” That endpoint result is an access/configuration observation only;
+it does not establish whether other repository or organization rules apply.
+No protection was bypassed.
 
-## Disposition
+The PRs still target base SHA `19c3203573082f8bc41f7da226b52dc20a49fdb0`,
+which is behind live main `ed9c6426e8f1cb614b58e6588a80b184592eecb7`. A path
+comparison from that base to live main found no changes in the #392 or #404
+owned paths; main's intervening changes are outside those surfaces. Do not
+rebase or merge another agent's branch to hide this difference. The coordinator
+must handle integration against live main in its prescribed order.
 
-Keep #390 and #404 open and unmerged. #390 remains blocked by failed Required Checks and absent approval evidence. #404's pre-refresh Required Checks were also red; its updated documentation needs hosted checks and review on the resulting head. Do not merge based on mergeable=true or successful subsets.
+Disposition at this evidence cutoff:
 
-Keep #391 open as a draft and #392 open, non-draft. Their prior P2/P3 findings remain audit-unresolved pending current-head review; this is not a conclusion that those defects persist. No PR in this audit is declared merge-ready. Maintain HOLD / SYNTHETIC_ONLY. No heuristic warning, source-pack metadata, lineage hash, or structural join validates a scientific claim, grants rights, or proves biological evidence.
+- #392: **CODE_READY: no** (focused pytest and bounded runner could not execute,
+  and hosted CI does not discover the focused suite). **INTEGRATION_READY: no**
+  (stale base, no human approval evidence, and no focused hosted test evidence).
+- #404: **DOCUMENT_REVIEWED: yes for the stated snapshot only.** Its new commit
+  still needs hosted checks and review. **INTEGRATION_READY: no** (new-head CI
+  and approval evidence unavailable; base is stale).
+- #390/#391: current PR states and checks above are metadata only. No current
+  source-level clearance is implied by this report.
+
+Maintain **HOLD / SYNTHETIC_ONLY**. No heuristic warning, source-pack metadata,
+checksum, hash chain, structural join, or report in this audit establishes a
+scientific claim or changes the evidence gate.
