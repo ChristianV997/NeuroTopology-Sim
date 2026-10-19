@@ -21,7 +21,10 @@ and only the exact merge commit registered for that gate. Open
 pull-request heads are not pins. A null pin blocks that gate with
 ``dependency_not_merged_on_main``. A registered merge pin whose module
 and symbols are on main, but whose promotion report is not, stays
-``pinned_on_main_awaiting_report``. That status does not open the gate.
+``promotion_report_missing``. That status does not open the gate.
+The pin is the merge commit, not the commit that added the file. The
+module blob at the pin must equal the blob at ``AUDITED_MAIN_SHA``;
+a difference is ``pin_blob_mismatch_main`` and ``stale``.
 The module blob, its API symbols, a main-tracked promotion report for
 that same gate, and CI discovery of these tests all have to hold, and
 this module still refuses the simulation callback.
@@ -86,7 +89,7 @@ ROC_API_NAMES = (
     "auc",
     "average_precision",
 )
-AUDITED_MAIN_SHA = "f6951115bcbf83b75bf20481085a5dad9c25c7e6"
+AUDITED_MAIN_SHA = "02520d44d662d394a2ff0822c0d3170a2d34213a"
 ROLES_DISJOINT_NOTE = (
     "Disjoint calibration and evaluation ids are not proof of statistical "
     "independence. Independent draws need per-seed RNG streams downstream."
@@ -156,18 +159,25 @@ def _contract_row(
     merged_pr: Optional[int] = None,
     symbols_verified_on_candidate_head: Optional[bool] = None,
     candidate_note: Optional[str] = None,
+    added_in_commit: Optional[str] = None,
+    implementation_blob_sha: Optional[str] = None,
 ) -> Dict[str, Any]:
     """One gate contract.
 
     Gate evaluation reads ``pinned_commit``, ``merged_pr``,
-    ``required_module_path``, ``required_api_symbols``, and
-    ``contract_source``. It does not read ``informational_candidate``.
-    Heads stored there are observations, not pins.
+    ``required_module_path``, ``required_api_symbols``,
+    ``contract_source``, ``added_in_commit``, and
+    ``implementation_blob_sha``. It does not read
+    ``informational_candidate``. Heads stored there are observations,
+    not pins. ``added_in_commit`` is the commit that introduced the
+    file. It is not a pin.
     """
 
     return {
         "pinned_commit": pinned_commit,
         "merged_pr": merged_pr,
+        "added_in_commit": added_in_commit,
+        "implementation_blob_sha": implementation_blob_sha,
         "required_module_path": path,
         "required_api_symbols": tuple(symbols),
         "contract_source": contract_source,
@@ -218,8 +228,13 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         pinned_commit="02520d44d662d394a2ff0822c0d3170a2d34213a",
         merged_pr=418,
         symbols_verified_on_candidate_head=True,
+        added_in_commit="1b3465d4410a531e4686ba3b2dc0d0ae052c6e93",
+        implementation_blob_sha="ba01dad6e21e89ed3cf54179bbc7319975987465",
         candidate_note=(
             "Merge commit of pull request #418 on main. "
+            "The file was added at 1b3465d4410a531e4686ba3b2dc0d0ae052c6e93 "
+            "(blob 158500ffc5bc2d519b2264613be64a522347bd2f). "
+            "That adding commit is not the pin. "
             "Pre-merge head was 1630d62668422ac14a5eb69c22392540c25ec13d."
         ),
     ),
@@ -276,8 +291,13 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         pinned_commit="9abf3abeebd1c210d59df44b4d208678d203404c",
         merged_pr=413,
         symbols_verified_on_candidate_head=True,
+        added_in_commit="eefabe97690caeec33f3777a05d2acbe0398ea6b",
+        implementation_blob_sha="39084e1735206c616a1befdaddf8b83f23365bdf",
         candidate_note=(
             "Merge commit of pull request #413 on main. "
+            "The file was added at eefabe97690caeec33f3777a05d2acbe0398ea6b "
+            "(blob da04a1b4122609887accc6b959f3391958e47490). "
+            "That adding commit is not the pin. "
             "Pre-merge head was 8240892587cc70a6d4456bb2d34dbd110c7d9113."
         ),
     ),
@@ -307,8 +327,9 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         candidate_head="eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
         symbols_verified_on_candidate_head=True,
         candidate_note=(
-            "Open pull request #423. The cited prefix ea7a3b99 moved; "
-            "live tip eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9 was re-parsed. Not a pin."
+            "Open pull request #423. Re-ls-remote still returns "
+            "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9, not the cited prefix ea7a3b99. "
+            "Symbols were re-parsed on that tip. Not a pin."
         ),
     ),
     "csd_full_matrix_pinned_mne": _contract_row(
@@ -372,7 +393,10 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
             "Pull request #417 is not merged. Pull request #430 at "
             "e5e1136631d500dddab7a5b31d6916962b5da5e3 is stacked on #417 and is not on main. "
             "A hosted-green adversarial suite on the exact merged #417 candidate is required "
-            "before a pin. #430 green alone does not count."
+            "before a pin. #430 green alone does not count. "
+            "A later ls-remote returned ca27cd63668b001c68100faf60f720754b2a8064 for #417 and "
+            "498e47d6b7942d1c3e355a45fcb4360fe25c01a9 for #430. Those heads are not pins "
+            "and were not ast-verified."
         ),
     ),
     "roc_metrics": _contract_row(
@@ -2119,6 +2143,8 @@ def _gate_contract_for_hash() -> List[Dict[str, Any]]:
                 "gate_id": gate_id,
                 "pinned_commit": row["pinned_commit"],
                 "merged_pr": row.get("merged_pr"),
+                "added_in_commit": row.get("added_in_commit"),
+                "implementation_blob_sha": row.get("implementation_blob_sha"),
                 "contract_source": row["contract_source"],
                 "required_module_path": row["required_module_path"],
                 "required_api_symbols": list(row["required_api_symbols"]),
@@ -2162,6 +2188,43 @@ def _defined_names(source: str) -> set[str]:
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
     return names
+
+
+def _blob_sha(commit: str, path: str) -> Optional[str]:
+    """Blob id of ``path`` at ``commit``. Missing objects return None."""
+
+    if _COMMIT_SHA.fullmatch(str(commit)) is None or not isinstance(path, str) or not path:
+        return None
+    try:
+        completed = _git(["rev-parse", f"{commit}:{path}"])
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    sha = completed.stdout.strip()
+    if _COMMIT_SHA.fullmatch(sha):
+        return sha
+    return None
+
+
+def _pin_blob_differs(row: Mapping[str, Any], path: str) -> bool:
+    """True when the pin blob is not the blob at ``AUDITED_MAIN_SHA``.
+
+    ``added_in_commit`` is ignored. A recorded ``implementation_blob_sha``
+    that is not the blob at the pin is the same failure.
+    """
+
+    pinned = row.get("pinned_commit")
+    if not isinstance(pinned, str):
+        return True
+    pin_blob = _blob_sha(pinned, path)
+    audited_blob = _blob_sha(AUDITED_MAIN_SHA, path)
+    recorded = row.get("implementation_blob_sha")
+    if pin_blob is None or audited_blob is None or pin_blob != audited_blob:
+        return True
+    if isinstance(recorded, str) and recorded != pin_blob:
+        return True
+    return False
 
 
 def _symbols_present(main_sha: str, path: str, symbols: Sequence[str]) -> bool:
@@ -2234,8 +2297,16 @@ def _contract_reasons(gate_id: str, main_sha: str) -> List[str]:
             reasons = ["module_missing_on_main", *[item for item in reasons if item != "module_missing_on_main"]]
         return reasons
     if isinstance(path, str) and not non_ancestor:
+        pair_ok = (
+            pinned is not None
+            and "merged_pr_mismatch" not in reasons
+            and "dependency_not_merged_on_main" not in reasons
+        )
         if not _path_tracked(main_sha, path):
             reasons.append("module_missing_on_main")
+        elif pair_ok and _pin_blob_differs(row, path):
+            reasons.append("pin_blob_mismatch_main")
+            reasons.append("stale")
         elif not _symbols_present(main_sha, path, row["required_api_symbols"]):
             reasons.append("symbols_missing_on_main")
     return reasons
@@ -2260,6 +2331,8 @@ def _contract_blocker(
         "message": f"gate {gate_id} is {status}",
         "pinned_commit": row.get("pinned_commit"),
         "merged_pr": row.get("merged_pr"),
+        "added_in_commit": row.get("added_in_commit"),
+        "implementation_blob_sha": row.get("implementation_blob_sha"),
         "required_module_path": row.get("required_module_path"),
         "required_api_symbols": list(symbols),
         "contract_source": row.get("contract_source"),
@@ -2306,6 +2379,8 @@ def _resolve_one(
         "candidate_is_evidence": False,
         "pinned_commit": GATE_CONTRACT[gate_id]["pinned_commit"],
         "merged_pr": GATE_CONTRACT[gate_id].get("merged_pr"),
+        "added_in_commit": GATE_CONTRACT[gate_id].get("added_in_commit"),
+        "implementation_blob_sha": GATE_CONTRACT[gate_id].get("implementation_blob_sha"),
         "required_module_path": GATE_CONTRACT[gate_id]["required_module_path"],
         "required_api_symbols": list(GATE_CONTRACT[gate_id]["required_api_symbols"]),
         "verified_at_commit": None,
@@ -2343,8 +2418,8 @@ def _resolve_one(
         if GATE_CONTRACT[gate_id]["pinned_commit"] is not None:
             return {
                 **base,
-                "status": "pinned_on_main_awaiting_report",
-                "reason_codes": ["pinned_on_main_awaiting_report"],
+                "status": "promotion_report_missing",
+                "reason_codes": ["promotion_report_missing"],
             }
         return {**base, "status": "missing"}
     row = matched[0]
@@ -2489,7 +2564,9 @@ def _resolve_gates_from_rows(
             "module_missing_on_main": "module_missing_on_main",
             "symbols_missing_on_main": "symbols_missing_on_main",
             "substitute_module_rejected": "substitute_module_rejected",
-            "pinned_on_main_awaiting_report": "pinned_on_main_awaiting_report",
+            "promotion_report_missing": "promotion_report_missing",
+            "pin_blob_mismatch_main": "pin_blob_mismatch_main",
+            "stale": "stale",
             "merged_pr_mismatch": "merged_pr_mismatch",
             "duplicate_module_claim": "duplicate_module_claim",
         }

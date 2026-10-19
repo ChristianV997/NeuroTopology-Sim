@@ -348,7 +348,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "f6951115bcbf83b75bf20481085a5dad9c25c7e6")
+        self.assertEqual(AUDITED_MAIN_SHA, "02520d44d662d394a2ff0822c0d3170a2d34213a")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -890,7 +890,7 @@ class GridPlanTests(unittest.TestCase):
             if gate_id == "ci_discovery":
                 self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
             elif gate_id in pinned_awaiting:
-                self.assertEqual(statuses[gate_id], "pinned_on_main_awaiting_report")
+                self.assertEqual(statuses[gate_id], "promotion_report_missing")
             else:
                 self.assertEqual(statuses[gate_id], "dependency_not_merged_on_main")
             self.assertNotEqual(statuses[gate_id], "admissible_on_ancestor")
@@ -901,7 +901,7 @@ class GridPlanTests(unittest.TestCase):
             {item["code"] for item in plan.gate_check["blockers"]},
         )
         self.assertIn(
-            "pinned_on_main_awaiting_report",
+            "promotion_report_missing",
             {item["code"] for item in plan.gate_check["blockers"]},
         )
         self.assertIn("ci_discovery_blocked", {item["code"] for item in plan.gate_check["blockers"]})
@@ -939,11 +939,11 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.run_state, "blocked")
         self.assertEqual(
             _statuses(plan)["four_sphere_forward_model"],
-            "pinned_on_main_awaiting_report",
+            "promotion_report_missing",
         )
         self.assertNotEqual(_statuses(plan)["four_sphere_forward_model"], "admissible_on_ancestor")
         self.assertEqual(_statuses(plan)["planar_geometry"], "dependency_not_merged_on_main")
-        self.assertEqual(_statuses(plan)["winding"], "pinned_on_main_awaiting_report")
+        self.assertEqual(_statuses(plan)["winding"], "promotion_report_missing")
         self.assertEqual(_statuses(plan)["hodge"], "dependency_not_merged_on_main")
         self.assertEqual(_statuses(plan)["ci_discovery"], "ci_discovery_blocked")
         self.assertNotIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
@@ -984,8 +984,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(plan.caller_gate_decision_rejected)
         _assert_seven_non_admissible(self, plan)
         forged_status = _statuses(plan)
-        self.assertEqual(forged_status["four_sphere_forward_model"], "pinned_on_main_awaiting_report")
-        self.assertEqual(forged_status["winding"], "pinned_on_main_awaiting_report")
+        self.assertEqual(forged_status["four_sphere_forward_model"], "promotion_report_missing")
+        self.assertEqual(forged_status["winding"], "promotion_report_missing")
         self.assertEqual(forged_status["planar_geometry"], "dependency_not_merged_on_main")
         self.assertTrue(
             all(item["status"] != "admissible_on_ancestor" for item in plan.gate_resolution)
@@ -1151,7 +1151,7 @@ class GridPlanTests(unittest.TestCase):
             all(item["status"] != "admissible_on_ancestor" for item in duplicated)
         )
         multi_status = {item["gate_id"]: item["status"] for item in multi}
-        self.assertEqual(multi_status["four_sphere_forward_model"], "pinned_on_main_awaiting_report")
+        self.assertEqual(multi_status["four_sphere_forward_model"], "promotion_report_missing")
         self.assertEqual(multi_status["planar_geometry"], "missing")
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in multi))
         single_status = {item["gate_id"]: item["status"] for item in single}
@@ -1178,7 +1178,7 @@ class GridPlanTests(unittest.TestCase):
             if gate_id == "ci_discovery":
                 self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
             elif gate_id in pinned:
-                self.assertEqual(statuses[gate_id], "pinned_on_main_awaiting_report")
+                self.assertEqual(statuses[gate_id], "promotion_report_missing")
                 self.assertEqual(row["pinned_commit"], pinned[gate_id])
                 self.assertNotEqual(statuses[gate_id], "admissible_on_ancestor")
             else:
@@ -1976,7 +1976,7 @@ class GridPlanTests(unittest.TestCase):
             item
             for item in plan.gate_check["blockers"]
             if item["gate_id"] == "four_sphere_forward_model"
-            and item["code"] == "pinned_on_main_awaiting_report"
+            and item["code"] == "promotion_report_missing"
         )
         self.assertEqual(blocker["main_sha_checked"], main_sha)
         self.assertEqual(blocker["pinned_commit"], "02520d44d662d394a2ff0822c0d3170a2d34213a")
@@ -2098,7 +2098,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.grid_execution, "NOT_RUN")
         self.assertFalse(plan.execution["executed"])
         four = next(item for item in plan.gate_resolution if item["gate_id"] == gate_id)
-        self.assertEqual(four["status"], "pinned_on_main_awaiting_report")
+        self.assertEqual(four["status"], "promotion_report_missing")
         self.assertNotEqual(four["status"], "admissible_on_ancestor")
         self.assertNotIn("module_missing_on_main", four["reason_codes"])
         self.assertNotIn("symbols_missing_on_main", four["reason_codes"])
@@ -2172,8 +2172,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.run_state, "blocked")
         self.assertEqual(plan.grid_execution, "NOT_RUN")
         statuses = _statuses(plan)
-        self.assertEqual(statuses["four_sphere_forward_model"], "pinned_on_main_awaiting_report")
-        self.assertEqual(statuses["winding"], "pinned_on_main_awaiting_report")
+        self.assertEqual(statuses["four_sphere_forward_model"], "promotion_report_missing")
+        self.assertEqual(statuses["winding"], "promotion_report_missing")
         self.assertEqual(statuses["planar_geometry"], "dependency_not_merged_on_main")
         self.assertEqual(statuses["surrogate_null"], "dependency_not_merged_on_main")
         self.assertEqual(statuses["ci_discovery"], "ci_discovery_blocked")
@@ -2256,8 +2256,8 @@ class GridPlanTests(unittest.TestCase):
             )
         stale_status = {item["gate_id"]: item["status"] for item in stale}
         self.assertEqual(stale_status["four_sphere_forward_model"], "pin_not_ancestor_of_main")
-        self.assertNotEqual(stale_status["four_sphere_forward_model"], "pinned_on_main_awaiting_report")
-        self.assertEqual(stale_status["winding"], "pinned_on_main_awaiting_report")
+        self.assertNotEqual(stale_status["four_sphere_forward_model"], "promotion_report_missing")
+        self.assertEqual(stale_status["winding"], "promotion_report_missing")
 
         with patch.dict(four, {"merged_pr": 999}):
             mismatch_reasons = grid_plan_module._contract_reasons(
@@ -2306,7 +2306,7 @@ class GridPlanTests(unittest.TestCase):
         )
         sha_status = {item["gate_id"]: item["status"] for item in sha_resolved}
         self.assertEqual(sha_status["four_sphere_forward_model"], "not_on_main")
-        self.assertEqual(sha_status["winding"], "pinned_on_main_awaiting_report")
+        self.assertEqual(sha_status["winding"], "promotion_report_missing")
         self.assertNotEqual(sha_status["winding"], "admissible_on_ancestor")
         self.assertNotEqual(sha_status["planar_geometry"], "admissible_on_ancestor")
 
@@ -2412,6 +2412,93 @@ class GridPlanTests(unittest.TestCase):
         self.assertFalse(planned.execution["sweep_reachable"])
         self.assertEqual(planned.run_state, "blocked")
         self.assertEqual(planned.grid_execution, "NOT_RUN")
+
+    def test_merged_pins_need_reports_and_reject_a_stale_module_blob(self):
+        """Pin stays the merge SHA. A missing report blocks; a different blob is stale."""
+
+        four_pin = "02520d44d662d394a2ff0822c0d3170a2d34213a"
+        winding_pin = "9abf3abeebd1c210d59df44b4d208678d203404c"
+        four_added = "1b3465d4410a531e4686ba3b2dc0d0ae052c6e93"
+        winding_added = "eefabe97690caeec33f3777a05d2acbe0398ea6b"
+        four_blob = "ba01dad6e21e89ed3cf54179bbc7319975987465"
+        winding_blob = "39084e1735206c616a1befdaddf8b83f23365bdf"
+        four_added_blob = "158500ffc5bc2d519b2264613be64a522347bd2f"
+        winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
+        self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
+        four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
+        winding = grid_plan_module.GATE_CONTRACT["winding"]
+        self.assertEqual(four["pinned_commit"], four_pin)
+        self.assertEqual(four["added_in_commit"], four_added)
+        self.assertEqual(four["implementation_blob_sha"], four_blob)
+        self.assertNotEqual(four["pinned_commit"], four["added_in_commit"])
+        self.assertEqual(winding["pinned_commit"], winding_pin)
+        self.assertEqual(winding["added_in_commit"], winding_added)
+        self.assertEqual(winding["implementation_blob_sha"], winding_blob)
+        self.assertNotEqual(winding["pinned_commit"], winding["added_in_commit"])
+        main_sha = _require_audited_main_ancestor(self)
+        self.assertEqual(
+            grid_plan_module._blob_sha(four_pin, four["required_module_path"]),
+            grid_plan_module._blob_sha(grid_plan_module.AUDITED_MAIN_SHA, four["required_module_path"]),
+        )
+        self.assertEqual(
+            grid_plan_module._blob_sha(four_added, four["required_module_path"]),
+            four_added_blob,
+        )
+        self.assertNotEqual(four_added_blob, four_blob)
+        self.assertEqual(
+            grid_plan_module._blob_sha(winding_pin, winding["required_module_path"]),
+            winding_blob,
+        )
+        self.assertEqual(
+            grid_plan_module._blob_sha(winding_added, winding["required_module_path"]),
+            winding_added_blob,
+        )
+        self.assertNotEqual(winding_added_blob, winding_blob)
+        calls, spy = _spy_calls()
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertEqual(plan.run_state, "blocked")
+        statuses = _statuses(plan)
+        four_row = next(item for item in plan.gate_resolution if item["gate_id"] == "four_sphere_forward_model")
+        winding_row = next(item for item in plan.gate_resolution if item["gate_id"] == "winding")
+        self.assertEqual(statuses["four_sphere_forward_model"], "promotion_report_missing")
+        self.assertEqual(statuses["winding"], "promotion_report_missing")
+        self.assertEqual(four_row["reason_codes"], ["promotion_report_missing"])
+        self.assertEqual(winding_row["reason_codes"], ["promotion_report_missing"])
+        self.assertNotIn("dependency_not_merged_on_main", four_row["reason_codes"])
+        self.assertNotIn("dependency_not_merged_on_main", winding_row["reason_codes"])
+        self.assertTrue(
+            all(item["status"] != "admissible_on_ancestor" for item in plan.gate_resolution)
+        )
+        self.assertEqual(plan.provenance["base_sha"], main_sha)
+        with patch.dict(
+            four,
+            {"pinned_commit": four_added, "implementation_blob_sha": four_added_blob},
+        ), patch.dict(
+            grid_plan_module.MERGED_PIN_PAIRS,
+            {"four_sphere_forward_model": (418, four_added)},
+        ):
+            mismatched, blockers = grid_plan_module._resolve_gates_from_rows(
+                [],
+                main_sha=main_sha,
+                git_failure=None,
+            )
+        mismatched_row = next(item for item in mismatched if item["gate_id"] == "four_sphere_forward_model")
+        self.assertEqual(mismatched_row["status"], "pin_blob_mismatch_main")
+        self.assertIn("stale", mismatched_row["reason_codes"])
+        self.assertNotEqual(mismatched_row["status"], "promotion_report_missing")
+        self.assertNotEqual(mismatched_row["status"], "admissible_on_ancestor")
+        self.assertIn(
+            "pin_blob_mismatch_main",
+            {item["code"] for item in blockers if item["gate_id"] == "four_sphere_forward_model"},
+        )
+        self.assertEqual(
+            next(item["status"] for item in mismatched if item["gate_id"] == "winding"),
+            "promotion_report_missing",
+        )
 
 
 if __name__ == "__main__":

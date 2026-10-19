@@ -85,10 +85,12 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited commit
-`f6951115bcbf83b75bf20481085a5dad9c25c7e6`. Every dependency pin is null,
-so every dependency gate is `dependency_not_merged_on_main`, and every
-cell stays blocked. A caller dict, list, or boolean passed to `execute`
-is not read, even when it says `ADMISSIBLE_*` and names an ancestor commit.
+`02520d44d662d394a2ff0822c0d3170a2d34213a`. `four_sphere_forward_model`
+and `winding` are pinned to merge commits and stay
+`promotion_report_missing`. Every other dependency pin is null, so those
+gates are `dependency_not_merged_on_main`, and every cell stays blocked.
+A caller dict, list, or boolean passed to `execute` is not read, even
+when it says `ADMISSIBLE_*` and names an ancestor commit.
 
 If `git` is missing, the clone is shallow (`git rev-parse
 --is-shallow-repository` is `true`), or main cannot be resolved, every
@@ -368,9 +370,14 @@ A gate is eligible only when all of these hold:
    (`symbols_missing_on_main` when a name is absent).
 4. A promotion report at the `write_report` default path is a blob on
    main and passes the one-`case_id` admissibility checks. A matching
-   text pin does not open the gate by itself. When the pin, module, and
-   symbols hold and that report is absent, the status is
-   `pinned_on_main_awaiting_report`, not `admissible_on_ancestor`.
+   text pin does not open the gate by itself. When the pin, module,
+   symbols, and module blob match audited main and that report is absent,
+   the status is `promotion_report_missing`, not `dependency_not_merged_on_main`
+   and not `admissible_on_ancestor`. The blob of the module at
+   `pinned_commit` must equal the blob at `AUDITED_MAIN_SHA`. A difference,
+   including a pin of the file-adding commit, is `pin_blob_mismatch_main`
+   and `stale`. `added_in_commit` records the introducing commit and is
+   not a pin. `implementation_blob_sha` is the blob at the pin.
 5. Direct tests are collected by CI. `ci_discovery` stays blocked.
    Pull request #425 merged discovery. That selection does not open the gate.
 
@@ -381,11 +388,21 @@ any blocking gate is short of `admissible_on_ancestor`.
 There are ten blocking gates. `winding_hodge` is split. `winding` is
 pinned to merge commit `9abf3abeebd1c210d59df44b4d208678d203404c` of
 pull request #413 (`neurotopology_sim/experimental/topology/winding.py`
-on main). The pin does not open the gate: there is no main-tracked
-promotion report, so the status is `pinned_on_main_awaiting_report`.
+on main). The file was added at `eefabe97690caeec33f3777a05d2acbe0398ea6b`
+and later commits changed the blob; the pin stays the merge SHA. The
+blob at that pin matches audited main (`39084e1735206c616a1befdaddf8b83f23365bdf`).
+The pin does not open the gate: there is no main-tracked promotion
+report, so the status is `promotion_report_missing`.
+`four_sphere_forward_model` is the same shape: added at
+`1b3465d4410a531e4686ba3b2dc0d0ae052c6e93` (blob
+`158500ffc5bc2d519b2264613be64a522347bd2f`), pinned at the #418 merge,
+implementation blob `ba01dad6e21e89ed3cf54179bbc7319975987465`.
 `hodge` is `neurotopology_sim/experimental/topology/hodge_2d.py` observed
-on open pull request #423. The order cited `ea7a3b99`; the live tip
-re-parsed for this audit is `eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`.
+on open pull request #423. Re-ls-remote still returns
+`eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`, not the cited prefix
+`ea7a3b99`. #414 remains `5a8e6485be08f68757c46b7e7beda70bf9a0d4b6`,
+#416 remains `757668e9b739d7423fa1493aec550072aa105829`, and #426 remains
+`8c422e9c295510c1e71b373181f9eb1c44871a25`.
 The pin stays null, so the gate stays `dependency_not_merged_on_main`.
 Open pull requests #396 and #385 also ship Hodge code; the contract cites
 the production module on #423. `phase_dispersion_module` has no path and
@@ -417,9 +434,9 @@ Abort order is the blocking-id order. The first blocking gate that is not
 
 | Gate | Source | Module | Pin | Status while the plan is closed |
 | --- | --- | --- | --- | --- |
-| `four_sphere_forward_model` | merged #418, symbols checked on main | `physics/eeg_forward/four_sphere.py` | `02520d44d662d394a2ff0822c0d3170a2d34213a` | `pinned_on_main_awaiting_report` |
+| `four_sphere_forward_model` | merged #418; added in `1b3465d4410a531e4686ba3b2dc0d0ae052c6e93`; blob `ba01dad6e21e89ed3cf54179bbc7319975987465` | `physics/eeg_forward/four_sphere.py` | `02520d44d662d394a2ff0822c0d3170a2d34213a` | `promotion_report_missing` |
 | `planar_geometry` | candidate_head_observed, #416 `757668e9b739d7423fa1493aec550072aa105829` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null | `dependency_not_merged_on_main` |
-| `winding` | merged #413, symbols checked on main | `neurotopology_sim/experimental/topology/winding.py` | `9abf3abeebd1c210d59df44b4d208678d203404c` | `pinned_on_main_awaiting_report` |
+| `winding` | merged #413; added in `eefabe97690caeec33f3777a05d2acbe0398ea6b`; blob `39084e1735206c616a1befdaddf8b83f23365bdf` | `neurotopology_sim/experimental/topology/winding.py` | `9abf3abeebd1c210d59df44b4d208678d203404c` | `promotion_report_missing` |
 | `hodge` | candidate_head_observed, #423 `eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9` | `neurotopology_sim/experimental/topology/hodge_2d.py` | null | `dependency_not_merged_on_main` |
 | `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `5a8e6485be08f68757c46b7e7beda70bf9a0d4b6` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
 | `phase_dispersion_module` | contract_declared_unobserved | none | null | `dependency_not_merged_on_main` |
