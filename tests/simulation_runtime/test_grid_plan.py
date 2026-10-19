@@ -54,13 +54,16 @@ CHECKED_AT = "2026-01-02T00:00:00+00:00"
 
 
 def _git(*args: str) -> str:
-    completed = subprocess.run(
-        ["git", *args],
-        cwd=str(_REPO_ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        raise unittest.SkipTest("git binary not available")
     if completed.returncode != 0:
         raise AssertionError(completed.stderr.strip() or "git failed")
     return completed.stdout.strip()
@@ -772,6 +775,15 @@ class GridPlanTests(unittest.TestCase):
                 self.assertEqual(caught.exception.code, code, caught.exception)
                 self.assertEqual(calls, [])
 
+    def test_artifact_count_hard_cap_rejects_oversized_plans(self):
+        normalized = grid_plan_module._normalize_config(_base_config())
+        with self.assertRaises(GridPlanError) as caught:
+            grid_plan_module._cost_estimate(
+                normalized, grid_plan_module.ABSOLUTE_MAX_CELLS + 1
+            )
+        self.assertEqual(caught.exception.code, "over_budget")
+        self.assertIn("artifact", str(caught.exception).lower())
+
     def test_absolute_cell_ceiling_rejects_before_launch(self):
         config = _base_config(
             axes=[
@@ -1201,6 +1213,29 @@ class GridPlanTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.code, "invalid_range")
 
+    def test_planned_metrics_carry_not_integrated_status(self):
+        spec = grid_plan_module._metric_spec({"value": "not_required"})
+        self.assertEqual(spec["status"], "NOT_INTEGRATED")
+        self.assertFalse(spec["computed"])
+        self.assertTrue(spec["metrics"])
+        for metric in spec["metrics"]:
+            self.assertEqual(metric["status"], "NOT_INTEGRATED")
+            self.assertFalse(metric["computed"])
+            self.assertIsNone(metric["value"])
+
+    def test_ci_discovery_stays_blocked_after_round6_selection(self):
+        row = grid_plan_module._resolve_one(
+            "ci_discovery",
+            role="blocking",
+            rows=[],
+            main_sha="a" * 40,
+            git_failure=None,
+        )
+        self.assertEqual(row["status"], "ci_discovery_blocked")
+        self.assertNotIn("#425 owns that change", row["message"])
+        self.assertIn("round6_experimental_tests.py", row["message"])
+        self.assertIn("does not open this gate", row["message"])
+
     def test_declarations_cost_and_smoke_do_not_compute_or_sweep(self):
         import tools.simulation_runtime.grid_plan as grid_plan
 
@@ -1287,6 +1322,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(by_id["tpr"]["undefined_reason"], "tpr_undefined_zero_denominator")
         self.assertEqual(by_id["fpr"]["undefined_reason"], "fpr_undefined_zero_denominator")
         for metric in spec["metrics"]:
+            self.assertEqual(metric["status"], "NOT_INTEGRATED")
             self.assertIsNone(metric["value"])
             self.assertNotEqual(metric["value"], 0)
             self.assertFalse(metric["computed"])
@@ -1300,6 +1336,23 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(
             cost["expected_artifact_count"],
             len(plan.planned_outputs) + plan.cell_count,
+        )
+        nested_plan = dry_run(
+            _base_config(
+                nested_unit="window",
+                nested_per_unit=3,
+                unit_aggregation="cluster_any_event_rate",
+            ),
+            simulation=spy,
+        )
+        self.assertEqual(
+            nested_plan.cost_estimate["cells_times_independent_units_times_nested"],
+            nested_plan.cell_count * (24 + 24) * 3,
+        )
+        self.assertEqual(nested_plan.cost_estimate["nested_per_unit"], 3)
+        self.assertLessEqual(
+            nested_plan.cost_estimate["expected_artifact_count"],
+            grid_plan_module.ABSOLUTE_MAX_ARTIFACTS,
         )
         self.assertEqual(cost["label"], "DECLARED_ESTIMATE")
         self.assertNotIn("BOUND_NOT_A_MEASUREMENT", source)
@@ -1690,7 +1743,6 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "self_declared_state")
 
     def test_null_pins_ignore_informational_heads_and_reject_substitutes(self):
-        main_sha = _require_audited_main_ancestor(self)
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
             pin = row["pinned_commit"]
             self.assertIsNone(pin, gate_id)
@@ -1705,16 +1757,50 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(phase_row["required_api_symbols"], ())
         self.assertEqual(phase_row["contract_source"], "contract_declared_unobserved")
         hodge_row = grid_plan_module.GATE_CONTRACT["hodge"]
-        self.assertIsNone(hodge_row["required_module_path"])
-        self.assertEqual(hodge_row["required_api_symbols"], ())
-        self.assertEqual(hodge_row["contract_source"], "contract_declared_unobserved")
+        self.assertEqual(
+            hodge_row["required_module_path"],
+            "neurotopology_sim/experimental/topology/hodge_2d.py",
+        )
+        self.assertIn("hodge_decompose", hodge_row["required_api_symbols"])
+        self.assertEqual(hodge_row["contract_source"], "candidate_head_observed")
+        self.assertEqual(hodge_row["informational_candidate"]["candidate_pr"], 423)
+        self.assertIsNone(hodge_row["pinned_commit"])
+        hashed_rows = grid_plan_module._gate_contract_for_hash()
+        self.assertTrue(all("candidate_head_observed" not in row for row in hashed_rows))
+        self.assertNotIn(
+            "1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
+            json.dumps(hashed_rows),
+        )
+        info = grid_plan_module.GATE_CONTRACT["roc_metrics"]["informational_candidate"]
+        original_head = info["candidate_head_observed"]
+        before_hash_rows = grid_plan_module._gate_contract_for_hash()
+        info["candidate_head_observed"] = "not-a-pin"
+        try:
+            after_hash_rows = grid_plan_module._gate_contract_for_hash()
+            reasons = grid_plan_module._contract_reasons(
+                "phase_dispersion_module", "a" * 40
+            )
+        finally:
+            info["candidate_head_observed"] = original_head
+        self.assertEqual(after_hash_rows, before_hash_rows)
+        self.assertNotIn("not-a-pin", json.dumps(after_hash_rows))
+        self.assertNotIn("not-a-pin", reasons)
+        with patch.dict(
+            grid_plan_module.GATE_CONTRACT["phase_dispersion_module"],
+            {"required_module_path": "tools/phase_uncertainty/estimator.py"},
+        ):
+            substitute_reasons = grid_plan_module._contract_reasons(
+                "phase_dispersion_module", "a" * 40
+            )
+        self.assertIn("substitute_module_rejected", substitute_reasons)
+        self.assertIn("dependency_not_merged_on_main", substitute_reasons)
 
-        before = dry_run(_base_config()).config_hash
+    def test_audited_main_sha_is_an_ancestor_or_the_test_fails(self):
+        main_sha = _require_audited_main_ancestor(self)
         info = grid_plan_module.GATE_CONTRACT["roc_metrics"]["informational_candidate"]
         original_head = info["candidate_head_observed"]
         info["candidate_head_observed"] = "not-a-pin"
         try:
-            self.assertEqual(dry_run(_base_config()).config_hash, before)
             unchanged, _blockers = grid_plan_module._resolve_gates_from_rows(
                 [],
                 main_sha=main_sha,
@@ -1832,7 +1918,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(blocker["candidate_pr"], 418)
         self.assertEqual(
             blocker["candidate_head_observed"],
-            "9e198b86064b1a7caa132e5d0480cfea130a1248",
+            "1630d62668422ac14a5eb69c22392540c25ec13d",
         )
 
     def test_observed_contracts_match_cited_paths_and_do_not_open_on_a_placeholder(self):
@@ -1840,6 +1926,7 @@ class GridPlanTests(unittest.TestCase):
             "four_sphere_forward_model": "physics/eeg_forward/four_sphere.py",
             "planar_geometry": "neurotopology_sim/experimental/geometry/planar_triangulation.py",
             "winding": "neurotopology_sim/experimental/topology/winding.py",
+            "hodge": "neurotopology_sim/experimental/topology/hodge_2d.py",
             "csd_full_matrix_pinned_mne": "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
             "surrogate_null": "tools/surrogate_nulls/nulls.py",
             "roc_metrics": "neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py",
@@ -1936,7 +2023,7 @@ class GridPlanTests(unittest.TestCase):
             "verified_at_commit": main_sha,
             "source_sha": main_sha,
         }
-        for unobserved in ("hodge", "phase_dispersion_module"):
+        for unobserved in ("phase_dispersion_module",):
             with patch.dict(
                 grid_plan_module.GATE_CONTRACT[unobserved],
                 {

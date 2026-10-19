@@ -96,11 +96,14 @@ gate is `missing` and every cell stays blocked. The plan records
 `gate_source_failure` as `git_missing`, `shallow_clone`, or
 `main_unresolved`. Ancestry is local git only. This module does not fetch.
 
-`ci_discovery` is blocking. The fixed test lists in
-`.github/workflows/ci.yml` (core test step), `.github/workflows/required-checks.yml`
-(core test step), and `docker/ci/core.Dockerfile` (`CMD`) do not name
-`tests/simulation_runtime/test_grid_plan.py`. Pull request #425 owns that
-workflow change. `dmd_crouzeix` is recorded and is nonblocking.
+`ci_discovery` is blocking and stays blocked. The fixed core lists in
+`.github/workflows/ci.yml`, the core test step of
+`.github/workflows/required-checks.yml`, and `docker/ci/core.Dockerfile`
+(`CMD`) do not name `tests/simulation_runtime/test_grid_plan.py`. Pull
+request #425 merged the Round 6 discovery step
+(`.github/workflows/round6_experimental_tests.py`), which can select
+`simulation_grid_planner` when these paths change. That discovery does
+not open this gate. `dmd_crouzeix` is recorded and is nonblocking.
 
 `GATE_INTEGRATION_STATE` and the gate-id list are hand-written audit
 labels. `integration_is_evidence` is false on every resolution row. They
@@ -184,12 +187,15 @@ need per-seed RNG streams downstream.
 ## Declared metrics
 
 `metric_spec` is a declaration block inside the plan hash. Every metric
-has `computed: false` and `value: null`. This module does not import or
+has `status: NOT_INTEGRATED`, `integration: NOT_INTEGRATED`,
+`computed: false`, and `value: null`. This module does not import or
 reimplement pull request #426. That pull request is unmerged, so its head
 is not a pin and `source_head` is null. The names `tpr`, `fpr`,
 `precision`, `auc`, and `average_precision` are recorded as
 `NOT_INTEGRATED`. `accuracy` is an additional declared proportion with the
-same status.
+same status. No ROC, average-precision, or Wilson interval on observed
+scores is computed. `plan_sample_size` supplies only the planning floor
+(`required_n` and the design width).
 
 Wilson intervals are declared only for proportions at the frozen
 threshold: `tpr`, `fpr`, `precision`, and `accuracy`. Numerator and
@@ -220,7 +226,11 @@ never silent 0 or NaN.
 
 `cost_estimate` is computed from `cells × independent units × nested`,
 times a declared `4096` bytes per record, plus `expected_artifact_count`
-(`planned_outputs` plus one artifact per cell). `estimated_callback_invocations`
+(`planned_outputs` plus one artifact per cell). Independent units are the
+declared calibration and evaluation seeds. Nested samples are in that
+product, not only the cell count. `expected_artifact_count` above
+`ABSOLUTE_MAX_ARTIFACTS` (`ABSOLUTE_MAX_CELLS` plus the planned-output
+count) is `over_budget`. `estimated_callback_invocations`
 is that same product, an upper bound. Nothing is executed to obtain it.
 Each `WorkUnit.estimated_disk_mb` and `estimated_memory_mb` is that cell's
 share of the bound. A bare `0.0` is not an estimate. The label is
@@ -357,15 +367,20 @@ A gate is eligible only when all of these hold:
    main and passes the one-`case_id` admissibility checks. A matching
    text pin does not open the gate by itself.
 5. Direct tests are collected by CI. `ci_discovery` stays blocked.
-   Pull request #425 owns that workflow edit.
+   Pull request #425 merged discovery. That selection does not open the gate.
 
 There are ten blocking gates. `winding_hodge` is split. `winding` is the
 module `neurotopology_sim/experimental/topology/winding.py` observed on
-pull request #413. `hodge` has no path and no symbols
-(`contract_declared_unobserved`) because none of the fetched heads ship a
-Hodge module. `phase_dispersion_module` likewise has no path and no
-symbols. A path under `tools/phase_uncertainty/` is
-`substitute_module_rejected`. Pull request #403 is not that module.
+pull request #413. `hodge` is
+`neurotopology_sim/experimental/topology/hodge_2d.py` observed on open
+pull request #423 (`1785a3a14e1cdf3c2f27924d64b88b9354cf427f`). The pin
+stays null, so the gate stays `dependency_not_merged_on_main`. Open pull
+requests #396 and #385 also ship Hodge code; the contract cites the
+production module on #423. `phase_dispersion_module` has no path and no
+symbols (`contract_declared_unobserved`). No open pull request fetched
+for this audit ships a `phase_dispersion` module. A path under
+`tools/phase_uncertainty/` is `substitute_module_rejected`. Pull request
+#403 is not that module.
 `contract_declared_unobserved` rows stay `module_missing_on_main` and
 cannot become admissible. `phase_score_limitations_recorded` is a
 separate limitations row and still requires `limitations_recorded: true`
@@ -386,14 +401,14 @@ Abort order is the blocking-id order. The first blocking gate that is not
 
 | Gate | Source | Module | Pin |
 | --- | --- | --- | --- |
-| `four_sphere_forward_model` | candidate_head_observed, #418 `9e198b86064b1a7caa132e5d0480cfea130a1248` | `physics/eeg_forward/four_sphere.py` | null |
-| `planar_geometry` | candidate_head_observed, #416 `04d5af7321ff002bb88d75353e59aec73eabbf56` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null |
-| `winding` | candidate_head_observed, #413 `e7aaf355eda0957a213e15295c9114bd0adac607` | `neurotopology_sim/experimental/topology/winding.py` | null |
-| `hodge` | contract_declared_unobserved | none | null |
-| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `1b37d419d3580309946606b218ccabf6468ab51d` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null |
+| `four_sphere_forward_model` | candidate_head_observed, #418 `1630d62668422ac14a5eb69c22392540c25ec13d` | `physics/eeg_forward/four_sphere.py` | null |
+| `planar_geometry` | candidate_head_observed, #416 `87d331b563539fb0de0b8966a0af49a84f247ae7` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null |
+| `winding` | candidate_head_observed, #413 `8240892587cc70a6d4456bb2d34dbd110c7d9113` | `neurotopology_sim/experimental/topology/winding.py` | null |
+| `hodge` | candidate_head_observed, #423 `1785a3a14e1cdf3c2f27924d64b88b9354cf427f` | `neurotopology_sim/experimental/topology/hodge_2d.py` | null |
+| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `cff2641a9613ca00f9bad2ab5154118a2cdeaa80` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null |
 | `phase_dispersion_module` | contract_declared_unobserved | none | null |
 | `phase_score_limitations_recorded` | limitations_record | none | null |
-| `surrogate_null` | candidate_head_observed, #417 `c95e82978557151788a679168688da31bf24c799` | `tools/surrogate_nulls/nulls.py` | null |
+| `surrogate_null` | candidate_head_observed, #417 `c39f715c84e928c0204b8c58ef9e40bc1f0ab684` | `tools/surrogate_nulls/nulls.py` | null |
 | `roc_metrics` | candidate_head_observed, #426 `55115149c7443ca8b325dc4dbf65d6900c9fdd79` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | null |
 | `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked |
 
@@ -402,6 +417,7 @@ Public top-level symbols, in blob order:
 - `four_sphere_forward_model`: `MAX_DEGREE`, `DEFAULT_MAX_DEGREE`, `DEFAULT_RESIDUAL_TOL`, `DEFAULT_TAIL_TOL`, `MAX_SCALE_RADIUS_M`, `MIN_RADIUS_M`, `CONDUCTIVITY_BOUNDS_SM`, `TAIL_VALIDATED_MIN_DEGREE`, `FourSphereError`, `FourSphereInputError`, `FourSphereQualityError`, `FourSphereGeometry`, `FourSphereResult`, `NAESS2017_TABLE1_K_VALUES`, `naess2017_table1_geometry`, `legendre_and_derivative`, `shell_transfer`, `transfer_ratios`, `forward_potentials`
 - `planar_geometry`: `SCHEMA_VERSION`, `PROJECT_STATUS`, `DATA_POLICY`, `Point`, `Triangle`, `Edge`, `DegeneracyPolicy`, `ClaimLayer`, `FailureKind`, `LayerDiagnostic`, `PlanarTriangulationResult`, `orient2d`, `incircle`, `convex_hull_extreme`, `hull_boundary_with_collinear`, `validate_layers`, `triangulate_2d`, `validate_planar_mesh`
 - `winding`: `TWO_PI`, `SUPPORTED_WRAP_INTERVALS`, `DEFAULT_TIE_TOL`, `DEFAULT_IDENTITY_ATOL`, `SUPPORTS_SPARSE_INCIDENCE`, `ORIGIN_SHIFT_COORDINATE_MAP`, `ArrayLike`, `WindingError`, `WindingResult`, `ChargeMomentResult`, `branch_index_floor`, `phase_winding`, `signed_first_moment`, `origin_shifted_moment`, `charge_moments`
+- `hodge`: `ArrayLike`, `BoundaryCondition`, `GaugePolicy`, `MetricType`, `HodgeError`, `CochainComplexError`, `MetricError`, `IllConditionedMetricError`, `BoundaryConditionError`, `HodgeResult`, `effective_condition_number`, `validate_cochain_complex`, `validate_edge_metric`, `detect_boundary_elements`, `weighted_inner_product`, `weighted_norm_sq`, `hodge_decompose`
 - `csd_full_matrix_pinned_mne`: `MNE_PIN`, `DEFAULT_LAMBDA2`, `DEFAULT_STIFFNESS`, `DEFAULT_N_LEGENDRE_TERMS`, `OUTPUT_UNIT_SI`, `DEFAULT_COINCIDENT_COS_TOL`, `DEFAULT_CONDITION_MAX`, `DEFAULT_AVG_REF_NULL_ATOL`, `SphericalCSDError`, `SphericalCSDConfig`, `SphericalCSDResult`, `compute_spherical_csd_transform`, `apply_spherical_csd`
 - `surrogate_null`: `AUTO_SPECTRUM_TOL`, `CROSS_SPECTRUM_STRICT_TOL`, `MARGINAL_EXACT_TOL`, `NULL_IDS`, `EXPLORATORY_NULL_IDS`, `RANK_STATUS`, `CONTRACTS`, `SurrogateReport`, `common_phase_prichard_theiler`, `independent_phase_univariate_ft`, `draw_from_csd`, `cholesky_gaussian_cross_spectral`, `cholesky_gaussian_csd`, `zero_lag_real_part_gaussian`, `mv_iaaft_rank_adjusted`, `GENERATORS`
 - `roc_metrics`: `PROJECT_STATUS`, `HIGHER_SCORE_IS_POSITIVE`, `HASH_NOTE`, `BenchmarkError`, `ConfusionCounts`, `fingerprint_sample_ids`, `cluster_any_event_rate`, `confusion_at_threshold`, `operating_point`, `compute_roc`, `select_threshold_on_calibration`, `assert_no_sample_overlap`, `evaluate_held_out`, `REQUIRED_PREREQUISITES`, `prerequisite_gate_report`, `SyntheticRunnerConfig`, `run_synthetic_operating_characteristics`, `json_safe`

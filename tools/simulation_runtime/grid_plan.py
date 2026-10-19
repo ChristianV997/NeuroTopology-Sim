@@ -12,8 +12,9 @@ default location and every gate stays missing. Untracked files and
 ``record_root`` are not evidence. ``record_root`` is a test seam labeled
 ``TEST_FIXTURE_NOT_EVIDENCE`` and cannot make a gate admissible.
 
-``ci_discovery`` is blocking and stays blocked: the CI lists do not
-collect ``tests/simulation_runtime``. ``dmd_crouzeix`` is nonblocking.
+``ci_discovery`` is blocking and stays blocked. Pull request #425
+merged Round 6 discovery, which can select this suite. Discovery does
+not open the gate. ``dmd_crouzeix`` is nonblocking.
 
 A pin may name only a commit that is already an ancestor of local main.
 None of the dependency pull requests are merged, so every pin is null.
@@ -198,7 +199,7 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=418,
-        candidate_head="9e198b86064b1a7caa132e5d0480cfea130a1248",
+        candidate_head="1630d62668422ac14a5eb69c22392540c25ec13d",
     ),
     "planar_geometry": _contract_row(
         "neurotopology_sim/experimental/geometry/planar_triangulation.py",
@@ -224,7 +225,7 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=416,
-        candidate_head="04d5af7321ff002bb88d75353e59aec73eabbf56",
+        candidate_head="87d331b563539fb0de0b8966a0af49a84f247ae7",
     ),
     "winding": _contract_row(
         "neurotopology_sim/experimental/topology/winding.py",
@@ -247,12 +248,32 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=413,
-        candidate_head="e7aaf355eda0957a213e15295c9114bd0adac607",
+        candidate_head="8240892587cc70a6d4456bb2d34dbd110c7d9113",
     ),
     "hodge": _contract_row(
-        None,
-        (),
-        contract_source=CONTRACT_SOURCE_UNOBSERVED,
+        "neurotopology_sim/experimental/topology/hodge_2d.py",
+        (
+            "ArrayLike",
+            "BoundaryCondition",
+            "GaugePolicy",
+            "MetricType",
+            "HodgeError",
+            "CochainComplexError",
+            "MetricError",
+            "IllConditionedMetricError",
+            "BoundaryConditionError",
+            "HodgeResult",
+            "effective_condition_number",
+            "validate_cochain_complex",
+            "validate_edge_metric",
+            "detect_boundary_elements",
+            "weighted_inner_product",
+            "weighted_norm_sq",
+            "hodge_decompose",
+        ),
+        contract_source=CONTRACT_SOURCE_OBSERVED,
+        candidate_pr=423,
+        candidate_head="1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
     ),
     "csd_full_matrix_pinned_mne": _contract_row(
         "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
@@ -273,7 +294,7 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=414,
-        candidate_head="1b37d419d3580309946606b218ccabf6468ab51d",
+        candidate_head="cff2641a9613ca00f9bad2ab5154118a2cdeaa80",
     ),
     "phase_dispersion_module": _contract_row(
         None,
@@ -307,7 +328,7 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=417,
-        candidate_head="c95e82978557151788a679168688da31bf24c799",
+        candidate_head="c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
     ),
     "roc_metrics": _contract_row(
         "neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py",
@@ -397,6 +418,7 @@ PLANNED_OUTPUTS: tuple[str, ...] = (
     "gate_resolution",
     "threshold_hash",
 )
+ABSOLUTE_MAX_ARTIFACTS = ABSOLUTE_MAX_CELLS + len(PLANNED_OUTPUTS)
 FORBIDDEN_OUTPUTS: tuple[str, ...] = ("detector_roc", "auc", "roc_curve")
 
 _CREATED_AT = "1970-01-01T00:00:00+00:00"
@@ -1285,6 +1307,7 @@ def _proportion_declaration(
     return {
         "metric_id": metric_id,
         "named_on_pr_426": metric_id in ROC_API_NAMES,
+        "status": "NOT_INTEGRATED",
         "integration": "NOT_INTEGRATED",
         "source_pr": ROC_API_PR,
         "source_head": None,
@@ -1309,6 +1332,7 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
 
     return {
         "schema": "grid_plan_metric_declarations_v1",
+        "status": "NOT_INTEGRATED",
         "computed": False,
         "imports_roc_api": False,
         "integration": "NOT_INTEGRATED",
@@ -1353,6 +1377,7 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
                 "metric_id": "auc",
                 "named_on_pr_426": True,
                 "unit_score_rule": UNIT_SCORE_RULE,
+                "status": "NOT_INTEGRATED",
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
                 "source_head": None,
@@ -1376,6 +1401,7 @@ def _metric_spec(unit_aggregation: Mapping[str, Any]) -> Dict[str, Any]:
                 "metric_id": "average_precision",
                 "named_on_pr_426": True,
                 "unit_score_rule": UNIT_SCORE_RULE,
+                "status": "NOT_INTEGRATED",
                 "integration": "NOT_INTEGRATED",
                 "source_pr": ROC_API_PR,
                 "source_head": None,
@@ -1441,6 +1467,12 @@ def _cost_estimate(normalized: Mapping[str, Any], cell_count: int) -> Dict[str, 
     product = cell_count * independent_units * nested
     output_bytes = product * DECLARED_BYTES_PER_RECORD
     expected_artifact_count = len(PLANNED_OUTPUTS) + cell_count
+    if expected_artifact_count > ABSOLUTE_MAX_ARTIFACTS:
+        _reject(
+            "over_budget",
+            f"artifact count {expected_artifact_count} exceeds planner ceiling "
+            f"{ABSOLUTE_MAX_ARTIFACTS}",
+        )
     artifact_bytes = expected_artifact_count * DECLARED_BYTES_PER_RECORD
     per_cell_bytes = independent_units * nested * DECLARED_BYTES_PER_RECORD
     per_cell_disk_bytes = per_cell_bytes + DECLARED_BYTES_PER_RECORD
@@ -1670,6 +1702,7 @@ def _limits() -> Dict[str, Any]:
         "hold_status": HOLD_STATUS,
         "absolute_max_cells": ABSOLUTE_MAX_CELLS,
         "absolute_max_trials": ABSOLUTE_MAX_TRIALS,
+        "absolute_max_artifacts": ABSOLUTE_MAX_ARTIFACTS,
         "artifact_sha_is_format_only": True,
         "checked_at_is_caller_set": True,
         "caller_gate_decision_accepted": False,
@@ -2193,9 +2226,11 @@ def _resolve_one(
             "reason_codes": ["ci_discovery_blocked"],
             "message": (
                 "tests/simulation_runtime/test_grid_plan.py is absent from the fixed "
-                "lists in .github/workflows/ci.yml (the core test step), "
-                ".github/workflows/required-checks.yml (the core test step), and "
-                "docker/ci/core.Dockerfile CMD. Pull request #425 owns that change."
+                "core lists in .github/workflows/ci.yml, the core test step of "
+                ".github/workflows/required-checks.yml, and docker/ci/core.Dockerfile "
+                "CMD. Pull request #425 merged the Round 6 discovery step, which runs "
+                ".github/workflows/round6_experimental_tests.py and can select "
+                "simulation_grid_planner. That discovery does not open this gate."
             ),
         }
     reasons = _contract_reasons(gate_id, main_sha)
