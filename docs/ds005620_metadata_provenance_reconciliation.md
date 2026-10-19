@@ -15,8 +15,8 @@ when present. The ontology root (the API argument or CLI option, defaulting to
 `outputs/btc_icft/ds005620_ontology_evaluation_mock` when omitted) is read through
 the fixed `ontology_claim_evaluation.json`,
 `ontology_promotion_decision.json`, and `bridge_claim_status.json` contract
-files. The exporter does not enumerate directories or open EEG/signal payloads
-or other dataset files. These are local filesystem reads only; they are not
+files. The exporter does not enumerate directories or open EEG/signal or other
+dataset payloads. These are local filesystem reads only; they are not
 dataset acquisition or source verification.
 
 ## Data minimization
