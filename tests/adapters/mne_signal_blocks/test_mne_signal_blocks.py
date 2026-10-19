@@ -149,6 +149,49 @@ def test_validate_block_roundtrip_metadata():
     assert report["scientific_pass"] is False
 
 
+def test_validate_block_does_not_upgrade_missing_reference_or_montage():
+    payload = make_valid_block_payload()
+    payload["reference"] = None
+    payload["montage_name"] = None
+    payload["montage_coordinates"] = None
+    result = convert_in_memory_block(payload)
+    report = validate_block(result.block.metadata_dict(include_data=True))
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert report["status"] == BlockStatus.INCONCLUSIVE.value
+    assert ReasonCode.MISSING_REFERENCE.value in report["reason_codes"]
+    assert ReasonCode.MISSING_MONTAGE.value in report["reason_codes"]
+
+
+def test_validate_block_does_not_upgrade_declared_state_or_scientific_claim():
+    result = convert_in_memory_block(make_valid_block_payload())
+    metadata = result.block.metadata_dict(include_data=True)
+    metadata["status"] = BlockStatus.REJECTED.value
+    report = validate_block(metadata)
+    assert report["status"] == BlockStatus.REJECTED.value
+    metadata["scientific_pass"] = True
+    report = validate_block(metadata)
+    assert report["status"] == BlockStatus.ERROR.value
+    assert report["scientific_pass"] is False
+
+
+def test_inconsistent_sample_bounds_are_rejected():
+    payload = make_valid_block_payload(n_channels=1, n_samples=8)
+    payload["block_start_sample"] = 5
+    payload["block_end_sample"] = 14  # declared span is 9 samples, data contains 8
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.REJECTED
+    assert ReasonCode.INVALID_SAMPLE_BOUNDS.value in result.block.reason_codes
+
+
+def test_invalid_montage_coordinates_fail_closed_without_throwing():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["montage_coordinates"] = [(0.0, float("inf"), 1.0)]
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.REJECTED
+    assert ReasonCode.NON_FINITE_VALUES.value in result.block.reason_codes
+    assert result.block.montage_coordinates == (None,)
+
+
 def test_never_infers_units_as_volts():
     """Anti-pattern check vs shared MneFifAdapter which hardcodes units='V'."""
     payload = make_missing_units_payload()

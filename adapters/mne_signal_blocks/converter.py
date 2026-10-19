@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import math
 from typing import Any, Mapping, Sequence
 
 from adapters.mne_signal_blocks.reporting import fingerprint_mapping, serialize_json
@@ -40,8 +41,18 @@ def _copy_data(data: Any) -> Any:
 
 def _fingerprint_input(payload: Mapping[str, Any], data: Any) -> str:
     meta = {k: v for k, v in payload.items() if k != "data"}
+
+    def finite_fingerprint_value(value: Any) -> Any:
+        if isinstance(value, float) and not math.isfinite(value):
+            return {"__non_finite_float__": repr(value)}
+        if isinstance(value, Mapping):
+            return {str(key): finite_fingerprint_value(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [finite_fingerprint_value(item) for item in value]
+        return value
+
     digest = hashlib.sha256()
-    digest.update(serialize_json(meta, indent=None).encode("utf-8"))
+    digest.update(serialize_json(finite_fingerprint_value(meta), indent=None).encode("utf-8"))
     if data is not None:
         try:
             import numpy as np
@@ -142,6 +153,11 @@ def convert_in_memory_block(
         data=data_out,
         events=payload.get("events"),
         allow_channel_types=allow_channel_types,
+        reference=payload.get("reference"),
+        montage_name=payload.get("montage_name"),
+        montage_coordinates=payload.get("montage_coordinates"),
+        block_start_sample=payload.get("block_start_sample"),
+        block_end_sample=payload.get("block_end_sample"),
     )
 
     reasons = list(reasons)
@@ -208,10 +224,14 @@ def convert_in_memory_block(
     if montage_coordinates is not None:
         coords_out = []
         for row in montage_coordinates:
-            if row is None:
+            if row is None or not isinstance(row, (list, tuple)) or len(row) != 3:
                 coords_out.append(None)
             else:
-                coords_out.append((float(row[0]), float(row[1]), float(row[2])))
+                try:
+                    point = (float(row[0]), float(row[1]), float(row[2]))
+                    coords_out.append(point if all(math.isfinite(value) for value in point) else None)
+                except (TypeError, ValueError, OverflowError):
+                    coords_out.append(None)
         coords_out = tuple(coords_out)
 
     mne_ok, mne_ver = _probe_mne()

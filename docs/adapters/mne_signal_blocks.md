@@ -36,6 +36,12 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 - Never silently resample, filter, rereference, interpolate, reorder, or drop channels.
 - Input arrays and metadata mappings are not mutated; data is copied by default.
 - `scientific_pass` is always `false`.
+- Declared sample bounds, when present, must be non-negative integer half-open
+  bounds whose span matches the signal sample dimension.
+- `validate_block` checks serialized schema/status and required reference and
+  montage metadata; it never upgrades a producer's more restrictive status.
+  If signal data is omitted from serialized metadata, shape declarations can
+  be checked but finite sample values cannot be revalidated.
 
 ## Optional MNE bridge
 
@@ -70,3 +76,6 @@ For 3D Epochs arrays, epoch 0 is taken only, with an explicit warning (no averag
 - Does not interpret `custom_ref_applied` as a named reference scheme.
 - Epochs multi-epoch handling is intentionally narrow (epoch 0 + warning).
 - No network I/O; no participant recordings; synthetic fixtures only in tests.
+- Source IDs, provenance text, and a declared source SHA-256 are carried as
+  metadata; this adapter does not authenticate the source or verify that hash
+  against an external recording.
