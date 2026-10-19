@@ -1,7 +1,7 @@
 # Planar triangulation (experimental production)
 
-**Module:** `neurotopology_sim/experimental/geometry/planar_triangulation.py`  
-**Schema:** `neurotopology_sim.planar_triangulation.v1`  
+**Module:** `neurotopology_sim/experimental/geometry/planar_triangulation.py`
+**Schema:** `neurotopology_sim.planar_triangulation.v1`
 **Posture:** HOLD / SYNTHETIC_ONLY — discrete geometry only; not cortical topology or scientific PASS.
 
 ## API
@@ -55,5 +55,5 @@ Shewchuk’s adaptive C kernel is **not** copied.
 
 ## Ownership
 
-Sole production writer path for Batch 2 Cursor Agent A: `planar_triangulation.py`.  
+Sole production writer path for Batch 2 Cursor Agent A: `planar_triangulation.py`.
 Adversarial geometry tests are owned by Antigravity Agent A (do not edit that suite here).
