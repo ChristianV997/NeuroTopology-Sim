@@ -8,6 +8,7 @@ Docker-enabled job, not a test suite that silently skips engine coverage.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
@@ -26,6 +27,30 @@ DOCKER_TIMEOUT_SECONDS = 120
 ALLOWED_FILES = (
     "apps/awareness_studio/.env.example",
     "visible/source-marker.txt",
+)
+
+# Synthetic paths corresponding to files required by the root-context image
+# builds. Only fixed marker bodies are created; repository files are not copied.
+REQUIRED_BUILD_INPUTS = (
+    "requirements-base.txt",
+    "requirements.txt",
+    "apps/awareness_studio/pyproject.toml",
+    "apps/awareness_studio/src/awareness_studio/__init__.py",
+    "apps/awareness_studio/tests/research_cycle/test_registered_execution.py",
+    "apps/awareness_studio/tools/__init__.py",
+    "apps/awareness_studio/inputs/suttacentral_seed_cards.jsonl",
+    "AGENTS.md",
+    "tools/__init__.py",
+    "tools/literature_evidence/__init__.py",
+    "tools/simulation_artifacts/__init__.py",
+    "tools/simulation_execution/__init__.py",
+    "tools/research_cycle_preflight/__init__.py",
+    "tools/research_cycle_release/__init__.py",
+    "tools/research_plan_quality/__init__.py",
+    "tools/research_claim_gate/__init__.py",
+    "tools/data_access/policy_enforcement/__init__.py",
+    "scripts/build_awareness_evidence_graph.py",
+    "tests/research_cycle_preflight/fixtures/complete_plan.json",
 )
 
 # Filenames only: file bodies in this temporary context are a fixed synthetic
@@ -86,8 +111,21 @@ FORBIDDEN_FILES = (
 )
 
 
-def _run_docker(args: list[str], *, timeout: int = DOCKER_TIMEOUT_SECONDS) -> str:
+def _docker_environment() -> dict[str, str]:
+    """Prevent a raw host override from bypassing the inspected context."""
+    environment = os.environ.copy()
+    environment.pop("DOCKER_HOST", None)
+    return environment
+
+
+def _run_docker(
+    args: list[str],
+    *,
+    timeout: int = DOCKER_TIMEOUT_SECONDS,
+    env: dict[str, str] | None = None,
+) -> str:
     """Run Docker without echoing command output that could contain file data."""
+    docker_environment = _docker_environment() if env is None else env
     try:
         completed = subprocess.run(
             ["docker", *args],
@@ -95,6 +133,7 @@ def _run_docker(args: list[str], *, timeout: int = DOCKER_TIMEOUT_SECONDS) -> st
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=docker_environment,
         )
     except subprocess.TimeoutExpired:
         pytest.fail(f"Docker operation {args[0]!r} timed out after {timeout}s")
@@ -110,6 +149,34 @@ def _run_docker(args: list[str], *, timeout: int = DOCKER_TIMEOUT_SECONDS) -> st
             f"{completed.returncode}; command output is suppressed"
         )
     return completed.stdout.strip()
+
+
+def _select_local_docker_context() -> tuple[str, dict[str, str]]:
+    """Pin and validate the inspected local context for every Docker command."""
+    environment = _docker_environment()
+    context_name = _run_docker(["context", "show"], env=environment).strip()
+    if not context_name:
+        raise RuntimeError("Docker context name is unavailable")
+
+    # DOCKER_CONTEXT selects the same named context for subsequent commands;
+    # DOCKER_HOST was removed above so it cannot override this inspected choice.
+    environment["DOCKER_CONTEXT"] = context_name
+    endpoint = _run_docker(
+        [
+            "context",
+            "inspect",
+            "--format",
+            "{{.Endpoints.docker.Host}}",
+            context_name,
+        ],
+        env=environment,
+    ).lower()
+    if not endpoint.startswith(("unix://", "npipe://", "fd://")):
+        raise RuntimeError(
+            "Docker-context test refuses a non-local Docker endpoint; "
+            "only unix://, npipe://, or fd:// endpoints are allowed"
+        )
+    return context_name, environment
 
 
 def _write_synthetic_file(context: Path, relative_path: str) -> None:
@@ -147,18 +214,16 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
     if not DOCKERIGNORE.is_file():
         pytest.fail(f"repository Docker ignore policy is missing: {DOCKERIGNORE}")
 
-    # Inspect, but do not connect to, the selected Docker endpoint. This test
-    # only allows local Unix sockets, Windows named pipes, or inherited FDs.
-    endpoint = _run_docker(
-        ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]
-    ).lower()
-    if not endpoint.startswith(("unix://", "npipe://", "fd://")):
-        pytest.fail(
-            "Docker-context test refuses a non-local Docker endpoint; "
-            "only unix://, npipe://, or fd:// endpoints are allowed"
-        )
+    # Inspect, but do not connect to, the selected Docker endpoint. Pin one
+    # sanitized context for inspection, engine operations, and cleanup.
+    try:
+        _, docker_environment = _select_local_docker_context()
+    except RuntimeError as exc:
+        pytest.fail(str(exc))
 
-    server_version = _run_docker(["version", "--format", "{{.Server.Version}}"])
+    server_version = _run_docker(
+        ["version", "--format", "{{.Server.Version}}"], env=docker_environment
+    )
     if not server_version:
         pytest.fail("a running Docker Engine is required for this test")
     request.node.user_properties.append(("docker_engine_version", server_version))
@@ -173,7 +238,7 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
             "FROM scratch\nCOPY . /context/\n", encoding="utf-8"
         )
 
-        for relative_path in (*ALLOWED_FILES, *FORBIDDEN_FILES):
+        for relative_path in (*ALLOWED_FILES, *REQUIRED_BUILD_INPUTS, *FORBIDDEN_FILES):
             _write_synthetic_file(context, relative_path)
 
         token = uuid.uuid4().hex
@@ -195,14 +260,19 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                     "--tag",
                     image_tag,
                     str(context),
-                ]
+                ],
+                env=docker_environment,
             )
             image_created = True
 
-            _run_docker(["create", "--name", container_name, image_tag])
+            _run_docker(
+                ["create", "--name", container_name, image_tag],
+                env=docker_environment,
+            )
             container_created = True
             _run_docker(
-                ["export", "--output", str(archive_path), container_name]
+                ["export", "--output", str(archive_path), container_name],
+                env=docker_environment,
             )
 
             exported_paths = _context_entries_from_export(archive_path)
@@ -211,7 +281,7 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                     "forbidden synthetic path entered Docker image: "
                     f"{relative_path}"
                 )
-            for relative_path in ALLOWED_FILES:
+            for relative_path in (*ALLOWED_FILES, *REQUIRED_BUILD_INPUTS):
                 assert relative_path in exported_paths, (
                     "expected non-secret context file was excluded: "
                     f"{relative_path}"
@@ -231,6 +301,7 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                         capture_output=True,
                         text=True,
                         timeout=30,
+                        env=docker_environment,
                     )
                 except subprocess.TimeoutExpired:
                     cleanup_failures.append(f"{label} cleanup timed out")
@@ -246,3 +317,53 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
                 pytest.fail(
                     "Docker resource cleanup failed: " + "; ".join(cleanup_failures)
                 )
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "is_local"),
+    [
+        ("unix:///var/run/docker.sock", True),
+        ("tcp://synthetic.invalid:2375", False),
+    ],
+    ids=("local-engine-context", "remote-engine-context"),
+)
+def test_docker_context_is_pinned_and_host_override_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    endpoint: str,
+    is_local: bool,
+) -> None:
+    """Pin one inspected context and reject endpoints outside local schemes."""
+    monkeypatch.setenv("DOCKER_HOST", "tcp://synthetic.invalid:2375")
+    monkeypatch.setenv("DOCKER_CONTEXT", "local-fixture-context")
+    calls: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        environment = kwargs["env"]
+        assert isinstance(environment, dict)
+        calls.append((command, environment))
+        if command[1:3] == ["context", "show"]:
+            stdout = "local-fixture-context\n"
+        elif command[1:3] == ["context", "inspect"]:
+            stdout = endpoint + "\n"
+        else:
+            stdout = "synthetic-engine\n"
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    docker_environment = _docker_environment()
+    if is_local:
+        context_name, docker_environment = _select_local_docker_context()
+        assert context_name == "local-fixture-context"
+        assert len(calls) == 2
+        assert calls[1][0][-1] == context_name
+    else:
+        with pytest.raises(RuntimeError, match="non-local Docker endpoint"):
+            _select_local_docker_context()
+        assert len(calls) == 2
+
+    assert all("DOCKER_HOST" not in env for _, env in calls)
+    assert "DOCKER_HOST" not in docker_environment
+    assert docker_environment["DOCKER_CONTEXT"] == "local-fixture-context"
