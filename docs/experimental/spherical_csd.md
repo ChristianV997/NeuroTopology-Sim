@@ -1,7 +1,7 @@
 # Spherical-spline CSD (NumPy production surface)
 
-**Status:** HOLD / SYNTHETIC_ONLY  
-**Module:** `neurotopology_sim.experimental.preprocessing.spherical_csd`  
+**Status:** HOLD / SYNTHETIC_ONLY
+**Module:** `neurotopology_sim.experimental.preprocessing.spherical_csd`
 **Owner:** Batch 2 / Cursor Agent C (sole production writer for this path)
 
 ## Scope
