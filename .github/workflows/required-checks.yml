@@ -70,17 +70,24 @@ jobs:
           tests/btc_icft/test_ontology_schema.py
           tests/runner/test_runner_isolation.py
           tests/audits/test_live_repo_pr_ownership_map.py
+          tests/ci/test_round6_experimental_discovery.py
+          tests/docker_context/test_build_context_policy.py
 
       - name: Discover and run changed Round 6 candidate suites
         if: ${{ !cancelled() && steps.install_base.outcome == 'success' }}
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
-          HEAD_SHA: ${{ github.sha }}
+          DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: >-
           python .github/workflows/round6_experimental_tests.py
-          --base "$BASE_SHA"
-          --head "$HEAD_SHA"
-          --always-component surrogate_nulls
+          --diff-base "$DIFF_BASE_SHA"
+          --diff-head "$DIFF_HEAD_SHA"
+          --tested-checkout "$TESTED_CHECKOUT_SHA"
+          --workflow-sha "$WORKFLOW_SHA"
+          --event-name "$EVENT_NAME"
           --report outputs/round6_experimental_ci_report.json
 
       - name: Smoke-test synthetic mode

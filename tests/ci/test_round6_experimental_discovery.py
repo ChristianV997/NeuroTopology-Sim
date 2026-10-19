@@ -1,0 +1,661 @@
+"""Offline regression tests for required-check candidate discovery and identity binding."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+
+ROOT = Path(__file__).resolve().parents[2]
+HELPER_PATH = ROOT / ".github/workflows/round6_experimental_tests.py"
+_REAL_SUBPROCESS_RUN = subprocess.run
+IMPLEMENTATION = "tools/simulation_runtime/grid_plan.py"
+TEST = "tests/simulation_runtime/test_grid_plan.py"
+
+
+def _helper():
+    spec = importlib.util.spec_from_file_location("round6_experimental_tests", HELPER_PATH)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _git(root: Path, *args: str) -> str:
+    result = _REAL_SUBPROCESS_RUN(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result.stdout.strip()
+
+
+def _commit(root: Path, message: str) -> str:
+    _git(root, "add", "--all")
+    _git(
+        root,
+        "-c", "user.name=CI Fixture",
+        "-c", "user.email=ci-fixture@example.invalid",
+        "commit", "-qm", message,
+    )
+    return _git(root, "rev-parse", "HEAD")
+
+
+def _write(root: Path, relative: str, value: str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(value, encoding="utf-8")
+
+
+def _repo(root: Path, *, with_candidate: bool = True) -> str:
+    _git(root, "init", "-q")
+    _git(root, "config", "user.name", "CI Fixture")
+    _git(root, "config", "user.email", "ci-fixture@example.invalid")
+    _git(root, "branch", "-M", "main")
+    _write(root, "README.md", "synthetic fixture only\n")
+    if with_candidate:
+        _write(root, IMPLEMENTATION, "def plan():\n    return ()\n")
+        _write(root, TEST, "def test_plan_fixture():\n    assert True\n")
+    return _commit(root, "fixture base")
+
+
+def _valid_telemetry(test_file: str) -> str:
+    return json.dumps({
+        "completed": True,
+        "exit_code": 0,
+        "summary": {
+            "total_files": 1,
+            "total_batches": 1,
+            "passed_batches": 1,
+            "skipped_batches": 0,
+            "failed_batches": 0,
+            "timeout_batches": 0,
+            "overall_exit_code": 0,
+        },
+        "batches": [{
+            "status": "passed",
+            "exit_code": 0,
+            "test_files": [test_file],
+            "timed_out": False,
+            "timeout_status": "completed",
+        }],
+    })
+
+
+def _fake_runner(
+    command,
+    *,
+    junit_status: str = "passed",
+    junit_xml: str | None = None,
+    telemetry: str | None = None,
+    **kwargs,
+):
+    if "scripts/run_tests_isolated.py" not in command:
+        return _REAL_SUBPROCESS_RUN(command, **kwargs)
+    report_path = Path(command[command.index("--report") + 1])
+    test_file = command[-1]
+    report_path.write_text(telemetry if telemetry is not None else _valid_telemetry(test_file), encoding="utf-8")
+    junit_arg = next(arg for arg in command if arg.startswith("--pytest-arg=--junitxml="))
+    junit = Path(junit_arg.removeprefix("--pytest-arg=--junitxml="))
+    testcase = "<skipped message='fixture skip'/>" if junit_status == "skipped" else ""
+    junit.write_text(
+        junit_xml if junit_xml is not None else (
+            f'<testsuite tests="1" skipped="{int(junit_status == "skipped")}" failures="0" errors="0">'
+            f'<testcase classname="fixture" name="test">{testcase}</testcase></testsuite>'
+        ),
+        encoding="utf-8",
+    )
+    return SimpleNamespace(returncode=0)
+
+
+class Round6DiscoveryTests(unittest.TestCase):
+    def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            workflow,
+        )
+        self.assertIn(
+            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            workflow,
+        )
+        self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
+        self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
+
+    def test_candidate_implementation_and_test_change_runs_the_explicit_pair(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root, with_candidate=False)
+            _write(root, IMPLEMENTATION, "def plan():\n    return ('changed',)\n")
+            _write(root, TEST, "def test_plan_fixture():\n    assert plan() == ('changed',)\n")
+            head = _commit(root, "candidate source and test")
+            report_path = root / "outputs/report.json"
+            runner = lambda command, **kwargs: _fake_runner(command, **kwargs)
+            with patch.object(helper.subprocess, "run", side_effect=runner):
+                exit_code = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["selected_components"], ["simulation_grid_planner"])
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["test_file"], TEST)
+        self.assertEqual(execution["implementation_paths"], [IMPLEMENTATION])
+        self.assertEqual(execution["diff_base_sha"], base)
+        self.assertEqual(execution["diff_head_sha"], head)
+        self.assertEqual(execution["tested_checkout_sha"], head)
+        self.assertEqual(execution["workflow_sha"], base)
+        self.assertEqual(execution["result_counts"], {
+            "collected": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+        })
+
+    def test_test_only_change_selects_the_registered_implementation_pair(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # test-only revision\n")
+            head = _commit(root, "adversarial test only")
+            report_path = root / "outputs/report.json"
+            with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs)):
+                exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["selected_components"], ["simulation_grid_planner"])
+        self.assertEqual(report["components"][0]["required_pairs"], [
+            {"implementation": IMPLEMENTATION, "test": TEST},
+        ])
+        self.assertEqual(report["components"][0]["executions"][0]["test_file"], TEST)
+
+    def test_metadata_only_change_is_json_not_applicable_and_executes_nothing(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, "docs/fixture-note.md", "metadata-only synthetic fixture\n")
+            head = _commit(root, "metadata only")
+            report_path = root / "outputs/report.json"
+            def no_candidate_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" in command:
+                    raise AssertionError("metadata-only changes must not execute candidate tests")
+                return _REAL_SUBPROCESS_RUN(command, **kwargs)
+            with patch.object(helper.subprocess, "run", side_effect=no_candidate_runner):
+                exit_code = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(report["executed_commands"], [])
+        self.assertEqual(report["selected_components"], [])
+        self.assertIn("does not certify", report["statement"])
+
+    def test_unmapped_yaml_candidate_configs_block_instead_of_becoming_not_applicable(self):
+        helper = _helper()
+        guarded_configs = {
+            "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+            "configs/research/batch3_source_registry.yaml",
+        }
+        for path in sorted(guarded_configs):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                with patch.object(helper, "collect_changed_paths", return_value={path}):
+                    result = helper.run(root, "0" * 40, "1" * 40, root / "report.json")
+                report = json.loads((root / "report.json").read_text(encoding="utf-8"))
+            self.assertEqual(result, 1)
+            self.assertEqual(report["status"], "BLOCKED")
+            self.assertEqual(report["unmapped_candidate_paths"], [path])
+            self.assertNotEqual(report["status"], "NOT_APPLICABLE")
+
+    def test_junit_root_and_summary_must_match_testcase_outcomes(self):
+        helper = _helper()
+        malformed_reports = (
+            '<testsuite tests="2" failures="1"><testcase/></testsuite>',
+            '<testsuite tests="1" skipped="1"><testcase/></testsuite>',
+            '<testsuite tests="1"><testcase><failure/><skipped/></testcase></testsuite>',
+            '<junit tests="1"><testcase/></junit>',
+            '<testsuites tests="2"><testsuite tests="1"><testcase/></testsuite><testcase/></testsuites>',
+        )
+        with tempfile.TemporaryDirectory() as td:
+            report = Path(td) / "junit.xml"
+            for xml in malformed_reports:
+                with self.subTest(xml=xml):
+                    report.write_text(xml, encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        helper.junit_details(report)
+
+            report.write_text(
+                '<testsuites tests="2" failures="1" skipped="0" errors="0">'
+                '<testsuite tests="2" failures="1" skipped="0" errors="0">'
+                '<testcase/><testcase><failure/></testcase></testsuite></testsuites>',
+                encoding="utf-8",
+            )
+            counts, _ = helper.junit_details(report)
+        self.assertEqual(counts, (2, 0, 1, 0))
+
+    def test_unknown_data_suffixes_under_candidate_roots_fail_closed(self):
+        helper = _helper()
+        for path in (
+            "tools/surrogate_nulls/new_fixture.h5",
+            "tests/surrogate_nulls/new_fixture.fif",
+            "tools/surrogate_nulls/new_fixture",
+        ):
+            with self.subTest(path=path):
+                self.assertIn(path, helper._unmapped_candidate_paths({path}))
+        self.assertEqual(
+            helper._unmapped_candidate_paths({"tests/surrogate_nulls/notes.md"}),
+            [],
+        )
+
+    def test_runner_cannot_pass_with_inconsistent_junit_summary(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # changed test fixture\n")
+            head = _commit(root, "candidate with inconsistent junit summary fixture")
+            report_path = root / "outputs/report.json"
+            runner = lambda command, **kwargs: _fake_runner(
+                command,
+                junit_xml='<testsuite tests="2" failures="1"><testcase/></testsuite>',
+                **kwargs,
+            )
+            with patch.object(helper.subprocess, "run", side_effect=runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+        self.assertIn("does not match", execution["junit_error"])
+
+    def test_log_directory_symlink_escape_is_blocked_before_runner_launch(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside"
+            outside.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            log_parent = root / "outputs"
+            log_parent.mkdir()
+            log_link = log_parent / "round6-experimental-logs"
+            try:
+                log_link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                with self.assertRaises(ValueError):
+                    helper._contained_path(root, outside / "logs", "test log directory")
+                return
+
+            report_path = log_parent / "report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={pair["implementation"]}), patch.object(
+                helper.subprocess, "run", side_effect=AssertionError("escaped log path must block before launch")
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(result, 1)
+            self.assertEqual(report["status"], "BLOCKED")
+            execution = report["components"][0]["executions"][0]
+            self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+            self.assertFalse(any(outside.iterdir()))
+
+    def test_log_file_symlink_escape_is_blocked_before_runner_launch(self):
+        helper = _helper()
+        pair = helper.COMPONENTS["simulation_grid_planner"]["candidate_pairs"][0]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir()
+            outside = Path(td) / "outside"
+            outside.mkdir()
+            for relative in (pair["implementation"], pair["test"]):
+                _write(root, relative, "# deterministic fixture\n")
+            log_dir = root / "outputs/round6-experimental-logs/01-simulation_grid_planner-01"
+            log_dir.mkdir(parents=True)
+            try:
+                (log_dir / "runner.stdout.log").symlink_to(outside / "stdout.log")
+            except (OSError, NotImplementedError):
+                with self.assertRaises(ValueError):
+                    helper._contained_path(root, outside / "stdout.log", "runner stdout path")
+                return
+
+            report_path = root / "outputs/report.json"
+            with patch.object(helper, "collect_changed_paths", return_value={pair["implementation"]}), patch.object(
+                helper.subprocess, "run", side_effect=AssertionError("escaped log path must block before launch")
+            ):
+                result = helper.run(root, "0" * 40, "1" * 40, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(result, 1)
+            execution = report["components"][0]["executions"][0]
+            self.assertEqual(execution["failure_classification"], "unsafe_or_unavailable_log_path")
+            self.assertFalse((outside / "stdout.log").exists())
+
+    def test_stale_base_uses_pr_base_and_pr_head_while_testing_merge_checkout(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            original_base = _repo(root)
+            _git(root, "switch", "-c", "candidate")
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # PR head\n")
+            pr_head = _commit(root, "PR test-only change")
+            _git(root, "switch", "main")
+            _write(root, "tools/surrogate_nulls/nulls.py", "def unrelated_main_update():\n    return None\n")
+            pr_base = _commit(root, "main advances in unrelated candidate")
+            _git(root, "switch", "candidate")
+            _git(root, "merge", "--no-ff", "main", "-m", "synthetic tested merge checkout")
+            merge_checkout = _git(root, "rev-parse", "HEAD")
+
+            changed = helper.collect_changed_paths(pr_base, pr_head, root)
+            wrong_merge_diff = helper.collect_changed_paths(original_base, merge_checkout, root)
+            self.assertEqual(changed, {TEST})
+            self.assertIn("tools/surrogate_nulls/nulls.py", wrong_merge_diff)
+
+            report_path = root / "outputs/report.json"
+            with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs)):
+                exit_code = helper.run(
+                    root, pr_base, pr_head, report_path,
+                    tested_checkout_sha=merge_checkout,
+                    workflow_sha=original_base,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["changed_paths"], [TEST])
+        self.assertEqual(report["diff_base_sha"], pr_base)
+        self.assertEqual(report["diff_head_sha"], pr_head)
+        self.assertEqual(report["tested_checkout_sha"], merge_checkout)
+        self.assertEqual(report["workflow_sha"], original_base)
+        self.assertNotEqual(report["tested_checkout_sha"], report["diff_head_sha"])
+        self.assertEqual(report["components"][0]["executions"][0]["test_file"], TEST)
+
+    def test_changed_candidate_without_required_test_is_blocked(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root, with_candidate=False)
+            _write(root, IMPLEMENTATION, "def plan():\n    return ()\n")
+            head = _commit(root, "implementation with missing mapped test")
+            report_path = root / "outputs/report.json"
+            with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _REAL_SUBPROCESS_RUN(command, **kwargs)):
+                exit_code = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertIn(TEST, report["components"][0]["missing_required_tests"])
+        self.assertEqual(report["executed_commands"], [])
+
+    def test_source_change_blocks_when_registered_companion_test_is_missing(self):
+        helper = _helper()
+        original = helper.COMPONENTS["simulation_grid_planner"]
+        companion = "tests/simulation_runtime/test_grid_plan_adversarial.py"
+        helper.COMPONENTS["simulation_grid_planner"] = {
+            **original,
+            "tests": (*original["tests"], companion),
+            "candidate_pairs": (
+                *original["candidate_pairs"],
+                {"implementation": IMPLEMENTATION, "test": companion},
+            ),
+        }
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td)
+                base = _repo(root)
+                _write(root, IMPLEMENTATION, "def plan():\n    return ('source revision',)\n")
+                head = _commit(root, "source PR before companion test PR")
+                report_path = root / "outputs/report.json"
+                with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs)) as runner:
+                    exit_code = helper.run(root, base, head, report_path)
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+        finally:
+            helper.COMPONENTS["simulation_grid_planner"] = original
+        self.assertEqual(exit_code, 1)
+        component = report["components"][0]
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(component["status"], "BLOCKED")
+        self.assertEqual(component["missing_required_tests"], [companion])
+        self.assertIn("required candidate test is absent", component["blockers"])
+        self.assertEqual(
+            [item["test"] for item in component["unavailable_companion_pairs"]],
+            [companion],
+        )
+        self.assertEqual(component["executions"], [])
+        self.assertEqual(runner.call_count, 1)
+        self.assertEqual(runner.call_args.args[0][:3], ["git", "diff", "--name-only"])
+
+    def test_skipped_candidate_test_is_failure_not_pass(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # changed\n")
+            head = _commit(root, "test-only change with injected skip")
+            report_path = root / "outputs/report.json"
+            with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, junit_status="skipped", **kwargs)):
+                exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 1)
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "candidate_tests_skipped")
+        self.assertEqual(execution["result_counts"]["skipped"], 1)
+
+    def test_malformed_telemetry_and_boolean_counts_are_rejected(self):
+        helper = _helper()
+        valid = json.loads(_valid_telemetry(TEST))
+        valid["summary"]["passed_batches"] = True
+        ok, error, _ = helper._isolated_runner_report_is_valid(valid, TEST)
+        self.assertFalse(ok)
+        self.assertIn("malformed", error)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # malformed telemetry probe\n")
+            head = _commit(root, "test-only malformed telemetry probe")
+            report_path = root / "outputs/report.json"
+            with patch.object(helper.subprocess, "run", side_effect=lambda command, **kwargs: _fake_runner(command, telemetry="NaN", **kwargs)):
+                exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 1)
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["status"], "FAIL")
+        self.assertFalse(execution["isolated_runner_telemetry_valid"])
+        self.assertIn("non-finite", execution["runner_telemetry_error"])
+
+    def test_required_active_candidate_paths_are_not_silently_unmapped_or_not_applicable(self):
+        helper = _helper()
+        expected = {
+            "planar_geometry": (
+                416, 421,
+                "neurotopology_sim/experimental/geometry/planar_triangulation.py",
+                "tests/experimental/test_planar_triangulation.py",
+            ),
+            "hodge_2d": (
+                423, 396, 385,
+                "neurotopology_sim/experimental/topology/hodge_2d.py",
+                "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
+            ),
+            "spherical_csd": (
+                414, 419, 402,
+                "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
+                "tests/experimental/test_spherical_csd_parity.py",
+            ),
+            "four_sphere": (
+                418, 409,
+                "physics/eeg_forward/four_sphere.py",
+                "tests/physics/test_four_sphere_oracle.py",
+            ),
+            "phase_winding": (
+                413,
+                "neurotopology_sim/experimental/topology/winding.py",
+                "tests/neurotopology_sim/experimental/topology/test_phase_winding.py",
+            ),
+            "surrogate_nulls": (
+                417, 430,
+                "tools/surrogate_nulls/nulls.py",
+                "tests/surrogate_nulls/test_adversarial_contracts.py",
+            ),
+            "dmd_crouzeix": (
+                415, 420,
+                "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
+                "tests/dmd_crouzeix_contract/test_production_contract.py",
+            ),
+            "synthetic_roc": (
+                426, 427,
+                "neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py",
+                "tests/neurotopology_sim/experimental/benchmarks/test_synthetic_forward_roc.py",
+            ),
+            "simulation_grid_planner": (
+                424,
+                "tools/simulation_runtime/grid_plan.py",
+                "tests/simulation_runtime/test_grid_plan.py",
+            ),
+            "docker_context_policy": (
+                431, 434,
+                ".dockerignore",
+                "tests/docker_context/test_build_context_policy.py",
+            ),
+        }
+        for component, record in expected.items():
+            *owner_prs, implementation, test_file = record
+            spec = helper.COMPONENTS[component]
+            self.assertEqual(helper.COMPONENT_OWNER_PRS[component], tuple(owner_prs))
+            self.assertIn(
+                {"implementation": implementation, "test": test_file},
+                spec["candidate_pairs"],
+            )
+            self.assertEqual(helper.select_components({test_file}), [component])
+
+        self.assertIn(
+            {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_adversarial_contracts.py"},
+            helper.COMPONENTS["surrogate_nulls"]["candidate_pairs"],
+        )
+        docker_tests = {
+            pair["test"] for pair in helper.COMPONENTS["docker_context_policy"]["candidate_pairs"]
+        }
+        self.assertEqual(docker_tests, {
+            "tests/docker_context/test_build_context_policy.py",
+            "tests/docker_context/test_docker_engine_build_context.py",
+        })
+        for test_path in (
+            "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 is an independent oracle, not a DMD pair.
+            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
+            "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
+            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
+            "tests/research/batch3/test_claim_matrix.py",  # PR #393
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",  # PR #382
+        ):
+            self.assertIn(test_path, helper._unmapped_candidate_paths({test_path}))
+
+        # The BIDS audit is now explicitly mapped despite its historical guard
+        # root; registered mappings take precedence over the fail-closed list.
+        bids_path = "tests/bids_inventory_audit/test_privacy_boundary.py"
+        self.assertEqual(helper.select_components({bids_path}), ["bids_inventory_audit"])
+        self.assertEqual(helper._unmapped_candidate_paths({bids_path}), [])
+        self.assertIn(
+            "tests/experimental/planar_mesh_test_helpers.py",
+            helper.COMPONENTS["planar_geometry"]["support_files"],
+        )
+        self.assertIn(
+            "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
+            helper.COMPONENTS["spherical_csd"]["support_files"],
+        )
+        for fixture in (
+            "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json",
+            "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.npy",
+        ):
+            self.assertEqual(helper.select_components({fixture}), ["spherical_csd"])
+            self.assertEqual(
+                helper.COMPONENTS["spherical_csd"]["support_files"][fixture],
+                ("tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",),
+            )
+            self.assertEqual(helper._unmapped_candidate_paths({fixture}), [])
+        for config_path in (
+            "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+            "configs/research/batch3_source_registry.yaml",
+        ):
+            self.assertEqual(helper._unmapped_candidate_paths({config_path}), [config_path])
+        # Unregistered candidate roots remain fail-closed even when the only
+        # changed Python file is a package initializer.
+        self.assertIn("tests/nuisance_scenarios/__init__.py", helper._unmapped_candidate_paths({"tests/nuisance_scenarios/__init__.py"}))
+        self.assertNotIn("tests/surrogate_nulls/__init__.py", helper._unmapped_candidate_paths({"tests/surrogate_nulls/__init__.py"}))
+
+    def test_candidate_support_only_changes_select_their_declared_tests(self):
+        helper = _helper()
+        cases = (
+            (
+                "planar_geometry",
+                "tests/experimental/planar_mesh_test_helpers.py",
+                "tests/experimental/test_planar_triangulation.py",
+            ),
+            (
+                "spherical_csd",
+                "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
+                "tests/experimental/test_spherical_csd_parity.py",
+            ),
+            (
+                "spherical_csd",
+                "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json",
+                "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            ),
+            (
+                "spherical_csd",
+                "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.npy",
+                "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            ),
+        )
+        for component, support_path, test_file in cases:
+            with self.subTest(component=component):
+                spec = helper.COMPONENTS[component]
+                self.assertEqual(helper.select_components({support_path}), [component])
+                self.assertIn(test_file, spec["support_files"][support_path])
+                self.assertIn(test_file, spec["tests"])
+
+    def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
+        helper = _helper()
+        current_open_pr_gaps = {
+            411: "tests/research/batch3/test_dataset_metadata_audit.py",
+            406: "tests/oss_compat/test_compatibility_inventory.py",
+            394: "tests/research/batch3/test_replication_dataset_feasibility.py",
+            393: "tests/research/batch3/test_claim_matrix.py",
+            391: "tools/public_repo_harvest/source_pack.py",
+            386: "oss_opportunities/opportunity_batch.py",
+            384: "shared/measurement_hypothesis/validate.py",
+            383: "tools/research_plan_quality_eval/harness.py",
+            382: "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            376: "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+            375: "tests/research/test_batch3_source_registry.py",
+            374: "dual_engine/fusion_validation.py",
+            373: "sciencer_d/btc_icft/level_t/base_real_topology.py",
+            388: "dual_engine/forward_model_contract.py",
+            387: "tools/synthetic_pipeline_replay/runner.py",
+        }
+        for pr_number, path in current_open_pr_gaps.items():
+            with self.subTest(pr=pr_number, path=path):
+                self.assertIn(path, helper._unmapped_candidate_paths({path}))
+                self.assertEqual(helper.select_components({path}), [])
+
+
+if __name__ == "__main__":
+    unittest.main()
