@@ -1,4 +1,4 @@
-"""BIDS relative-path parsing: safe names, entity grammar, subject agreement, and backup copies."""
+"""BIDS path structure checks whose public summaries omit raw paths and subject labels."""
 from __future__ import annotations
 
 import pytest
@@ -6,17 +6,20 @@ import pytest
 from shared.bids_inventory_audit import parse_bids_relpath, unsafe_reason
 
 
-def test_task_and_run_entities_are_parsed():
-    parsed = parse_bids_relpath("sub-01/eeg/sub-01_task-rest_run-01_eeg.edf")
-    assert parsed.valid and parsed.is_subject_file
-    assert (parsed.subject, parsed.task, parsed.run, parsed.suffix, parsed.extension) == (
-        "sub-01", "rest", "01", "eeg", ".edf")
-    assert parsed.session is None
+def test_task_and_run_entities_are_parsed_without_returning_subject_label():
+    marker = "sub-PathMarker11"
+    parsed = parse_bids_relpath(f"{marker}/eeg/{marker}_task-rest_run-01_eeg.edf")
+    assert parsed.valid and parsed.is_subject_file and parsed.has_subject
+    assert (parsed.task, parsed.run, parsed.suffix, parsed.extension) == ("rest", "01", "eeg", ".edf")
+    assert not hasattr(parsed, "subject") and not hasattr(parsed, "relpath")
+    assert marker not in repr(parsed)
 
 
-def test_session_entity_is_parsed_with_its_prefix():
-    parsed = parse_bids_relpath("sub-02/ses-pre/eeg/sub-02_ses-pre_task-rest_eeg.edf")
-    assert parsed.valid and parsed.session == "ses-pre"
+def test_session_presence_is_reported_without_returning_session_label():
+    marker = "sub-PathMarker12"
+    parsed = parse_bids_relpath(f"{marker}/ses-pre/eeg/{marker}_ses-pre_task-rest_eeg.edf")
+    assert parsed.valid and parsed.has_session
+    assert "pre" not in repr(parsed)
 
 
 def test_compound_extension_is_kept_intact():
@@ -26,7 +29,7 @@ def test_compound_extension_is_kept_intact():
 
 def test_root_level_file_is_valid_but_not_a_subject_file():
     parsed = parse_bids_relpath("participants.tsv")
-    assert parsed.valid and not parsed.is_subject_file and parsed.subject is None
+    assert parsed.valid and not parsed.is_subject_file and not parsed.has_subject
 
 
 def test_non_subject_tree_is_valid_but_not_a_subject_file():
@@ -52,16 +55,19 @@ def test_unsafe_or_non_text_paths_are_rejected(path, code):
     assert unsafe_reason(path) == code
     parsed = parse_bids_relpath(path)
     assert not parsed.valid and code in parsed.problems
+    assert not hasattr(parsed, "relpath") and not hasattr(parsed, "subject")
 
 
 def test_rejected_path_is_not_echoed_when_it_is_not_text():
     parsed = parse_bids_relpath(None)
-    assert parsed.relpath == ""
+    assert "relpath" not in repr(parsed)
 
 
-def test_subject_directory_must_match_the_filename_subject():
-    parsed = parse_bids_relpath("sub-01/eeg/sub-02_task-rest_eeg.edf")
+def test_subject_directory_must_match_filename_subject_without_echoing_either():
+    marker = "sub-MismatchMarker13"
+    parsed = parse_bids_relpath(f"{marker}/eeg/sub-OtherMarker14_task-rest_eeg.edf")
     assert not parsed.valid and "PATH_SUBJECT_MISMATCH" in parsed.problems
+    assert marker not in repr(parsed) and "OtherMarker14" not in repr(parsed)
 
 
 def test_missing_subject_entity_is_reported():
@@ -109,7 +115,7 @@ def test_backup_or_temporary_copy_is_never_a_valid_data_file(name):
     assert not parsed.valid and "EXTENSION_BACKUP_OR_TEMP" in parsed.problems
 
 
-def test_two_paths_with_the_same_entities_share_a_signature():
+def test_public_summaries_do_not_expose_entity_signatures():
     first = parse_bids_relpath("sub-01/eeg/sub-01_task-rest_eeg.edf")
-    second = parse_bids_relpath("sub-01/func/sub-01_task-rest_eeg.edf")
-    assert first.signature() == second.signature()
+    second = parse_bids_relpath("sub-02/func/sub-02_task-rest_eeg.edf")
+    assert first == second

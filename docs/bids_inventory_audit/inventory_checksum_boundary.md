@@ -4,9 +4,17 @@ Status: `HOLD`. Evidence class: `SYNTHETIC_ONLY`. Scope: `INVENTORY_LEVEL_ONLY_P
 
 Code: `shared/bids_inventory_audit/`. Tests: `tests/bids_inventory_audit/`.
 
-This package works only on text, bytes, and mappings that the caller supplies. No function opens
-a file, makes a network call, or runs a process. It never inspects real participant data, and
-no dataset has been authorized for download or analysis.
+This package works only on text, bytes, mappings, and path strings explicitly supplied by the
+caller. It does not discover, open, or read participant files from disk, make a network call, or
+run a process. It does parse caller-supplied `participants.tsv` text and path strings in memory;
+those inputs may contain sensitive subject labels. No dataset has been authorized for download or
+analysis.
+
+Public parser summaries omit raw subject IDs and caller paths, and inventory JSON reports aggregate
+counts rather than subject-to-file mappings. The inventory retains supplied labels only transiently
+in memory to calculate cross-check counts. It does not log inputs, and no identifier-bearing opt-in
+mode is provided. This is a disclosure-minimizing default, not an authorization or de-identification
+mechanism; callers remain responsible for whether they may supply the text and strings.
 
 ## What it does not establish
 
@@ -33,8 +41,11 @@ no dataset has been authorized for download or analysis.
 | Listing digest | `file_listing_digest` | A deterministic digest of a caller-supplied `(path, bytes)` listing | A dataset release, a cohort, or a registration |
 
 The listing digest is read-only. It does not walk a directory. It is independent of entry order.
-A path appearing twice, an unsafe path, non-byte content, or an empty payload produces no digest, so the
-call fails closed. An empty payload is rejected rather than hashed, because it is never a valid input.
+Because it is deterministic and unsalted, it may be linkable or guessable from known paths and
+content. It is a pseudonymous integrity token, not anonymization or a privacy-preserving identity.
+Repeated paths, unsafe paths, non-byte content, or empty payloads produce no digest, so the call fails
+closed. Findings identify the rule and aggregate affected count, not the supplied path. An empty payload
+is rejected rather than hashed, because it is never a valid input.
 
 ## Checksum outcomes
 
@@ -55,30 +66,36 @@ The recorded digest is never echoed into the output.
 ## Inventory checks
 
 Subject cross-checks run only when a participants table is supplied. Without one, the result states
-`cross_check: NOT_PERFORMED`.
+`cross_check: NOT_PERFORMED`. If the caller's path iterable fails while being consumed, path-derived
+counts and cross-checks are reported as unavailable rather than as zero.
 
-- **Participants table** (`tsv.py`). Header must contain `participant_id`, or the parse fails closed.
-  Malformed rows, invalid identifiers, and blank lines are reported with line numbers. A duplicated
-  identifier is excluded entirely, because the table is ambiguous about it.
+- **Participants table** (`tsv.py`). The caller supplies text; this package does not locate or open
+  `participants.tsv`. Header must contain `participant_id`, or parsing fails closed. Malformed rows,
+  invalid identifiers, and blank lines are reported by rule and line number without echoing row
+  values. Duplicate identifiers are excluded from internal cross-checks entirely, because the table
+  is ambiguous about them. The public parser result contains counts and findings, not IDs.
 - **Paths** (`paths.py`). The BIDS entity grammar is applied to the subject-level layout. Unsafe
-  paths are rejected. A backup or temporary copy (`.bak`, `.tmp`, `.old`, `.partial`, and others)
+  caller-supplied path strings are rejected. Paths are never opened. Public parse summaries and
+  findings omit the supplied path and subject label. A backup or temporary copy (`.bak`, `.tmp`, `.old`, `.partial`, and others)
   is never a valid data file, so it cannot manufacture task coverage.
-- **Subjects.** Files for subjects absent from the table are reported. Participants with no valid
-  file are reported.
-- **Duplicates.** Identical paths are reported. Different paths that claim the same BIDS entities
-  are flagged and not resolved.
+- **Subjects.** Cross-checks report only counts of file-only labels and participants without valid
+  files. They do not return IDs or file-to-subject mappings. Counts do not establish cohort identity.
+- **Duplicates.** Counts of repeated paths and different paths claiming the same BIDS entities are
+  reported, without returning either path or subject label; collisions are flagged, not resolved.
 - **Tasks.** Expected tasks must be declared by the caller. The audit never infers them from observed
   files. Without a declaration it reports `EXPECTED_TASKS_NOT_DECLARED` and makes no completeness claim.
-  With a declaration, it reports per-participant gaps (`MISSING_TASK_FOR_SUBJECT`), tasks absent for
-  every participant (`TASK_ABSENT_FOR_ALL_SUBJECTS`), and observed tasks outside the set
-  (`UNEXPECTED_TASK`). If no participants table is supplied, it reports only whether a declared task
-  appears anywhere in the listing (`TASK_ABSENT_IN_LISTING`).
+  With a declaration, it reports aggregate counts of task gaps (`MISSING_TASK_FOR_SUBJECT`), tasks
+  absent for every participant (`TASK_ABSENT_FOR_ALL_SUBJECTS`), and observed tasks outside the set
+  (`UNEXPECTED_TASK`). `tasks.coverage` maps task labels to counts only; it does not map subjects to
+  tasks. If no participants table is supplied, it reports only whether a declared task appears
+  anywhere in the listing (`TASK_ABSENT_IN_LISTING`).
 
 ## Declared analysis record
 
 An analysis record is optional and caller-supplied. It must contain exactly two keys: `analyzed_n`
 (a non-negative integer, not a boolean) and `excluded_subjects` (a list of unique `sub-<label>` strings).
-Any other shape is `ANALYSIS_RECORD_MALFORMED`, and no number is quoted from it.
+The identifiers are used only for in-memory count checks and are never emitted. Output includes only
+`excluded_subjects_n`. Any other shape is `ANALYSIS_RECORD_MALFORMED`, and no number is quoted from it.
 
 | Situation | `analysis.status` | `analyzed_n` | Finding |
 |---|---|---|---|
@@ -86,7 +103,7 @@ Any other shape is `ANALYSIS_RECORD_MALFORMED`, and no number is quoted from it.
 | Malformed record | `NOT_ESTABLISHED` | `null` | `ANALYSIS_RECORD_MALFORMED` (error) |
 | Valid, no participants table | `DECLARED_UNVERIFIED` | declared value | `ANALYSIS_COUNT_UNCHECKED` (warning) |
 | Valid, count consistent | `DECLARED_UNVERIFIED` | declared value | none |
-| Exclusion not in participants | `DECLARED_INCONSISTENT` | `null` | `EXCLUSION_NOT_IN_PARTICIPANTS` (error) |
+| One or more exclusions absent from participants | `DECLARED_INCONSISTENT` | `null` | `EXCLUSION_NOT_IN_PARTICIPANTS` (error; aggregate count only) |
 | Count differs from participants less exclusions | `DECLARED_INCONSISTENT` | `null` | `ANALYSIS_COUNT_MISMATCH` (error) |
 
 `DECLARED_UNVERIFIED` means the caller asserted the value and this package could not verify it. It
@@ -113,10 +130,9 @@ sources name each token, so a disagreement can be traced without being resolved.
 | `AGREEMENT_NOT_ADJUDICATED` | Two or more sources agree on one token |
 
 All states carry `resolved: false` and `selected_license: null`. Agreement is recorded, but it is not a
-legal adjudication. In the synthetic fixtures, a README naming CC-BY-4.0 and metadata naming CC0 produce
-`CONFLICT_UNRESOLVED`, and the audit reports it as an error. The four-source fixture adds a
-`dataset_description` naming CC-BY-4.0 and a catalog naming CC-BY-SA-4.0. The conflict stays open, and
-`sources_by_token` keeps each source's name against its token. No source is treated as authoritative.
+legal adjudication. Tests construct synthetic README text and metadata mappings in memory. Conflicting
+supplied values produce `CONFLICT_UNRESOLVED`, and the audit reports the conflict without selecting a
+source as authoritative.
 
 ## Relation to the Round 6 statement
 
@@ -161,5 +177,6 @@ From the repository root:
 python -m pytest tests/bids_inventory_audit -q
 ```
 
-The fixtures under `tests/bids_inventory_audit/fixtures/` are labelled synthetic. They are not dataset
-metadata.
+Focused tests construct synthetic TSV text, path strings, and metadata mappings in memory; they do not
+open files under `tests/bids_inventory_audit/fixtures/`. Existing fixture files are not relied on as
+provenance evidence by these tests.

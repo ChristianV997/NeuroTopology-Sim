@@ -15,7 +15,7 @@ def test_without_a_record_analyzed_n_and_exclusions_are_not_established(syntheti
     assert analysis["status"] == "NOT_ESTABLISHED"
     assert analysis["record_declared"] is False
     assert analysis["analyzed_n"] is None
-    assert analysis["excluded_subjects"] is None
+    assert analysis["excluded_subjects_n"] is None
     assert analysis["count_check"] == "NOT_PERFORMED"
     assert analysis["authoritative"] is False
 
@@ -35,7 +35,7 @@ def test_consistent_declared_record_is_reported_as_declared_and_unverified(synth
     assert analysis["status"] == "DECLARED_UNVERIFIED"
     assert analysis["count_check"] == "CONSISTENT"
     assert analysis["analyzed_n"] == 2
-    assert analysis["excluded_subjects"] == ["sub-03"]
+    assert analysis["excluded_subjects_n"] == 1
     assert analysis["authoritative"] is False
     assert report["analysis_authorized"] is False
 
@@ -49,14 +49,15 @@ def test_declared_count_that_disagrees_with_the_participants_is_flagged_and_quot
     assert analysis["count_check"] == "FAILED"
     assert analysis["status"] == "DECLARED_INCONSISTENT"
     assert analysis["analyzed_n"] is None
-    assert analysis["excluded_subjects"] is None
+    assert analysis["excluded_subjects_n"] is None
 
 
 def test_exclusion_absent_from_the_participants_fails_the_count_check(synthetic_tsv, synthetic_listing):
     record = {"analyzed_n": 2, "excluded_subjects": ["sub-09"]}
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing, analysis_record=record)
     errors = [f for f in report["findings"] if f["code"] == "EXCLUSION_NOT_IN_PARTICIPANTS"]
-    assert [f["subject"] for f in errors] == ["sub-09"]
+    assert len(errors) == 1 and errors[0]["affected_count"] == 1
+    assert "sub-09" not in repr(errors[0])
     assert report["analysis"]["status"] == "DECLARED_INCONSISTENT"
 
 
@@ -80,7 +81,7 @@ def test_malformed_record_is_rejected_and_quotes_no_number(synthetic_tsv, synthe
     assert analysis["record_status"] == "MALFORMED"
     assert analysis["status"] == "NOT_ESTABLISHED"
     assert analysis["analyzed_n"] is None
-    assert analysis["excluded_subjects"] is None
+    assert analysis["excluded_subjects_n"] is None
 
 
 def test_declared_record_without_a_participants_table_is_unchecked_not_confirmed(synthetic_listing,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from .findings import make_finding, sort_findings
 from .paths import unsafe_reason
@@ -18,7 +18,8 @@ from .schema import PAYLOAD_ACCESS, REGISTRATION_STATUS, SCHEMA, external_regist
 _KIND = "READ_ONLY_FILE_LISTING_DIGEST"
 _STATEMENT = (
     "This digest covers the supplied listing only. It does not identify a dataset release, a cohort, "
-    "or a registration, and it creates no external timestamp."
+    "or a registration, and it creates no external timestamp. The deterministic unsalted digest may "
+    "be linkable or guessable from known paths and content; it is pseudonymous, not anonymization."
 )
 
 
@@ -26,9 +27,11 @@ def file_listing_digest(entries: Iterable[Any]) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     try:
         items = list(entries)
-    except TypeError:
-        findings.append(make_finding("ENTRIES_NOT_ITERABLE", "error", "entries must be an iterable of pairs"))
-        return _result(0, None, findings)
+    except Exception:
+        findings.append(make_finding(
+            "ENTRIES_NOT_ITERABLE", "error",
+            "the supplied entries iterable could not be consumed; no entry values were retained"))
+        return _result(None, None, findings)
 
     records: list[tuple[str, bytes]] = []
     counts: Counter[str] = Counter()
@@ -36,21 +39,22 @@ def file_listing_digest(entries: Iterable[Any]) -> dict[str, Any]:
         if not (isinstance(entry, tuple) and len(entry) == 2):
             findings.append(make_finding("ENTRY_MALFORMED", "error",
                                          "each entry must be a (relative_path, bytes) pair",
-                                         path=f"entry[{index}]"))
+                                         entry_index=index))
             continue
         relpath, content = entry
         reason = unsafe_reason(relpath)
         if reason is not None:
             findings.append(make_finding(reason, "error", "relative path rejected",
-                                         path=relpath if isinstance(relpath, str) and reason != "PATH_CONTROL_CHARACTER" else f"entry[{index}]"))
+                                         entry_index=index))
             continue
         if not isinstance(content, (bytes, bytearray)):
-            findings.append(make_finding("CONTENT_NOT_BYTES", "error", "content must be bytes", path=relpath))
+            findings.append(make_finding("CONTENT_NOT_BYTES", "error", "content must be bytes",
+                                         entry_index=index))
             continue
         if len(content) == 0:
             # An empty payload is never a valid analysis input, so it is refused rather than hashed.
             findings.append(make_finding("PAYLOAD_EMPTY", "error",
-                                         "empty payload rejected; no digest is produced", path=relpath))
+                                         "empty payload rejected; no digest is produced", entry_index=index))
             continue
         counts[relpath] += 1
         records.append((relpath, bytes(content)))
@@ -58,7 +62,8 @@ def file_listing_digest(entries: Iterable[Any]) -> dict[str, Any]:
     for relpath, count in sorted(counts.items()):
         if count > 1:
             findings.append(make_finding("DUPLICATE_PATH", "error",
-                                         "a path appears more than once; no digest is produced", path=relpath))
+                                         "a relative path appears more than once; no digest is produced",
+                                         affected_count=1))
 
     if any(finding["severity"] == "error" for finding in findings):
         return _result(len(items), None, findings)
@@ -68,7 +73,7 @@ def file_listing_digest(entries: Iterable[Any]) -> dict[str, Any]:
     return _result(len(items), digest, findings)
 
 
-def _result(entries_listed: int, digest: Any, findings: list[dict[str, Any]]) -> dict[str, Any]:
+def _result(entries_listed: Optional[int], digest: Any, findings: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "kind": _KIND,

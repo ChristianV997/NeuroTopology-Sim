@@ -39,7 +39,7 @@ def test_full_audit_runs_with_file_network_and_process_access_disabled(monkeypat
                              expected_tasks=["rest", "stroop"], readme_text=synthetic_readme,
                              nemar_metadata=synthetic_nemar)
     assert report["status"] == "HOLD"
-    assert parse_participants_tsv(synthetic_tsv).participants
+    assert parse_participants_tsv(synthetic_tsv).accepted_rows > 0
     assert parse_bids_relpath("sub-01/eeg/sub-01_task-rest_eeg.edf").valid
     assert license_report("License: CC0", None)["resolved"] is False
     assert check_payload_digest(b"x", None)["registration_status"] == "UNREGISTERED_DRAFT"

@@ -1,8 +1,9 @@
-"""Synthetic-only inventory audit of a participants table and a file listing.
+"""Aggregate-only audit of caller-supplied participant-table text and path strings.
 
-The caller supplies text, strings, and mappings. Nothing here opens a file, so the audit
-cannot inspect participant data. It reports structure and gaps. It does not establish which
-subjects any analysis or publication used.
+This module does not discover or read participant files from disk. It does parse
+participants-table text and relative-path strings explicitly supplied by the caller.
+Subject labels are compared transiently in memory but are omitted from public results,
+findings, and errors. It reports structure and gaps, not which subjects any analysis used.
 
 Expected tasks are never inferred from observed files. Without a declared set, the audit
 reports that expectation is undeclared and performs no completeness claim.
@@ -14,7 +15,7 @@ from typing import Any, Iterable, Mapping, Optional
 
 from .findings import make_finding, sort_findings
 from .license import license_report
-from .paths import parse_bids_relpath
+from .paths import _parse_bids_relpath
 from .schema import (
     ANALYSIS_DECLARED_INCONSISTENT,
     ANALYSIS_DECLARED_UNVERIFIED,
@@ -30,19 +31,19 @@ from .schema import (
     TASK_LABEL_RE,
     external_registration_block,
 )
-from .tsv import parse_participants_tsv
+from .tsv import _parse_participants_tsv
 
 _COHORT_STATEMENT = (
-    "This inventory lists participants and files. It does not establish which subjects any analysis "
-    "or publication used, so it is not a cohort identification."
+    "This inventory reports aggregate participant and file counts. It does not establish which subjects "
+    "any analysis or publication used, so it is not a cohort identification."
 )
 _TASK_PRESENCE_STATEMENT = (
-    "File-level task presence is not analysis or completion evidence. A listed file with a task "
-    "entity shows only that the file exists in the listing."
+    "Aggregate file-level task presence is not analysis or completion evidence. A listed task shows only "
+    "that matching path strings were supplied."
 )
 _ANALYSIS_STATEMENT = (
-    "A declared analysis record is caller-supplied and unverified. It is reported as declared, never "
-    "as established, and it is checked only for internal count consistency."
+    "A declared analysis record is caller-supplied and unverified. It is reported only as aggregate counts, "
+    "never as established, and checked only for internal count consistency."
 )
 _ANALYSIS_KEYS = frozenset({"analyzed_n", "excluded_subjects"})
 
@@ -66,14 +67,14 @@ def _malformed_reason(record: Any) -> Optional[str]:
 
 
 def _analysis_block(record: Any, participants: Optional[set[str]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Report an analysis record as declared and unverified, or as not established. Never as fact."""
+    """Report declared analysis fields as aggregate-only and unverified."""
     findings: list[dict[str, Any]] = []
     block: dict[str, Any] = {
         "record_declared": record is not None,
         "record_status": "NOT_DECLARED",
         "status": ANALYSIS_NOT_ESTABLISHED,
         "analyzed_n": None,
-        "excluded_subjects": None,
+        "excluded_subjects_n": None,
         "count_check": "NOT_PERFORMED",
         "authoritative": False,
         "statement": _ANALYSIS_STATEMENT,
@@ -84,16 +85,26 @@ def _analysis_block(record: Any, participants: Optional[set[str]]) -> tuple[dict
             "no analysis record was declared; analyzed N and exclusions are not established"))
         return block, findings
 
-    reason = _malformed_reason(record)
+    try:
+        reason = _malformed_reason(record)
+    except Exception:
+        reason = "analysis record could not be read"
     if reason is not None:
         block["record_status"] = "MALFORMED"
         findings.append(make_finding("ANALYSIS_RECORD_MALFORMED", "error", reason))
         return block, findings
 
-    analyzed_n = record["analyzed_n"]
-    excluded = sorted(record["excluded_subjects"])
+    try:
+        analyzed_n = record["analyzed_n"]
+        excluded = set(record["excluded_subjects"])
+    except Exception:
+        block["record_status"] = "MALFORMED"
+        findings.append(make_finding(
+            "ANALYSIS_RECORD_MALFORMED", "error",
+            "analysis record could not be read; supplied values were omitted"))
+        return block, findings
     block.update(record_status="DECLARED", status=ANALYSIS_DECLARED_UNVERIFIED,
-                 analyzed_n=analyzed_n, excluded_subjects=excluded)
+                 analyzed_n=analyzed_n, excluded_subjects_n=len(excluded))
 
     if participants is None:
         findings.append(make_finding(
@@ -101,25 +112,25 @@ def _analysis_block(record: Any, participants: Optional[set[str]]) -> tuple[dict
             "no participants table; the declared analyzed N cannot be checked"))
         return block, findings
 
-    unknown = [subject for subject in excluded if subject not in participants]
-    for subject in unknown:
+    unknown_count = len(excluded - participants)
+    if unknown_count:
         findings.append(make_finding(
             "EXCLUSION_NOT_IN_PARTICIPANTS", "error",
-            "excluded subject is absent from the participants table", subject=subject))
+            "one or more declared exclusions are absent from the participants table",
+            affected_count=unknown_count))
     expected = len(participants) - len(excluded)
-    if unknown:
+    if unknown_count or analyzed_n != expected:
         block["count_check"] = "FAILED"
-    elif analyzed_n != expected:
-        block["count_check"] = "FAILED"
-        findings.append(make_finding(
-            "ANALYSIS_COUNT_MISMATCH", "error",
-            f"declared analyzed N {analyzed_n} differs from {expected}, the participants less the declared exclusions"))
+        if not unknown_count:
+            findings.append(make_finding(
+                "ANALYSIS_COUNT_MISMATCH", "error",
+                f"declared analyzed N {analyzed_n} differs from {expected}, the participants less declared exclusions"))
     else:
         block["count_check"] = "CONSISTENT"
 
     if block["count_check"] == "FAILED":
         # An inconsistent declaration reports no number, so no count can be quoted from it.
-        block.update(status=ANALYSIS_DECLARED_INCONSISTENT, analyzed_n=None, excluded_subjects=None)
+        block.update(status=ANALYSIS_DECLARED_INCONSISTENT, analyzed_n=None, excluded_subjects_n=None)
     return block, findings
 
 
@@ -136,83 +147,101 @@ def audit_inventory(
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
 
-    # Participants table: strict parse, with rejected rows reported rather than dropped.
     participants: Optional[set[str]] = None
-    tsv_summary: Optional[dict[str, Any]] = None
+    tsv_summary: Optional[dict[str, int]] = None
     if participants_tsv is None:
         findings.append(make_finding(
             "PARTICIPANTS_NOT_PROVIDED", "error",
             "no participants table; subject cross-checks were not performed"))
     else:
-        tsv = parse_participants_tsv(participants_tsv)
+        tsv, labels = _parse_participants_tsv(participants_tsv)
         findings.extend(tsv.findings)
-        participants = set(tsv.participants)
-        tsv_summary = {"accepted_rows": tsv.accepted_rows, "rejected_rows": tsv.rejected_rows,
-                       "blank_lines": tsv.blank_lines}
+        participants = set(labels)
+        tsv_summary = {
+            "accepted_rows": tsv.accepted_rows,
+            "rejected_rows": tsv.rejected_rows,
+            "blank_lines": tsv.blank_lines,
+        }
 
-    # File listing: classify each path. Invalid paths are reported and excluded.
-    listed = list(file_paths)
+    # Listing strings are caller-supplied and never dereferenced. Avoid echoing them in findings.
+    listing_readable = True
+    try:
+        listed = list(file_paths)
+    except Exception:
+        listed = []
+        listing_readable = False
+        findings.append(make_finding(
+            "FILE_LISTING_UNREADABLE", "error",
+            "the supplied path listing could not be consumed; path counts and cross-checks are unavailable"))
+
     subject_files = []
     non_subject = 0
+    invalid_entries = 0
     for raw in listed:
-        parsed = parse_bids_relpath(raw)
+        parsed = _parse_bids_relpath(raw)
         if not parsed.valid:
-            findings.append(make_finding(
-                "UNPARSEABLE_PATH", "error", ", ".join(parsed.problems) or "invalid path",
-                path=parsed.relpath or "<non-text path>"))
+            invalid_entries += 1
         elif parsed.is_subject_file:
             subject_files.append(parsed)
         else:
             non_subject += 1
+    if invalid_entries:
+        findings.append(make_finding(
+            "UNPARSEABLE_PATH", "error", "one or more supplied path entries were rejected",
+            affected_count=invalid_entries))
 
     relpath_counts = Counter(raw for raw in listed if isinstance(raw, str))
-    for relpath, count in sorted(relpath_counts.items()):
-        if count > 1:
-            findings.append(make_finding("DUPLICATE_FILE", "error",
-                                         f"listed {count} times", path=relpath))
+    duplicate_path_groups = sum(count > 1 for count in relpath_counts.values())
+    if duplicate_path_groups:
+        findings.append(make_finding(
+            "DUPLICATE_FILE", "error", "repeated relative paths were found",
+            affected_count=duplicate_path_groups))
 
-    by_signature: dict[tuple[Any, ...], list[str]] = defaultdict(list)
+    by_signature: dict[tuple[Any, ...], set[str]] = defaultdict(set)
     for parsed in subject_files:
-        by_signature[parsed.signature()].append(parsed.relpath)
-    for signature, relpaths in sorted(by_signature.items(), key=lambda item: str(item[0])):
-        distinct = sorted(set(relpaths))
-        if len(distinct) > 1:
-            findings.append(make_finding(
-                "DUPLICATE_ENTITY_SIGNATURE", "error",
-                f"{len(distinct)} different paths claim the same BIDS entities",
-                subject=signature[0], path=distinct[0]))
+        by_signature[parsed.signature()].add(parsed.relpath)
+    duplicate_signature_groups = sum(len(relpaths) > 1 for relpaths in by_signature.values())
+    if duplicate_signature_groups:
+        findings.append(make_finding(
+            "DUPLICATE_ENTITY_SIGNATURE", "error",
+            "different supplied paths claim the same BIDS entity signature",
+            affected_count=duplicate_signature_groups))
 
-    file_subjects = sorted({parsed.subject for parsed in subject_files if parsed.subject})
+    file_subjects = {parsed.subject for parsed in subject_files if parsed.subject}
 
-    # Subject cross-checks: only when a participants table exists.
     if participants is None:
-        subject_universe: Optional[list[str]] = None
         universe_source = "none"
         cross_check = "NOT_PERFORMED"
-        file_only: list[str] = []
-        without_files: list[str] = []
+        file_only_count: Optional[int] = None
+        without_files_count: Optional[int] = None
+    elif not listing_readable:
+        universe_source = "participants"
+        cross_check = "NOT_PERFORMED"
+        file_only_count = None
+        without_files_count = None
     else:
-        subject_universe = sorted(participants)
         universe_source = "participants"
         cross_check = "PERFORMED"
-        file_subject_set = set(file_subjects)
-        file_only = [s for s in file_subjects if s not in participants]
-        without_files = [s for s in subject_universe if s not in file_subject_set]
-        for subject in file_only:
+        file_only = file_subjects - participants
+        without_files = participants - file_subjects
+        file_only_count = len(file_only)
+        without_files_count = len(without_files)
+        if file_only:
             findings.append(make_finding(
                 "FILE_SUBJECT_NOT_IN_PARTICIPANTS", "error",
-                "files exist for a subject absent from the participants table", subject=subject))
-        for subject in without_files:
+                "one or more supplied subject-path labels are absent from the participants table",
+                affected_count=len(file_only)))
+        if without_files:
             findings.append(make_finding(
                 "PARTICIPANT_WITHOUT_FILES", "warning",
-                "participant has no valid subject file in the listing", subject=subject))
+                "one or more participants have no valid subject file in the supplied listing",
+                affected_count=len(without_files)))
 
-    # Tasks: only against a caller-declared expectation. Observation never defines it.
-    observed_tasks = sorted({parsed.task for parsed in subject_files if parsed.task})
-    coverage: dict[str, set[str]] = defaultdict(set)
+    task_subjects: dict[str, set[str]] = defaultdict(set)
     for parsed in subject_files:
         if parsed.task and parsed.subject:
-            coverage[parsed.subject].add(parsed.task)
+            task_subjects[parsed.task].add(parsed.subject)
+    observed_tasks = sorted(task_subjects) if listing_readable else None
 
     expected: Optional[list[str]] = None
     if expected_tasks is None:
@@ -220,44 +249,51 @@ def audit_inventory(
             "EXPECTED_TASKS_NOT_DECLARED", "error",
             "no expected task set was declared; the audit makes no task-completeness claim"))
     else:
-        declared = list(expected_tasks)
-        invalid = [t for t in declared if not (isinstance(t, str) and TASK_LABEL_RE.fullmatch(t))]
-        for label in invalid:
-            findings.append(make_finding("EXPECTED_TASK_INVALID", "error",
-                                         "task label must be alphanumeric", path=str(label)))
-        expected = sorted({t for t in declared if isinstance(t, str) and TASK_LABEL_RE.fullmatch(t)})
-        for task in expected:
-            if subject_universe is None:
-                # No participants table: the subject universe is unknown, so per-subject gaps
-                # cannot be assessed. Only the absence of a declared task from the whole listing
-                # is reported, and that does not depend on inferring subjects.
-                if not any(task in tasks for tasks in coverage.values()):
-                    findings.append(make_finding(
-                        "TASK_ABSENT_IN_LISTING", "error",
-                        f"declared task {task!r} appears in no listed file; per-subject coverage not assessed",
-                        task=task))
-                continue
-            missing = [s for s in subject_universe if task not in coverage.get(s, set())]
-            if subject_universe and len(missing) == len(subject_universe):
+        try:
+            declared = list(expected_tasks)
+        except Exception:
+            declared = None
+            findings.append(make_finding(
+                "EXPECTED_TASKS_UNREADABLE", "error",
+                "the declared task iterable could not be consumed; no task values were retained"))
+        if declared is not None:
+            valid_declared = [task for task in declared if isinstance(task, str) and TASK_LABEL_RE.fullmatch(task)]
+            invalid_count = len(declared) - len(valid_declared)
+            if invalid_count:
                 findings.append(make_finding(
-                    "TASK_ABSENT_FOR_ALL_SUBJECTS", "error",
-                    f"declared task {task!r} has no file for any participant", task=task))
-            else:
-                for subject in missing:
-                    findings.append(make_finding(
-                        "MISSING_TASK_FOR_SUBJECT", "warning",
-                        f"declared task {task!r} has no file for this participant", subject=subject, task=task))
-        for task in observed_tasks:
-            if task not in expected:
-                findings.append(make_finding(
-                    "UNEXPECTED_TASK", "warning",
-                    "observed task is outside the declared set", task=task))
+                    "EXPECTED_TASK_INVALID", "error", "one or more task labels were rejected",
+                    affected_count=invalid_count))
+            expected = sorted(set(valid_declared))
+            if listing_readable:
+                for task in expected:
+                    present_count = len(task_subjects.get(task, set()))
+                    if participants is None:
+                        if present_count == 0:
+                            findings.append(make_finding(
+                                "TASK_ABSENT_IN_LISTING", "error",
+                                f"declared task {task!r} appears in no listed file; per-subject coverage not assessed",
+                                task=task))
+                        continue
+                    missing_count = len(participants) - len(participants & task_subjects.get(task, set()))
+                    if missing_count == len(participants) and participants:
+                        findings.append(make_finding(
+                            "TASK_ABSENT_FOR_ALL_SUBJECTS", "error",
+                            f"declared task {task!r} has no file for any participant",
+                            task=task, affected_count=missing_count))
+                    elif missing_count:
+                        findings.append(make_finding(
+                            "MISSING_TASK_FOR_SUBJECT", "warning",
+                            f"declared task {task!r} is missing for one or more participants",
+                            task=task, affected_count=missing_count))
+                for task in observed_tasks or []:
+                    if task not in expected:
+                        findings.append(make_finding(
+                            "UNEXPECTED_TASK", "warning",
+                            "observed task is outside the declared set", task=task))
 
-    # Analysis record: declared and count-checked at most. Nothing is inferred when it is absent.
     analysis, analysis_findings = _analysis_block(analysis_record, participants)
     findings.extend(analysis_findings)
 
-    # License evidence: recorded, never resolved here.
     license_state = license_report(readme_text, nemar_metadata,
                                    dataset_description=dataset_description,
                                    catalog_metadata=catalog_metadata)
@@ -281,25 +317,30 @@ def audit_inventory(
         "scientific_pass": False,
         "participants": {
             "table": tsv_summary,
-            "subjects": subject_universe,
+            "subject_count": len(participants) if participants is not None else None,
             "universe_source": universe_source,
             "cross_check": cross_check,
-            "file_subjects": file_subjects,
-            "file_only_subjects": file_only,
-            "participants_without_files": without_files,
+            "file_subject_count": len(file_subjects) if listing_readable else None,
+            "file_only_subject_count": file_only_count,
+            "participants_without_files_count": without_files_count,
         },
         "entries": {
-            # Counts are per listed entry. A path listed twice is counted twice; DUPLICATE_FILE reports it.
-            "listed": len(listed),
-            "subject_entries_valid": len(subject_files),
-            "non_subject_entries": non_subject,
-            "invalid_entries": len(listed) - len(subject_files) - non_subject,
+            "listed": len(listed) if listing_readable else None,
+            "subject_entries_valid": len(subject_files) if listing_readable else None,
+            "non_subject_entries": non_subject if listing_readable else None,
+            "invalid_entries": invalid_entries if listing_readable else None,
         },
         "tasks": {
             "expected_declared": expected_tasks is not None,
             "expected": expected,
             "observed": observed_tasks,
-            "coverage": {subject: sorted(tasks) for subject, tasks in sorted(coverage.items())},
+            "coverage": ({
+                task: {
+                    "subjects_with_file_count": len(labels),
+                    "subject_count": len(participants) if participants is not None else None,
+                }
+                for task, labels in sorted(task_subjects.items())
+            } if listing_readable else None),
             "presence_statement": _TASK_PRESENCE_STATEMENT,
             "completion_evidence": False,
         },

@@ -22,32 +22,37 @@ def _find(report, code):
 def test_fixture_subject_cross_checks(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing)
     assert report["participants"]["cross_check"] == "PERFORMED"
-    assert report["participants"]["file_only_subjects"] == ["sub-04"]
-    assert report["participants"]["participants_without_files"] == ["sub-03"]
-    assert [f["subject"] for f in _find(report, "FILE_SUBJECT_NOT_IN_PARTICIPANTS")] == ["sub-04"]
-    assert [f["subject"] for f in _find(report, "PARTICIPANT_WITHOUT_FILES")] == ["sub-03"]
+    assert report["participants"]["file_only_subject_count"] == 1
+    assert report["participants"]["participants_without_files_count"] == 1
+    assert _find(report, "FILE_SUBJECT_NOT_IN_PARTICIPANTS")[0]["affected_count"] == 1
+    assert _find(report, "PARTICIPANT_WITHOUT_FILES")[0]["affected_count"] == 1
 
 
 def test_fixture_path_classification_and_counts(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing)
     assert report["entries"] == {"listed": 8, "subject_entries_valid": 4,
                                  "non_subject_entries": 2, "invalid_entries": 2}
-    invalid = {f["path"] for f in _find(report, "UNPARSEABLE_PATH")}
-    assert invalid == {"sub-01/eeg/sub-01_task-rest_eeg.edf.bak", "../escape/sub-01_task-rest_eeg.edf"}
+    invalid = _find(report, "UNPARSEABLE_PATH")
+    assert len(invalid) == 1 and invalid[0]["affected_count"] == 2
+    assert "path" not in invalid[0]
 
 
 def test_backup_copy_does_not_manufacture_task_coverage(synthetic_tsv):
     listing = ["sub-02/eeg/sub-02_task-stroop_eeg.edf.bak", "sub-02/eeg/sub-02_task-rest_eeg.edf"]
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=listing,
                              expected_tasks=["rest", "stroop"])
-    assert report["tasks"]["coverage"] == {"sub-02": ["rest"]}
+    assert report["tasks"]["coverage"] == {
+        "rest": {"subjects_with_file_count": 1, "subject_count": 3},
+    }
     assert "stroop" not in report["tasks"]["observed"]
 
 
 def test_fixture_coverage_is_recorded_per_participant(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing)
-    assert report["tasks"]["coverage"] == {"sub-01": ["rest", "stroop"], "sub-02": ["rest"],
-                                           "sub-04": ["rest"]}
+    assert report["tasks"]["coverage"] == {
+        "rest": {"subjects_with_file_count": 3, "subject_count": 3},
+        "stroop": {"subjects_with_file_count": 1, "subject_count": 3},
+    }
 
 
 # ── tasks: only against a declared set ───────────────────────────────────────
@@ -66,8 +71,8 @@ def test_undeclared_expectation_is_reported_and_nothing_is_inferred(synthetic_ts
 def test_declared_tasks_yield_per_participant_gaps(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing,
                              expected_tasks=["rest", "stroop"])
-    gaps = sorted((f["subject"], f["task"]) for f in _find(report, "MISSING_TASK_FOR_SUBJECT"))
-    assert gaps == [("sub-02", "stroop"), ("sub-03", "rest"), ("sub-03", "stroop")]
+    gaps = {f["task"]: f["affected_count"] for f in _find(report, "MISSING_TASK_FOR_SUBJECT")}
+    assert gaps == {"rest": 1, "stroop": 2}
     assert not _find(report, "TASK_ABSENT_FOR_ALL_SUBJECTS")
 
 
@@ -77,6 +82,7 @@ def test_task_absent_for_every_participant_is_an_error(synthetic_tsv, synthetic_
     absent = _find(report, "TASK_ABSENT_FOR_ALL_SUBJECTS")
     assert [f["task"] for f in absent] == ["nback"]
     assert absent[0]["severity"] == "error"
+    assert absent[0]["affected_count"] == 3
 
 
 def test_observed_task_outside_the_declared_set_is_flagged(synthetic_tsv, synthetic_listing):
@@ -109,8 +115,8 @@ def test_without_a_participants_table_only_whole_listing_absence_is_reported(syn
 
 def test_without_participants_file_subjects_are_not_treated_as_the_cohort(synthetic_listing):
     report = audit_inventory(participants_tsv=None, file_paths=synthetic_listing)
-    assert report["participants"]["subjects"] is None
-    assert report["participants"]["participants_without_files"] == []
+    assert report["participants"]["subject_count"] is None
+    assert report["participants"]["participants_without_files_count"] is None
 
 
 # ── duplicates ───────────────────────────────────────────────────────────────
@@ -118,14 +124,17 @@ def test_without_participants_file_subjects_are_not_treated_as_the_cohort(synthe
 def test_identical_path_listed_twice_is_a_duplicate_file(synthetic_tsv):
     listing = ["sub-01/eeg/sub-01_task-rest_eeg.edf", "sub-01/eeg/sub-01_task-rest_eeg.edf"]
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=listing)
-    assert [f["path"] for f in _find(report, "DUPLICATE_FILE")] == ["sub-01/eeg/sub-01_task-rest_eeg.edf"]
+    duplicate = _find(report, "DUPLICATE_FILE")
+    assert len(duplicate) == 1 and duplicate[0]["affected_count"] == 1
+    assert "path" not in duplicate[0]
 
 
 def test_different_paths_claiming_the_same_entities_are_flagged_not_resolved(synthetic_tsv):
     listing = ["sub-01/eeg/sub-01_task-rest_eeg.edf", "sub-01/func/sub-01_task-rest_eeg.edf"]
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=listing)
     flagged = _find(report, "DUPLICATE_ENTITY_SIGNATURE")
-    assert len(flagged) == 1 and flagged[0]["subject"] == "sub-01" and flagged[0]["severity"] == "error"
+    assert len(flagged) == 1 and flagged[0]["affected_count"] == 1 and flagged[0]["severity"] == "error"
+    assert "subject" not in flagged[0] and "path" not in flagged[0]
 
 
 def test_participant_table_problems_are_carried_into_the_audit():
@@ -135,8 +144,9 @@ def test_participant_table_problems_are_carried_into_the_audit():
     report = audit_inventory(participants_tsv=tsv, file_paths=["sub-02/eeg/sub-02_task-rest_eeg.edf"])
     assert "DUPLICATE_PARTICIPANT" in _codes(report, "error")
     assert "MALFORMED_ROW" in _codes(report, "error")
-    assert report["participants"]["subjects"] == []
-    assert [f["subject"] for f in _find(report, "FILE_SUBJECT_NOT_IN_PARTICIPANTS")] == ["sub-02"]
+    assert report["participants"]["subject_count"] == 0
+    assert report["participants"]["file_only_subject_count"] == 1
+    assert _find(report, "FILE_SUBJECT_NOT_IN_PARTICIPANTS")[0]["affected_count"] == 1
 
 
 # ── scope and claim boundaries ───────────────────────────────────────────────

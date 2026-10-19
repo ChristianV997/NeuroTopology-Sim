@@ -72,8 +72,10 @@ def test_unsafe_path_fails_closed(path, code):
 
 
 def test_control_character_path_is_not_echoed_into_findings():
-    result = file_listing_digest([("bad\tname.json", b"x")])
-    assert all("bad" not in f.get("path", "") for f in result["findings"])
+    marker = "sub-PathPrivacyMarker83"
+    result = file_listing_digest([(f"{marker}\tname.json", b"x")])
+    assert marker not in repr(result)
+    assert all("path" not in finding for finding in result["findings"])
 
 
 def test_text_content_is_rejected_because_only_bytes_are_listed():
@@ -85,13 +87,27 @@ def test_text_content_is_rejected_because_only_bytes_are_listed():
 def test_malformed_entry_is_reported_with_its_position():
     result = file_listing_digest([("a.json", b"1", "extra")])
     malformed = [f for f in result["findings"] if f["code"] == "ENTRY_MALFORMED"]
-    assert malformed and malformed[0]["path"] == "entry[0]"
+    assert malformed and malformed[0]["entry_index"] == 0
 
 
 def test_non_iterable_input_is_rejected():
     result = file_listing_digest(42)
     assert result["manifest_sha256"] is None
     assert result["findings"][0]["code"] == "ENTRIES_NOT_ITERABLE"
+
+
+def test_iterable_exception_is_not_echoed():
+    marker = "sub-ListingIteratorMarker84"
+
+    class SyntheticBrokenEntries:
+        def __iter__(self):
+            raise ValueError(marker)
+
+    result = file_listing_digest(SyntheticBrokenEntries())
+    assert result["manifest_sha256"] is None
+    assert result["entries_listed"] is None
+    assert result["findings"][0]["code"] == "ENTRIES_NOT_ITERABLE"
+    assert marker not in repr(result)
 
 
 def test_empty_listing_has_a_defined_digest_and_claims_nothing():

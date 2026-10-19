@@ -1,44 +1,48 @@
-"""Shared fixtures for the synthetic-only BIDS inventory tests. Offline; fixtures are labelled synthetic."""
+"""Generated in-memory synthetic inputs; tests do not read repository data fixtures."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
-
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture
 def synthetic_tsv() -> str:
-    return (FIXTURES / "synthetic_participants.tsv").read_text(encoding="utf-8")
+    return "participant_id\tage\nsub-01\t20\nsub-02\t22\nsub-03\t25\n"
 
 
 @pytest.fixture
 def synthetic_readme() -> str:
-    return (FIXTURES / "synthetic_readme.txt").read_text(encoding="utf-8")
+    return "Synthetic test metadata.\nLicense: CC-BY-4.0\n"
 
 
 @pytest.fixture
 def synthetic_nemar() -> dict:
-    return json.loads((FIXTURES / "synthetic_nemar.json").read_text(encoding="utf-8"))
+    return {"license": "CC0-1.0", "name": "synthetic-test-record"}
 
 
 @pytest.fixture
 def synthetic_listing() -> list[str]:
-    return json.loads((FIXTURES / "synthetic_file_listing.json").read_text(encoding="utf-8"))["paths"]
+    return [
+        "participants.tsv",
+        "README",
+        "sub-01/eeg/sub-01_task-rest_eeg.edf",
+        "sub-01/eeg/sub-01_task-stroop_eeg.edf",
+        "sub-02/eeg/sub-02_task-rest_eeg.edf",
+        "sub-04/eeg/sub-04_task-rest_eeg.edf",
+        "sub-01/eeg/sub-01_task-rest_eeg.edf.bak",
+        "../escape/sub-01_task-rest_eeg.edf",
+    ]
 
 
 @pytest.fixture
 def synthetic_dataset_description() -> dict:
-    return json.loads((FIXTURES / "synthetic_dataset_description.json").read_text(encoding="utf-8"))
+    return {"License": "CC-BY-4.0", "Name": "synthetic-test-dataset"}
 
 
 @pytest.fixture
 def synthetic_catalog() -> dict:
-    return json.loads((FIXTURES / "synthetic_catalog.json").read_text(encoding="utf-8"))
+    return {"license": "CC-BY-SA-4.0", "name": "synthetic-test-catalog-entry"}
 
 
 @pytest.fixture
 def synthetic_analysis_record() -> dict:
-    return json.loads((FIXTURES / "synthetic_analysis_record.json").read_text(encoding="utf-8"))
+    return {"analyzed_n": 2, "excluded_subjects": ["sub-03"]}
