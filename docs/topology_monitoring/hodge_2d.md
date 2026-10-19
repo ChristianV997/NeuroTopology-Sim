@@ -1,7 +1,7 @@
 # Weighted 2D Discrete Hodge-Helmholtz Decomposition
 
-Status: **HOLD / SYNTHETIC_ONLY**  
-Module: `neurotopology_sim.experimental.topology.hodge_2d`  
+Status: **HOLD / SYNTHETIC_ONLY**
+Module: `neurotopology_sim.experimental.topology.hodge_2d`
 Tests: `tests.neurotopology_sim.experimental.topology.test_hodge_2d`
 
 ---
