@@ -34,6 +34,8 @@ from typing import Any
 MAX_RUNNER_TELEMETRY_BYTES = 4 * 1024 * 1024
 MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
 MAX_RUNNER_STDERR_TAIL_BYTES = 4096
+MAX_JUNIT_FAILURE_CASES = 50
+MAX_JUNIT_FAILURE_NAME_CHARS = 512
 PINNED_OUTPUT_PROBE_MARKER = b"round6-pinned-output-probe-v1"
 PINNED_OUTPUT_PROBE_TIMEOUT_S = 3
 _PROBE_SUBPROCESS_RUN = subprocess.run
@@ -2364,6 +2366,25 @@ def run(
                 if junit_bytes is not None:
                     try:
                         counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        execution.update({
+                            "tests_collected": counts[0],
+                            "skipped": counts[1],
+                            "failed": counts[2],
+                            "errors": counts[3],
+                            "junit_reported_test_outcomes": junit_reported_tests,
+                        })
+                        failure_cases = [
+                            {
+                                "name": case["name"][:MAX_JUNIT_FAILURE_NAME_CHARS],
+                                "status": case["status"],
+                            }
+                            for case in cases
+                            if case["status"] != "passed"
+                        ]
+                        execution["junit_case_failures"] = failure_cases[:MAX_JUNIT_FAILURE_CASES]
+                        execution["junit_case_failures_truncated"] = (
+                            len(failure_cases) > MAX_JUNIT_FAILURE_CASES
+                        )
                         runner_passed_count = (
                             batches[0].get("_round6_pytest_passed_count")
                             if batches and isinstance(batches[0], dict)
@@ -2386,24 +2407,25 @@ def run(
                                 "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
                             )
                         execution.update({
-                            "tests_collected": counts[0],
                             "runner_passed_tests": runner_passed_count,
                             "runner_passed_subtests": runner_subtests_passed_count,
-                            "junit_reported_test_outcomes": junit_reported_tests,
-                            "skipped": counts[1],
-                            "failed": counts[2],
-                            "errors": counts[3],
                             "test_cases": cases,
                         })
                     except (ET.ParseError, OSError, ValueError) as exc:
                         execution["junit_error"] = str(exc)
                         junit_error = True
                 has_junit = junit_bytes is not None and not junit_error
+                runner_dependency_unavailable = (
+                    "pytest-timeout is required" in runner_stderr_tail
+                    or "No module named 'pytest'" in runner_stderr_tail
+                )
                 counts = (
-                    execution.get("tests_collected", 0),
-                    execution.get("skipped", 0),
-                    execution.get("failed", 0),
-                    execution.get("errors", 0),
+                    (0, 0, 0, 0)
+                    if runner_dependency_unavailable
+                    else tuple(
+                        execution.get(key)
+                        for key in ("tests_collected", "skipped", "failed", "errors")
+                    )
                 )
                 runner_timeout_batches = execution.get("runner_timeout_batches")
                 if not isinstance(runner_timeout_batches, int):
@@ -2425,10 +2447,7 @@ def run(
                 else:
                     failure_classification = (
                         "timeout" if execution["timeout"]
-                        else "runner_dependency_unavailable" if (
-                            "pytest-timeout is required" in runner_stderr_tail
-                            or "No module named 'pytest'" in runner_stderr_tail
-                        )
+                        else "runner_dependency_unavailable" if runner_dependency_unavailable
                         else "test_or_collection_failure" if counts[2] or counts[3]
                         else "candidate_tests_skipped" if counts[1]
                         else "nonzero_runner_or_test_exit" if completed.returncode
