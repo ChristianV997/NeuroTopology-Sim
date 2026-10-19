@@ -12,6 +12,7 @@ project metric. Whether a procedure varies it is reported, never assumed.
 """
 from __future__ import annotations
 
+import cmath
 import math
 import random
 import unittest
@@ -395,6 +396,27 @@ class WindingVariationTests(unittest.TestCase):
         x = _independent(32, 3, 5)
         report = C.winding_variation(x, N.cholesky_gaussian_csd, range(40), 3)
         self.assertTrue(report["varies_across_ensemble"])
+
+    def test_two_channel_loop_has_no_winding_even_at_an_exact_pi_relative_phase(self):
+        # Before the fix, [[1], [-1]] returned -1: the two edges each wrap to -pi.
+        self.assertEqual(C.phase_loop_winding([[1 + 0j], [1 + 0j]], 0), 0)
+        self.assertEqual(C.phase_loop_winding([[1 + 0j], [-1 + 0j]], 0), 0)
+
+    def test_exact_pi_step_has_no_defined_winding_for_three_or_more_channels(self):
+        # The minimal-wrap sum is ambiguous at +/-pi, so the statistic must fail closed.
+        with self.assertRaises(sp.SurrogateInputError):
+            C.phase_loop_winding([[1 + 0j], [-1 + 0j], [1 + 0j]], 0)
+
+    def test_designed_vortex_winding_is_unchanged(self):
+        spectra = [[cmath.exp(1j * c * math.pi / 2)] for c in range(4)]
+        self.assertEqual(C.phase_loop_winding(spectra, 0), -1)
+
+    def test_zero_lag_null_winding_is_undefined_and_fails_closed(self):
+        # Its real-coefficient draws have exact 0/pi relative phases. Before the fix this
+        # reported spurious variation (-1 and 0 around an original of 1).
+        x = _independent(32, 3, 7)
+        with self.assertRaises(sp.SurrogateInputError):
+            C.winding_variation(x, N.zero_lag_real_part_gaussian, range(4), 3)
 
     def test_common_phase_never_varies_the_winding(self):
         x = _independent(32, 3, 5)

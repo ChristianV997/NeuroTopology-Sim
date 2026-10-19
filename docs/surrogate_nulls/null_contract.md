@@ -185,7 +185,10 @@ support. It does not change how the draw is made.
 ## Shrinkage, PSD policy, and conditioning
 
 - Shrinkage (explicit, default 0): `C <- (1 - lam) C + lam (tr C / d) I`, `lam` in `[0, 1]`. The
-  value is reported. Out-of-range values are rejected.
+  value is reported. Out-of-range values are rejected. Shrinkage adds an identity term, so a
+  shrunk estimate can be full rank and can vary relative phases even when its estimator is a
+  rank-one periodogram. The `estimator_validity` label describes the estimator, not the shrunk
+  matrix. The reported `shrinkage` and `effective_rank_per_bin` describe the shrunk matrix.
 - PSD policy: the smallest eigenvalue of each bin's matrix must be at least `-psd_tol * trace`
   (`psd_tol = 1e-10`). A smaller value is **materially indefinite** and raises
   `NonPositiveDefiniteError` before any regularisation. Negative eigenvalues within the tolerance
@@ -245,6 +248,14 @@ toy loop-winding statistic across an ensemble. It returns `varies_from_original`
   phases fixed. This is the rank-one failure mode, and it is reported rather than hidden.
 
 A procedure that leaves the statistic unchanged must not be used to test that statistic.
+
+Definition limits of the toy statistic (`phase_loop_winding`):
+
+- A loop with fewer than three channels has winding 0. Its two edges cancel.
+- An adjacent relative phase at exactly ±pi makes the minimal-wrap winding ambiguous. The function
+  then raises `SurrogateInputError` instead of returning an arbitrary integer, and
+  `winding_variation` raises for such a surrogate. The real-coefficient zero-lag null produces
+  these steps, so its winding is undefined and the statistic is not applied to it.
 
 ## Common phase: a control, not a winding null
 

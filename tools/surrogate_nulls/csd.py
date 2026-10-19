@@ -318,21 +318,31 @@ def validate_supplied_csd(csd_by_bin, n_channels, n_time):
     return [[[complex(v) for v in row] for row in mat] for mat in csd_by_bin]
 
 
+PI_STEP_TOL = 1e-9  # an adjacent relative phase within this of +/-pi is treated as exactly pi
+
+
 def phase_loop_winding(spectra, k):
     """Integer winding of the phase loop 0 -> 1 -> ... -> d-1 -> 0 at bin ``k``.
 
-    A test statistic for designed signals. It is not a project metric. For a single channel
-    the loop is empty and the winding is 0.
+    A test statistic for designed signals. It is not a project metric.
+
+    - One or two channels: the winding is 0. A loop with fewer than three edges cannot wind,
+      because the two edges of a two-channel loop cancel.
+    - An adjacent relative phase at exactly +/-pi (within ``PI_STEP_TOL``) is ambiguous under the
+      minimal-wrap convention, so the winding is undefined. This raises ``SurrogateInputError``
+      rather than returning an arbitrary integer. The real-coefficient zero-lag null produces such
+      steps, so its winding is undefined.
     """
     d = len(spectra)
-    if d < 2:
+    if d < 3:
         return 0
     phases = [cmath.phase(spectra[c][k]) for c in range(d)]
-    total = 0.0
-    for c in range(d):
-        diff = phases[c] - phases[(c + 1) % d]
-        total += (diff + math.pi) % (2.0 * math.pi) - math.pi
-    return round(total / (2.0 * math.pi))
+    steps = [_wrap(phases[c] - phases[(c + 1) % d]) for c in range(d)]
+    if any(abs(abs(step) - math.pi) <= PI_STEP_TOL for step in steps):
+        raise sp.SurrogateInputError(
+            f"winding at bin {k} is undefined: an adjacent relative phase is at +/-pi"
+        )
+    return round(sum(steps) / (2.0 * math.pi))
 
 
 def winding_variation(x, generator, seeds, bin_k, *, statistic=phase_loop_winding):
@@ -341,7 +351,9 @@ def winding_variation(x, generator, seeds, bin_k, *, statistic=phase_loop_windin
     ``generator(x, seed)`` must return ``(signals, report)``. The statistic is computed on
     the rFFT of each surrogate at ``bin_k``. ``varies_from_original`` is True only if some
     surrogate differs from the statistic on the original data. A procedure that leaves the
-    statistic unchanged reports False and must not be used to test that statistic.
+    statistic unchanged reports False and must not be used to test that statistic. If the
+    statistic is undefined for a surrogate (see ``phase_loop_winding``), the call raises
+    ``SurrogateInputError``.
     """
     if isinstance(bin_k, bool) or not isinstance(bin_k, numbers.Integral):
         raise sp.SurrogateInputError("bin_k must be an integer")
