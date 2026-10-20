@@ -3,8 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from numpy.polynomial.legendre import legval
-
 from tools.mne_csd_reference_audit.kkt import (
     OperatorInputError,
     apply_csd,
@@ -32,32 +30,6 @@ def _positions(name: str) -> np.ndarray:
 
 def _scale(M: np.ndarray) -> float:
     return float(np.max(np.abs(M)))
-
-
-def _mne_code_path(pos: np.ndarray, radius: float, lambda2: float) -> tuple[np.ndarray, np.ndarray]:
-    """MNE 1.13.2 compute_current_source_density, transcribed from the verified sdist.
-
-    Sources: mne/preprocessing/_csd.py (_prepare_G, _compute_csd) and
-    mne/channels/interpolation.py (_calc_g, _calc_h). Written with numpy.polynomial.legendre.legval
-    and not via the package, so it is an independent oracle for the code path, including the
-    TC = Gi.sum(0) ordering that the package's projection form does not use.
-    """
-    u = pos / np.linalg.norm(pos, axis=1, keepdims=True)
-    cos = np.clip(u @ u.T, -1, 1)
-    g = [0.0] + [(2 * n + 1) / (n**4 * (n + 1) ** 4 * 4 * np.pi) for n in range(1, 51)]
-    h = [0.0] + [(2 * n + 1) / (n**3 * (n + 1) ** 3 * 4 * np.pi) for n in range(1, 51)]
-    G = legval(cos, g)
-    H = legval(cos, h)
-    G.flat[:: len(G) + 1] += lambda2
-    Gi = np.linalg.inv(G)
-    TC = Gi.sum(0)
-    sgi = np.sum(TC)
-    n = G.shape[0]
-    Z = np.eye(n) - np.eye(n).mean(0)
-    Cp2 = np.dot(Gi, Z)
-    c02 = np.sum(Cp2, axis=0) / sgi
-    C2 = Cp2 - np.dot(TC[:, np.newaxis], c02[np.newaxis, :])
-    return (np.dot(C2.T, H).T / radius**2), G
 
 
 @pytest.mark.parametrize("name", ALL)
@@ -213,13 +185,13 @@ def test_operator_wiring_matches_inline_formula_with_explicit_lambda(name):
 
 
 @pytest.mark.parametrize("name", ALL)
-def test_kkt_and_projection_match_the_mne_code_path_within_conditioning(name):
+def test_kkt_and_projection_match_the_mne_code_path_within_conditioning(name, mne_code_path_oracle):
     # The package's projection form uses TC = Gi @ 1; MNE 1.13.2 uses TC = Gi.sum(0). They agree in exact
     # arithmetic (Gi is symmetric) and differ only by float64 asymmetry of the inverse. Bound: 10 * cond * eps.
     # Measured error / (cond * eps) is at most 0.88 here (ring_apex_9), so the bound has about an order of
     # magnitude of headroom and is not tuned to pass.
     pos = _positions(name)
-    M_mne, G_reg = _mne_code_path(pos, RADIUS, LAMBDA2)
+    M_mne, G_reg = mne_code_path_oracle(pos, RADIUS, LAMBDA2)
     bound = 10 * np.linalg.cond(G_reg) * np.finfo(float).eps
     for method in ("kkt", "projection"):
         M = csd_operator(pos, radius=RADIUS, lambda2=LAMBDA2, method=method)

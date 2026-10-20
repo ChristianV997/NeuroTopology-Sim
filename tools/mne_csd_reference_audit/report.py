@@ -148,8 +148,8 @@ def build_report() -> dict[str, Any]:
         "levels": {
             "L1_legendre_constants": "executed: pure NumPy, 4 proposal constants",
             "L2_operator_algebra": "executed: pure NumPy, KKT vs projection and property checks",
-            "L3_mne_execution_parity": "not executed: MNE not importable and not installed by instruction; "
-                                       "optional integration test skips",
+            "L3_mne_execution_parity": "not executed: MNE not importable and not installed by instruction; the live "
+                                       "comparison in tests/optional_live_mne/ skips without MNE 1.13.2 and is not evidence",
         },
         "legendre": legendre,
         "operator": operator,
