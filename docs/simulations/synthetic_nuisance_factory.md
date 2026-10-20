@@ -19,9 +19,12 @@ This module implements a deterministic, reproducible, synthetic-only nuisance-sc
 > [!IMPORTANT]
 > **Scientific Guardrails & Epistemic Boundaries**:
 > - **Synthetic Only**: This factory is an engineering evaluation fixture. No biological realism or realistic head volume conduction is modeled or claimed.
+> - **Not empirical evidence**: Generated arrays must not be treated as participant, clinical, or dataset-derived measurements.
+> - **No network / remote data**: The package does not import or call network or remote-data clients; inputs are synthetic or caller-supplied arrays.
 > - **No Classifier/Detector**: This module does not implement detection algorithms, threshold tuning, or ROC/PR classification scoring.
 > - **No Claim States**: Results are tagged strictly with `HOLD / SYNTHETIC_ONLY` and report purely descriptive/engineering realized metrics.
 > - **Pure NumPy**: Zero SciPy dependencies; all spectral, linear algebraic, and regression routines use standard `numpy`.
+> - **Config aliases**: `from_dict` accepts `chi` / `jitter_std` / `jitter_units` / `sampling_rate_hz` and must preserve them (no silent defaulting).
 
 ---
 

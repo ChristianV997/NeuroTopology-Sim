@@ -169,14 +169,34 @@ class NuisanceScenarioConfig:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> NuisanceScenarioConfig:
-        """Instantiate configuration from dictionary."""
+        """Instantiate configuration from dictionary.
+
+        Accepts canonical field names and documented aliases (``chi``,
+        ``jitter_std``, ``jitter_units``, ``sampling_rate_hz``). Alias-only
+        payloads must not silently fall back to defaults.
+        """
         d = dict(data)
         meta = d.pop("metadata", {})
-        # Pop calculated fields if present
+        # Derived sample count is never a constructor input.
+        d.pop("n_samples", None)
+
+        # Map aliases → constructor kwargs without discarding values.
+        # Prefer explicit alias when the canonical key is absent.
+        if "noise_exponent" not in d and "chi" in d:
+            d["noise_exponent"] = d["chi"]
+        if "coordinate_jitter_std" not in d and "jitter_std" in d:
+            d["coordinate_jitter_std"] = d["jitter_std"]
+        if "coordinate_units" not in d and "jitter_units" in d:
+            d["coordinate_units"] = d["jitter_units"]
+        if "sfreq_hz" not in d and "sampling_rate_hz" in d:
+            d["sfreq_hz"] = d["sampling_rate_hz"]
+
+        # Strip aliases so cls(**d) does not receive unexpected duplicates
+        # as both positional dataclass fields and keyword-only aliases.
         d.pop("chi", None)
         d.pop("jitter_std", None)
+        d.pop("jitter_units", None)
         d.pop("sampling_rate_hz", None)
-        d.pop("n_samples", None)
         return cls(**d, metadata=meta)
 
 
