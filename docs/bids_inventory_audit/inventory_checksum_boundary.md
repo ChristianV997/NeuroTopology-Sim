@@ -98,6 +98,11 @@ counts and cross-checks are reported as unavailable rather than as zero.
   no participants table is supplied, it reports only aggregate declared-task presence
   (`TASK_ABSENT_IN_LISTING`).
 
+The optional `task` field accepted by `findings.make_finding` is internal helper context, not part of
+the package API: it is not re-exported from `bids_inventory_audit`, and public inventory call sites do
+not pass caller-controlled task labels to it. Direct use of internal modules is not a supported output
+path.
+
 ## Declared analysis record
 
 An analysis record is optional and caller-supplied. It must contain exactly two keys: `analyzed_n`

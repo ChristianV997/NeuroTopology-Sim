@@ -40,10 +40,15 @@ def _outcome(payload: Any, digest: Any) -> str:
         return PAYLOAD_MISSING
     if len(payload) == 0:
         return PAYLOAD_EMPTY  # empty bytes are never a valid analysis plan, whatever digest is supplied
-    if digest is None or digest == "":
+    if digest is None:
         return DIGEST_MISSING
-    if not isinstance(digest, str):
+    # Accept only a built-in string. Arbitrary objects (including string
+    # subclasses) can override equality or other operations and must not be
+    # invoked while classifying untrusted caller input.
+    if type(digest) is not str:
         return DIGEST_MALFORMED
+    if digest == "":
+        return DIGEST_MISSING
     if digest.lower() in PLACEHOLDER_TOKENS or digest == EMPTY_BYTES_SHA256:
         return DIGEST_PLACEHOLDER
     if len(digest) == 64 and len(set(digest)) == 1:
@@ -57,10 +62,11 @@ def _outcome(payload: Any, digest: Any) -> str:
 
 def check_payload_digest(payload: Any, digest: Any) -> dict[str, Any]:
     outcome = _outcome(payload, digest)
+    digest_supplied = digest is not None and not (type(digest) is str and digest == "")
     return {
         "schema": SCHEMA,
         "check": "payload_checksum",
-        "digest_supplied": digest is not None and digest != "",
+        "digest_supplied": digest_supplied,
         "payload_integrity": outcome,
         "payload_integrity_verified": outcome == PAYLOAD_INTEGRITY_VERIFIED,
         "registration_status": REGISTRATION_STATUS,

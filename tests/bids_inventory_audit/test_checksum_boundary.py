@@ -22,6 +22,16 @@ CORRECT = hashlib.sha256(PAYLOAD).hexdigest()
 EMPTY_DIGEST = hashlib.sha256(b"").hexdigest()
 
 
+class _EqualityRaises:
+    def __eq__(self, other):
+        raise RuntimeError("caller equality must not run")
+
+
+class _StringEqualityRaises(str):
+    def __eq__(self, other):
+        raise RuntimeError("caller string-subclass equality must not run")
+
+
 def _outcome(payload, digest):
     return check_payload_digest(payload, digest)["payload_integrity"]
 
@@ -146,3 +156,16 @@ def test_digest_supplied_flag_distinguishes_absence_from_a_bad_value():
     assert check_payload_digest(PAYLOAD, None)["digest_supplied"] is False
     assert check_payload_digest(PAYLOAD, "")["digest_supplied"] is False
     assert check_payload_digest(PAYLOAD, "TBD")["digest_supplied"] is True
+
+
+def test_hostile_digest_equality_is_never_called_and_is_structured():
+    for digest, payload, expected in (
+        (_EqualityRaises(), PAYLOAD, DIGEST_MALFORMED),
+        (_EqualityRaises(), b"", PAYLOAD_EMPTY),
+        (_StringEqualityRaises(CORRECT), PAYLOAD, DIGEST_MALFORMED),
+    ):
+        result = check_payload_digest(payload, digest)
+        assert result["payload_integrity"] == expected
+        assert result["digest_supplied"] is True
+        _assert_boundary(result)
+        json.dumps(result, allow_nan=False)
