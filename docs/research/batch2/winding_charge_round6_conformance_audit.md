@@ -21,7 +21,7 @@ An independent, executable conformance audit of the Round 6 *phase-winding and s
 
 Original audit base: `origin/main` @ `3f3fe859…` (Round 6 reference observed on
 open PR #385; absent from main). After merge of live `origin/main` @
-`e59dd6c…` (prior tip `bc91af19…`), production leaf
+`d2544b8…` (prior tip `bc91af19…`), production leaf
 `neurotopology_sim/experimental/topology/winding.py` is present.
 
 - Independent oracle remains in `tools/experimental_audits/winding_charge_round6/`
@@ -36,7 +36,7 @@ open PR #385; absent from main). After merge of live `origin/main` @
   (`sep≈2`); missing-sign case remains undefined per claim 7.
 
 **Round 6 discovery note (for Codex Agent A — no workflow edits here):**
-On `e59dd6c…`, component `winding_charge_audit` still lists only
+On `d2544b8…`, component `winding_charge_audit` still lists only
 `tests/experimental_audits/test_winding_charge_round6_oracle.py`.
 `select_components({production_import}) → []`. Add the bridge path to
 `tests` / `triggers` / `candidate_pairs` paired with
@@ -84,3 +84,5 @@ python3 -m pytest tests/experimental_audits/ -q
 ```
 
 Engineering vocabulary only: `DISCRETE_IDENTITY_HOLDS` / `DISCRETE_IDENTITY_FAILS` / `INCONCLUSIVE_INPUT`.
+
+**Selector (live main `d2544b8`):** bridge still unselected. Codex branch `codex/round6-discovery-mappings-20261020` already lists the bridge file under `winding_charge_audit` but is not on main yet.
