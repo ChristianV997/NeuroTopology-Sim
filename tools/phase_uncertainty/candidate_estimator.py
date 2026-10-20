@@ -183,6 +183,8 @@ def estimate_narrowband_phase_uncertainty(
     arr = np.asarray(signal)
     if arr.ndim != 1:
         raise ValueError(f"signal must be a 1D array, got shape {arr.shape}")
+    if not np.issubdtype(arr.dtype, np.number) or np.issubdtype(arr.dtype, np.timedelta64):
+        raise ValueError("signal must have a numeric NumPy dtype")
     n = arr.shape[0]
     if n < 4:
         raise ValueError(f"signal length must be >= 4 to compute second differences, got {n}")

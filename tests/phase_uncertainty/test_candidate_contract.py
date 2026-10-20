@@ -70,6 +70,27 @@ def test_nonnumeric_signal_dtype_is_rejected_as_validation_error() -> None:
         estimate_narrowband_phase_uncertainty(np.array(["signal"] * 8))
 
 
+@pytest.mark.parametrize(
+    "signal",
+    [
+        np.array([True] * 8),
+        np.arange(8).astype("datetime64[s]"),
+        np.arange(8).astype("timedelta64[s]"),
+    ],
+    ids=["boolean", "datetime", "timedelta"],
+)
+def test_non_numeric_numpy_dtypes_are_rejected(signal: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="numeric"):
+        estimate_narrowband_phase_uncertainty(signal)
+
+
+def test_finite_complex_input_with_unrepresentable_magnitude_fails_closed() -> None:
+    signal = np.full(8, complex(1.7e308, 1.7e308), dtype=np.complex128)
+
+    with pytest.raises(ValueError, match="non-finite|finite"):
+        estimate_narrowband_phase_uncertainty(signal)
+
+
 def test_fs_must_be_positive_finite() -> None:
     """Sampling frequency must be finite and strictly positive (fail closed)."""
     z = np.exp(1j * np.linspace(0.0, 4.0 * np.pi, 64))

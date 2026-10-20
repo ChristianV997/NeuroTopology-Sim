@@ -4,7 +4,7 @@ Verifies:
 1. Empirical coverage and bias computation
 2. Detection of overconfident estimator behavior under colored noise
 3. Detection of conservative estimator behavior under high-SNR AWGN
-4. Fail-closed quarantining of near-zero amplitude singularities and frequency drift
+4. Fail-closed quarantining of zero/near-zero amplitude frames and frequency drift
 5. Guardrail: Never relabels reported phase_std as a statistically valid CI without coverage evidence
 """
 from __future__ import annotations
