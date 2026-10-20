@@ -26,7 +26,7 @@ implemented in the pinned MNE release.
 ## API
 
 ```python
-from neurotopology_sim.experimental.preprocessing import (
+from neurotopology_sim.experimental.preprocessing.spherical_csd import (
     SphericalCSDConfig,
     compute_spherical_csd_transform,
     apply_spherical_csd,
@@ -36,6 +36,8 @@ cfg = SphericalCSDConfig(sphere=(0.0, 0.0, 0.0, 0.095))  # meters; no "auto"
 result = compute_spherical_csd_transform(positions_m, cfg, channel_names=names)
 csd = apply_spherical_csd(result.transform, data_volts)  # -> V/m^2
 ```
+
+Import the module path above directly. A package-level `__init__` re-export is intentionally omitted while Round-6 `package_initializers` would otherwise fan this PR into absent `#402` audit companions; the NumPy operator API is unchanged.
 
 - Full N×N matrix; channel order is the row order of `positions`.
 - Rejects non-finite / zero coordinates, sphere `"auto"`, nearly coincident
