@@ -40,6 +40,10 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 - `scientific_pass` is always `false`.
 - Declared sample bounds, when present, must be non-negative integer half-open
   bounds whose span matches the signal sample dimension.
+- The MNE bridge validates requested bounds before slicing or coercion. Python
+  and NumPy integer scalars are accepted; booleans, fractional values, numeric
+  strings, reversed intervals, negative indices, and bounds beyond the source
+  sample count are rejected without echoing the supplied values.
 - `validate_block` checks serialized schema/status and required reference and
   montage metadata; it never upgrades a producer's more restrictive status.
   It requires two-dimensional shape and channel/sample counts to agree with
