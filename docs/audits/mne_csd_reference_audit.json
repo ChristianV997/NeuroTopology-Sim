@@ -1,0 +1,204 @@
+{
+  "evidence_class": "SYNTHETIC_ONLY",
+  "lambda2": 1e-05,
+  "legendre": {
+    "convention": "n = 1..N inclusive, factor 1/(4*pi), no minus sign, no P_0 term",
+    "rows": [
+      {
+        "abs_diff_n50": 6.938893903907228e-18,
+        "claimed": 0.0152607616970611,
+        "computed_n50": 0.015260761697061106,
+        "name": "G(1)",
+        "proxy_infinite_n4000": 0.015260761698567967,
+        "rel_diff_n50": 4.546885693945087e-16,
+        "truncation_shift_abs": 1.5068606085133496e-12
+      },
+      {
+        "abs_diff_n50": 1.6263032587282567e-19,
+        "claimed": -0.000151919699050514,
+        "computed_n50": -0.00015191969905051383,
+        "name": "G(0)",
+        "proxy_infinite_n4000": -0.00015191969904141135,
+        "rel_diff_n50": 1.0705018959967157e-15,
+        "truncation_shift_abs": 9.102473549210677e-15
+      },
+      {
+        "abs_diff_n50": 4.163336342344337e-17,
+        "claimed": 0.0321583490430606,
+        "computed_n50": 0.03215834904306064,
+        "name": "H(1)",
+        "proxy_infinite_n4000": 0.03215835492368841,
+        "rel_diff_n50": 1.2946362192815155e-15,
+        "truncation_shift_abs": 5.880627769461189e-09
+      },
+      {
+        "abs_diff_n50": 3.2526065174565133e-19,
+        "claimed": -0.000891062383022325,
+        "computed_n50": -0.0008910623830223247,
+        "name": "H(0)",
+        "proxy_infinite_n4000": -0.0008910623587565242,
+        "rel_diff_n50": 3.6502567939455046e-16,
+        "truncation_shift_abs": 2.4265800415042282e-11
+      }
+    ]
+  },
+  "levels": {
+    "L1_legendre_constants": "executed: pure NumPy, 4 proposal constants",
+    "L2_operator_algebra": "executed: pure NumPy, KKT vs projection and property checks",
+    "L3_mne_execution_parity": "not executed: MNE not importable and not installed by instruction; the live comparison in tests/optional_live_mne/ skips without MNE 1.13.2 and is not evidence"
+  },
+  "limitations": [
+    "Reference is pure NumPy from the stated formulas; MNE was not executed in this environment.",
+    "The Round 6 proposal's custom KKT code is not present in the repository, so it was not compared.",
+    "Coefficient parity holds only for the 50-term truncation that MNE uses by default.",
+    "Synthetic sensor montages only; no empirical EEG data, no participant data, no scientific claim.",
+    "Output units are 1/length^2 times the input unit (V/m^2 when positions are in metres); not validated against any recording."
+  ],
+  "n_legendre_terms": 50,
+  "operator": {
+    "duplicate_sensor_lambda2_default_finite": true,
+    "duplicate_sensor_lambda2_zero": {
+      "outcome": "LinAlgError"
+    },
+    "montages": [
+      {
+        "channel_permutation_residual_rel": 8.164203482633409e-17,
+        "column_sum_constraint_residual": 0.0,
+        "cond_G_reg": 270.746410263926,
+        "constant_potential_residual_rel": 1.6328406965266819e-16,
+        "discriminant_lambda_after_inverse_rel": 0.0004921845905810871,
+        "discriminant_no_sum_constraint_rel": 7.592709238849071e-15,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 1.2789769243681803e-12,
+        "kkt_vs_projection_rel_to_max": 7.347783134370068e-15,
+        "max_abs_M": 174.06296579244756,
+        "n_channels": 4,
+        "name": "tetrahedron_4",
+        "shape": [
+          4,
+          4
+        ],
+        "sphere_scaling_rel_error": 2.120205198052305e-16
+      },
+      {
+        "channel_permutation_residual_rel": 1.8617037209168717e-15,
+        "column_sum_constraint_residual": 5.684341886080802e-14,
+        "cond_G_reg": 1146.0335704940244,
+        "constant_potential_residual_rel": 2.0309495137274964e-15,
+        "discriminant_lambda_after_inverse_rel": 0.00729982798308268,
+        "discriminant_no_sum_constraint_rel": 3.7234074418337434e-15,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 1.3358203432289883e-12,
+        "kkt_vs_projection_rel_to_max": 3.977276131049681e-15,
+        "max_abs_M": 335.8631131493602,
+        "n_channels": 6,
+        "name": "octahedron_6",
+        "shape": [
+          6,
+          6
+        ],
+        "sphere_scaling_rel_error": 0.0
+      },
+      {
+        "channel_permutation_residual_rel": 5.735754781916991e-14,
+        "column_sum_constraint_residual": 1.9397816686250735e-12,
+        "cond_G_reg": 2240.9788434297366,
+        "constant_potential_residual_rel": 1.8453145507396875e-14,
+        "discriminant_lambda_after_inverse_rel": 0.3606804059471906,
+        "discriminant_no_sum_constraint_rel": 0.412749124049217,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 7.056399908833555e-11,
+        "kkt_vs_projection_rel_to_max": 9.727080044265307e-14,
+        "max_abs_M": 725.43865956914,
+        "n_channels": 9,
+        "name": "ring_apex_9",
+        "shape": [
+          9,
+          9
+        ],
+        "sphere_scaling_rel_error": 1.0894782293251588e-13
+      },
+      {
+        "channel_permutation_residual_rel": 3.778865609887165e-14,
+        "column_sum_constraint_residual": 2.2737367544323206e-13,
+        "cond_G_reg": 2480.791687308679,
+        "constant_potential_residual_rel": 9.990391566126015e-15,
+        "discriminant_lambda_after_inverse_rel": 0.39932044278364764,
+        "discriminant_no_sum_constraint_rel": 0.5042515625750316,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 2.404476617812179e-11,
+        "kkt_vs_projection_rel_to_max": 2.1129678162356522e-14,
+        "max_abs_M": 1137.9617802678429,
+        "n_channels": 7,
+        "name": "seeded_cap_7",
+        "shape": [
+          7,
+          7
+        ],
+        "sphere_scaling_rel_error": 8.241727114367487e-14
+      },
+      {
+        "channel_permutation_residual_rel": 1.4311063001097186e-13,
+        "column_sum_constraint_residual": 5.4569682106375694e-12,
+        "cond_G_reg": 7430.652734727467,
+        "constant_potential_residual_rel": 3.595545922418123e-14,
+        "discriminant_lambda_after_inverse_rel": 2.55667365069888,
+        "discriminant_no_sum_constraint_rel": 0.4349848539708992,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 1.1857537174364552e-10,
+        "kkt_vs_projection_rel_to_max": 8.242097576004619e-14,
+        "max_abs_M": 1438.655277375705,
+        "n_channels": 12,
+        "name": "seeded_cap_12",
+        "shape": [
+          12,
+          12
+        ],
+        "sphere_scaling_rel_error": 1.063034299457847e-13
+      },
+      {
+        "channel_permutation_residual_rel": 9.01102265407143e-14,
+        "column_sum_constraint_residual": 1.1368683772161603e-13,
+        "cond_G_reg": 4917.624699672485,
+        "constant_potential_residual_rel": 6.950100343955909e-14,
+        "discriminant_lambda_after_inverse_rel": 7.794059396442592,
+        "discriminant_no_sum_constraint_rel": 0.4641271968697097,
+        "finite": true,
+        "kkt_vs_projection_max_abs": 6.389200279954821e-11,
+        "kkt_vs_projection_rel_to_max": 6.609063271240644e-14,
+        "max_abs_M": 966.73310842059,
+        "n_channels": 6,
+        "name": "near_coincident_6",
+        "shape": [
+          6,
+          6
+        ],
+        "sphere_scaling_rel_error": 3.929467656536277e-14
+      }
+    ]
+  },
+  "pinned_mne": {
+    "defaults": {
+      "lambda2": 1e-05,
+      "n_legendre_terms": 50,
+      "sphere": "auto",
+      "stiffness": 4
+    },
+    "license": "BSD-3-Clause",
+    "repository": "https://github.com/mne-tools/mne-python",
+    "sdist": "mne-1.13.2.tar.gz",
+    "sdist_sha256": "729829e35010a7273cce8608d61d930c973fbead6edc1a70316c01e3a5551521",
+    "source_file_sha256": {
+      "mne/channels/interpolation.py": "bcb8b47e34eaa7fe002484662882e9fb5cf64d54c18e92611a2d1e9fd44936cd",
+      "mne/preprocessing/_csd.py": "a77c8b02cf4f2465a43f994bf4dd1efdc7250ca274957f7b77af37057f51541f"
+    },
+    "tag": "v1.13.2",
+    "tag_commit": "bf67729b805865b5bb0f2f97621e416278efd1b2",
+    "version": "1.13.2"
+  },
+  "schema_version": "NTS.MNECSDReferenceAudit.v1",
+  "sphere_radius_m": 0.095,
+  "status": "HOLD",
+  "stiffness": 4.0,
+  "units": "output = input unit / length^2; with positions in metres, V -> V/m^2"
+}
