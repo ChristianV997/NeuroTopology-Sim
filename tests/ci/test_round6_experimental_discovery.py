@@ -985,6 +985,85 @@ def test_fixture():
         self.assertEqual(report["selected_components"], [])
         self.assertIn("does not certify", report["statement"])
 
+    def test_dmd_oracle_reference_and_production_bridge_are_explicit_and_required(self):
+        helper = _helper()
+        implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
+        oracle_test = "tests/dmd_ep2_oracle/test_oracle.py"
+        bridge_test = "tests/dmd_ep2_oracle/test_production_bridge.py"
+        self.assertEqual(
+            helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][-1],
+            {"implementation": implementation, "test": bridge_test},
+        )
+        self.assertEqual(
+            helper.COMPONENTS["dmd_crouzeix"]["support_files"][oracle_test],
+            (bridge_test,),
+        )
+        self.assertIn(oracle_test, helper.COMPONENTS["dmd_crouzeix"]["independent_reference_tests"])
+        self.assertEqual(
+            helper.COMPONENTS["dmd_crouzeix"]["environment_overrides"],
+            {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
+        )
+        self.assertEqual(helper.select_components({oracle_test}), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [])
+        self.assertEqual(
+            helper._unmapped_candidate_paths({"tests/dmd_ep2_oracle/test_unregistered_extra.py"}),
+            ["tests/dmd_ep2_oracle/test_unregistered_extra.py"],
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root, with_candidate=False)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            test_paths = (
+                "tests/dmd_crouzeix_contract/test_production_contract.py",
+                "tests/experimental/test_dmd_crouzeix.py",
+                oracle_test,
+                bridge_test,
+            )
+            for index, path in enumerate(test_paths):
+                _write(root, path, f"def test_fixture_{index}(): assert True\n")
+            head = _commit(root, "DMD oracle bridge fixture")
+            report_path = root / "outputs/report.json"
+            observed_environments = []
+
+            def capture_environment(command, **kwargs):
+                if "scripts/run_tests_isolated.py" in command:
+                    observed_environments.append(kwargs["env"].get("DMD_EP2_REQUIRE_PRODUCTION"))
+                return _fake_runner(command, **kwargs)
+
+            with patch.object(helper.subprocess, "run", side_effect=capture_environment):
+                exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["selected_components"], ["dmd_crouzeix"])
+        component = report["components"][0]
+        self.assertEqual(set(component["tests_to_run"]), set(test_paths))
+        self.assertEqual(observed_environments, ["1"] * len(test_paths))
+        self.assertTrue(all(item["environment_overrides"] == {"DMD_EP2_REQUIRE_PRODUCTION": "1"}
+                            for item in component["executions"]))
+
+    def test_candidate_environment_overrides_are_allowlisted_and_do_not_echo_secrets(self):
+        helper = _helper()
+        implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
+        oracle_test = "tests/dmd_ep2_oracle/test_oracle.py"
+        bridge_test = "tests/dmd_ep2_oracle/test_production_bridge.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            with patch.dict(
+                helper.COMPONENTS["dmd_crouzeix"],
+                {"environment_overrides": {"GH_TOKEN": "do-not-log"}},
+            ):
+                result = helper.inspect_component("dmd_crouzeix", root, {bridge_test})
+
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["invalid_environment_overrides"], ["GH_TOKEN"])
+        self.assertEqual(result["environment_overrides"], {})
+        self.assertNotIn("do-not-log", json.dumps(result))
+
     def test_unmapped_yaml_candidate_configs_block_instead_of_becoming_not_applicable(self):
         helper = _helper()
         guarded_configs = {
@@ -1430,6 +1509,37 @@ def test_fixture():
             helper._unmapped_candidate_paths({"tests/surrogate_nulls/notes.md"}),
             [],
         )
+
+    def test_documentation_only_change_under_candidate_root_is_not_applicable(self):
+        helper = _helper()
+        documentation = "tests/surrogate_nulls/notes.md"
+        self.assertEqual(helper.select_components({documentation}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({documentation}), [])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, documentation, "Documentation-only change.\n")
+            head = _commit(root, "candidate documentation only")
+            report_path = root / "outputs/report.json"
+
+            def no_candidate_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" in command:
+                    raise AssertionError("documentation-only changes must not execute candidate tests")
+                return _REAL_SUBPROCESS_RUN(command, **kwargs)
+
+            with patch.object(helper.subprocess, "run", side_effect=no_candidate_runner):
+                exit_code = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(report["selected_components"], [])
+        self.assertEqual(report["executed_commands"], [])
 
     def test_case_mismatched_registered_paths_fail_closed(self):
         helper = _helper()
@@ -2239,7 +2349,6 @@ def test_fixture():
             ["tests/docker_context/test_build_context_policy.py"],
         )
         for test_path in (
-            "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 is an independent oracle, not a DMD pair.
             "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
             "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
             "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
@@ -2335,7 +2444,7 @@ def test_fixture():
                 geometry_pair["implementation"],
                 geometry_pair["test"],
             }),
-            ["planar_geometry"],
+            ["planar_geometry", "phase_winding", "synthetic_roc"],
         )
         roc_pair = helper.COMPONENTS["synthetic_roc"]["candidate_pairs"][0]
         self.assertEqual(
@@ -2344,7 +2453,7 @@ def test_fixture():
                 roc_pair["implementation"],
                 roc_pair["test"],
             }),
-            ["synthetic_roc"],
+            ["phase_winding", "synthetic_roc"],
         )
         dmd_pair = helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][0]
         self.assertEqual(
@@ -2353,8 +2462,14 @@ def test_fixture():
                 dmd_pair["implementation"],
                 dmd_pair["test"],
             }),
-            ["dmd_crouzeix"],
+            ["planar_geometry", "dmd_crouzeix"],
         )
+
+    def test_mixed_direct_candidate_and_initializer_change_keeps_all_owners(self):
+        helper = _helper()
+        initializer = "neurotopology_sim/__init__.py"
+        selected = helper.select_components({initializer, "tools/surrogate_nulls/nulls.py"})
+        self.assertEqual(selected, ["phase_winding", "surrogate_nulls", "synthetic_roc"])
 
     def test_candidate_support_only_changes_select_their_declared_tests(self):
         helper = _helper()
@@ -2403,7 +2518,7 @@ def test_fixture():
             (374, "dual_engine/fusion_validation.py"),
             (373, "sciencer_d/btc_icft/level_t/base_real_topology.py"),
             (388, "dual_engine/forward_model_contract.py"),
-            (400, "tests/dmd_ep2_oracle/test_oracle.py"),
+            (400, "tests/dmd_ep2_oracle/test_unregistered_extra.py"),
             (374, "tests/test_fusion_validation.py"),
             (373, "tests/test_base_real_topology_missingness.py"),
         )

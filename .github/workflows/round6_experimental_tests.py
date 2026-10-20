@@ -36,6 +36,10 @@ MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
 MAX_RUNNER_STDERR_TAIL_BYTES = 4096
 MAX_JUNIT_FAILURE_CASES = 50
 MAX_JUNIT_FAILURE_NAME_CHARS = 512
+# Only this non-sensitive opt-in is allowed into candidate test processes.
+SAFE_CANDIDATE_ENVIRONMENT_OVERRIDES = {
+    "DMD_EP2_REQUIRE_PRODUCTION": frozenset({"1"}),
+}
 # This exact test module has six two-case unittest subTest loops (12 outcomes)
 # but pytest emits one parent testcase record per loop. Any other JUnit/testcase
 # delta is rejected unless the pytest stdout summary independently reconciles it.
@@ -645,6 +649,8 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "neurotopology_sim/experimental/dynamics/",
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
         "tests": (
@@ -658,6 +664,16 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
         ),
+        # This independent reference module supplies the bridge helpers but is
+        # not represented as a production implementation. Run its own test
+        # only when that exact test source changes.
+        "support_files": {
+            "tests/dmd_ep2_oracle/test_oracle.py": (
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
+            ),
+        },
+        "independent_reference_tests": ("tests/dmd_ep2_oracle/test_oracle.py",),
+        "environment_overrides": {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
         "test_roots": (
             "tests/dmd_crouzeix_contract/",
@@ -667,6 +683,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "candidate_test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
     },
@@ -1800,6 +1817,10 @@ def _case_mismatched_known_paths(changed_paths: set[str], known_paths: set[str])
 _DOCUMENTATION_SUFFIXES = {".md", ".mdx", ".rst", ".adoc"}
 
 
+def _is_documentation_path(path: str) -> bool:
+    return Path(normalize_repo_path(path)).suffix.casefold() in _DOCUMENTATION_SUFFIXES
+
+
 def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[str] | None = None) -> bool:
     """Treat files under candidate roots as inputs unless they are documentation."""
     normalized = normalize_repo_path(path)
@@ -1807,7 +1828,7 @@ def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[st
         return True
     if not any(_path_in_root(normalized, root) for root in roots):
         return False
-    return Path(normalized).suffix.casefold() not in _DOCUMENTATION_SUFFIXES
+    return not _is_documentation_path(normalized)
 
 
 def _is_component_relevant(
@@ -1818,7 +1839,7 @@ def _is_component_relevant(
 ) -> bool:
     spec = COMPONENTS[name]
     if any(
-        _trigger_matches(path, trigger)
+        not _is_documentation_path(path) and _trigger_matches(path, trigger)
         for path in changed_paths
         for trigger in spec["triggers"]
     ):
@@ -1855,13 +1876,12 @@ def select_components(changed_paths: set[str]) -> list[str]:
             for initializer in spec.get("package_initializers", {})
         }
     }
-    # Shared package initializers can sit above several experimental
-    # components. When a PR changes an actual registered implementation/test,
-    # select that directly changed component instead of blocking it on
-    # unrelated candidate pairs that exist only on other open PR branches.
-    # An initializer-only change remains fail-closed by selecting its explicit
-    # owners; inspect_component will require an available implementation/test.
-    selected = direct if direct else initializer_owners
+    # A mixed diff must validate both directly changed pairs and every owner of
+    # a changed package initializer. Dropping initializer owners just because a
+    # direct component also changed can silently omit shared import/API effects.
+    # inspect_component keeps each selected component fail-closed on its exact
+    # implementation/test and initializer mappings.
+    selected = direct | initializer_owners
     return [name for name in COMPONENTS if name in selected]
 
 
@@ -2113,6 +2133,37 @@ def inspect_component(
         not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
         or marker not in {"requires_mne", "not requires_mne"}
     )
+    raw_environment_overrides = spec.get("environment_overrides", {})
+    invalid_environment_overrides = []
+    if not isinstance(raw_environment_overrides, dict):
+        invalid_environment_overrides.append("<mapping>")
+        environment_overrides: dict[str, str] = {}
+    else:
+        invalid_environment_overrides = sorted(
+            str(key)
+            for key, value in raw_environment_overrides.items()
+            if not isinstance(key, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+            or not isinstance(value, str)
+            or "\x00" in value
+            or value not in SAFE_CANDIDATE_ENVIRONMENT_OVERRIDES.get(key, ())
+        )
+        environment_overrides = (
+            dict(raw_environment_overrides) if not invalid_environment_overrides else {}
+        )
+    independent_reference_tests = tuple(spec.get("independent_reference_tests", ()))
+    invalid_independent_reference_tests = sorted(
+        path for path in independent_reference_tests
+        if path not in spec.get("tests", ()) or path not in spec.get("support_files", {})
+    )
+    changed_reference_tests = [
+        path for path in independent_reference_tests
+        if normalize_repo_path(path).casefold() in changes
+    ]
+    missing_reference_tests = sorted(
+        path for path in changed_reference_tests if not (root / path).is_file()
+    )
+    missing_required_tests = sorted(set(missing_required_tests) | set(missing_reference_tests))
     pair_tests = [
         pair["test"] for pair in selected_pairs
         if (
@@ -2125,7 +2176,10 @@ def inspect_component(
         pair["test"] for pair in selected_pairs
         if normalize_repo_path(pair["test"]).casefold() in external_tests
     })
-    tests_to_run = list(dict.fromkeys(pair_tests))
+    tests_to_run = list(dict.fromkeys([
+        *pair_tests,
+        *(path for path in changed_reference_tests if (root / path).is_file()),
+    ]))
     active_support_files = {
         support_path: mapped_tests
         for support_path, mapped_tests in spec.get("support_files", {}).items()
@@ -2198,6 +2252,10 @@ def inspect_component(
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if invalid_test_markers:
         blockers.append("candidate test marker mapping is invalid or unpaired")
+    if invalid_environment_overrides:
+        blockers.append("candidate environment override mapping is invalid")
+    if invalid_independent_reference_tests:
+        blockers.append("independent reference test mapping is invalid or unregistered")
     if unmapped:
         blockers.append("changed candidate source/test path has no explicit implementation-test mapping")
     if not selected_pairs:
@@ -2209,7 +2267,7 @@ def inspect_component(
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        } | set(selected_support_files) | set(selected_package_initializers)),
+        } | set(selected_support_files) | set(selected_package_initializers) | set(changed_reference_tests)),
         "selected_support_files": selected_support_files,
         "selected_package_initializers": selected_package_initializers,
         "required_pairs": selected_pairs,
@@ -2223,6 +2281,11 @@ def inspect_component(
         "invalid_support_test_mappings": invalid_support_test_mappings,
         "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
         "invalid_test_markers": invalid_test_markers,
+        "invalid_environment_overrides": invalid_environment_overrides,
+        "environment_overrides": environment_overrides,
+        "independent_reference_tests": list(independent_reference_tests),
+        "invalid_independent_reference_tests": invalid_independent_reference_tests,
+        "missing_reference_tests": missing_reference_tests,
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,
@@ -3282,6 +3345,7 @@ def run(
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
                     "pytest_marker": test_marker,
+                    "environment_overrides": entry.get("environment_overrides", {}),
                     "diff_base_sha": diff_base_sha,
                     "diff_head_sha": diff_head_sha,
                     "tested_checkout_sha": tested_checkout_sha,
@@ -3324,6 +3388,7 @@ def run(
                         completed = subprocess.run(
                             cmd, cwd=root, timeout=130, check=False,
                             stdout=stdout_stream, stderr=stderr_stream,
+                            env={**os.environ, **entry.get("environment_overrides", {})},
                             **({"pass_fds": tuple(pinned_output_fds)} if pinned_output_transport else {}),
                         )
                 except subprocess.TimeoutExpired:
@@ -3643,6 +3708,7 @@ def run(
                     "owner_prs": entry["owner_prs"],
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
+                    "environment_overrides": entry.get("environment_overrides", {}),
                     "diff_base_sha": diff_base_sha,
                     "diff_head_sha": diff_head_sha,
                     "tested_checkout_sha": tested_checkout_sha,
