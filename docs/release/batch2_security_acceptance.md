@@ -62,5 +62,8 @@ REA are unavailable in the agent environment, the report records
 ## Limitations
 
 - Fixture detection proves scanner coverage, not repository-wide compliance.
+- Report destinations are a trusted local path for the CLI. Callers that need
+  containment must pass `trusted_root` to `write_reports`. This is a local
+  harness boundary, not a repository-wide security certification.
 - No network, no neurodata, no credentials, no AWS/DANDI/OpenNeuro access.
 - A green security harness is not a scientific PASS.
