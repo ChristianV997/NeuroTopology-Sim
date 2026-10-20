@@ -16,7 +16,7 @@ Bridge helper imports load sibling `test_oracle.py` by file path so a missing pr
 
 ## Oracle coverage
 
-Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signed Nyquist 240↔−10 @ 250 Hz, principal matrix log, branch proximity. Regression: single-entry `n00²+n01·n10` proxy is insufficient.
+Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signed Nyquist 240↔−10 @ 250 Hz, principal matrix log, branch proximity. The repeated-root matrix-function branch calls `assert_full_nilpotency` (full `||N²||`, not a single-entry proxy). Regression: single-entry `n00²+n01·n10` proxy is insufficient.
 
 ## Discovery note
 

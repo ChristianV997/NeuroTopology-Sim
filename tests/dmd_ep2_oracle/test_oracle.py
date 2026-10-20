@@ -54,6 +54,24 @@ def mat_norm(a):
     return math.sqrt(sum(abs(a[i][j]) ** 2 for i in range(2) for j in range(2)))
 
 
+def mat_mul(a, b):
+    return tuple(
+        tuple(a[i][0] * b[0][j] + a[i][1] * b[1][j] for j in range(2))
+        for i in range(2)
+    )
+
+
+def assert_full_nilpotency(n, tol=1e-12):
+    """Require the full matrix condition N**2 == 0 (not a single-entry proxy)."""
+    n2 = mat_mul(n, n)
+    if mat_norm(n2) > tol:
+        raise ValueError(
+            "repeated-eigenvalue branch requires full nilpotency N**2 == 0; "
+            f"||N**2||={mat_norm(n2)}"
+        )
+    return n2
+
+
 def matrix_function_2x2(a, function, derivative, tol=1e-12):
     """Analytic 2x2 oracle, using interpolation or the repeated-root limit."""
     center = (a[0][0] + a[1][1]) / 2
@@ -63,7 +81,8 @@ def matrix_function_2x2(a, function, derivative, tol=1e-12):
         n = mat_sub(a, mat_scale(center, mat_identity()))
         if mat_norm(n) <= tol:
             return mat_scale(function(center), mat_identity())
-        # A defective repeated-root 2x2 matrix has N**2 == 0.
+        # Defective Jordan case: enforce full N**2 == 0 before using N f'(λ).
+        assert_full_nilpotency(n, tol=tol)
         return mat_add(mat_scale(function(center), mat_identity()),
                        mat_scale(derivative(center), n))
     l1, l2 = center + radius, center - radius
@@ -114,13 +133,20 @@ class OracleTests(unittest.TestCase):
         n = ((1 + 0j, 1 + 0j), (-1 + 0j, 1 + 0j))
         proxy = n[0][0] ** 2 + n[0][1] * n[1][0]
         self.assertAlmostEqual(proxy, 0j)
-        n2 = (
-            (n[0][0] * n[0][0] + n[0][1] * n[1][0],
-             n[0][0] * n[0][1] + n[0][1] * n[1][1]),
-            (n[1][0] * n[0][0] + n[1][1] * n[1][0],
-             n[1][0] * n[0][1] + n[1][1] * n[1][1]),
-        )
+        n2 = mat_mul(n, n)
         self.assertGreater(mat_norm(n2), 1e-9)
+        with self.assertRaises(ValueError):
+            assert_full_nilpotency(n)
+
+    def test_defective_branch_requires_full_nilpotency(self):
+        """Repeated-root analytic formula must refuse non-nilpotent N."""
+        # Exact Jordan block: N**2 == 0 → formula accepted.
+        jordan = ((2 + 0j, 1 + 0j), (0j, 2 + 0j))
+        log_j = principal_matrix_log(jordan)
+        self.assertLess(max_entry_error(mat_exp(log_j), jordan), 1e-10)
+        # Non-nilpotent N with vanishing single-entry proxy must be rejected.
+        with self.assertRaises(ValueError):
+            assert_full_nilpotency(((1 + 0j, 1 + 0j), (-1 + 0j, 1 + 0j)))
 
     def test_pairs_do_not_cross_seams(self):
         a, b = [1, 2, 3], [100, 101]
