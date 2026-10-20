@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import numbers
 from typing import Any, Mapping, Sequence
 
 from adapters.mne_signal_blocks.schema import (
@@ -105,6 +106,9 @@ def validate_block_fields(
     if names is None or len(names) == 0:
         reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
         warnings.append("channel_names absent or empty")
+    elif any(not isinstance(name, str) or not name.strip() for name in names):
+        reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
+        warnings.append("channel_names contains a missing or non-string name")
     if shape is not None and len(shape) != 2:
         reasons.append(ReasonCode.SHAPE_MISMATCH.value)
     if shape is not None and names is not None and len(shape) == 2 and len(names) != shape[0]:
@@ -139,12 +143,17 @@ def validate_block_fields(
 
     if sample_rate_hz is not None:
         try:
+            if isinstance(sample_rate_hz, bool) or not isinstance(sample_rate_hz, numbers.Real):
+                raise ValueError("sample rate must be a numeric value, not a boolean or string")
             rate = float(sample_rate_hz)
             if not math.isfinite(rate) or rate <= 0:
                 reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
                 warnings.append("sample_rate_hz is not a finite positive number")
-        except (TypeError, ValueError):
+            else:
+                sample_rate_hz = rate
+        except (TypeError, ValueError, OverflowError):
             reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
+            warnings.append("sample_rate_hz is not a finite positive numeric value")
 
     if (
         reference is None
@@ -152,13 +161,11 @@ def validate_block_fields(
         or reference.strip().lower() in {"", "unknown", "unspecified", "none", "null", "n/a"}
     ):
         reasons.append(ReasonCode.MISSING_REFERENCE.value)
-    if (
-        montage_name is None
-        or not isinstance(montage_name, str)
-        or montage_name.strip().lower() in {"", "unknown", "unspecified", "none", "null", "n/a"}
-    ) and montage_coordinates is None:
-        reasons.append(ReasonCode.MISSING_MONTAGE.value)
-
+    montage_name_present = (
+        isinstance(montage_name, str)
+        and montage_name.strip().lower() not in {"", "unknown", "unspecified", "none", "null", "n/a"}
+    )
+    complete_coordinates = False
     if montage_coordinates is not None:
         try:
             coordinate_rows = list(montage_coordinates)
@@ -167,16 +174,19 @@ def validate_block_fields(
         if coordinate_rows is None or (names is not None and len(coordinate_rows) != len(names)):
             reasons.append(ReasonCode.SHAPE_MISMATCH.value)
         else:
+            complete_coordinates = bool(coordinate_rows)
             for point in coordinate_rows:
                 if point is None:
+                    complete_coordinates = False
                     continue
                 if not isinstance(point, (list, tuple)) or len(point) != 3:
                     reasons.append(ReasonCode.SHAPE_MISMATCH.value)
+                    complete_coordinates = False
                     break
                 try:
                     finite_point = all(
                         not isinstance(value, bool)
-                        and isinstance(value, (int, float))
+                        and isinstance(value, numbers.Real)
                         and math.isfinite(float(value))
                         for value in point
                     )
@@ -184,7 +194,10 @@ def validate_block_fields(
                     finite_point = False
                 if not finite_point:
                     reasons.append(ReasonCode.NON_FINITE_VALUES.value)
+                    complete_coordinates = False
                     break
+    if not montage_name_present and not complete_coordinates:
+        reasons.append(ReasonCode.MISSING_MONTAGE.value)
 
     if block_start_sample is not None or block_end_sample is not None:
         valid_bounds = (
@@ -200,18 +213,27 @@ def validate_block_fields(
         if not valid_bounds:
             reasons.append(ReasonCode.INVALID_SAMPLE_BOUNDS.value)
 
-    if events:
-        for event in events:
-            sample = event.get("sample")
-            if sample is None:
-                reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
-                break
-            if not isinstance(sample, int) or isinstance(sample, bool) or sample < 0:
-                reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
-                break
-            if shape is not None and len(shape) == 2 and sample >= shape[1]:
-                reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
-                break
+    if events is not None:
+        event_list = _as_list(events)
+        if event_list is None:
+            reasons.append(ReasonCode.MALFORMED_INPUT.value)
+            warnings.append("events must be a list or tuple of event mappings")
+        else:
+            for event in event_list:
+                if not isinstance(event, Mapping):
+                    reasons.append(ReasonCode.MALFORMED_INPUT.value)
+                    warnings.append("event entries must be mappings")
+                    break
+                sample = event.get("sample")
+                if sample is None:
+                    reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
+                    break
+                if not isinstance(sample, int) or isinstance(sample, bool) or sample < 0:
+                    reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
+                    break
+                if shape is not None and len(shape) == 2 and sample >= shape[1]:
+                    reasons.append(ReasonCode.EVENT_ALIGNMENT_MISMATCH.value)
+                    break
 
     hard = {
         ReasonCode.EMPTY_BLOCK.value,
@@ -265,14 +287,52 @@ def validate_block(block_metadata: Mapping[str, Any]) -> dict[str, Any]:
     )
     declared_n_channels = block_metadata.get("n_channels")
     declared_n_samples = block_metadata.get("n_samples")
-    shape = block_metadata.get("data_shape")
-    if isinstance(shape, (list, tuple)) and len(shape) == 2:
-        if declared_n_channels != shape[0] or declared_n_samples != shape[1]:
+    declared_shape = block_metadata.get("data_shape")
+    data = block_metadata.get("data")
+    observed_shape, _, _ = inspect_array(data)
+    if data is None:
+        shape = declared_shape
+        valid_shape = (
+            isinstance(shape, (list, tuple))
+            and len(shape) == 2
+            and all(isinstance(dim, int) and not isinstance(dim, bool) and dim > 0 for dim in shape)
+        )
+        if not valid_shape:
             status = BlockStatus.REJECTED
             if ReasonCode.SHAPE_MISMATCH.value not in codes:
                 codes.append(ReasonCode.SHAPE_MISMATCH.value)
-        if block_metadata.get("data") is None:
+            warnings.append("serialized signal is omitted and data_shape is missing or invalid")
+        else:
             warnings.append("signal data absent; finite-value validation was not performed")
+    else:
+        shape = observed_shape
+        if declared_shape is not None and (
+            not isinstance(declared_shape, (list, tuple))
+            or tuple(declared_shape) != observed_shape
+        ):
+            status = BlockStatus.REJECTED
+            if ReasonCode.SHAPE_MISMATCH.value not in codes:
+                codes.append(ReasonCode.SHAPE_MISMATCH.value)
+            warnings.append("declared data_shape does not match signal data")
+    if isinstance(shape, (list, tuple)) and len(shape) == 2:
+        valid_count_fields = (
+            isinstance(declared_n_channels, int)
+            and not isinstance(declared_n_channels, bool)
+            and isinstance(declared_n_samples, int)
+            and not isinstance(declared_n_samples, bool)
+            and declared_n_channels == shape[0]
+            and declared_n_samples == shape[1]
+        )
+        if not valid_count_fields:
+            status = BlockStatus.REJECTED
+            if ReasonCode.SHAPE_MISMATCH.value not in codes:
+                codes.append(ReasonCode.SHAPE_MISMATCH.value)
+            warnings.append("declared channel/sample counts are missing or inconsistent")
+    elif data is not None:
+        status = BlockStatus.REJECTED
+        if ReasonCode.SHAPE_MISMATCH.value not in codes:
+            codes.append(ReasonCode.SHAPE_MISMATCH.value)
+        warnings.append("signal data does not have a valid two-dimensional shape")
     if block_metadata.get("schema_version") != "MNE.InMemorySignalBlock.v1":
         status = BlockStatus.ERROR
         codes.append(ReasonCode.MALFORMED_INPUT.value)
@@ -284,7 +344,7 @@ def validate_block(block_metadata: Mapping[str, Any]) -> dict[str, Any]:
         BlockStatus.REJECTED.value: 2,
         BlockStatus.ERROR.value: 3,
     }
-    if declared_status not in severity:
+    if not isinstance(declared_status, str) or declared_status not in severity:
         status = BlockStatus.ERROR
         codes.append(ReasonCode.MALFORMED_INPUT.value)
         warnings.append("missing or unsupported declared status")

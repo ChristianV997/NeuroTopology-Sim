@@ -113,6 +113,15 @@ def test_absent_montage_inconclusive():
     assert result.block.montage_coordinates is None
 
 
+def test_null_coordinates_without_montage_name_remain_inconclusive():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["montage_name"] = None
+    payload["montage_coordinates"] = [None]
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert ReasonCode.MISSING_MONTAGE.value in result.block.reason_codes
+
+
 def test_empty_block_rejected():
     result = convert_in_memory_block(make_empty_block_payload())
     assert result.block.status == BlockStatus.REJECTED
@@ -149,6 +158,14 @@ def test_validate_block_roundtrip_metadata():
     assert report["scientific_pass"] is False
 
 
+def test_serialized_validation_requires_shape_when_signal_is_omitted():
+    metadata = convert_in_memory_block(make_valid_block_payload()).block.metadata_dict()
+    metadata.pop("data_shape")
+    report = validate_block(metadata)
+    assert report["status"] == BlockStatus.REJECTED.value
+    assert ReasonCode.SHAPE_MISMATCH.value in report["reason_codes"]
+
+
 def test_validate_block_does_not_upgrade_missing_reference_or_montage():
     payload = make_valid_block_payload()
     payload["reference"] = None
@@ -172,6 +189,23 @@ def test_validate_block_does_not_upgrade_declared_state_or_scientific_claim():
     report = validate_block(metadata)
     assert report["status"] == BlockStatus.ERROR.value
     assert report["scientific_pass"] is False
+
+
+def test_malformed_declared_status_fails_closed_without_throwing():
+    metadata = convert_in_memory_block(make_valid_block_payload()).block.metadata_dict()
+    metadata["status"] = [BlockStatus.REJECTED.value]
+    report = validate_block(metadata)
+    assert report["status"] == BlockStatus.ERROR.value
+    assert ReasonCode.MALFORMED_INPUT.value in report["reason_codes"]
+    assert report["scientific_pass"] is False
+
+
+def test_malformed_event_record_fails_closed_without_throwing():
+    metadata = convert_in_memory_block(make_valid_block_payload()).block.metadata_dict(include_data=True)
+    metadata["events"] = ["not-an-event-record"]
+    report = validate_block(metadata)
+    assert report["status"] == BlockStatus.REJECTED.value
+    assert ReasonCode.MALFORMED_INPUT.value in report["reason_codes"]
 
 
 def test_inconsistent_sample_bounds_are_rejected():
@@ -207,6 +241,53 @@ def test_unknown_units_reference_montage_and_channel_types_are_inconclusive():
     assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
 
 
+def test_boolean_sample_rate_is_not_coerced_to_one_hertz():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["sample_rate_hz"] = True
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert result.block.sample_rate_hz is None
+    assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
+
+
+def test_numeric_text_sample_rate_is_not_coerced():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["sample_rate_hz"] = "100"
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert result.block.sample_rate_hz is None
+    assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
+
+
+def test_non_finite_sample_rate_is_not_emitted_in_json():
+    from adapters.mne_signal_blocks.reporting import serialize_json
+
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["sample_rate_hz"] = float("inf")
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert result.block.sample_rate_hz is None
+    assert "infinity" not in serialize_json(result.to_dict()).lower()
+
+
+def test_non_string_unit_is_not_coerced_into_a_unit_label():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["units"] = [1]
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert result.block.units == (None,)
+    assert ReasonCode.MISSING_UNITS.value in result.block.reason_codes
+
+
+def test_non_string_channel_name_is_not_coerced_into_a_name():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload["channel_names"] = [None]
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert result.block.channel_names == ("",)
+    assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
+
+
 def test_never_infers_units_as_volts():
     """Anti-pattern check vs shared MneFifAdapter which hardcodes units='V'."""
     payload = make_missing_units_payload()
@@ -223,9 +304,17 @@ def test_conversion_result_to_dict_is_json_safe():
     assert '"scientific_pass": false' in text
 
 
-def test_mne_unavailable_path_without_import():
-    if _HAS_MNE:
-        pytest.skip("MNE is installed; unavailable-path exercised only when absent")
+def test_mne_unavailable_path_without_import(monkeypatch):
+    import builtins
+
+    original_import = builtins.__import__
+
+    def import_without_mne(name, *args, **kwargs):
+        if name == "mne" or name.startswith("mne."):
+            raise ImportError("MNE intentionally unavailable in this test")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_mne)
     result = convert_from_mne_object(object())
     assert result.block.status == BlockStatus.ERROR
     assert ReasonCode.MNE_UNAVAILABLE.value in result.block.reason_codes

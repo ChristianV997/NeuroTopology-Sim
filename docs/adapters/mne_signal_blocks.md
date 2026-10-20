@@ -32,6 +32,8 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 ## Fail-closed / no-inference rules
 
 - Missing or ambiguous units, channel types, reference, or montage → explicit unknown values and status `inconclusive` (never invent `V`, average-ref, or standard montages). Literal `unknown`/`unspecified` tokens are not treated as verified declarations.
+- Channel names and unit labels must be non-empty strings. Sampling rate must be a finite positive numeric value; booleans and numeric-looking strings are not coerced into rates. Missing/invalid values remain unknown and cannot produce `converted`.
+- A montage name, or a complete finite coordinate row for every channel, is required. Null coordinate rows do not stand in for a montage when no montage name is declared.
 - Hard failures (`rejected`): empty blocks, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
 - Never silently resample, filter, rereference, interpolate, reorder, or drop channels.
 - Input arrays and metadata mappings are not mutated; data is copied by default.
@@ -40,8 +42,10 @@ Channel order and names, channel types, units, sample rate, time origin, block s
   bounds whose span matches the signal sample dimension.
 - `validate_block` checks serialized schema/status and required reference and
   montage metadata; it never upgrades a producer's more restrictive status.
-  If signal data is omitted from serialized metadata, shape declarations can
-  be checked but finite sample values cannot be revalidated.
+  It requires two-dimensional shape and channel/sample counts to agree with
+  included signal data, or with declared shape when data is omitted. If signal
+  data is omitted from serialized metadata, finite sample values cannot be
+  revalidated.
 
 ## Optional MNE bridge
 

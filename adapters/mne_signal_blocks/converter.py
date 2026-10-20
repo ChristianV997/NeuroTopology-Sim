@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import math
+import numbers
 from typing import Any, Mapping, Sequence
 
 from adapters.mne_signal_blocks.reporting import fingerprint_mapping, serialize_json
@@ -79,13 +80,25 @@ def _normalize_units(
         for item in units:
             if item is None:
                 out.append(None)
+            elif not isinstance(item, str):
+                out.append(None)
             else:
-                text = str(item).strip()
+                text = item.strip()
                 out.append(text or None)
         if len(out) == 1 and n_channels > 1:
             return tuple(out[0] for _ in range(n_channels))
         return tuple(out)
     return tuple(None for _ in range(max(n_channels, 0)))
+
+
+def _normalize_sample_rate(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return None
+    try:
+        rate = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return rate if math.isfinite(rate) and rate > 0 else None
 
 
 def convert_in_memory_block(
@@ -134,14 +147,21 @@ def convert_in_memory_block(
     original = copy.deepcopy(dict(payload))
     data_in = payload.get("data")
     data_out = _copy_data(data_in) if copy_data else data_in
-    channel_names = tuple(str(x) for x in (payload.get("channel_names") or ()))
+    raw_names = payload.get("channel_names")
+    channel_names = (
+        tuple(name if isinstance(name, str) else "" for name in raw_names)
+        if isinstance(raw_names, (list, tuple))
+        else ()
+    )
     raw_types = payload.get("channel_types")
     if raw_types is None:
         channel_types: tuple[str | None, ...] = tuple(None for _ in channel_names)
-    else:
+    elif isinstance(raw_types, (list, tuple)):
         channel_types = tuple(
             None if item is None else str(item).strip().lower() or None for item in raw_types
         )
+    else:
+        channel_types = ()
     n_channels = len(channel_names)
     units = _normalize_units(payload.get("units"), n_channels)
 
@@ -164,7 +184,7 @@ def convert_in_memory_block(
     warnings = list(warnings)
 
     reference = payload.get("reference")
-    if reference is None or (isinstance(reference, str) and not reference.strip()):
+    if not isinstance(reference, str) or not reference.strip():
         reference = None
         if ReasonCode.MISSING_REFERENCE.value not in reasons and status != BlockStatus.REJECTED:
             reasons.append(ReasonCode.MISSING_REFERENCE.value)
@@ -172,13 +192,11 @@ def convert_in_memory_block(
                 status = BlockStatus.INCONCLUSIVE
 
     montage_name = payload.get("montage_name")
+    if not isinstance(montage_name, str) or not montage_name.strip():
+        montage_name = None
     montage_coordinates = payload.get("montage_coordinates")
-    if (montage_name is None or str(montage_name).strip() == "") and montage_coordinates is None:
-        if ReasonCode.MISSING_MONTAGE.value not in reasons and status != BlockStatus.REJECTED:
-            reasons.append(ReasonCode.MISSING_MONTAGE.value)
-            if status == BlockStatus.CONVERTED:
-                status = BlockStatus.INCONCLUSIVE
-            warnings.append("montage absent; left unknown")
+    if ReasonCode.MISSING_MONTAGE.value in reasons and status != BlockStatus.REJECTED:
+        warnings.append("montage absent or incomplete; left unknown")
 
     # Deduplicate reasons; drop OK once soft/hard codes are present
     reasons = list(dict.fromkeys(reasons))
@@ -206,7 +224,12 @@ def convert_in_memory_block(
             n_channels = shape[0]
             n_samples = shape[1]
 
-    events = tuple(dict(item) for item in (payload.get("events") or ()) if isinstance(item, Mapping))
+    raw_events = payload.get("events")
+    events = (
+        tuple(dict(item) for item in raw_events if isinstance(item, Mapping))
+        if isinstance(raw_events, (list, tuple))
+        else ()
+    )
     annotations = tuple(
         dict(item) for item in (payload.get("annotations") or ()) if isinstance(item, Mapping)
     )
@@ -222,17 +245,22 @@ def convert_in_memory_block(
 
     coords_out = None
     if montage_coordinates is not None:
-        coords_out = []
-        for row in montage_coordinates:
-            if row is None or not isinstance(row, (list, tuple)) or len(row) != 3:
-                coords_out.append(None)
-            else:
-                try:
-                    point = (float(row[0]), float(row[1]), float(row[2]))
-                    coords_out.append(point if all(math.isfinite(value) for value in point) else None)
-                except (TypeError, ValueError, OverflowError):
+        try:
+            coordinate_rows = list(montage_coordinates)
+        except TypeError:
+            coordinate_rows = None
+        if coordinate_rows is not None:
+            coords_out = []
+            for row in coordinate_rows:
+                if row is None or not isinstance(row, (list, tuple)) or len(row) != 3:
                     coords_out.append(None)
-        coords_out = tuple(coords_out)
+                else:
+                    try:
+                        point = (float(row[0]), float(row[1]), float(row[2]))
+                        coords_out.append(point if all(math.isfinite(value) for value in point) else None)
+                    except (TypeError, ValueError, OverflowError):
+                        coords_out.append(None)
+            coords_out = tuple(coords_out)
 
     mne_ok, mne_ver = _probe_mne()
     block = CanonicalInMemorySignalBlock(
@@ -242,11 +270,7 @@ def convert_in_memory_block(
         channel_names=channel_names,
         channel_types=channel_types if channel_types else tuple(None for _ in channel_names),
         units=units,
-        sample_rate_hz=(
-            float(payload["sample_rate_hz"])
-            if isinstance(payload.get("sample_rate_hz"), (int, float))
-            else None
-        ),
+        sample_rate_hz=_normalize_sample_rate(payload.get("sample_rate_hz")),
         time_origin=payload.get("time_origin"),
         block_start_sample=payload.get("block_start_sample"),
         block_end_sample=payload.get("block_end_sample"),
@@ -456,7 +480,13 @@ def convert_from_mne_object(
         "channel_names": ch_names,
         "channel_types": channel_types,
         "units": units,
-        "sample_rate_hz": float(sfreq) if isinstance(sfreq, (int, float)) else None,
+        "sample_rate_hz": (
+            sfreq
+            if isinstance(sfreq, bool)
+            else float(sfreq)
+            if isinstance(sfreq, numbers.Real)
+            else None
+        ),
         "time_origin": time_origin,
         "block_start_sample": int(start_sample),
         "block_end_sample": int(stop_sample) if stop_sample is not None else None,
