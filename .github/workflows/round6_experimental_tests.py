@@ -40,9 +40,13 @@ MAX_JUNIT_FAILURE_NAME_CHARS = 512
 SAFE_CANDIDATE_ENVIRONMENT_OVERRIDES = {
     "DMD_EP2_REQUIRE_PRODUCTION": frozenset({"1"}),
 }
-# This exact test module has six two-case unittest subTest loops (12 outcomes)
-# but pytest emits one parent testcase record per loop. Any other JUnit/testcase
-# delta is rejected unless the pytest stdout summary independently reconciles it.
+# This exact historical test blob has six two-case unittest.subTest loops (12
+# outcomes), while pytest emits one parent testcase record per loop. Run
+# 39382340982 verified the 53/41 delta with a clean test process, but the
+# candidate gate correctly failed because the delta was not yet registered.
+# The exception below records that failure explicitly; the later #438 test blob
+# is different and does not inherit the exception. Any other delta is rejected
+# unless the pytest stdout summary independently reconciles it.
 REGISTERED_JUNIT_SUBTEST_DELTAS = {
     "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": {
         "blob_sha": "b37cc987b1e369295552c574ac2bbd1312ecc733",
@@ -53,6 +57,12 @@ REGISTERED_JUNIT_SUBTEST_DELTAS = {
         "verification": {
             "run_id": 39382340982,
             "run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
+            "tested_checkout_sha": "224a92303b08277ea0885d54be68b82e475f951f",
+            "workflow_conclusion": "failure",
+            "candidate_status": "FAIL",
+            "failure_classification": "missing_or_invalid_junit",
+            "junit_reconciliation": "mismatch",
+            "test_process_outcome": "passed",
             "junit_reported_total": 53,
             "junit_testcase_records": 41,
             "runner_exit_code": 0,
@@ -2849,6 +2859,13 @@ def _registered_junit_subtest_contract(
         or not isinstance(verification, dict)
         or type(verification.get("run_id")) is not int
         or verification["run_id"] <= 0
+        or not isinstance(verification.get("tested_checkout_sha"), str)
+        or not re.fullmatch(r"[0-9a-f]{40}", verification["tested_checkout_sha"])
+        or verification.get("workflow_conclusion") != "failure"
+        or verification.get("candidate_status") != "FAIL"
+        or verification.get("failure_classification") != "missing_or_invalid_junit"
+        or verification.get("junit_reconciliation") != "mismatch"
+        or verification.get("test_process_outcome") != "passed"
         or type(delta) is not int
         or delta <= 0
         or not any(
@@ -2883,6 +2900,12 @@ def _registered_junit_subtest_contract(
         "source_head_sha": source_head_sha,
         "verification_run_id": verification["run_id"],
         "verification_run_url": verification.get("run_url"),
+        "tested_checkout_sha": verification["tested_checkout_sha"],
+        "workflow_conclusion": verification["workflow_conclusion"],
+        "candidate_status": verification["candidate_status"],
+        "failure_classification": verification["failure_classification"],
+        "junit_reconciliation": verification["junit_reconciliation"],
+        "test_process_outcome": verification["test_process_outcome"],
         "expected_delta": delta,
         "verified_junit_total": junit_total,
         "verified_junit_testcase_records": testcase_records,

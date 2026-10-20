@@ -1162,6 +1162,15 @@ def test_fixture():
                 contract["verification_run_url"],
                 "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
             )
+            self.assertEqual(
+                contract["tested_checkout_sha"],
+                "224a92303b08277ea0885d54be68b82e475f951f",
+            )
+            self.assertEqual(contract["workflow_conclusion"], "failure")
+            self.assertEqual(contract["candidate_status"], "FAIL")
+            self.assertEqual(contract["failure_classification"], "missing_or_invalid_junit")
+            self.assertEqual(contract["junit_reconciliation"], "mismatch")
+            self.assertEqual(contract["test_process_outcome"], "passed")
             self.assertEqual(contract["verified_junit_total"], 53)
             self.assertEqual(contract["verified_junit_testcase_records"], 41)
             self.assertEqual(contract["component"], "mne_signal_blocks")
@@ -1217,6 +1226,33 @@ def test_fixture():
                         Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
                     )
                 )
+
+        for key, value in (
+            ("tested_checkout_sha", "not-a-commit"),
+            ("workflow_conclusion", "success"),
+            ("candidate_status", "PASS"),
+            ("failure_classification", "test_failure"),
+            ("junit_reconciliation", "matched"),
+            ("test_process_outcome", "failed"),
+        ):
+            invalid_verification = {
+                **original,
+                "verification": {**original["verification"], key: value},
+            }
+            with (
+                patch.object(
+                    helper,
+                    "REGISTERED_JUNIT_SUBTEST_DELTAS",
+                    {MNE_SIGNAL_TEST: invalid_verification},
+                ),
+                patch.object(helper, "_git_tree_blob_sha", return_value=expected_blob),
+            ):
+                with self.subTest(invalid_verification_field=key):
+                    self.assertIsNone(
+                        helper._registered_junit_subtest_contract(
+                            Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
+                        )
+                    )
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -1470,6 +1506,12 @@ def test_fixture():
             "source_head_sha": "ab9090bb023695e32915a8f0302f086dc92fa780",
             "verification_run_id": 39382340982,
             "verification_run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
+            "tested_checkout_sha": "224a92303b08277ea0885d54be68b82e475f951f",
+            "workflow_conclusion": "failure",
+            "candidate_status": "FAIL",
+            "failure_classification": "missing_or_invalid_junit",
+            "junit_reconciliation": "mismatch",
+            "test_process_outcome": "passed",
             "expected_delta": 12,
             "observed_delta": 12,
             "verified_junit_total": 53,
@@ -2542,6 +2584,20 @@ def test_fixture():
         }
         self.assertEqual(helper.select_components(paths), [])
         self.assertEqual(helper._unmapped_candidate_paths(paths), sorted(paths))
+
+    def test_workflow_benchmark_contract_runs_in_core_without_self_selecting(self):
+        helper = _helper()
+        test_path = "tests/ci/test_round6_benchmark_makefile.py"
+        self.assertEqual(helper.select_components({test_path}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({test_path}), [])
+
+        required_checks = (ROOT / ".github/workflows/required-checks.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(
+            required_checks,
+            r"(?m)^\s+tests/ci/test_round6_benchmark_makefile\.py\s*$",
+        )
 
     def test_docker_engine_test_change_runs_static_policy_and_is_reported_as_delegated(self):
         helper = _helper()
