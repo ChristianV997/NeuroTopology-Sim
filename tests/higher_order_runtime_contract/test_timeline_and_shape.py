@@ -1,0 +1,95 @@
+"""Timestamp, empty/malformed input, and channel-shape contracts."""
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from tools.higher_order_runtime.stream_contract import (
+    ChunkBoundError,
+    ChunkingPolicy,
+    EmptyInputError,
+    ShapeContractError,
+    StreamBounds,
+    StreamSession,
+    TimelineContractError,
+    iter_contract_windows,
+    validate_timestamps,
+)
+
+
+def test_validate_timestamps_happy(timestamps):
+    got = validate_timestamps(timestamps, n_samples=timestamps.shape[0])
+    np.testing.assert_array_equal(got, timestamps)
+
+
+def test_non_monotonic_timestamps_rejected(timestamps):
+    bad = timestamps.copy()
+    bad[10] = bad[9]  # repeated sample time
+    with pytest.raises(TimelineContractError, match="strictly monotonic"):
+        validate_timestamps(bad, n_samples=bad.shape[0])
+
+
+def test_reversed_timestamps_rejected(timestamps):
+    bad = timestamps[::-1].copy()
+    with pytest.raises(TimelineContractError, match="strictly monotonic"):
+        validate_timestamps(bad, n_samples=bad.shape[0])
+
+
+def test_non_finite_timestamps_rejected(timestamps):
+    bad = timestamps.copy()
+    bad[3] = np.nan
+    with pytest.raises(TimelineContractError, match="non-finite"):
+        validate_timestamps(bad, n_samples=bad.shape[0])
+
+
+def test_timestamp_length_mismatch_rejected(signal, timestamps, bounds):
+    with pytest.raises(TimelineContractError, match="timestamp length"):
+        list(
+            iter_contract_windows(
+                signal, ChunkingPolicy(8), bounds, timestamps=timestamps[:-1]
+            )
+        )
+
+
+def test_empty_signal_rejected(bounds):
+    with pytest.raises(EmptyInputError):
+        list(iter_contract_windows(np.zeros((0, 4)), ChunkingPolicy(4), bounds))
+
+
+def test_malformed_rank3_rejected(bounds):
+    with pytest.raises(ShapeContractError):
+        list(iter_contract_windows(np.zeros((5, 2, 2)), ChunkingPolicy(2), bounds))
+
+
+def test_oned_chunk_layout_rejected(bounds):
+    """Array layout contract: chunks must be 2-D (samples, channels), not a flat vector."""
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    with pytest.raises(ShapeContractError, match="2-D"):
+        session.update(np.zeros(8, dtype=np.float64))
+
+
+def test_column_permutation_is_caller_owned_not_identity_checked(bounds):
+    """Same channel count with swapped columns is accepted; identity is caller-owned."""
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    a = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float64)
+    session.update(a)
+    session.update(a[:, ::-1])
+    assert session.chunks_seen == 2
+
+
+def test_channel_count_change_mid_stream_rejected(bounds):
+    session = StreamSession(n_channels=4, bounds=bounds, run_id="run-a")
+    session.update(np.zeros((4, 4)))
+    with pytest.raises(ShapeContractError, match="channel count changed"):
+        session.update(np.zeros((4, 3)))
+
+
+def test_too_many_channels_rejected(bounds):
+    with pytest.raises(ChunkBoundError, match="max_channels"):
+        list(iter_contract_windows(np.zeros((10, 16)), ChunkingPolicy(4), bounds))
+
+def test_session_rejects_timeline_gap(bounds):
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    session.update(np.zeros((4, 2)), timestamps=np.array([0.0, 0.1, 0.2, 0.3]))
+    with pytest.raises(TimelineContractError, match="not continuous"):
+        session.update(np.zeros((2, 2)), timestamps=np.array([0.3, 0.4]))  # not > last
