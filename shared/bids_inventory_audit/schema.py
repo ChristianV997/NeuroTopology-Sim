@@ -11,7 +11,7 @@ import hashlib
 import re
 from typing import Any
 
-SCHEMA = "NeuroTopologySim.BidsInventoryAudit.v1"
+SCHEMA = "NeuroTopologySim.BidsInventoryAudit.v2"
 SCOPE = "INVENTORY_LEVEL_ONLY_PENDING_AUTHORITATIVE_MANIFEST"
 STATUS = "HOLD"
 EVIDENCE_CLASS = "SYNTHETIC_ONLY"

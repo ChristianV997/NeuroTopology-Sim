@@ -65,6 +65,9 @@ The recorded digest is never echoed into the output.
 
 ## Inventory checks
 
+The report schema is `NeuroTopologySim.BidsInventoryAudit.v2`. Version 2 makes task coverage
+aggregate-only and removes caller-controlled entity values from public path summaries and findings.
+
 Subject cross-checks run only when a participants table is supplied. Without one, the result states
 `cross_check: NOT_PERFORMED`. If the caller's path iterable fails while being consumed, path-derived
 counts and cross-checks are reported as unavailable rather than as zero.
@@ -76,19 +79,23 @@ counts and cross-checks are reported as unavailable rather than as zero.
   is ambiguous about them. The public parser result contains counts and findings, not IDs.
 - **Paths** (`paths.py`). The BIDS entity grammar is applied to the subject-level layout. Unsafe
   caller-supplied path strings are rejected. Paths are never opened. Public parse summaries and
-  findings omit the supplied path and subject label. A backup or temporary copy (`.bak`, `.tmp`, `.old`, `.partial`, and others)
-  is never a valid data file, so it cannot manufacture task coverage.
+  findings omit the supplied path and every entity value, including subject, session, task, run,
+  suffix, and extension values. They expose only entity-presence booleans. A backup or temporary
+  copy (`.bak`, `.tmp`, `.old`, `.partial`, and others) is never a valid data file, so it cannot
+  manufacture task coverage.
 - **Subjects.** Cross-checks report only counts of file-only labels and participants without valid
   files. They do not return IDs or file-to-subject mappings. Counts do not establish cohort identity.
 - **Duplicates.** Counts of repeated paths and different paths claiming the same BIDS entities are
   reported, without returning either path or subject label; collisions are flagged, not resolved.
 - **Tasks.** Expected tasks must be declared by the caller. The audit never infers them from observed
-  files. Without a declaration it reports `EXPECTED_TASKS_NOT_DECLARED` and makes no completeness claim.
-  With a declaration, it reports aggregate counts of task gaps (`MISSING_TASK_FOR_SUBJECT`), tasks
-  absent for every participant (`TASK_ABSENT_FOR_ALL_SUBJECTS`), and observed tasks outside the set
-  (`UNEXPECTED_TASK`). `tasks.coverage` maps task labels to counts only; it does not map subjects to
-  tasks. If no participants table is supplied, it reports only whether a declared task appears
-  anywhere in the listing (`TASK_ABSENT_IN_LISTING`).
+  files. Task labels are caller-controlled strings and are omitted from public results and findings.
+  Without a declaration it reports `EXPECTED_TASKS_NOT_DECLARED` and makes no completeness claim.
+  With a declaration, it reports only aggregate counts (`expected_count`, `observed_count`, and
+  task-gap counts in `tasks.coverage`), plus generic findings for gaps (`MISSING_TASK_FOR_SUBJECT`),
+  tasks absent for every participant (`TASK_ABSENT_FOR_ALL_SUBJECTS`), and observed tasks outside
+  the set (`UNEXPECTED_TASK`). Findings never contain a task label or a file-to-subject mapping. If
+  no participants table is supplied, it reports only aggregate declared-task presence
+  (`TASK_ABSENT_IN_LISTING`).
 
 ## Declared analysis record
 

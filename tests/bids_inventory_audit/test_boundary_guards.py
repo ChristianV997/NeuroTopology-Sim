@@ -76,7 +76,7 @@ def test_status_vocabulary_is_fixed():
     assert (STATUS, EVIDENCE_CLASS, COHORT_IDENTITY, REGISTRATION_STATUS) == (
         "HOLD", "SYNTHETIC_ONLY", "NOT_ESTABLISHED", "UNREGISTERED_DRAFT")
     assert SCOPE == "INVENTORY_LEVEL_ONLY_PENDING_AUTHORITATIVE_MANIFEST"
-    assert SCHEMA == "NeuroTopologySim.BidsInventoryAudit.v1"
+    assert SCHEMA == "NeuroTopologySim.BidsInventoryAudit.v2"
 
 
 @pytest.mark.parametrize("payload, digest", [(b"x", None), (b"", "0" * 64), (b"x", "TBD")])

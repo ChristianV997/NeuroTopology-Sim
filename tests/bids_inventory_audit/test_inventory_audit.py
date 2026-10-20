@@ -41,18 +41,27 @@ def test_backup_copy_does_not_manufacture_task_coverage(synthetic_tsv):
     listing = ["sub-02/eeg/sub-02_task-stroop_eeg.edf.bak", "sub-02/eeg/sub-02_task-rest_eeg.edf"]
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=listing,
                              expected_tasks=["rest", "stroop"])
+    assert report["tasks"]["expected_count"] == 2
+    assert report["tasks"]["observed_count"] == 1
     assert report["tasks"]["coverage"] == {
-        "rest": {"subjects_with_file_count": 1, "subject_count": 3},
+        "expected_tasks_with_files_count": 1,
+        "expected_tasks_without_files_count": 1,
+        "expected_tasks_missing_for_any_participants_count": 2,
+        "expected_tasks_missing_for_all_participants_count": 1,
+        "unexpected_observed_tasks_count": 0,
     }
-    assert "stroop" not in report["tasks"]["observed"]
 
 
-def test_fixture_coverage_is_recorded_per_participant(synthetic_tsv, synthetic_listing):
+def test_fixture_task_coverage_is_aggregate_only_when_expectations_are_undeclared(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing)
     assert report["tasks"]["coverage"] == {
-        "rest": {"subjects_with_file_count": 3, "subject_count": 3},
-        "stroop": {"subjects_with_file_count": 1, "subject_count": 3},
+        "expected_tasks_with_files_count": None,
+        "expected_tasks_without_files_count": None,
+        "expected_tasks_missing_for_any_participants_count": None,
+        "expected_tasks_missing_for_all_participants_count": None,
+        "unexpected_observed_tasks_count": None,
     }
+    assert report["tasks"]["observed_count"] == 2
 
 
 # ── tasks: only against a declared set ───────────────────────────────────────
@@ -62,8 +71,8 @@ def test_undeclared_expectation_is_reported_and_nothing_is_inferred(synthetic_ts
                              expected_tasks=None)
     assert "EXPECTED_TASKS_NOT_DECLARED" in _codes(report, "error")
     assert report["tasks"]["expected_declared"] is False
-    assert report["tasks"]["expected"] is None
-    assert report["tasks"]["observed"] == ["rest", "stroop"]  # observation is reported, not used
+    assert report["tasks"]["expected_count"] is None
+    assert report["tasks"]["observed_count"] == 2  # aggregate only; no labels are returned
     for code in ("UNEXPECTED_TASK", "TASK_ABSENT_FOR_ALL_SUBJECTS", "MISSING_TASK_FOR_SUBJECT"):
         assert code not in _codes(report)
 
@@ -71,8 +80,9 @@ def test_undeclared_expectation_is_reported_and_nothing_is_inferred(synthetic_ts
 def test_declared_tasks_yield_per_participant_gaps(synthetic_tsv, synthetic_listing):
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing,
                              expected_tasks=["rest", "stroop"])
-    gaps = {f["task"]: f["affected_count"] for f in _find(report, "MISSING_TASK_FOR_SUBJECT")}
-    assert gaps == {"rest": 1, "stroop": 2}
+    gaps = sorted(f["affected_count"] for f in _find(report, "MISSING_TASK_FOR_SUBJECT"))
+    assert gaps == [1, 2]
+    assert all("task" not in finding for finding in report["findings"])
     assert not _find(report, "TASK_ABSENT_FOR_ALL_SUBJECTS")
 
 
@@ -80,7 +90,7 @@ def test_task_absent_for_every_participant_is_an_error(synthetic_tsv, synthetic_
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing,
                              expected_tasks=["rest", "nback"])
     absent = _find(report, "TASK_ABSENT_FOR_ALL_SUBJECTS")
-    assert [f["task"] for f in absent] == ["nback"]
+    assert len(absent) == 1 and "task" not in absent[0]
     assert absent[0]["severity"] == "error"
     assert absent[0]["affected_count"] == 3
 
@@ -89,8 +99,9 @@ def test_observed_task_outside_the_declared_set_is_flagged(synthetic_tsv, synthe
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing,
                              expected_tasks=["rest"])
     unexpected = _find(report, "UNEXPECTED_TASK")
-    assert [f["task"] for f in unexpected] == ["stroop"]
+    assert len(unexpected) == 1
     assert unexpected[0]["severity"] == "warning"
+    assert "task" not in unexpected[0]
 
 
 @pytest.mark.parametrize("label", ["n-back", "rest stroop", "", "rest!"])
@@ -98,7 +109,7 @@ def test_invalid_declared_task_label_is_rejected_not_silently_kept(synthetic_tsv
     report = audit_inventory(participants_tsv=synthetic_tsv, file_paths=synthetic_listing,
                              expected_tasks=["rest", label])
     assert "EXPECTED_TASK_INVALID" in _codes(report, "error")
-    assert report["tasks"]["expected"] == ["rest"]
+    assert report["tasks"]["expected_count"] == 1
 
 
 def test_without_a_participants_table_only_whole_listing_absence_is_reported(synthetic_listing):
@@ -108,7 +119,7 @@ def test_without_a_participants_table_only_whole_listing_absence_is_reported(syn
     assert report["participants"]["cross_check"] == "NOT_PERFORMED"
     assert report["participants"]["universe_source"] == "none"
     absent = _find(report, "TASK_ABSENT_IN_LISTING")
-    assert [f["task"] for f in absent] == ["nback"]
+    assert len(absent) == 1 and "task" not in absent[0]
     assert not _find(report, "MISSING_TASK_FOR_SUBJECT")
     assert not _find(report, "TASK_ABSENT_FOR_ALL_SUBJECTS")
 

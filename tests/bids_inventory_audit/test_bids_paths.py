@@ -6,11 +6,13 @@ import pytest
 from shared.bids_inventory_audit import parse_bids_relpath, unsafe_reason
 
 
-def test_task_and_run_entities_are_parsed_without_returning_subject_label():
+def test_variable_entity_values_are_not_returned_by_the_public_parser():
     marker = "sub-PathMarker11"
     parsed = parse_bids_relpath(f"{marker}/eeg/{marker}_task-rest_run-01_eeg.edf")
     assert parsed.valid and parsed.is_subject_file and parsed.has_subject
-    assert (parsed.task, parsed.run, parsed.suffix, parsed.extension) == ("rest", "01", "eeg", ".edf")
+    assert parsed.has_task and parsed.has_run and parsed.has_suffix and parsed.has_extension
+    assert (parsed.task, parsed.run, parsed.suffix, parsed.extension) == (None, None, None, None)
+    assert all(value not in repr(parsed) for value in ("rest", "01", "eeg", ".edf"))
     assert not hasattr(parsed, "subject") and not hasattr(parsed, "relpath")
     assert marker not in repr(parsed)
 
@@ -22,9 +24,10 @@ def test_session_presence_is_reported_without_returning_session_label():
     assert "pre" not in repr(parsed)
 
 
-def test_compound_extension_is_kept_intact():
+def test_compound_extension_presence_is_reported_without_returning_its_value():
     parsed = parse_bids_relpath("sub-01/func/sub-01_task-rest_bold.nii.gz")
-    assert parsed.valid and parsed.extension == ".nii.gz" and parsed.suffix == "bold"
+    assert parsed.valid and parsed.has_extension and parsed.has_suffix
+    assert parsed.extension is None and parsed.suffix is None
 
 
 def test_root_level_file_is_valid_but_not_a_subject_file():

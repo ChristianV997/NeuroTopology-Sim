@@ -56,8 +56,9 @@ def test_default_audit_json_omits_ids_paths_and_file_to_subject_mappings(caplog,
     assert report["analysis"]["excluded_subjects_n"] is None  # inconsistent declaration is not quoted
     assert "subjects" not in report["participants"]
     assert "coverage" in report["tasks"] and all(
-        isinstance(value, dict) for value in report["tasks"]["coverage"].values())
-    assert all("subject" not in finding and "path" not in finding for finding in report["findings"])
+        key.endswith("_count") for key in report["tasks"]["coverage"])
+    assert all("subject" not in finding and "path" not in finding and "task" not in finding
+               for finding in report["findings"])
 
 
 def test_malformed_rows_and_missing_columns_do_not_echo_supplied_values():
@@ -81,6 +82,51 @@ def test_identifier_like_filename_extension_is_rejected_without_echoing():
 
     report = audit_inventory(participants_tsv=None, file_paths=[path])
     assert marker not in json.dumps(report, sort_keys=True, allow_nan=False)
+
+
+def test_caller_controlled_entity_values_are_not_returned_in_public_results(caplog):
+    marker = "participantmarker123"
+    paths = [
+        f"sub-01/eeg/sub-01_task-{marker}_eeg.edf",
+        f"sub-01/eeg/sub-01_run-{marker}_eeg.edf",
+        f"sub-01/eeg/sub-01_{marker}.edf",
+        f"sub-01/eeg/sub-01_task-rest_eeg.{marker}",
+    ]
+    parsed = [parse_bids_relpath(path) for path in paths]
+    unexpected = audit_inventory(
+        participants_tsv="participant_id\nsub-01\n",
+        file_paths=paths,
+        expected_tasks=["rest"],
+    )
+    expected_only = audit_inventory(
+        participants_tsv="participant_id\nsub-01\n",
+        file_paths=[],
+        expected_tasks=[marker],
+    )
+    rendered = json.dumps(
+        {"parsed": [item.__dict__ for item in parsed], "unexpected": unexpected,
+         "expected_only": expected_only},
+        sort_keys=True,
+        allow_nan=False,
+    )
+
+    assert parsed[0].has_task and parsed[0].task is None
+    assert parsed[1].has_run and parsed[1].run is None
+    assert parsed[2].has_suffix and parsed[2].suffix is None
+    assert parsed[3].has_extension and parsed[3].extension is None
+    assert "expected" not in unexpected["tasks"]
+    assert "observed" not in unexpected["tasks"]
+    assert unexpected["tasks"]["expected_count"] == 1
+    assert unexpected["tasks"]["observed_count"] == 2
+    assert unexpected["tasks"]["coverage"]["unexpected_observed_tasks_count"] == 1
+    assert all(marker not in key for key in unexpected["tasks"]["coverage"])
+    assert "UNEXPECTED_TASK" in [finding["code"] for finding in unexpected["findings"]]
+    assert "TASK_ABSENT_FOR_ALL_SUBJECTS" in [finding["code"] for finding in expected_only["findings"]]
+    assert all("task" not in finding for finding in expected_only["findings"])
+    assert all(marker not in finding["detail"] for finding in unexpected["findings"])
+    assert marker not in rendered
+    assert marker not in caplog.text
+    assert all("task" not in finding for finding in unexpected["findings"])
 
 
 def test_public_license_helpers_do_not_echo_untrusted_source_or_evidence_text():

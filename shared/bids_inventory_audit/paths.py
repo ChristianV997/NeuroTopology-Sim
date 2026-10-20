@@ -1,8 +1,8 @@
 """BIDS relative-path parsing without identifier-bearing public results.
 
 Parsing operates on caller-supplied strings only. The public parser reports structural
-properties but omits the path and subject/session labels. The inventory's private parser
-retains those labels only in memory for aggregate cross-checks; it never serializes them.
+properties but omits the path and all entity values. The inventory's private parser retains
+those values only in memory for aggregate cross-checks; it never serializes them.
 """
 from __future__ import annotations
 
@@ -18,12 +18,17 @@ _EXTENSION_RE = re.compile(r"\.[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*$")
 
 @dataclass(frozen=True)
 class ParsedPath:
-    """Public parse summary. It intentionally contains no raw path or subject label."""
+    """Public parse summary. Caller-controlled entity values are never returned."""
 
     valid: bool
     is_subject_file: bool
     has_subject: bool = False
     has_session: bool = False
+    has_task: bool = False
+    has_run: bool = False
+    has_suffix: bool = False
+    has_extension: bool = False
+    # Empty compatibility fields: public summaries expose presence, never raw values.
     task: Optional[str] = None
     run: Optional[str] = None
     suffix: Optional[str] = None
@@ -147,9 +152,13 @@ def parse_bids_relpath(relpath: Any) -> ParsedPath:
         is_subject_file=parsed.is_subject_file,
         has_subject=parsed.subject is not None,
         has_session=parsed.session is not None,
-        task=parsed.task,
-        run=parsed.run,
-        suffix=parsed.suffix,
-        extension=parsed.extension,
+        has_task=parsed.task is not None,
+        has_run=parsed.run is not None,
+        has_suffix=parsed.suffix is not None,
+        has_extension=parsed.extension is not None,
+        task=None,
+        run=None,
+        suffix=None,
+        extension=None,
         problems=parsed.problems,
     )

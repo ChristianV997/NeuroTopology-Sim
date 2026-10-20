@@ -2,8 +2,8 @@
 
 This module does not discover or read participant files from disk. It does parse
 participants-table text and relative-path strings explicitly supplied by the caller.
-Subject labels are compared transiently in memory but are omitted from public results,
-findings, and errors. It reports structure and gaps, not which subjects any analysis used.
+Subject and task labels are compared transiently in memory but are omitted from public results,
+findings, and errors. It reports structure and aggregate gaps, not which labels match a finding.
 
 Expected tasks are never inferred from observed files. Without a declared set, the audit
 reports that expectation is undeclared and performs no completeness claim.
@@ -271,25 +271,24 @@ def audit_inventory(
                         if present_count == 0:
                             findings.append(make_finding(
                                 "TASK_ABSENT_IN_LISTING", "error",
-                                f"declared task {task!r} appears in no listed file; per-subject coverage not assessed",
-                                task=task))
+                                "a declared task appears in no listed file; per-subject coverage not assessed"))
                         continue
                     missing_count = len(participants) - len(participants & task_subjects.get(task, set()))
                     if missing_count == len(participants) and participants:
                         findings.append(make_finding(
                             "TASK_ABSENT_FOR_ALL_SUBJECTS", "error",
-                            f"declared task {task!r} has no file for any participant",
-                            task=task, affected_count=missing_count))
+                            "a declared task has no file for any participant",
+                            affected_count=missing_count))
                     elif missing_count:
                         findings.append(make_finding(
                             "MISSING_TASK_FOR_SUBJECT", "warning",
-                            f"declared task {task!r} is missing for one or more participants",
-                            task=task, affected_count=missing_count))
+                            "a declared task is missing for one or more participants",
+                            affected_count=missing_count))
                 for task in observed_tasks or []:
                     if task not in expected:
                         findings.append(make_finding(
                             "UNEXPECTED_TASK", "warning",
-                            "observed task is outside the declared set", task=task))
+                            "an observed task is outside the declared set"))
 
     analysis, analysis_findings = _analysis_block(analysis_record, participants)
     findings.extend(analysis_findings)
@@ -301,6 +300,29 @@ def audit_inventory(
 
     findings = sort_findings(findings)
     severity_counts = Counter(f["severity"] for f in findings)
+    observed_task_set = set(task_subjects) if listing_readable else None
+    expected_task_set = set(expected) if expected is not None else None
+    if observed_task_set is None or expected_task_set is None:
+        expected_with_files_count = None
+        expected_without_files_count = None
+        unexpected_observed_count = None
+    else:
+        expected_with_files_count = len(expected_task_set & observed_task_set)
+        expected_without_files_count = len(expected_task_set - observed_task_set)
+        unexpected_observed_count = len(observed_task_set - expected_task_set)
+
+    if participants is None or observed_task_set is None or expected_task_set is None:
+        missing_for_any_participants_count = None
+        missing_for_all_participants_count = None
+    else:
+        missing_counts = [
+            len(participants - task_subjects.get(task, set()))
+            for task in expected_task_set
+        ]
+        missing_for_any_participants_count = sum(count > 0 for count in missing_counts)
+        missing_for_all_participants_count = sum(
+            bool(participants) and count == len(participants) for count in missing_counts
+        )
     return {
         "schema": SCHEMA,
         "scope": SCOPE,
@@ -332,15 +354,15 @@ def audit_inventory(
         },
         "tasks": {
             "expected_declared": expected_tasks is not None,
-            "expected": expected,
-            "observed": observed_tasks,
-            "coverage": ({
-                task: {
-                    "subjects_with_file_count": len(labels),
-                    "subject_count": len(participants) if participants is not None else None,
-                }
-                for task, labels in sorted(task_subjects.items())
-            } if listing_readable else None),
+            "expected_count": len(expected) if expected is not None else None,
+            "observed_count": len(task_subjects) if listing_readable else None,
+            "coverage": {
+                "expected_tasks_with_files_count": expected_with_files_count,
+                "expected_tasks_without_files_count": expected_without_files_count,
+                "expected_tasks_missing_for_any_participants_count": missing_for_any_participants_count,
+                "expected_tasks_missing_for_all_participants_count": missing_for_all_participants_count,
+                "unexpected_observed_tasks_count": unexpected_observed_count,
+            } if listing_readable else None,
             "presence_statement": _TASK_PRESENCE_STATEMENT,
             "completion_evidence": False,
         },
