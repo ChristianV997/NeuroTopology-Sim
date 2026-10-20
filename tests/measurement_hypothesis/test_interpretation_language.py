@@ -110,10 +110,11 @@ def test_shared_claim_rule_phrase_is_rejected(valid_mapping, check):
 
 def test_scanner_reports_categories_without_editing_text():
     text = "The gradient confirms and causes circulation."
+    original = text
     hits = scan_interpretation(text)
     assert hits["empirical_support"] == ["confirm"]
     assert hits["causal_or_mechanism"] == ["causes"]
-    assert text == "The gradient confirms and causes circulation."
+    assert text == original
 
 
 @pytest.mark.parametrize("field, code", [

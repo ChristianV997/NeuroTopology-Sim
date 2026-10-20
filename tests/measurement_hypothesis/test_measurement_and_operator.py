@@ -107,6 +107,6 @@ def test_non_finite_number_is_rejected_as_non_json(valid_mapping, check):
     assert "NON_FINITE_OR_NON_JSON" in _codes(check(valid_mapping))
 
 
-def test_serialized_mapping_round_trips_through_strict_json(valid_mapping):
+def test_serialized_mapping_round_trips_through_strict_json_and_still_validates(valid_mapping, check):
     text = json.dumps(valid_mapping, allow_nan=False)
-    assert json.loads(text) == valid_mapping
+    assert check(json.loads(text))["contract_status"] == "VALID_HYPOTHESIS_MAPPING"

@@ -21,7 +21,7 @@ from urllib.parse import urlsplit
 from tools.research_claim_gate.gate import evaluate_claim, serialize_json
 
 from .language import scan_interpretation, target_construct_hits, theory_terms_in
-from .resolve import parse, repo_file, sha256_of, string_literals, top_level_function
+from .resolve import parse, repo_file, returned_literals, sha256_of, top_level_function
 from .schema import (
     CONSTRUCT_VALIDITY_FIELDS,
     CONSTRUCT_VALIDITY_STATUS,
@@ -144,6 +144,14 @@ def _scan_operational_text(value: Any, path: str, fail: Fail) -> None:
                  f"{hits} belong to the interpretation namespace and may not appear in an operational identifier")
 
 
+def _scan_target(value: Any, path: str, fail: Fail) -> None:
+    if isinstance(value, str):
+        hits = target_construct_hits(value)
+        if hits:
+            fail("EQUIVALENCE_TO_TARGET_CONSTRUCT", path,
+                 f"a descriptor is equated with {hits}; state the target only as an empirical question in empirical_claim")
+
+
 def _text_list(raw: Any, path: str, code: str, fail: Fail) -> list[str]:
     if not (isinstance(raw, list) and raw and all(isinstance(item, str) and item.strip() for item in raw)):
         fail(code, path, "at least one non-empty statement is required")
@@ -229,6 +237,8 @@ def _check_operational(raw: Any, repo_root: Path, fail: Fail) -> dict[str, Any]:
     if family is None and not (isinstance(note, str) and note.strip()):
         fail("FAMILY_NOTE_MISSING", "$.operational.family_note",
              "a mapping with no registered family must say why none applies")
+    if isinstance(note, str):
+        _scan_operational_text(note, "$.operational.family_note", fail)
 
     category = raw.get("category")
     if category is None:
@@ -291,7 +301,7 @@ def _check_operational(raw: Any, repo_root: Path, fail: Fail) -> dict[str, Any]:
              f"no module-level function {symbol!r} exists in {module}")
         return facts
     facts["symbol_found"] = True
-    literals = string_literals(function)
+    literals = returned_literals(function)
     facts["output_key_found"] = isinstance(output_key, str) and output_key in literals
     if not facts["output_key_found"]:
         fail("OUTPUT_KEY_UNRESOLVED", f"{base}.output_key", f"{output_key!r} is not returned by {symbol}")
@@ -316,6 +326,7 @@ def _check_measurement(raw: Any, operational: Mapping[str, Any], fail: Fail) -> 
     definition = raw.get("definition")
     if isinstance(definition, str) and definition.strip():
         _scan_operational_text(definition, f"{base}.definition", fail)
+        _scan_target(definition, f"{base}.definition", fail)
     else:
         fail("DEFINITION_MISSING", f"{base}.definition", "a measurement needs a definition")
 
@@ -340,6 +351,7 @@ def _check_measurement(raw: Any, operational: Mapping[str, Any], fail: Fail) -> 
              "name the sensor-space observables the descriptor is computed from")
     else:
         for index, item in enumerate(observables):
+            _scan_operational_text(item, f"{base}.observables[{index}]", fail)
             hits = target_construct_hits(item)
             if hits:
                 fail("EQUIVALENCE_TO_TARGET_CONSTRUCT", f"{base}.observables[{index}]",
@@ -366,6 +378,7 @@ def _check_operator(raw: Any, sources: Mapping[str, Any], fail: Fail) -> None:
     name = raw.get("name")
     if not (isinstance(name, str) and name.strip()):
         fail("OPERATOR_NAME_MISSING", f"{base}.name", "name the mathematical operator")
+    _scan_target(name, f"{base}.name", fail)
     role = raw.get("role")
     if not (isinstance(role, str) and role in OPERATOR_ROLES):
         fail("OPERATOR_ROLE_NOT_PERMITTED", f"{base}.role",
@@ -408,8 +421,9 @@ def _check_interpretation(raw: Any, sources: Mapping[str, Any], fail: Fail) -> O
     if not has_text:
         fail("INTERPRETATION_MISSING", f"{base}.proposed_interpretation", "state the proposed interpretation")
     assumptions = _text_list(raw.get("assumptions"), f"{base}.assumptions", "ASSUMPTIONS_MISSING", fail)
-    _text_list(raw.get("alternative_explanations"), f"{base}.alternative_explanations", "ALTERNATIVES_MISSING", fail)
-    _text_list(raw.get("confounds"), f"{base}.confounds", "CONFOUNDS_MISSING", fail)
+    alternatives = _text_list(raw.get("alternative_explanations"), f"{base}.alternative_explanations",
+                              "ALTERNATIVES_MISSING", fail)
+    confounds = _text_list(raw.get("confounds"), f"{base}.confounds", "CONFOUNDS_MISSING", fail)
     _check_falsifiers(raw.get("falsifiers"), base, fail)
     _check_source_ids(raw.get("source_ids"), sources, f"{base}.source_ids", fail)
 
@@ -426,7 +440,9 @@ def _check_interpretation(raw: Any, sources: Mapping[str, Any], fail: Fail) -> O
     for index, statement in enumerate(assumptions):
         _scan_language(statement, f"{base}.assumptions[{index}]", fail)
     candidates = ([(text, f"{base}.proposed_interpretation")] if has_text else []) + [
-        (statement, f"{base}.assumptions[{index}]") for index, statement in enumerate(assumptions)]
+        (statement, f"{base}.assumptions[{index}]") for index, statement in enumerate(assumptions)] + [
+        (item, f"{base}.alternative_explanations[{index}]") for index, item in enumerate(alternatives)] + [
+        (item, f"{base}.confounds[{index}]") for index, item in enumerate(confounds)]
     for piece, piece_path in candidates:
         hits = target_construct_hits(piece)
         if hits:
@@ -461,6 +477,7 @@ def _check_falsifiers(raw: Any, base: str, fail: Fail) -> None:
             value = item.get(field)
             if not (isinstance(value, str) and value.strip()):
                 fail("FALSIFIER_INCOMPLETE", f"{item_path}.{field}", f"a falsifier needs {field}")
+            _scan_target(value, f"{item_path}.{field}", fail)
 
 
 def _scan_language(text: str, path: str, fail: Fail) -> None:
@@ -481,6 +498,7 @@ def _check_empirical_claim(raw: Any, fail: Fail) -> None:
         value = raw.get(field)
         if not (isinstance(value, str) and value.strip()):
             fail("EMPIRICAL_CLAIM_FIELD_MISSING", f"{base}.{field}", f"{field} is required")
+    _scan_target(raw.get("required_data"), f"{base}.required_data", fail)
     controls = raw.get("controls")
     if not (isinstance(controls, list) and controls and all(isinstance(c, str) and c.strip() for c in controls)):
         fail("EMPIRICAL_CONTROLS_MISSING", f"{base}.controls",
@@ -495,10 +513,16 @@ def _check_empirical_claim(raw: Any, fail: Fail) -> None:
              f"must be {DATA_ACCESS_STATUS}: no participant recordings are accessed")
     statement = raw.get("statement")
     if isinstance(statement, str) and statement.strip():
+        question = statement.strip().endswith("?")
         hits = scan_interpretation(statement)
-        for category, code in (("equivalence", "EQUIVALENCE_LANGUAGE"),
-                               ("shared_claim_rules", "SHARED_CLAIM_RULE"),
-                               ("ontology_firewall", "ONTOLOGY_FIREWALL_VIOLATION")):
+        checks = [("equivalence", "EQUIVALENCE_LANGUAGE"), ("shared_claim_rules", "SHARED_CLAIM_RULE"),
+                  ("ontology_firewall", "ONTOLOGY_FIREWALL_VIOLATION")]
+        if not question:
+            # A statement that asserts a result is an overstated claim while the analysis is NOT_RUN.
+            checks += [("causal_or_mechanism", "CAUSAL_OR_MECHANISM_LANGUAGE"),
+                       ("empirical_support", "EMPIRICAL_SUPPORT_IMPLIED")]
+            _scan_target(statement, f"{base}.statement", fail)
+        for category, code in checks:
             if hits[category]:
                 fail(code, f"{base}.statement", f"{category.replace('_', ' ')} wording: {hits[category]}")
 
@@ -521,6 +545,7 @@ def _check_construct_validity(raw: Any, fail: Fail) -> None:
         value = raw.get(field)
         if not (isinstance(value, str) and value.strip()):
             fail("CONSTRUCT_VALIDITY_FIELD_MISSING", f"{base}.{field}", f"{field} is required")
+    _scan_target(raw.get("basis"), f"{base}.basis", fail)
 
 
 def _check_not_established(raw: Any, fail: Fail) -> None:
@@ -595,6 +620,8 @@ def _report(mapping_id: Any, errors: list[dict[str, str]], implementation: Mappi
         "category": category,
         "computable": computable,
         "construct_validity_status": CONSTRUCT_VALIDITY_STATUS,
+        "empirical_claim_status": EMPIRICAL_CLAIM_STATUS,
+        "data_access_status": DATA_ACCESS_STATUS,
         "measures_intended_construct": False,
         "errors": errors,
         "implementation": dict(implementation),
@@ -608,7 +635,15 @@ def load_mapping(path: Path) -> Any:
     def _reject(name: str) -> None:
         raise ValueError(f"non-finite JSON constant: {name}")
 
-    return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject)
+    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _ in pairs]
+        repeated = sorted({key for key in keys if keys.count(key) > 1})
+        if repeated:
+            raise ValueError(f"duplicate JSON keys are not allowed: {repeated}")
+        return dict(pairs)
+
+    return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject,
+                      object_pairs_hook=_no_duplicates)
 
 
 def main(argv: Optional[list[str]] = None) -> int:

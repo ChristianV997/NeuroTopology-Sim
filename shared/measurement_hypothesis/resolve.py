@@ -14,7 +14,7 @@ from typing import Optional
 
 def repo_file(repo_root: Path, relative: object) -> Optional[Path]:
     """Return the repository file named by a relative path, or None if it is absent or escapes the root."""
-    if not isinstance(relative, str) or not relative or relative.startswith(("/", "\\")):
+    if not isinstance(relative, str) or not relative or "\x00" in relative or relative.startswith(("/", "\\")):
         return None
     if ".." in Path(relative).parts:
         return None
@@ -46,3 +46,12 @@ def top_level_function(tree: ast.Module, name: object) -> Optional[ast.FunctionD
 
 def string_literals(node: ast.AST) -> set[str]:
     return {item.value for item in ast.walk(node) if isinstance(item, ast.Constant) and isinstance(item.value, str)}
+
+
+def returned_literals(function: ast.AST) -> set[str]:
+    """String constants inside a return statement. Docstrings and bare expressions do not count."""
+    found: set[str] = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Return) and node.value is not None:
+            found |= string_literals(node.value)
+    return found

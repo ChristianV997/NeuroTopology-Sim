@@ -10,6 +10,7 @@ does not show that a statement is sound.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Iterable
 
 from sciencer_d.ontology.firewall import scan_text as ontology_firewall_scan
@@ -31,27 +32,49 @@ EQUIVALENCE_PHRASES: tuple[str, ...] = (
 CAUSAL_PHRASES: tuple[str, ...] = (
     "causes", "caused by", "causal", "causally", "drives", "driven by", "mechanism",
     "mechanistic", "underlies", "underlying mechanism", "produces", "responsible for",
+    "gives rise to", "explains",
 )
 
 # Wording that presents a proposal as an established finding. Negated forms such as
 # "not yet validated" are allowed, because they state the status accurately.
 SUPPORT_PHRASES: tuple[str, ...] = (
     "confirm", "validat", "demonstrat", "prove", "establish", "evidence that",
-    "shows that", "supports the", "support for", "empirically",
+    "shows that", "supports", "support for", "corroborat", "substantiat", "verified", "empirically",
 )
 
-_NEGATION_PREFIXES: tuple[str, ...] = (
-    "not ", "not yet ", "not a ", "not an ", "not the ", "no ", "never ", "without ", "un",
-)
+# Latin look-alikes from Cyrillic. Compatibility forms are handled by NFKC.
+_CONFUSABLES: dict[str, str] = {
+    "а": "a", "с": "c", "е": "e", "о": "o", "р": "p", "х": "x", "у": "y",
+}
+_NEGATION_WORD = re.compile(r"\b(?:not|no|never|without)\s+(?:(?:yet|an?|the)\s+)?$")
+_NEGATION_TAIL = re.compile(r"\b(?:not|no|never|without)$")
+
+
+def _fold(text: str) -> str:
+    """Compatibility-fold, drop invisible format characters, and unify case and separators."""
+    folded = unicodedata.normalize("NFKC", text or "")
+    folded = "".join(" " if unicodedata.category(ch) == "Cf" else ch for ch in folded)
+    folded = folded.casefold()
+    return "".join(_CONFUSABLES.get(ch, ch) for ch in folded)
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[-_]", " ", _fold(text))).strip()
 
 
 def _negated(lowered: str, index: int) -> bool:
-    window = lowered[max(0, index - 14) : index]
-    return any(window.endswith(prefix) for prefix in _NEGATION_PREFIXES)
+    """True only for one whole-word negation directly before the match.
+
+    A second negation directly before it cancels the exemption, and a negation word inside
+    a longer word ("piano") does not count. "un" attached to the match ("unvalidated") does.
+    """
+    prefix = lowered[:index]
+    if re.search(r"\bun$", prefix):
+        return True
+    found = _NEGATION_WORD.search(prefix)
+    if found is None:
+        return False
+    return _NEGATION_TAIL.search(prefix[: found.start()].rstrip()) is None
 
 
 def _hits(lowered: str, phrases: Iterable[str], *, negation_allowed: bool) -> list[str]:
@@ -91,5 +114,5 @@ def theory_terms_in(value: str) -> list[str]:
     Matching compacts case, underscores, and punctuation, so ``ttfcd_phase`` and
     ``TTFCD.phase`` both match ``ttfcd``.
     """
-    compact = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    compact = re.sub(r"[^a-z0-9]", "", _fold(value))
     return [term for term in THEORY_NAMESPACE_TERMS if term in compact]

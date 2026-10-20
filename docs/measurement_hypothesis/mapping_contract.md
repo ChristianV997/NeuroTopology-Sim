@@ -46,11 +46,19 @@ category fails closed, and a descriptor with no computable category is never rep
 For every category, a proposal, assumption, or observable may not equate the descriptor with:
 cortical wave or propagation, source localization, consciousness, or biological validation.
 An explicit negation ("is not a cortical wave") is allowed. An affirmative equation is rejected
-with `EQUIVALENCE_TO_TARGET_CONSTRUCT`.
+with `EQUIVALENCE_TO_TARGET_CONSTRUCT`. The same check applies to the definition, operator name,
+alternative explanations, confounds, falsifier `test` and `discriminates`, construct-validity
+`basis`, and `required_data`. `intended_construct` is exempt, because it names the target.
 
-These phrases may appear in `empirical_claim.statement`, where they must be posed as a question
-to test under the declared controls. The empirical statement is also scanned for equivalence and
-ontology-firewall wording.
+Matching folds compatibility forms (NFKC), case, invisible format characters, and hyphen or
+underscore separators, and maps Cyrillic look-alikes to Latin letters. A negation exempts a match
+only when one whole-word negation sits directly before it. A double negation does not.
+
+The empirical statement may name a target only as a question (ending in `?`), to test under the
+declared controls. A non-question statement that names a target is rejected. Every statement is
+scanned for equivalence and ontology-firewall wording. A non-question statement is also scanned for
+causal and support wording, so a statement that reports a result (for example "was validated across
+40 recordings") is rejected with `EMPIRICAL_SUPPORT_IMPLIED`, because the analysis is `NOT_RUN`.
 
 ## What the validator checks
 

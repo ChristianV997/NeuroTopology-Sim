@@ -16,8 +16,10 @@ from shared.feature_contracts.validators import VALID_UNITS
 SCHEMA = "NeuroTopologySim.MeasurementHypothesisMapping.v2"
 REPORT_SCHEMA = "NeuroTopologySim.MeasurementHypothesisReport.v2"
 
-# Operational categories. The category names what the descriptor is, so the validator can
-# refuse equivalences that the category rules out. An absent or unknown category fails closed.
+# Operational categories. The category names what the descriptor is. It is recorded in the
+# report and checked against this closed vocabulary. No category-specific equivalence rule
+# exists, so the category does not change which equivalences are refused. An absent or
+# unknown category fails closed.
 OPERATIONAL_CATEGORIES: frozenset[str] = frozenset({
     "sensor_space_winding",
     "graph_topological_statistic",
@@ -34,6 +36,7 @@ TARGET_CONSTRUCT_PHRASES: tuple[str, ...] = (
     "cortical wave", "cortical propagat", "propagating wave", "wave propagation",
     "source localiz", "anatomical", "consciousness", "biological validat",
     "validated biolog", "biological identification", "cortical source", "cortical charge",
+    "source localis", "travelling wave", "biologically valid",
 )
 
 IDENTITY_STATUSES: frozenset[str] = frozenset({"borrowed_formal_identity", "implementation_only", "none"})
