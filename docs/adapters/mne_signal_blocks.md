@@ -34,7 +34,7 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 - Missing or ambiguous units, channel types, reference, or montage → explicit unknown values and status `inconclusive` (never invent `V`, average-ref, or standard montages). Literal `unknown`/`unspecified` tokens are not treated as verified declarations.
 - Channel names and unit labels must be non-empty strings. Sampling rate must be a finite positive numeric value; booleans and numeric-looking strings are not coerced into rates. Missing/invalid values remain unknown and cannot produce `converted`.
 - A montage name, or a complete finite coordinate row for every channel, is required. Null coordinate rows do not stand in for a montage when no montage name is declared.
-- Hard failures (`rejected`): empty blocks, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
+- Hard failures (`rejected`): empty blocks, malformed/non-numeric signal arrays, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
 - Never silently resample, filter, rereference, interpolate, reorder, or drop channels.
 - Input arrays and metadata mappings are not mutated; data is copied by default.
 - `scientific_pass` is always `false`.

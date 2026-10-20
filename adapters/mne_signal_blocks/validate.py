@@ -34,10 +34,16 @@ def inspect_array(data: Any) -> tuple[tuple[int, ...] | None, bool, list[str]]:
         if arr.size == 0 or any(dim <= 0 for dim in shape):
             reasons.append(ReasonCode.EMPTY_BLOCK.value)
             return shape, True, reasons
+        if arr.dtype.kind not in "iufc":
+            reasons.append(ReasonCode.MALFORMED_INPUT.value)
+            return shape, False, reasons
         finite = bool(np.all(np.isfinite(arr)))
         if not finite:
             reasons.append(ReasonCode.NON_FINITE_VALUES.value)
         return shape, finite, reasons
+    except (TypeError, ValueError, OverflowError):
+        reasons.append(ReasonCode.MALFORMED_INPUT.value)
+        return None, False, reasons
     except ImportError:
         # Pure-Python nested lists
         if not isinstance(data, (list, tuple)) or not data:
@@ -52,15 +58,18 @@ def inspect_array(data: Any) -> tuple[tuple[int, ...] | None, bool, list[str]]:
             reasons.append(ReasonCode.EMPTY_BLOCK.value)
             return (n_ch, n_samp), True, reasons
         finite = True
+        malformed = False
         for row in data:
             if not isinstance(row, (list, tuple)) or len(row) != n_samp:
                 reasons.append(ReasonCode.SHAPE_MISMATCH.value)
                 return (n_ch, n_samp), finite, reasons
             for value in row:
                 if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    finite = False
+                    malformed = True
                 elif isinstance(value, float) and not math.isfinite(value):
                     finite = False
+        if malformed:
+            reasons.append(ReasonCode.MALFORMED_INPUT.value)
         if not finite:
             reasons.append(ReasonCode.NON_FINITE_VALUES.value)
         return (n_ch, n_samp), finite, reasons
@@ -154,6 +163,9 @@ def validate_block_fields(
         except (TypeError, ValueError, OverflowError):
             reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
             warnings.append("sample_rate_hz is not a finite positive numeric value")
+    else:
+        reasons.append(ReasonCode.AMBIGUOUS_METADATA.value)
+        warnings.append("sample_rate_hz absent; temporal scale remains unknown")
 
     if (
         reference is None

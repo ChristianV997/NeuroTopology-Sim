@@ -270,6 +270,29 @@ def test_non_finite_sample_rate_is_not_emitted_in_json():
     assert "infinity" not in serialize_json(result.to_dict()).lower()
 
 
+def test_missing_sample_rate_cannot_be_converted_or_revalidated_as_converted():
+    payload = make_valid_block_payload(n_channels=1, n_samples=4)
+    payload.pop("sample_rate_hz")
+
+    result = convert_in_memory_block(payload)
+    assert result.block.status == BlockStatus.INCONCLUSIVE
+    assert ReasonCode.AMBIGUOUS_METADATA.value in result.block.reason_codes
+
+    validated = validate_block(result.block.metadata_dict(include_data=False))
+    assert validated["status"] == BlockStatus.INCONCLUSIVE.value
+    assert validated["scientific_pass"] is False
+
+
+def test_malformed_signal_dtype_fails_closed_without_raising():
+    payload = make_valid_block_payload(n_channels=2, n_samples=2)
+    payload["data"] = [[0.0, "not-a-number"], [1.0, 2.0]]
+
+    result = convert_in_memory_block(payload)
+
+    assert result.block.status == BlockStatus.REJECTED
+    assert ReasonCode.MALFORMED_INPUT.value in result.block.reason_codes
+
+
 def test_non_string_unit_is_not_coerced_into_a_unit_label():
     payload = make_valid_block_payload(n_channels=1, n_samples=4)
     payload["units"] = [1]
