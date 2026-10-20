@@ -31,8 +31,25 @@ def test_missing_coordinates_fail_closed():
 
 def test_non_eeg_channel_fail_closed(eeg_raw_with_eog):
     inv = extract_channel_inventory(eeg_raw_with_eog)
-    with pytest.raises(InvalidChannelSelectionError, match="non_eeg|EOG"):
+    with pytest.raises(InvalidChannelSelectionError, match="non_eeg|EOG|eog"):
         validate_channel_selection(inv, ["Fz", "EOG"])
+
+
+@pytest.mark.parametrize(
+    "intracranial_type",
+    ["seeg", "ecog", "dbs", "ref_eeg"],
+)
+def test_intracranial_and_ref_eeg_not_misclassified_as_scalp_eeg(intracranial_type):
+    """Substring 'eeg' must not promote seeg/ref_eeg into the scalp-EEG allowlist."""
+    raw = FakeRaw(
+        ["X1", "X2"],
+        ch_types=[intracranial_type, intracranial_type],
+        locs=standard_locs(2),
+    )
+    inv = extract_channel_inventory(raw)
+    assert inv["X1"]["ch_type"] == intracranial_type.casefold()
+    with pytest.raises(InvalidChannelSelectionError, match="non_eeg|requires eeg"):
+        validate_channel_selection(inv, ["X1", "X2"])
 
 
 def test_unknown_channel_fail_closed(eeg_raw):

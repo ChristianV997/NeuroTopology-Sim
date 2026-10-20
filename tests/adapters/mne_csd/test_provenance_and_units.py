@@ -20,6 +20,17 @@ def test_provenance_distinguishes_sensor_space_from_source_localization(eeg_raw)
     assert "compute_current_source_density" in prov.api_function
 
 
+def test_injected_callable_does_not_claim_mne_installed(eeg_raw):
+    """Provenance.mne_available reflects importability, not injectable backends."""
+    result = apply_csd(eeg_raw, channels=["Fz", "Cz", "Pz"], csd_callable=RecordingCallable())
+    try:
+        import mne  # noqa: F401
+    except ImportError:
+        assert result.provenance.mne_available is False
+    else:
+        assert result.provenance.mne_available is True
+
+
 def test_dimensions_and_units_explicit(eeg_raw):
     result = apply_csd(eeg_raw, channels=["Fz", "Cz", "Pz"], csd_callable=RecordingCallable())
     assert result.data is not None

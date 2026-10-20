@@ -59,9 +59,13 @@ def extract_channel_inventory(inst: Any) -> Dict[str, Dict[str, Any]]:
             if loc is not None:
                 xyz = _as_xyz(loc)
         ch_type = types[index] if index < len(types) else "unknown"
-        # Normalize MNE integer kinds if a test double used strings already.
-        if ch_type in {"2", "eeg"} or "eeg" in ch_type:
+        # Normalize only exact scalp-EEG tokens. Substring matches such as
+        # ``"eeg" in "seeg"`` would misclassify intracranial channels.
+        normalized = str(ch_type).strip().casefold()
+        if normalized in {"2", "eeg"}:
             ch_type = "eeg"
+        else:
+            ch_type = normalized
         inventory[name] = {"ch_type": ch_type, "xyz_m": xyz, "index": index}
     return inventory
 

@@ -297,7 +297,9 @@ def apply_csd(
 
     provenance = build_provenance(
         mne_version=get_mne_version(),
-        mne_available=mne_available() or csd_callable is not None,
+        # Record real package presence only; an injected csd_callable must not
+        # claim MNE is installed.
+        mne_available=mne_available(),
         parameters=params,
         channel_types_requested={r.name: r.ch_type for r in reports},
         channels_selected=selected,
