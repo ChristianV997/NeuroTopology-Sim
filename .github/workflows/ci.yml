@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
+    inputs:
+      diff_base_sha:
+        description: Optional full base commit SHA for focused EEG candidate discovery
+        required: false
+        type: string
+      diff_head_sha:
+        description: Optional full head commit SHA for focused EEG candidate discovery
+        required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -194,6 +203,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7
@@ -220,6 +231,24 @@ jobs:
           tests/btc_icft/test_eeg_signal_blocks.py
           tests/test_preprocessing_artifact_rejection.py
 
+      - name: Discover and run changed MNE signal-block tests
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before || github.sha }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: >-
+          python .github/workflows/round6_experimental_tests.py
+          --diff-base "$DIFF_BASE_SHA"
+          --diff-head "$DIFF_HEAD_SHA"
+          --tested-checkout "$TESTED_CHECKOUT_SHA"
+          --workflow-sha "$WORKFLOW_SHA"
+          --event-name "$EVENT_NAME"
+          --only-component mne_signal_blocks
+          --pytest-marker requires_mne
+          --report outputs/mne_signal_blocks_ci_report.json
+
       - name: Capture EEG diagnostics
         if: failure()
         run: |
@@ -244,4 +273,6 @@ jobs:
           name: eeg-test-report
           path: |
             outputs/eeg_test_report.json
+            outputs/mne_signal_blocks_ci_report.json
+            outputs/round6-experimental-logs/**
             eeg-failure.txt
