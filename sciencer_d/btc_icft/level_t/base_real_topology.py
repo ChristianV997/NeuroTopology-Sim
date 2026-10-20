@@ -723,10 +723,6 @@ def build_group_significance_report(
     and blocks if overall window skip rate exceeds `max_skip_rate` or paired
     subject count falls below `min_paired_subjects`.
     """
-    import pandas as pd
-
-    from analysis.permutation import permutation_test, subject_blocked_permutation_test
-
     eligible_rows = [
         r for r in rows
         if r.is_valid and r.topology_status == "computed" and not r.warnings
@@ -780,8 +776,7 @@ def build_group_significance_report(
             "n_rows_excluded": len(rows) - len(eligible_rows),
         }
 
-    df = pd.DataFrame(joined)
-    groups = sorted(df["group"].unique(), key=str)
+    groups = sorted({r["group"] for r in joined}, key=str)
     if len(groups) != 2:
         return {
             "status": "not_applicable",
@@ -789,8 +784,8 @@ def build_group_significance_report(
             "group_col": group_col,
         }
 
-    subjects_g0 = set(df.loc[df["group"] == groups[0], "subject_id"].dropna())
-    subjects_g1 = set(df.loc[df["group"] == groups[1], "subject_id"].dropna())
+    subjects_g0 = {r["subject_id"] for r in joined if r["group"] == groups[0] and r.get("subject_id") is not None}
+    subjects_g1 = {r["subject_id"] for r in joined if r["group"] == groups[1] and r.get("subject_id") is not None}
     paired_subjects = subjects_g0.intersection(subjects_g1)
 
     if min_paired_subjects is not None and len(paired_subjects) < min_paired_subjects:
@@ -801,6 +796,19 @@ def build_group_significance_report(
             "min_paired_subjects": min_paired_subjects,
             "group_col": group_col,
         }
+
+    try:
+        import pandas as pd
+        from analysis.permutation import permutation_test, subject_blocked_permutation_test
+    except ImportError as exc:
+        return {
+            "status": "dependency_missing",
+            "reason": f"pandas and analysis.permutation required for permutation testing: {exc}",
+            "group_col": group_col,
+            "n_paired_subjects": len(paired_subjects),
+        }
+
+    df = pd.DataFrame(joined)
 
     metric_results = {}
     for value_col in value_cols:

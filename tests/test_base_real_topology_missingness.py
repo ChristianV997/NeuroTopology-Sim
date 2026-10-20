@@ -358,6 +358,7 @@ def test_build_group_significance_report_enforces_max_skip_rate():
 
 
 def test_build_group_significance_report_computes_precision_metrics():
+    pytest.importorskip("pandas")
     # 10 rows in group a, 10 in group b, all valid
     rng = np.random.default_rng(0)
     rows = []
@@ -381,6 +382,23 @@ def test_build_group_significance_report_computes_precision_metrics():
     assert "ci_95_b" in q_abs_m
     assert q_abs_m["ci_95_a"][0] < q_abs_m["mean_a"] < q_abs_m["ci_95_a"][1]
     assert q_abs_m["ci_95_b"][0] < q_abs_m["mean_b"] < q_abs_m["ci_95_b"][1]
+
+
+def test_build_group_significance_report_missing_dependency_fails_gracefully(monkeypatch):
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "pandas":
+            raise ImportError("No module named 'pandas'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    rows = [_valid_row(i, subject_id=f"sub-{i}", task_label="expert" if i < 5 else "novice") for i in range(10)]
+    m_rows = [{"row_id": r.row_id, "state_label": r.task_label} for r in rows]
+    report = build_group_significance_report(rows, m_rows, n_permutations=50, seed=0)
+    assert report["status"] == "dependency_missing"
+    assert "required for permutation testing" in report["reason"]
 
 
 # ---------------------------------------------------------------------------
