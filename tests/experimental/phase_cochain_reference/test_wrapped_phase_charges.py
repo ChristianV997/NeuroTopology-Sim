@@ -144,6 +144,24 @@ def test_triangle_loop_winding_orientation_covariance() -> None:
     assert w_102 == -1
 
 
+def test_triangle_loop_winding_matches_coboundary_at_half_turn_cut() -> None:
+    """Regression: naive wrap(θ_a-θ_c) disagrees with q=-d1@n when an edge hits -π.
+
+    Phases [0, 0, 3π] put edges (0,2) and (1,2) on the principal-branch cut.
+    ``wrap(-x)`` is not ``-wrap(x)`` there, so summing three independent wraps
+    yields winding -1 while the coboundary integer charge is 0. Loop winding
+    must use canonical edge branch jumps (same as ``compute_topological_charges``).
+    """
+    c = build_single_triangle_fixture()
+    theta = np.array([0.0, 0.0, 3.0 * np.pi])
+    q = int(compute_topological_charges(c, compute_wrapped_1_cochain(c, theta))[0])
+    assert q == 0
+    assert compute_triangle_loop_winding(theta, (0, 1, 2)) == q
+    assert compute_triangle_loop_winding(theta, (1, 2, 0)) == q
+    assert compute_triangle_loop_winding(theta, (2, 0, 1)) == q
+    assert compute_triangle_loop_winding(theta, (0, 2, 1)) == -q
+
+
 def test_confidence_weighted_scores() -> None:
     """Confidence weights scale scores without altering raw integer charges."""
     charges = np.array([1, -1, 0, 2], dtype=np.int64)

@@ -127,11 +127,19 @@ def compute_triangle_loop_winding(
     vertex_phases: np.ndarray | Sequence[float],
     triangle: tuple[int, int, int] | Sequence[int],
 ) -> int:
-    """Compute direct loop winding around an oriented triangle (a -> b -> c -> a).
+    """Compute integer loop winding around an oriented triangle (a -> b -> c -> a).
 
-    For an ordered sequence (a, b, c):
-        circulation = wrap(theta_b - theta_a) + wrap(theta_c - theta_b) + wrap(theta_a - theta_c)
-        winding = round(circulation / (2 * pi))
+    Uses the same canonical-edge branch jumps as ``compute_topological_charges``:
+    for each directed leg u -> v, take the jump ``n`` on the canonically oriented
+    edge ``(min(u,v), max(u,v))`` and flip the sign when the leg traverses the
+    edge backwards. The oriented winding is then
+
+        winding = -(n_ab + n_bc + n_ca)
+
+    which matches ``q = -d1 @ n`` on a canonically ordered triangle. Summing three
+    independent ``wrap_to_pi`` legs is not used: at the principal-branch cut
+    ``wrap(-x)`` is not ``-wrap(x)`` when ``wrap(x) = -π``, so that formula can
+    disagree with the coboundary integer charge by ±1.
 
     Orientation Covariance:
         - Cyclic (even) permutations preserve the winding: (b, c, a) == (c, a, b) == (a, b, c).
@@ -142,13 +150,19 @@ def compute_triangle_loop_winding(
     a, b, c = int(triangle[0]), int(triangle[1]), int(triangle[2])
     theta = np.asarray(vertex_phases, dtype=float)
 
-    diff_ab = wrap_to_pi(theta[b] - theta[a])
-    diff_bc = wrap_to_pi(theta[c] - theta[b])
-    diff_ca = wrap_to_pi(theta[a] - theta[c])
+    def _directed_canonical_jump(u: int, v: int) -> int:
+        lo, hi = (u, v) if u < v else (v, u)
+        raw = float(theta[hi] - theta[lo])
+        omega = float(wrap_to_pi(raw))
+        n = int(np.rint((raw - omega) / (2.0 * np.pi)))
+        return n if (u, v) == (lo, hi) else -n
 
-    circ = diff_ab + diff_bc + diff_ca
-    winding = int(np.rint(circ / (2.0 * np.pi)))
-    return winding
+    jump_sum = (
+        _directed_canonical_jump(a, b)
+        + _directed_canonical_jump(b, c)
+        + _directed_canonical_jump(c, a)
+    )
+    return -jump_sum
 
 
 def compute_confidence_weighted_scores(
