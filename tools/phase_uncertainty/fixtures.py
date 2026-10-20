@@ -4,7 +4,7 @@ Provides signals with exact analytical ground-truth phase, frequency, and amplit
 1. Stationary narrowband signal with additive white Gaussian noise (AWGN)
 2. Amplitude-modulated signal (envelope variation, SNR dips)
 3. Frequency drift signal (linear chirp, non-stationary carrier)
-4. Near-zero amplitude periods (phase singularities / zero-crossings)
+4. Deep nonzero amplitude dips (noise-sensitive measured phase; ground-truth phase defined)
 5. Colored noise signal (autoregressive AR(1) noise violating i.i.d. second-difference assumption)
 6. Short window / transient burst (small-sample edge effects)
 
