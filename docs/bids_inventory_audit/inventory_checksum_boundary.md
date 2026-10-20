@@ -82,7 +82,8 @@ counts and cross-checks are reported as unavailable rather than as zero.
   findings omit the supplied path and every entity value, including subject, session, task, run,
   suffix, and extension values. They expose only entity-presence booleans. A backup or temporary
   copy (`.bak`, `.tmp`, `.old`, `.partial`, and others) is never a valid data file, so it cannot
-  manufacture task coverage.
+  manufacture task coverage. Parser diagnostics use fixed rule codes and do not echo caller-supplied
+  entity names, including duplicate-entity keys.
 - **Subjects.** Cross-checks report only counts of file-only labels and participants without valid
   files. They do not return IDs or file-to-subject mappings. Counts do not establish cohort identity.
 - **Duplicates.** Counts of repeated paths and different paths claiming the same BIDS entities are

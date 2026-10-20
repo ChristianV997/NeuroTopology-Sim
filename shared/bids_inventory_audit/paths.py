@@ -118,7 +118,8 @@ def _parse_bids_relpath(relpath: Any) -> _ParsedPath:
             continue
         key, value = match.groups()
         if key in entities:
-            problems.append(f"DUPLICATE_ENTITY:{key}")
+            # The key itself is caller-controlled text and is omitted from diagnostics.
+            problems.append("DUPLICATE_ENTITY")
             continue
         entities[key] = value
 

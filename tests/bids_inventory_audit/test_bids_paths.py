@@ -85,7 +85,7 @@ def test_subject_entity_must_come_first():
 
 def test_duplicate_entity_within_a_filename_is_reported():
     parsed = parse_bids_relpath("sub-01/eeg/sub-01_task-rest_task-stroop_eeg.edf")
-    assert not parsed.valid and "DUPLICATE_ENTITY:task" in parsed.problems
+    assert not parsed.valid and "DUPLICATE_ENTITY" in parsed.problems
 
 
 def test_entity_without_a_hyphen_is_malformed():

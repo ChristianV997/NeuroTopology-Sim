@@ -86,6 +86,7 @@ def test_identifier_like_filename_extension_is_rejected_without_echoing():
 
 def test_caller_controlled_entity_values_are_not_returned_in_public_results(caplog):
     marker = "participantmarker123"
+    duplicate_key_marker = "PrivacyMarkerABC"
     paths = [
         f"sub-01/eeg/sub-01_task-{marker}_eeg.edf",
         f"sub-01/eeg/sub-01_run-{marker}_eeg.edf",
@@ -93,6 +94,12 @@ def test_caller_controlled_entity_values_are_not_returned_in_public_results(capl
         f"sub-01/eeg/sub-01_task-rest_eeg.{marker}",
     ]
     parsed = [parse_bids_relpath(path) for path in paths]
+    duplicate_key_path = (
+        f"sub-01/eeg/sub-01_{duplicate_key_marker}-one_"
+        f"{duplicate_key_marker}-two_eeg.edf"
+    )
+    duplicate_key_parsed = parse_bids_relpath(duplicate_key_path)
+    duplicate_key_report = audit_inventory(participants_tsv=None, file_paths=[duplicate_key_path])
     unexpected = audit_inventory(
         participants_tsv="participant_id\nsub-01\n",
         file_paths=paths,
@@ -105,7 +112,8 @@ def test_caller_controlled_entity_values_are_not_returned_in_public_results(capl
     )
     rendered = json.dumps(
         {"parsed": [item.__dict__ for item in parsed], "unexpected": unexpected,
-         "expected_only": expected_only},
+         "expected_only": expected_only, "duplicate_key_parsed": duplicate_key_parsed.__dict__,
+         "duplicate_key_report": duplicate_key_report},
         sort_keys=True,
         allow_nan=False,
     )
@@ -114,6 +122,9 @@ def test_caller_controlled_entity_values_are_not_returned_in_public_results(capl
     assert parsed[1].has_run and parsed[1].run is None
     assert parsed[2].has_suffix and parsed[2].suffix is None
     assert parsed[3].has_extension and parsed[3].extension is None
+    assert not duplicate_key_parsed.valid
+    assert "DUPLICATE_ENTITY" in duplicate_key_parsed.problems
+    assert all(duplicate_key_marker not in problem for problem in duplicate_key_parsed.problems)
     assert "expected" not in unexpected["tasks"]
     assert "observed" not in unexpected["tasks"]
     assert unexpected["tasks"]["expected_count"] == 1
@@ -125,7 +136,9 @@ def test_caller_controlled_entity_values_are_not_returned_in_public_results(capl
     assert all("task" not in finding for finding in expected_only["findings"])
     assert all(marker not in finding["detail"] for finding in unexpected["findings"])
     assert marker not in rendered
+    assert duplicate_key_marker not in rendered
     assert marker not in caplog.text
+    assert duplicate_key_marker not in caplog.text
     assert all("task" not in finding for finding in unexpected["findings"])
 
 
