@@ -1,10 +1,14 @@
 # Narrowband Phase-Uncertainty Estimator Calibration & Audit Report
 
-**Status**: HOLD / SYNTHETIC_ONLY  
-**Lane**: Batch 2 / Antigravity Agent A  
-**Target Repository**: `https://github.com/ChristianV997/NeuroTopology-Sim`  
-**Base Commit**: `3f3fe8593303184cb88eef056c1322f3d4e57a16`  
+**Status**: HOLD / SYNTHETIC_ONLY
+**Lane**: Batch 2 / Antigravity Agent A
+**Target Repository**: `https://github.com/ChristianV997/NeuroTopology-Sim`
+**Base Commit**: `bc91af19a22783d2721fc881842573f7e08a8925` (synced from stale `3f3fe859…`)
+**Module path**: `tools/phase_uncertainty/` (not `phase_dispersion.py`; see planner mismatch note)
 **Candidate Status**: Reconstructed from the Round 6 specification contract; candidate was not previously executed in the repository.
+**Planner note (#424)**: `phase_dispersion_module` is `contract_declared_unobserved` / unpinned;
+`tools/phase_uncertainty/` is explicitly `substitute_module_rejected` and must not be
+treated as that missing module.
 
 ---
 

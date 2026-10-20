@@ -57,6 +57,23 @@ def test_nonfinite_rejection() -> None:
         estimate_narrowband_phase_uncertainty(sig_inf)
 
 
+def test_fs_must_be_positive_finite() -> None:
+    """Sampling frequency must be finite and strictly positive (fail closed)."""
+    z = np.exp(1j * np.linspace(0.0, 4.0 * np.pi, 64))
+    for fs in (0.0, -1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="fs"):
+            estimate_narrowband_phase_uncertainty(z, fs=fs)
+
+
+def test_wrap_phase_half_turn_matches_open_closed_interval() -> None:
+    """Contract interval is (-π, π]: wrap(+π) must be +π, not -π."""
+    assert float(wrap_phase(np.array([np.pi]))[0]) == pytest.approx(np.pi)
+    assert float(wrap_phase(np.array([-np.pi]))[0]) == pytest.approx(np.pi)
+    w = wrap_phase(np.array([-3.0 * np.pi, -np.pi, 0.0, np.pi, 3.0 * np.pi]))
+    assert np.all(w > -np.pi)
+    assert np.all(w <= np.pi)
+
+
 def test_frame_index_boundary_consistency() -> None:
     """All output arrays must have identical length matching the input signal."""
     n = 250

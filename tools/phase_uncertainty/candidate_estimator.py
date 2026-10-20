@@ -37,9 +37,15 @@ UNIFORM_CIRCULAR_STD_CEILING: float = math.pi / math.sqrt(3.0)  # ~1.81379937129
 
 
 def wrap_phase(angles: np.ndarray) -> np.ndarray:
-    """Wrap angles to the interval (-pi, pi]. Pure NumPy, zero dependencies."""
+    """Wrap angles to the interval (-pi, pi]. Pure NumPy, zero dependencies.
+
+    The modulo form ``((a+π) mod 2π) - π`` alone yields ``[-π, π)`` and maps
+    ``+π → -π``. Remap the closed lower endpoint ``-π`` to ``+π`` so the
+    documented open-closed interval ``(-π, π]`` is honored.
+    """
     a = np.asarray(angles, dtype=np.float64)
-    return (a + np.pi) % (2.0 * np.pi) - np.pi
+    wrapped = (a + np.pi) % (2.0 * np.pi) - np.pi
+    return np.where(wrapped <= -np.pi, np.pi, wrapped)
 
 
 def compute_analytic_signal(real_signal: np.ndarray) -> np.ndarray:
@@ -139,6 +145,10 @@ def estimate_narrowband_phase_uncertainty(
     """
     cfg = config or EstimatorConfig()
 
+    fs_val = float(fs)
+    if not math.isfinite(fs_val) or fs_val <= 0.0:
+        raise ValueError(f"fs must be a finite positive sampling frequency in Hz, got {fs!r}")
+
     arr = np.asarray(signal)
     if arr.ndim != 1:
         raise ValueError(f"signal must be a 1D array, got shape {arr.shape}")
@@ -165,7 +175,7 @@ def estimate_narrowband_phase_uncertainty(
     # 2. Median frequency demodulation
     # Median increment across time gives the central carrier frequency step
     median_d_theta = float(np.median(d_theta))
-    median_freq_hz = float(median_d_theta * fs / (2.0 * np.pi))
+    median_freq_hz = float(median_d_theta * fs_val / (2.0 * np.pi))
 
     # Demodulated phase increments
     delta = wrap_phase(d_theta - median_d_theta)
@@ -212,7 +222,7 @@ def estimate_narrowband_phase_uncertainty(
 
     # Instantaneous frequency in Hz
     inst_freq = np.zeros(n, dtype=np.float64)
-    inst_freq[1:] = d_theta * fs / (2.0 * np.pi)
+    inst_freq[1:] = d_theta * fs_val / (2.0 * np.pi)
     inst_freq[0] = inst_freq[1] if n > 1 else median_freq_hz
 
     return PhaseUncertaintyResult(
@@ -226,7 +236,7 @@ def estimate_narrowband_phase_uncertainty(
         metadata={
             "estimator_name": "round6_narrowband_phase_uncertainty",
             "candidate_status": "reconstructed_from_contract_not_previously_executed",
-            "fs_hz": float(fs),
+            "fs_hz": fs_val,
             "mad_second_diff": float(mad_d2),
             "uniform_ceiling_applied": bool(cfg.cap_at_uniform_std),
             "uniform_ceiling_value": UNIFORM_CIRCULAR_STD_CEILING,
