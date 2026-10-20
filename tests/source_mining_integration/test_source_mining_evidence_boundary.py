@@ -89,7 +89,9 @@ def test_current_harvest_license_contract_defaults_fail_closed():
 
 
 @pytest.mark.parametrize("conflict", ["license_conflict", "cohort_discrepancy"])
-def test_dataset_metadata_conflicts_not_ready_for_empirical_analysis(tmp_path: Path, conflict: str):
+def test_explicit_empirical_declaration_is_refused_when_dataset_metadata_conflicts(tmp_path: Path, conflict: str):
+    # The BLOCK decision here comes from the explicit evidence_class="empirical" refusal.
+    # It does not come from the conflict fields, which the gate ignores (see the xfail below).
     packet = {
         "record_type": "SourceSnapshot",
         "schema_version": "dataset-metadata-fixture-v1",
@@ -156,3 +158,32 @@ def test_integrity_and_hash_chain_are_not_scientific_truth(tmp_path: Path):
     assert result.promotion_decision in {"HOLD_INCONCLUSIVE", "HOLD_INCOMPLETE_PROVENANCE"}
     assert result.scientific_pass is False
     assert result.scientific_eligibility is False
+
+
+def _dataset_packet(evidence_class: str, *, conflict: bool) -> dict:
+    return {
+        "record_type": "SourceSnapshot",
+        "schema_version": "dataset-metadata-fixture-v1",
+        "dataset_id": "ds-fixture-only",
+        "license_status": "conflict" if conflict else "compatible",
+        "cohort_status": "unresolved" if conflict else "consistent",
+        "cohort_discrepancy": conflict,
+        "evidence_class": evidence_class,
+        "data_mode": "observational",
+        "provenance": {"source_id": "ds-fixture-only", "checksum": "a" * 64,
+                       "acquisition": "fixture", "dataset_version": "fixture-v1"},
+    }
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="Known gap: evaluate_case ignores license_status/cohort_status. Handoff to the evidence-gate owner; remove this marker when the gate reads them.",
+)
+@pytest.mark.parametrize("evidence_class", ["engineering_fact", "descriptive"])
+def test_dataset_conflict_metadata_changes_gate_output(tmp_path: Path, evidence_class: str):
+    # Regression for the metadata-conflict claim. The gate does not read license_status,
+    # cohort_status or cohort_discrepancy (README, "Compatibility assumptions"), so this fails.
+    clean = _promotion(_dump_case(tmp_path, "clean", _dataset_packet(evidence_class, conflict=False)))
+    conflicted = _promotion(_dump_case(tmp_path, "conflicted", _dataset_packet(evidence_class, conflict=True)))
+    assert (conflicted.promotion_decision, tuple(conflicted.reason_codes)) != (
+        clean.promotion_decision, tuple(clean.reason_codes))
