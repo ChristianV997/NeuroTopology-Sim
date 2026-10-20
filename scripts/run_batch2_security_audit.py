@@ -48,6 +48,9 @@ def main(argv=None) -> int:
 
     work_root = Path(args.work_root) if args.work_root else Path(args.output) / "_work"
     payload = run_security_suite(work_root=work_root)
+    # Report destination is a trusted local path for this CLI. Callers that
+    # need containment must pass trusted_root to write_reports. This is a
+    # local harness boundary, not a repository-wide security claim.
     paths = write_reports(payload, args.output)
 
     if args.json_stdout:
