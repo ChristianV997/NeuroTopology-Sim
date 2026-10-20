@@ -5,7 +5,7 @@
 
 This package is an **independent algebraic oracle**, not a production engine and
 not the Round 6 candidate. At original audit base (`origin/main` @ `3f3fe859…`)
-and after merge of live `origin/main` @ `e59dd6c…`, no finite chain-complex
+and after merge of live `origin/main` @ `d2544b8…`, no finite chain-complex
 endpoint-validation / exact-rational Betti implementation was found on main.
 Public API: `FiniteChainComplex.betti()`, `.ranks()`, `.composition_zero()`,
 `.boundary_1` / `.boundary_2` / `.boundary_3` (not `betti_numbers` /
