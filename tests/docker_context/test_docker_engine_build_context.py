@@ -23,6 +23,7 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DOCKERIGNORE = REPOSITORY_ROOT / ".dockerignore"
 DOCKER_TIMEOUT_SECONDS = 120
+SYNTHETIC_DOCKERFILE = 'FROM scratch\nCOPY . /context/\nCMD ["context-probe"]\n'
 
 ALLOWED_FILES = (
     "apps/awareness_studio/.env.example",
@@ -218,6 +219,19 @@ def _write_synthetic_file(context: Path, relative_path: str) -> None:
     target.write_text("synthetic docker-context sentinel\n", encoding="utf-8")
 
 
+def _synthetic_dockerfile_contents() -> str:
+    """Return the inert scratch recipe used for build-context inspection."""
+    return SYNTHETIC_DOCKERFILE
+
+
+def test_synthetic_scratch_image_has_a_command_for_container_creation() -> None:
+    """Keep docker create valid without running an image executable."""
+    dockerfile = _synthetic_dockerfile_contents()
+
+    assert dockerfile.startswith("FROM scratch\n")
+    assert 'CMD ["context-probe"]' in dockerfile
+
+
 def _context_entries_from_export(archive_path: Path) -> set[str]:
     """Return paths copied under /context in the exported container rootfs."""
     entries: set[str] = set()
@@ -267,7 +281,7 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
         context.mkdir()
         shutil.copyfile(DOCKERIGNORE, context / ".dockerignore")
         (context / "Dockerfile").write_text(
-            "FROM scratch\nCOPY . /context/\n", encoding="utf-8"
+            _synthetic_dockerfile_contents(), encoding="utf-8"
         )
 
         for relative_path in (*ALLOWED_FILES, *REQUIRED_BUILD_INPUTS, *FORBIDDEN_FILES):
