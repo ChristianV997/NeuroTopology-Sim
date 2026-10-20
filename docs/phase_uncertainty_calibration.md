@@ -94,31 +94,39 @@ Because `phase_std` cannot be corrected to a universal confidence interval by li
 
 ```mermaid
 flowchart TD
-    A["Complex Frame Z[n]"] --> B{"|Z[n]| < 0.15 * median(A)?"}
-    B -- Yes --> C["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Phase Singular)"]
-    B -- No --> D{"phase_std >= 0.95 * (pi/sqrt(3))?"}
-    D -- Yes --> E["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Uniform Floor)"]
-    D -- No --> F{"|f_inst - f_median| > 0.5 * f_median?"}
-    F -- Yes --> G["FAIL_CLOSED_FREQUENCY_DRIFT<br>(Quarantine: Nonstationary Carrier)"]
-    F -- No --> H{"phase_std > 0.6 * (pi/sqrt(3))?"}
-    H -- Yes --> I["MARGINAL<br>(Use only with wide tolerance)"]
-    H -- No --> J["RELIABLE<br>(Bounded Operational Use)"]
+    A["Complex Frame Z[n]"] --> B{"Diagnostics finite, non-negative, and aligned?"}
+    B -- No --> C["FAIL_CLOSED_INVALID_DATA<br>(Reject malformed diagnostics)"]
+    B -- Yes --> D{"A[n] < 0.15 * median(A), or median(A) <= 0?"}
+    D -- Yes --> E["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Phase Singular)"]
+    D -- No --> F{"phase_std >= 0.95 * (pi/sqrt(3))?"}
+    F -- Yes --> G["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Uniform Floor)"]
+    F -- No --> H{"|f_inst - f_median| > 0.5 * |f_median|?"}
+    H -- Yes --> I["FAIL_CLOSED_FREQUENCY_DRIFT<br>(Quarantine: Nonstationary Carrier)"]
+    H -- No --> J{"phase_std > 0.6 * (pi/sqrt(3))?"}
+    J -- Yes --> K["MARGINAL<br>(Use only with wide tolerance)"]
+    J -- No --> L["RELIABLE<br>(Rule-based category only)"]
 ```
 
 ### Categorization Criteria
-1. **`FAIL_CLOSED_NEAR_ZERO_AMPLITUDE`**:
+1. **`FAIL_CLOSED_INVALID_DATA`**:
+   Direct tier classification assigns this tier to non-finite or negative diagnostic values. Calibration report generation rejects non-finite, non-vector, or misaligned arrays with `ValueError`.
+2. **`FAIL_CLOSED_NEAR_ZERO_AMPLITUDE`**:
    Triggered when $A[n] < 0.15 \times \mathrm{median}(A)$.
-   Phase is physically undefined (vortex core / singularity); discard from synchronization metrics.
-2. **`FAIL_CLOSED_MAX_UNCERTAINTY`**:
+   If median amplitude is zero, all otherwise valid frames are quarantined. At zero amplitude, phase is undefined; this does not identify a physical vortex or biological state.
+3. **`FAIL_CLOSED_MAX_UNCERTAINTY`**:
    Triggered when $\mathrm{phase\_std}[n] \ge 0.95 \times \frac{\pi}{\sqrt{3}} \approx 1.72$ rad.
-   Phase is statistically uniform on the unit circle.
-3. **`FAIL_CLOSED_FREQUENCY_DRIFT`**:
-   Triggered when $|\Delta \theta[n] - \Delta \omega_0| > 0.5 \times |\Delta \omega_0|$.
+   This is a threshold on the heuristic output; it does not prove phase is statistically uniform.
+4. **`FAIL_CLOSED_FREQUENCY_DRIFT`**:
+   Triggered when $|f_{\mathrm{inst}}[n] - f_{\mathrm{median}}| > 0.5 \times |f_{\mathrm{median}}|$. At zero median frequency, any nonzero deviation fails closed.
    Median frequency demodulation fails during rapid frequency sweeps.
-4. **`MARGINAL`**:
+5. **`MARGINAL`**:
    Triggered when $\mathrm{phase\_std} \in [0.60, 0.95) \times \frac{\pi}{\sqrt{3}}$.
-5. **`RELIABLE`**:
-   High amplitude, stable frequency, $\mathrm{phase\_std} < 0.60 \times \frac{\pi}{\sqrt{3}}$.
+6. **`RELIABLE`**:
+   A deterministic rule-based category for high amplitude, small frequency deviation, and $\mathrm{phase\_std} < 0.60 \times \frac{\pi}{\sqrt{3}}$. It is not a calibrated probability, confidence interval, physical-correctness check, or empirical/biological validation.
+
+### Circular coverage limitation
+
+Errors are wrapped to $(-\pi, \pi]$. Whenever $1.96 \times \mathrm{phase\_std} \ge \pi$, every possible wrapped error is within the nominal 2-sigma bound and the reported coverage is geometrically saturated at 100%. The calibration report adds an explicit note for this condition; such coverage is not evidence that uncertainty is calibrated.
 
 ---
 

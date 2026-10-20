@@ -38,6 +38,7 @@ class ReliabilityTier(str, Enum):
     """Fail-closed operational reliability classification."""
     RELIABLE = "reliable"
     MARGINAL = "marginal"
+    FAIL_CLOSED_INVALID_DATA = "fail_closed_invalid_data"
     FAIL_CLOSED_NEAR_ZERO_AMP = "fail_closed_near_zero_amplitude"
     FAIL_CLOSED_FREQUENCY_DRIFT = "fail_closed_frequency_drift"
     FAIL_CLOSED_MAX_UNCERTAINTY = "fail_closed_max_uncertainty"
@@ -118,27 +119,58 @@ def classify_frame_reliability(
 
     Returns array of string tier names matching ReliabilityTier enum.
     """
-    n = len(amplitude)
-    tiers = np.empty(n, dtype=object)
+    try:
+        amplitude_values = np.asarray(amplitude, dtype=np.float64)
+        phase_std_values = np.asarray(phase_std, dtype=np.float64)
+        frequency_values = np.asarray(instantaneous_freq, dtype=np.float64)
+        median_freq_value = float(median_freq)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("calibration diagnostics must be numeric") from exc
 
-    med_amp = float(np.median(amplitude)) if n > 0 else 1.0
+    arrays = (amplitude_values, phase_std_values, frequency_values)
+    if any(values.ndim != 1 for values in arrays):
+        raise ValueError("calibration diagnostic arrays must be one-dimensional")
+    if not (amplitude_values.shape == phase_std_values.shape == frequency_values.shape):
+        raise ValueError("calibration diagnostic arrays must have identical lengths")
+
+    n = amplitude_values.size
+    tiers = np.full(n, ReliabilityTier.FAIL_CLOSED_INVALID_DATA.value, dtype=object)
+    if not math.isfinite(median_freq_value):
+        return tiers
+
+    valid = (
+        np.isfinite(amplitude_values)
+        & np.isfinite(phase_std_values)
+        & np.isfinite(frequency_values)
+        & (amplitude_values >= 0.0)
+        & (phase_std_values >= 0.0)
+    )
+    if not np.any(valid):
+        return tiers
+
+    med_amp = float(np.median(amplitude_values[valid]))
+    if med_amp <= 0.0:
+        tiers[valid] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
+        return tiers
+
     amp_floor = 0.15 * med_amp
-
-    freq_dev = np.abs(instantaneous_freq - median_freq)
-    max_freq_dev = 0.5 * max(1.0, abs(median_freq))
+    freq_dev = np.abs(frequency_values - median_freq_value)
+    max_freq_dev = 0.5 * abs(median_freq_value)
 
     for i in range(n):
+        if not valid[i]:
+            continue
         # 1. Near-zero amplitude singularity
-        if amplitude[i] < amp_floor:
+        if amplitude_values[i] < amp_floor:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
         # 2. Uncertainty pegged at ceiling
-        elif phase_std[i] >= 0.95 * UNIFORM_CIRCULAR_STD_CEILING:
+        elif phase_std_values[i] >= 0.95 * UNIFORM_CIRCULAR_STD_CEILING:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value
         # 3. Severe frequency drift / nonstationarity
         elif freq_dev[i] > max_freq_dev:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value
         # 4. Marginal regime
-        elif phase_std[i] > 0.60 * UNIFORM_CIRCULAR_STD_CEILING or amplitude[i] < 0.35 * med_amp:
+        elif phase_std_values[i] > 0.60 * UNIFORM_CIRCULAR_STD_CEILING or amplitude_values[i] < 0.35 * med_amp:
             tiers[i] = ReliabilityTier.MARGINAL.value
         # 5. Reliable regime
         else:
@@ -154,12 +186,35 @@ def evaluate_phase_uncertainty_calibration(
     n_bins: int = 5,
 ) -> CalibrationReport:
     """Evaluate empirical coverage, bias, and calibration ratios across predicted uncertainty bins."""
-    est_phase = np.asarray(result.phase, dtype=np.float64)
-    ref_phase = np.asarray(true_phase, dtype=np.float64)
-    pred_std = np.asarray(result.phase_std, dtype=np.float64)
+    try:
+        est_phase = np.asarray(result.phase, dtype=np.float64)
+        ref_phase = np.asarray(true_phase, dtype=np.float64)
+        pred_std = np.asarray(result.phase_std, dtype=np.float64)
+        amplitude = np.asarray(result.amplitude, dtype=np.float64)
+        instantaneous_freq = np.asarray(result.instantaneous_freq, dtype=np.float64)
+        median_freq = float(result.median_freq)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("calibration inputs must be numeric") from exc
 
+    if est_phase.ndim != 1 or ref_phase.ndim != 1:
+        raise ValueError("calibration phase arrays must be one-dimensional")
     if est_phase.shape != ref_phase.shape:
         raise ValueError(f"Shape mismatch: est_phase {est_phase.shape} != true_phase {ref_phase.shape}")
+
+    diagnostics = {
+        "phase_std": pred_std,
+        "amplitude": amplitude,
+        "instantaneous_freq": instantaneous_freq,
+    }
+    for name, values in diagnostics.items():
+        if values.ndim != 1 or values.shape != est_phase.shape:
+            raise ValueError(f"calibration diagnostic arrays must match phase samples: {name}")
+
+    all_values = (est_phase, ref_phase, *diagnostics.values())
+    if not math.isfinite(median_freq) or any(not np.all(np.isfinite(values)) for values in all_values):
+        raise ValueError("calibration inputs must contain only finite values")
+    if np.any(pred_std < 0.0) or np.any(amplitude < 0.0):
+        raise ValueError("calibration uncertainty and amplitude diagnostics must be non-negative")
 
     n = len(est_phase)
     if n == 0:
@@ -279,6 +334,12 @@ def evaluate_phase_uncertainty_calibration(
         notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value]} frames quarantined due to severe carrier frequency drift.")
     if tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value] > 0:
         notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value]} frames capped at uniform circular std ceiling pi/sqrt(3).")
+    saturated_2sigma = int(np.count_nonzero(1.96 * pred_std >= np.pi))
+    if saturated_2sigma:
+        notes.append(
+            "Wrapped-error 2-sigma coverage is geometrically saturated for "
+            f"{saturated_2sigma} frames (1.96 * phase_std >= pi); this is not calibration evidence."
+        )
 
     return CalibrationReport(
         fixture_id=fixture_id,

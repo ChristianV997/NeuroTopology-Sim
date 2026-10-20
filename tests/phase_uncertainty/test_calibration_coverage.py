@@ -9,11 +9,15 @@ Verifies:
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
+import numpy as np
 import pytest
 
 from tools.phase_uncertainty import (
     CalibrationVerdict,
     ReliabilityTier,
+    UNIFORM_CIRCULAR_STD_CEILING,
     estimate_narrowband_phase_uncertainty,
     evaluate_phase_uncertainty_calibration,
     make_colored_noise_signal,
@@ -21,6 +25,7 @@ from tools.phase_uncertainty import (
     make_near_zero_amplitude_signal,
     make_stationary_narrowband,
 )
+from tools.phase_uncertainty.calibration import classify_frame_reliability
 
 
 def test_empirical_coverage_computation_bounds() -> None:
@@ -116,3 +121,84 @@ def test_guardrail_unsupported_ci_claims_rejected() -> None:
 
     assert res.metadata["candidate_status"] == "reconstructed_from_contract_not_previously_executed"
     assert "ci_confidence_level" not in res.metadata
+
+
+def test_zero_amplitude_frames_are_not_classified_as_reliable() -> None:
+    """A zero-amplitude frame has undefined phase and must fail closed."""
+    result = estimate_narrowband_phase_uncertainty(np.zeros(32))
+
+    tiers = classify_frame_reliability(
+        result.amplitude,
+        result.phase_std,
+        result.instantaneous_freq,
+        result.median_freq,
+    )
+
+    assert set(tiers) == {ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value}
+
+
+def test_non_finite_diagnostics_receive_an_explicit_fail_closed_tier() -> None:
+    tiers = classify_frame_reliability(
+        np.array([1.0, 1.0]),
+        np.array([0.1, np.nan]),
+        np.array([0.5, 0.5]),
+        0.5,
+    )
+
+    assert tiers.tolist() == [
+        ReliabilityTier.RELIABLE.value,
+        ReliabilityTier.FAIL_CLOSED_INVALID_DATA.value,
+    ]
+
+
+def test_low_frequency_drift_uses_documented_relative_threshold() -> None:
+    tiers = classify_frame_reliability(
+        np.array([1.0]),
+        np.array([0.1]),
+        np.array([0.8]),
+        0.5,
+    )
+
+    assert tiers.tolist() == [ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value]
+
+
+def test_calibration_rejects_misaligned_diagnostic_arrays() -> None:
+    fixture = make_stationary_narrowband(n_samples=24, seed=57)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+
+    with pytest.raises(ValueError, match="diagnostic arrays"):
+        evaluate_phase_uncertainty_calibration(
+            replace(result, amplitude=result.amplitude[:-1]),
+            fixture.true_phase,
+            fixture_id=fixture.fixture_id,
+        )
+
+
+def test_calibration_rejects_non_finite_uncertainty_values() -> None:
+    fixture = make_stationary_narrowband(n_samples=24, seed=58)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+
+    with pytest.raises(ValueError, match="finite"):
+        evaluate_phase_uncertainty_calibration(
+            replace(result, phase_std=np.full_like(result.phase_std, np.nan)),
+            fixture.true_phase,
+            fixture_id=fixture.fixture_id,
+        )
+
+
+def test_saturated_two_sigma_coverage_is_flagged_as_uninformative() -> None:
+    fixture = make_stationary_narrowband(n_samples=32, seed=59)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+    high_uncertainty = replace(
+        result,
+        phase_std=np.full_like(result.phase_std, UNIFORM_CIRCULAR_STD_CEILING),
+    )
+
+    report = evaluate_phase_uncertainty_calibration(
+        high_uncertainty,
+        fixture.true_phase,
+        fixture_id=fixture.fixture_id,
+    )
+
+    assert report.overall_coverage_2sigma == 1.0
+    assert any("geometrically saturated" in note for note in report.summary_notes)
