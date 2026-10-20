@@ -187,8 +187,12 @@ def estimate_narrowband_phase_uncertainty(
     if n < 4:
         raise ValueError(f"signal length must be >= 4 to compute second differences, got {n}")
 
-    # Validate finite values
-    if not np.all(np.isfinite(arr)):
+    # Validate numeric, finite values before either FFT or complex conversion.
+    try:
+        input_is_finite = np.all(np.isfinite(arr))
+    except TypeError as exc:
+        raise ValueError("signal must contain numeric values") from exc
+    if not input_is_finite:
         raise ValueError("signal contains NaN or infinite values")
 
     # If real, construct discrete analytic signal

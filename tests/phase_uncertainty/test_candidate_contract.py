@@ -65,6 +65,11 @@ def test_finite_input_that_overflows_derived_signal_fails_closed() -> None:
         estimate_narrowband_phase_uncertainty(extreme_signal)
 
 
+def test_nonnumeric_signal_dtype_is_rejected_as_validation_error() -> None:
+    with pytest.raises(ValueError, match="numeric"):
+        estimate_narrowband_phase_uncertainty(np.array(["signal"] * 8))
+
+
 def test_fs_must_be_positive_finite() -> None:
     """Sampling frequency must be finite and strictly positive (fail closed)."""
     z = np.exp(1j * np.linspace(0.0, 4.0 * np.pi, 64))

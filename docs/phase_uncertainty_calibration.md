@@ -52,6 +52,8 @@ The Round 6 candidate estimator operates on complex narrowband signals $Z[n] = A
    $$\mathrm{phase\_std}[n] = \min\left(\sigma_{\mathrm{raw}}[n], \frac{\pi}{\sqrt{3}}\right)$$
    *(where $\pi / \sqrt{3} \approx 1.8138$ is the standard deviation of a continuous uniform distribution on $[-\pi, \pi]$)*.
 
+The implementation requires a one-dimensional numeric signal of at least four finite samples and a finite positive sampling rate. It fails closed if the analytic transform or any derived diagnostic becomes non-finite; it does not return a report containing NaN or Infinity.
+
 ---
 
 ## 3. Empirical Calibration Results across Synthetic Battery
