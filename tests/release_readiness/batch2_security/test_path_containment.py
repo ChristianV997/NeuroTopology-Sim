@@ -63,3 +63,35 @@ def test_write_reports_rejects_output_root_escape(tmp_path: Path):
     payload = {"schema_version": "test", "security_pass": True, "findings": []}
     with pytest.raises(PathEscapeError):
         write_reports(payload, trusted / ".." / "escape", trusted_root=trusted)
+
+
+def test_write_reports_accepts_in_root(tmp_path: Path):
+    """Valid child of trusted_root is written deterministically."""
+    from tools.release_readiness.batch2_security.report import write_reports
+
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    payload = {"schema_version": "v1", "security_pass": True, "scientific_pass_emitted": False, "findings": []}
+    paths = write_reports(payload, "out", trusted_root=trusted)
+    assert Path(paths["json"]).is_file()
+    assert Path(paths["markdown"]).is_file()
+    paths2 = write_reports(payload, "out", trusted_root=trusted)
+    assert Path(paths["json"]).read_text() == Path(paths2["json"]).read_text()
+
+
+def test_write_reports_rejects_symlink_escape(tmp_path: Path):
+    """Symlink inside trusted root that targets outside is rejected."""
+    from tools.release_readiness.batch2_security.report import write_reports
+
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link = trusted / "link"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable")
+    payload = {"schema_version": "v1", "security_pass": True, "findings": []}
+    with pytest.raises(PathEscapeError):
+        write_reports(payload, "link", trusted_root=trusted)
