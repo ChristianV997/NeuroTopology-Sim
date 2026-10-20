@@ -79,31 +79,6 @@ def _git_cwd(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _local_main_sha(test: unittest.TestCase) -> str:
-    """Prefer origin/main, then main.
-
-    ``skipTest`` only when the git binary is missing. An unresolvable ref
-    or any other git error fails the test.
-    """
-
-    errors: list[str] = []
-    try:
-        for ref in ("origin/main", "main"):
-            completed = _git_cwd("rev-parse", "--verify", ref)
-            sha = completed.stdout.strip()
-            if completed.returncode == 0 and len(sha) == 40:
-                return sha
-            detail = (completed.stderr or completed.stdout).strip() or "unresolved"
-            errors.append(f"{ref}: {detail}")
-    except FileNotFoundError:
-        test.skipTest("git binary not available")
-    test.fail(
-        "unresolvable origin/main and main; a local main ref is required. "
-        + "; ".join(errors)
-    )
-    return ""
-
-
 def _require_audited_main_ancestor(test: unittest.TestCase) -> str:
     """Return local main when ``AUDITED_MAIN_SHA`` is an ancestor of it.
 
@@ -833,7 +808,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(plan.wilson.status, "found")
 
     def test_fabricated_admissible_caller_record_blocks_every_cell(self):
-        main_sha = _local_main_sha(self)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         fabricated = []
         for gate_id in BLOCKING_GATE_IDS:
             fabricated.append(
@@ -885,7 +861,14 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(plan.limits["artifact_sha_is_format_only"])
         _assert_all_cells_blocked(self, plan)
         statuses = _statuses(plan)
-        pinned_awaiting = {"four_sphere_forward_model", "winding", "roc_metrics"}
+        pinned_awaiting = {
+            "four_sphere_forward_model",
+            "winding",
+            "roc_metrics",
+            "planar_geometry",
+            "hodge",
+            "surrogate_null",
+        }
         for gate_id in BLOCKING_GATE_IDS:
             if gate_id == "ci_discovery":
                 self.assertEqual(statuses[gate_id], "ci_discovery_blocked")
@@ -907,15 +890,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("ci_discovery_blocked", {item["code"] for item in plan.gate_check["blockers"]})
 
     def test_stale_non_ancestor_report_blocks_every_cell(self):
-        main_sha = _local_main_sha(self)
-        head_sha = _git("rev-parse", "HEAD")
-        self.assertNotEqual(head_sha, main_sha)
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", head_sha, main_sha],
-            cwd=str(_REPO_ROOT),
-            check=False,
-        )
-        self.assertNotEqual(ancestor.returncode, 0)
+        _require_audited_main_ancestor(self)
         calls, spy = _spy_calls()
         with _resolved_main(), tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -925,7 +900,7 @@ class GridPlanTests(unittest.TestCase):
                     {
                         "case_id": "four_sphere_forward_model",
                         "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
-                        "verified_at_commit": head_sha,
+                        "verified_at_commit": "ab" * 20,
                     }
                 ],
             )
@@ -942,9 +917,9 @@ class GridPlanTests(unittest.TestCase):
             "promotion_report_missing",
         )
         self.assertNotEqual(_statuses(plan)["four_sphere_forward_model"], "admissible_on_ancestor")
-        self.assertEqual(_statuses(plan)["planar_geometry"], "dependency_not_merged_on_main")
+        self.assertEqual(_statuses(plan)["planar_geometry"], "promotion_report_missing")
         self.assertEqual(_statuses(plan)["winding"], "promotion_report_missing")
-        self.assertEqual(_statuses(plan)["hodge"], "dependency_not_merged_on_main")
+        self.assertEqual(_statuses(plan)["hodge"], "promotion_report_missing")
         self.assertEqual(_statuses(plan)["ci_discovery"], "ci_discovery_blocked")
         self.assertNotIn("not_ancestor", {item["code"] for item in plan.gate_check["blockers"]})
         _assert_all_cells_blocked(self, plan)
@@ -952,7 +927,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertIsNone(plan.detector_roc)
 
     def test_forged_report_in_untracked_tmp_dir_opens_no_gate(self):
-        main_sha = _local_main_sha(self)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -986,13 +962,14 @@ class GridPlanTests(unittest.TestCase):
         forged_status = _statuses(plan)
         self.assertEqual(forged_status["four_sphere_forward_model"], "promotion_report_missing")
         self.assertEqual(forged_status["winding"], "promotion_report_missing")
-        self.assertEqual(forged_status["planar_geometry"], "dependency_not_merged_on_main")
+        self.assertEqual(forged_status["planar_geometry"], "promotion_report_missing")
         self.assertTrue(
             all(item["status"] != "admissible_on_ancestor" for item in plan.gate_resolution)
         )
 
     def test_forged_report_in_tree_but_uncommitted_opens_no_gate(self):
-        main_sha = _local_main_sha(self)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         directory = _REPO_ROOT / "tools" / "simulation_runtime"
         names = [f"_forged_{gate_id}.json" for gate_id in BLOCKING_GATE_IDS]
         for name in names:
@@ -1026,7 +1003,8 @@ class GridPlanTests(unittest.TestCase):
         _assert_seven_non_admissible(self, labeled)
 
     def test_tip_commit_claim_on_a_file_not_on_main_opens_no_gate(self):
-        main_sha = _local_main_sha(self)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         calls, spy = _spy_calls()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1097,7 +1075,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(unresolved_plan.code_version_id, "b" * 40)
 
     def test_one_case_id_opens_one_gate_and_duplicates_block_that_gate(self):
-        main_sha = _local_main_sha(self)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         admissible = {
             "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
             "scientific_pass": False,
@@ -1145,18 +1124,18 @@ class GridPlanTests(unittest.TestCase):
         by_id = {item["gate_id"]: item for item in duplicated}
         self.assertEqual(by_id["four_sphere_forward_model"]["status"], "duplicate_record")
         self.assertNotEqual(by_id["four_sphere_forward_model"]["status"], "admissible_on_ancestor")
-        self.assertEqual(by_id["planar_geometry"]["status"], "missing")
+        self.assertEqual(by_id["planar_geometry"]["status"], "promotion_report_missing")
         self.assertIn("duplicate_gate_record", {item["code"] for item in duplicate_blockers})
         self.assertTrue(
             all(item["status"] != "admissible_on_ancestor" for item in duplicated)
         )
         multi_status = {item["gate_id"]: item["status"] for item in multi}
         self.assertEqual(multi_status["four_sphere_forward_model"], "promotion_report_missing")
-        self.assertEqual(multi_status["planar_geometry"], "missing")
+        self.assertEqual(multi_status["planar_geometry"], "promotion_report_missing")
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in multi))
         single_status = {item["gate_id"]: item["status"] for item in single}
         self.assertEqual(single_status["four_sphere_forward_model"], "not_on_main")
-        self.assertEqual(single_status["planar_geometry"], "missing")
+        self.assertEqual(single_status["planar_geometry"], "promotion_report_missing")
         self.assertEqual(single_status["ci_discovery"], "missing")
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in single))
 
@@ -1173,6 +1152,9 @@ class GridPlanTests(unittest.TestCase):
             "four_sphere_forward_model": "02520d44d662d394a2ff0822c0d3170a2d34213a",
             "winding": "9abf3abeebd1c210d59df44b4d208678d203404c",
             "roc_metrics": "9f10956d521e96f961f29c24f033374c3c20e065",
+            "planar_geometry": "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc",
+            "hodge": "ba441f161a87549d6e51b767b819318500946b17",
+            "surrogate_null": "20222fdeba68ca5746609ce4305c7259b3266e95",
         }
         for gate_id in BLOCKING_GATE_IDS:
             row = next(item for item in plan.gate_resolution if item["gate_id"] == gate_id)
@@ -1771,6 +1753,9 @@ class GridPlanTests(unittest.TestCase):
             "four_sphere_forward_model": (418, "02520d44d662d394a2ff0822c0d3170a2d34213a"),
             "winding": (413, "9abf3abeebd1c210d59df44b4d208678d203404c"),
             "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
+            "planar_geometry": (416, "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc"),
+            "hodge": (423, "ba441f161a87549d6e51b767b819318500946b17"),
+            "surrogate_null": (417, "20222fdeba68ca5746609ce4305c7259b3266e95"),
         }
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
             if gate_id in pinned:
@@ -1799,7 +1784,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("hodge_decompose", hodge_row["required_api_symbols"])
         self.assertEqual(hodge_row["contract_source"], "candidate_head_observed")
         self.assertEqual(hodge_row["informational_candidate"]["candidate_pr"], 423)
-        self.assertIsNone(hodge_row["pinned_commit"])
+        self.assertEqual(hodge_row["pinned_commit"], "ba441f161a87549d6e51b767b819318500946b17")
+        self.assertEqual(hodge_row["merged_pr"], 423)
         self.assertEqual(
             hodge_row["informational_candidate"]["candidate_head_observed"],
             "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
@@ -1824,6 +1810,9 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("9abf3abeebd1c210d59df44b4d208678d203404c", hashed_text)
         self.assertIn("9f10956d521e96f961f29c24f033374c3c20e065", hashed_text)
         self.assertIn("09e6e0c182fa47693954ebee1b5194c3f0a5d0b0", hashed_text)
+        self.assertIn("f3346b128ed8d55e815c1a78f237c0fd9fa71fcc", hashed_text)
+        self.assertIn("ba441f161a87549d6e51b767b819318500946b17", hashed_text)
+        self.assertIn("20222fdeba68ca5746609ce4305c7259b3266e95", hashed_text)
         for informational in (
             "1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
             "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
@@ -1874,15 +1863,7 @@ class GridPlanTests(unittest.TestCase):
         unchanged_status = {item["gate_id"]: item["status"] for item in unchanged}
         self.assertEqual(unchanged_status["roc_metrics"], "promotion_report_missing")
 
-        open_head = "55115149c7443ca8b325dc4dbf65d6900c9fdd79"
-        not_ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", open_head, main_sha],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertNotEqual(not_ancestor.returncode, 0)
+        open_head = "ab" * 20
         with patch.dict(
             grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"],
             {"pinned_commit": open_head},
@@ -1904,7 +1885,7 @@ class GridPlanTests(unittest.TestCase):
 
         with patch.dict(
             grid_plan_module.GATE_CONTRACT["planar_geometry"],
-            {"pinned_commit": main_sha, "merged_pr": 416},
+            {"pinned_commit": AUDITED_MAIN_SHA, "merged_pr": 416},
         ):
             mismatched, _mismatch_blockers = grid_plan_module._resolve_gates_from_rows(
                 [],
@@ -1959,7 +1940,7 @@ class GridPlanTests(unittest.TestCase):
         with patch.dict(
             grid_plan_module.GATE_CONTRACT["phase_dispersion_module"],
             {
-                "pinned_commit": main_sha,
+                "pinned_commit": AUDITED_MAIN_SHA,
                 "required_module_path": "tools/phase_uncertainty/estimator.py",
             },
         ):
@@ -2040,7 +2021,7 @@ class GridPlanTests(unittest.TestCase):
             "neurotopology_sim/experimental/topology/hodge_2d.py",
         )
         self.assertEqual(hodge["contract_source"], "candidate_head_observed")
-        self.assertIsNone(hodge["pinned_commit"])
+        self.assertEqual(hodge["pinned_commit"], "ba441f161a87549d6e51b767b819318500946b17")
         self.assertEqual(hodge["informational_candidate"]["candidate_pr"], 423)
         self.assertEqual(
             hodge["informational_candidate"]["candidate_head_observed"],
@@ -2055,15 +2036,8 @@ class GridPlanTests(unittest.TestCase):
         ):
             self.assertIn(symbol, hodge["required_api_symbols"])
 
-        main_sha = _local_main_sha(self)
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", main_sha, main_sha],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(ancestor.returncode, 0)
+        _require_audited_main_ancestor(self)
+        main_sha = AUDITED_MAIN_SHA
         gate_id = "four_sphere_forward_model"
         declared = grid_plan_module.GATE_CONTRACT[gate_id]
         placeholder = "\n".join(f"{name} = None" for name in declared["required_api_symbols"]) + "\n"
@@ -2113,9 +2087,12 @@ class GridPlanTests(unittest.TestCase):
         mutated_status = {item["gate_id"]: item["status"] for item in mutated}
         self.assertEqual(mutated_status["roc_metrics"], "promotion_report_missing")
         hodge_resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "hodge")
-        self.assertEqual(hodge_resolved["status"], "dependency_not_merged_on_main")
-        self.assertIn("dependency_not_merged_on_main", hodge_resolved["reason_codes"])
-        self.assertIsNone(hodge_resolved["pinned_commit"])
+        self.assertEqual(hodge_resolved["status"], "promotion_report_missing")
+        self.assertIn("promotion_report_missing", hodge_resolved["reason_codes"])
+        self.assertEqual(
+            hodge_resolved["pinned_commit"],
+            "ba441f161a87549d6e51b767b819318500946b17",
+        )
         self.assertNotEqual(hodge_resolved["status"], "admissible_on_ancestor")
         self.assertEqual(
             hodge_resolved["required_module_path"],
@@ -2135,7 +2112,7 @@ class GridPlanTests(unittest.TestCase):
             with patch.dict(
                 grid_plan_module.GATE_CONTRACT[unobserved],
                 {
-                    "pinned_commit": main_sha,
+                    "pinned_commit": AUDITED_MAIN_SHA,
                     "required_module_path": "runs/run_record.py",
                     "required_api_symbols": (),
                 },
@@ -2170,7 +2147,14 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
-            if gate_id in {"four_sphere_forward_model", "winding", "roc_metrics"}:
+            if gate_id in {
+                "four_sphere_forward_model",
+                "winding",
+                "roc_metrics",
+                "planar_geometry",
+                "hodge",
+                "surrogate_null",
+            }:
                 continue
             self.assertIsNone(row["pinned_commit"], gate_id)
             self.assertIsNone(row["merged_pr"], gate_id)
@@ -2187,8 +2171,13 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(statuses["four_sphere_forward_model"], "promotion_report_missing")
         self.assertEqual(statuses["winding"], "promotion_report_missing")
         self.assertEqual(statuses["roc_metrics"], "promotion_report_missing")
-        self.assertEqual(statuses["planar_geometry"], "dependency_not_merged_on_main")
-        self.assertEqual(statuses["surrogate_null"], "dependency_not_merged_on_main")
+        self.assertEqual(statuses["planar_geometry"], "promotion_report_missing")
+        self.assertEqual(statuses["hodge"], "promotion_report_missing")
+        self.assertEqual(statuses["surrogate_null"], "promotion_report_missing")
+        self.assertIn(
+            "adversarial_suite_hosted_evidence_missing",
+            next(item for item in plan.gate_resolution if item["gate_id"] == "surrogate_null")["reason_codes"],
+        )
         self.assertEqual(statuses["ci_discovery"], "ci_discovery_blocked")
         self.assertNotEqual(statuses["winding"], "admissible_on_ancestor")
         self.assertEqual(plan.execution["abort_gate"], "four_sphere_forward_model")
@@ -2227,36 +2216,9 @@ class GridPlanTests(unittest.TestCase):
         )
         self.assertEqual(len(combined), len(set(combined)))
 
-        for open_head in (
-            "8c422e9c295510c1e71b373181f9eb1c44871a25",
-            "e5e1136631d500dddab7a5b31d6916962b5da5e3",
-        ):
-            open_probe = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", open_head, main_sha],
-                cwd=str(_REPO_ROOT),
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertNotEqual(open_probe.returncode, 0, open_head)
-        for landed_head in (
-            "c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
-            "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
-        ):
-            landed_probe = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", landed_head, main_sha],
-                cwd=str(_REPO_ROOT),
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(landed_probe.returncode, 0, landed_head)
-        self.assertIsNone(grid_plan_module.GATE_CONTRACT["hodge"]["pinned_commit"])
-        self.assertIsNone(grid_plan_module.GATE_CONTRACT["surrogate_null"]["pinned_commit"])
-        self.assertEqual(statuses["hodge"], "dependency_not_merged_on_main")
         with patch.dict(
             grid_plan_module.GATE_CONTRACT["roc_metrics"],
-            {"pinned_commit": "8c422e9c295510c1e71b373181f9eb1c44871a25", "merged_pr": 426},
+            {"pinned_commit": "cd" * 20, "merged_pr": 426},
         ):
             open_resolved, _open_blockers = grid_plan_module._resolve_gates_from_rows(
                 [],
@@ -2548,7 +2510,6 @@ class GridPlanTests(unittest.TestCase):
         )
         self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, audited)
         main_sha = _require_audited_main_ancestor(self)
-        self.assertEqual(main_sha, audited)
         pin_blob = grid_plan_module._blob_sha(roc_pin, roc["required_module_path"])
         main_blob = grid_plan_module._blob_sha(audited, roc["required_module_path"])
         self.assertEqual(pin_blob, roc_blob)
@@ -2570,6 +2531,199 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(
             all(item["status"] != "admissible_on_ancestor" for item in plan.gate_resolution)
         )
+
+    def test_fixture_main_advance_does_not_flip_frozen_ancestry(self):
+        """An informational commit that later lands must not rewrite frozen ancestry."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            def git(*args: str) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ["git", *args],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+            init = git("init", "-b", "main")
+            self.assertEqual(init.returncode, 0, init.stderr)
+            self.assertEqual(git("config", "user.email", "fixture@example.com").returncode, 0)
+            self.assertEqual(git("config", "user.name", "fixture").returncode, 0)
+            (root / "note.txt").write_text("base\n", encoding="utf-8")
+            self.assertEqual(git("add", "note.txt").returncode, 0)
+            self.assertEqual(git("commit", "-m", "base").returncode, 0)
+            frozen = git("rev-parse", "HEAD").stdout.strip()
+            self.assertEqual(git("checkout", "-b", "side").returncode, 0)
+            (root / "note.txt").write_text("informational\n", encoding="utf-8")
+            self.assertEqual(git("commit", "-am", "informational").returncode, 0)
+            informational = git("rev-parse", "HEAD").stdout.strip()
+            self.assertEqual(git("checkout", "main").returncode, 0)
+            before = git("merge-base", "--is-ancestor", informational, frozen)
+            self.assertNotEqual(before.returncode, 0)
+            self.assertEqual(git("merge", "--ff-only", "side").returncode, 0)
+            advanced = git("rev-parse", "HEAD").stdout.strip()
+            after = git("merge-base", "--is-ancestor", informational, advanced)
+            self.assertEqual(after.returncode, 0)
+            frozen_after = git("merge-base", "--is-ancestor", informational, frozen)
+            self.assertNotEqual(frozen_after.returncode, 0)
+        source = Path(__file__).read_text(encoding="utf-8")
+        for left in ("head_sha", "open_head", "landed_head"):
+            needle = '["git", "merge-base", "--is-ancestor", ' + left + ", main_sha]"
+            self.assertNotIn(needle, source)
+        local_probe = "_local_" + "main_sha("
+        self.assertEqual(source.count(local_probe), 0)
+
+    def test_hodge_pin_matches_423_merge_blob_and_awaits_report(self):
+        pin = "ba441f161a87549d6e51b767b819318500946b17"
+        blob = "a5cad32e4b6095d1f8467750f03351e96304b96a"
+        added = "a7369294f3b93186f49562eefc621d2a40831422"
+        row = grid_plan_module.GATE_CONTRACT["hodge"]
+        self.assertEqual(row["pinned_commit"], pin)
+        self.assertEqual(row["merged_pr"], 423)
+        self.assertEqual(row["added_in_commit"], added)
+        self.assertNotEqual(row["pinned_commit"], row["added_in_commit"])
+        self.assertEqual(row["implementation_blob_sha"], blob)
+        self.assertEqual(grid_plan_module.MERGED_PIN_PAIRS["hodge"], (423, pin))
+        _require_audited_main_ancestor(self)
+        self.assertEqual(grid_plan_module._blob_sha(pin, row["required_module_path"]), blob)
+        self.assertEqual(
+            grid_plan_module._blob_sha(AUDITED_MAIN_SHA, row["required_module_path"]),
+            blob,
+        )
+        calls, spy = _spy_calls()
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertEqual(plan.run_state, "blocked")
+        resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "hodge")
+        self.assertEqual(resolved["status"], "promotion_report_missing")
+        self.assertEqual(resolved["reason_codes"], ["promotion_report_missing"])
+        self.assertNotIn("dependency_not_merged_on_main", resolved["reason_codes"])
+
+    def test_planar_geometry_pin_matches_416_merge_blob_and_awaits_report(self):
+        pin = "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc"
+        blob = "6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2"
+        added = "0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf"
+        row = grid_plan_module.GATE_CONTRACT["planar_geometry"]
+        self.assertEqual(row["pinned_commit"], pin)
+        self.assertEqual(row["merged_pr"], 416)
+        self.assertEqual(row["added_in_commit"], added)
+        self.assertNotEqual(row["pinned_commit"], row["added_in_commit"])
+        self.assertEqual(row["implementation_blob_sha"], blob)
+        self.assertEqual(grid_plan_module.MERGED_PIN_PAIRS["planar_geometry"], (416, pin))
+        _require_audited_main_ancestor(self)
+        self.assertEqual(grid_plan_module._blob_sha(pin, row["required_module_path"]), blob)
+        self.assertEqual(
+            grid_plan_module._blob_sha(AUDITED_MAIN_SHA, row["required_module_path"]),
+            blob,
+        )
+        calls, spy = _spy_calls()
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertEqual(plan.run_state, "blocked")
+        resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "planar_geometry")
+        self.assertEqual(resolved["status"], "promotion_report_missing")
+        self.assertEqual(resolved["reason_codes"], ["promotion_report_missing"])
+        self.assertNotIn("dependency_not_merged_on_main", resolved["reason_codes"])
+
+    def test_surrogate_null_pin_stays_blocked_without_hosted_adversarial_suite(self):
+        pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
+        blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
+        added = "f8eaa29d70c7bd73c0b561662061d61988800639"
+        row = grid_plan_module.GATE_CONTRACT["surrogate_null"]
+        self.assertEqual(row["pinned_commit"], pin)
+        self.assertEqual(row["merged_pr"], 417)
+        self.assertEqual(row["added_in_commit"], added)
+        self.assertNotEqual(row["pinned_commit"], row["added_in_commit"])
+        self.assertEqual(row["implementation_blob_sha"], blob)
+        self.assertEqual(grid_plan_module.MERGED_PIN_PAIRS["surrogate_null"], (417, pin))
+        self.assertFalse(grid_plan_module.SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN)
+        _require_audited_main_ancestor(self)
+        self.assertEqual(grid_plan_module._blob_sha(pin, row["required_module_path"]), blob)
+        self.assertEqual(
+            grid_plan_module._blob_sha(AUDITED_MAIN_SHA, row["required_module_path"]),
+            blob,
+        )
+        calls, spy = _spy_calls()
+        with _resolved_main():
+            plan = execute(_base_config(), simulation=spy)
+        self.assertEqual(calls, [])
+        self.assertFalse(plan.gate_check["opened"])
+        self.assertFalse(plan.execution["sweep_reachable"])
+        self.assertEqual(plan.run_state, "blocked")
+        resolved = next(item for item in plan.gate_resolution if item["gate_id"] == "surrogate_null")
+        self.assertEqual(resolved["status"], "promotion_report_missing")
+        self.assertIn("promotion_report_missing", resolved["reason_codes"])
+        self.assertIn("adversarial_suite_hosted_evidence_missing", resolved["reason_codes"])
+        self.assertNotEqual(resolved["status"], "admissible_on_ancestor")
+        with tempfile.TemporaryDirectory() as tmp:
+            report_path = _write_report(
+                Path(tmp),
+                [
+                    {
+                        "case_id": "surrogate_null",
+                        "promotion_decision": "ADMISSIBLE_FOR_ENGINEERING_REPORT",
+                        "verified_at_commit": pin,
+                        "source_sha": pin,
+                    }
+                ],
+            )
+            raw = report_path.read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        report_row = dict(payload["results"][0])
+        report_row.update(
+            {
+                "case_id": "surrogate_null",
+                "_source": "git_blob",
+                "_path": "reports/surrogate_null.json",
+                "source_sha": pin,
+                "verified_at_commit": pin,
+            }
+        )
+
+        real_show = grid_plan_module._git_show
+
+        def show(sha, path):
+            if path == "reports/surrogate_null.json":
+                return raw
+            return real_show(sha, path)
+
+        with patch.object(grid_plan_module, "_ci_discovery_blocked", return_value=False), patch.object(
+            grid_plan_module, "_path_tracked", return_value=True
+        ), patch.object(grid_plan_module, "_git_show", side_effect=show), patch.object(
+            grid_plan_module, "_blob_commit", return_value=pin
+        ), patch.object(
+            grid_plan_module, "_is_ancestor_of_main", return_value=True
+        ):
+            blocked, _blockers = grid_plan_module._resolve_gates_from_rows(
+                [report_row],
+                main_sha=AUDITED_MAIN_SHA,
+                git_failure=None,
+            )
+        blocked_row = next(item for item in blocked if item["gate_id"] == "surrogate_null")
+        self.assertEqual(blocked_row["status"], "adversarial_suite_hosted_evidence_missing")
+        self.assertNotEqual(blocked_row["status"], "admissible_on_ancestor")
+        with patch.object(grid_plan_module, "SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN", True), patch.object(
+            grid_plan_module, "_ci_discovery_blocked", return_value=False
+        ), patch.object(grid_plan_module, "_path_tracked", return_value=True), patch.object(
+            grid_plan_module, "_git_show", side_effect=show
+        ), patch.object(grid_plan_module, "_blob_commit", return_value=pin), patch.object(
+            grid_plan_module, "_is_ancestor_of_main", return_value=True
+        ):
+            opened_rows, _opened_blockers = grid_plan_module._resolve_gates_from_rows(
+                [report_row],
+                main_sha=AUDITED_MAIN_SHA,
+                git_failure=None,
+            )
+        opened_row = next(item for item in opened_rows if item["gate_id"] == "surrogate_null")
+        self.assertEqual(opened_row["status"], "admissible_on_ancestor")
 
 
 if __name__ == "__main__":

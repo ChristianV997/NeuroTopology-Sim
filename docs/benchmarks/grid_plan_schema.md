@@ -86,9 +86,16 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 
 No writer default path is committed on main at the audited commit
 `bc91af19a22783d2721fc881842573f7e08a8925`. `four_sphere_forward_model`,
-`winding`, and `roc_metrics` are pinned to landed commits and stay
-`promotion_report_missing`. Every other dependency pin is null, so those
-gates are `dependency_not_merged_on_main`, and every cell stays blocked.
+`planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
+are pinned to landed commits and stay `promotion_report_missing`.
+`surrogate_null` also carries `adversarial_suite_hosted_evidence_missing`,
+so a promotion report does not make that gate admissible.
+`phase_dispersion_module`, `phase_score_limitations_recorded`, and
+`csd_full_matrix_pinned_mne` stay unpinned, so those gates are
+`dependency_not_merged_on_main`, and every cell stays blocked.
+The only live `origin/main` check in the suite is that `AUDITED_MAIN_SHA`
+is an ancestor. Other ancestry examples use that frozen tree or a
+temporary git repository.
 A caller dict, list, or boolean passed to `execute` is not read, even
 when it says `ADMISSIBLE_*` and names an ancestor commit.
 
@@ -410,37 +417,36 @@ the status is `promotion_report_missing`. The historical stub
 `8c422e9c295510c1e71b373181f9eb1c44871a25` stays informational and is
 not the pin. Pull-request head
 `123f969fa0360a887e87a3a071c7de8b523cbfbb` is not the pin.
-`hodge` (`neurotopology_sim/experimental/topology/hodge_2d.py`, blob
-`a5cad32e4b6095d1f8467750f03351e96304b96a`, added at
-`a7369294f3b93186f49562eefc621d2a40831422`) is on audited main.
-Re-ls-remote of #423 returns `046d632fb9482ba200f414e26a41f90cb3eecb77`,
-an ancestor of main. The stored informational head stays
-`eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9`. The pin stays null this
-round, so the gate stays `dependency_not_merged_on_main`.
-`planar_geometry` is on audited main (blob
-`6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2`, added at
-`0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`). Re-ls-remote of #416 returns
-`04611a98790be848b25aadbd6602a58c819b2239`, an ancestor. The stored
-informational head stays `757668e9b739d7423fa1493aec550072aa105829`.
-The pin stays null.
+`hodge` is pinned to merge commit
+`ba441f161a87549d6e51b767b819318500946b17` of pull request #423.
+The file was added at `a7369294f3b93186f49562eefc621d2a40831422`
+(blob `0b2a427af06657f25560af6f309f354f4745795f`). That adding commit is
+not the pin. The blob at the pin equals audited main
+(`a5cad32e4b6095d1f8467750f03351e96304b96a`). There is no main-tracked
+promotion report, so the status is `promotion_report_missing`.
+`planar_geometry` is pinned to merge commit
+`f3346b128ed8d55e815c1a78f237c0fd9fa71fcc` of pull request #416.
+The file was added at `0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`
+(blob `f5ddd4f497e7462e098aa624317a2a28c6c60b1d`). The blob at the pin
+equals audited main (`6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2`).
+The status is `promotion_report_missing`.
 `csd_full_matrix_pinned_mne` is not on audited main:
-`spherical_csd.py` is absent, and #414 head
-`c3cbf584b70670ac54b6336904c09071f3e3107f` is not in this clone. The
-stored informational head stays
-`5a8e6485be08f68757c46b7e7beda70bf9a0d4b6`. The pin stays null.
-Open pull requests #396 and #385 also ship Hodge code; the contract cites
-the production module path recorded for #423. `phase_dispersion_module` has no path and
+`spherical_csd.py` is absent. Pull request #414 is still open; ls-remote
+returns `b9aaa868db7cf0aa63ad2cda09afdbf4c8dc8fb6`. The pin stays null.
+`phase_dispersion_module` has no path and
 no symbols (`contract_declared_unobserved`) and stays unpinned. No open
 pull request fetched for this audit ships a `phase_dispersion` module.
 A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
-Pull request #403 is not that module. `surrogate_null`
-(`tools/surrogate_nulls/nulls.py`, blob
-`8dfe299692d5cb056ddeff9506cfe392b08115f2`, added at
-`f8eaa29d70c7bd73c0b561662061d61988800639`) is on audited main.
-Re-ls-remote of #417 returns `203884aa262690529a1004135e56f862124052f1`,
-an ancestor. The stored informational head stays
-`c39f715c84e928c0204b8c58ef9e40bc1f0ab684`. The pin stays null this
-round. Pull request #430
+Pull request #403 is not that module. `surrogate_null` is pinned to merge
+commit `20222fdeba68ca5746609ce4305c7259b3266e95` of pull request #417.
+The file was added at `f8eaa29d70c7bd73c0b561662061d61988800639`
+(blob `80da34cc311bbe9e55dacc5ab6248059d71522f3`). The blob at the pin
+equals audited main (`8dfe299692d5cb056ddeff9506cfe392b08115f2`).
+With no report the status is `promotion_report_missing` and the reason
+list also contains `adversarial_suite_hosted_evidence_missing`. A
+writer-shaped report that would otherwise be admissible stays
+`adversarial_suite_hosted_evidence_missing` while
+`SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN` is false. Pull request #430
 (`e5e1136631d500dddab7a5b31d6916962b5da5e3`) was stacked on #417.
 #430 green alone does not count.
 `contract_declared_unobserved` rows stay `module_missing_on_main` and
@@ -464,13 +470,13 @@ Abort order is the blocking-id order. The first blocking gate that is not
 | Gate | Source | Module | Pin | Status while the plan is closed |
 | --- | --- | --- | --- | --- |
 | `four_sphere_forward_model` | merged #418; added in `1b3465d4410a531e4686ba3b2dc0d0ae052c6e93`; blob `ba01dad6e21e89ed3cf54179bbc7319975987465` | `physics/eeg_forward/four_sphere.py` | `02520d44d662d394a2ff0822c0d3170a2d34213a` | `promotion_report_missing` |
-| `planar_geometry` | candidate_head_observed, #416 `757668e9b739d7423fa1493aec550072aa105829` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | null | `dependency_not_merged_on_main` |
+| `planar_geometry` | merged #416; added in `0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`; blob `6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | `f3346b128ed8d55e815c1a78f237c0fd9fa71fcc` | `promotion_report_missing` |
 | `winding` | merged #413; added in `eefabe97690caeec33f3777a05d2acbe0398ea6b`; blob `39084e1735206c616a1befdaddf8b83f23365bdf` | `neurotopology_sim/experimental/topology/winding.py` | `9abf3abeebd1c210d59df44b4d208678d203404c` | `promotion_report_missing` |
-| `hodge` | candidate_head_observed, #423 `eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9` | `neurotopology_sim/experimental/topology/hodge_2d.py` | null | `dependency_not_merged_on_main` |
-| `csd_full_matrix_pinned_mne` | candidate_head_observed, #414 `5a8e6485be08f68757c46b7e7beda70bf9a0d4b6` | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
+| `hodge` | merged #423; added in `a7369294f3b93186f49562eefc621d2a40831422`; blob `a5cad32e4b6095d1f8467750f03351e96304b96a` | `neurotopology_sim/experimental/topology/hodge_2d.py` | `ba441f161a87549d6e51b767b819318500946b17` | `promotion_report_missing` |
+| `csd_full_matrix_pinned_mne` | open #414; ls-remote `b9aaa868db7cf0aa63ad2cda09afdbf4c8dc8fb6`; module absent on audited main | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
 | `phase_dispersion_module` | contract_declared_unobserved | none | null | `dependency_not_merged_on_main` |
 | `phase_score_limitations_recorded` | limitations_record | none | null | `dependency_not_merged_on_main` |
-| `surrogate_null` | candidate_head_observed, #417 `c39f715c84e928c0204b8c58ef9e40bc1f0ab684` | `tools/surrogate_nulls/nulls.py` | null | `dependency_not_merged_on_main` |
+| `surrogate_null` | merged #417; added in `f8eaa29d70c7bd73c0b561662061d61988800639`; blob `8dfe299692d5cb056ddeff9506cfe392b08115f2`; hosted adversarial suite absent | `tools/surrogate_nulls/nulls.py` | `20222fdeba68ca5746609ce4305c7259b3266e95` | `promotion_report_missing` plus `adversarial_suite_hosted_evidence_missing` |
 | `roc_metrics` | merged #426; added in `9f10956d521e96f961f29c24f033374c3c20e065`; blob `09e6e0c182fa47693954ebee1b5194c3f0a5d0b0` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | `9f10956d521e96f961f29c24f033374c3c20e065` | `promotion_report_missing` |
 | `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked | `ci_discovery_blocked` |
 

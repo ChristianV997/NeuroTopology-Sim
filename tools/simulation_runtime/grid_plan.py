@@ -90,6 +90,9 @@ ROC_API_NAMES = (
     "average_precision",
 )
 AUDITED_MAIN_SHA = "bc91af19a22783d2721fc881842573f7e08a8925"
+# Hosted adversarial evidence for the exact #417 merge. False keeps
+# surrogate_null blocked after a promotion report exists.
+SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN = False
 ROLES_DISJOINT_NOTE = (
     "Disjoint calibration and evaluation ids are not proof of statistical "
     "independence. Independent draws need per-seed RNG streams downstream."
@@ -198,6 +201,9 @@ MERGED_PIN_PAIRS: Dict[str, Tuple[int, str]] = {
     "four_sphere_forward_model": (418, "02520d44d662d394a2ff0822c0d3170a2d34213a"),
     "winding": (413, "9abf3abeebd1c210d59df44b4d208678d203404c"),
     "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
+    "planar_geometry": (416, "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc"),
+    "hodge": (423, "ba441f161a87549d6e51b767b819318500946b17"),
+    "surrogate_null": (417, "20222fdeba68ca5746609ce4305c7259b3266e95"),
 }
 GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
     "four_sphere_forward_model": _contract_row(
@@ -264,8 +270,18 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=416,
         candidate_head="757668e9b739d7423fa1493aec550072aa105829",
+        pinned_commit="f3346b128ed8d55e815c1a78f237c0fd9fa71fcc",
+        merged_pr=416,
         symbols_verified_on_candidate_head=True,
-        candidate_note="Open pull request #416. Not a pin.",
+        added_in_commit="0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf",
+        implementation_blob_sha="6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2",
+        candidate_note=(
+            "Merge commit of pull request #416 on main. "
+            "The file was added at 0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf "
+            "(blob f5ddd4f497e7462e098aa624317a2a28c6c60b1d). "
+            "That adding commit is not the pin. "
+            "Informational head 757668e9b739d7423fa1493aec550072aa105829 is not the pin."
+        ),
     ),
     "winding": _contract_row(
         "neurotopology_sim/experimental/topology/winding.py",
@@ -326,11 +342,17 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=423,
         candidate_head="eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
+        pinned_commit="ba441f161a87549d6e51b767b819318500946b17",
+        merged_pr=423,
         symbols_verified_on_candidate_head=True,
+        added_in_commit="a7369294f3b93186f49562eefc621d2a40831422",
+        implementation_blob_sha="a5cad32e4b6095d1f8467750f03351e96304b96a",
         candidate_note=(
-            "Open pull request #423. Re-ls-remote still returns "
-            "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9, not the cited prefix ea7a3b99. "
-            "Symbols were re-parsed on that tip. Not a pin."
+            "Merge commit of pull request #423 on main. "
+            "The file was added at a7369294f3b93186f49562eefc621d2a40831422 "
+            "(blob 0b2a427af06657f25560af6f309f354f4745795f). "
+            "That adding commit is not the pin. "
+            "Informational head eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9 is not the pin."
         ),
     ),
     "csd_full_matrix_pinned_mne": _contract_row(
@@ -389,15 +411,21 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
         contract_source=CONTRACT_SOURCE_OBSERVED,
         candidate_pr=417,
         candidate_head="c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
+        pinned_commit="20222fdeba68ca5746609ce4305c7259b3266e95",
+        merged_pr=417,
         symbols_verified_on_candidate_head=True,
+        added_in_commit="f8eaa29d70c7bd73c0b561662061d61988800639",
+        implementation_blob_sha="8dfe299692d5cb056ddeff9506cfe392b08115f2",
         candidate_note=(
-            "Pull request #417 is not merged. Pull request #430 at "
-            "e5e1136631d500dddab7a5b31d6916962b5da5e3 is stacked on #417 and is not on main. "
-            "A hosted-green adversarial suite on the exact merged #417 candidate is required "
-            "before a pin. #430 green alone does not count. "
-            "A later ls-remote returned ca27cd63668b001c68100faf60f720754b2a8064 for #417 and "
-            "498e47d6b7942d1c3e355a45fcb4360fe25c01a9 for #430. Those heads are not pins "
-            "and were not ast-verified."
+            "Merge commit of pull request #417 on main. "
+            "The file was added at f8eaa29d70c7bd73c0b561662061d61988800639 "
+            "(blob 80da34cc311bbe9e55dacc5ab6248059d71522f3). "
+            "That adding commit is not the pin. "
+            "Informational head c39f715c84e928c0204b8c58ef9e40bc1f0ab684 is not the pin. "
+            "Pull request #430 at e5e1136631d500dddab7a5b31d6916962b5da5e3 was stacked on #417. "
+            "#430 green alone does not count. "
+            "A hosted-green adversarial suite on the exact merged #417 candidate is still required. "
+            "SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN is false, so a promotion report does not open this gate."
         ),
     ),
     "roc_metrics": _contract_row(
@@ -2158,6 +2186,11 @@ def _gate_contract_for_hash() -> List[Dict[str, Any]]:
                 "merged_pr": row.get("merged_pr"),
                 "added_in_commit": row.get("added_in_commit"),
                 "implementation_blob_sha": row.get("implementation_blob_sha"),
+                "adversarial_suite_hosted_green": (
+                    SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN
+                    if gate_id == "surrogate_null"
+                    else None
+                ),
                 "contract_source": row["contract_source"],
                 "required_module_path": row["required_module_path"],
                 "required_api_symbols": list(row["required_api_symbols"]),
@@ -2238,6 +2271,14 @@ def _pin_blob_differs(row: Mapping[str, Any], path: str) -> bool:
     if isinstance(recorded, str) and recorded != pin_blob:
         return True
     return False
+
+
+def _surrogate_hosted_evidence_missing(gate_id: str) -> bool:
+    """True until a hosted adversarial suite is recorded for the #417 merge."""
+
+    if gate_id != "surrogate_null":
+        return False
+    return SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN is not True
 
 
 def _symbols_present(main_sha: str, path: str, symbols: Sequence[str]) -> bool:
@@ -2429,10 +2470,13 @@ def _resolve_one(
         }
     if len(matched) == 0:
         if GATE_CONTRACT[gate_id]["pinned_commit"] is not None:
+            reasons = ["promotion_report_missing"]
+            if _surrogate_hosted_evidence_missing(gate_id):
+                reasons.append("adversarial_suite_hosted_evidence_missing")
             return {
                 **base,
                 "status": "promotion_report_missing",
-                "reason_codes": ["promotion_report_missing"],
+                "reason_codes": reasons,
             }
         return {**base, "status": "missing"}
     row = matched[0]
@@ -2498,6 +2542,8 @@ def _resolve_one(
         else:
             status = "admissible_on_ancestor"
             resolved_from = "evidence_promotion_gate_report"
+        if status == "admissible_on_ancestor" and _surrogate_hosted_evidence_missing(gate_id):
+            status = "adversarial_suite_hosted_evidence_missing"
     return {
         **base,
         "status": status,
@@ -2578,6 +2624,7 @@ def _resolve_gates_from_rows(
             "symbols_missing_on_main": "symbols_missing_on_main",
             "substitute_module_rejected": "substitute_module_rejected",
             "promotion_report_missing": "promotion_report_missing",
+            "adversarial_suite_hosted_evidence_missing": "adversarial_suite_hosted_evidence_missing",
             "pin_blob_mismatch_main": "pin_blob_mismatch_main",
             "stale": "stale",
             "merged_pr_mismatch": "merged_pr_mismatch",
@@ -3111,6 +3158,7 @@ __all__ = [
     "ABSOLUTE_MAX_TRIALS",
     "ADMISSIBLE_GATE_DECISIONS",
     "AUDITED_MAIN_SHA",
+    "SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN",
     "BLOCKING_GATE_IDS",
     "CAMPAIGN_MANIFEST_SCHEMA_VERSION",
     "EMITTED_RUN_STATES",
