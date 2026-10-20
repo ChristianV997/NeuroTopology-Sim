@@ -66,7 +66,9 @@ def validate_square_symmetric(A: Sequence[Sequence[float]], tol: float = 1e-9) -
         if len(A[i]) != n:
             raise InvalidCovarianceError(f"Matrix is not square: {n} rows, row {i} has {len(A[i])} cols.")
         for j in range(i + 1, n):
-            if abs(A[i][j] - A[j][i]) > tol:
+            scale = max(abs(A[i][j]), abs(A[j][i]))
+            eff_tol = max(tol * scale, 1e-15)
+            if abs(A[i][j] - A[j][i]) > eff_tol:
                 raise InvalidCovarianceError(
                     f"Matrix is asymmetric: A[{i}][{j}]={A[i][j]} vs A[{j}][{i}]={A[j][i]}."
                 )
@@ -242,6 +244,10 @@ def jacobi_eigh(
     a = [list(row) for row in A]
     V = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
 
+    diags = [abs(A[i][i]) for i in range(n) if abs(A[i][i]) > 0.0]
+    diag_min = min(diags) if diags else 1.0
+    eff_tol = min(tol, tol * diag_min)
+
     for sweep in range(max_sweeps):
         max_off = 0.0
         for p in range(n):
@@ -249,16 +255,17 @@ def jacobi_eigh(
                 if abs(a[p][q]) > max_off:
                     max_off = abs(a[p][q])
 
-        if max_off < tol:
+        if max_off < eff_tol:
             break
 
         for p in range(n):
             for q in range(p + 1, n):
                 apq = a[p][q]
-                if abs(apq) < 1e-15:
-                    continue
                 app = a[p][p]
                 aqq = a[q][q]
+                eps_scale = 1e-16 * max(abs(app), abs(aqq))
+                if abs(apq) <= eps_scale:
+                    continue
                 tau = (aqq - app) / (2.0 * apq)
                 t = (1.0 if tau >= 0 else -1.0) / (abs(tau) + math.sqrt(1.0 + tau * tau))
                 c = 1.0 / math.sqrt(1.0 + t * t)

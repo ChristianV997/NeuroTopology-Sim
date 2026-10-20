@@ -50,6 +50,10 @@ class InvalidCovarianceError(WhiteningAuditError):
     """Raised when covariance matrix is malformed, non-square, or asymmetric."""
 
 
+class ModelNotFittedError(WhiteningAuditError, RuntimeError):
+    """Raised when transform or properties are accessed on an unfitted model."""
+
+
 # -----------------------------------------------------------------------------
 # Enums
 # -----------------------------------------------------------------------------

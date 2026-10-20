@@ -54,7 +54,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    def _confine_output(path: Path) -> Path:
+    def _confine_output(path: Path, expected_suffix: str) -> Path:
         """Refuse writes outside the repository root (path-traversal boundary)."""
         resolved = path.expanduser().resolve()
         root = _REPO_ROOT.resolve()
@@ -64,12 +64,29 @@ def main() -> int:
             raise SystemExit(
                 f"refusing to write outside repository root ({root}): {path}"
             ) from exc
+        rel = resolved.relative_to(root)
+        if resolved.is_dir() or str(rel) in (".", ""):
+            raise SystemExit(f"refusing to write to a directory: {path}")
+
+        if any(part == ".git" for part in rel.parts):
+            raise SystemExit(f"refusing to write inside .git directory: {path}")
+
+        if path.suffix.lower() != expected_suffix:
+            raise SystemExit(
+                f"refusing to write to invalid extension (expected '{expected_suffix}'): {path}"
+            )
         return resolved
 
     if args.json_out is not None:
-        args.json_out = _confine_output(args.json_out)
+        args.json_out = _confine_output(args.json_out, ".json")
     if args.md_out is not None:
-        args.md_out = _confine_output(args.md_out)
+        args.md_out = _confine_output(args.md_out, ".md")
+
+    try:
+        from tools.whitening_audit.matrix_ops import validate_eigenvalue_floor
+        validate_eigenvalue_floor(args.eigenvalue_floor)
+    except Exception as exc:
+        raise SystemExit(f"invalid --eigenvalue-floor: {exc}") from exc
 
     whitening_method = WhiteningMethod(args.method)
     print(f"[*] Running Round 6 Whitening Audit with method={whitening_method.value}...")

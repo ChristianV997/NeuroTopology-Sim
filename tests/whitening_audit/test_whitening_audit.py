@@ -404,5 +404,78 @@ class TestWhiteningAudit(unittest.TestCase):
         self.assertFalse(outside.exists())
 
 
+    def test_scale_extreme_covariance_jacobi_eigh(self) -> None:
+        """Jacobi eigh and method comparison must not collapse to identity on small-scale covariance."""
+        from tools.whitening_audit.matrix_ops import jacobi_eigh
+
+        scale = 1e-14
+        cov = [[scale, 0.5 * scale], [0.5 * scale, scale]]
+        evals, V = jacobi_eigh(cov)
+        # Expected eigenvalues: 1.5e-14 and 0.5e-14
+        self.assertAlmostEqual(evals[0] / scale, 1.5, delta=1e-6)
+        self.assertAlmostEqual(evals[1] / scale, 0.5, delta=1e-6)
+
+        comp = compare_whitening_methods(cov, eigenvalue_floor=1e-18)
+        self.assertFalse(comp.are_methods_equivalent)
+        self.assertGreater(comp.rotation_deviation_from_identity, 0.05)
+
+    def test_small_scale_asymmetric_covariance_fails_closed(self) -> None:
+        """Asymmetric covariance at small absolute scale must be rejected fail-closed."""
+        from tools.whitening_audit.matrix_ops import validate_square_symmetric
+        from tools.whitening_audit.types import InvalidCovarianceError
+
+        cov_asym_small = [[1e-12, 1e-12], [0.0, 1e-12]]
+        with self.assertRaises(InvalidCovarianceError):
+            validate_square_symmetric(cov_asym_small)
+
+    def test_cli_refuses_directory_and_invalid_extensions(self) -> None:
+        """Security boundary: CLI must refuse writing to directories and invalid extensions."""
+        import subprocess
+
+        # Target directory (repo root or existing dir)
+        proc_dir = subprocess.run(
+            [
+                sys.executable,
+                str(_REPO_ROOT / "scripts" / "audit_round6_whitening.py"),
+                "--json-out",
+                str(_REPO_ROOT),
+            ],
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc_dir.returncode, 0)
+        self.assertIn("refusing", proc_dir.stderr + proc_dir.stdout)
+
+        # Target invalid extension (.py)
+        proc_ext = subprocess.run(
+            [
+                sys.executable,
+                str(_REPO_ROOT / "scripts" / "audit_round6_whitening.py"),
+                "--json-out",
+                str(_REPO_ROOT / "scripts" / "audit_round6_whitening.py"),
+            ],
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc_ext.returncode, 0)
+        self.assertIn("refusing", proc_ext.stderr + proc_ext.stdout)
+
+    def test_model_not_fitted_error_hierarchy(self) -> None:
+        """Unfitted model access raises ModelNotFittedError inheriting from both WhiteningAuditError and RuntimeError."""
+        from tools.whitening_audit.types import ModelNotFittedError, WhiteningAuditError
+
+        model = TrainOnlyWhiteningModel()
+        with self.assertRaises(ModelNotFittedError):
+            _ = model.mean
+        with self.assertRaises(RuntimeError):
+            _ = model.transform_matrix
+        with self.assertRaises(WhiteningAuditError):
+            model.transform([[1.0, 2.0]])
+
+
 if __name__ == "__main__":
     unittest.main()

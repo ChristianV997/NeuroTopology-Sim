@@ -32,6 +32,7 @@ from tools.whitening_audit.types import (
     AuditStatus,
     FeatureDimensionMismatchError,
     MethodComparisonResult,
+    ModelNotFittedError,
     SPDRepairReport,
     WhiteningAuditResult,
     WhiteningMethod,
@@ -68,25 +69,25 @@ class TrainOnlyWhiteningModel:
     @property
     def mean(self) -> Tuple[float, ...]:
         if self._mean is None:
-            raise RuntimeError("Model is not fitted.")
+            raise ModelNotFittedError("Model is not fitted.")
         return self._mean
 
     @property
     def transform_matrix(self) -> List[List[float]]:
         if self._transform_matrix is None:
-            raise RuntimeError("Model is not fitted.")
+            raise ModelNotFittedError("Model is not fitted.")
         return [list(row) for row in self._transform_matrix]
 
     @property
     def spd_report(self) -> SPDRepairReport:
         if self._spd_report is None:
-            raise RuntimeError("Model is not fitted.")
+            raise ModelNotFittedError("Model is not fitted.")
         return self._spd_report
 
     @property
     def in_sample_error(self) -> float:
         if self._in_sample_error is None:
-            raise RuntimeError("Model is not fitted.")
+            raise ModelNotFittedError("Model is not fitted.")
         return self._in_sample_error
 
     def fit(self, X_train: Sequence[Sequence[float]]) -> WhiteningTransformResult:
@@ -143,7 +144,7 @@ class TrainOnlyWhiteningModel:
     def transform(self, X: Sequence[Sequence[float]]) -> List[List[float]]:
         """Apply fitted transform z = (x - mu_train) * W^T."""
         if not self.is_fitted:
-            raise RuntimeError("Cannot transform before calling fit().")
+            raise ModelNotFittedError("Cannot transform before calling fit().")
         validate_finite_matrix(X, "Transform input X")
         d = len(X[0])
         if d != self._n_features:
