@@ -373,7 +373,7 @@ def test_git_diff_check():
 
 def test_preserve_owned_paths_only():
     completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "origin/main", "--"],
+        ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "origin/main...", "--"],
         capture_output=True,
         text=True,
         check=False,
