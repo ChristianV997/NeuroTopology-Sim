@@ -50,6 +50,13 @@ def audit_surrogate(
     Never sets scientific VALIDATED. Status fields are engineering audit only.
     """
     method_key = str(method).strip().lower()
+    if not isinstance(fpr_spectral_atol, (int, float)) or not math.isfinite(fpr_spectral_atol) or fpr_spectral_atol <= 0:
+        raise SurrogateAuditError("fpr_spectral_atol must be a finite positive number")
+    if not isinstance(spectral_gate, (int, float)) or not math.isfinite(spectral_gate) or spectral_gate <= 0:
+        raise SurrogateAuditError("spectral_gate must be a finite positive number")
+    if not isinstance(max_iter, int) or max_iter < 1:
+        raise SurrogateAuditError("max_iter must be an integer >= 1")
+
     try:
         arr = validate_array(x, min_channels=1, min_time=2)
     except SurrogateAuditError as exc:

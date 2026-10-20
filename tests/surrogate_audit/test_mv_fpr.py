@@ -78,3 +78,23 @@ def test_mv_fpr_audit_report_met_and_quantile_na():
     assert report["quantile_gate_status"] == "NOT_APPLICABLE"
     assert report["round6_candidate_tested"] is False if "round6_candidate_tested" in report else True
     assert report["meta"]["round6_candidate_tested"] is False
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1e-160, 1e160, 1e200])
+def test_mv_fpr_extreme_scale_audit_preserves_cross_spectrum(scale: float):
+    """MV-FPR must preserve cross-spectrum and report MET status across extreme dynamic ranges."""
+    x = scale * gaussian_linear(n_ch=3, n_t=64, seed=15)
+    report = audit_surrogate(x, method="mv_fpr", seed=4)
+    assert report["status"] == "MET"
+    assert report["spectral_gate_status"] == "MET"
+    assert report["cross_spectral_error"] is not None
+    assert report["cross_spectral_error"] <= 1e-10
+
+
+def test_mv_fpr_n_time_2_noop_behavior():
+    """At n_t=2, frequency bins are only DC and Nyquist (no randomized bins); array is unchanged."""
+    x = np.array([[1.0, 2.0], [3.0, 4.0]])
+    surr, meta = generate_mv_fpr(x, seed=0)
+    assert meta["randomized_bins"] == []
+    np.testing.assert_allclose(surr, x, atol=1e-12)
+    assert relative_cross_spectral_error(x, surr) <= 1e-10

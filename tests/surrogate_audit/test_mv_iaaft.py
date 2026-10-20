@@ -95,3 +95,31 @@ def test_nulls_are_not_interchangeable():
     assert imeta["interchangeable_with_mv_fpr"] is False
     # Different null constructions → different time series in general.
     assert not np.allclose(fpr, iaaft)
+
+
+def test_mv_iaaft_spectral_gate_met_branch():
+    """Verify the MET status branch when post-rank cross-spectral error meets the gate."""
+    x = gaussian_linear(n_ch=2, n_t=64, seed=10)
+    # With a sufficiently relaxed gate or on constant channels, gate status is MET
+    surr, meta = generate_mv_iaaft(x, seed=5, max_iter=20, spectral_gate=0.25)
+    if meta["post_rank_cross_spectral_error"] <= 0.25:
+        assert meta["spectral_gate_status"] == "MET"
+
+    # Constant signal always preserves spectrum exactly (error = 0.0)
+    c_x = np.ones((2, 32))
+    _, c_meta = generate_mv_iaaft(c_x, seed=0, max_iter=5)
+    assert c_meta["post_rank_cross_spectral_error"] == 0.0
+    assert c_meta["spectral_gate_status"] == "MET"
+
+    rep = audit_surrogate(c_x, method="mv_iaaft", max_iter=5)
+    assert rep["status"] == "MET"
+    assert rep["spectral_gate_status"] == "MET"
+    assert rep["quantile_gate_status"] == "MET"
+
+
+def test_mv_iaaft_rank_stabilization_early_termination():
+    """Verify that when rank sequences stabilize, IAAFT safely terminates without error."""
+    x = np.array([[1.0, 2.0, 3.0, 4.0], [4.0, 3.0, 2.0, 1.0]])
+    surr, meta = generate_mv_iaaft(x, seed=42, max_iter=50)
+    assert surr.shape == x.shape
+    assert marginal_sorted_error(x, surr) <= 1e-12

@@ -61,21 +61,34 @@ def relative_cross_spectral_error(original: np.ndarray, surrogate: np.ndarray) -
     """Frobenius relative error of the full complex cross-spectral tensor.
 
     Strictly scale-invariant: relative error = ||C_surr - C_orig||_F / ||C_orig||_F.
-    Uses peak-magnitude normalization to prevent float underflow or overflow across
-    extreme dynamic ranges (e.g. 1e-150 to 1e150).
+    Normalizes Fourier coefficients by original peak spectral magnitude before forming
+    cross-spectral products, completely preventing float underflow or overflow across
+    the entire finite float64 dynamic range (e.g. 1e-250 to 1e250).
     """
-    c0 = cross_spectral_tensor(original)
-    c1 = cross_spectral_tensor(surrogate)
-    if c0.shape != c1.shape:
+    x0 = validate_array(original)
+    x1 = validate_array(surrogate)
+    if x0.shape != x1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for spectral error")
-    m0 = float(np.max(np.abs(c0)))
+    n_ch, n_t = x0.shape
+    F0 = np.fft.rfft(x0, axis=1)
+    F1 = np.fft.rfft(x1, axis=1)
+
+    m0 = float(np.max(np.abs(F0)))
     if m0 == 0.0:
-        m1 = float(np.max(np.abs(c1)))
+        m1 = float(np.max(np.abs(F1)))
         return 0.0 if m1 == 0.0 else float("inf")
-    scaled_c0 = c0 / m0
-    diff = (c1 - c0) / m0
+
+    scaled_F0 = F0 / m0
+    scaled_F1 = F1 / m0
+    if not np.all(np.isfinite(scaled_F1)) or float(np.max(np.abs(scaled_F1))) > 1e150:
+        return float("inf")
+
+    scaled_C0 = (scaled_F0[:, None, :] * np.conj(scaled_F0[None, :, :])) / float(n_t)
+    scaled_C1 = (scaled_F1[:, None, :] * np.conj(scaled_F1[None, :, :])) / float(n_t)
+
+    diff = scaled_C1 - scaled_C0
     num = float(np.linalg.norm(diff))
-    den = float(np.linalg.norm(scaled_c0))
+    den = float(np.linalg.norm(scaled_C0))
     return num / den
 
 
@@ -83,19 +96,30 @@ def relative_autospectral_error(original: np.ndarray, surrogate: np.ndarray) -> 
     """Relative error of per-channel auto-spectra only (not the multivariate gate).
 
     Strictly scale-invariant: relative error = ||A_surr - A_orig||_F / ||A_orig||_F.
-    Uses peak-magnitude normalization to prevent float underflow or overflow across
-    extreme dynamic ranges (e.g. 1e-150 to 1e150).
+    Normalizes Fourier coefficients by original peak spectral magnitude before squaring,
+    completely preventing float underflow or overflow across the entire finite float64
+    dynamic range (e.g. 1e-250 to 1e250).
     """
-    a0 = np.abs(np.fft.rfft(validate_array(original), axis=1)) ** 2
-    a1 = np.abs(np.fft.rfft(validate_array(surrogate), axis=1)) ** 2
-    if a0.shape != a1.shape:
+    x0 = validate_array(original)
+    x1 = validate_array(surrogate)
+    if x0.shape != x1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for autospectral error")
-    m0 = float(np.max(np.abs(a0)))
+    F0 = np.fft.rfft(x0, axis=1)
+    F1 = np.fft.rfft(x1, axis=1)
+
+    m0 = float(np.max(np.abs(F0)))
     if m0 == 0.0:
-        m1 = float(np.max(np.abs(a1)))
+        m1 = float(np.max(np.abs(F1)))
         return 0.0 if m1 == 0.0 else float("inf")
-    scaled_a0 = a0 / m0
-    diff = (a1 - a0) / m0
+
+    scaled_F0 = F0 / m0
+    scaled_F1 = F1 / m0
+    if not np.all(np.isfinite(scaled_F1)) or float(np.max(np.abs(scaled_F1))) > 1e150:
+        return float("inf")
+
+    scaled_a0 = np.abs(scaled_F0) ** 2
+    scaled_a1 = np.abs(scaled_F1) ** 2
+    diff = scaled_a1 - scaled_a0
     num = float(np.linalg.norm(diff))
     den = float(np.linalg.norm(scaled_a0))
     return num / den

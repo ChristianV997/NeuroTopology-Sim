@@ -39,7 +39,22 @@ error = ||C_surr - C_orig||_F / ||C_orig||_F
 
 This is the **full** channel×channel complex matrix at every frequency — not
 per-channel power spectra alone. The relative cross-spectral error is scale-invariant;
-no absolute denominator floor is applied, preventing false passes at small signal scales.
+Fourier coefficients are normalized by original peak spectral magnitude before forming
+cross-products or auto-spectral squares, completely preventing float underflow or overflow
+across extreme dynamic ranges (e.g. `1e-250` to `1e250`). No absolute denominator floor is
+applied, preventing false passes at small signal scales.
+
+### Cross- versus auto-spectrum mutations
+
+Independent per-channel phase shifts preserve auto-spectra to machine precision but
+destroy cross-channel phase alignments (`relative_cross_spectral_error > 0.5`). The audit
+strictly enforces full tensor evaluation so that mutations preserving auto-spectra cannot
+falsely pass.
+
+### Tolerance fail-closed validation
+
+Audit tolerances (`fpr_spectral_atol`, `spectral_gate`) and `max_iter` are validated as
+finite positive values, rejecting invalid non-positive, NaN, or non-numeric arguments.
 
 ### Marginal error
 

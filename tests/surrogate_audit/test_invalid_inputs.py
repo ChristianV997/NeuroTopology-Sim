@@ -39,3 +39,16 @@ def test_audit_invalid_input_status():
 def test_unknown_method_raises():
     with pytest.raises(SurrogateAuditError, match="unknown method"):
         audit_surrogate(np.zeros((2, 32)), method="phase_magic", seed=0)
+
+
+def test_audit_invalid_tolerances_rejected():
+    x = np.ones((2, 32))
+    for bad_tol in [0.0, -1e-5, float("nan"), float("inf"), -float("inf")]:
+        with pytest.raises(SurrogateAuditError, match="fpr_spectral_atol"):
+            audit_surrogate(x, method="mv_fpr", fpr_spectral_atol=bad_tol)
+        with pytest.raises(SurrogateAuditError, match="spectral_gate"):
+            audit_surrogate(x, method="mv_iaaft", spectral_gate=bad_tol)
+
+    for bad_iter in [0, -1, 1.5, "five"]:
+        with pytest.raises(SurrogateAuditError, match="max_iter"):
+            audit_surrogate(x, method="mv_iaaft", max_iter=bad_iter)

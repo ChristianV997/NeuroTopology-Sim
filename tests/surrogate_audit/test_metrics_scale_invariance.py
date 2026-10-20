@@ -17,9 +17,12 @@ from tools.surrogate_audit.mv_iaaft import generate_mv_iaaft
 from tools.surrogate_audit.report import audit_surrogate
 
 
-@pytest.mark.parametrize("scale", [1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100])
+@pytest.mark.parametrize(
+    "scale",
+    [1e250, 1e160, 1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100, 1e-160, 1e-250],
+)
 def test_cross_spectral_error_scale_invariance_under_relative_mismatch(scale: float):
-    """A constant 10% amplitude mismatch (21% cross-spectral error) must not falsely pass at small scale."""
+    """A constant 10% amplitude mismatch (21% cross-spectral error) must not falsely pass or overflow/underflow at extreme scale."""
     x = gaussian_linear(n_ch=4, n_t=128, seed=42)
     x_scaled = scale * x
     # Surrogate has an exact 10% amplitude scaling: C_surr = 1.21 * C_orig, relative error = 0.21
@@ -31,9 +34,12 @@ def test_cross_spectral_error_scale_invariance_under_relative_mismatch(scale: fl
     assert err > SPECTRAL_GATE_1E3, f"scale {scale:1.0e} falsely passed the 1e-3 gate with err={err}"
 
 
-@pytest.mark.parametrize("scale", [1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100])
+@pytest.mark.parametrize(
+    "scale",
+    [1e250, 1e160, 1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100, 1e-160, 1e-250],
+)
 def test_autospectral_error_scale_invariance(scale: float):
-    """Autospectral relative error must also be strictly scale invariant."""
+    """Autospectral relative error must also be strictly scale invariant across extreme dynamic ranges."""
     x = gaussian_linear(n_ch=4, n_t=128, seed=42)
     x_scaled = scale * x
     s_scaled = 1.1 * x_scaled
@@ -41,6 +47,31 @@ def test_autospectral_error_scale_invariance(scale: float):
     err = relative_autospectral_error(x_scaled, s_scaled)
     assert np.isclose(err, 0.21, rtol=1e-5), f"scale {scale:1.0e} gave autospectral error {err}, expected 0.21"
     assert err > SPECTRAL_GATE_1E3
+
+
+def test_cross_vs_auto_spectrum_mutation_detects_phase_decorrelation():
+    """Independent channel phase rotation preserves auto-spectra but mutates cross-spectra.
+
+    The multivariate gate must detect this mutation via relative_cross_spectral_error,
+    while relative_autospectral_error alone would falsely report zero error.
+    """
+    x = gaussian_linear(n_ch=2, n_t=128, seed=77)
+    F = np.fft.rfft(x, axis=1)
+
+    # Mutate cross-spectrum by rotating channel 1 phases by pi/2 at all non-DC/Nyquist frequencies,
+    # leaving channel 0 completely unchanged.
+    F_mut = F.copy()
+    F_mut[1, 1:-1] *= 1j  # 90-degree phase shift on channel 1 only
+
+    s_mut = np.fft.irfft(F_mut, n=128, axis=1)
+
+    # Auto-spectra are preserved to numerical precision
+    auto_err = relative_autospectral_error(x, s_mut)
+    assert auto_err < 1e-12, f"auto-spectrum was unexpectedly modified: {auto_err}"
+
+    # Cross-spectrum is substantially corrupted
+    cross_err = relative_cross_spectral_error(x, s_mut)
+    assert cross_err > 0.5, f"cross-spectrum error failed to catch phase decorrelation: {cross_err}"
 
 
 def test_zero_power_spectral_error_behavior():
