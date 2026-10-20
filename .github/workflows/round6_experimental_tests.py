@@ -233,14 +233,21 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
         ),
         "tests": (
             "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
+            # This exact KKT test is shared with the independent reference
+            # audit. The selector assigns a test-only change here for legacy
+            # CSD parity; audit implementation changes remain separately owned.
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
+            "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py"},
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/experimental/test_spherical_csd_parity.py"},
+            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
         ),
         "support_files": {
             "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
@@ -1592,7 +1599,7 @@ COMPONENT_OWNER_PRS = {
     "hodge_2d": (423,),
     "phase_cochain_reference": (385,),
     "hodge_decomposition_audit": (396,),
-    "spherical_csd": (414, 419),
+    "spherical_csd": (402, 414, 419),
     "mne_csd_reference_audit": (402,),
     "four_sphere": (418, 409),
     "phase_winding": (413,),
@@ -1632,10 +1639,9 @@ COMPONENT_OWNER_PRS = {
 # root blocks discovery until an owner registers a pair. Such changes are never
 # silently classified NOT_APPLICABLE.
 UNMAPPED_CANDIDATE_ROOTS = (
-    # This is a shared test namespace. Exact mapped paths are handled by their
-    # owners; new or changed unregistered tests must block rather than become
-    # NOT_APPLICABLE merely because each component narrows its test roots.
-    "tests/experimental/",
+    # tests/experimental is a shared namespace, not an ownership root. Exact
+    # registered paths there select components; unrelated tests remain
+    # NOT_APPLICABLE instead of being attributed by directory alone.
     "sim/nuisance_scenarios/",
     "tests/nuisance_scenarios/",
     "tools/whitening_audit/",
@@ -1731,6 +1737,13 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "scripts/build_release_manifest.py",
     "scripts/run_registered_fhn.py",
     "scripts/validate_research_cycle_preflight.py",
+)
+
+# Narrow guards for known candidate families that live under the shared
+# tests/experimental namespace. These are prefixes for a single candidate
+# family, not a directory-wide ownership assumption.
+UNMAPPED_CANDIDATE_PREFIXES = (
+    "tests/experimental/test_planar_triangulation_",
 )
 
 
@@ -2130,6 +2143,28 @@ def select_components(changed_paths: set[str]) -> list[str]:
             name, changed_paths, include_package_initializers=False
         )
     }
+    # The KKT test is a shared legacy CSD probe. Select it through the
+    # spherical-CSD compatibility pair when it changes alone. If any other
+    # reference-audit path changes, the audit component owns the run and the
+    # sphere component is suppressed to avoid requiring an unrelated PR's
+    # implementation files.
+    shared_kkt_test = "tests/mne_csd_reference_audit/test_kkt_operator.py"
+    shared_kkt_changed = shared_kkt_test.casefold() in changed_casefold
+    other_audit_paths_changed = any(
+        _path_in_root(path, "tools/mne_csd_reference_audit/")
+        or (
+            _path_in_root(path, "tests/mne_csd_reference_audit/")
+            and normalize_repo_path(path).casefold() != shared_kkt_test.casefold()
+        )
+        or normalize_repo_path(path).casefold()
+        == "tests/optional_live_mne/test_mne_csd_live_parity.py"
+        for path in changed_paths
+    )
+    if other_audit_paths_changed:
+        direct.discard("spherical_csd")
+    elif shared_kkt_changed:
+        direct.discard("mne_csd_reference_audit")
+        direct.add("spherical_csd")
     initializer_owners = {
         name
         for name, spec in COMPONENTS.items()
@@ -2261,10 +2296,16 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
         belongs_to_unmapped_candidate_root = _is_candidate_file(
             path, guard_roots, explicit_guard_files
         )
+        belongs_to_unmapped_candidate_prefix = any(
+            path.casefold().startswith(prefix.casefold())
+            and Path(path).suffix.casefold() == ".py"
+            for prefix in UNMAPPED_CANDIDATE_PREFIXES
+        )
         mapped = path.casefold() in mapped_paths_casefold
         if (
             path in mapped_case_mismatches
             or belongs_to_unmapped_candidate_root and not mapped
+            or belongs_to_unmapped_candidate_prefix and not mapped
             or belongs_to_registered_root and not mapped
         ):
             unmapped.append(path)

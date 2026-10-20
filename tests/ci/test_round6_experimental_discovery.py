@@ -399,6 +399,27 @@ class Round6DiscoveryTests(unittest.TestCase):
             "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
         })
 
+    def test_shared_csd_kkt_test_selects_one_source_aware_component(self):
+        helper = _helper()
+        shared_test = "tests/mne_csd_reference_audit/test_kkt_operator.py"
+        audit_source = "tools/mne_csd_reference_audit/kkt.py"
+
+        # Historical CSD parity probes may change this exact test alone. When
+        # the audit implementation is part of the diff, the independent audit
+        # component owns the run and must not fan out to an absent sphere PR.
+        self.assertEqual(helper.select_components({shared_test}), ["spherical_csd"])
+        self.assertEqual(
+            helper.select_components({audit_source, shared_test}),
+            ["mne_csd_reference_audit"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths({shared_test}), [])
+
+    def test_unrelated_file_in_shared_experimental_namespace_is_not_candidate(self):
+        helper = _helper()
+        unrelated = "tests/experimental/test_unrelated_suite.py"
+        self.assertEqual(helper.select_components({unrelated}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({unrelated}), [])
+
     def test_focused_mne_profile_reports_not_applicable_for_unrelated_candidate_changes(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
@@ -2115,14 +2136,14 @@ def test_fixture():
                 "tests/tools/hodge_decomposition_audit/test_hodge_audit.py",
             ),
             "spherical_csd": (
-                414, 419,
+                402, 414, 419,
                 "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
                 "tests/experimental/test_spherical_csd_parity.py",
             ),
             "mne_csd_reference_audit": (
                 402,
-                "tools/mne_csd_reference_audit/kkt.py",
-                "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                "tools/mne_csd_reference_audit/legendre.py",
+                "tests/mne_csd_reference_audit/test_legendre_constants.py",
             ),
             "mne_csd_adapter": (
                 378,
