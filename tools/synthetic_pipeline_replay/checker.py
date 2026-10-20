@@ -256,6 +256,20 @@ def check_optional_dependency(dependency_name: str) -> tuple[bool, str]:
         return False, f"error_importing: {exc}"
 
 
+def _sanitize_contract(c: Mapping[str, Any]) -> dict[str, Any]:
+    """Sanitize contract mapping by replacing raw numpy/array objects with dimension metadata."""
+    sanitized = {}
+    for k, v in c.items():
+        if k in ("data", "timestamps", "pairwise_fc_matrix", "signal_chunk", "feature_bundle", "psd_record", "fc_record"):
+            if hasattr(v, "shape"):
+                sanitized[f"{k}_shape"] = list(v.shape)
+            elif isinstance(v, (list, tuple)):
+                sanitized[f"{k}_len"] = len(v)
+            continue
+        sanitized[k] = v
+    return sanitized
+
+
 def evaluate_boundary(
     boundary_id: str,
     producer_stage_id: str,
@@ -296,8 +310,8 @@ def evaluate_boundary(
                 status=BoundaryStatus.NOT_COMPARABLE.value,
                 input_artifact_ref=str(observed_contract.get("artifact_id", "observed")),
                 output_artifact_ref=str(expected_contract.get("expected_artifact_id", "expected")),
-                expected_contract=dict(expected_contract),
-                observed_contract=dict(observed_contract),
+                expected_contract=_sanitize_contract(expected_contract),
+                observed_contract=_sanitize_contract(observed_contract),
                 mismatches=[f"Required optional dependency '{required_dep}' is not available"],
                 missing_fields=[],
                 diagnostics=diagnostics,
@@ -367,18 +381,6 @@ def evaluate_boundary(
         status = BoundaryStatus.INCOMPATIBLE.value
     else:
         status = BoundaryStatus.COMPATIBLE.value
-
-    def _sanitize_contract(c: Mapping[str, Any]) -> dict[str, Any]:
-        sanitized = {}
-        for k, v in c.items():
-            if k in ("data", "timestamps", "pairwise_fc_matrix", "signal_chunk", "feature_bundle", "psd_record", "fc_record"):
-                if hasattr(v, "shape"):
-                    sanitized[f"{k}_shape"] = list(v.shape)
-                elif isinstance(v, (list, tuple)):
-                    sanitized[f"{k}_len"] = len(v)
-                continue
-            sanitized[k] = v
-        return sanitized
 
     return BoundaryReport(
         boundary_id=boundary_id,

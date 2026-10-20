@@ -124,6 +124,12 @@ class TestReplayNegativeCases:
         # Downstream Stage 4 must NOT execute when Stage 3->4 boundary is not comparable
         assert "stage_4_topology_summary" not in report.stages_executed
 
+        # Regression: contract must be sanitized so raw NumPy arrays do not break dict equality
+        report2 = runner.run_replay(dependency_overrides={"ripser": False})
+        assert b3.observed_contract == report2.boundaries[2].observed_contract
+        assert "pairwise_fc_matrix" not in b3.observed_contract
+        assert "pairwise_fc_matrix_shape" in b3.observed_contract
+
     def test_incompatible_stages_fails_boundary(self):
         """Passing an unexpected artifact kind or feature family must fail closed."""
         runner = SyntheticPipelineReplayRunner(seed=42)
