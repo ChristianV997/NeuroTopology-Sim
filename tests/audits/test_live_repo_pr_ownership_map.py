@@ -950,7 +950,7 @@ class OwnershipSnapshotTests(unittest.TestCase):
         self.assertEqual(execution["test_file"], pair["test"])
         self.assertEqual(execution["implementation_paths"], [pair["implementation"]])
         self.assertEqual(execution["result_counts"], {
-            "collected": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+            "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
         })
         self.assertEqual(execution["artifact_path"], "round6-experimental-logs/01-simulation_grid_planner-01")
 
