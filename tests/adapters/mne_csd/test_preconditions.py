@@ -29,6 +29,24 @@ def test_missing_coordinates_fail_closed():
         validate_channel_selection(inv, ["Fz", "Cz"])
 
 
+@pytest.mark.parametrize(
+    "bad_loc",
+    [
+        [float("nan"), 0.01, 0.02] + [0.0] * 9,
+        [0.01, float("inf"), 0.02] + [0.0] * 9,
+        [0.01, 0.02, float("-inf")] + [0.0] * 9,
+    ],
+)
+def test_non_finite_coordinates_fail_closed(bad_loc):
+    """NaN/Inf montage coords must not be treated as usable meters."""
+    good = standard_locs(1)[0]
+    raw = FakeRaw(["Bad", "Good"], locs=[bad_loc, good])
+    inv = extract_channel_inventory(raw)
+    assert inv["Bad"]["xyz_m"] is None
+    with pytest.raises(MissingCoordinatesError, match="usable 3D coordinates"):
+        validate_channel_selection(inv, ["Bad", "Good"])
+
+
 def test_non_eeg_channel_fail_closed(eeg_raw_with_eog):
     inv = extract_channel_inventory(eeg_raw_with_eog)
     with pytest.raises(InvalidChannelSelectionError, match="non_eeg|EOG|eog"):

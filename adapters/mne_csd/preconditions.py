@@ -1,6 +1,7 @@
 """Pure precondition checks for CSD inputs (usable without calling MNE CSD)."""
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .errors import InvalidChannelSelectionError, MissingCoordinatesError, ReferenceMutationError
@@ -13,6 +14,8 @@ def _as_xyz(loc: Any) -> Optional[Tuple[float, float, float]]:
     try:
         vals = [float(loc[i]) for i in range(3)]
     except Exception:
+        return None
+    if not all(math.isfinite(v) for v in vals):
         return None
     if all(abs(v) <= _ZERO_EPS for v in vals):
         return None
