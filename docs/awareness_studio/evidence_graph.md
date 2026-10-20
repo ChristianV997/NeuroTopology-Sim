@@ -35,7 +35,7 @@ flowchart TD
     RUN -->|tests| EXP
     ART -->|generated_by| RUN
     VAL -->|validates| RUN
-    VAL -->|supports / contradicts| HYP
+    VAL -->|contradicts when falsified| HYP
     EV -->|derived_from| EXP
     EV -->|supports / contradicts| HYP
     REV -->|revises| HYP
@@ -89,6 +89,21 @@ The projection segregates evidence into 4 non-interchangeable tiers:
 2. **`proxy`**: Heuristic proxy metrics (e.g. proxy Bayes factors, surrogate statistical distances). Tagged with `PROXY_METRIC`. Cannot serve as formal evidence.
 3. **`empirical`**: Real-world biological or observational time series without preregistered held-out data lock.
 4. **`formal`**: Held-out locked, preregistered empirical executions with signed human review.
+
+### Projection Admission Boundary
+
+The loader is intentionally not an evidence adjudicator. A `source_snapshot` is
+classified as `empirical` only when it preserves an upstream
+`T1_verified_primary` or `T2_verified_secondary` tier together with
+`verification_status: verified`; unverified, disputed, retracted, or
+metadata-only sources remain `unknown` or `REVIEW_REQUIRED`.
+
+Likewise, a literal validation `verdict: PASS` is recorded as
+`REVIEW_REQUIRED` and does not create a `supports` edge. Provenance, artifact
+lineage, labels, nulls, multiplicity, split integrity, and human review must
+be independently adjudicated by an upstream gate before a reviewed evidence
+record is allowed to support a hypothesis. This prevents self-attested
+metadata from becoming scientific support through graph ingestion.
 
 ### Safety States
 - `PROVISIONAL`: Initial state for proposed hypotheses and unreviewed claims.

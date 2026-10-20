@@ -64,6 +64,12 @@ def test_admissible_engineering_fact():
     assert result.scientific_pass is False
 
 
+def test_metadata_gate_never_marks_a_claim_scientifically_eligible():
+    result = evaluate_claim(good_claim())
+    assert result.decision == "CLAIM_ADMISSIBLE"
+    assert result.scientific_eligibility is False
+
+
 def test_requires_review_for_unknown_multiplicity_and_missing_controls():
     result = evaluate_claim(good_claim(n_tests=None, multiplicity_correction=None, null_controls=[], uncertainty=None, effect_size=None))
     assert result.decision == "CLAIM_REQUIRES_REVIEW"
@@ -161,3 +167,17 @@ def test_provenance_validation_is_explicit():
     assert validate_provenance({"source_id": "x"}).status == "incomplete"
     assert validate_provenance(GOOD_PROVENANCE).status == "complete"
     assert validate_provenance({**GOOD_PROVENANCE, "checksum": "fake"}).status == "invalid"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_id", "unknown_source"),
+    ("acquisition", "derived_from_ledger"),
+    ("dataset_version", "TBD"),
+])
+def test_placeholder_provenance_cannot_be_treated_as_complete(field, value):
+    provenance = {**GOOD_PROVENANCE, field: value}
+    validation = validate_provenance(provenance)
+    assert validation.status == "invalid"
+    assert validation.reason_code == "PLACEHOLDER_PROVENANCE"
+    result = evaluate_claim(good_claim(provenance=provenance))
+    assert result.decision == "CLAIM_PROVENANCE_INVALID"

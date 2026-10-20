@@ -52,7 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .models import CHECK_STATES, MERGE_STATES, PRSnapshot
+from .models import CHECK_STATES, MERGE_STATES, RELEASE_STATES, PRSnapshot
 
 
 @dataclass
@@ -146,8 +146,66 @@ def classify_merge_state(ctx: MergeStateContext) -> tuple[str, list[str]]:
     return "unknown", blockers
 
 
+def classify_release_state(
+    ctx: MergeStateContext,
+    *,
+    merge_state: str,
+    scientific_gate_value: object,
+) -> tuple[str, list[str]]:
+    """Classify release eligibility independently from technical integration.
+
+    ``merge_state`` records where a commit sits in git history.  It must not
+    be used as a proxy for admissible scientific evidence, CI evidence, or
+    operational release readiness.  The manifest builder exposes both fields
+    so downstream consumers cannot mistake a landed commit for a releasable
+    result.
+    """
+    if merge_state not in MERGE_STATES:
+        raise ValueError(f"unrecognized merge state: {merge_state!r}")
+
+    blockers: list[str] = []
+    if not ctx.commit_resolves:
+        blockers.append("release state unknown because the source commit does not resolve")
+        return "unknown", blockers
+
+    if ctx.scientific_blocking or scientific_gate_value == "blocked":
+        blockers.append("release blocked by the independent scientific gate")
+        return "blocked_by_scientific_review", blockers
+
+    if ctx.worst_ci_state == "failing":
+        blockers.append("release blocked because the worst CI state is failing")
+        return "blocked_by_ci", blockers
+
+    if ctx.worst_ci_state == "infrastructure_blocked":
+        blockers.append("release blocked because CI infrastructure is unavailable")
+        return "blocked_by_infrastructure", blockers
+
+    if ctx.dependency_blockers:
+        blockers.append(f"release blocked by unmet dependencies: {list(ctx.dependency_blockers)}")
+        return "blocked_by_dependency", blockers
+
+    if merge_state != "merged_into_main":
+        blockers.append("release cannot be evaluated as ready until the commit is integrated into target_branch")
+        return "not_integrated", blockers
+
+    # The metadata-only scientific gate intentionally never emits "pass".
+    # Retain this branch for a future independently verified artifact-backed
+    # gate, but never infer readiness from missing or caller-supplied metadata.
+    if scientific_gate_value != "pass":
+        blockers.append("release evidence is incomplete or not independently admissible")
+        return "inconclusive", blockers
+
+    return "ready_for_release", blockers
+
+
 assert set(MERGE_STATES) == {
     "merged_into_main", "integration_only", "open_unintegrated", "ancestor_stale",
     "superseded", "duplicate", "blocked_by_dependency", "blocked_by_ci",
     "blocked_by_infrastructure", "blocked_by_scientific_review", "unknown",
+}
+
+assert set(RELEASE_STATES) == {
+    "ready_for_release", "not_integrated", "blocked_by_scientific_review",
+    "blocked_by_ci", "blocked_by_infrastructure", "blocked_by_dependency",
+    "inconclusive", "unknown",
 }

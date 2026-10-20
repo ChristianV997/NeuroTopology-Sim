@@ -56,7 +56,11 @@ def to_markdown(manifest: ReleaseCandidateManifest) -> str:
     lines.append("")
     lines.append(f"## Merge state: `{d['merge_state']}`")
     lines.append("")
-    lines.append(f"**Merge eligibility:** `{d['merge_eligibility']}`")
+    lines.append(f"**Technical target-branch reachability:** `{d['merge_eligibility']}`")
+    lines.append("")
+    lines.append(f"## Release state: `{d['release_state']}`")
+    lines.append("")
+    lines.append(f"**Release eligibility:** `{d['release_eligibility']}`")
     lines.append("")
     if d["blockers"]:
         lines.append("### Blockers / contributing evidence")

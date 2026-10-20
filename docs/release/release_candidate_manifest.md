@@ -38,6 +38,7 @@ duplicate_file_findings: list, ci_classifications: dict,
 test_summary: dict|null, governance_status: Evidence,
 scientific_gate_status: Evidence, dashboard_isolation_status: Evidence,
 memory_timeout_status: Evidence, merge_state: str, merge_eligibility: bool,
+release_state: str, release_eligibility: bool,
 blockers: list[str], github_state: "available"|"unavailable",
 provenance: dict, generated_at: str|null   # only populated when explicitly requested
 ```
@@ -49,6 +50,19 @@ provenance: dict, generated_at: str|null   # only populated when explicitly requ
 dashboard/timeout code (owned by sibling branches), so it never fabricates
 a verdict for them; a caller that has that data can overwrite those fields
 before serializing.
+
+## Integration State Is Not Release Readiness
+
+`merge_state` and the legacy `merge_eligibility` field describe technical
+target-branch reachability only. They answer whether git ancestry or a
+GitHub snapshot shows that a commit landed; they are not a scientific or
+operational approval.
+
+`release_state` and `release_eligibility` are independent fields. A commit
+that is technically `merged_into_main` remains `blocked_by_scientific_review`,
+`blocked_by_ci`, `blocked_by_infrastructure`, `blocked_by_dependency`, or
+`inconclusive` until its independent gates are admissible. The current
+metadata-only scientific gate intentionally cannot emit `ready_for_release`.
 
 ## The 11 merge states, and their priority order
 
