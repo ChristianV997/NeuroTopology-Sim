@@ -10,13 +10,14 @@ import json
 import sys
 from typing import Any
 
-from .calibration import evaluate_phase_uncertainty_calibration
+from .calibration import _validate_n_bins, evaluate_phase_uncertainty_calibration
 from .candidate_estimator import estimate_narrowband_phase_uncertainty
 from .fixtures import get_all_calibration_fixtures
 
 
 def run_full_calibration_audit(n_bins: int = 5) -> dict[str, Any]:
     """Execute calibration evaluation across all standard synthetic fixtures."""
+    n_bins = _validate_n_bins(n_bins)
     fixtures = get_all_calibration_fixtures()
 
     report: dict[str, Any] = {
@@ -53,10 +54,20 @@ def run_full_calibration_audit(n_bins: int = 5) -> dict[str, Any]:
     return report
 
 
+def _positive_bins(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Narrowband Phase Uncertainty Calibration CLI")
     parser.add_argument("--output", type=str, default="", help="Path to write JSON report")
-    parser.add_argument("--bins", type=int, default=5, help="Number of predicted-uncertainty bins")
+    parser.add_argument("--bins", type=_positive_bins, default=5, help="Number of predicted-uncertainty bins")
     args = parser.parse_args()
 
     audit_result = run_full_calibration_audit(n_bins=args.bins)

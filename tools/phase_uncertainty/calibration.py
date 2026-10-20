@@ -121,6 +121,12 @@ def _circular_mean_phase_error(errors: np.ndarray) -> tuple[float, float]:
     return math.atan2(sine_mean, cosine_mean), resultant_length
 
 
+def _validate_n_bins(n_bins: int) -> int:
+    if isinstance(n_bins, (bool, np.bool_)) or not isinstance(n_bins, (int, np.integer)) or n_bins <= 0:
+        raise ValueError("n_bins must be a positive integer")
+    return int(n_bins)
+
+
 def classify_frame_reliability(
     amplitude: np.ndarray,
     phase_std: np.ndarray,
@@ -198,6 +204,7 @@ def evaluate_phase_uncertainty_calibration(
     n_bins: int = 5,
 ) -> CalibrationReport:
     """Evaluate empirical coverage, bias, and calibration ratios across predicted uncertainty bins."""
+    n_bins = _validate_n_bins(n_bins)
     try:
         est_phase = np.asarray(result.phase, dtype=np.float64)
         ref_phase = np.asarray(true_phase, dtype=np.float64)

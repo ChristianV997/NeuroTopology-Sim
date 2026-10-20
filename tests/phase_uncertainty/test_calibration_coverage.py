@@ -9,7 +9,10 @@ Verifies:
 """
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -240,3 +243,39 @@ def test_weak_circular_bias_direction_is_reported_per_bin() -> None:
     assert abs(report.overall_bias) < 0.3  # The other bin keeps the overall direction defined.
     assert abs(report.bins[0].mean_phase_error) < 0.3  # Numerically zero, but direction is ambiguous.
     assert any("bins [0]" in note and "weakly determined" in note for note in report.summary_notes)
+
+
+@pytest.mark.parametrize("n_bins", [0, -1, True, 1.5], ids=["zero", "negative", "boolean", "fractional"])
+def test_calibration_rejects_invalid_bin_counts(n_bins: object) -> None:
+    fixture = make_stationary_narrowband(n_samples=16, seed=62)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+
+    with pytest.raises(ValueError, match="n_bins"):
+        evaluate_phase_uncertainty_calibration(result, fixture.true_phase, n_bins=n_bins)
+
+
+def test_cli_rejects_zero_bins_with_argument_error() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [sys.executable, "-m", "tools.phase_uncertainty.cli", "--bins", "0"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "--bins" in completed.stderr
+    assert "positive integer" in completed.stderr
+
+
+def test_reliability_classifier_accepts_signed_instantaneous_frequency() -> None:
+    tiers = classify_frame_reliability(
+        amplitude=np.ones(3),
+        phase_std=np.full(3, 0.1),
+        instantaneous_freq=np.full(3, -10.0),
+        median_freq=-10.0,
+    )
+
+    assert set(tiers.tolist()) == {ReliabilityTier.RELIABLE.value}

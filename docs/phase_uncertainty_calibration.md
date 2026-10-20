@@ -96,22 +96,24 @@ Because `phase_std` cannot be corrected to a universal confidence interval by li
 
 ```mermaid
 flowchart TD
-    A["Complex Frame Z[n]"] --> B{"Diagnostics finite, non-negative, and aligned?"}
+    A["Complex Frame Z[n]"] --> B{"Diagnostics finite and aligned?"}
     B -- No --> C["FAIL_CLOSED_INVALID_DATA<br>(Reject malformed diagnostics)"]
-    B -- Yes --> D{"A[n] < 0.15 * median(A), or median(A) <= 0?"}
-    D -- Yes --> E["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Undefined or Unstable Phase)"]
-    D -- No --> F{"phase_std >= 0.95 * (pi/sqrt(3))?"}
-    F -- Yes --> G["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Near-Ceiling Threshold)"]
-    F -- No --> H{"|f_inst - f_median| > 0.5 * |f_median|?"}
-    H -- Yes --> I["FAIL_CLOSED_FREQUENCY_DRIFT<br>(Quarantine: Nonstationary Carrier)"]
-    H -- No --> J{"phase_std > 0.6 * (pi/sqrt(3))?"}
-    J -- Yes --> K["MARGINAL<br>(Use only with wide tolerance)"]
-    J -- No --> L["RELIABLE<br>(Rule-based category only)"]
+    B -- Yes --> D{"Amplitude and phase_std non-negative?"}
+    D -- No --> C
+    D -- Yes --> E{"A[n] < 0.15 * median(A), or median(A) <= 0?"}
+    E -- Yes --> F["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Undefined or Unstable Phase)"]
+    E -- No --> G{"phase_std >= 0.95 * (pi/sqrt(3))?"}
+    G -- Yes --> H["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Near-Ceiling Threshold)"]
+    G -- No --> I{"|f_inst - f_median| > 0.5 * |f_median|?"}
+    I -- Yes --> J["FAIL_CLOSED_FREQUENCY_DRIFT<br>(Quarantine: Nonstationary Carrier)"]
+    I -- No --> K{"phase_std > 0.6 * (pi/sqrt(3))?"}
+    K -- Yes --> L["MARGINAL<br>(Use only with wide tolerance)"]
+    K -- No --> M["RELIABLE<br>(Rule-based category only)"]
 ```
 
 ### Categorization Criteria
 1. **`FAIL_CLOSED_INVALID_DATA`**:
-   Direct tier classification assigns this tier to non-finite or negative diagnostic values. Calibration report generation rejects non-finite, non-vector, or misaligned arrays with `ValueError`.
+   Direct tier classification assigns this tier to non-finite diagnostic values and negative amplitude or `phase_std`. Instantaneous frequency is signed, so negative frequency is permitted. Calibration report generation rejects non-finite, non-vector, or misaligned arrays with `ValueError`.
 2. **`FAIL_CLOSED_NEAR_ZERO_AMPLITUDE`**:
    Triggered when $A[n] < 0.15 \times \mathrm{median}(A)$.
    If median amplitude is zero, all otherwise valid frames are quarantined. At zero amplitude, phase is undefined; this does not identify a physical vortex or biological state.
