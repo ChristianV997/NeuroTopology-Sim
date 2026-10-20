@@ -171,6 +171,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/topology/hodge_2d.py", "test": "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"},
         ),
+        "implementation": "neurotopology_sim/experimental/topology/hodge_2d.py",
         "implementation_roots": ("neurotopology_sim/experimental/topology/hodge_2d.py",),
         "candidate_test_roots": ("tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",),
     },
@@ -249,6 +250,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/experimental/test_spherical_csd_parity.py"},
             {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
         ),
+        "implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
         "support_files": {
             "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
                 "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
@@ -699,14 +701,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "neurotopology_sim/experimental/dynamics/",
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
-            "tests/dmd_ep2_oracle/test_oracle.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
         "tests": (
             "tests/dmd_crouzeix_contract/test_production_contract.py",
             "tests/experimental/test_dmd_crouzeix.py",
-            "tests/dmd_ep2_oracle/test_oracle.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "candidate_pairs": (
@@ -714,15 +714,6 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
         ),
-        # This independent reference module supplies the bridge helpers but is
-        # not represented as a production implementation. Run its own test
-        # only when that exact test source changes.
-        "support_files": {
-            "tests/dmd_ep2_oracle/test_oracle.py": (
-                "tests/dmd_ep2_oracle/test_production_bridge.py",
-            ),
-        },
-        "independent_reference_tests": ("tests/dmd_ep2_oracle/test_oracle.py",),
         "environment_overrides": {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
         "test_roots": (
@@ -733,7 +724,6 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "candidate_test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
-            "tests/dmd_ep2_oracle/test_oracle.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
     },
@@ -858,6 +848,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tools/benchmarks/__init__.py",
             "scripts/benchmark_batch2_pipeline.py",
             "tests/benchmarks/batch2_pipeline/",
+        ),
+        # This regression test belongs to the workflow itself. Its changes run
+        # in core-tests and must not select an absent unmerged benchmark source.
+        "non_selecting_test_paths": (
+            "tests/ci/test_round6_benchmark_makefile.py",
         ),
         "tests": (
             "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
@@ -1439,6 +1434,40 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "candidate_test_roots": ("tests/test_finite_jitter_production_import.py",),
     },
 }
+
+# Keep the historical spherical-CSD inventory aware of the exact NumPy
+# reference-audit tests and their support files. Selection remains source-aware
+# above: an audit implementation/test diff runs only mne_csd_reference_audit,
+# while a spherical-CSD diff requires only its own source/test pairs.
+_spherical_csd_spec = COMPONENTS["spherical_csd"]
+_mne_csd_audit_spec = COMPONENTS["mne_csd_reference_audit"]
+_mne_audit_external_tests = set(_mne_csd_audit_spec.get("external_test_paths", {}))
+_shared_mne_audit_tests = tuple(
+    test for test in _mne_csd_audit_spec["tests"]
+    if test not in _mne_audit_external_tests
+)
+_spherical_csd_spec["tests"] = tuple(dict.fromkeys((
+    *_spherical_csd_spec["tests"],
+    *_shared_mne_audit_tests,
+)))
+_spherical_csd_pair_ids = {
+    (pair["implementation"], pair["test"])
+    for pair in _spherical_csd_spec["candidate_pairs"]
+}
+_spherical_csd_spec["candidate_pairs"] = (
+    *_spherical_csd_spec["candidate_pairs"],
+    *(
+        pair for pair in _mne_csd_audit_spec["candidate_pairs"]
+        if pair["test"] in _shared_mne_audit_tests
+        and (pair["implementation"], pair["test"]) not in _spherical_csd_pair_ids
+    ),
+)
+for _support_path, _mapped_tests in _mne_csd_audit_spec.get("support_files", {}).items():
+    _shared_mapped_tests = tuple(
+        test for test in _mapped_tests if test in _shared_mne_audit_tests
+    )
+    if _shared_mapped_tests:
+        _spherical_csd_spec["support_files"][_support_path] = _shared_mapped_tests
 
 
 # Package initializers are executable import surfaces, not automatic exemptions.
@@ -2127,6 +2156,11 @@ def _is_component_relevant(
     }
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("external_test_paths", {}))
+    non_selecting_test_paths = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("non_selecting_test_paths", ())
+    }
+    mapped.difference_update(non_selecting_test_paths)
     if include_package_initializers:
         mapped.update(normalize_repo_path(path).casefold() for path in spec.get("package_initializers", {}))
     return any(normalize_repo_path(path).casefold() in mapped for path in changed_paths)
@@ -2143,18 +2177,25 @@ def select_components(changed_paths: set[str]) -> list[str]:
             name, changed_paths, include_package_initializers=False
         )
     }
-    # The KKT test is a shared legacy CSD probe. Select it through the
-    # spherical-CSD compatibility pair when it changes alone. If any other
-    # reference-audit path changes, the audit component owns the run and the
-    # sphere component is suppressed to avoid requiring an unrelated PR's
-    # implementation files.
-    shared_kkt_test = "tests/mne_csd_reference_audit/test_kkt_operator.py"
-    shared_kkt_changed = shared_kkt_test.casefold() in changed_casefold
+    # The KKT test and its pinned transcription fixture are shared legacy CSD
+    # probes. Select either through the spherical-CSD compatibility mapping
+    # when changed alone. If any other reference-audit path changes, the audit
+    # component owns the run and the sphere component is suppressed to avoid
+    # requiring an unrelated PR's implementation files.
+    shared_csd_alias_paths = {
+        "tests/mne_csd_reference_audit/test_kkt_operator.py",
+        "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json",
+    }
+    shared_csd_alias_paths_casefold = {
+        path.casefold() for path in shared_csd_alias_paths
+    }
+    shared_csd_alias_changed = bool(changed_casefold & shared_csd_alias_paths_casefold)
     other_audit_paths_changed = any(
         _path_in_root(path, "tools/mne_csd_reference_audit/")
         or (
             _path_in_root(path, "tests/mne_csd_reference_audit/")
-            and normalize_repo_path(path).casefold() != shared_kkt_test.casefold()
+            and normalize_repo_path(path).casefold()
+            not in shared_csd_alias_paths_casefold
         )
         or normalize_repo_path(path).casefold()
         == "tests/optional_live_mne/test_mne_csd_live_parity.py"
@@ -2162,7 +2203,7 @@ def select_components(changed_paths: set[str]) -> list[str]:
     )
     if other_audit_paths_changed:
         direct.discard("spherical_csd")
-    elif shared_kkt_changed:
+    elif shared_csd_alias_changed:
         direct.discard("mne_csd_reference_audit")
         direct.add("spherical_csd")
     initializer_owners = {
@@ -2348,6 +2389,12 @@ def inspect_component(
         if normalize_repo_path(initializer_path).casefold() in changes
         for test in mapped_tests
     }
+    changed_initializer_test_order = list(dict.fromkeys(
+        test
+        for initializer_path, mapped_tests in spec.get("package_initializers", {}).items()
+        if normalize_repo_path(initializer_path).casefold() in changes
+        for test in mapped_tests
+    ))
     selected_pairs.extend(
         pair for pair in pairs
         if normalize_repo_path(pair["test"]).casefold() in changed_support_tests | changed_initializer_tests
@@ -2468,14 +2515,33 @@ def inspect_component(
         path for path in changed_reference_tests if not (root / path).is_file()
     )
     missing_required_tests = sorted(set(missing_required_tests) | set(missing_reference_tests))
-    pair_tests = [
-        pair["test"] for pair in selected_pairs
+    selected_runnable_test_paths = {
+        normalize_repo_path(pair["test"]).casefold()
+        for pair in selected_pairs
         if (
             normalize_repo_path(pair["test"]).casefold() not in external_tests
             or normalize_repo_path(pair["test"]) in test_markers
         )
-        and (root / pair["test"]).is_file()
-    ]
+    }
+    if changed_initializer_test_order:
+        # Initializer-only edits execute tests in the exact order declared by
+        # the initializer ownership mapping.
+        pair_test_order = [
+            *changed_initializer_test_order,
+            *(test for test in spec["tests"]
+              if normalize_repo_path(test).casefold() in changed_support_tests),
+        ]
+    elif changed_support_tests:
+        # Support-only edits use stable component test order, independent of
+        # implementation-pair construction order.
+        pair_test_order = list(spec["tests"])
+    else:
+        pair_test_order = [pair["test"] for pair in selected_pairs]
+    pair_tests = list(dict.fromkeys(
+        test for test in pair_test_order
+        if normalize_repo_path(test).casefold() in selected_runnable_test_paths
+        and (root / test).is_file()
+    ))
     delegated_tests = sorted({
         pair["test"] for pair in selected_pairs
         if normalize_repo_path(pair["test"]).casefold() in external_tests

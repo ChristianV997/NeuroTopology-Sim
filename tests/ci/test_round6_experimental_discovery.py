@@ -402,14 +402,20 @@ class Round6DiscoveryTests(unittest.TestCase):
     def test_shared_csd_kkt_test_selects_one_source_aware_component(self):
         helper = _helper()
         shared_test = "tests/mne_csd_reference_audit/test_kkt_operator.py"
+        shared_fixture = "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json"
         audit_source = "tools/mne_csd_reference_audit/kkt.py"
 
         # Historical CSD parity probes may change this exact test alone. When
         # the audit implementation is part of the diff, the independent audit
         # component owns the run and must not fan out to an absent sphere PR.
         self.assertEqual(helper.select_components({shared_test}), ["spherical_csd"])
+        self.assertEqual(helper.select_components({shared_fixture}), ["spherical_csd"])
         self.assertEqual(
             helper.select_components({audit_source, shared_test}),
+            ["mne_csd_reference_audit"],
+        )
+        self.assertEqual(
+            helper.select_components({audit_source, shared_fixture}),
             ["mne_csd_reference_audit"],
         )
         self.assertEqual(helper._unmapped_candidate_paths({shared_test}), [])
@@ -1006,7 +1012,7 @@ def test_fixture():
         self.assertEqual(report["selected_components"], [])
         self.assertIn("does not certify", report["statement"])
 
-    def test_dmd_oracle_reference_and_production_bridge_are_explicit_and_required(self):
+    def test_dmd_production_bridge_is_paired_but_oracle_only_change_blocks(self):
         helper = _helper()
         implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
         oracle_test = "tests/dmd_ep2_oracle/test_oracle.py"
@@ -1015,17 +1021,18 @@ def test_fixture():
             helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][-1],
             {"implementation": implementation, "test": bridge_test},
         )
-        self.assertEqual(
-            helper.COMPONENTS["dmd_crouzeix"]["support_files"][oracle_test],
-            (bridge_test,),
+        self.assertNotIn(
+            oracle_test,
+            {pair["test"] for pair in helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"]},
         )
-        self.assertIn(oracle_test, helper.COMPONENTS["dmd_crouzeix"]["independent_reference_tests"])
         self.assertEqual(
             helper.COMPONENTS["dmd_crouzeix"]["environment_overrides"],
             {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         )
-        self.assertEqual(helper.select_components({oracle_test}), ["dmd_crouzeix"])
-        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [])
+        self.assertEqual(helper.select_components({oracle_test}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [oracle_test])
+        self.assertEqual(helper.select_components({bridge_test}), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths({bridge_test}), [])
         self.assertEqual(
             helper._unmapped_candidate_paths({"tests/dmd_ep2_oracle/test_unregistered_extra.py"}),
             ["tests/dmd_ep2_oracle/test_unregistered_extra.py"],
@@ -1033,17 +1040,12 @@ def test_fixture():
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            base = _repo(root, with_candidate=False)
+            _repo(root, with_candidate=False)
             _write(root, implementation, "def marker(): return 'fixture'\n")
-            test_paths = (
-                "tests/dmd_crouzeix_contract/test_production_contract.py",
-                "tests/experimental/test_dmd_crouzeix.py",
-                oracle_test,
-                bridge_test,
-            )
-            for index, path in enumerate(test_paths):
-                _write(root, path, f"def test_fixture_{index}(): assert True\n")
-            head = _commit(root, "DMD oracle bridge fixture")
+            _write(root, oracle_test, "def oracle_fixture(): return 1\n")
+            base = _commit(root, "DMD production implementation and stable oracle fixture")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            head = _commit(root, "DMD production bridge candidate test")
             report_path = root / "outputs/report.json"
             observed_environments = []
 
@@ -1059,8 +1061,8 @@ def test_fixture():
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["selected_components"], ["dmd_crouzeix"])
         component = report["components"][0]
-        self.assertEqual(set(component["tests_to_run"]), set(test_paths))
-        self.assertEqual(observed_environments, ["1"] * len(test_paths))
+        self.assertEqual(component["tests_to_run"], [bridge_test])
+        self.assertEqual(observed_environments, ["1"])
         self.assertTrue(all(item["environment_overrides"] == {"DMD_EP2_REQUIRE_PRODUCTION": "1"}
                             for item in component["executions"]))
 
@@ -2394,6 +2396,10 @@ def test_fixture():
         )
         makefile = "tools/benchmarks/batch2_pipeline/Makefile"
         makefile_test = "tests/ci/test_round6_benchmark_makefile.py"
+        # A workflow-owned test change must not select the candidate component
+        # whose implementation is not part of this workflow PR.
+        self.assertEqual(helper.select_components({makefile_test}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({makefile_test}), [])
         self.assertIn(
             {"implementation": makefile, "test": makefile_test},
             helper.COMPONENTS["batch2_pipeline_benchmark"]["candidate_pairs"],
