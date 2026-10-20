@@ -34,11 +34,12 @@ With real-FFT coefficients `F` of shape `(n_channels, n_freq)`:
 
 ```
 C[f, i, j] = F[i, f] * conj(F[j, f]) / n_time
-error = ||C_surr - C_orig||_F / (||C_orig||_F + eps)
+error = ||C_surr - C_orig||_F / ||C_orig||_F
 ```
 
 This is the **full** channel×channel complex matrix at every frequency — not
-per-channel power spectra alone.
+per-channel power spectra alone. The relative cross-spectral error is scale-invariant;
+no absolute denominator floor is applied, preventing false passes at small signal scales.
 
 ### Marginal error
 

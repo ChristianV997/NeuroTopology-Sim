@@ -10,7 +10,7 @@ The complex cross-spectral tensor is
 for every frequency bin ``f``. The **relative cross-spectral error** between
 original ``X`` and surrogate ``S`` is the Frobenius relative residual
 
-    ||C_S - C_X||_F / (||C_X||_F + eps)
+    ||C_S - C_X||_F / ||C_X||_F
 
 This uses the **full channel×channel complex matrix at every frequency**, not
 per-channel auto-spectra alone. Auto-spectral error is reported separately
@@ -29,10 +29,11 @@ import numpy as np
 from .errors import SurrogateAuditError
 
 SPECTRAL_GATE_1E3 = 1e-3
-_EPS = 1e-15
 
 
 def validate_array(x: np.ndarray, *, min_channels: int = 1, min_time: int = 2) -> np.ndarray:
+    if np.iscomplexobj(x):
+        raise SurrogateAuditError("complex input arrays are not supported; expected real-valued array")
     arr = np.asarray(x, dtype=np.float64)
     if arr.ndim != 2:
         raise SurrogateAuditError(f"expected 2-D (n_channels, n_time), got shape {arr.shape}")
@@ -57,22 +58,32 @@ def cross_spectral_tensor(x: np.ndarray) -> np.ndarray:
 
 
 def relative_cross_spectral_error(original: np.ndarray, surrogate: np.ndarray) -> float:
-    """Frobenius relative error of the full complex cross-spectral tensor."""
+    """Frobenius relative error of the full complex cross-spectral tensor.
+
+    Strictly scale-invariant: relative error = ||C_surr - C_orig||_F / ||C_orig||_F.
+    """
     c0 = cross_spectral_tensor(original)
     c1 = cross_spectral_tensor(surrogate)
     if c0.shape != c1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for spectral error")
     num = float(np.linalg.norm(c1 - c0))
-    den = float(np.linalg.norm(c0)) + _EPS
+    den = float(np.linalg.norm(c0))
+    if den == 0.0:
+        return 0.0 if num == 0.0 else float("inf")
     return num / den
 
 
 def relative_autospectral_error(original: np.ndarray, surrogate: np.ndarray) -> float:
-    """Relative error of per-channel auto-spectra only (not the multivariate gate)."""
+    """Relative error of per-channel auto-spectra only (not the multivariate gate).
+
+    Strictly scale-invariant: relative error = ||A_surr - A_orig||_F / ||A_orig||_F.
+    """
     a0 = np.abs(np.fft.rfft(validate_array(original), axis=1)) ** 2
     a1 = np.abs(np.fft.rfft(validate_array(surrogate), axis=1)) ** 2
     num = float(np.linalg.norm(a1 - a0))
-    den = float(np.linalg.norm(a0)) + _EPS
+    den = float(np.linalg.norm(a0))
+    if den == 0.0:
+        return 0.0 if num == 0.0 else float("inf")
     return num / den
 
 

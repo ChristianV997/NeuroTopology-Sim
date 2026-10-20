@@ -25,6 +25,7 @@ and must not be treated as interchangeable with shared-phase preservation.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, Tuple
 
 import numpy as np
@@ -52,10 +53,10 @@ def generate_mv_iaaft(
     cross-spectral error exceeds ``spectral_gate``, ``spectral_gate_status`` is
     ``UNMET`` (still returning the rank-adjusted array).
     """
-    if max_iter < 1:
-        raise SurrogateAuditError("max_iter must be >= 1")
-    if spectral_gate <= 0:
-        raise SurrogateAuditError("spectral_gate must be > 0")
+    if not isinstance(max_iter, int) or max_iter < 1:
+        raise SurrogateAuditError("max_iter must be an integer >= 1")
+    if not isinstance(spectral_gate, (int, float)) or not math.isfinite(spectral_gate) or spectral_gate <= 0:
+        raise SurrogateAuditError("spectral_gate must be a finite positive number")
 
     arr = validate_array(x, min_channels=1, min_time=2)
     n_ch, n_t = arr.shape

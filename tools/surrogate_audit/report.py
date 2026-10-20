@@ -91,7 +91,7 @@ def audit_surrogate(
             "meta": meta,
             "definitions": {
                 "cross_spectral_error": (
-                    "||C_surr - C_orig||_F / (||C_orig||_F + eps) over the full "
+                    "||C_surr - C_orig||_F / ||C_orig||_F over the full "
                     "complex (n_freq, n_ch, n_ch) cross-spectral tensor"
                 ),
                 "marginal_sorted_error": (
