@@ -6,6 +6,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      diff_base_sha:
+        description: Full base commit SHA for candidate-path discovery
+        required: true
+        type: string
+      diff_head_sha:
+        description: Full head commit SHA for candidate-path discovery
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -34,6 +43,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v7
@@ -47,6 +58,7 @@ jobs:
           echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
 
       - name: Install CPU/base profile only
+        id: install_base
         run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
       - name: Run core tests in isolated batches
@@ -66,6 +78,26 @@ jobs:
           tests/btc_icft/test_report_guardrails.py
           tests/btc_icft/test_ontology_schema.py
           tests/runner/test_runner_isolation.py
+          tests/audits/test_live_repo_pr_ownership_map.py
+          tests/ci/test_round6_experimental_discovery.py
+          tests/docker_context/test_build_context_policy.py
+
+      - name: Discover and run changed Round 6 candidate suites
+        if: ${{ !cancelled() && steps.install_base.outcome == 'success' }}
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: >-
+          python .github/workflows/round6_experimental_tests.py
+          --diff-base "$DIFF_BASE_SHA"
+          --diff-head "$DIFF_HEAD_SHA"
+          --tested-checkout "$TESTED_CHECKOUT_SHA"
+          --workflow-sha "$WORKFLOW_SHA"
+          --event-name "$EVENT_NAME"
+          --report outputs/round6_experimental_ci_report.json
 
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic
@@ -94,7 +126,181 @@ jobs:
           name: required-core-test-report
           path: |
             outputs/required_core_test_report.json
+            outputs/round6_experimental_ci_report.json
+            outputs/round6-experimental-logs/**
             test-results-core-failure.txt
+          if-no-files-found: warn
+
+  docker-context-engine:
+    name: docker-context-engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      PIP_NO_CACHE_DIR: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Select Docker-context candidate paths
+        id: candidate_scope
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for sha in "$DIFF_BASE_SHA" "$DIFF_HEAD_SHA"; do
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Docker candidate discovery requires explicit full base/head SHAs"
+              exit 2
+            fi
+          done
+          changed_paths="$(git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA")"
+          if grep -Fxq '.dockerignore' <<< "$changed_paths" || \
+             grep -Fxq 'tests/docker_context/test_docker_engine_build_context.py' <<< "$changed_paths"; then
+            checkout_sha="$(git rev-parse HEAD)"
+            if [[ "$checkout_sha" != "$TESTED_CHECKOUT_SHA" ]] || \
+               ! git merge-base --is-ancestor "$DIFF_HEAD_SHA" "$checkout_sha"; then
+              echo "::error::Docker candidate head is not present in the tested checkout"
+              exit 1
+            fi
+            if [[ ! -f tests/docker_context/test_docker_engine_build_context.py ]]; then
+              echo "::error::Docker-context candidate changed, but its registered engine test is absent"
+              exit 1
+            fi
+            echo "docker_context_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Docker-context candidate paths changed; the Docker Engine test is required."
+          else
+            echo "docker_context_changed=false" >> "$GITHUB_OUTPUT"
+            echo "NOT_APPLICABLE: no Docker-context candidate path changed."
+          fi
+
+      - name: Prepare bounded pip temp directory
+        if: steps.candidate_scope.outputs.docker_context_changed == 'true'
+        run: |
+          pip_tmp="${RUNNER_TEMP}/nts-docker-pip-tmp"
+          mkdir -p "$pip_tmp"
+          echo "TMPDIR=$pip_tmp" >> "$GITHUB_ENV"
+
+      - name: Install CPU/base test profile only
+        if: steps.candidate_scope.outputs.docker_context_changed == 'true'
+        run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
+
+      - name: Verify hosted Docker Engine
+        if: steps.candidate_scope.outputs.docker_context_changed == 'true'
+        run: docker info --format '{{.ServerVersion}}'
+
+      - name: Run Docker-context verifier in an isolated process
+        id: docker_candidate_tests
+        if: steps.candidate_scope.outputs.docker_context_changed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          python scripts/run_tests_isolated.py \
+            --batch-size 1 \
+            --timeout-s 120 \
+            --report outputs/docker_context_engine_test_report.json \
+            --pytest-arg=--junitxml=outputs/docker_context_engine_test_report.junit.xml \
+          tests/docker_context/test_docker_engine_build_context.py
+          python - <<'PY'
+          import runpy
+          from pathlib import Path
+
+          expected_file = "tests/docker_context/test_docker_engine_build_context.py"
+          helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
+          valid, reason, test_count = helper["validate_docker_engine_test_artifacts"](
+              Path.cwd(),
+              Path("outputs/docker_context_engine_test_report.json"),
+              Path("outputs/docker_context_engine_test_report.junit.xml"),
+              expected_file,
+          )
+          if not valid:
+              raise SystemExit(reason)
+          print(
+              f"Docker Engine candidate suite PASS: {test_count} tests, "
+              "0 skipped, 0 failures, 0 errors, 0 timeouts"
+          )
+          PY
+
+      - name: Write Docker candidate evidence
+        if: always() && steps.candidate_scope.outputs.docker_context_changed == 'true'
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          TEST_STEP_OUTCOME: ${{ steps.docker_candidate_tests.outcome || 'skipped' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import runpy
+          from pathlib import Path
+
+          root = Path.cwd()
+          helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
+          evidence = helper["docker_engine_candidate_evidence"](
+              root,
+              Path("outputs/docker_context_engine_test_report.json"),
+              Path("outputs/docker_context_engine_test_report.junit.xml"),
+              diff_base_sha=os.environ["DIFF_BASE_SHA"],
+              diff_head_sha=os.environ["DIFF_HEAD_SHA"],
+              tested_checkout_sha=os.environ["TESTED_CHECKOUT_SHA"],
+              workflow_sha=os.environ["WORKFLOW_SHA"],
+              event_name=os.environ["EVENT_NAME"],
+              candidate_changed=True,
+              execution_outcome=os.environ["TEST_STEP_OUTCOME"],
+          )
+          report_path = Path("outputs/docker_context_candidate_evidence.json")
+          identity = helper["_prepare_contained_output"](root, report_path, "Docker candidate evidence path")
+          helper["_write_contained_text"](
+              root,
+              report_path,
+              json.dumps(evidence, sort_keys=True, indent=2, allow_nan=False) + "\n",
+              "Docker candidate evidence path",
+              identity,
+          )
+          print(json.dumps(evidence, sort_keys=True, allow_nan=False))
+          PY
+
+      - name: Capture Docker-context diagnostics
+        if: failure()
+        run: |
+          {
+            echo "## Docker-context runner diagnostics"
+            date -u
+            df -h
+            docker version || true
+            du -sh "$RUNNER_TEMP" . 2>/dev/null || true
+          } | tee docker-context-engine-failure.txt
+
+      - name: Clean Docker-context temporary files
+        if: always()
+        run: |
+          python -m pip cache purge || true
+          if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
+
+      - name: Upload Docker-context diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-context-engine-test-report
+          path: |
+            outputs/docker_context_engine_test_report.json
+            outputs/docker_context_engine_test_report.junit.xml
+            outputs/docker_context_candidate_evidence.json
+            docker-context-engine-failure.txt
           if-no-files-found: warn
 
   awareness-tests:
