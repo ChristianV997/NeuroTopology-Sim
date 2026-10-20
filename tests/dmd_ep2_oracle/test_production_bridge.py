@@ -17,10 +17,33 @@ Unset (default)
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import unittest
+from pathlib import Path
 
-from test_oracle import model, signed_nyquist_alias
+
+def _load_oracle_helpers():
+    """Load sibling ``test_oracle`` by file path (package- and discover-safe).
+
+    Avoids ``from test_oracle import …`` which raises ``ModuleNotFoundError``
+    when this module is loaded as ``tests.dmd_ep2_oracle.test_production_bridge``
+    and would otherwise be mistaken for a missing production leaf.
+    """
+    path = Path(__file__).resolve().parent / "test_oracle.py"
+    spec = importlib.util.spec_from_file_location(
+        "dmd_ep2_oracle_test_oracle_helpers", path
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load oracle helpers from {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_oracle = _load_oracle_helpers()
+model = _oracle.model
+signed_nyquist_alias = _oracle.signed_nyquist_alias
 
 
 def _load_production():
