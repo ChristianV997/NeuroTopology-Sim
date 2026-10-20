@@ -515,6 +515,34 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("tools/simulation_runtime/",),
         "test_roots": ("tests/simulation_runtime/",),
     },
+    "fusion_validation_null_models": {
+        # Registered from the exact implementation/test paths and command in
+        # PR #374. Keep this component narrow; the candidate remains open and
+        # must be present in the tested checkout before its tests can pass.
+        "triggers": (
+            "dual_engine/fusion_validation.py",
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "implementation": "dual_engine/fusion_validation.py",
+        "tests": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "dual_engine/fusion_validation.py", "test": "tests/test_fusion_null_models.py"},
+            {"implementation": "dual_engine/fusion_validation.py", "test": "tests/test_fusion_validation.py"},
+        ),
+        "implementation_roots": ("dual_engine/fusion_validation.py",),
+        "test_roots": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "candidate_test_roots": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+    },
     "report_firewall": {
         "triggers": ("tools/batch3_report_firewall/", "tests/tools/batch3_report_firewall/", "scripts/check_batch3_report_language.py"),
         "implementation": "tools/batch3_report_firewall/checker.py",
@@ -1342,6 +1370,7 @@ COMPONENT_OWNER_PRS = {
     "surrogate_audit": (398,),
     "synthetic_roc": (426, 427),
     "simulation_grid_planner": (424,),
+    "fusion_validation_null_models": (374,),
     "report_firewall": (390,),
     "provenance_join": (392,),
     "topology_backend_conformance": (389,),
@@ -1433,9 +1462,6 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "tests/scientific_falsification/test_batch3_falsification_matrix.py",  # PR #376
     "configs/research/batch3_source_registry.yaml",
     "tests/research/test_batch3_source_registry.py",  # PR #375
-    "dual_engine/fusion_validation.py",
-    "tests/test_fusion_null_models.py",
-    "tests/test_fusion_validation.py",  # PR #374
     "sciencer_d/btc_icft/level_t/base_real_topology.py",
     "tests/test_base_real_topology_missingness.py",
     "tests/test_cohort_missingness.py",  # PR #373

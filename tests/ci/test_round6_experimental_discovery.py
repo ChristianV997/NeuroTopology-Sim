@@ -2086,6 +2086,11 @@ def test_fixture():
                 "tools/simulation_runtime/grid_plan.py",
                 "tests/simulation_runtime/test_grid_plan.py",
             ),
+            "fusion_validation_null_models": (
+                374,
+                "dual_engine/fusion_validation.py",
+                "tests/test_fusion_null_models.py",
+            ),
             "docker_context_policy": (
                 431, 434,
                 ".dockerignore",
@@ -2560,6 +2565,52 @@ def test_fixture():
                 self.assertIn(test_file, spec["support_files"][support_path])
                 self.assertIn(test_file, spec["tests"])
 
+    def test_fusion_validation_mapping_requires_exact_companion_tests(self):
+        helper = _helper()
+        component = "fusion_validation_null_models"
+        implementation = "dual_engine/fusion_validation.py"
+        test_paths = (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        )
+        spec = helper.COMPONENTS[component]
+        self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (374,))
+        self.assertEqual(
+            spec["candidate_pairs"],
+            tuple(
+                {"implementation": implementation, "test": test_path}
+                for test_path in test_paths
+            ),
+        )
+        for test_path in test_paths:
+            self.assertEqual(helper.select_components({test_path}), [component])
+            self.assertEqual(helper._unmapped_candidate_paths({test_path}), [])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "# candidate implementation fixture\n")
+            for test_path in test_paths:
+                _write(root, test_path, "def test_candidate_contract(): pass\n")
+            inspection = helper.inspect_component(component, root, {implementation})
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertEqual(inspection["tests_to_run"], list(test_paths))
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "# candidate implementation fixture\n")
+            _write(root, test_paths[0], "def test_candidate_contract(): pass\n")
+            inspection = helper.inspect_component(component, root, {implementation})
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertEqual(inspection["missing_required_tests"], [test_paths[1]])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "# candidate implementation fixture\n")
+            _write(root, test_paths[1], "def test_candidate_contract(): pass\n")
+            inspection = helper.inspect_component(component, root, {test_paths[1]})
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertEqual(inspection["tests_to_run"], [test_paths[1]])
+
     def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
         helper = _helper()
         current_open_pr_gaps = (
@@ -2573,11 +2624,9 @@ def test_fixture():
             (382, "tests/source_mining_integration/test_source_mining_evidence_boundary.py"),
             (376, "tests/scientific_falsification/test_batch3_falsification_matrix.py"),
             (375, "tests/research/test_batch3_source_registry.py"),
-            (374, "dual_engine/fusion_validation.py"),
             (373, "sciencer_d/btc_icft/level_t/base_real_topology.py"),
             (388, "dual_engine/forward_model_contract.py"),
             (400, "tests/dmd_ep2_oracle/test_unregistered_extra.py"),
-            (374, "tests/test_fusion_validation.py"),
             (373, "tests/test_base_real_topology_missingness.py"),
         )
         for pr_number, path in current_open_pr_gaps:
