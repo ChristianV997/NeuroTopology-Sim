@@ -23,8 +23,8 @@ The core question investigated is: **Does the reported `phase_std` represent a c
    Under autoregressive noise ($AR(1)$ with $\rho = 0.85$), the empirical RMS phase error is **1.60× larger than the predicted `phase_std`**. Empirical $1\sigma$ coverage drops from the nominal Gaussian $68.27\%$ to **$42.30\%$**, and $2\sigma$ coverage drops from $95.00\%$ to **$77.40\%$**.
 2. **Breakdown of the Second-Difference MAD Noise Model**:
    The estimator assumes that residual phase noise $\eta[n]$ is independent and identically distributed (i.i.d.) Gaussian, where the second difference $\Delta^2 \eta[n] = \eta[n] - 2\eta[n-1] + \eta[n-2]$ has variance $6\sigma_\eta^2$. When noise is positively autocorrelated, $\mathrm{Var}(\Delta^2 \eta) < 6\sigma_\eta^2$. Consequently, the scaling factor $\frac{1.4826}{\sqrt{6}} \mathrm{MAD}(\Delta^2 \theta)$ severely underestimates the actual noise standard deviation.
-3. **Severe Overconfidence at Near-Zero Amplitude Singularities**:
-   In low-amplitude regimes ($A \to 0$), phase is dominated by noise and wraps uniformly on $(-\pi, \pi]$. In intermediate bins, empirical error exceeds predicted uncertainty by **$1.68\times$**.
+3. **Severe Overconfidence at Near-Zero Amplitude**:
+   At exactly zero amplitude, phase is undefined; at low but nonzero amplitude, additive noise can dominate the measured phase. In intermediate synthetic bins, empirical error exceeds predicted uncertainty by **$1.68\times$**.
 4. **Conservatism under High-SNR AWGN**:
    Under high-SNR stationary white noise, the estimator is conservative ($\mathrm{RMS} / \overline{\sigma}_{\mathrm{pred}} \approx 0.65$) because it quadratically sums an SNR-derived term and a local circular jitter term ($\sqrt{\sigma_{\mathrm{SNR}}^2 + \sigma_{\mathrm{jitter}}^2}$), effectively double-counting noise fluctuations.
 5. **Verdict**:
@@ -82,7 +82,7 @@ In real electrophysiological and neural physical recordings, residual noise exhi
 
 ### 4.2 Near-Zero Amplitude Crossings
 Near amplitude nulls ($A[n] \to 0$):
-- Instantaneous phase wraps chaotically due to division by zero in $\mathrm{atan2}$.
+- At exactly zero amplitude, phase is mathematically undefined. At low but nonzero amplitude, noise can dominate and make measured phase unstable; this is not a claim about a biological singularity.
 - Second differences clip against the boundary $(-\pi, \pi]$, violating Gaussian linearity.
 - In the transition region, the estimator reports $\sigma \approx 0.9 - 1.3$ rad, while the true error distribution has RMS $> 1.79$ rad.
 
@@ -97,9 +97,9 @@ flowchart TD
     A["Complex Frame Z[n]"] --> B{"Diagnostics finite, non-negative, and aligned?"}
     B -- No --> C["FAIL_CLOSED_INVALID_DATA<br>(Reject malformed diagnostics)"]
     B -- Yes --> D{"A[n] < 0.15 * median(A), or median(A) <= 0?"}
-    D -- Yes --> E["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Phase Singular)"]
+    D -- Yes --> E["FAIL_CLOSED_NEAR_ZERO_AMPLITUDE<br>(Quarantine: Undefined or Unstable Phase)"]
     D -- No --> F{"phase_std >= 0.95 * (pi/sqrt(3))?"}
-    F -- Yes --> G["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Uniform Floor)"]
+    F -- Yes --> G["FAIL_CLOSED_MAX_UNCERTAINTY<br>(Quarantine: Near-Ceiling Threshold)"]
     F -- No --> H{"|f_inst - f_median| > 0.5 * |f_median|?"}
     H -- Yes --> I["FAIL_CLOSED_FREQUENCY_DRIFT<br>(Quarantine: Nonstationary Carrier)"]
     H -- No --> J{"phase_std > 0.6 * (pi/sqrt(3))?"}

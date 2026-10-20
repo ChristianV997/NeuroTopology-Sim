@@ -163,7 +163,7 @@ def classify_frame_reliability(
         # 1. Near-zero amplitude singularity
         if amplitude_values[i] < amp_floor:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
-        # 2. Uncertainty pegged at ceiling
+        # 2. Uncertainty near the configured maximum
         elif phase_std_values[i] >= 0.95 * UNIFORM_CIRCULAR_STD_CEILING:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value
         # 3. Severe frequency drift / nonstationarity
@@ -333,7 +333,11 @@ def evaluate_phase_uncertainty_calibration(
     if tier_counts[ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value] > 0:
         notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value]} frames quarantined due to severe carrier frequency drift.")
     if tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value] > 0:
-        notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value]} frames capped at uniform circular std ceiling pi/sqrt(3).")
+        notes.append(
+            f"{tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value]} frames entered the high-uncertainty tier "
+            "at or above 95% of the uniform circular standard-deviation ceiling; this tier threshold does not mean "
+            "the reported values were capped."
+        )
     saturated_2sigma = int(np.count_nonzero(1.96 * pred_std >= np.pi))
     if saturated_2sigma:
         notes.append(
