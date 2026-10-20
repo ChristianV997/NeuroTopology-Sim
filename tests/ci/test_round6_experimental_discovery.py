@@ -2439,6 +2439,10 @@ def test_fixture():
 
         geometry_pair = helper.COMPONENTS["planar_geometry"]["candidate_pairs"][0]
         self.assertEqual(
+            helper.select_components({"tests/experimental/__init__.py"}),
+            ["planar_geometry"],
+        )
+        self.assertEqual(
             helper.select_components({
                 "neurotopology_sim/__init__.py",
                 geometry_pair["implementation"],
@@ -2470,6 +2474,31 @@ def test_fixture():
         initializer = "neurotopology_sim/__init__.py"
         selected = helper.select_components({initializer, "tools/surrogate_nulls/nulls.py"})
         self.assertEqual(selected, ["phase_winding", "surrogate_nulls", "synthetic_roc"])
+
+    def test_shared_initializer_owner_with_absent_candidate_implementation_blocks(self):
+        helper = _helper()
+        component = "synthetic_roc"
+        initializer = "neurotopology_sim/__init__.py"
+        spec = helper.COMPONENTS[component]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            init_path = root / initializer
+            init_path.parent.mkdir(parents=True, exist_ok=True)
+            init_path.write_text("# shared package initializer fixture\n", encoding="utf-8")
+            for test_path in spec["tests"]:
+                test_file = root / test_path
+                test_file.parent.mkdir(parents=True, exist_ok=True)
+                test_file.write_text("# paired test fixture\n", encoding="utf-8")
+
+            result = helper.inspect_component(component, root, {initializer})
+
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(
+            result["missing_implementations"],
+            ["neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py"],
+        )
+        self.assertIn("required candidate implementation is absent", result["blockers"])
+        self.assertTrue(result["tests_to_run"])
 
     def test_candidate_support_only_changes_select_their_declared_tests(self):
         helper = _helper()

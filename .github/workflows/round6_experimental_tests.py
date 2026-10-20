@@ -1279,7 +1279,6 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
     "dmd_crouzeix": (
         "neurotopology_sim/experimental/dynamics/__init__.py",
         "tests/dmd_crouzeix_contract/__init__.py",
-        "tests/experimental/__init__.py",
     ),
     "bids_inventory_audit": (
         "shared/bids_inventory_audit/__init__.py",
