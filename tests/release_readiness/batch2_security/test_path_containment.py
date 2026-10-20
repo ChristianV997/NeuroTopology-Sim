@@ -47,3 +47,19 @@ def test_symlink_escape(tmp_path: Path):
     except (OSError, NotImplementedError):
         pytest.skip("symlink creation unavailable")
     assert classify_path_threat(tmp_path, "link") == ThreatClass.SYMLINK_ESCAPE.value
+
+
+def test_write_reports_rejects_output_root_escape(tmp_path: Path):
+    """Report destination must stay under a declared trusted root when requested.
+
+    The CLI treats --output as a trusted local path. Callers that pass
+    trusted_root get the existing path-containment guard. This is a local
+    harness boundary, not a repository-wide security certification.
+    """
+    from tools.release_readiness.batch2_security.report import write_reports
+
+    trusted = tmp_path / "trusted"
+    trusted.mkdir()
+    payload = {"schema_version": "test", "security_pass": True, "findings": []}
+    with pytest.raises(PathEscapeError):
+        write_reports(payload, trusted / ".." / "escape", trusted_root=trusted)
