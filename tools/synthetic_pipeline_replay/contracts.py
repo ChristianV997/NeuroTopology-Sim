@@ -31,6 +31,15 @@ class ReplayStatus(str, Enum):
     BLOCKED = "blocked"
 
 
+class ReplayExitCode(int, Enum):
+    """Deterministic CLI exit codes for replay runner."""
+    COMPATIBLE = 0
+    INCOMPATIBLE = 1
+    BLOCKED = 2
+    INCONCLUSIVE = 3
+    CLI_ERROR = 4
+
+
 def safe_json_dict(val: Any) -> Any:
     """Recursively converts structures to JSON-safe representations.
 

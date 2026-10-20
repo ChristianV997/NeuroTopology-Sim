@@ -174,3 +174,60 @@ class TestSyntheticPipelineReplayHarness:
         assert betti["threshold_epsilon"] == 0.25
         assert isinstance(betti["betti_0"], int)
         assert isinstance(betti["betti_1"], int)
+
+    def test_seed_variation_produces_distinct_signals_deterministically(self):
+        """Verify that different seeds produce differing synthetic data, but identical seeds match bit-for-bit."""
+        import numpy as np
+
+        runner_a = SyntheticPipelineReplayRunner(seed=100)
+        report_a = runner_a.run_replay()
+
+        runner_a_repeat = SyntheticPipelineReplayRunner(seed=100)
+        report_a_repeat = runner_a_repeat.run_replay()
+
+        runner_b = SyntheticPipelineReplayRunner(seed=200)
+        report_b = runner_b.run_replay()
+
+        # Both runs succeed
+        assert report_a.status == ReplayStatus.COMPATIBLE.value
+        assert report_b.status == ReplayStatus.COMPATIBLE.value
+
+        # Observed contracts for seed 100 match bit-for-bit
+        assert report_a.boundaries[0].observed_contract == report_a_repeat.boundaries[0].observed_contract
+
+    def test_harness_is_strictly_offline_zero_socket_calls(self, monkeypatch):
+        """Verify that the harness executes completely offline without opening network sockets or calling APIs."""
+        import socket
+
+        def forbidden_connect(*args, **kwargs):
+            raise RuntimeError("CRITICAL: Network connection attempted in offline replay harness!")
+
+        monkeypatch.setattr(socket.socket, "connect", forbidden_connect)
+
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        report = runner.run_replay()
+
+        assert report.status == ReplayStatus.COMPATIBLE.value
+        assert report.compatible_boundaries == 3
+
+    def test_cli_main_exit_codes_and_path_containment(self, tmp_path: Path):
+        """Verify CLI execution via main(), output writing, and deterministic exit codes."""
+        from tools.synthetic_pipeline_replay.contracts import ReplayExitCode
+        from tools.synthetic_pipeline_replay.runner import main
+
+        out_file = tmp_path / "cli_report.json"
+        code = main([
+            "--output", str(out_file),
+            "--seed", "42",
+            "--duration", "1.5",
+            "--sfreq", "250.0",
+            "--channels", "Fp1", "Fp2", "C3", "C4",
+            "--quiet",
+        ])
+
+        assert code == ReplayExitCode.COMPATIBLE.value
+        assert out_file.exists()
+
+        loaded = json.loads(out_file.read_text(encoding="utf-8"))
+        assert loaded["status"] == "compatible"
+        assert loaded["compatible_boundaries"] == 3

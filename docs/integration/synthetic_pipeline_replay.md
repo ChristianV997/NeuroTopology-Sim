@@ -41,10 +41,10 @@ The `tools.synthetic_pipeline_replay` package and `tests.integration.synthetic_p
 
 | Stage Identifier | Class | Input Contract | Output Artifact & Schema | Core Invariants Checked |
 | :--- | :--- | :--- | :--- | :--- |
-| `stage_1_signal_generation` | `SignalGenerationStage` | Local parameters (channels, $f_s$, duration, seed) | `SignalChunk`<br>`NeuroTopologySim.SignalChunk.v1` | Multi-channel 2D shape `(n_ch, n_samples)`, strictly increasing timestamps, physical calibration units (`uV`), 3D montage coordinates. |
-| `stage_2_preprocessing` | `PreprocessingWindowStage` | `SignalChunk` | `PreprocessedWindow`<br>`NeuroTopologySim.PreprocessedWindow.v1` | Bounded window extraction ($T = 1.0\,\text{s}$), channel ordering stability, sampling rate preservation, timestamp continuity. |
+| `stage_1_signal_generation` | `SignalGenerationStage` | Local parameters (channels, $f_s$, duration, seed) | `SignalChunk`<br>`NeuroTopologySim.SignalChunk.v1` | Multi-channel 2D shape `(n_ch, n_samples)`, strictly increasing timestamps, physical calibration units (`uV`), 3D montage coordinates. Validates positive $f_s$, duration, non-empty distinct channels. |
+| `stage_2_preprocessing` | `PreprocessingWindowStage` | `SignalChunk` | `PreprocessedWindow`<br>`NeuroTopologySim.PreprocessedWindow.v1` | Bounded window extraction ($T = 1.0\,\text{s}$), channel ordering stability, sampling rate preservation, timestamp continuity. Fails closed if window duration exceeds signal duration. |
 | `stage_3_feature_extraction` | `FeatureExtractionStage` | `PreprocessedWindow` | `CanonicalFeatureBundle`<br>`NeuroTopologySim.CanonicalFeatureBundle.v1` | Explicit feature families (`psd`, `pairwise_fc`), one-sided spectral density with interior-bin doubling (`uV^2/Hz`, conserving Parseval energy), dimensionless PLV. |
-| `stage_4_topology_summary` | `TopologySummaryStage` | `CanonicalFeatureBundle` | `TopologicalSummary`<br>`NeuroTopologySim.TopologicalSummary.v1` | Symmetric non-negative distance matrix, persistent homology interval extraction, finite persistence-interval counts ($H_0, H_1$), and thresholded Betti numbers when filtration threshold is declared. |
+| `stage_4_topology_summary` | `TopologySummaryStage` | `CanonicalFeatureBundle` | `TopologicalSummary`<br>`NeuroTopologySim.TopologicalSummary.v1` | Symmetric non-negative distance matrix, persistent homology interval extraction, finite persistence-interval counts ($H_0, H_1$), and thresholded Betti numbers when filtration threshold is declared. Validates finite non-negative filtration threshold and square matrix inputs. |
 
 ---
 
@@ -68,8 +68,10 @@ The checker enforces strict structural conformance at each inter-stage boundary.
 5. **Sensor Coordinates**:
    - When 3D montage coordinates are declared, coordinate count must match channel count: `coords.shape[0] == n_channels`.
    - Mismatched coordinate counts (e.g. 2 coordinate rows for 4 channels) fail as `incompatible`.
+   - Non-numeric coordinate types fail closed as structural mismatches.
 6. **Finite Value Rule & Serializer Contract**:
    - Payload arrays and metadata must contain only finite numbers. Any occurrence of $\text{NaN}$, $+\infty$, or $-\infty$ fails closed as `incompatible`.
+   - Non-numeric payloads (strings, objects, dicts) are caught and reported cleanly as structural mismatches.
    - The serializer function `safe_json_dict` strictly rejects non-finite floats fail-closed by raising `ValueError`. Silent conversion to `null` or zero-imputation is strictly prohibited.
 7. **One-Sided PSD Scaling & Parseval Energy Conservation**:
    - For real-valued signals $x[n]$ sampled at $f_s$ with $N$ samples, discrete periodogram values are computed via `np.fft.rfft`.
@@ -86,12 +88,14 @@ The checker enforces strict structural conformance at each inter-stage boundary.
 10. **Optional Dependency Availability**:
     - Stages requiring optional external packages (e.g. `ripser`, `mne`) explicitly probe availability.
     - If an optional dependency is missing, the boundary yields `not_comparable` and downstream execution safely halts (`blocked`), without simulating or faking calculations.
+11. **Strict Offline Boundary**:
+    - The harness executes strictly offline with zero external network socket requests. Verified by test with monkeypatched `socket.socket.connect`.
 
 ---
 
-## 4. Status Vocabulary
+## 4. Status Vocabulary & Deterministic Exit Codes
 
-In accordance with repository governance, the harness reuses existing status vocabularies and does not invent speculative claim tiers:
+In accordance with repository governance, the harness reuses existing status vocabularies and defines explicit CLI exit codes (`ReplayExitCode`):
 
 ### Per-Boundary Status (`BoundaryStatus`)
 - **`compatible`**: All expected shapes, channel sequences, units, sample rates, schemas, and finite payload values match.
@@ -99,17 +103,20 @@ In accordance with repository governance, the harness reuses existing status voc
 - **`missing_required_field`**: Mandatory metadata (e.g. `sampling_rate_hz`, units, timestamps when required) is absent or null.
 - **`not_comparable`**: Required optional backend dependency is not installed.
 
-### Overall Replay Status (`ReplayStatus`)
-- **`compatible`**: All boundaries evaluated as `compatible`.
-- **`incompatible`**: One or more boundaries evaluated as `incompatible`.
-- **`inconclusive`**: Mandatory fields missing; replay cannot be evaluated reliably.
-- **`blocked`**: Execution halted due to unavailable optional dependency.
+### Overall Replay Status (`ReplayStatus`) & CLI Exit Codes (`ReplayExitCode`)
+| ReplayStatus | CLI Exit Code | Description |
+| :--- | :--- | :--- |
+| **`compatible`** | `0` | All inter-stage boundaries evaluated as compatible. |
+| **`incompatible`** | `1` | One or more boundaries evaluated as incompatible (structural violation). |
+| **`blocked`** | `2` | Execution halted due to unavailable optional dependency (`not_comparable`). |
+| **`inconclusive`** | `3` | Mandatory fields missing; replay cannot be evaluated reliably. |
+| **CLI Error** | `4` | Invalid CLI arguments (e.g. non-positive rate/duration, empty channels) or path containment violation. |
 
 ---
 
 ## 5. Negative Test Coverage Matrix
 
-The test suite in `tests/integration/synthetic_pipeline_replay/` verifies the following conditions (20 passed tests):
+The test suite in `tests/integration/synthetic_pipeline_replay/` verifies the following conditions (32 passed tests):
 
 | Perturbation Condition | Injected Defect | Target Boundary | Expected Boundary Status | Expected Overall Status | Asserted Diagnostic / Mismatch Pattern |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -123,13 +130,24 @@ The test suite in `tests/integration/synthetic_pipeline_replay/` verifies the fo
 | **Timestamp Count Mismatch** | 450 timestamps for 500 samples | Boundary 1 | `incompatible` | `incompatible` | `"timestamp count (450) does not match sample count (500)"` |
 | **Changed Feature Dimension** | Shape `[4, 300]` instead of `[4, 250]` | Boundary 2 | `incompatible` | `incompatible` | `"Shape mismatch"` |
 | **Non-Finite Payload Values** | Injected $\text{NaN}$ and $+\infty$ | Boundary 1 | `incompatible` | `incompatible` | `"contains non-finite values"` |
+| **Non-Numeric Payload** | Strings instead of numeric array | Boundary 1 | `incompatible` | `incompatible` | `"Payload array is not numeric"` |
+| **Non-Numeric Coordinates** | String coordinates | Boundary 1 | `incompatible` | `incompatible` | `"Coordinates are not numeric"` |
+| **Non-Numeric Timestamps** | String timestamps | Boundary 1 | `incompatible` | `incompatible` | `"non-numeric dtype observed"` |
+| **Window Exceeding Signal** | Window $5.0\,\text{s}$ for signal $1.0\,\text{s}$ | Stage 2 | `ValueError` | N/A | `"exceeds input data length"` fail-closed |
+| **Non-Positive Window Duration** | Window $-0.5\,\text{s}$ or $0\,\text{s}$ | Stage 2 | `ValueError` | N/A | `"window_duration_s must be positive"` fail-closed |
+| **Invalid Stage Parameters** | Empty channels, duplicate channels, $f_s \le 0$ | Stage 1/4 | `ValueError` | N/A | Parameter validation errors fail-closed |
+| **Stage Execution Failure** | Corrupted data causing stage error | Runner | `incompatible` | `incompatible` | Captured gracefully in `BoundaryReport` with exception diagnostics |
 | **Serializer Non-Finite Rejection**| `safe_json_dict` on NaN/Inf | Serializer | `ValueError` raised | N/A | `"Non-finite float value"` fail-closed |
 | **Stale Schema Version** | Version `v0_legacy_deprecated` | Boundary 1 | `incompatible` | `incompatible` | `"Stale/deprecated schema version"` |
 | **Unavailable Dependency** | `ripser` simulated unavailable | Boundary 3 | `not_comparable` | `blocked` | `"Required optional dependency 'ripser' is not available"` |
 | **Incompatible Stages** | Passed `directed_hypergraph` | Boundary 3 | `incompatible` | `incompatible` | `"Incompatible feature family"` |
 | **Contradictory Coordinates** | 2 coordinate rows for 4 channels | Boundary 1 | `incompatible` | `incompatible` | `"Coordinate channel count (2) does not match"` |
+| **CLI Path Traversal** | `--output ../../attack/out.json` | CLI | `ReplayExitCode.CLI_ERROR` | N/A | Path traversal outside repo rejected fail-closed |
+| **CLI Parameter Errors** | `--duration 0` or `--sfreq -100` | CLI | `ReplayExitCode.CLI_ERROR` | N/A | CLI validation error code 4 returned |
+| **Strict Offline Execution** | Socket connect disabled | All stages | `compatible` | `compatible` | Zero network calls verified |
 | **Parseval Energy Scaling** | One-sided PSD interior doubling | Stage 3 | `compatible` | `compatible` | Exact Parseval equality for even & odd $N$ ($< 10^{-10}$) |
 | **Persistence Intervals vs Betti** | Thresholded vs unthesholded | Stage 4 | `compatible` | `compatible` | `betti_number_status` declared accurately |
+| **Seed Determinism** | Same vs different seeds | All stages | `compatible` | `compatible` | Same seed bit-for-bit identical; different seeds vary |
 
 ---
 
@@ -155,7 +173,7 @@ The replay harness exercises existing stable interfaces on `origin/main` and rec
 python -m tools.synthetic_pipeline_replay.runner --output outputs/synthetic_pipeline_replay/replay_report.json
 
 # Custom configuration (channels, sampling frequency, duration, seed)
-python -m tools.synthetic_pipeline_replay.runner --sfreq 500.0 --duration 4.0 --seed 101 --output outputs/replay_report.json
+python -m tools.synthetic_pipeline_replay.runner --channels Fp1 Fp2 C3 C4 --sfreq 500.0 --duration 4.0 --seed 101 --output outputs/replay_report.json
 ```
 
 ---
@@ -187,6 +205,16 @@ For the workflow owner maintaining `.github/workflows/round6_experimental_tests.
             {"implementation": "tools/synthetic_pipeline_replay/stages.py", "test": "tests/integration/synthetic_pipeline_replay/test_replay_harness.py"},
             {"implementation": "tools/synthetic_pipeline_replay/contracts.py", "test": "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py"},
         ),
+        "support_files": {
+            "tests/integration/synthetic_pipeline_replay/__init__.py": (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            ),
+            "tests/integration/synthetic_pipeline_replay/fixtures.py": (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            ),
+        },
         "implementation_roots": ("tools/synthetic_pipeline_replay/",),
         "test_roots": ("tests/integration/synthetic_pipeline_replay/",),
     },

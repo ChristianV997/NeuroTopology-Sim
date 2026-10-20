@@ -145,9 +145,16 @@ def check_timing_conformance(
             mismatches.append("Timing contract requires timestamps, but timestamps array is empty")
 
     if timestamps is not None and not (hasattr(timestamps, "__len__") and len(timestamps) == 0):
-        ts_arr = np.asarray(timestamps)
+        try:
+            ts_arr = np.asarray(timestamps)
+        except Exception as exc:
+            mismatches.append(f"Malformed timestamps: cannot convert to numpy array ({exc})")
+            return mismatches, missing_fields
+
         if ts_arr.ndim != 1:
             mismatches.append(f"Malformed timestamps: must be 1D, observed {ts_arr.ndim}D")
+        elif not np.issubdtype(ts_arr.dtype, np.number):
+            mismatches.append(f"Malformed timestamps: non-numeric dtype observed '{ts_arr.dtype}'")
         else:
             if not np.all(np.isfinite(ts_arr)):
                 mismatches.append("Malformed timestamps: contain non-finite values (NaN/Inf)")
@@ -189,7 +196,12 @@ def check_coordinate_conformance(
             )
         return mismatches
 
-    coord_arr = np.asarray(coordinates)
+    try:
+        coord_arr = np.asarray(coordinates)
+    except Exception as exc:
+        mismatches.append(f"Coordinates cannot be converted to numpy array: {exc}")
+        return mismatches
+
     if coord_arr.ndim != 2 or coord_arr.shape[1] not in (2, 3):
         mismatches.append(
             f"Coordinates must have shape (n_channels, 2) or (n_channels, 3), observed {coord_arr.shape}"
@@ -199,7 +211,9 @@ def check_coordinate_conformance(
             f"Coordinate channel count ({coord_arr.shape[0]}) does not match data channel count ({channel_count})"
         )
 
-    if not np.all(np.isfinite(coord_arr)):
+    if not np.issubdtype(coord_arr.dtype, np.number):
+        mismatches.append(f"Coordinates are not numeric: observed dtype '{coord_arr.dtype}'")
+    elif not np.all(np.isfinite(coord_arr)):
         mismatches.append("Coordinates contain non-finite values (NaN/Inf)")
 
     return mismatches
@@ -211,9 +225,16 @@ def check_finite_values(data: Any) -> list[str]:
     if data is None:
         return mismatches
 
-    arr = np.asarray(data)
+    try:
+        arr = np.asarray(data)
+    except Exception as exc:
+        mismatches.append(f"Payload array cannot be converted to numpy array: {exc}")
+        return mismatches
+
     if arr.size > 0:
-        if not np.all(np.isfinite(arr)):
+        if not np.issubdtype(arr.dtype, np.number):
+            mismatches.append(f"Payload array is not numeric: observed dtype '{arr.dtype}'")
+        elif not np.all(np.isfinite(arr)):
             mismatches.append("Payload array contains non-finite values (NaN or Inf)")
     return mismatches
 

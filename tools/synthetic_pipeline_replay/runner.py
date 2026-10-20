@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import sys
 from typing import Any, Mapping, Sequence
@@ -15,7 +16,13 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .checker import evaluate_boundary
-from .contracts import BoundaryReport, BoundaryStatus, ReplayReport, ReplayStatus
+from .contracts import (
+    BoundaryReport,
+    BoundaryStatus,
+    ReplayExitCode,
+    ReplayReport,
+    ReplayStatus,
+)
 from .stages import (
     FeatureExtractionStage,
     PreprocessingWindowStage,
@@ -34,10 +41,64 @@ class SyntheticPipelineReplayRunner:
         duration_s: float = 2.0,
         seed: int = 42,
     ) -> None:
+        if not channels:
+            raise ValueError("channels sequence cannot be empty")
+        if len(channels) != len(set(channels)):
+            raise ValueError(f"Duplicate channel names detected: {list(channels)}")
+        if sfreq_hz <= 0 or not math.isfinite(sfreq_hz):
+            raise ValueError(f"Sampling frequency must be positive and finite, observed {sfreq_hz}")
+        if duration_s <= 0 or not math.isfinite(duration_s):
+            raise ValueError(f"Duration must be positive and finite, observed {duration_s}")
+        if not isinstance(seed, (int, np.integer)) or seed < 0:
+            raise ValueError(f"Seed must be a non-negative integer, observed {seed}")
+
         self.channels = list(channels)
         self.sfreq_hz = float(sfreq_hz)
         self.duration_s = float(duration_s)
-        self.seed = seed
+        self.seed = int(seed)
+
+    def _build_report(
+        self,
+        boundary_reports: list[BoundaryReport],
+        stages_executed: list[str],
+    ) -> ReplayReport:
+        total_bounds = len(boundary_reports)
+        compatible_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.COMPATIBLE.value)
+        incompatible_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.INCOMPATIBLE.value)
+        missing_field_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.MISSING_REQUIRED_FIELD.value)
+        not_comp_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.NOT_COMPARABLE.value)
+
+        if incompatible_bounds > 0:
+            overall_status = ReplayStatus.INCOMPATIBLE.value
+        elif missing_field_bounds > 0:
+            overall_status = ReplayStatus.INCONCLUSIVE.value
+        elif not_comp_bounds > 0:
+            overall_status = ReplayStatus.BLOCKED.value
+        elif total_bounds > 0 and compatible_bounds == total_bounds:
+            overall_status = ReplayStatus.COMPATIBLE.value
+        else:
+            overall_status = ReplayStatus.INCONCLUSIVE.value
+
+        import platform
+        sys_env = {
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+            "numpy_version": np.__version__,
+        }
+
+        return ReplayReport(
+            replay_id=f"replay_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+            pipeline_name="synthetic_eeg_topology_pipeline",
+            status=overall_status,
+            timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            seed=self.seed,
+            total_boundaries=total_bounds,
+            compatible_boundaries=compatible_bounds,
+            incompatible_boundaries=incompatible_bounds,
+            boundaries=boundary_reports,
+            stages_executed=stages_executed,
+            system_environment=sys_env,
+        )
 
     def run_replay(
         self,
@@ -60,14 +121,31 @@ class SyntheticPipelineReplayRunner:
         # ---------------------------------------------------------
         # Stage 1: Synthetic Signal Generation
         # ---------------------------------------------------------
-        stage1 = SignalGenerationStage(
-            channels=self.channels,
-            sfreq_hz=self.sfreq_hz,
-            duration_s=self.duration_s,
-            seed=self.seed,
-        )
-        art1 = stage1.execute()
-        stages_executed.append(stage1.STAGE_ID)
+        try:
+            stage1 = SignalGenerationStage(
+                channels=self.channels,
+                sfreq_hz=self.sfreq_hz,
+                duration_s=self.duration_s,
+                seed=self.seed,
+            )
+            art1 = stage1.execute()
+            stages_executed.append(stage1.STAGE_ID)
+        except Exception as exc:
+            err_b1 = BoundaryReport(
+                boundary_id="b1_signal_generation_failure",
+                producer_stage_id=SignalGenerationStage.STAGE_ID,
+                consumer_stage_id=PreprocessingWindowStage.STAGE_ID,
+                status=BoundaryStatus.INCOMPATIBLE.value,
+                input_artifact_ref="init",
+                output_artifact_ref="crashed",
+                expected_contract={},
+                observed_contract={},
+                mismatches=[f"Stage 1 execution error: {type(exc).__name__}: {exc}"],
+                missing_fields=[],
+                diagnostics={"exception_type": type(exc).__name__, "exception_message": str(exc)},
+            )
+            boundary_reports.append(err_b1)
+            return self._build_report(boundary_reports, stages_executed)
 
         # Apply any Stage 1 perturbations (e.g. for negative tests)
         if "stage_1" in perturbations:
@@ -103,9 +181,26 @@ class SyntheticPipelineReplayRunner:
         # Stage 2: Preprocessing / Windowing
         # ---------------------------------------------------------
         if report_b1.status == BoundaryStatus.COMPATIBLE.value:
-            stage2 = PreprocessingWindowStage(window_duration_s=1.0)
-            art2 = stage2.execute(art1)
-            stages_executed.append(stage2.STAGE_ID)
+            try:
+                stage2 = PreprocessingWindowStage(window_duration_s=1.0)
+                art2 = stage2.execute(art1)
+                stages_executed.append(stage2.STAGE_ID)
+            except Exception as exc:
+                err_b2 = BoundaryReport(
+                    boundary_id="b2_preprocessing_failure",
+                    producer_stage_id=PreprocessingWindowStage.STAGE_ID,
+                    consumer_stage_id=FeatureExtractionStage.STAGE_ID,
+                    status=BoundaryStatus.INCOMPATIBLE.value,
+                    input_artifact_ref=str(art1.get("artifact_id", "stage1_output")),
+                    output_artifact_ref="crashed",
+                    expected_contract={},
+                    observed_contract={},
+                    mismatches=[f"Stage 2 execution error: {type(exc).__name__}: {exc}"],
+                    missing_fields=[],
+                    diagnostics={"exception_type": type(exc).__name__, "exception_message": str(exc)},
+                )
+                boundary_reports.append(err_b2)
+                return self._build_report(boundary_reports, stages_executed)
 
             # Apply any Stage 2 perturbations
             if "stage_2" in perturbations:
@@ -141,9 +236,26 @@ class SyntheticPipelineReplayRunner:
             # Stage 3: Feature Extraction (CanonicalFeatureBundle)
             # ---------------------------------------------------------
             if report_b2.status == BoundaryStatus.COMPATIBLE.value:
-                stage3 = FeatureExtractionStage()
-                art3 = stage3.execute(art2)
-                stages_executed.append(stage3.STAGE_ID)
+                try:
+                    stage3 = FeatureExtractionStage()
+                    art3 = stage3.execute(art2)
+                    stages_executed.append(stage3.STAGE_ID)
+                except Exception as exc:
+                    err_b3 = BoundaryReport(
+                        boundary_id="b3_feature_extraction_failure",
+                        producer_stage_id=FeatureExtractionStage.STAGE_ID,
+                        consumer_stage_id=TopologySummaryStage.STAGE_ID,
+                        status=BoundaryStatus.INCOMPATIBLE.value,
+                        input_artifact_ref=str(art2.get("artifact_id", "stage2_output")),
+                        output_artifact_ref="crashed",
+                        expected_contract={},
+                        observed_contract={},
+                        mismatches=[f"Stage 3 execution error: {type(exc).__name__}: {exc}"],
+                        missing_fields=[],
+                        diagnostics={"exception_type": type(exc).__name__, "exception_message": str(exc)},
+                    )
+                    boundary_reports.append(err_b3)
+                    return self._build_report(boundary_reports, stages_executed)
 
                 # Apply any Stage 3 perturbations
                 if "stage_3" in perturbations:
@@ -178,71 +290,96 @@ class SyntheticPipelineReplayRunner:
                 # Stage 4: Topological Graph Persistence Summary
                 # ---------------------------------------------------------
                 if report_b3.status == BoundaryStatus.COMPATIBLE.value:
-                    stage4 = TopologySummaryStage()
-                    art4 = stage4.execute(art3)
-                    stages_executed.append(stage4.STAGE_ID)
-        else:
-            art4 = None
+                    try:
+                        stage4 = TopologySummaryStage()
+                        art4 = stage4.execute(art3)
+                        stages_executed.append(stage4.STAGE_ID)
+                    except Exception as exc:
+                        err_b4 = BoundaryReport(
+                            boundary_id="b4_topology_summary_failure",
+                            producer_stage_id=TopologySummaryStage.STAGE_ID,
+                            consumer_stage_id="sink",
+                            status=BoundaryStatus.INCOMPATIBLE.value,
+                            input_artifact_ref=str(art3.get("artifact_id", "stage3_output")),
+                            output_artifact_ref="crashed",
+                            expected_contract={},
+                            observed_contract={},
+                            mismatches=[f"Stage 4 execution error: {type(exc).__name__}: {exc}"],
+                            missing_fields=[],
+                            diagnostics={"exception_type": type(exc).__name__, "exception_message": str(exc)},
+                        )
+                        boundary_reports.append(err_b4)
+                        return self._build_report(boundary_reports, stages_executed)
 
-        # ---------------------------------------------------------
-        # Overall Replay Status Evaluation
-        # ---------------------------------------------------------
-        total_bounds = len(boundary_reports)
-        compatible_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.COMPATIBLE.value)
-        incompatible_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.INCOMPATIBLE.value)
-        missing_field_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.MISSING_REQUIRED_FIELD.value)
-        not_comp_bounds = sum(1 for b in boundary_reports if b.status == BoundaryStatus.NOT_COMPARABLE.value)
-
-        if incompatible_bounds > 0:
-            overall_status = ReplayStatus.INCOMPATIBLE.value
-        elif missing_field_bounds > 0:
-            overall_status = ReplayStatus.INCONCLUSIVE.value
-        elif not_comp_bounds > 0:
-            overall_status = ReplayStatus.BLOCKED.value
-        elif compatible_bounds == total_bounds:
-            overall_status = ReplayStatus.COMPATIBLE.value
-        else:
-            overall_status = ReplayStatus.INCONCLUSIVE.value
-
-        import platform
-        sys_env = {
-            "python_version": sys.version.split()[0],
-            "platform": platform.platform(),
-            "numpy_version": np.__version__,
-        }
-
-        return ReplayReport(
-            replay_id=f"replay_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
-            pipeline_name="synthetic_eeg_topology_pipeline",
-            status=overall_status,
-            timestamp_utc=datetime.now(timezone.utc).isoformat(),
-            seed=self.seed,
-            total_boundaries=total_bounds,
-            compatible_boundaries=compatible_bounds,
-            incompatible_boundaries=incompatible_bounds,
-            boundaries=boundary_reports,
-            stages_executed=stages_executed,
-            system_environment=sys_env,
-        )
+        return self._build_report(boundary_reports, stages_executed)
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Synthetic Pipeline Replay Conformance Runner")
-    parser.add_argument("--output", "-o", type=Path, default=Path("outputs/synthetic_pipeline_replay/replay_report.json"))
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--sfreq", type=float, default=250.0)
-    parser.add_argument("--duration", type=float, default=2.0)
-    parser.add_argument("--quiet", action="store_true")
-    args = parser.parse_args()
-
-    runner = SyntheticPipelineReplayRunner(
-        sfreq_hz=args.sfreq,
-        duration_s=args.duration,
-        seed=args.seed,
+    parser.add_argument(
+        "--output",
+        "-o",
+        type=Path,
+        default=Path("outputs/synthetic_pipeline_replay/replay_report.json"),
+        help="Path to write replay JSON report (default: outputs/synthetic_pipeline_replay/replay_report.json)",
     )
-    report = runner.run_replay()
+    parser.add_argument("--seed", type=int, default=42, help="RNG seed for synthetic signal generation")
+    parser.add_argument("--sfreq", type=float, default=250.0, help="Sampling frequency in Hz (default: 250.0)")
+    parser.add_argument("--duration", type=float, default=2.0, help="Signal duration in seconds (default: 2.0)")
+    parser.add_argument(
+        "--channels",
+        "-c",
+        nargs="+",
+        default=["Fp1", "Fp2", "C3", "C4"],
+        help="List of EEG channel names (default: Fp1 Fp2 C3 C4)",
+    )
+    parser.add_argument("--quiet", action="store_true", help="Suppress console stdout output")
+    args = parser.parse_args(argv)
 
+    # Input validation for CLI arguments
+    if args.sfreq <= 0 or not math.isfinite(args.sfreq):
+        if not args.quiet:
+            print(f"Error: --sfreq must be positive and finite, observed {args.sfreq}", file=sys.stderr)
+        return ReplayExitCode.CLI_ERROR.value
+
+    if args.duration <= 0 or not math.isfinite(args.duration):
+        if not args.quiet:
+            print(f"Error: --duration must be positive and finite, observed {args.duration}", file=sys.stderr)
+        return ReplayExitCode.CLI_ERROR.value
+
+    if not args.channels:
+        if not args.quiet:
+            print("Error: --channels cannot be empty", file=sys.stderr)
+        return ReplayExitCode.CLI_ERROR.value
+
+    # Path containment check for output path
     out_file = Path(args.output)
+    try:
+        resolved_out = out_file.resolve()
+        cwd = Path.cwd().resolve()
+        if not out_file.is_absolute():
+            resolved_out.relative_to(cwd)
+    except ValueError:
+        if not args.quiet:
+            print(
+                f"Error: Output path '{args.output}' escapes current working directory (path traversal forbidden).",
+                file=sys.stderr,
+            )
+        return ReplayExitCode.CLI_ERROR.value
+
+    try:
+        runner = SyntheticPipelineReplayRunner(
+            channels=args.channels,
+            sfreq_hz=args.sfreq,
+            duration_s=args.duration,
+            seed=args.seed,
+        )
+        report = runner.run_replay()
+    except Exception as exc:
+        if not args.quiet:
+            print(f"Error initializing replay runner: {exc}", file=sys.stderr)
+        return ReplayExitCode.CLI_ERROR.value
+
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text(report.to_json(), encoding="utf-8")
 
@@ -251,7 +388,13 @@ def main() -> int:
         print(f"Compatible boundaries: {report.compatible_boundaries}/{report.total_boundaries}")
         print(f"Report written to: {out_file.resolve()}")
 
-    return 0 if report.status == ReplayStatus.COMPATIBLE.value else 1
+    exit_code_map = {
+        ReplayStatus.COMPATIBLE.value: ReplayExitCode.COMPATIBLE.value,
+        ReplayStatus.INCOMPATIBLE.value: ReplayExitCode.INCOMPATIBLE.value,
+        ReplayStatus.BLOCKED.value: ReplayExitCode.BLOCKED.value,
+        ReplayStatus.INCONCLUSIVE.value: ReplayExitCode.INCONCLUSIVE.value,
+    }
+    return exit_code_map.get(report.status, ReplayExitCode.INCOMPATIBLE.value)
 
 
 if __name__ == "__main__":

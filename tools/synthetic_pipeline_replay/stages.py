@@ -38,6 +38,19 @@ class SignalGenerationStage:
         montage_coordinates: Sequence[Sequence[float]] | None = None,
         seed: int = 42,
     ) -> None:
+        if not channels:
+            raise ValueError("channels sequence cannot be empty")
+        if len(channels) != len(set(channels)):
+            raise ValueError(f"Duplicate channel names detected: {list(channels)}")
+        if sfreq_hz <= 0 or not math.isfinite(sfreq_hz):
+            raise ValueError(f"Sampling frequency must be positive and finite, observed {sfreq_hz}")
+        if duration_s <= 0 or not math.isfinite(duration_s):
+            raise ValueError(f"Duration must be positive and finite, observed {duration_s}")
+        if not isinstance(seed, (int, np.integer)) or seed < 0:
+            raise ValueError(f"Seed must be a non-negative integer, observed {seed}")
+        if not isinstance(units, str) or not units.strip():
+            raise ValueError(f"Units must be a non-empty string, observed '{units}'")
+
         self.channels = list(channels)
         self.sfreq_hz = float(sfreq_hz)
         self.duration_s = float(duration_s)
@@ -47,7 +60,7 @@ class SignalGenerationStage:
             if montage_coordinates is not None
             else [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]][:len(self.channels)]
         )
-        self.seed = seed
+        self.seed = int(seed)
 
     def execute(self) -> dict[str, Any]:
         """Generate deterministic synthetic signal chunk."""
@@ -105,6 +118,8 @@ class PreprocessingWindowStage:
     SCHEMA_VERSION = "NeuroTopologySim.PreprocessedWindow.v1"
 
     def __init__(self, window_duration_s: float = 1.0) -> None:
+        if window_duration_s <= 0 or not math.isfinite(window_duration_s):
+            raise ValueError(f"window_duration_s must be positive and finite, observed {window_duration_s}")
         self.window_duration_s = float(window_duration_s)
 
     def execute(self, input_artifact: Mapping[str, Any]) -> dict[str, Any]:
@@ -118,6 +133,15 @@ class PreprocessingWindowStage:
 
         # Take first window
         window_samples = int(round(self.window_duration_s * sfreq))
+        if window_samples <= 0:
+            raise ValueError(f"window_duration_s {self.window_duration_s}s yields 0 window samples at {sfreq} Hz")
+        if data.ndim != 2:
+            raise ValueError(f"Signal data must be 2D array (n_channels, n_samples), observed {data.ndim}D")
+        if window_samples > data.shape[1]:
+            raise ValueError(
+                f"Requested window samples ({window_samples}, duration {self.window_duration_s}s) "
+                f"exceeds input data length ({data.shape[1]} samples, duration {data.shape[1] / sfreq:.3f}s)"
+            )
         window_data = data[:, :window_samples]
         window_timestamps = timestamps[:window_samples]
 
@@ -258,6 +282,11 @@ class TopologySummaryStage:
     SCHEMA_VERSION = "NeuroTopologySim.TopologicalSummary.v1"
 
     def __init__(self, filtration_threshold: float | None = None) -> None:
+        if filtration_threshold is not None:
+            if filtration_threshold < 0 or not math.isfinite(filtration_threshold):
+                raise ValueError(
+                    f"filtration_threshold must be non-negative and finite, observed {filtration_threshold}"
+                )
         self.filtration_threshold = filtration_threshold
 
     def execute(self, input_artifact: Mapping[str, Any]) -> dict[str, Any]:
@@ -265,6 +294,15 @@ class TopologySummaryStage:
         plv = np.asarray(input_artifact["pairwise_fc_matrix"])
         channels = list(input_artifact["channel_ordering"])
         n_channels = len(channels)
+
+        if plv.ndim != 2 or plv.shape[0] != plv.shape[1]:
+            raise ValueError(f"pairwise_fc_matrix must be square 2D, observed shape {plv.shape}")
+        if plv.shape[0] != n_channels:
+            raise ValueError(
+                f"pairwise_fc_matrix dimension ({plv.shape[0]}) does not match channel count ({n_channels})"
+            )
+        if not np.issubdtype(plv.dtype, np.number) or not np.all(np.isfinite(plv)):
+            raise ValueError("pairwise_fc_matrix contains non-numeric or non-finite values")
 
         # Distance matrix for filtration: d_ij = 1 - PLV_ij
         dist_matrix = 1.0 - plv

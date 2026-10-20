@@ -265,3 +265,109 @@ class TestReplayNegativeCases:
         # Numpy scalar with Inf
         with pytest.raises(ValueError, match="Non-finite float value"):
             safe_json_dict(np.float64("inf"))
+
+    def test_non_numeric_payload_rejected_as_mismatch(self):
+        """Non-numeric string/object payloads must be caught gracefully without crashing evaluate_boundary."""
+        from tools.synthetic_pipeline_replay.checker import check_finite_values
+
+        res = check_finite_values(["string_not_a_float", "another_string"])
+        assert len(res) == 1
+        assert "Payload array is not numeric" in res[0]
+
+    def test_non_numeric_coordinates_rejected_as_mismatch(self):
+        """Non-numeric montage coordinates must be caught gracefully as structural mismatches."""
+        from tools.synthetic_pipeline_replay.checker import check_coordinate_conformance
+
+        res = check_coordinate_conformance([["x", "y", "z"], ["a", "b", "c"]], 2)
+        assert len(res) == 1
+        assert "Coordinates are not numeric" in res[0]
+
+    def test_non_numeric_timestamps_rejected_as_mismatch(self):
+        """Non-numeric timestamps must be caught gracefully without crashing."""
+        from tools.synthetic_pipeline_replay.checker import check_timing_conformance
+
+        mismatches, missing = check_timing_conformance(250.0, 250.0, timestamps=["t0", "t1", "t2"])
+        assert any("non-numeric dtype observed" in m for m in mismatches)
+
+    def test_window_duration_exceeding_signal_fails_closed(self):
+        """Window duration exceeding available signal length must raise a ValueError fail-closed."""
+        from tools.synthetic_pipeline_replay.stages import PreprocessingWindowStage, SignalGenerationStage
+
+        s1 = SignalGenerationStage(duration_s=1.0)
+        art1 = s1.execute()
+
+        s2 = PreprocessingWindowStage(window_duration_s=5.0)
+        with pytest.raises(ValueError, match="exceeds input data length"):
+            s2.execute(art1)
+
+    def test_non_positive_window_duration_fails_closed(self):
+        """Non-positive window duration must raise ValueError at initialization."""
+        from tools.synthetic_pipeline_replay.stages import PreprocessingWindowStage
+
+        with pytest.raises(ValueError, match="window_duration_s must be positive"):
+            PreprocessingWindowStage(window_duration_s=-0.5)
+
+        with pytest.raises(ValueError, match="window_duration_s must be positive"):
+            PreprocessingWindowStage(window_duration_s=0.0)
+
+    def test_stage_initialization_input_validation(self):
+        """Stages must validate initial parameters fail-closed."""
+        from tools.synthetic_pipeline_replay.stages import SignalGenerationStage, TopologySummaryStage
+
+        # Empty channels
+        with pytest.raises(ValueError, match="channels sequence cannot be empty"):
+            SignalGenerationStage(channels=[])
+
+        # Duplicate channels
+        with pytest.raises(ValueError, match="Duplicate channel names detected"):
+            SignalGenerationStage(channels=["C3", "C3"])
+
+        # Non-positive sfreq
+        with pytest.raises(ValueError, match="Sampling frequency must be positive"):
+            SignalGenerationStage(sfreq_hz=-100.0)
+
+        # Negative seed
+        with pytest.raises(ValueError, match="Seed must be a non-negative integer"):
+            SignalGenerationStage(seed=-1)
+
+        # Negative filtration threshold
+        with pytest.raises(ValueError, match="filtration_threshold must be non-negative"):
+            TopologySummaryStage(filtration_threshold=-0.5)
+
+    def test_stage_execution_failure_handled_gracefully_in_runner(self):
+        """When a stage crashes during run_replay, the runner captures it in a BoundaryReport without unhandled exception."""
+        runner = SyntheticPipelineReplayRunner(seed=42)
+        # Inject an invalid non-numeric matrix into stage 2 to crash stage 3
+        perturbations = {
+            "stage_2": {
+                "data": "corrupted_non_array",
+            }
+        }
+        report = runner.run_replay(stage_perturbations=perturbations)
+        assert report.status == ReplayStatus.INCOMPATIBLE.value
+        # Stage 2 failed boundary evaluation, preventing stage 3 crash
+        assert len(report.boundaries) >= 2
+
+    def test_cli_path_traversal_rejected_exit_code(self):
+        """CLI must reject path traversal attempts outside the project root with CLI_ERROR code."""
+        from tools.synthetic_pipeline_replay.contracts import ReplayExitCode
+        from tools.synthetic_pipeline_replay.runner import main
+
+        code = main([
+            "--output", "../../traversal_attack/report.json",
+            "--quiet",
+        ])
+        assert code == ReplayExitCode.CLI_ERROR.value
+
+    def test_cli_argument_validation_failures_return_cli_error_code(self):
+        """Invalid CLI parameters must return CLI_ERROR exit code."""
+        from tools.synthetic_pipeline_replay.contracts import ReplayExitCode
+        from tools.synthetic_pipeline_replay.runner import main
+
+        # Negative sampling frequency
+        code_sfreq = main(["--sfreq", "-100", "--quiet"])
+        assert code_sfreq == ReplayExitCode.CLI_ERROR.value
+
+        # Zero duration
+        code_dur = main(["--duration", "0", "--quiet"])
+        assert code_dur == ReplayExitCode.CLI_ERROR.value
