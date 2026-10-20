@@ -5,6 +5,7 @@ and provenance. Not a scientific claim about neural mechanism or consciousness.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -52,17 +53,43 @@ def _normalize_sphere(
                 f"unsupported sphere string {sphere!r}; use 'auto' or (x, y, z, r) meters"
             )
         return sphere
-    vals = tuple(float(v) for v in sphere)
+    try:
+        vals = tuple(float(v) for v in sphere)
+    except (TypeError, ValueError) as exc:
+        raise CSDAdapterError(
+            "sphere must be 'auto' or (x, y, z, r) with finite float meters"
+        ) from exc
     if len(vals) != 4:
         raise CSDAdapterError("sphere must be (x, y, z, r) in meters")
+    if not all(math.isfinite(v) for v in vals):
+        raise CSDAdapterError(
+            f"sphere components must be finite floats (meters); got {vals!r}"
+        )
     if vals[3] <= 0:
         raise CSDAdapterError("sphere radius must be positive (meters)")
     return (vals[0], vals[1], vals[2], vals[3])
 
 
 def _pick_instance(inst: Any, channels: Sequence[str], *, copy: bool) -> Any:
-    """Return an instance restricted to ``channels`` without inventing montages."""
-    working = inst.copy() if copy and hasattr(inst, "copy") else inst
+    """Return an instance restricted to ``channels`` without inventing montages.
+
+    When ``copy`` is True, refuse to pick in-place if ``inst.copy()`` is missing
+    or fails — callers must not be mutated as a side effect of channel selection.
+    """
+    if copy:
+        if not hasattr(inst, "copy"):
+            raise CSDAdapterError(
+                "instance has no copy(); refusing in-place pick that would "
+                "mutate the caller"
+            )
+        try:
+            working = inst.copy()
+        except Exception as exc:
+            raise CSDAdapterError(
+                f"instance.copy() failed; refusing to mutate caller: {exc}"
+            ) from exc
+    else:
+        working = inst
     if hasattr(working, "pick"):
         try:
             working.pick(list(channels))

@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import pytest
 
 from adapters.mne_csd import (
+    CSDAdapterError,
     DEFAULT_LAMBDA2,
     DEFAULT_N_LEGENDRE_TERMS,
     DEFAULT_STIFFNESS,
@@ -124,8 +125,6 @@ def test_set_eeg_reference_never_called(eeg_raw):
 
 
 def test_invalid_lambda2_rejected(eeg_raw):
-    from adapters.mne_csd import CSDAdapterError
-
     with pytest.raises(CSDAdapterError, match="lambda2"):
         apply_csd(
             eeg_raw,
@@ -133,6 +132,57 @@ def test_invalid_lambda2_rejected(eeg_raw):
             lambda2=1.0,
             csd_callable=RecordingCallable(),
         )
+
+
+@pytest.mark.parametrize(
+    "sphere",
+    [
+        (0.0, 0.0, 0.0, float("nan")),
+        (0.0, 0.0, float("inf"), 0.09),
+        (float("nan"), 0.0, 0.0, 0.09),
+        (0.0, float("-inf"), 0.0, 0.09),
+    ],
+)
+def test_non_finite_sphere_rejected(eeg_raw, sphere):
+    """NaN/Inf sphere components must fail closed before the CSD backend."""
+    backend = RecordingCallable()
+    with pytest.raises(CSDAdapterError, match="finite"):
+        apply_csd(
+            eeg_raw,
+            channels=["Fz", "Cz", "Pz"],
+            sphere=sphere,
+            csd_callable=backend,
+        )
+    assert backend.calls == []
+
+
+def test_apply_csd_does_not_mutate_caller_channel_list(eeg_raw):
+    names_before = list(eeg_raw.ch_names)
+    data_before = [row[:] for row in eeg_raw.get_data()]
+    apply_csd(
+        eeg_raw,
+        channels=["Fz", "Cz"],
+        csd_callable=RecordingCallable(),
+        copy=True,
+    )
+    assert eeg_raw.ch_names == names_before
+    assert eeg_raw.get_data() == data_before
+
+
+def test_pick_refuses_to_mutate_caller_without_copy():
+    """Selection pick must not fall back to in-place mutation when copy() is absent."""
+
+    class NoCopyRaw(FakeRaw):
+        def copy(self):  # type: ignore[override]
+            raise RuntimeError("copy unavailable")
+
+    raw = NoCopyRaw(["Fz", "Cz", "Pz"], locs=standard_locs(3))
+    names_before = list(raw.ch_names)
+    backend = RecordingCallable()
+    with pytest.raises(CSDAdapterError, match="copy"):
+        apply_csd(raw, channels=["Fz", "Cz"], csd_callable=backend)
+    assert raw.ch_names == names_before
+    assert backend.calls == []
 
 
 def test_missing_coords_never_reaches_backend():
