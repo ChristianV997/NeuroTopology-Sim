@@ -120,7 +120,7 @@ def test_development_only_manifest_is_insufficient(copy_fixture_tree):
         lambda d: d.update(records=[r for r in d["records"] if r["split"] == DEVELOPMENT]),
     )
     with pytest.raises(InsufficientEvaluationSetError):
-        build_report(manifest_path)
+        build_report(manifest_path, allow_unpinned=True)
 
 
 def test_empty_manifest_is_rejected_as_malformed(copy_fixture_tree):
@@ -143,7 +143,7 @@ def test_evidence_class_is_never_overridden_by_fixture_content(copy_fixture_tree
     plan_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     rewrite_json(manifest_path, lambda d: d["records"][0].update(
         plan_sha256=hashlib.sha256(plan_file.read_bytes()).hexdigest()))
-    report = build_report(manifest_path)
+    report = build_report(manifest_path, allow_unpinned=True)
     assert report["rubric_evidence_class"] == "research_plan_audit"
     assert all(o["evidence_class"] == "research_plan_audit" for o in report["development_stage"]["outcomes"])
 
@@ -195,6 +195,6 @@ def test_editing_a_held_out_plan_leaves_the_development_stage_unchanged(copy_fix
     held.plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     rehash_plan(manifest_path, held.fixture_id)
 
-    changed = build_report(manifest_path)
+    changed = build_report(manifest_path, allow_unpinned=True)
     assert changed["fixture_set"]["plans"] != clean["fixture_set"]["plans"]
     assert changed["development_stage"] == clean["development_stage"]

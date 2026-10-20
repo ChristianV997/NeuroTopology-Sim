@@ -18,9 +18,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--json-out", type=Path, default=None)
     parser.add_argument("--no-label-consistency", action="store_true")
+    parser.add_argument("--allow-unpinned-split", action="store_true",
+                        help="run a manifest whose split definition differs from the pinned digest; the report says so")
     args = parser.parse_args(argv)
     try:
-        report = build_report(args.manifest, include_label_consistency=not args.no_label_consistency)
+        report = build_report(args.manifest, include_label_consistency=not args.no_label_consistency,
+                              allow_unpinned=args.allow_unpinned_split)
     except (HarnessError, OSError) as exc:
         print(f"harness error: {exc}", file=sys.stderr)
         return 2

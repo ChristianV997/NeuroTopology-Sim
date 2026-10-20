@@ -12,16 +12,29 @@ from typing import Any, Sequence
 
 from tools.research_plan_quality.models import RUBRIC_DIMENSIONS
 
+from .errors import ManifestError
 from .isolation import configuration_fingerprint, harness_configuration, run_development_stage, run_held_out_stage
 from .leakage import detect_cross_split_leaks
-from .manifest import Manifest, load_labels, load_manifest, load_plan_records, rubric_dimensions_sha256, rubric_source_sha256
+from .manifest import (
+    Manifest,
+    load_labels,
+    load_manifest,
+    load_plan_records,
+    rubric_dimensions_sha256,
+    rubric_source_sha256,
+    split_definition_sha256,
+)
 from .records import PlanRecord
-from .splits import DEVELOPMENT, LOCKED_INTERNAL_VALIDATION, require_sufficient, split_summary
+from .splits import LOCKED_INTERNAL_VALIDATION, require_sufficient, split_summary
 
 REPORT_SCHEMA = "NTS.ResearchPlanEvalReport.v1"
 DEFAULT_MANIFEST = Path(__file__).resolve().parent / "fixtures" / "v1" / "manifest.json"
 
 HARNESS_EVIDENCE_CLASS = "software_validation_on_synthetic_fixtures"
+
+# Digest of the shipped split definition (manifest.split_definition_sha256). A changed split or plan
+# digest fails the default run until this pin is changed in a reviewed commit.
+PINNED_SPLIT_DEFINITION_SHA256 = "d587144e4960e78b343f0a2274673d0fa63341afbe8143a8baf62940a3fd016c"
 
 NOT_MEASURED: tuple[str, ...] = (
     "criterion_leakage_rate",
@@ -87,13 +100,25 @@ def label_consistency(manifest: Manifest, outcomes: Sequence[dict[str, Any]]) ->
     }
 
 
-def build_report(manifest_path: Path = DEFAULT_MANIFEST, *, include_label_consistency: bool = True) -> dict[str, Any]:
+def build_report(
+    manifest_path: Path = DEFAULT_MANIFEST,
+    *,
+    include_label_consistency: bool = True,
+    allow_unpinned: bool = False,
+) -> dict[str, Any]:
     manifest = load_manifest(Path(manifest_path))
+    definition = split_definition_sha256(manifest.entries)
+    pinned = definition == PINNED_SPLIT_DEFINITION_SHA256
+    if not pinned and not allow_unpinned:
+        raise ManifestError(
+            "split definition does not match the pinned digest: a split or plan digest changed; "
+            "re-pin in a reviewed change, or declare an unpinned run"
+        )
     records: tuple[PlanRecord, ...] = load_plan_records(manifest)
     require_sufficient(records)
 
-    development = run_development_stage([r for r in records if r.split == DEVELOPMENT])
-    held_out = run_held_out_stage([r for r in records if r.split == LOCKED_INTERNAL_VALIDATION], development)
+    development = run_development_stage(manifest)
+    held_out = run_held_out_stage(manifest, development)
     leakage = detect_cross_split_leaks(records)
 
     report: dict[str, Any] = {
@@ -105,6 +130,8 @@ def build_report(manifest_path: Path = DEFAULT_MANIFEST, *, include_label_consis
             "fixture_set_version": manifest.fixture_set_version,
             "synthetic": True,
             "manifest_sha256": manifest.manifest_sha256,
+            "split_definition_sha256": definition,
+            "split_definition_pinned": pinned,
             "plan_count": len(records),
             "plans": [
                 {"fixture_id": e.fixture_id, "group_id": e.group_id, "split": e.split, "plan_sha256": e.plan_sha256}

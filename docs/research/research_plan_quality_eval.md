@@ -82,15 +82,25 @@ separately. The held-out fraction is labelled
 
 ## Isolation
 
-- Development-stage code refuses any held-out record (`HeldOutAccessError`).
-- Held-out evaluation runs only against a frozen development stage. It checks
-  the configuration fingerprint and returns a new result. It never writes back.
+- Each stage takes the verified manifest, not records. The development stage
+  loads only development plan files, and the held-out stage loads only held-out
+  plan files. No record-list entry point accepts held-out plans.
+- The split definition is the set of each fixture's id, group, role, and plan
+  SHA-256. Its digest is pinned in `harness.py` (`PINNED_SPLIT_DEFINITION_SHA256`).
+  A run whose definition differs is refused with `ManifestError`. A deliberate split or
+  plan change needs a reviewed re-pin. Otherwise the run must declare
+  `--allow-unpinned-split`, and the report then records `split_definition_pinned: false`.
+- Held-out evaluation runs only against a frozen development result. It checks
+  the configuration fingerprint and the split definition digest, and it reproduces
+  the development outcomes from the plan files. A result that does not reproduce is
+  refused. The frozen result is still process-local, so single-use access to held-out
+  outcomes is not enforced here.
 - The configuration covers the rubric source hash, dimension hash, duplicate
   threshold, shingle size, normalisation version, and minimum split sizes. Any change
   to the rubric source invalidates the manifest until labels are re-authored.
-- Tests show that 25 random perturbations of held-out plans leave the
-  development outputs equal, and that held-out evaluation leaves the rubric
-  configuration and the frozen development result unchanged.
+- Tests cover the reproduced attacks: a forged frozen stage, a reassigned group, and
+  a held-out plan edited and re-hashed. They also cover the loader's role filter and
+  the CLI exit code. Labels remain single-author expectations, not ground truth.
 
 ## Running
 

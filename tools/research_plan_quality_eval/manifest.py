@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Optional
 
 from tools.research_plan_quality import checks as _checks_module
 from tools.research_plan_quality import models as _models_module
@@ -149,10 +149,25 @@ def load_manifest(manifest_path: Path) -> Manifest:
     )
 
 
-def load_plan_records(manifest: Manifest) -> tuple[PlanRecord, ...]:
-    """Plan files only. The label file is never opened here."""
+def split_definition_sha256(entries: Iterable[ManifestEntry]) -> str:
+    """Digest of the split definition: each fixture's id, group, role, and plan digest.
+
+    Plan digests are part of the definition, so editing a held-out plan changes it as well.
+    """
+    rows = sorted([e.fixture_id, e.group_id, e.split, e.plan_sha256] for e in entries)
+    return sha256_hex(canonical_json(rows).encode("utf-8"))
+
+
+def load_plan_records(manifest: Manifest, roles: Optional[Iterable[str]] = None) -> tuple[PlanRecord, ...]:
+    """Plan files only, each verified against the manifest. The label file is never opened here.
+
+    With ``roles``, plan files outside those roles are not read at all.
+    """
+    wanted = None if roles is None else frozenset(roles)
     records = []
     for entry in manifest.entries:
+        if wanted is not None and entry.split not in wanted:
+            continue
         raw = entry.plan_path.read_bytes()
         if sha256_hex(raw) != entry.plan_sha256:
             raise ManifestError(f"plan file for {entry.fixture_id} changed after the manifest was verified")

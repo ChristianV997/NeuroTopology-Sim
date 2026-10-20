@@ -1,112 +1,91 @@
 from __future__ import annotations
 
 import dataclasses
-import random
 
 import pytest
 
 from tools.research_plan_quality.checks import CHECKS_BY_DIMENSION
 from tools.research_plan_quality.models import RUBRIC_DIMENSIONS
 from tools.research_plan_quality_eval import isolation
-from tools.research_plan_quality_eval.errors import HarnessError, HeldOutAccessError
+from tools.research_plan_quality_eval.errors import HarnessError
+from tools.research_plan_quality_eval.harness import DEFAULT_MANIFEST
 from tools.research_plan_quality_eval.isolation import (
     configuration_fingerprint,
     harness_configuration,
     run_development_stage,
     run_held_out_stage,
 )
-from tools.research_plan_quality_eval.records import PlanRecord
+from tools.research_plan_quality_eval.manifest import load_manifest
 from tools.research_plan_quality_eval.splits import DEVELOPMENT, LOCKED_INTERNAL_VALIDATION
 
 
-def _split(records, role):
-    return [r for r in records if r.split == role]
+@pytest.fixture
+def shipped_manifest():
+    return load_manifest(DEFAULT_MANIFEST)
 
 
-def test_development_stage_refuses_any_held_out_record(shipped_records):
-    with pytest.raises(HeldOutAccessError, match="fx-v1-P06"):
-        run_development_stage(list(shipped_records))
+def _count(manifest, role):
+    return sum(entry.split == role for entry in manifest.entries)
 
 
-def test_held_out_stage_requires_a_frozen_development_stage(shipped_records):
-    held = _split(shipped_records, LOCKED_INTERNAL_VALIDATION)
-    dev = run_development_stage(_split(shipped_records, DEVELOPMENT))
+def test_development_outcomes_cover_only_development_plans(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
+    held_ids = {e.fixture_id for e in shipped_manifest.entries if e.split == LOCKED_INTERNAL_VALIDATION}
+    assert dev.role == DEVELOPMENT
+    assert len(dev.outcomes) == _count(shipped_manifest, DEVELOPMENT)
+    assert {o["fixture_id"] for o in dev.outcomes}.isdisjoint(held_ids)
+
+
+def test_held_out_stage_requires_a_frozen_development_stage(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
     not_frozen = dataclasses.replace(dev, role=LOCKED_INTERNAL_VALIDATION)
     with pytest.raises(HarnessError, match="frozen development stage"):
-        run_held_out_stage(held, not_frozen)
+        run_held_out_stage(shipped_manifest, not_frozen)
 
 
-def test_held_out_stage_refuses_development_records(shipped_records):
-    dev_records = _split(shipped_records, DEVELOPMENT)
-    dev = run_development_stage(dev_records)
-    with pytest.raises(HeldOutAccessError, match="non-held-out"):
-        run_held_out_stage(dev_records, dev)
+def test_held_out_stage_refuses_a_frozen_result_from_another_split_definition(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
+    other = dataclasses.replace(dev, split_definition_sha256="0" * 64)
+    with pytest.raises(HarnessError, match="split definition"):
+        run_held_out_stage(shipped_manifest, other)
 
 
-def test_configuration_change_blocks_held_out_evaluation(shipped_records, monkeypatch):
-    dev = run_development_stage(_split(shipped_records, DEVELOPMENT))
+def test_held_out_stage_refuses_outcomes_that_do_not_reproduce_from_the_plan_files(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
+    forged = dataclasses.replace(dev, outcomes=dev.outcomes[:-1])
+    with pytest.raises(HarnessError, match="does not reproduce"):
+        run_held_out_stage(shipped_manifest, forged)
+
+
+def test_configuration_change_blocks_held_out_evaluation(shipped_manifest, monkeypatch):
+    dev = run_development_stage(shipped_manifest)
     monkeypatch.setattr(isolation, "configuration_fingerprint", lambda: "tampered")
     with pytest.raises(HarnessError, match="configuration changed"):
-        run_held_out_stage(_split(shipped_records, LOCKED_INTERNAL_VALIDATION), dev)
+        run_held_out_stage(shipped_manifest, dev)
 
 
-def _mutate(plan, rng: random.Random):
-    return dataclasses.replace(
-        plan,
-        research_question=f"perturbation {rng.random()} " + plan.research_question,
-        sample_size=rng.randint(1, 200),
-        claim_language=rng.choice(["This proves the effect.", "Exploratory association.", ""]),
-    )
+def test_held_out_evaluation_leaves_rubric_configuration_and_frozen_result_unchanged(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
+    before = (harness_configuration(), configuration_fingerprint(), tuple(RUBRIC_DIMENSIONS), dict(CHECKS_BY_DIMENSION))
 
-
-def test_held_out_perturbations_never_change_development_outputs(shipped_records):
-    dev_records = _split(shipped_records, DEVELOPMENT)
-    held_records = _split(shipped_records, LOCKED_INTERNAL_VALIDATION)
-    baseline = run_development_stage(dev_records)
-    rng = random.Random(20260916)
-    held_outcomes_seen = set()
-    for _ in range(25):
-        perturbed = [
-            PlanRecord(r.fixture_id, r.group_id, r.split, _mutate(r.plan, rng)) for r in held_records
-        ]
-        held_result = run_held_out_stage(perturbed, baseline)
-        held_outcomes_seen.add(tuple(o["overall_status"] for o in held_result.outcomes))
-        assert run_development_stage(dev_records) == baseline
-    assert len(held_outcomes_seen) > 1, "perturbations should move held-out outcomes, or the test proves nothing"
-
-
-def test_held_out_evaluation_leaves_rubric_configuration_and_frozen_result_unchanged(shipped_records):
-    dev_records = _split(shipped_records, DEVELOPMENT)
-    dev = run_development_stage(dev_records)
-    before_config = harness_configuration()
-    before_fingerprint = configuration_fingerprint()
-    before_dimensions = tuple(RUBRIC_DIMENSIONS)
-    before_checks = dict(CHECKS_BY_DIMENSION)
-
-    held = run_held_out_stage(_split(shipped_records, LOCKED_INTERNAL_VALIDATION), dev)
+    held = run_held_out_stage(shipped_manifest, dev)
 
     assert held.role == LOCKED_INTERNAL_VALIDATION
-    assert len(held.outcomes) == len(_split(shipped_records, LOCKED_INTERNAL_VALIDATION))
-    assert harness_configuration() == before_config
-    assert configuration_fingerprint() == before_fingerprint
-    assert tuple(RUBRIC_DIMENSIONS) == before_dimensions
-    assert dict(CHECKS_BY_DIMENSION) == before_checks
-    assert run_development_stage(dev_records) == dev
+    assert len(held.outcomes) == _count(shipped_manifest, LOCKED_INTERNAL_VALIDATION)
+    assert (harness_configuration(), configuration_fingerprint(), tuple(RUBRIC_DIMENSIONS),
+            dict(CHECKS_BY_DIMENSION)) == before
+    assert run_development_stage(shipped_manifest) == dev
 
 
-def test_development_stage_is_a_pure_function_of_its_inputs(shipped_records):
-    dev_records = _split(shipped_records, DEVELOPMENT)
-    assert run_development_stage(dev_records) == run_development_stage(list(reversed(dev_records)))
+def test_development_stage_is_a_pure_function_of_the_pinned_manifest(shipped_manifest):
+    assert run_development_stage(shipped_manifest) == run_development_stage(shipped_manifest)
 
 
-def test_held_out_outcomes_do_not_feed_back_into_a_later_development_run(shipped_records):
-    dev_records = _split(shipped_records, DEVELOPMENT)
-    held_records = _split(shipped_records, LOCKED_INTERNAL_VALIDATION)
-    before = run_development_stage(dev_records)
-    held = run_held_out_stage(held_records, before)
-    assert len(held.outcomes) == len(held_records)
-    after = run_development_stage(dev_records)
-    assert before == after
+def test_held_out_outcomes_do_not_feed_back_into_a_later_development_run(shipped_manifest):
+    dev = run_development_stage(shipped_manifest)
+    held = run_held_out_stage(shipped_manifest, dev)
+    assert len(held.outcomes) == _count(shipped_manifest, LOCKED_INTERNAL_VALIDATION)
+    assert run_development_stage(shipped_manifest) == dev
 
 
 def test_the_harness_declares_no_fitted_or_tuned_parameters():
