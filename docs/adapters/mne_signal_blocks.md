@@ -1,7 +1,7 @@
 # In-memory MNE → canonical signal-block boundary
 
-**Schema:** `MNE.InMemorySignalBlock.v1`  
-**Package:** `adapters/mne_signal_blocks/`  
+**Schema:** `MNE.InMemorySignalBlock.v1`
+**Package:** `adapters/mne_signal_blocks/`
 **Lane:** Batch 2 / Cursor Agent A (exclusive)
 
 ## Purpose
