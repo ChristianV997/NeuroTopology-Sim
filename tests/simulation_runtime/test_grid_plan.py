@@ -1140,6 +1140,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertTrue(all(item["status"] != "admissible_on_ancestor" for item in single))
 
     def test_repo_without_promotion_reports_leaves_gates_missing(self):
+        _require_audited_main_ancestor(self)
         calls, spy = _spy_calls()
         with _resolved_main():
             plan = execute(_base_config(), simulation=spy)
@@ -1624,6 +1625,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(restored.provenance["config_digest"], restored.config_hash)
 
     def test_dirty_or_unknown_head_blocks_execute_only(self):
+        _require_audited_main_ancestor(self)
         calls, spy = _spy_calls()
         with patch.object(grid_plan_module, "_worktree_dirty", return_value=True):
             listed = dry_run(_base_config(), simulation=spy)
