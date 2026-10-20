@@ -2165,10 +2165,17 @@ def _isolated_runner_report_is_valid(batch_report: Any, test_file: str) -> tuple
     if not isinstance(batch.get("stdout_tail"), str) or not isinstance(batch.get("stderr_tail"), str):
         return False, "runner batch output-tail telemetry is missing or malformed", batches
     pytest_summary = _pytest_result_summary(batch["stdout_tail"])
-    if pytest_summary is None or pytest_summary[0] < 1:
-        return False, "runner pytest output does not contain a valid nonzero pass summary", batches
-    batch["_round6_pytest_passed_count"] = pytest_summary[0]
-    batch["_round6_pytest_subtests_passed_count"] = pytest_summary[1]
+    # Pytest's stdout summary is useful corroboration, but it is not emitted in
+    # every valid profile (for example, some test modules redirect/capture it).
+    # The required process status plus the bounded, structurally validated
+    # JUnit report below remain authoritative. If a summary is present, it must
+    # reconcile exactly with JUnit before the execution can pass.
+    batch["_round6_pytest_summary_available"] = pytest_summary is not None
+    if pytest_summary is not None:
+        if pytest_summary[0] < 1:
+            return False, "runner pytest output contains an empty pass summary", batches
+        batch["_round6_pytest_passed_count"] = pytest_summary[0]
+        batch["_round6_pytest_subtests_passed_count"] = pytest_summary[1]
     if (
         batch.get("status") != "passed"
         or type(batch.get("exit_code")) is not int
@@ -2201,10 +2208,12 @@ def validate_docker_engine_test_artifacts(
         if len(batches) != 1:
             return False, "expected exactly one isolated-runner batch", 0
         batch = batches[0]
-        runner_total = (
-            batch["_round6_pytest_passed_count"]
-            + batch["_round6_pytest_subtests_passed_count"]
-        )
+        runner_total = None
+        if batch.get("_round6_pytest_summary_available") is True:
+            runner_total = (
+                batch["_round6_pytest_passed_count"]
+                + batch["_round6_pytest_subtests_passed_count"]
+            )
         junit_bytes = _read_contained_bytes(
             root,
             junit_path,
@@ -2218,7 +2227,12 @@ def validate_docker_engine_test_artifacts(
                 "JUnit must contain passing tests only: "
                 f"cases={cases} skipped={skipped} failed={failed} errors={errors}"
             ), 0
-        if junit_total != runner_total:
+        if runner_total is None and junit_total != cases:
+            return False, (
+                "JUnit subtest total cannot be reconciled without a pytest stdout summary: "
+                f"junit={junit_total} testcase_records={cases}"
+            ), 0
+        if runner_total is not None and junit_total != runner_total:
             return False, (
                 "JUnit test total does not match isolated-runner pytest pass total: "
                 f"junit={junit_total} runner={runner_total}"
@@ -2934,7 +2948,8 @@ def run(
                         counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
                         junit_parsed = True
                         execution.update({
-                            "tests_collected": counts[0],
+                            "tests_collected": junit_reported_tests,
+                            "junit_testcase_records": counts[0],
                             "skipped": counts[1],
                             "failed": counts[2],
                             "errors": counts[3],
@@ -2953,35 +2968,36 @@ def run(
                             len(failure_cases) > MAX_JUNIT_FAILURE_CASES
                         )
                         if telemetry_ok:
-                            runner_passed_count = (
-                                batches[0].get("_round6_pytest_passed_count")
-                                if batches and isinstance(batches[0], dict)
-                                else None
-                            )
-                            runner_subtests_passed_count = (
-                                batches[0].get("_round6_pytest_subtests_passed_count")
-                                if batches and isinstance(batches[0], dict)
-                                else None
-                            )
-                            if runner_passed_count != counts[0]:
-                                execution["junit_reconciliation"] = "mismatch"
-                                raise ValueError(
-                                    f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
-                                )
-                            if (
-                                type(runner_subtests_passed_count) is not int
-                                or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
-                            ):
-                                execution["junit_reconciliation"] = "mismatch"
-                                raise ValueError(
-                                    "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
-                                )
-                            execution.update({
-                                "runner_passed_tests": runner_passed_count,
-                                "runner_passed_subtests": runner_subtests_passed_count,
-                                "test_cases": cases,
-                                "junit_reconciliation": "matched",
-                            })
+                            batch = batches[0] if batches and isinstance(batches[0], dict) else {}
+                            if batch.get("_round6_pytest_summary_available") is True:
+                                runner_passed_count = batch.get("_round6_pytest_passed_count")
+                                runner_subtests_passed_count = batch.get("_round6_pytest_subtests_passed_count")
+                                if runner_passed_count != counts[0]:
+                                    execution["junit_reconciliation"] = "mismatch"
+                                    raise ValueError(
+                                        f"JUnit testcase records {counts[0]} do not match pytest passed cases {runner_passed_count}"
+                                    )
+                                if (
+                                    type(runner_subtests_passed_count) is not int
+                                    or junit_reported_tests != runner_passed_count + runner_subtests_passed_count
+                                ):
+                                    execution["junit_reconciliation"] = "mismatch"
+                                    raise ValueError(
+                                        "JUnit declared outcome total does not match pytest passed-case and passed-subtest summary"
+                                    )
+                                execution.update({
+                                    "runner_passed_tests": runner_passed_count,
+                                    "runner_passed_subtests": runner_subtests_passed_count,
+                                    "junit_reconciliation": "matched",
+                                })
+                            else:
+                                if junit_reported_tests != counts[0]:
+                                    execution["junit_reconciliation"] = "mismatch"
+                                    raise ValueError(
+                                        "JUnit subtest total cannot be reconciled without a pytest stdout summary"
+                                    )
+                                execution["junit_reconciliation"] = "matched_junit_authoritative_no_summary"
+                            execution["test_cases"] = cases
                         else:
                             execution["junit_reconciliation"] = "not_attempted_runner_telemetry_invalid"
                     except (ET.ParseError, OSError, ValueError) as exc:
@@ -3010,8 +3026,14 @@ def run(
                         1 for batch in execution.get("runner_batches", ()) if batch == "timeout"
                     )
                 execution["timeout"] = bool(execution["timeout"] or runner_timeout_batches > 0)
+                passed_count = (
+                    max(0, counts[0] - counts[1] - counts[2] - counts[3])
+                    if has_junit and all(type(value) is int for value in counts)
+                    else None
+                )
                 execution["result_counts"] = {
                     "collected": counts[0],
+                    "passed": passed_count,
                     "skipped": counts[1],
                     "failed": counts[2],
                     "errors": counts[3],
@@ -3053,6 +3075,7 @@ def run(
                     "tested_checkout_sha": tested_checkout_sha,
                     "workflow_sha": workflow_sha,
                     "tests_collected": counts[0],
+                    "passed": passed_count,
                     "skipped": counts[1],
                     "failed": counts[2],
                     "errors": counts[3],

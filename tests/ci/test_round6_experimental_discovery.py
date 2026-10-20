@@ -243,7 +243,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertEqual(execution["test_file"], test_file)
         self.assertEqual(execution["pytest_marker"], "requires_mne")
         self.assertEqual(execution["result_counts"], {
-            "collected": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+            "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
         })
         command = report["executed_commands"][0]
         self.assertEqual(command[command.index("--marker") + 1], "requires_mne")
@@ -432,6 +432,28 @@ class Round6DiscoveryTests(unittest.TestCase):
             self.assertTrue(valid, error)
             self.assertEqual(total, 1)
 
+            quiet_telemetry = json.loads(_valid_telemetry(test_file))
+            quiet_telemetry["batches"][0]["stdout_tail"] = "captured by test runner\n"
+            telemetry_path.write_text(json.dumps(quiet_telemetry), encoding="utf-8")
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root, telemetry_path, junit_path, test_file
+            )
+            self.assertTrue(valid, error)
+            self.assertEqual(total, 1)
+
+            junit_path.write_text(
+                '<testsuite tests="2" skipped="0" failures="0" errors="0">'
+                "<testcase /></testsuite>",
+                encoding="utf-8",
+            )
+            valid, error, total = helper.validate_docker_engine_test_artifacts(
+                root, telemetry_path, junit_path, test_file
+            )
+            self.assertFalse(valid)
+            self.assertIn("cannot be reconciled without a pytest stdout summary", error)
+            self.assertEqual(total, 0)
+
+            telemetry_path.write_text(_valid_telemetry(test_file), encoding="utf-8")
             junit_path.write_text(
                 '<testsuite tests="2" skipped="0" failures="0" errors="0">'
                 "<testcase /></testsuite>",
@@ -745,7 +767,7 @@ def test_fixture():
         self.assertEqual(execution["tested_checkout_sha"], head)
         self.assertEqual(execution["workflow_sha"], base)
         self.assertEqual(execution["result_counts"], {
-            "collected": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+            "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
         })
 
     def test_test_only_change_selects_the_registered_implementation_pair(self):
@@ -908,6 +930,7 @@ def test_fixture():
         self.assertNotIn("junit_error", execution)
         self.assertEqual(execution["result_counts"], {
             "collected": helper.MAX_JUNIT_FAILURE_CASES + 1,
+            "passed": 0,
             "skipped": 0,
             "failed": helper.MAX_JUNIT_FAILURE_CASES + 1,
             "errors": 0,
@@ -954,12 +977,67 @@ def test_fixture():
         execution = report["components"][0]["executions"][0]
         self.assertEqual(result, 0)
         self.assertEqual(report["status"], "PASS")
-        self.assertEqual(execution["tests_collected"], 2)
+        self.assertEqual(execution["tests_collected"], 4)
         self.assertEqual(execution["runner_passed_tests"], 2)
         self.assertEqual(execution["runner_passed_subtests"], 2)
         self.assertEqual(execution["junit_reported_test_outcomes"], 4)
         self.assertEqual(execution["junit_reconciliation"], "matched")
         self.assertEqual(len(execution["test_cases"]), 2)
+        self.assertEqual(execution["result_counts"]["passed"], 4)
+
+    def test_isolated_pass_uses_valid_junit_when_stdout_has_no_pytest_summary(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # captured stdout case\n")
+            head = _commit(root, "captured pytest output fixture")
+            report_path = root / "outputs/report.json"
+            junit_total = 2
+
+            def quiet_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                test_file = command[-1]
+                telemetry = json.loads(_valid_telemetry(test_file))
+                telemetry["batches"][0]["stdout_tail"] = "captured by test runner\n"
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml=(
+                        f'<testsuite tests="{junit_total}" skipped="0" failures="0" errors="0">'
+                        '<testcase/><testcase/></testsuite>'
+                    ),
+                    **kwargs,
+                )
+
+            with patch.object(helper.subprocess, "run", side_effect=quiet_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            execution = report["components"][0]["executions"][0]
+            self.assertEqual(result, 0)
+            self.assertEqual(report["status"], "PASS")
+            self.assertTrue(execution["isolated_runner_telemetry_valid"])
+            self.assertEqual(execution["junit_reconciliation"], "matched_junit_authoritative_no_summary")
+            self.assertEqual(execution["result_counts"], {
+                "collected": 2,
+                "passed": 2,
+                "skipped": 0,
+                "failed": 0,
+                "errors": 0,
+                "timeouts": 0,
+            })
+
+            junit_total = 3
+            with patch.object(helper.subprocess, "run", side_effect=quiet_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            execution = report["components"][0]["executions"][0]
+            self.assertEqual(result, 1)
+            self.assertEqual(report["status"], "FAIL")
+            self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+            self.assertEqual(execution["junit_reconciliation"], "mismatch")
+            self.assertIsNone(execution["result_counts"]["passed"])
 
     def test_runner_rejects_inflated_stdout_pass_count(self):
         helper = _helper()
