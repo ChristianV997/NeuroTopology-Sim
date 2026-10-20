@@ -78,20 +78,41 @@ def test_newline_pair_canonical_fingerprint_differs():
     assert roc.fingerprint_sample_ids(left) != roc.fingerprint_sample_ids(right)
 
 
-def test_changing_calibration_data_changes_digest_and_bypasses_check():
-    frozen = roc.select_threshold_on_calibration(
-        [0.1, 0.2, 0.8, 0.9], [0, 0, 1, 1], ["c1", "c2", "c3", "c4"], "youden"
-    )
+def test_calibration_digest_requires_and_verifies_bound_bundle():
+    cal_scores = [0.1, 0.2, 0.8, 0.9]
+    cal_labels = [0, 0, 1, 1]
+    cal_ids = ["c1", "c2", "c3", "c4"]
+    frozen = roc.select_threshold_on_calibration(cal_scores, cal_labels, cal_ids, "youden")
     mutated = roc.select_threshold_on_calibration(
-        [0.9, 0.8, 0.2, 0.1], [0, 0, 1, 1], ["c1", "c2", "c3", "c4"], "youden"
+        [0.9, 0.8, 0.2, 0.1], cal_labels, cal_ids, "youden"
     )
     assert frozen["calibration_data_digest"] != mutated["calibration_data_digest"]
+    held_out = ([0.1, 0.9], [0, 1], ["e1", "e2"])
+    bundle = {"scores": cal_scores, "labels": cal_labels}
+    with pytest.raises(roc.BenchmarkError, match="bundle"):
+        roc.evaluate_held_out(
+            *held_out, frozen["threshold"], frozen["calibration_sample_fingerprint"], cal_ids,
+            calibration_data_digest=mutated["calibration_data_digest"],
+        )
     accepted = roc.evaluate_held_out(
-        [0.1, 0.9], [0, 1], ["e1", "e2"], frozen["threshold"],
-        frozen["calibration_sample_fingerprint"], ["c1", "c2", "c3", "c4"],
-        calibration_data_digest=mutated["calibration_data_digest"],
+        *held_out, frozen["threshold"], frozen["calibration_sample_fingerprint"], cal_ids,
+        calibration_data_digest=frozen["calibration_data_digest"],
+        frozen_calibration_record=frozen, calibration_bundle=bundle,
     )
     assert accepted["threshold"] == frozen["threshold"]
+    with pytest.raises(roc.BenchmarkError, match="mismatch"):
+        roc.evaluate_held_out(
+            *held_out, frozen["threshold"], frozen["calibration_sample_fingerprint"], cal_ids,
+            calibration_data_digest=mutated["calibration_data_digest"],
+            frozen_calibration_record=frozen, calibration_bundle=bundle,
+        )
+    altered_bundle = {"scores": [0.9, 0.8, 0.2, 0.1], "labels": cal_labels}
+    with pytest.raises(roc.BenchmarkError, match="mismatch"):
+        roc.evaluate_held_out(
+            *held_out, frozen["threshold"], frozen["calibration_sample_fingerprint"], cal_ids,
+            calibration_data_digest=frozen["calibration_data_digest"],
+            frozen_calibration_record=frozen, calibration_bundle=altered_bundle,
+        )
     with pytest.raises(roc.BenchmarkError, match="fingerprint"):
         roc.evaluate_held_out(
             [0.1, 0.9], [0, 1], ["e1", "e2"], frozen["threshold"],
