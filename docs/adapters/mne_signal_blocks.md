@@ -44,6 +44,10 @@ Channel order and names, channel types, units, sample rate, time origin, block s
   and NumPy integer scalars are accepted; booleans, fractional values, numeric
   strings, reversed intervals, negative indices, and bounds beyond the source
   sample count are rejected without echoing the supplied values.
+- A rejected conversion retains `INVALID_SAMPLE_BOUNDS` in its serialized
+  producer metadata. A later `validate_block` call is a separate structural
+  revalidation and may report metadata/shape issues instead of preserving that
+  original producer reason; retain both records when the cause matters.
 - `validate_block` checks serialized schema/status and required reference and
   montage metadata; it never upgrades a producer's more restrictive status.
   It requires two-dimensional shape and channel/sample counts to agree with

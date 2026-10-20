@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import sys
 import types
-import unittest
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -410,75 +408,105 @@ class _FakeRawForSampleBounds:
         return types.SimpleNamespace(kind="standard_1020")
 
 
-class TestMneSampleBounds(unittest.TestCase):
-    def setUp(self) -> None:
-        fake_mne = types.ModuleType("mne")
-        fake_mne.__version__ = "synthetic-test-fixture"
-        fake_mne.channel_type = lambda _info, _index: "eeg"
-        self.mne_context = patch.dict(sys.modules, {"mne": fake_mne})
-        self.mne_context.start()
-        self.addCleanup(self.mne_context.stop)
+@pytest.fixture
+def _fake_mne_module(monkeypatch):
+    """Install an inert MNE surface for synthetic bounds-only fixtures."""
+    fake_mne = types.ModuleType("mne")
+    fake_mne.__version__ = "synthetic-test-fixture"
+    fake_mne.channel_type = lambda _info, _index: "eeg"
+    monkeypatch.setitem(sys.modules, "mne", fake_mne)
 
-    def _convert(self, start: object, stop: object):
-        raw = _FakeRawForSampleBounds()
-        result = convert_from_mne_object(
-            raw, source_id="synthetic-fixture", start_sample=start, stop_sample=stop
-        )
-        return raw, result
 
-    def _assert_rejected_bounds(self, start: object, stop: object) -> None:
-        raw, result = self._convert(start, stop)
-        assert result.block.status == BlockStatus.REJECTED
-        assert ReasonCode.INVALID_SAMPLE_BOUNDS.value in result.block.reason_codes
-        assert raw.slice_calls == 0, "invalid bounds must be rejected before slicing"
-        rendered = " ".join(result.block.warnings) + " " + " ".join(result.block.reason_codes)
-        assert str(start) not in rendered
-        assert str(stop) not in rendered
+def _convert_with_bounds(start: object, stop: object | None = None):
+    raw = _FakeRawForSampleBounds()
+    result = convert_from_mne_object(
+        raw,
+        source_id="synthetic-fixture",
+        start_sample=start,
+        stop_sample=stop,
+    )
+    return raw, result
 
-    def test_fractional_bounds_are_rejected_before_slicing(self) -> None:
-        for start, stop in ((1.25, 6), (1, 6.75)):
-            with self.subTest(start=start, stop=stop):
-                self._assert_rejected_bounds(start, stop)
 
-    def test_boolean_bounds_are_rejected_before_slicing(self) -> None:
-        for start, stop in ((False, 6), (1, True)):
-            with self.subTest(start=start, stop=stop):
-                self._assert_rejected_bounds(start, stop)
+def _assert_rejected_bounds(start: object, stop: object) -> None:
+    raw, result = _convert_with_bounds(start, stop)
+    assert result.block.status == BlockStatus.REJECTED
+    assert ReasonCode.INVALID_SAMPLE_BOUNDS.value in result.block.reason_codes
+    assert raw.slice_calls == 0, "invalid bounds must be rejected before slicing"
+    rendered = " ".join(result.block.warnings) + " " + " ".join(result.block.reason_codes)
+    assert str(start) not in rendered
+    assert str(stop) not in rendered
+    serialized = result.block.metadata_dict(include_data=True)
+    assert ReasonCode.INVALID_SAMPLE_BOUNDS.value in serialized["reason_codes"]
 
-    def test_numeric_string_bounds_are_rejected_without_echoing_values(self) -> None:
-        for start, stop in (("1", 6), (1, "6")):
-            with self.subTest(start_type=type(start).__name__, stop_type=type(stop).__name__):
-                self._assert_rejected_bounds(start, stop)
 
-    def test_negative_bounds_are_rejected_before_slicing(self) -> None:
-        for start, stop in ((-1, 3), (1, -1)):
-            with self.subTest(start=start, stop=stop):
-                self._assert_rejected_bounds(start, stop)
+@pytest.mark.parametrize(
+    ("start", "stop"),
+    [
+        (1.25, 6),
+        (1, 6.75),
+        (False, 6),
+        (1, True),
+        ("1", 6),
+        (1, "6"),
+        (-1, 3),
+        (1, -1),
+        (6, 2),
+        (1, 9),
+        (8, 9),
+    ],
+    ids=[
+        "fractional-start",
+        "fractional-stop",
+        "boolean-start",
+        "boolean-stop",
+        "text-start",
+        "text-stop",
+        "negative-start",
+        "negative-stop",
+        "reversed-interval",
+        "stop-beyond-source",
+        "start-at-source-end",
+    ],
+)
+def test_invalid_sample_bounds_are_rejected_before_slicing(
+    _fake_mne_module, start: object, stop: object
+) -> None:
+    _assert_rejected_bounds(start, stop)
 
-    def test_reversed_bounds_are_rejected_before_slicing(self) -> None:
-        self._assert_rejected_bounds(6, 2)
 
-    def test_out_of_range_bounds_are_rejected_before_slicing(self) -> None:
-        for start, stop in ((1, 9), (8, 9)):
-            with self.subTest(start=start, stop=stop):
-                self._assert_rejected_bounds(start, stop)
+@pytest.mark.parametrize(
+    "position",
+    ["start", "stop"],
+    ids=["hostile-start", "hostile-stop"],
+)
+def test_untrusted_bound_text_is_not_serialized(_fake_mne_module, position: str) -> None:
+    sentinel = "UNTRUSTED_BOUND_SENTINEL_8f2a"
+    start, stop = (sentinel, 6) if position == "start" else (1, sentinel)
+    _assert_rejected_bounds(start, stop)
+    _, result = _convert_with_bounds(start, stop)
+    assert sentinel not in str(result.block.metadata_dict(include_data=True))
 
-    def test_valid_python_and_numpy_integer_bounds_are_preserved(self) -> None:
-        for start, stop in ((1, 6), (np.int64(1), np.int64(6))):
-            with self.subTest(start_type=type(start).__name__):
-                raw, result = self._convert(start, stop)
-                assert result.block.status == BlockStatus.CONVERTED
-                assert result.block.block_start_sample == 1
-                assert result.block.block_end_sample == 6
-                assert result.block.data_shape == (1, 5)
-                assert raw.slice_calls == 1
 
-    def test_omitted_stop_defaults_to_source_length(self) -> None:
-        raw = _FakeRawForSampleBounds()
-        result = convert_from_mne_object(
-            raw, source_id="synthetic-fixture", start_sample=2
-        )
-        assert result.block.status == BlockStatus.CONVERTED
-        assert result.block.block_start_sample == 2
-        assert result.block.block_end_sample == raw.n_times
-        assert result.block.data_shape == (1, raw.n_times - 2)
+@pytest.mark.parametrize(
+    ("start", "stop"),
+    [(1, 6), (np.int64(1), np.int64(6))],
+    ids=["python-integers", "numpy-integers"],
+)
+def test_valid_integer_bounds_are_preserved(
+    _fake_mne_module, start: object, stop: object
+) -> None:
+    raw, result = _convert_with_bounds(start, stop)
+    assert result.block.status == BlockStatus.CONVERTED
+    assert result.block.block_start_sample == 1
+    assert result.block.block_end_sample == 6
+    assert result.block.data_shape == (1, 5)
+    assert raw.slice_calls == 1
+
+
+def test_omitted_stop_defaults_to_source_length(_fake_mne_module) -> None:
+    raw, result = _convert_with_bounds(start=2)
+    assert result.block.status == BlockStatus.CONVERTED
+    assert result.block.block_start_sample == 2
+    assert result.block.block_end_sample == raw.n_times
+    assert result.block.data_shape == (1, raw.n_times - 2)
