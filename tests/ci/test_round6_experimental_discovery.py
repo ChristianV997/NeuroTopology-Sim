@@ -201,6 +201,14 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("--only-component mne_signal_blocks", eeg_job)
         self.assertIn("--pytest-marker requires_mne", eeg_job)
         self.assertIn("outputs/mne_signal_blocks_ci_report.json", eeg_job)
+        self.assertIn("--only-component mne_csd_adapter", eeg_job)
+        self.assertIn("--external-test-job optional-eeg-suite", eeg_job)
+        self.assertIn("outputs/mne_csd_adapter_eeg_report.json", eeg_job)
+        self.assertIn('"mne==1.13.2"', eeg_job)
+        self.assertIn("steps.mne_csd_reference_scope.outputs.changed == 'true'", eeg_job)
+        self.assertIn("tools/mne_csd_reference_audit/(kkt|legendre|montages|pin)", eeg_job)
+        self.assertIn("--only-component mne_csd_reference_audit", eeg_job)
+        self.assertIn("outputs/mne_csd_reference_audit_eeg_report.json", eeg_job)
         self.assertIn("diff_base_sha:", workflow)
         self.assertIn("diff_head_sha:", workflow)
         self.assertIn("inputs.diff_base_sha", eeg_job)
@@ -248,6 +256,139 @@ class Round6DiscoveryTests(unittest.TestCase):
         command = report["executed_commands"][0]
         self.assertEqual(command[command.index("--marker") + 1], "requires_mne")
 
+    def test_external_job_executes_only_its_exact_changed_test(self):
+        helper = _helper()
+        implementation_paths = (
+            "adapters/mne_csd/__init__.py",
+            "adapters/mne_csd/transform.py",
+        )
+        optional_test = "tests/adapters/mne_csd/test_optional_mne_integration.py"
+        pure_test = "tests/adapters/mne_csd/test_governance_and_availability.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            spec = _helper().COMPONENTS["mne_csd_adapter"]
+            for pair in spec["candidate_pairs"]:
+                _write(root, pair["implementation"], "# deterministic adapter fixture\n")
+            for test_file in spec["tests"]:
+                _write(
+                    root,
+                    test_file,
+                    "def test_fixture(): assert True\n",
+                )
+            _write(root, "tests/adapters/mne_csd/conftest.py", "# deterministic fixture support\n")
+            base = _commit(root, "MNE adapter candidate fixture")
+            _write(root, optional_test, "def test_fixture(): assert True  # changed\n")
+            head = _commit(root, "change delegated MNE integration case")
+            report_path = root / "outputs/report.json"
+            with patch.object(
+                helper.subprocess, "run",
+                side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs),
+            ):
+                result = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=base,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                    only_components=["mne_csd_adapter"],
+                    external_test_job="optional-eeg-suite",
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["external_test_job"], "optional-eeg-suite")
+        component = report["components"][0]
+        self.assertEqual(component["external_tests_selected_for_job"], [optional_test])
+        self.assertEqual(component["delegated_tests"], [optional_test])
+        self.assertEqual([item["test_file"] for item in component["executions"]], [optional_test])
+        self.assertEqual(component["executions"][0]["result_counts"], {
+            "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+        })
+
+    def test_external_job_is_not_applicable_for_changed_pure_pair(self):
+        helper = _helper()
+        implementation = "adapters/mne_csd/transform.py"
+        pure_test = "tests/adapters/mne_csd/test_parameter_forwarding.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            spec = helper.COMPONENTS["mne_csd_adapter"]
+            for pair in spec["candidate_pairs"]:
+                _write(root, pair["implementation"], "# deterministic adapter fixture\n")
+            for test_file in spec["tests"]:
+                _write(root, test_file, "def test_fixture(): assert True\n")
+            _write(root, "tests/adapters/mne_csd/conftest.py", "# deterministic fixture support\n")
+            base = _commit(root, "MNE pure candidate fixture")
+            _write(root, pure_test, "def test_pure_fixture(): assert True  # changed\n")
+            head = _commit(root, "change pure MNE adapter test")
+            report_path = root / "outputs/report.json"
+            real_subprocess_run = helper.subprocess.run
+            def fail_on_isolated_execution(command, *args, **kwargs):
+                if "scripts/run_tests_isolated.py" in command:
+                    raise AssertionError("no external test belongs to this diff")
+                return real_subprocess_run(command, *args, **kwargs)
+            with patch.object(helper.subprocess, "run", side_effect=fail_on_isolated_execution):
+                result = helper.run(
+                    root, base, head, report_path,
+                    only_components=["mne_csd_adapter"],
+                    external_test_job="optional-eeg-suite",
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(report["components"][0]["status"], "NOT_APPLICABLE")
+        self.assertEqual(report["components"][0]["executions"], [])
+
+    def test_mne_csd_live_parity_runs_in_the_pinned_eeg_job(self):
+        helper = _helper()
+        component = "mne_csd_reference_audit"
+        live_test = "tests/optional_live_mne/test_mne_csd_live_parity.py"
+        spec = helper.COMPONENTS[component]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            for pair in spec["candidate_pairs"]:
+                _write(root, pair["implementation"], "# deterministic audit fixture\n")
+            for test_file in spec["tests"]:
+                _write(root, test_file, "def test_fixture(): assert True\n")
+            for support_file, mapped_tests in spec["support_files"].items():
+                _write(root, support_file, "# deterministic support\n" if support_file.endswith("conftest.py") else "{}\n")
+                for test_file in mapped_tests:
+                    _write(root, test_file, "def test_fixture(): assert True\n")
+            base = _commit(root, "MNE reference-audit fixture base")
+            _write(root, live_test, "def test_fixture(): assert True  # changed\n")
+            head = _commit(root, "change pinned live-MNE parity test")
+            report_path = root / "outputs/report.json"
+            with patch.object(
+                helper.subprocess,
+                "run",
+                side_effect=lambda command, **kwargs: _fake_runner(command, **kwargs),
+            ):
+                result = helper.run(
+                    root,
+                    base,
+                    head,
+                    report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=base,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                    only_components=[component],
+                    external_test_job="optional-eeg-suite",
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(execution["test_file"], live_test)
+        self.assertEqual(execution["result_counts"], {
+            "collected": 1, "passed": 1, "skipped": 0, "failed": 0, "errors": 0, "timeouts": 0,
+        })
+
     def test_focused_mne_profile_reports_not_applicable_for_unrelated_candidate_changes(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
@@ -290,6 +431,27 @@ class Round6DiscoveryTests(unittest.TestCase):
                     workflow_sha="2" * 40,
                     event_name="workflow_dispatch",
                 )
+
+    def test_ci_manual_dispatch_requires_explicit_candidate_diff_shas(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        dispatch = re.search(r"(?ms)^  workflow_dispatch:\n    inputs:\n(.*?)(?=^\S|\Z)", workflow)
+        self.assertIsNotNone(dispatch)
+        inputs = dispatch.group(1)
+        for name in ("diff_base_sha", "diff_head_sha"):
+            with self.subTest(input=name):
+                block = re.search(
+                    rf"(?ms)^      {re.escape(name)}:\n(.*?)(?=^      [^ ]|\Z)", inputs
+                )
+                self.assertIsNotNone(block)
+                self.assertRegex(block.group(1), r"(?m)^        required: true$")
+        self.assertIn(
+            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha",
+            workflow,
+        )
+        self.assertIn(
+            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha",
+            workflow,
+        )
 
     def test_candidate_head_not_in_tested_checkout_is_blocked_before_execution(self):
         helper = _helper()
@@ -1521,20 +1683,60 @@ def test_fixture():
     def test_required_active_candidate_paths_are_not_silently_unmapped_or_not_applicable(self):
         helper = _helper()
         expected = {
+            "higher_order_runtime": (
+                377,
+                "tools/higher_order_runtime/stream_contract.py",
+                "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+            ),
+            "synthetic_pipeline_replay": (
+                387,
+                "tools/synthetic_pipeline_replay/runner.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+            ),
             "planar_geometry": (
-                416, 421,
+                416,
                 "neurotopology_sim/experimental/geometry/planar_triangulation.py",
                 "tests/experimental/test_planar_triangulation.py",
             ),
+            "finite_jitter_production_bridge": (
+                410,
+                "tools/audit_finite_jitter_triangulation.py",
+                "tests/test_finite_jitter_production_import.py",
+            ),
             "hodge_2d": (
-                423, 396, 385,
+                423,
                 "neurotopology_sim/experimental/topology/hodge_2d.py",
                 "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
             ),
+            "phase_cochain_reference": (
+                385,
+                "experimental/phase_cochain_reference/hodge.py",
+                "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py",
+            ),
+            "hodge_decomposition_audit": (
+                396,
+                "tools/hodge_decomposition_audit/audit.py",
+                "tests/tools/hodge_decomposition_audit/test_hodge_audit.py",
+            ),
             "spherical_csd": (
-                414, 419, 402,
+                414, 419,
                 "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
                 "tests/experimental/test_spherical_csd_parity.py",
+            ),
+            "mne_csd_reference_audit": (
+                402,
+                "tools/mne_csd_reference_audit/kkt.py",
+                "tests/mne_csd_reference_audit/test_kkt_operator.py",
+            ),
+            "mne_csd_adapter": (
+                378,
+                "adapters/mne_csd/transform.py",
+                "tests/adapters/mne_csd/test_parameter_forwarding.py",
+            ),
+            "batch2_pipeline_benchmark": (
+                371,
+                "tools/benchmarks/batch2_pipeline/harness.py",
+                "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
             ),
             "four_sphere": (
                 418, 409,
@@ -1552,9 +1754,9 @@ def test_fixture():
                 "tests/surrogate_nulls/test_adversarial_contracts.py",
             ),
             "dmd_crouzeix": (
-                415, 420,
+                415, 420, 400,
                 "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
-                "tests/dmd_crouzeix_contract/test_production_contract.py",
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
             ),
             "synthetic_roc": (
                 426, 427,
@@ -1616,6 +1818,105 @@ def test_fixture():
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_adversarial_contracts.py"},
             helper.COMPONENTS["surrogate_nulls"]["candidate_pairs"],
         )
+        self.assertIn(
+            {"implementation": "tools/surrogate_audit/metrics.py", "test": "tests/surrogate_audit/test_metrics_scale_invariance.py"},
+            helper.COMPONENTS["surrogate_audit"]["candidate_pairs"],
+        )
+        self.assertIn(
+            {"implementation": "neurotopology_sim/experimental/topology/winding.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
+            helper.COMPONENTS["winding_charge_audit"]["candidate_pairs"],
+        )
+        self.assertIn(
+            {"implementation": "tools/experimental_audits/winding_charge_round6/oracle.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
+            helper.COMPONENTS["winding_charge_audit"]["candidate_pairs"],
+        )
+        finite_bridge = helper.COMPONENTS["finite_jitter_production_bridge"]
+        bridge_test = "tests/test_finite_jitter_production_import.py"
+        self.assertIn(
+            {
+                "implementation": "tools/audit_finite_jitter_triangulation.py",
+                "test": bridge_test,
+            },
+            finite_bridge["candidate_pairs"],
+        )
+        self.assertNotIn(
+            bridge_test,
+            helper.COMPONENTS["planar_geometry"]["tests"],
+        )
+        self.assertEqual(
+            helper.select_components({bridge_test}),
+            ["finite_jitter_production_bridge"],
+        )
+        geometry_source = "neurotopology_sim/experimental/geometry/planar_triangulation.py"
+        self.assertEqual(helper.select_components({geometry_source}), ["planar_geometry"])
+        self.assertEqual(helper._unmapped_candidate_paths({bridge_test}), [])
+
+        csd_adapter = helper.COMPONENTS["mne_csd_adapter"]
+        csd_live_test = "tests/adapters/mne_csd/test_optional_mne_integration.py"
+        for implementation in (
+            "adapters/mne_csd/__init__.py",
+            "adapters/mne_csd/constants.py",
+            "adapters/mne_csd/errors.py",
+            "adapters/mne_csd/preconditions.py",
+            "adapters/mne_csd/provenance.py",
+            "adapters/mne_csd/transform.py",
+        ):
+            self.assertIn(
+                {"implementation": implementation, "test": csd_live_test},
+                csd_adapter["candidate_pairs"],
+            )
+        audit = helper.COMPONENTS["mne_csd_reference_audit"]
+        audit_live_test = "tests/optional_live_mne/test_mne_csd_live_parity.py"
+        for implementation in (
+            "tools/mne_csd_reference_audit/kkt.py",
+            "tools/mne_csd_reference_audit/legendre.py",
+            "tools/mne_csd_reference_audit/montages.py",
+            "tools/mne_csd_reference_audit/pin.py",
+        ):
+            self.assertIn(
+                {"implementation": implementation, "test": audit_live_test},
+                audit["candidate_pairs"],
+            )
+
+        benchmark = helper.COMPONENTS["batch2_pipeline_benchmark"]
+        self.assertIn(
+            {
+                "implementation": "tools/benchmarks/batch2_pipeline/reporting.py",
+                "test": "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+            },
+            benchmark["candidate_pairs"],
+        )
+        self.assertNotIn(
+            {
+                "implementation": "tools/benchmarks/batch2_pipeline/reporting.py",
+                "test": "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+            },
+            benchmark["candidate_pairs"],
+        )
+        makefile = "tools/benchmarks/batch2_pipeline/Makefile"
+        makefile_test = "tests/ci/test_round6_benchmark_makefile.py"
+        self.assertIn(
+            {"implementation": makefile, "test": makefile_test},
+            helper.COMPONENTS["batch2_pipeline_benchmark"]["candidate_pairs"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths({makefile}), [])
+        self.assertEqual(
+            helper.select_components({makefile}),
+            ["batch2_pipeline_benchmark"],
+        )
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, makefile, "generate:\n\ttrue\n")
+            _write(root, makefile_test, "def test_makefile_contract(): pass\n")
+            inspection = helper.inspect_component(
+                "batch2_pipeline_benchmark", root, {makefile}
+            )
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertEqual(inspection["tests_to_run"], [makefile_test])
+        self.assertEqual(
+            helper.select_components({"tools/benchmarks/batch2_pipeline/reporting.py"}),
+            ["batch2_pipeline_benchmark"],
+        )
         docker_tests = {
             pair["test"] for pair in helper.COMPONENTS["docker_context_policy"]["candidate_pairs"]
         }
@@ -1649,33 +1950,72 @@ def test_fixture():
             mne_inspection["external_test_paths"],
             {mne_test: "optional-eeg-suite"},
         )
+        csd_adapter_test = "tests/adapters/mne_csd/test_optional_mne_integration.py"
+        csd_adapter = helper.COMPONENTS["mne_csd_adapter"]
+        self.assertEqual(
+            csd_adapter["external_test_paths"],
+            {csd_adapter_test: "optional-eeg-suite"},
+        )
+        self.assertEqual(helper.select_components({csd_adapter_test}), ["mne_csd_adapter"])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for pair in csd_adapter["candidate_pairs"]:
+                _write(root, pair["implementation"], "# adapter implementation fixture\n")
+            for test_file in csd_adapter["tests"]:
+                _write(root, test_file, "def test_fixture(): pass\n")
+            for support_file in csd_adapter["support_files"]:
+                _write(root, support_file, "# fixture support\n")
+            inspection = helper.inspect_component("mne_csd_adapter", root, {csd_adapter_test})
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertNotIn(csd_adapter_test, inspection["tests_to_run"])
+        self.assertIn(csd_adapter_test, inspection["delegated_tests"])
         csd_live_test = "tests/optional_live_mne/test_mne_csd_live_parity.py"
         self.assertEqual(
             helper.select_components({csd_live_test}),
-            ["spherical_csd"],
+            ["mne_csd_reference_audit"],
         )
         self.assertEqual(
-            helper.COMPONENTS["spherical_csd"]["external_test_paths"][csd_live_test],
-            "owner-controlled-pinned-mne-1.13.2",
+            helper.COMPONENTS["mne_csd_reference_audit"]["external_test_paths"][csd_live_test],
+            "optional-eeg-suite",
         )
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            audit_spec = helper.COMPONENTS["mne_csd_reference_audit"]
             pure_test = "tests/mne_csd_reference_audit/test_kkt_operator.py"
-            _write(root, "tools/mne_csd_reference_audit/kkt.py", "def apply(): return None\n")
-            _write(root, pure_test, "def test_reference(): assert True\n")
-            _write(root, "tests/mne_csd_reference_audit/conftest.py", "# deterministic test support\n")
-            for support_test in helper.COMPONENTS["spherical_csd"]["support_files"][
+            for pair in audit_spec["candidate_pairs"]:
+                _write(root, pair["implementation"], "# deterministic audit implementation fixture\n")
+            for test_file in audit_spec["tests"]:
+                _write(root, test_file, "def test_fixture(): assert True\n")
+            for support_file in audit_spec["support_files"]:
+                _write(root, support_file, "# deterministic test support\n")
+            for support_test in audit_spec["support_files"][
                 "tests/mne_csd_reference_audit/conftest.py"
             ]:
                 _write(root, support_test, "def test_support(): assert True\n")
+            for support_file, mapped_tests in audit_spec["support_files"].items():
+                if support_file != "tests/mne_csd_reference_audit/conftest.py":
+                    _write(root, support_file, "{}\n")
+                    for support_test in mapped_tests:
+                        _write(root, support_test, "def test_support(): assert True\n")
             _write(root, csd_live_test, "def test_live(): pass\n")
             inspection = helper.inspect_component(
-                "spherical_csd", root, {csd_live_test}
+                "mne_csd_reference_audit", root, {csd_live_test}
             )
         self.assertEqual(inspection["status"], "READY_TO_RUN")
         self.assertEqual(inspection["tests_to_run"], [pure_test])
         self.assertEqual(inspection["delegated_tests"], [csd_live_test])
-        self.assertEqual(inspection["implementations"], ["tools/mne_csd_reference_audit/kkt.py"])
+        self.assertEqual(
+            inspection["implementations"],
+            [
+                "tools/mne_csd_reference_audit/kkt.py",
+                "tools/mne_csd_reference_audit/legendre.py",
+                "tools/mne_csd_reference_audit/montages.py",
+                "tools/mne_csd_reference_audit/pin.py",
+            ],
+        )
+        preprocessing_init = "neurotopology_sim/experimental/preprocessing/__init__.py"
+        self.assertEqual(helper.select_components({preprocessing_init}), ["spherical_csd"])
+        self.assertNotIn("mne_csd_reference_audit", helper.select_components({preprocessing_init}))
         self.assertEqual(
             helper.select_components({"tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py"}),
             ["moabb_protocol_conformance"],
@@ -1870,23 +2210,25 @@ def test_fixture():
 
     def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
         helper = _helper()
-        current_open_pr_gaps = {
-            411: "tests/research/batch3/test_dataset_metadata_audit.py",
-            406: "tests/oss_compat/test_compatibility_inventory.py",
-            394: "tests/research/batch3/test_replication_dataset_feasibility.py",
-            393: "tests/research/batch3/test_claim_matrix.py",
-            386: "oss_opportunities/opportunity_batch.py",
-            384: "shared/measurement_hypothesis/validate.py",
-            383: "tools/research_plan_quality_eval/harness.py",
-            382: "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
-            376: "tests/scientific_falsification/test_batch3_falsification_matrix.py",
-            375: "tests/research/test_batch3_source_registry.py",
-            374: "dual_engine/fusion_validation.py",
-            373: "sciencer_d/btc_icft/level_t/base_real_topology.py",
-            388: "dual_engine/forward_model_contract.py",
-            387: "tools/synthetic_pipeline_replay/runner.py",
-        }
-        for pr_number, path in current_open_pr_gaps.items():
+        current_open_pr_gaps = (
+            (411, "tests/research/batch3/test_dataset_metadata_audit.py"),
+            (406, "tests/oss_compat/test_compatibility_inventory.py"),
+            (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
+            (393, "tests/research/batch3/test_claim_matrix.py"),
+            (386, "oss_opportunities/opportunity_batch.py"),
+            (384, "shared/measurement_hypothesis/validate.py"),
+            (383, "tools/research_plan_quality_eval/harness.py"),
+            (382, "tests/source_mining_integration/test_source_mining_evidence_boundary.py"),
+            (376, "tests/scientific_falsification/test_batch3_falsification_matrix.py"),
+            (375, "tests/research/test_batch3_source_registry.py"),
+            (374, "dual_engine/fusion_validation.py"),
+            (373, "sciencer_d/btc_icft/level_t/base_real_topology.py"),
+            (388, "dual_engine/forward_model_contract.py"),
+            (400, "tests/dmd_ep2_oracle/test_oracle.py"),
+            (374, "tests/test_fusion_validation.py"),
+            (373, "tests/test_base_real_topology_missingness.py"),
+        )
+        for pr_number, path in current_open_pr_gaps:
             with self.subTest(pr=pr_number, path=path):
                 self.assertIn(path, helper._unmapped_candidate_paths({path}))
                 self.assertEqual(helper.select_components({path}), [])

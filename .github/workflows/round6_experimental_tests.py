@@ -67,82 +67,152 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "test_roots": ("tests/neurotopology_sim/experimental/geometry/", "tests/experimental/"),
         "candidate_test_roots": ("tests/neurotopology_sim/experimental/geometry/",),
     },
+    "higher_order_runtime": {
+        "triggers": (
+            "tools/higher_order_runtime/",
+            "tests/higher_order_runtime_contract/",
+        ),
+        "tests": (
+            "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+            "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+            "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+            "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "tools/higher_order_runtime/__init__.py",
+                "tools/higher_order_runtime/stream_contract.py",
+            )
+            for test in (
+                "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+                "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+                "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+                "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+            )
+        ),
+        "support_files": {
+            "tests/higher_order_runtime_contract/conftest.py": (
+                "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+                "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+                "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+                "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+            ),
+        },
+        "implementation_roots": ("tools/higher_order_runtime/",),
+        "candidate_test_roots": ("tests/higher_order_runtime_contract/",),
+    },
+    "synthetic_pipeline_replay": {
+        "triggers": (
+            "tools/synthetic_pipeline_replay/",
+            "tests/integration/synthetic_pipeline_replay/",
+        ),
+        "tests": (
+            "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+            "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "tools/synthetic_pipeline_replay/__init__.py",
+                "tools/synthetic_pipeline_replay/checker.py",
+                "tools/synthetic_pipeline_replay/contracts.py",
+                "tools/synthetic_pipeline_replay/runner.py",
+                "tools/synthetic_pipeline_replay/stages.py",
+            )
+            for test in (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            )
+        ),
+        "support_files": {
+            "tests/integration/synthetic_pipeline_replay/fixtures.py": (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            ),
+        },
+        "implementation_roots": ("tools/synthetic_pipeline_replay/",),
+        "candidate_test_roots": ("tests/integration/synthetic_pipeline_replay/",),
+    },
     "hodge_2d": {
         "triggers": (
             "neurotopology_sim/experimental/topology/hodge_2d.py",
             "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
-            "tools/hodge_decomposition_audit/",
-            "tests/tools/hodge_decomposition_audit/",
+        ),
+        "tests": ("tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",),
+        "candidate_pairs": (
+            {"implementation": "neurotopology_sim/experimental/topology/hodge_2d.py", "test": "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"},
+        ),
+        "implementation_roots": ("neurotopology_sim/experimental/topology/hodge_2d.py",),
+        "candidate_test_roots": ("tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",),
+    },
+    "phase_cochain_reference": {
+        "triggers": (
             "experimental/phase_cochain_reference/",
             "tests/experimental/phase_cochain_reference/",
         ),
-        "implementation_any": (
-            "neurotopology_sim/experimental/topology/hodge_2d.py",
-            "tools/hodge_decomposition_audit/audit.py",
-            "experimental/phase_cochain_reference/hodge.py",
-        ),
         "tests": (
-            "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
-            "tests/tools/hodge_decomposition_audit/test_hodge_audit.py",
             "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py",
             "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py",
             "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py",
             "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py",
         ),
         "candidate_pairs": (
-            {"implementation": "neurotopology_sim/experimental/topology/hodge_2d.py", "test": "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"},
-            {"implementation": "tools/hodge_decomposition_audit/audit.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/__main__.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
-            {"implementation": "tools/hodge_decomposition_audit/charges.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/fixtures.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/hodge_oracle.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/incidence.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/report.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/schema.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
+            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
             {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
             {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
-            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
         ),
-        "implementation_roots": ("neurotopology_sim/experimental/topology/", "tools/hodge_decomposition_audit/", "experimental/phase_cochain_reference/"),
-        "test_roots": ("tests/neurotopology_sim/experimental/topology/", "tests/tools/hodge_decomposition_audit/", "tests/experimental/phase_cochain_reference/"),
+        "implementation_roots": ("experimental/phase_cochain_reference/",),
+        "candidate_test_roots": ("tests/experimental/phase_cochain_reference/",),
+    },
+    "hodge_decomposition_audit": {
+        "triggers": (
+            "tools/hodge_decomposition_audit/",
+            "tests/tools/hodge_decomposition_audit/",
+        ),
+        "tests": ("tests/tools/hodge_decomposition_audit/test_hodge_audit.py",),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"}
+            for implementation in (
+                "tools/hodge_decomposition_audit/__init__.py",
+                "tools/hodge_decomposition_audit/__main__.py",
+                "tools/hodge_decomposition_audit/audit.py",
+                "tools/hodge_decomposition_audit/charges.py",
+                "tools/hodge_decomposition_audit/fixtures.py",
+                "tools/hodge_decomposition_audit/hodge_oracle.py",
+                "tools/hodge_decomposition_audit/incidence.py",
+                "tools/hodge_decomposition_audit/report.py",
+                "tools/hodge_decomposition_audit/schema.py",
+            )
+        ),
+        "implementation_roots": ("tools/hodge_decomposition_audit/",),
+        "candidate_test_roots": ("tests/tools/hodge_decomposition_audit/",),
     },
     "spherical_csd": {
         "triggers": (
-            "neurotopology_sim/experimental/preprocessing/",
-            "tests/neurotopology_sim/experimental/preprocessing/",
+            "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
-            "tools/mne_csd_reference_audit/",
-            "tests/mne_csd_reference_audit/",
-            "tests/optional_live_mne/test_mne_csd_live_parity.py",
-        ),
-        "implementation_any": (
-            "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
-            "tools/mne_csd_reference_audit/kkt.py",
         ),
         "tests": (
             "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
-            "tests/mne_csd_reference_audit/test_kkt_operator.py",
-            "tests/mne_csd_reference_audit/test_legendre_constants.py",
-            "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
-            "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
-            "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py"},
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/experimental/test_spherical_csd_parity.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_legendre_constants.py"},
-            {"implementation": "tools/mne_csd_reference_audit/__main__.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/legendre.py", "test": "tests/mne_csd_reference_audit/test_legendre_constants.py"},
-            {"implementation": "tools/mne_csd_reference_audit/montages.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/pin.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
-            {"implementation": "tools/mne_csd_reference_audit/report.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_mne_integration_optional.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/optional_live_mne/test_mne_csd_live_parity.py"},
         ),
         "support_files": {
             "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
@@ -154,28 +224,88 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json": (
                 "tests/experimental/test_spherical_csd_parity.py",
             ),
+        },
+        "implementation_roots": ("neurotopology_sim/experimental/preprocessing/spherical_csd.py",),
+        "test_roots": (
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            "tests/experimental/test_spherical_csd_parity.py",
+        ),
+        "candidate_test_roots": (
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            "tests/experimental/test_spherical_csd_parity.py",
+        ),
+    },
+    "mne_csd_reference_audit": {
+        "triggers": (
+            "tools/mne_csd_reference_audit/",
+            "tests/mne_csd_reference_audit/",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
+        ),
+        "tests": (
+            "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
+            "tests/mne_csd_reference_audit/test_legendre_constants.py",
+            "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/mne_csd_reference_audit/__init__.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_legendre_constants.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                ),
+                "tools/mne_csd_reference_audit/__main__.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                ),
+                "tools/mne_csd_reference_audit/kkt.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/legendre.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_legendre_constants.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/montages.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/pin.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/report.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                ),
+            }.items()
+            for test in tests
+        ),
+        "support_files": {
             "tests/mne_csd_reference_audit/conftest.py": (
+                "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
                 "tests/mne_csd_reference_audit/test_kkt_operator.py",
                 "tests/mne_csd_reference_audit/test_legendre_constants.py",
-                "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
                 "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
             ),
             "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json": (
                 "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
             ),
         },
-        "implementation_roots": ("neurotopology_sim/experimental/preprocessing/", "tools/mne_csd_reference_audit/"),
-        "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/", "tests/optional_live_mne/test_mne_csd_live_parity.py"),
+        "implementation_roots": ("tools/mne_csd_reference_audit/",),
         "candidate_test_roots": (
-            "tests/neurotopology_sim/experimental/preprocessing/",
             "tests/mne_csd_reference_audit/",
             "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
-        # The live operator parity test requires the audit owner's pinned MNE
-        # environment. The gate records it as delegated and never auto-installs
-        # MNE or turns an import/version skip into a pass.
+        # The live operator parity test runs in the EEG job, which pins MNE
+        # 1.13.2; it is never silently counted as core evidence.
         "external_test_paths": {
-            "tests/optional_live_mne/test_mne_csd_live_parity.py": "owner-controlled-pinned-mne-1.13.2",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py": "optional-eeg-suite",
         },
     },
     "four_sphere": {
@@ -285,21 +415,57 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/surrogate_audit/test_mv_fpr.py",
             "tests/surrogate_audit/test_mv_iaaft.py",
             "tests/surrogate_audit/test_invalid_inputs.py",
+            "tests/surrogate_audit/test_metrics_scale_invariance.py",
         ),
-        "candidate_pairs": (
-            {"implementation": "tools/surrogate_audit/mv_fpr.py", "test": "tests/surrogate_audit/test_mv_fpr.py"},
-            {"implementation": "tools/surrogate_audit/mv_iaaft.py", "test": "tests/surrogate_audit/test_mv_iaaft.py"},
-            {"implementation": "tools/surrogate_audit/mv_iaaft.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/errors.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/metrics.py", "test": "tests/surrogate_audit/test_mv_fpr.py"},
-            {"implementation": "tools/surrogate_audit/report.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/status.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/surrogate_audit/__init__.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/errors.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                ),
+                "tools/surrogate_audit/metrics.py": (
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/mv_fpr.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                ),
+                "tools/surrogate_audit/mv_iaaft.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/report.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/status.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+            }.items()
+            for test in tests
         ),
         "support_files": {
             "tests/surrogate_audit/fixtures.py": (
                 "tests/surrogate_audit/test_mv_fpr.py",
                 "tests/surrogate_audit/test_mv_iaaft.py",
                 "tests/surrogate_audit/test_invalid_inputs.py",
+                "tests/surrogate_audit/test_metrics_scale_invariance.py",
             ),
         },
         "implementation_roots": ("tools/surrogate_audit/",),
@@ -426,7 +592,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "test_roots": ("tests/batch2_chain_complex_audit/",),
     },
     "winding_charge_audit": {
-        "triggers": ("tools/experimental_audits/winding_charge_round6/", "tests/experimental_audits/test_winding_charge_round6_oracle.py"),
+        "triggers": (
+            "tools/experimental_audits/winding_charge_round6/",
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "neurotopology_sim/experimental/topology/winding.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
         "implementation_any": (
             "tools/experimental_audits/winding_charge_round6/__main__.py",
             "tools/experimental_audits/winding_charge_round6/audit.py",
@@ -434,17 +605,31 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tools/experimental_audits/winding_charge_round6/fixtures.py",
             "tools/experimental_audits/winding_charge_round6/oracle.py",
         ),
-        "tests": ("tests/experimental_audits/test_winding_charge_round6_oracle.py",),
+        "tests": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
         "candidate_pairs": (
             {"implementation": "tools/experimental_audits/winding_charge_round6/__main__.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/audit.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/conventions.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/fixtures.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/oracle.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
+            {"implementation": "tools/experimental_audits/winding_charge_round6/oracle.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
+            {"implementation": "neurotopology_sim/experimental/topology/winding.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
         ),
-        "implementation_roots": ("tools/experimental_audits/winding_charge_round6/",),
-        "test_roots": ("tests/experimental_audits/",),
-        "candidate_test_roots": ("tests/experimental_audits/test_winding_charge_round6_oracle.py",),
+        "implementation_roots": (
+            "tools/experimental_audits/winding_charge_round6/",
+            "neurotopology_sim/experimental/topology/winding.py",
+        ),
+        "test_roots": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
+        "candidate_test_roots": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
     },
     "dmd_crouzeix": {
         "triggers": (
@@ -456,15 +641,24 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "tests": (
             "tests/dmd_crouzeix_contract/test_production_contract.py",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_crouzeix_contract/test_production_contract.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
+            {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
         ),
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
         "test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
+        ),
+        "candidate_test_roots": (
+            "tests/dmd_crouzeix_contract/",
+            "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
     },
     "docker_context_policy": {
@@ -581,6 +775,110 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "implementation_roots": ("tools/public_repo_harvest/",),
         "candidate_test_roots": ("tests/tools/test_public_repo_harvest_source_pack.py",),
+    },
+    "batch2_pipeline_benchmark": {
+        "triggers": (
+            "tools/benchmarks/batch2_pipeline/",
+            "tools/benchmarks/__init__.py",
+            "scripts/benchmark_batch2_pipeline.py",
+            "tests/benchmarks/batch2_pipeline/",
+        ),
+        "tests": (
+            "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+            "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+            "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+            "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+            "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+            "tests/ci/test_round6_benchmark_makefile.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/benchmarks/__init__.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/__init__.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/budgets.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/fixtures.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/harness.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/reporting.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/schema.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/telemetry.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/validator.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/workloads.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "scripts/benchmark_batch2_pipeline.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+            }.items()
+            for test in tests
+        ) + (
+            {
+                "implementation": "tools/benchmarks/batch2_pipeline/Makefile",
+                "test": "tests/ci/test_round6_benchmark_makefile.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/benchmarks/batch2_pipeline/",
+            "tools/benchmarks/__init__.py",
+            "scripts/benchmark_batch2_pipeline.py",
+        ),
+        "test_roots": (
+            "tests/benchmarks/batch2_pipeline/",
+        ),
+        "candidate_test_roots": (
+            "tests/benchmarks/batch2_pipeline/",
+        ),
     },
     "dandi_nwb_bounded": {
         "triggers": (
@@ -746,6 +1044,84 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": "not requires_mne",
         },
     },
+    "mne_csd_adapter": {
+        "triggers": (
+            "adapters/mne_csd/",
+            "tests/adapters/mne_csd/",
+        ),
+        "tests": (
+            "tests/adapters/mne_csd/test_governance_and_availability.py",
+            "tests/adapters/mne_csd/test_optional_mne_integration.py",
+            "tests/adapters/mne_csd/test_parameter_forwarding.py",
+            "tests/adapters/mne_csd/test_preconditions.py",
+            "tests/adapters/mne_csd/test_provenance_and_units.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "adapters/mne_csd/__init__.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/constants.py": (
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/errors.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                ),
+                "adapters/mne_csd/preconditions.py": (
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/provenance.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/transform.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+            }.items()
+            for test in tests
+        ) + tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/adapters/mne_csd/test_optional_mne_integration.py",
+            }
+            for implementation in (
+                "adapters/mne_csd/__init__.py",
+                "adapters/mne_csd/constants.py",
+                "adapters/mne_csd/errors.py",
+                "adapters/mne_csd/preconditions.py",
+                "adapters/mne_csd/provenance.py",
+                "adapters/mne_csd/transform.py",
+            )
+        ),
+        "support_files": {
+            "tests/adapters/mne_csd/conftest.py": (
+                "tests/adapters/mne_csd/test_governance_and_availability.py",
+                "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                "tests/adapters/mne_csd/test_preconditions.py",
+                "tests/adapters/mne_csd/test_provenance_and_units.py",
+            ),
+        },
+        "implementation_roots": ("adapters/mne_csd/",),
+        "candidate_test_roots": ("tests/adapters/mne_csd/",),
+        # The file imports MNE at collection time. Keep it out of the CPU
+        # candidate run and execute it only in the existing installed EEG job.
+        "external_test_paths": {
+            "tests/adapters/mne_csd/test_optional_mne_integration.py": "optional-eeg-suite",
+        },
+    },
     "finite_jitter_geometry_audit": {
         "triggers": (
             "tools/audit_finite_jitter_triangulation.py",
@@ -762,6 +1138,21 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
         "candidate_test_roots": ("tests/test_finite_jitter_triangulation_audit.py",),
     },
+    "finite_jitter_production_bridge": {
+        "triggers": (
+            "tools/audit_finite_jitter_triangulation.py",
+            "tests/test_finite_jitter_production_import.py",
+        ),
+        "tests": ("tests/test_finite_jitter_production_import.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/audit_finite_jitter_triangulation.py",
+                "test": "tests/test_finite_jitter_production_import.py",
+            },
+        ),
+        "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
+        "candidate_test_roots": ("tests/test_finite_jitter_production_import.py",),
+    },
 }
 
 
@@ -777,16 +1168,30 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "tests/neurotopology_sim/experimental/geometry/__init__.py",
     ),
     "hodge_2d": (
-        "experimental/phase_cochain_reference/__init__.py",
-        "tests/experimental/phase_cochain_reference/__init__.py",
-        "tools/hodge_decomposition_audit/__init__.py",
-        "tests/tools/hodge_decomposition_audit/__init__.py",
         "neurotopology_sim/experimental/topology/__init__.py",
         "tests/neurotopology_sim/experimental/topology/__init__.py",
+    ),
+    "phase_cochain_reference": (
+        "experimental/phase_cochain_reference/__init__.py",
+        "tests/experimental/phase_cochain_reference/__init__.py",
+    ),
+    "hodge_decomposition_audit": (
+        "tools/hodge_decomposition_audit/__init__.py",
+        "tests/tools/hodge_decomposition_audit/__init__.py",
+    ),
+    "higher_order_runtime": (
+        "tools/higher_order_runtime/__init__.py",
+        "tests/higher_order_runtime_contract/__init__.py",
+    ),
+    "synthetic_pipeline_replay": (
+        "tools/synthetic_pipeline_replay/__init__.py",
+        "tests/integration/synthetic_pipeline_replay/__init__.py",
     ),
     "spherical_csd": (
         "neurotopology_sim/experimental/preprocessing/__init__.py",
         "tests/neurotopology_sim/experimental/preprocessing/__init__.py",
+    ),
+    "mne_csd_reference_audit": (
         "tools/mne_csd_reference_audit/__init__.py",
         "tests/mne_csd_reference_audit/__init__.py",
     ),
@@ -855,6 +1260,10 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "tests/bids_inventory_audit/__init__.py",
     ),
     "public_repo_source_pack": (),
+    "batch2_pipeline_benchmark": (
+        "tools/benchmarks/__init__.py",
+        "tools/benchmarks/batch2_pipeline/__init__.py",
+    ),
     "dandi_nwb_bounded": (
         "tests/data_access/dandi_nwb_bounded/__init__.py",
     ),
@@ -865,6 +1274,10 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
     "mne_signal_blocks": (
         "adapters/mne_signal_blocks/__init__.py",
         "tests/adapters/mne_signal_blocks/__init__.py",
+    ),
+    "mne_csd_adapter": (
+        "adapters/mne_csd/__init__.py",
+        "tests/adapters/mne_csd/__init__.py",
     ),
     "streaming_s3_transfer": (),
     "ds005620_cohort_stream": (),
@@ -889,9 +1302,14 @@ for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.ite
 # pairs, including merged implementation PRs and open independent-test PRs.
 # They are ownership evidence, not approval or merge state.
 COMPONENT_OWNER_PRS = {
-    "planar_geometry": (416, 421),
-    "hodge_2d": (423, 396, 385),
-    "spherical_csd": (414, 419, 402),
+    "planar_geometry": (416,),
+    "higher_order_runtime": (377,),
+    "synthetic_pipeline_replay": (387,),
+    "hodge_2d": (423,),
+    "phase_cochain_reference": (385,),
+    "hodge_decomposition_audit": (396,),
+    "spherical_csd": (414, 419),
+    "mne_csd_reference_audit": (402,),
     "four_sphere": (418, 409),
     "phase_winding": (413,),
     "surrogate_nulls": (417, 430),
@@ -904,16 +1322,19 @@ COMPONENT_OWNER_PRS = {
     "topology_backend_conformance": (389,),
     "finite_chain_audit": (397,),
     "winding_charge_audit": (399,),
-    "dmd_crouzeix": (415, 420),
+    "dmd_crouzeix": (415, 420, 400),
+    "batch2_pipeline_benchmark": (371,),
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
+    "finite_jitter_production_bridge": (410,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
     "ds005620_cohort_stream": (437,),
     "moabb_protocol_conformance": (379,),
     "mne_signal_blocks": (380,),
+    "mne_csd_adapter": (378,),
 }
 
 
@@ -1691,10 +2112,10 @@ def inspect_component(
         )
         and (root / pair["test"]).is_file()
     ]
-    delegated_tests = sorted(
+    delegated_tests = sorted({
         pair["test"] for pair in selected_pairs
         if normalize_repo_path(pair["test"]).casefold() in external_tests
-    )
+    })
     tests_to_run = list(dict.fromkeys(pair_tests))
     active_support_files = {
         support_path: mapped_tests
@@ -2386,6 +2807,7 @@ def run(
     require_checkout_match: bool = False,
     only_components: list[str] | tuple[str, ...] = (),
     pytest_marker: str | None = None,
+    external_test_job: str | None = None,
 ) -> int:
     root = root.resolve()
     report_path = _lexically_contained_path(root, report_path, "report path")
@@ -2399,6 +2821,17 @@ def run(
         raise ValueError(f"unknown component filters: {unknown_only}")
     if pytest_marker not in {None, "requires_mne", "not requires_mne"}:
         raise ValueError("unsupported pytest marker profile")
+    external_test_jobs = {
+        job
+        for spec in COMPONENTS.values()
+        for job in spec.get("external_test_paths", {}).values()
+    }
+    if external_test_job is not None and external_test_job not in external_test_jobs:
+        raise ValueError(f"unknown external test job: {external_test_job}")
+    if external_test_job is not None and not only_components:
+        raise ValueError("external test execution requires an explicit --only-component")
+    if external_test_job is not None and pytest_marker is not None:
+        raise ValueError("external test execution cannot be combined with --pytest-marker")
     if tested_checkout_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", tested_checkout_sha):
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
@@ -2448,6 +2881,7 @@ def run(
         "always_components": always_components,
         "only_components": only_components,
         "pytest_marker_profile": pytest_marker,
+        "external_test_job": external_test_job,
         "not_applicable_components": [],
         "unmapped_candidate_paths": unmapped_candidate_paths,
         "selected_paths": {},
@@ -2624,6 +3058,31 @@ def run(
             entry = inspect_component(
                 name, root, component_changes, require_all_pairs=require_all_pairs
             )
+            if external_test_job is not None:
+                external_tests_to_run = [
+                    path for path in entry["delegated_tests"]
+                    if spec.get("external_test_paths", {}).get(path) == external_test_job
+                ]
+                entry["external_tests_selected_for_job"] = external_tests_to_run
+                if entry["status"] != "READY_TO_RUN":
+                    report["components"].append(entry)
+                    report["selected_paths"][name] = sorted({
+                        *component_changes,
+                        *entry["selected_paths"],
+                    })
+                    saw_blocked = True
+                    continue
+                if not external_tests_to_run:
+                    entry["status"] = "NOT_APPLICABLE"
+                    entry["reason"] = "no changed candidate pair delegates a test to this external job"
+                    report["not_applicable_components"].append(name)
+                    report["components"].append(entry)
+                    report["selected_paths"][name] = sorted({
+                        *component_changes,
+                        *entry["selected_paths"],
+                    })
+                    continue
+                entry["tests_to_run"] = external_tests_to_run
             if pytest_marker is not None:
                 entry["test_markers"] = {
                     test_path: pytest_marker for test_path in entry["tests_to_run"]
@@ -3154,6 +3613,15 @@ def main(argv: list[str] | None = None) -> int:
         "--pytest-marker", choices=("requires_mne", "not requires_mne"),
         help="Apply a validated optional-dependency test marker to this focused profile.",
     )
+    parser.add_argument(
+        "--external-test-job",
+        choices=sorted({
+            job
+            for spec in COMPONENTS.values()
+            for job in spec.get("external_test_paths", {}).values()
+        }),
+        help="Execute only changed tests explicitly delegated to this external job.",
+    )
     args = parser.parse_args(argv)
     try:
         return run(
@@ -3165,6 +3633,7 @@ def main(argv: list[str] | None = None) -> int:
             require_checkout_match=True,
             only_components=args.only_component,
             pytest_marker=args.pytest_marker,
+            external_test_job=args.external_test_job,
         )
     except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         print(f"Round 6 candidate test discovery failed closed: {exc}", file=sys.stderr)
