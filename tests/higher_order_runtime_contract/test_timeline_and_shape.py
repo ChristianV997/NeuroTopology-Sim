@@ -68,6 +68,16 @@ def test_oned_chunk_layout_rejected(bounds):
         session.update(np.zeros(8, dtype=np.float64))
 
 
+def test_oned_signal_rejected_by_iter_contract_windows(bounds):
+    """Regression: windowing must not silently reshape 1-D signals to (n, 1).
+
+    ``StreamSession.update`` already rejects ndim != 2. ``iter_contract_windows``
+    must use the same layout contract so batch windowing and session ingest agree.
+    """
+    with pytest.raises(ShapeContractError, match="2-D"):
+        list(iter_contract_windows(np.zeros(8, dtype=np.float64), ChunkingPolicy(4), bounds))
+
+
 def test_column_permutation_is_caller_owned_not_identity_checked(bounds):
     """Same channel count with swapped columns is accepted; identity is caller-owned."""
     session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")

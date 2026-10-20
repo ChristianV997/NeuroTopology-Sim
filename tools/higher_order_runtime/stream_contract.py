@@ -116,11 +116,15 @@ def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray
 
 
 def validate_signal_shape(signal: np.ndarray, *, max_channels: int) -> np.ndarray:
-    """Normalize to ``(samples, channels)`` and reject empty / oversized channel axes."""
-    try:
-        data = _as_2d(signal)
-    except ValueError as exc:
-        raise ShapeContractError(str(exc)) from exc
+    """Require ``(samples, channels)`` layout; reject empty / oversized channel axes.
+
+    Unlike the legacy ``_as_2d`` helper used by accumulator utilities, this path
+    does **not** silently reshape a 1-D vector into a single-channel matrix.
+    That keeps ``iter_contract_windows`` aligned with ``StreamSession.update``.
+    """
+    data = np.asarray(signal, dtype=np.float64)
+    if data.ndim != 2:
+        raise ShapeContractError("signal must be 2-D (samples, channels)")
     if data.shape[0] == 0:
         raise EmptyInputError("signal has zero samples")
     if data.shape[1] == 0:
