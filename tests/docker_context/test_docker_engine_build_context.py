@@ -118,6 +118,37 @@ def _docker_environment() -> dict[str, str]:
     return environment
 
 
+def _sanitize_docker_diagnostic(stderr: str | None) -> str:
+    """Map bounded daemon stderr to a short allowlisted diagnostic.
+
+    Raw Docker output is intentionally never included in failures: it can
+    contain host paths, registry details, or environment-derived values.
+    """
+    bounded_stderr = (stderr or "")[:4096].lower()
+    marker = "error response from daemon:"
+    if marker not in bounded_stderr:
+        return "Docker diagnostic unavailable (unrecognized output; details redacted)"
+
+    engine_message = bounded_stderr.split(marker, 1)[1]
+    if "no command specified" in engine_message:
+        return "Docker Engine diagnostic: no command specified"
+    if "permission denied" in engine_message:
+        return "Docker Engine diagnostic: local endpoint permission denied"
+    if "no such image" in engine_message:
+        return "Docker Engine diagnostic: image not found"
+    if "no such container" in engine_message:
+        return "Docker Engine diagnostic: container not found"
+    if "no space left on device" in engine_message:
+        return "Docker Engine diagnostic: runner storage exhausted"
+    if "read-only file system" in engine_message:
+        return "Docker Engine diagnostic: runner storage is read-only"
+    if "conflict" in engine_message:
+        return "Docker Engine diagnostic: resource conflict"
+    if "invalid reference format" in engine_message:
+        return "Docker Engine diagnostic: invalid generated reference"
+    return "Docker Engine diagnostic unavailable (unrecognized error; details redacted)"
+
+
 def _run_docker(
     args: list[str],
     *,
@@ -146,7 +177,8 @@ def _run_docker(
             )
         pytest.fail(
             f"Docker operation {args[0]!r} failed with exit code "
-            f"{completed.returncode}; command output is suppressed"
+            f"{completed.returncode}; "
+            f"{_sanitize_docker_diagnostic(completed.stderr)}"
         )
     return completed.stdout.strip()
 
@@ -435,3 +467,72 @@ def test_docker_context_is_pinned_and_host_override_is_ignored(
     assert all("DOCKER_HOST" not in env for _, env in calls)
     assert "DOCKER_HOST" not in docker_environment
     assert docker_environment["DOCKER_CONTEXT"] == "local-fixture-context"
+
+
+@pytest.mark.parametrize(
+    ("stderr", "expected"),
+    [
+        (
+            "Error response from daemon: No command specified",
+            "Docker Engine diagnostic: no command specified",
+        ),
+        (
+            "Error response from daemon: permission denied while reading "
+            "/home/synthetic-user/.docker/config.json; "
+            "API_TOKEN=synthetic-secret-value",
+            "Docker Engine diagnostic: local endpoint permission denied",
+        ),
+        (
+            "unexpected diagnostic with /home/synthetic-user/private.txt "
+            "and TOKEN=synthetic-secret-value",
+            "Docker diagnostic unavailable (unrecognized output; details redacted)",
+        ),
+    ],
+    ids=("known-engine-cause", "sensitive-text-not-exposed", "unknown-is-redacted"),
+)
+def test_docker_diagnostics_are_bounded_and_sanitized(
+    stderr: str,
+    expected: str,
+) -> None:
+    """Expose a short known cause, never raw paths or secret-like values."""
+    diagnostic = _sanitize_docker_diagnostic(stderr)
+
+    assert diagnostic == expected
+    assert len(diagnostic) <= 100
+    assert "/home/" not in diagnostic
+    assert "synthetic-secret-value" not in diagnostic
+
+
+def test_run_docker_includes_only_sanitized_engine_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Thread the safe classification into failures without exposing stderr."""
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(
+            args,
+            1,
+            stdout="synthetic stdout secret",
+            stderr=(
+                "Error response from daemon: permission denied at "
+                "/home/synthetic-user/.docker/config.json; "
+                "API_TOKEN=synthetic-secret-value"
+            ),
+        ),
+    )
+    failures: list[str] = []
+
+    def capture_failure(message: str) -> None:
+        failures.append(message)
+        raise RuntimeError("captured pytest failure")
+
+    monkeypatch.setattr(pytest, "fail", capture_failure)
+
+    with pytest.raises(RuntimeError, match="captured pytest failure"):
+        _run_docker(["create", "synthetic-container"])
+
+    assert len(failures) == 1
+    assert "local endpoint permission denied" in failures[0]
+    assert "synthetic-secret-value" not in failures[0]
+    assert "synthetic stdout secret" not in failures[0]
