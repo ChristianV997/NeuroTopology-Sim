@@ -57,6 +57,14 @@ def test_nonfinite_rejection() -> None:
         estimate_narrowband_phase_uncertainty(sig_inf)
 
 
+def test_finite_input_that_overflows_derived_signal_fails_closed() -> None:
+    """Finite samples that overflow intermediate math must not yield NaN outputs."""
+    extreme_signal = np.full(8, 1e308, dtype=np.float64)
+
+    with pytest.raises(ValueError, match="non-finite|finite"):
+        estimate_narrowband_phase_uncertainty(extreme_signal)
+
+
 def test_fs_must_be_positive_finite() -> None:
     """Sampling frequency must be finite and strictly positive (fail closed)."""
     z = np.exp(1j * np.linspace(0.0, 4.0 * np.pi, 64))

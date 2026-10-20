@@ -56,11 +56,16 @@ def compute_analytic_signal(real_signal: np.ndarray) -> np.ndarray:
     x = np.asarray(real_signal, dtype=np.float64)
     if x.ndim != 1:
         raise ValueError(f"real_signal must be 1D, got shape {x.shape}")
+    if not np.all(np.isfinite(x)):
+        raise ValueError("real_signal contains NaN or infinite values")
     n = x.shape[0]
     if n == 0:
         return np.empty(0, dtype=np.complex128)
 
-    X = np.fft.fft(x)
+    with np.errstate(over="ignore", invalid="ignore"):
+        X = np.fft.fft(x)
+    if not np.all(np.isfinite(X)):
+        raise ValueError("analytic transform produced non-finite intermediate values")
     h = np.zeros(n, dtype=np.float64)
     if n % 2 == 0:
         h[0] = 1.0
@@ -70,7 +75,11 @@ def compute_analytic_signal(real_signal: np.ndarray) -> np.ndarray:
         h[0] = 1.0
         h[1 : (n + 1) // 2] = 2.0
 
-    return np.fft.ifft(X * h)
+    with np.errstate(over="ignore", invalid="ignore"):
+        analytic = np.fft.ifft(X * h)
+    if not np.all(np.isfinite(analytic)):
+        raise ValueError("analytic transform produced non-finite derived values")
+    return analytic
 
 
 def compute_mad(data: np.ndarray) -> float:
@@ -188,8 +197,11 @@ def estimate_narrowband_phase_uncertainty(
     else:
         z = np.asarray(arr, dtype=np.complex128)
 
-    amp = np.abs(z)
-    phase = wrap_phase(np.angle(z))
+    with np.errstate(over="ignore", invalid="ignore"):
+        amp = np.abs(z)
+        phase = wrap_phase(np.angle(z))
+    if not np.all(np.isfinite(amp)) or not np.all(np.isfinite(phase)):
+        raise ValueError("estimator produced non-finite amplitude or phase values")
 
     # 1. Instantaneous phase increments
     d_theta = wrap_phase(np.diff(phase))
@@ -246,6 +258,25 @@ def estimate_narrowband_phase_uncertainty(
     inst_freq = np.zeros(n, dtype=np.float64)
     inst_freq[1:] = d_theta * fs_val / (2.0 * np.pi)
     inst_freq[0] = inst_freq[1] if n > 1 else median_freq_hz
+
+    derived_arrays = {
+        "phase increments": d_theta,
+        "demodulated increments": delta,
+        "second differences": d2,
+        "SNR uncertainty": sigma_snr,
+        "local jitter": local_jitter,
+        "reported uncertainty": phase_std,
+        "instantaneous frequency": inst_freq,
+    }
+    derived_scalars = {
+        "median frequency": median_freq_hz,
+        "MAD second difference": mad_d2,
+        "residual noise standard deviation": sigma_noise_est,
+    }
+    if any(not np.all(np.isfinite(values)) for values in derived_arrays.values()) or any(
+        not math.isfinite(value) for value in derived_scalars.values()
+    ):
+        raise ValueError("estimator produced non-finite derived values")
 
     return PhaseUncertaintyResult(
         phase=phase,
