@@ -135,6 +135,28 @@ def test_invalid_lambda2_rejected(eeg_raw):
 
 
 @pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"lambda2": float("nan")},
+        {"lambda2": float("inf")},
+        {"stiffness": float("nan")},
+        {"stiffness": float("inf")},
+        {"n_legendre_terms": float("nan")},
+    ],
+)
+def test_non_finite_csd_parameters_rejected(eeg_raw, kwargs):
+    backend = RecordingCallable()
+    with pytest.raises(CSDAdapterError):
+        apply_csd(
+            eeg_raw,
+            channels=["Fz", "Cz", "Pz"],
+            csd_callable=backend,
+            **kwargs,
+        )
+    assert backend.calls == []
+
+
+@pytest.mark.parametrize(
     "sphere",
     [
         (0.0, 0.0, 0.0, float("nan")),

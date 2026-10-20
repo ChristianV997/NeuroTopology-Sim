@@ -253,12 +253,34 @@ def apply_csd(
     """
     reject_reference_mutation(alter_reference=alter_reference)
     sphere_norm = _normalize_sphere(sphere)
-    if lambda2 < 0 or lambda2 >= 1:
-        raise CSDAdapterError("lambda2 must satisfy 0 <= lambda2 < 1 (MNE API)")
-    if stiffness < 0:
-        raise CSDAdapterError("stiffness must be non-negative (MNE API)")
-    if int(n_legendre_terms) < 1:
+    try:
+        lambda2_f = float(lambda2)
+        stiffness_f = float(stiffness)
+    except (TypeError, ValueError) as exc:
+        raise CSDAdapterError("lambda2 and stiffness must be finite floats") from exc
+    if not math.isfinite(lambda2_f) or not (0.0 <= lambda2_f < 1.0):
+        raise CSDAdapterError(
+            f"lambda2 must be finite and satisfy 0 <= lambda2 < 1 (MNE API); got {lambda2!r}"
+        )
+    if not math.isfinite(stiffness_f) or stiffness_f < 0.0:
+        raise CSDAdapterError(
+            f"stiffness must be a finite non-negative float (MNE API); got {stiffness!r}"
+        )
+    if isinstance(n_legendre_terms, float) and not math.isfinite(n_legendre_terms):
+        raise CSDAdapterError(
+            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
+        )
+    try:
+        n_terms = int(n_legendre_terms)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CSDAdapterError(
+            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
+        ) from exc
+    if n_terms < 1:
         raise CSDAdapterError("n_legendre_terms must be >= 1")
+    lambda2 = lambda2_f
+    stiffness = stiffness_f
+    n_legendre_terms = n_terms
 
     inventory = extract_channel_inventory(inst)
     selected, reports, _ = validate_channel_selection(inventory, channels)
