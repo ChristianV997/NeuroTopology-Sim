@@ -101,8 +101,9 @@ PYTHONPATH=. python -m pytest tests/research_plan_quality_eval -q
 
 The report records the fixture hashes, rubric identity, split definition,
 duplicate results, outcomes, consistency with the synthetic expectations,
-`not_measured`, and `limitations`. It is strict finite JSON with sorted keys and
-no timestamps.
+`not_measured`, and `limitations`. For held-out fixtures the consistency entry
+reports a mismatch without the expected values, so held-out labels never reach the
+report. It is strict finite JSON with sorted keys and no timestamps.
 
 ## Limitations
 

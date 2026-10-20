@@ -167,6 +167,7 @@ def load_labels(manifest: Manifest) -> dict[str, Any]:
     data = _expect_object(parse_json_bytes(raw, manifest.labels_path.name), "labels")
     if data.get("schema_version") != LABELS_SCHEMA:
         raise ManifestError(f"labels.schema_version must be {LABELS_SCHEMA!r}")
+    _expect_object(data.get("labels"), "labels.labels")
     adjudication = _expect_object(data.get("adjudication"), "labels.adjudication")
     if adjudication.get("status") != ADJUDICATION_STATUS or adjudication.get("independent") is not False:
         raise ManifestError("labels must declare synthetic_author_expectation with independent=false")

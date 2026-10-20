@@ -146,3 +146,55 @@ def test_evidence_class_is_never_overridden_by_fixture_content(copy_fixture_tree
     report = build_report(manifest_path)
     assert report["rubric_evidence_class"] == "research_plan_audit"
     assert all(o["evidence_class"] == "research_plan_audit" for o in report["development_stage"]["outcomes"])
+
+
+def test_held_out_expectations_never_appear_in_the_report(copy_fixture_tree):
+    from tools.research_plan_quality_eval.manifest import load_manifest
+    from tools.research_plan_quality_eval.splits import LOCKED_INTERNAL_VALIDATION
+
+    from .conftest import rehash_labels
+
+    manifest_path = copy_fixture_tree()
+    held_id = next(e.fixture_id for e in load_manifest(manifest_path).entries if e.split == LOCKED_INTERNAL_VALIDATION)
+    labels_path = manifest_path.parent / "labels.json"
+    labels = json.loads(labels_path.read_text(encoding="utf-8"))
+    labels["labels"][held_id]["expected_overall_status"] = "SENTINEL_HELD_OUT_EXPECTATION"
+    labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
+    rehash_labels(manifest_path)
+
+    report = build_report(manifest_path)
+    mismatches = [m for m in report["label_consistency"]["expectation_mismatches"] if m["fixture_id"] == held_id]
+    assert len(mismatches) == 1
+    assert "SENTINEL_HELD_OUT_EXPECTATION" not in json.dumps(report)
+
+
+def test_label_file_without_a_labels_object_is_a_manifest_error(copy_fixture_tree):
+    from .conftest import rehash_labels
+
+    manifest_path = copy_fixture_tree()
+    labels_path = manifest_path.parent / "labels.json"
+    data = json.loads(labels_path.read_text(encoding="utf-8"))
+    del data["labels"]
+    labels_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    rehash_labels(manifest_path)
+    with pytest.raises(ManifestError, match="labels.labels"):
+        build_report(manifest_path)
+
+
+def test_editing_a_held_out_plan_leaves_the_development_stage_unchanged(copy_fixture_tree):
+    from tools.research_plan_quality_eval.manifest import load_manifest
+    from tools.research_plan_quality_eval.splits import LOCKED_INTERNAL_VALIDATION
+
+    from .conftest import rehash_plan
+
+    clean = build_report()
+    manifest_path = copy_fixture_tree()
+    held = next(e for e in load_manifest(manifest_path).entries if e.split == LOCKED_INTERNAL_VALIDATION)
+    plan = json.loads(held.plan_path.read_text(encoding="utf-8"))
+    plan["research_question"] = "edited held-out question. " + plan["research_question"]
+    held.plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+    rehash_plan(manifest_path, held.fixture_id)
+
+    changed = build_report(manifest_path)
+    assert changed["fixture_set"]["plans"] != clean["fixture_set"]["plans"]
+    assert changed["development_stage"] == clean["development_stage"]

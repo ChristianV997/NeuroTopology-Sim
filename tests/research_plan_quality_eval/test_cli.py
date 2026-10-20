@@ -67,5 +67,8 @@ def test_cli_missing_manifest_exits_2(tmp_path):
 
 
 def test_cli_manifest_default_points_at_the_shipped_fixture_set():
-    assert DEFAULT_MANIFEST.name == "manifest.json"
-    assert DEFAULT_MANIFEST.parent.name == "v1"
+    from tools.research_plan_quality_eval.manifest import load_manifest
+
+    manifest = load_manifest(DEFAULT_MANIFEST)
+    assert manifest.fixture_set_id
+    assert len(manifest.entries) == 10

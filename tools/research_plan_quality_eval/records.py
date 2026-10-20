@@ -93,6 +93,21 @@ def _type_errors(data: Mapping[str, Any]) -> list[str]:
     for name in ("sample_size", "minimum_required_sample_size", "number_of_planned_tests"):
         if name in data and data[name] is not None:
             expect(name, isinstance(data[name], int) and not isinstance(data[name], bool), "an integer")
+    for name in ("dataset_id", "dataset_checksum", "pairing_strategy", "multiplicity_correction", "replication_plan"):
+        if name in data and data[name] is not None:
+            expect(name, isinstance(data[name], str), "a string")
+    if data.get("preprocessing_locked_before_analysis") is not None:
+        expect("preprocessing_locked_before_analysis",
+               isinstance(data["preprocessing_locked_before_analysis"], bool), "a boolean")
+    definitions = data.get("condition_label_definitions")
+    if definitions is not None:
+        if isinstance(definitions, dict) and all(isinstance(v, str) for v in definitions.values()):
+            declared = data.get("condition_labels") or []
+            undeclared = sorted(k for k in definitions if k not in declared)
+            if undeclared:
+                errors.append(f"condition_label_definitions names undeclared conditions: {undeclared}")
+        else:
+            errors.append("condition_label_definitions must map condition names to strings")
     if data.get("evidence_class_declared") not in (None, *sorted(EVIDENCE_CLASSES)):
         errors.append(f"evidence_class_declared must be one of {sorted(EVIDENCE_CLASSES)} or null")
     if "sources" in data:

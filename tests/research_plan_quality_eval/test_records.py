@@ -121,3 +121,31 @@ def test_normalized_fingerprint_matches_surface_variants(base_plan_dict):
     b = plan_from_dict(variant, "b")
     assert normalized_fingerprint(a) == normalized_fingerprint(b)
     assert exact_fingerprint(a) != exact_fingerprint(b)
+
+
+def test_condition_label_definitions_must_name_declared_conditions(base_plan_dict):
+    base_plan_dict["condition_labels"] = ["A"]
+    base_plan_dict["condition_label_definitions"] = {"A": "defined", "verdict": "expected BLOCKED"}
+    with pytest.raises(MalformedRecordError, match="condition_label_definitions"):
+        plan_from_dict(base_plan_dict, "x")
+
+
+def test_condition_label_definitions_must_be_string_to_string(base_plan_dict):
+    base_plan_dict["condition_labels"] = ["A"]
+    base_plan_dict["condition_label_definitions"] = {"A": ["not", "text"]}
+    with pytest.raises(MalformedRecordError, match="condition_label_definitions"):
+        plan_from_dict(base_plan_dict, "x")
+
+
+@pytest.mark.parametrize("field,value", [
+    ("replication_plan", 5),
+    ("pairing_strategy", 7),
+    ("dataset_id", ["not", "text"]),
+    ("dataset_checksum", 3),
+    ("multiplicity_correction", 1.5),
+    ("preprocessing_locked_before_analysis", "yes"),
+])
+def test_optional_scalar_fields_are_type_checked_before_the_rubric(base_plan_dict, field, value):
+    base_plan_dict[field] = value
+    with pytest.raises(MalformedRecordError):
+        plan_from_dict(base_plan_dict, "x")

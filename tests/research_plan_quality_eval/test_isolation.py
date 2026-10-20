@@ -83,8 +83,10 @@ def test_held_out_evaluation_leaves_rubric_configuration_and_frozen_result_uncha
     before_dimensions = tuple(RUBRIC_DIMENSIONS)
     before_checks = dict(CHECKS_BY_DIMENSION)
 
-    run_held_out_stage(_split(shipped_records, LOCKED_INTERNAL_VALIDATION), dev)
+    held = run_held_out_stage(_split(shipped_records, LOCKED_INTERNAL_VALIDATION), dev)
 
+    assert held.role == LOCKED_INTERNAL_VALIDATION
+    assert len(held.outcomes) == len(_split(shipped_records, LOCKED_INTERNAL_VALIDATION))
     assert harness_configuration() == before_config
     assert configuration_fingerprint() == before_fingerprint
     assert tuple(RUBRIC_DIMENSIONS) == before_dimensions
@@ -101,7 +103,8 @@ def test_held_out_outcomes_do_not_feed_back_into_a_later_development_run(shipped
     dev_records = _split(shipped_records, DEVELOPMENT)
     held_records = _split(shipped_records, LOCKED_INTERNAL_VALIDATION)
     before = run_development_stage(dev_records)
-    run_held_out_stage(held_records, before)
+    held = run_held_out_stage(held_records, before)
+    assert len(held.outcomes) == len(held_records)
     after = run_development_stage(dev_records)
     assert before == after
 

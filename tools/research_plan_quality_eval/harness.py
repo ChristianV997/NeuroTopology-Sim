@@ -47,6 +47,7 @@ LIMITATIONS: tuple[str, ...] = (
 def label_consistency(manifest: Manifest, outcomes: Sequence[dict[str, Any]]) -> dict[str, Any]:
     labels_file = load_labels(manifest)
     labels = labels_file["labels"]
+    held_out_ids = {e.fixture_id for e in manifest.entries if e.split == LOCKED_INTERNAL_VALIDATION}
     outcome_ids = {o["fixture_id"] for o in outcomes}
     mismatches: list[dict[str, Any]] = []
     matches = 0
@@ -59,6 +60,11 @@ def label_consistency(manifest: Manifest, outcomes: Sequence[dict[str, Any]]) ->
         if (outcome["overall_status"] == expected.get("expected_overall_status")
                 and outcome["non_passing_dimensions"] == expected_dims):
             matches += 1
+        elif outcome["fixture_id"] in held_out_ids:
+            mismatches.append({
+                "fixture_id": outcome["fixture_id"],
+                "reason": "outcome differs from expectation; expected values withheld for held-out fixtures",
+            })
         else:
             mismatches.append({
                 "fixture_id": outcome["fixture_id"],

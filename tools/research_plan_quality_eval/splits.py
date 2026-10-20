@@ -7,6 +7,7 @@ a split. Role names are the ones already used by
 """
 from __future__ import annotations
 
+import unicodedata
 from typing import Iterable, Sequence
 
 from .errors import InsufficientEvaluationSetError, ManifestError
@@ -20,11 +21,16 @@ MIN_PLANS_PER_ROLE = 3
 MIN_GROUPS_PER_ROLE = 2
 
 
+def normalise_group_id(group_id: str) -> str:
+    """Spelling variants of one project (case, width, stray spaces) share a key."""
+    return " ".join(unicodedata.normalize("NFKC", group_id).casefold().split())
+
+
 def check_group_integrity(groups_to_split: Iterable[tuple[str, str]]) -> None:
     """Raise if any group id appears under more than one split role."""
     seen: dict[str, str] = {}
     for group_id, split in groups_to_split:
-        previous = seen.setdefault(group_id, split)
+        previous = seen.setdefault(normalise_group_id(group_id), split)
         if previous != split:
             raise ManifestError(
                 f"group {group_id!r} is assigned to both {previous!r} and {split!r}"

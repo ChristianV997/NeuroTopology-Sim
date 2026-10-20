@@ -129,3 +129,14 @@ def test_split_summary_lists_fixture_ids_and_groups_per_role(shipped_records):
     assert summary["roles"][LOCKED_INTERNAL_VALIDATION]["plan_count"] == 5
     assert "fx-v1-P07" in summary["roles"][LOCKED_INTERNAL_VALIDATION]["fixture_ids"]
     assert summary == split_summary(list(reversed(shipped_records)))
+
+
+def test_group_integrity_rejects_spelling_variants_of_one_group():
+    with pytest.raises(ManifestError, match="assigned to both"):
+        check_group_integrity([("Proj-A", DEVELOPMENT), ("proj-a", LOCKED_INTERNAL_VALIDATION)])
+
+
+@pytest.mark.parametrize("variant", ["g1 ", " g1", "G1", "ｇ" + "1"])
+def test_group_integrity_compares_normalised_group_ids(variant):
+    with pytest.raises(ManifestError, match="assigned to both"):
+        check_group_integrity([("g1", DEVELOPMENT), (variant, LOCKED_INTERNAL_VALIDATION)])
