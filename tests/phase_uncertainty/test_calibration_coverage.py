@@ -9,6 +9,7 @@ Verifies:
 """
 from __future__ import annotations
 
+import math
 import subprocess
 import sys
 from dataclasses import replace
@@ -279,3 +280,66 @@ def test_reliability_classifier_accepts_signed_instantaneous_frequency() -> None
     )
 
     assert set(tiers.tolist()) == {ReliabilityTier.RELIABLE.value}
+
+
+def test_calibration_extreme_finite_phases_do_not_overflow_or_fall_through() -> None:
+    """Extreme finite phases must not overflow during subtraction/wrapping, produce NaN metrics, or fall through to WELL_CALIBRATED."""
+    n = 16
+    est_phase = np.full(n, 1.7e308, dtype=np.float64)
+    ref_phase = np.full(n, -1.7e308, dtype=np.float64)
+    pred_std = np.full(n, 0.1, dtype=np.float64)
+    amp = np.ones(n, dtype=np.float64)
+    inst_freq = np.full(n, 10.0, dtype=np.float64)
+
+    dummy_result = estimate_narrowband_phase_uncertainty(np.cos(np.linspace(0, 4 * np.pi, n)))
+    result = replace(
+        dummy_result,
+        phase=est_phase,
+        phase_std=pred_std,
+        amplitude=amp,
+        instantaneous_freq=inst_freq,
+        median_freq=10.0,
+    )
+
+    report = evaluate_phase_uncertainty_calibration(result, ref_phase, n_bins=2)
+
+    assert math.isfinite(report.overall_rms_error), f"RMS error must be finite, got {report.overall_rms_error}"
+    assert math.isfinite(report.overall_overconfidence_ratio), f"Ratio must be finite, got {report.overall_overconfidence_ratio}"
+    assert math.isfinite(report.overall_bias), f"Bias must be finite, got {report.overall_bias}"
+    assert report.overall_verdict != CalibrationVerdict.WELL_CALIBRATED.value, "Extreme error must not fall through to WELL_CALIBRATED"
+    for b in report.bins:
+        assert math.isfinite(b.rms_phase_error), f"Bin {b.bin_idx} RMS error must be finite"
+        assert math.isfinite(b.overconfidence_ratio), f"Bin {b.bin_idx} ratio must be finite"
+        assert b.verdict != CalibrationVerdict.WELL_CALIBRATED.value, f"Bin {b.bin_idx} must not fall through to WELL_CALIBRATED"
+
+
+def test_classify_frame_reliability_nonfinite_intermediate_fails_closed() -> None:
+    """Non-finite intermediate values in frequency deviation must fail closed, never fall through to reliable."""
+    amp = np.ones(4)
+    phase_std = np.full(4, 0.1)
+    inst_freq = np.full(4, 10.0)
+
+    tiers = classify_frame_reliability(amp, phase_std, inst_freq, float("nan"))
+    assert set(tiers.tolist()) == {ReliabilityTier.FAIL_CLOSED_INVALID_DATA.value}
+
+    tiers_inf = classify_frame_reliability(amp, phase_std, inst_freq, float("inf"))
+    assert set(tiers_inf.tolist()) == {ReliabilityTier.FAIL_CLOSED_INVALID_DATA.value}
+
+
+def test_calibration_fails_closed_when_ratio_is_nonfinite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If internal calculation results in a non-finite ratio, calibration must fail closed to OVERCONFIDENT."""
+    fixture = make_stationary_narrowband(n_samples=16, seed=77)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+
+    orig_sqrt = np.sqrt
+    def mocked_sqrt(x):
+        return float("nan")
+
+    monkeypatch.setattr(np, "sqrt", mocked_sqrt)
+    report = evaluate_phase_uncertainty_calibration(result, fixture.true_phase, n_bins=2)
+
+    assert report.overall_verdict == CalibrationVerdict.OVERCONFIDENT.value
+    assert any("non-finite" in note and "OVERCONFIDENT" in note for note in report.summary_notes)
+    for b in report.bins:
+        if b.sample_count > 0:
+            assert b.verdict == CalibrationVerdict.OVERCONFIDENT.value

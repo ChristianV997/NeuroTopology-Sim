@@ -44,8 +44,10 @@ def wrap_phase(angles: np.ndarray) -> np.ndarray:
     documented open-closed interval ``(-π, π]`` is honored.
     """
     a = np.asarray(angles, dtype=np.float64)
-    wrapped = (a + np.pi) % (2.0 * np.pi) - np.pi
-    return np.where(wrapped <= -np.pi, np.pi, wrapped)
+    with np.errstate(invalid="ignore"):
+        rem = a % (2.0 * np.pi)
+        wrapped = np.where(rem > np.pi, rem - 2.0 * np.pi, rem)
+        return np.where(wrapped <= -np.pi, np.pi, wrapped)
 
 
 def compute_analytic_signal(real_signal: np.ndarray) -> np.ndarray:

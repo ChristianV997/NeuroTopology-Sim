@@ -167,7 +167,7 @@ def classify_frame_reliability(
         return tiers
 
     med_amp = float(np.median(amplitude_values[valid]))
-    if med_amp <= 0.0:
+    if med_amp <= 0.0 or not math.isfinite(med_amp):
         tiers[valid] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
         return tiers
 
@@ -175,11 +175,16 @@ def classify_frame_reliability(
     freq_dev = np.abs(frequency_values - median_freq_value)
     max_freq_dev = 0.5 * abs(median_freq_value)
 
+    if not math.isfinite(amp_floor) or not math.isfinite(max_freq_dev):
+        return tiers
+
     for i in range(n):
         if not valid[i]:
             continue
+        if not math.isfinite(freq_dev[i]):
+            tiers[i] = ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value
         # 1. Zero/near-zero amplitude makes phase undefined or noise-sensitive
-        if amplitude_values[i] < amp_floor:
+        elif amplitude_values[i] < amp_floor:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
         # 2. Uncertainty near the configured maximum
         elif phase_std_values[i] >= 0.95 * UNIFORM_CIRCULAR_STD_CEILING:
@@ -250,7 +255,8 @@ def evaluate_phase_uncertainty_calibration(
         )
 
     # 1. Circular phase error in (-pi, pi]
-    error = wrap_phase(est_phase - ref_phase)
+    # Pre-wrap both phases to prevent float64 subtraction overflow when phases are large
+    error = wrap_phase(wrap_phase(est_phase) - wrap_phase(ref_phase))
 
     # Overall metrics
     overall_mean_std = float(np.mean(pred_std))
@@ -261,7 +267,9 @@ def evaluate_phase_uncertainty_calibration(
     cov_2 = float(np.mean(np.abs(error) <= 1.96 * pred_std))
 
     ratio = overall_rms / max(1e-12, overall_mean_std)
-    if ratio > 1.15:
+    if not math.isfinite(ratio) or not math.isfinite(overall_rms) or not math.isfinite(overall_mean_std) or not math.isfinite(overall_bias):
+        overall_verdict = CalibrationVerdict.OVERCONFIDENT.value
+    elif ratio > 1.15:
         overall_verdict = CalibrationVerdict.OVERCONFIDENT.value
     elif ratio < 0.85:
         overall_verdict = CalibrationVerdict.CONSERVATIVE.value
@@ -312,7 +320,9 @@ def evaluate_phase_uncertainty_calibration(
         b_cov2 = float(np.mean(np.abs(b_err) <= 1.96 * b_std))
 
         b_ratio = m_rms / max(1e-12, m_std)
-        if b_ratio > 1.15:
+        if not math.isfinite(b_ratio) or not math.isfinite(m_rms) or not math.isfinite(m_std) or not math.isfinite(m_bias):
+            b_verdict = CalibrationVerdict.OVERCONFIDENT.value
+        elif b_ratio > 1.15:
             b_verdict = CalibrationVerdict.OVERCONFIDENT.value
         elif b_ratio < 0.85:
             b_verdict = CalibrationVerdict.CONSERVATIVE.value
@@ -353,7 +363,9 @@ def evaluate_phase_uncertainty_calibration(
             f"Circular bias direction is weakly determined for calibration bins [{bin_labels}] because their resultant length is below 0.1; "
             "a numerically near-zero mean direction in these bins is not evidence of near-zero bias."
         )
-    if overall_verdict == CalibrationVerdict.OVERCONFIDENT.value:
+    if not math.isfinite(ratio):
+        notes.append("Estimator calibration ratio is non-finite; failing closed to OVERCONFIDENT.")
+    elif overall_verdict == CalibrationVerdict.OVERCONFIDENT.value:
         notes.append(f"Estimator is OVERCONFIDENT overall (RMS error is {ratio:.2f}x predicted phase_std).")
     elif overall_verdict == CalibrationVerdict.CONSERVATIVE.value:
         notes.append(f"Estimator is CONSERVATIVE overall (RMS error is {ratio:.2f}x predicted phase_std).")

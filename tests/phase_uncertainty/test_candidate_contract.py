@@ -141,6 +141,23 @@ def test_wrap_phase_half_turn_matches_open_closed_interval() -> None:
     assert np.all(w <= np.pi)
 
 
+def test_wrap_phase_extreme_finite_values_do_not_overflow() -> None:
+    """Extreme finite float64 values must wrap to (-π, π] without overflowing to NaN."""
+    extreme_angles = np.array([
+        1e308,
+        -1e308,
+        1.79e308,
+        -1.79e308,
+        1.7976931348623157e308,
+        -1.7976931348623157e308,
+    ], dtype=np.float64)
+    w = wrap_phase(extreme_angles)
+    assert np.all(np.isfinite(w)), f"Extreme finite angles produced non-finite wrapped values: {w}"
+    assert np.all(w > -np.pi), f"Wrapped values violated open lower bound: {w[w <= -np.pi]}"
+    assert np.all(w <= np.pi), f"Wrapped values violated closed upper bound: {w[w > np.pi]}"
+
+
+
 def test_frame_index_boundary_consistency() -> None:
     """All output arrays must have identical length matching the input signal."""
     n = 250
