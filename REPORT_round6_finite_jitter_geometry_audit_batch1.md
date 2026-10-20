@@ -9,7 +9,7 @@
 **Worktree:** `C:/Users/HP/OneDrive/Documentos/GitHub/.repo-dev-worktrees/mesh-geometry-audit-batch1-20261016`
 
 **Verified base (original):** `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16`.
-**Live main (merged):** `origin/main` at `e59dd6c23000c3e76d81ab0bb7d895be32243352`.
+**Live main (merged):** `origin/main` at `d2544b83289efde0e63b70cff270d2ff523b7095`.
 **Prior live tip:** `bc91af19a22783d2721fc881842573f7e08a8925`.
 **Submission note:** The independent reviewer was unavailable through the configured provider route; the user authorized proceeding without that review. Exact final head SHA and PR URL are in the submission handoff.
 
@@ -131,3 +131,5 @@ Limitations: pairwise edge and face intersection checks are quadratic; this is i
 [3] https://people.eecs.berkeley.edu/~jrs/papers/robustr.pdf — Shewchuk: Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates
 [4] https://github.com/ChristianV997/NeuroTopology-Sim/blob/c483aa3ea6fdca3f736c901f8867dc40cf6fe292/docs/research/batch3/grok_chat_a_round6_claim_audit.md — NeuroTopology-Sim Batch 3 Round 6 claim-audit document at pinned commit
 [5] https://github.com/ChristianV997/NeuroTopology-Sim/tree/c483aa3ea6fdca3f736c901f8867dc40cf6fe292 — NeuroTopology-Sim repository tree at inspected Batch 3 proposal commit
+
+**Selector note:** live main `d2544b8` still omits the production-import test. Codex branch `codex/round6-discovery-mappings-20261020` defines `finite_jitter_production_bridge` for `tests/test_finite_jitter_production_import.py` but is not merged to main. Please also pair `neurotopology_sim/experimental/geometry/planar_triangulation.py` ↔ that bridge test.
