@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import re
 import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -19,6 +21,14 @@ HELPER_PATH = ROOT / ".github/workflows/round6_experimental_tests.py"
 _REAL_SUBPROCESS_RUN = subprocess.run
 IMPLEMENTATION = "tools/simulation_runtime/grid_plan.py"
 TEST = "tests/simulation_runtime/test_grid_plan.py"
+MNE_SIGNAL_TEST = "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py"
+MNE_SIGNAL_IMPLEMENTATIONS = (
+    "adapters/mne_signal_blocks/converter.py",
+    "adapters/mne_signal_blocks/fixtures.py",
+    "adapters/mne_signal_blocks/reporting.py",
+    "adapters/mne_signal_blocks/schema.py",
+    "adapters/mne_signal_blocks/validate.py",
+)
 
 
 def _helper():
@@ -612,7 +622,7 @@ class Round6DiscoveryTests(unittest.TestCase):
                 root, telemetry_path, junit_path, test_file
             )
             self.assertFalse(valid)
-            self.assertIn("cannot be reconciled without a pytest stdout summary", error)
+            self.assertIn("without a registered subtest contract", error)
             self.assertEqual(total, 0)
 
             telemetry_path.write_text(_valid_telemetry(test_file), encoding="utf-8")
@@ -998,6 +1008,8 @@ def test_fixture():
             '<testsuite tests="2" failures="1"><testcase/></testsuite>',
             '<testsuite tests="1" skipped="1"><testcase/></testsuite>',
             '<testsuite tests="1"><testcase><failure/><skipped/></testcase></testsuite>',
+            '<testsuite tests="4"><testcase/><testcase/></testsuite>',
+            '<testsuite tests="4" skipped="1" failures="0" errors="0"><testcase/><testcase/></testsuite>',
             '<junit tests="1"><testcase/></junit>',
             '<testsuites tests="2"><testsuite tests="1"><testcase/></testsuite><testcase/></testsuites>',
         )
@@ -1022,14 +1034,47 @@ def test_fixture():
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
             report = Path(td) / "junit.xml"
-            report.write_text(
+            xml = (
                 '<testsuite tests="4" skipped="0" failures="0" errors="0">'
-                '<testcase/><testcase/></testsuite>',
-                encoding="utf-8",
+                '<testcase/><testcase/></testsuite>'
             )
-            counts, cases = helper.junit_details(report)
+            counts, cases, total = helper._junit_details_from_bytes(
+                xml.encode("utf-8"), allow_subtest_totals=True
+            )
         self.assertEqual(counts, (2, 0, 0, 0))
         self.assertEqual(len(cases), 2)
+        self.assertEqual(total, 4)
+
+    def test_registered_subtest_allowance_is_bound_to_exact_git_blob(self):
+        helper = _helper()
+        expected_blob = helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"]
+        with patch.object(helper, "_git_tree_blob_sha", return_value=expected_blob):
+            contract = helper._registered_junit_subtest_contract(
+                Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
+            )
+            self.assertEqual(contract["tested_tree_blob_sha"], expected_blob)
+            self.assertEqual(contract["expected_delta"], 12)
+            self.assertEqual(
+                helper._registered_junit_subtest_contract(
+                    Path.cwd(), "1" * 40, "tests/elsewhere/test_changed.py"
+                ),
+                None,
+            )
+        with patch.object(helper, "_git_tree_blob_sha", return_value="a" * 40):
+            self.assertEqual(
+                helper._registered_junit_subtest_contract(Path.cwd(), "1" * 40, MNE_SIGNAL_TEST),
+                None,
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            commit = _repo(root, with_candidate=False)
+            _write(root, MNE_SIGNAL_TEST, "def test_fixture():\n    assert True\n")
+            commit = _commit(root, "offline test-blob lookup fixture")
+            actual_blob = helper._git_tree_blob_sha(root, commit, MNE_SIGNAL_TEST)
+            expected_actual_blob = _git(root, "rev-parse", f"{commit}:{MNE_SIGNAL_TEST}")
+            self.assertEqual(actual_blob, expected_actual_blob)
+            self.assertNotEqual(actual_blob, expected_blob)
 
     def test_failed_pytest_retains_bounded_junit_diagnostics(self):
         helper = _helper()
@@ -1198,8 +1243,142 @@ def test_fixture():
             self.assertEqual(result, 1)
             self.assertEqual(report["status"], "FAIL")
             self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
-            self.assertEqual(execution["junit_reconciliation"], "mismatch")
-            self.assertIsNone(execution["result_counts"]["passed"])
+            self.assertIn("without a registered subtest contract", execution["junit_error"])
+
+    def test_registered_mne_subtest_delta_reconciles_without_pytest_stdout(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            for implementation in MNE_SIGNAL_IMPLEMENTATIONS:
+                _write(root, implementation, "# synthetic MNE signal-block module fixture\n")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True\n")
+            base = _commit(root, "registered MNE signal-block candidate fixture")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True  # candidate change\n")
+            head = _commit(root, "registered MNE unittest subtest delta fixture")
+            report_path = root / "outputs/report.json"
+            testcase_xml = "<testcase/>" * 41
+            junit_delta = 12
+
+            def subtest_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = json.loads(_valid_telemetry(command[-1]))
+                telemetry["batches"][0]["stdout_tail"] = "pytest output captured by isolated runner\n"
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml=(
+                        f'<testsuite tests="{41 + junit_delta}" skipped="0" failures="0" errors="0">'
+                        f"{testcase_xml}</testsuite>"
+                    ),
+                    **kwargs,
+                )
+
+            with (
+                patch.object(
+                    helper, "_git_tree_blob_sha",
+                    return_value=helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+                ),
+                patch.object(helper.subprocess, "run", side_effect=subtest_runner),
+                redirect_stdout(io.StringIO()) as log_output,
+            ):
+                result = helper.run(root, base, head, report_path, tested_checkout_sha=head)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            log_evidence = next(
+                json.loads(line) for line in log_output.getvalue().splitlines()
+                if line.startswith("{") and '"selected_component"' in line
+            )
+
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 0)
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(execution["selected_component"], "mne_signal_blocks")
+        self.assertEqual(execution["test_file"], MNE_SIGNAL_TEST)
+        self.assertEqual(execution["registered_subtest_delta"], 12)
+        self.assertEqual(execution["registered_subtest_contract"], {
+            "test_path": MNE_SIGNAL_TEST,
+            "tested_tree_blob_sha": helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+            "expected_delta": 12,
+            "observed_delta": 12,
+            "applied_without_pytest_summary": True,
+        })
+        self.assertEqual(log_evidence["registered_subtest_contract"], execution["registered_subtest_contract"])
+        self.assertEqual(log_evidence["junit_reconciliation"], execution["junit_reconciliation"])
+        self.assertEqual(execution["junit_testcase_records"], 41)
+        self.assertEqual(execution["tests_collected"], 53)
+        self.assertEqual(
+            execution["junit_reconciliation"],
+            "matched_junit_declared_subtest_total_no_summary",
+        )
+        self.assertEqual(execution["result_counts"], {
+            "collected": 53,
+            "passed": 53,
+            "skipped": 0,
+            "failed": 0,
+            "errors": 0,
+            "timeouts": 0,
+        })
+
+        # A count mismatch beyond the exact reviewed subtest contract is not pass evidence.
+        junit_delta = 13
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            for implementation in MNE_SIGNAL_IMPLEMENTATIONS:
+                _write(root, implementation, "# synthetic MNE signal-block module fixture\n")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True\n")
+            base = _commit(root, "registered MNE signal-block candidate fixture")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True  # candidate change\n")
+            head = _commit(root, "unregistered MNE subtest delta fixture")
+            report_path = root / "outputs/report.json"
+            with (
+                patch.object(
+                    helper, "_git_tree_blob_sha",
+                    return_value=helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+                ),
+                patch.object(helper.subprocess, "run", side_effect=subtest_runner),
+            ):
+                result = helper.run(root, base, head, report_path, tested_checkout_sha=head)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+        self.assertIn("does not match registered delta 12", execution["junit_error"])
+        self.assertEqual(execution["registered_subtest_contract"]["observed_delta"], 13)
+
+    def test_subtest_junit_total_without_outcome_summaries_fails_closed(self):
+        helper = _helper()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, TEST, "def test_plan_fixture():\n    assert True  # unverified subtest fixture\n")
+            head = _commit(root, "JUnit subtest total without outcome summary")
+            report_path = root / "outputs/report.json"
+
+            def unverified_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = json.loads(_valid_telemetry(command[-1]))
+                telemetry["batches"][0]["stdout_tail"] = "pytest output captured by isolated runner\n"
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml='<testsuite tests="53"><testcase/><testcase/></testsuite>',
+                    **kwargs,
+                )
+
+            with patch.object(helper.subprocess, "run", side_effect=unverified_runner):
+                result = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
+        self.assertIn("requires explicit outcome summaries", execution["junit_error"])
+        self.assertEqual(execution["junit_reconciliation"], "invalid_junit")
 
     def test_runner_rejects_inflated_stdout_pass_count(self):
         helper = _helper()
@@ -1300,7 +1479,7 @@ def test_fixture():
         self.assertEqual(result, 1)
         self.assertEqual(report["status"], "FAIL")
         self.assertEqual(execution["failure_classification"], "missing_or_invalid_junit")
-        self.assertIn("does not match", execution["junit_error"])
+        self.assertIn("requires explicit outcome summaries", execution["junit_error"])
 
     def test_log_directory_symlink_escape_is_blocked_before_runner_launch(self):
         helper = _helper()

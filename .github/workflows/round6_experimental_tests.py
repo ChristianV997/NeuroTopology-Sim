@@ -36,6 +36,15 @@ MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
 MAX_RUNNER_STDERR_TAIL_BYTES = 4096
 MAX_JUNIT_FAILURE_CASES = 50
 MAX_JUNIT_FAILURE_NAME_CHARS = 512
+# This exact test module has six two-case unittest subTest loops (12 outcomes)
+# but pytest emits one parent testcase record per loop. Any other JUnit/testcase
+# delta is rejected unless the pytest stdout summary independently reconciles it.
+REGISTERED_JUNIT_SUBTEST_DELTAS = {
+    "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": {
+        "blob_sha": "b37cc987b1e369295552c574ac2bbd1312ecc733",
+        "delta": 12,
+    },
+}
 PINNED_OUTPUT_PROBE_MARKER = b"round6-pinned-output-probe-v1"
 PINNED_OUTPUT_PROBE_TIMEOUT_S = 3
 _PROBE_SUBPROCESS_RUN = subprocess.run
@@ -2228,6 +2237,8 @@ def inspect_component(
 
 def _junit_details_from_bytes(
     content: bytes,
+    *,
+    allow_subtest_totals: bool = False,
 ) -> tuple[tuple[int, int, int, int], list[dict[str, str]], int]:
     """Validate JUnit structure and keep explicit testcase count separate from suite totals."""
     root = ET.fromstring(content)
@@ -2287,6 +2298,20 @@ def _junit_details_from_bytes(
                     raise ValueError(
                         f"JUnit tests summary {declared} is below {actual} testcase outcomes"
                     )
+                if declared > actual:
+                    missing_outcome_totals = sorted(
+                        field for field in ("skipped", "failures", "errors")
+                        if field not in suite.attrib
+                    )
+                    if missing_outcome_totals:
+                        raise ValueError(
+                            "JUnit subtest total requires explicit outcome summaries; "
+                            f"missing {missing_outcome_totals}"
+                        )
+                    if not allow_subtest_totals:
+                        raise ValueError(
+                            "JUnit test total exceeds testcase records without a registered subtest contract"
+                        )
                 declared_tests[id(suite)] = declared
                 continue
             if declared != actual:
@@ -2341,6 +2366,50 @@ def _pytest_result_summary(stdout_tail: Any) -> tuple[int, int] | None:
     if match is None:
         return None
     return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _git_tree_blob_sha(root: Path, commit_sha: str, relative_path: str) -> str | None:
+    """Read a path's Git blob identity without following a worktree symlink."""
+    if not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+        return None
+    try:
+        normalized = normalize_repo_path(relative_path)
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{commit_sha}:{normalized}"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    blob_sha = result.stdout.strip()
+    return blob_sha if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", blob_sha) else None
+
+
+def _registered_junit_subtest_contract(
+    root: Path, commit_sha: str | None, test_file: str
+) -> dict[str, Any] | None:
+    """Return evidence only for the exact reviewed test content and count."""
+    try:
+        normalized = normalize_repo_path(test_file)
+    except ValueError:
+        return None
+    contract = REGISTERED_JUNIT_SUBTEST_DELTAS.get(normalized)
+    if not isinstance(contract, dict) or not isinstance(commit_sha, str):
+        return None
+    observed_blob_sha = _git_tree_blob_sha(root, commit_sha, normalized)
+    if observed_blob_sha != contract.get("blob_sha"):
+        return None
+    delta = contract.get("delta")
+    if type(delta) is not int or delta <= 0:
+        return None
+    return {
+        "test_path": normalized,
+        "tested_tree_blob_sha": observed_blob_sha,
+        "expected_delta": delta,
+    }
 
 
 def junit_counts(path: Path) -> tuple[int, int, int, int]:
@@ -2644,7 +2713,9 @@ def validate_docker_engine_test_artifacts(
             "Docker Engine JUnit path",
             max_bytes=MAX_JUNIT_XML_BYTES,
         )
-        counts, _, junit_total = _junit_details_from_bytes(junit_bytes)
+        counts, _, junit_total = _junit_details_from_bytes(
+            junit_bytes, allow_subtest_totals=runner_total is not None
+        )
         cases, skipped, failed, errors = counts
         if cases < 1 or skipped or failed or errors:
             return False, (
@@ -2764,7 +2835,9 @@ def docker_engine_candidate_evidence(
             "Docker Engine JUnit path",
             max_bytes=MAX_JUNIT_XML_BYTES,
         )
-        outcomes, _, total_tests = _junit_details_from_bytes(junit_bytes)
+        outcomes, _, total_tests = _junit_details_from_bytes(
+            junit_bytes, allow_subtest_totals=type(evidence["counts"].get("passed")) is int
+        )
         cases, skipped, failed, errors = outcomes
         evidence["counts"].update({
             "collected": total_tests,
@@ -3407,16 +3480,55 @@ def run(
                 if junit_bytes is not None:
                     junit_parsed = False
                     try:
-                        counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        pytest_summary_available = (
+                            telemetry_ok
+                            and bool(batches)
+                            and isinstance(batches[0], dict)
+                            and batches[0].get("_round6_pytest_summary_available") is True
+                        )
+                        registered_subtest_contract = _registered_junit_subtest_contract(
+                            root, tested_checkout_sha, test_file
+                        )
+                        registered_subtest_delta = (
+                            registered_subtest_contract["expected_delta"]
+                            if registered_subtest_contract else 0
+                        )
+                        counts, cases, junit_reported_tests = _junit_details_from_bytes(
+                            junit_bytes,
+                            allow_subtest_totals=(
+                                pytest_summary_available
+                                or registered_subtest_delta > 0
+                            ),
+                        )
                         junit_parsed = True
+                        subtest_delta = junit_reported_tests - counts[0]
                         execution.update({
                             "tests_collected": junit_reported_tests,
                             "junit_testcase_records": counts[0],
+                            "registered_subtest_delta": registered_subtest_delta,
+                            "registered_subtest_contract": (
+                                {
+                                    **registered_subtest_contract,
+                                    "observed_delta": subtest_delta,
+                                    "applied_without_pytest_summary": (
+                                        not pytest_summary_available and subtest_delta > 0
+                                    ),
+                                }
+                                if registered_subtest_contract else None
+                            ),
                             "skipped": counts[1],
                             "failed": counts[2],
                             "errors": counts[3],
                             "junit_reported_test_outcomes": junit_reported_tests,
                         })
+                        if (
+                            not pytest_summary_available
+                            and subtest_delta not in (0, registered_subtest_delta)
+                        ):
+                            raise ValueError(
+                                "JUnit subtest delta "
+                                f"{subtest_delta} does not match registered delta {registered_subtest_delta}"
+                            )
                         failure_cases = [
                             {
                                 "name": case["name"][:MAX_JUNIT_FAILURE_NAME_CHARS],
@@ -3453,12 +3565,11 @@ def run(
                                     "junit_reconciliation": "matched",
                                 })
                             else:
-                                if junit_reported_tests != counts[0]:
-                                    execution["junit_reconciliation"] = "mismatch"
-                                    raise ValueError(
-                                        "JUnit subtest total cannot be reconciled without a pytest stdout summary"
-                                    )
-                                execution["junit_reconciliation"] = "matched_junit_authoritative_no_summary"
+                                execution["junit_reconciliation"] = (
+                                    "matched_junit_declared_subtest_total_no_summary"
+                                    if junit_reported_tests > counts[0]
+                                    else "matched_junit_authoritative_no_summary"
+                                )
                             execution["test_cases"] = cases
                         else:
                             execution["junit_reconciliation"] = "not_attempted_runner_telemetry_invalid"
@@ -3542,6 +3653,9 @@ def run(
                     "failed": counts[2],
                     "errors": counts[3],
                     "timeouts": int(execution["timeout"]),
+                    "junit_testcase_records": execution.get("junit_testcase_records"),
+                    "junit_reconciliation": execution.get("junit_reconciliation"),
+                    "registered_subtest_contract": execution.get("registered_subtest_contract"),
                     "artifact_path": execution["artifact_path"],
                     "status": execution.get("status"),
                     "failure_classification": execution.get("failure_classification"),
