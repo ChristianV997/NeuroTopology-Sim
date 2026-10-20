@@ -79,11 +79,30 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
     subject_count = normalized_counts["subject_count"]
     session_count = normalized_counts["session_count"]
     channel_count = normalized_counts["channel_count"]
-    channels = source.get("channels")
+    subject_ids = (
+        source.get("subject_ids")
+        if isinstance(source.get("subject_ids"), list)
+        else None
+    )
+    if (
+        subject_count is not None
+        and subject_ids is not None
+        and len(subject_ids) != subject_count
+    ):
+        metadata_issues.append("conflicting_subject_count")
+    raw_channels = source.get("channels")
+    supplied_channel_count = len(raw_channels) if isinstance(raw_channels, list) else None
+    channels = raw_channels
     if channels is not None and not isinstance(channels, list):
         channels = None
     if isinstance(channels, list):
         channels = [str(c) for c in channels if str(c).strip()] or None
+    if (
+        channel_count is not None
+        and supplied_channel_count is not None
+        and (supplied_channel_count != channel_count or len(channels or []) != channel_count)
+    ):
+        metadata_issues.append("conflicting_channel_count")
 
     sampling_rate_hz = source.get("sampling_rate_hz")
     if sampling_rate_hz is not None:
@@ -140,8 +159,11 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
         },
         "subjects": {
             "count": subject_count,
-            "subject_ids": source.get("subject_ids") if isinstance(source.get("subject_ids"), list) else None,
-            "trust": _trust(subject_count is not None or isinstance(source.get("subject_ids"), list)),
+            "subject_ids": subject_ids,
+            "trust": _trust(
+                subject_count is not None or subject_ids is not None,
+                conflicting="conflicting_subject_count" in metadata_issues,
+            ),
         },
         "sessions": {
             "count": session_count,
@@ -150,7 +172,10 @@ def extract_dataset_fields(source: Mapping[str, Any]) -> Dict[str, Any]:
         "channels": {
             "count": channel_count,
             "names": channels,
-            "trust": _trust(channel_count is not None or channels is not None),
+            "trust": _trust(
+                channel_count is not None or channels is not None,
+                conflicting="conflicting_channel_count" in metadata_issues,
+            ),
         },
         "event_label_mapping": {
             "labels": condition_labels or None,

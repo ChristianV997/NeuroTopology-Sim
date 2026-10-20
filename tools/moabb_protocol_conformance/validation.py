@@ -56,6 +56,11 @@ def validate_protocol_manifest(manifest: Mapping[str, Any]) -> Dict[str, Any]:
     dataset = manifest.get("dataset") or {}
     for issue in dataset.get("metadata_issues") or []:
         violations.append(f"invalid_dataset_metadata:{issue}")
+    if any(
+        (dataset.get(key) or {}).get("trust") == MetadataTrust.CONFLICTING.value
+        for key in ("subjects", "sessions", "channels")
+    ):
+        violations.append("conflicting_dataset_metadata")
     if not (dataset.get("dataset_identifier") or {}).get("value"):
         violations.append("missing_dataset_identifier")
 

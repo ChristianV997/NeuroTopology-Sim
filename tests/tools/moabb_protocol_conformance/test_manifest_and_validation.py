@@ -383,6 +383,36 @@ def test_boolean_sampling_rate_is_not_coerced_to_one_hertz():
     assert fields["sampling"]["trust"] == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("count_key", "values_key", "trust_key", "issue", "values"),
+    [
+        ("subject_count", "subject_ids", "subjects", "conflicting_subject_count", ["a", "b"]),
+        ("subject_count", "subject_ids", "subjects", "conflicting_subject_count", []),
+        ("channel_count", "channels", "channels", "conflicting_channel_count", ["a", "b"]),
+        ("channel_count", "channels", "channels", "conflicting_channel_count", []),
+    ],
+)
+def test_declared_counts_conflicting_with_supplied_lists_are_blocked(
+    count_key, values_key, trust_key, issue, values
+):
+    candidate = {
+        "source_dataset_id": "synthetic-metadata-only",
+        "task_labels": ["imagery"],
+        "modalities": ["EEG"],
+        "condition_labels": ["left", "right"],
+        count_key: 1,
+        values_key: values,
+    }
+
+    fields = extract_dataset_fields(candidate)
+    assert fields[trust_key]["trust"] == "conflicting"
+    assert issue in fields["metadata_issues"]
+
+    result = build_from_candidate_dict(candidate, _protocol()).to_dict()
+    assert result["conformance"]["status"] == ConformanceStatus.BLOCKED.value
+    assert "conflicting_dataset_metadata" in result["conformance"]["violations"]
+
+
 def test_cli_conforming_and_leaky_exit_codes(tmp_path):
     out_ok = tmp_path / "ok.json"
     out_bad = tmp_path / "bad.json"

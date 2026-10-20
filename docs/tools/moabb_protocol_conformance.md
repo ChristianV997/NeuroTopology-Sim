@@ -49,6 +49,11 @@ use rights, participant/cohort identity, or scientific validity; license and
 access values are declarations for review, not legal clearance. The tool does
 not access a MOABB dataset or verify any source catalog at runtime.
 
+When a count and its corresponding identifier/name list are both supplied,
+their lengths must agree. A mismatch is reported as conflicting metadata and
+blocks protocol conformance; matching values still establish only internal
+consistency, not source verification.
+
 Manifest output is deterministic for identical inputs when callers either
 omit `created_at` (serialized as `null`) or provide the same explicit
 timestamp. No wall-clock timestamp is silently injected.
