@@ -36,6 +36,10 @@ from typing import Callable
 # Explicit bound for the dataset-metadata AWS CLI sync. Missing timeouts on
 # this subprocess previously let a hung `aws s3 sync` stall an entire run.
 S3_METADATA_SYNC_TIMEOUT_S = 300.0
+# Hard cap for non-EEG sidecar/metadata objects. Size is checked before any
+# body is materialized; this is not a data-payload download path.
+S3_METADATA_MAX_BYTES = 8 * 1024 * 1024
+S3_OBJECT_READ_CHUNK_BYTES = 8 * 1024 * 1024
 
 
 def _aws_command() -> list[str]:
@@ -125,17 +129,20 @@ def sync_s3_subject(
     """Download one subject with bounded concurrent, atomic object transfers.
 
     Using boto3 here avoids Windows/WSL console-launcher behavior from the AWS
-    CLI and lets independent EEG objects transfer concurrently. Each object is
-    written to a temporary sibling and atomically renamed only after the full
-    object is present, so a resumed run never mistakes a partial file for raw
-    data. Existing files with the expected size are reused.
+    CLI and lets independent EEG objects transfer concurrently. EEG data
+    objects fail closed unless a strict byte range can be computed
+    (``required_bytes < Size``); they never use ``download_file``. Metadata
+    sidecars use an explicit hard byte cap and a size check before
+    materialization. Each allowed object is written to a temporary sibling and
+    atomically renamed only after the expected byte count is present, so a
+    resumed run never mistakes a partial file for raw data. Existing files
+    with the expected size are reused.
     """
     dest = dest_root / subject
     dest.mkdir(parents=True, exist_ok=True)
     import boto3
     from botocore import UNSIGNED
     from botocore.config import Config
-    from boto3.s3.transfer import TransferConfig
 
     client = boto3.client(
         "s3",
@@ -156,12 +163,6 @@ def sync_s3_subject(
     # queue ordering alone does not establish that dependency with a pool.
     metadata_objects = [obj for obj in objects if not obj["Key"].lower().endswith(".eeg")]
     eeg_objects = [obj for obj in objects if obj["Key"].lower().endswith(".eeg")]
-    transfer_config = TransferConfig(
-        use_threads=True,
-        max_concurrency=4,
-        multipart_threshold=64 * 1024 * 1024,
-        multipart_chunksize=64 * 1024 * 1024,
-    )
 
     def _required_eeg_bytes(key: str, size: int) -> int | None:
         if required_duration_seconds is None or not key.lower().endswith(".eeg"):
@@ -180,19 +181,49 @@ def sync_s3_subject(
         except (AttributeError, ValueError):
             return None
 
+    def _transfer_byte_count(key: str, object_size: object, required_bytes: int | None) -> int:
+        is_eeg = key.lower().endswith(".eeg")
+        if is_eeg:
+            if required_bytes is None:
+                raise ValueError(
+                    "fail-closed: ranged required_bytes unavailable for EEG object "
+                    f"{key}; refusing unbounded full-object download"
+                )
+            if not isinstance(object_size, int) or required_bytes <= 0 or required_bytes >= object_size:
+                raise ValueError(
+                    "fail-closed: EEG object "
+                    f"{key} requires a strict byte range below object size "
+                    f"(required_bytes={required_bytes}, size={object_size})"
+                )
+            return required_bytes
+        if not isinstance(object_size, int) or object_size <= 0:
+            raise ValueError(f"fail-closed: metadata object size unknown or invalid: {key}")
+        if object_size > S3_METADATA_MAX_BYTES:
+            raise ValueError(
+                f"fail-closed: metadata object {key} exceeds "
+                f"{S3_METADATA_MAX_BYTES} byte cap (size={object_size})"
+            )
+        return object_size
+
     def download(obj: dict) -> None:
         key = obj["Key"]
         rel = key[len(prefix):]
         if not rel:
             return
-        target = dest / Path(rel)
+        if rel.startswith(("/", "\\")) or Path(rel).is_absolute() or ".." in Path(rel).parts:
+            raise ValueError(f"fail-closed: S3 key contains invalid or escaping path component: {key}")
+        target = (dest / Path(rel)).resolve()
+        try:
+            target.relative_to(dest.resolve())
+        except ValueError:
+            raise ValueError(f"fail-closed: S3 object key escapes target directory: {key}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        required_bytes = _required_eeg_bytes(key, obj["Size"])
-        if required_duration_seconds is not None and key.lower().endswith(".eeg") and required_bytes is None:
-            raise ValueError(f"BrainVision header unavailable or invalid for ranged download: {key}")
+        object_size = obj["Size"]
+        required_bytes = _required_eeg_bytes(key, object_size if isinstance(object_size, int) else 0)
+        transfer_bytes = _transfer_byte_count(key, object_size, required_bytes)
         if target.exists() and (
-            target.stat().st_size == obj["Size"]
-            or (required_bytes is not None and target.stat().st_size >= required_bytes)
+            target.stat().st_size == object_size
+            or target.stat().st_size >= transfer_bytes
         ):
             return
         partial = target.with_name(target.name + ".part")
@@ -203,20 +234,19 @@ def sync_s3_subject(
         last_error = None
         for _attempt in range(3):
             try:
-                if required_bytes is not None and required_bytes < obj["Size"]:
-                    response = client.get_object(
-                        Bucket=bucket,
-                        Key=key,
-                        Range=f"bytes=0-{required_bytes - 1}",
-                    )
-                    with partial.open("wb") as out:
-                        while True:
-                            chunk = response["Body"].read(8 * 1024 * 1024)
-                            if not chunk:
-                                break
-                            out.write(chunk)
-                else:
-                    client.download_file(bucket, key, str(partial), Config=transfer_config)
+                response = client.get_object(
+                    Bucket=bucket,
+                    Key=key,
+                    Range=f"bytes=0-{transfer_bytes - 1}",
+                )
+                remaining = transfer_bytes
+                with partial.open("wb") as out:
+                    while remaining > 0:
+                        chunk = response["Body"].read(min(S3_OBJECT_READ_CHUNK_BYTES, remaining))
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        remaining -= len(chunk)
                 last_error = None
                 break
             except Exception as exc:
@@ -225,10 +255,13 @@ def sync_s3_subject(
                     stale.unlink(missing_ok=True)
         if last_error is not None:
             raise last_error
-        expected_size = required_bytes if required_bytes is not None else obj["Size"]
-        if partial.stat().st_size != expected_size:
-            raise IOError(f"incomplete S3 object {key}: {partial.stat().st_size} != {expected_size}")
+        actual_size = partial.stat().st_size if partial.exists() else 0
+        if actual_size != transfer_bytes:
+            partial.unlink(missing_ok=True)
+            raise IOError(f"incomplete S3 object {key}: {actual_size} != {transfer_bytes}")
         os.replace(partial, target)
+
+
 
     def _download_batch(batch: list[dict]) -> None:
         if not batch:
