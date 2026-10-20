@@ -32,8 +32,9 @@ from data.dandi_nwb_ingest import (  # noqa: E402
     MAX_WINDOW_BYTES,
     DandiAsset,
     IngestionContractError,
-    open_nwb_lazy,
+    require_output_root,
     resolve_asset_blobs,
+    resolve_under_root,
 )
 
 _DANDISET = "000458"
@@ -119,7 +120,11 @@ def _write_manifest(out_dir: Path, contracts: list[BoundedDandiAccess], *, allow
         "version": _VERSION,
         "manifest_first": True,
         "network_accessed": bool(allow_network),
+        "network_permission_default": False,
         "data_materialization": "lazy_bounded_windows",
+        "full_object_download": False,
+        "resume_boundary": "asset_manifest",
+        "checksum_policy": "unknown_preserved_never_fabricated",
         "assets": [c.to_dict() for c in contracts],
     }
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
@@ -127,13 +132,10 @@ def _write_manifest(out_dir: Path, contracts: list[BoundedDandiAccess], *, allow
 
 
 def _contained_output(out_dir: Path | str, relative_path: str) -> Path:
-    base = Path(out_dir).resolve()
-    target = (base / relative_path).resolve()
     try:
-        target.relative_to(base)
-    except ValueError as exc:
-        raise ValueError(f"DANDI output path escapes output directory: {target}") from exc
-    return target
+        return resolve_under_root(out_dir, relative_path)
+    except IngestionContractError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _sha256_file(path: Path) -> str:
@@ -190,17 +192,7 @@ def process_asset(
 
 
 def _contained_output_dir(out_dir: str, output_root: str | None) -> Path:
-    out_path = Path(out_dir).expanduser().resolve()
-    root = Path(output_root or out_path.parent).expanduser().resolve()
-    try:
-        out_path.relative_to(root)
-    except ValueError as exc:
-        raise IngestionContractError(
-            f"DANDI output directory must remain inside output_root: {out_path}"
-        ) from exc
-    if out_path == root:
-        raise IngestionContractError("DANDI output directory must be a child of output_root")
-    return out_path
+    return require_output_root(output_root, out_dir)
 
 
 def run(
@@ -268,8 +260,17 @@ def main() -> int:
     p.add_argument("--max-channels", type=int, default=16)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--subjects", nargs="*", default=None)
-    p.add_argument("--allow-network", action="store_true", help="Permit bounded DANDI metadata and lazy window reads")
-    p.add_argument("--output-root", default="outputs", help="Explicit root containing --out")
+    p.add_argument(
+        "--allow-network",
+        action="store_true",
+        default=False,
+        help="Explicit opt-in for bounded DANDI metadata and lazy window reads (default: offline)",
+    )
+    p.add_argument(
+        "--output-root",
+        required=True,
+        help="Approved output root; --out must be a child path inside this root",
+    )
     a = p.parse_args()
     try:
         return run(
