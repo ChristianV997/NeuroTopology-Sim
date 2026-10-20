@@ -2,8 +2,8 @@
 
 ## 1. Executive Summary and Epistemic Boundaries
 
-> **Engineering Disclaimer**  
-> *A deterministic structural replay is an integration and conformance verification, not scientific validation.*  
+> **Engineering Disclaimer**
+> *A deterministic structural replay is an integration and conformance verification, not scientific validation.*
 > This harness verifies that synthetic pipeline stages on `origin/main` pass data artifacts across inter-stage boundaries without silent coercion of shapes, channel ordering, units, timing, or metadata. Structural compatibility does not constitute evidence of biological validity, statistical significance, consciousness detection, or research claim promotion. The harness reuses established schemas and status vocabularies and does not emit `VALIDATED` or create secondary claim/evidence state machines.
 
 The `tools.synthetic_pipeline_replay` package and `tests.integration.synthetic_pipeline_replay` test suite establish an offline, deterministic integration verification lane across four sequential pipeline stages:
