@@ -210,6 +210,27 @@ def test_disconnected_two_triangles_reconstruction_and_orthogonality():
     assert abs(decomp.ortho_coexact_harmonic) < ATOL
 
 
+def test_complex_inputs_fail_closed():
+    c = disk_single_triangle()
+    # Complex omega (list or array) must fail closed with ValueError
+    with pytest.raises(ValueError, match="complex"):
+        decompose(c, [1.0 + 2.0j, 0.0, 0.0])
+    with pytest.raises(ValueError, match="complex"):
+        decompose(c, np.array([1.0 + 2.0j, 0.0, 0.0]))
+
+    # Complex weights must be rejected as ill-conditioned
+    omega = np.array([0.1, -0.2, 0.3])
+    result = decompose(c, omega, weights_edges=np.array([1.0 + 1.0j, 1.0, 1.0]))
+    assert result.accepted is False
+    assert result.verdict == "REJECTED_ILL_CONDITIONED"
+    assert "complex" in result.diagnostics.get("reject_reason", "")
+
+    result_face = decompose(c, omega, weights_faces=np.array([1.0 + 1.0j]))
+    assert result_face.accepted is False
+    assert result_face.verdict == "REJECTED_ILL_CONDITIONED"
+    assert "complex" in result_face.diagnostics.get("reject_reason", "")
+
+
 def test_malformed_omega_fails_closed():
     c = disk_single_triangle()
     with pytest.raises(ValueError, match="nonfinite|shape"):

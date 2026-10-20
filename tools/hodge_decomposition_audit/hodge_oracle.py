@@ -63,7 +63,13 @@ class IllConditionedError(ValueError):
 def _positive_weights(values: Optional[Sequence[float]], n: int, name: str) -> np.ndarray:
     if values is None:
         return np.ones(n, dtype=float)
-    arr = np.asarray(values, dtype=float)
+    raw = np.asarray(values)
+    if np.iscomplexobj(raw):
+        raise IllConditionedError(f"{name}_complex")
+    try:
+        arr = raw.astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} cannot be converted to float: {exc}") from exc
     if arr.shape != (n,):
         raise ValueError(f"{name} shape {arr.shape} != ({n},)")
     if not np.all(np.isfinite(arr)):
@@ -114,7 +120,13 @@ def decompose(
     atol: float = DEFAULT_ATOL,
 ) -> HodgeOracleResult:
     """Weighted Hodge decomposition with explicit conditioning rejection."""
-    omega_arr = np.asarray(omega, dtype=float)
+    raw_omega = np.asarray(omega)
+    if np.iscomplexobj(raw_omega):
+        raise ValueError("omega complex values not supported")
+    try:
+        omega_arr = raw_omega.astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"omega cannot be converted to float: {exc}") from exc
     if omega_arr.shape != (complex_.num_edges,):
         raise ValueError("omega shape mismatch")
     if not np.all(np.isfinite(omega_arr)):
