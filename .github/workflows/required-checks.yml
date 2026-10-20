@@ -201,6 +201,7 @@ jobs:
         run: docker info --format '{{.ServerVersion}}'
 
       - name: Run Docker-context verifier in an isolated process
+        id: docker_candidate_tests
         if: steps.candidate_scope.outputs.docker_context_changed == 'true'
         run: |
           set -euo pipefail
@@ -231,6 +232,48 @@ jobs:
           )
           PY
 
+      - name: Write Docker candidate evidence
+        if: always() && steps.candidate_scope.outputs.docker_context_changed == 'true'
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          TEST_STEP_OUTCOME: ${{ steps.docker_candidate_tests.outcome || 'skipped' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import runpy
+          from pathlib import Path
+
+          root = Path.cwd()
+          helper = runpy.run_path(".github/workflows/round6_experimental_tests.py")
+          evidence = helper["docker_engine_candidate_evidence"](
+              root,
+              Path("outputs/docker_context_engine_test_report.json"),
+              Path("outputs/docker_context_engine_test_report.junit.xml"),
+              diff_base_sha=os.environ["DIFF_BASE_SHA"],
+              diff_head_sha=os.environ["DIFF_HEAD_SHA"],
+              tested_checkout_sha=os.environ["TESTED_CHECKOUT_SHA"],
+              workflow_sha=os.environ["WORKFLOW_SHA"],
+              event_name=os.environ["EVENT_NAME"],
+              candidate_changed=True,
+              execution_outcome=os.environ["TEST_STEP_OUTCOME"],
+          )
+          report_path = Path("outputs/docker_context_candidate_evidence.json")
+          identity = helper["_prepare_contained_output"](root, report_path, "Docker candidate evidence path")
+          helper["_write_contained_text"](
+              root,
+              report_path,
+              json.dumps(evidence, sort_keys=True, indent=2, allow_nan=False) + "\n",
+              "Docker candidate evidence path",
+              identity,
+          )
+          print(json.dumps(evidence, sort_keys=True, allow_nan=False))
+          PY
+
       - name: Capture Docker-context diagnostics
         if: failure()
         run: |
@@ -256,6 +299,7 @@ jobs:
           path: |
             outputs/docker_context_engine_test_report.json
             outputs/docker_context_engine_test_report.junit.xml
+            outputs/docker_context_candidate_evidence.json
             docker-context-engine-failure.txt
           if-no-files-found: warn
 

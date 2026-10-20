@@ -116,6 +116,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
             "tools/mne_csd_reference_audit/",
             "tests/mne_csd_reference_audit/",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
         "implementation_any": (
             "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
@@ -128,6 +129,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/mne_csd_reference_audit/test_legendre_constants.py",
             "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
             "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py"},
@@ -140,6 +142,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "tools/mne_csd_reference_audit/pin.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
             {"implementation": "tools/mne_csd_reference_audit/report.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
             {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_mne_integration_optional.py"},
+            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/optional_live_mne/test_mne_csd_live_parity.py"},
         ),
         "support_files": {
             "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
@@ -159,11 +162,18 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             ),
         },
         "implementation_roots": ("neurotopology_sim/experimental/preprocessing/", "tools/mne_csd_reference_audit/"),
-        "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/"),
+        "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/", "tests/optional_live_mne/test_mne_csd_live_parity.py"),
         "candidate_test_roots": (
             "tests/neurotopology_sim/experimental/preprocessing/",
             "tests/mne_csd_reference_audit/",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
+        # The live operator parity test requires the audit owner's pinned MNE
+        # environment. The gate records it as delegated and never auto-installs
+        # MNE or turns an import/version skip into a pass.
+        "external_test_paths": {
+            "tests/optional_live_mne/test_mne_csd_live_parity.py": "owner-controlled-pinned-mne-1.13.2",
+        },
     },
     "four_sphere": {
         "triggers": (
@@ -542,6 +552,197 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "test_roots": ("tests/bids_inventory_audit/",),
         "candidate_test_roots": ("tests/bids_inventory_audit/",),
     },
+    "public_repo_source_pack": {
+        "triggers": (
+            "tools/public_repo_harvest/",
+            "tests/tools/test_public_repo_harvest_source_pack.py",
+        ),
+        "implementation_any": (
+            "tools/public_repo_harvest/source_pack.py",
+            "tools/public_repo_harvest/external_systems_scorecard.py",
+            "tools/public_repo_harvest/license_scanner.py",
+            "tools/public_repo_harvest/pattern_classifier.py",
+        ),
+        "tests": ("tests/tools/test_public_repo_harvest_source_pack.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": path,
+                "test": "tests/tools/test_public_repo_harvest_source_pack.py",
+            }
+            for path in (
+                "tools/public_repo_harvest/source_pack.py",
+                "tools/public_repo_harvest/external_systems_scorecard.py",
+                "tools/public_repo_harvest/license_scanner.py",
+                "tools/public_repo_harvest/pattern_classifier.py",
+            )
+        ),
+        "implementation_roots": ("tools/public_repo_harvest/",),
+        "candidate_test_roots": ("tests/tools/test_public_repo_harvest_source_pack.py",),
+    },
+    "dandi_nwb_bounded": {
+        "triggers": (
+            "data/dandi_nwb_ingest.py",
+            "tools/stream_process_dandi000458.py",
+            "tests/data_access/dandi_nwb_bounded/",
+        ),
+        "implementation_any": (
+            "data/dandi_nwb_ingest.py",
+            "tools/stream_process_dandi000458.py",
+        ),
+        "tests": (
+            "tests/data_access/dandi_nwb_bounded/test_dandi_nwb_bounded_contract.py",
+            "tests/data_access/dandi_nwb_bounded/test_isolation_and_network.py",
+            "tests/data_access/dandi_nwb_bounded/test_nwb_local_fixture.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "data/dandi_nwb_ingest.py", "test": "tests/data_access/dandi_nwb_bounded/test_dandi_nwb_bounded_contract.py"},
+            {"implementation": "data/dandi_nwb_ingest.py", "test": "tests/data_access/dandi_nwb_bounded/test_isolation_and_network.py"},
+            {"implementation": "data/dandi_nwb_ingest.py", "test": "tests/data_access/dandi_nwb_bounded/test_nwb_local_fixture.py"},
+            {"implementation": "tools/stream_process_dandi000458.py", "test": "tests/data_access/dandi_nwb_bounded/test_dandi_nwb_bounded_contract.py"},
+            {"implementation": "tools/stream_process_dandi000458.py", "test": "tests/data_access/dandi_nwb_bounded/test_isolation_and_network.py"},
+        ),
+        "support_files": {
+            "tests/data_access/dandi_nwb_bounded/__init__.py": (
+                "tests/data_access/dandi_nwb_bounded/test_dandi_nwb_bounded_contract.py",
+                "tests/data_access/dandi_nwb_bounded/test_isolation_and_network.py",
+                "tests/data_access/dandi_nwb_bounded/test_nwb_local_fixture.py",
+            ),
+        },
+        "implementation_roots": (
+            "data/dandi_nwb_ingest.py",
+            "tools/stream_process_dandi000458.py",
+        ),
+        "candidate_test_roots": ("tests/data_access/dandi_nwb_bounded/",),
+    },
+    "streaming_s3_transfer": {
+        "triggers": (
+            "tools/streaming/base_runner.py",
+            "tests/streaming/test_sync_s3_subject_fail_closed.py",
+            "tests/performance/streaming_optimization/test_s3_transfers.py",
+        ),
+        "implementation": "tools/streaming/base_runner.py",
+        "tests": (
+            "tests/streaming/test_sync_s3_subject_fail_closed.py",
+            "tests/performance/streaming_optimization/test_s3_transfers.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "tools/streaming/base_runner.py", "test": "tests/streaming/test_sync_s3_subject_fail_closed.py"},
+            {"implementation": "tools/streaming/base_runner.py", "test": "tests/performance/streaming_optimization/test_s3_transfers.py"},
+        ),
+        "support_files": {
+            "tests/streaming/conftest.py": (
+                "tests/streaming/test_sync_s3_subject_fail_closed.py",
+            ),
+            "tests/performance/streaming_optimization/conftest.py": (
+                "tests/performance/streaming_optimization/test_s3_transfers.py",
+            ),
+        },
+        "implementation_roots": ("tools/streaming/base_runner.py",),
+        "candidate_test_roots": (
+            "tests/streaming/test_sync_s3_subject_fail_closed.py",
+            "tests/performance/streaming_optimization/test_s3_transfers.py",
+        ),
+    },
+    "ds005620_cohort_stream": {
+        "triggers": (
+            "tools/stream_pitnn_cohort_ds005620.py",
+            "tests/test_pitnn_cohort_ds005620.py",
+        ),
+        "implementation": "tools/stream_pitnn_cohort_ds005620.py",
+        "tests": ("tests/test_pitnn_cohort_ds005620.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/stream_pitnn_cohort_ds005620.py",
+                "test": "tests/test_pitnn_cohort_ds005620.py",
+            },
+        ),
+        "implementation_roots": ("tools/stream_pitnn_cohort_ds005620.py",),
+        "candidate_test_roots": ("tests/test_pitnn_cohort_ds005620.py",),
+    },
+    "moabb_protocol_conformance": {
+        "triggers": (
+            "tools/moabb_protocol_conformance/",
+            "tests/tools/moabb_protocol_conformance/",
+        ),
+        "implementation_any": (
+            "tools/moabb_protocol_conformance/__main__.py",
+            "tools/moabb_protocol_conformance/leakage.py",
+            "tools/moabb_protocol_conformance/manifest.py",
+            "tools/moabb_protocol_conformance/metadata.py",
+            "tools/moabb_protocol_conformance/schema.py",
+            "tools/moabb_protocol_conformance/serialization.py",
+            "tools/moabb_protocol_conformance/upstream.py",
+            "tools/moabb_protocol_conformance/validation.py",
+        ),
+        "tests": ("tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": path,
+                "test": "tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",
+            }
+            for path in (
+                "tools/moabb_protocol_conformance/__main__.py",
+                "tools/moabb_protocol_conformance/leakage.py",
+                "tools/moabb_protocol_conformance/manifest.py",
+                "tools/moabb_protocol_conformance/metadata.py",
+                "tools/moabb_protocol_conformance/schema.py",
+                "tools/moabb_protocol_conformance/serialization.py",
+                "tools/moabb_protocol_conformance/upstream.py",
+                "tools/moabb_protocol_conformance/validation.py",
+            )
+        ),
+        "support_files": {
+            "tools/moabb_protocol_conformance/fixtures/moabb_metadata_fixture.json": (
+                "tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",
+            ),
+            "tools/moabb_protocol_conformance/fixtures/protocol_conforming.json": (
+                "tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",
+            ),
+            "tools/moabb_protocol_conformance/fixtures/protocol_leaky.json": (
+                "tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",
+            ),
+        },
+        "implementation_roots": ("tools/moabb_protocol_conformance/",),
+        "candidate_test_roots": ("tests/tools/moabb_protocol_conformance/",),
+    },
+    "mne_signal_blocks": {
+        "triggers": (
+            "adapters/mne_signal_blocks/",
+            "tests/adapters/mne_signal_blocks/",
+        ),
+        "implementation_any": (
+            "adapters/mne_signal_blocks/converter.py",
+            "adapters/mne_signal_blocks/fixtures.py",
+            "adapters/mne_signal_blocks/reporting.py",
+            "adapters/mne_signal_blocks/schema.py",
+            "adapters/mne_signal_blocks/validate.py",
+        ),
+        "tests": ("tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": path,
+                "test": "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py",
+            }
+            for path in (
+                "adapters/mne_signal_blocks/converter.py",
+                "adapters/mne_signal_blocks/fixtures.py",
+                "adapters/mne_signal_blocks/reporting.py",
+                "adapters/mne_signal_blocks/schema.py",
+                "adapters/mne_signal_blocks/validate.py",
+            )
+        ),
+        "implementation_roots": ("adapters/mne_signal_blocks/",),
+        "candidate_test_roots": ("tests/adapters/mne_signal_blocks/",),
+        "external_test_paths": {
+            "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": "optional-eeg-suite",
+        },
+        # The CPU/base runner exercises pure contract cases without converting
+        # unavailable optional MNE bridge cases into skips. The full bridge
+        # cases remain separately owned by the optional EEG profile.
+        "test_markers": {
+            "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": "not requires_mne",
+        },
+    },
     "finite_jitter_geometry_audit": {
         "triggers": (
             "tools/audit_finite_jitter_triangulation.py",
@@ -650,11 +851,30 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "shared/bids_inventory_audit/__init__.py",
         "tests/bids_inventory_audit/__init__.py",
     ),
+    "public_repo_source_pack": (),
+    "dandi_nwb_bounded": (
+        "tests/data_access/dandi_nwb_bounded/__init__.py",
+    ),
+    "moabb_protocol_conformance": (
+        "tools/moabb_protocol_conformance/__init__.py",
+        "tests/tools/moabb_protocol_conformance/__init__.py",
+    ),
+    "mne_signal_blocks": (
+        "adapters/mne_signal_blocks/__init__.py",
+        "tests/adapters/mne_signal_blocks/__init__.py",
+    ),
+    "streaming_s3_transfer": (),
+    "ds005620_cohort_stream": (),
 }
 for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.items():
     _component_spec = COMPONENTS[_component_name]
     _initializer_tests = tuple(dict.fromkeys(
         pair["test"] for pair in _component_spec.get("candidate_pairs", ())
+        if pair["test"] in _component_spec.get("tests", ())
+        and (
+            pair["test"] not in _component_spec.get("external_test_paths", {})
+            or pair["test"] in _component_spec.get("test_markers", {})
+        )
     ))
     _component_spec["package_initializers"] = {
         _initializer_path: _initializer_tests
@@ -685,6 +905,12 @@ COMPONENT_OWNER_PRS = {
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
+    "public_repo_source_pack": (391,),
+    "dandi_nwb_bounded": (437,),
+    "streaming_s3_transfer": (437,),
+    "ds005620_cohort_stream": (437,),
+    "moabb_protocol_conformance": (379,),
+    "mne_signal_blocks": (380,),
 }
 
 
@@ -1414,10 +1640,23 @@ def inspect_component(
         any(normalize_repo_path(pair["test"]).casefold() in external_tests for pair in selected_pairs)
         and not any(normalize_repo_path(pair["test"]).casefold() not in external_tests for pair in selected_pairs)
     ):
+        selected_implementations = {
+            normalize_repo_path(pair["implementation"]).casefold()
+            for pair in selected_pairs
+        }
         generic_pair = next(
-            (pair for pair in pairs if normalize_repo_path(pair["test"]).casefold() not in external_tests),
+            (
+                pair for pair in pairs
+                if normalize_repo_path(pair["test"]).casefold() not in external_tests
+                and normalize_repo_path(pair["implementation"]).casefold() in selected_implementations
+            ),
             None,
         )
+        if generic_pair is None:
+            generic_pair = next(
+                (pair for pair in pairs if normalize_repo_path(pair["test"]).casefold() not in external_tests),
+                None,
+            )
         if generic_pair is not None:
             selected_pairs.append(generic_pair)
 
@@ -1430,9 +1669,23 @@ def inspect_component(
         if not (root / pair["test"]).is_file()
     } | {pair["test"] for pair in unavailable_companion_pairs})
     tests = [path for path in spec["tests"] if (root / path).is_file()]
+    test_markers = {
+        normalize_repo_path(path): marker
+        for path, marker in spec.get("test_markers", {}).items()
+    }
+    invalid_test_markers = sorted(
+        path for path, marker in test_markers.items()
+        if path not in spec.get("tests", ())
+        or normalize_repo_path(path).casefold()
+        not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
+        or marker not in {"requires_mne", "not requires_mne"}
+    )
     pair_tests = [
         pair["test"] for pair in selected_pairs
-        if normalize_repo_path(pair["test"]).casefold() not in external_tests
+        if (
+            normalize_repo_path(pair["test"]).casefold() not in external_tests
+            or normalize_repo_path(pair["test"]) in test_markers
+        )
         and (root / pair["test"]).is_file()
     ]
     delegated_tests = sorted(
@@ -1510,6 +1763,8 @@ def inspect_component(
         blockers.append("candidate test support mapping is invalid or mapped test is absent")
     if invalid_initializer_test_mappings:
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
+    if invalid_test_markers:
+        blockers.append("candidate test marker mapping is invalid or unpaired")
     if unmapped:
         blockers.append("changed candidate source/test path has no explicit implementation-test mapping")
     if not selected_pairs:
@@ -1534,9 +1789,14 @@ def inspect_component(
         "missing_package_initializers": missing_package_initializers,
         "invalid_support_test_mappings": invalid_support_test_mappings,
         "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
+        "invalid_test_markers": invalid_test_markers,
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,
+        "test_markers": {
+            test_path: test_markers[test_path]
+            for test_path in tests_to_run if test_path in test_markers
+        },
         "delegated_tests": delegated_tests,
         "executions": [],
     }
@@ -1968,6 +2228,134 @@ def validate_docker_engine_test_artifacts(
         return False, f"malformed Docker Engine test artifacts: {exc}", 0
 
 
+def docker_engine_candidate_evidence(
+    root: Path,
+    telemetry_path: Path,
+    junit_path: Path,
+    *,
+    diff_base_sha: str,
+    diff_head_sha: str,
+    tested_checkout_sha: str,
+    workflow_sha: str,
+    event_name: str,
+    candidate_changed: bool,
+    execution_outcome: str,
+) -> dict[str, Any]:
+    """Build finite, identity-bound evidence for the dedicated Docker Engine job."""
+    for label, sha in (
+        ("diff base", diff_base_sha),
+        ("diff head", diff_head_sha),
+        ("tested checkout", tested_checkout_sha),
+        ("workflow", workflow_sha),
+    ):
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError(f"Docker Engine evidence requires a full {label} SHA")
+    if execution_outcome not in {"success", "failure", "cancelled", "skipped", "unknown"}:
+        raise ValueError("Docker Engine execution outcome is invalid")
+    exact_test = "tests/docker_context/test_docker_engine_build_context.py"
+    evidence: dict[str, Any] = {
+        "schema_version": "round6-external-candidate-evidence-v1",
+        "workflow": "Required Checks",
+        "job": "docker-context-engine",
+        "diff_base_sha": diff_base_sha,
+        "diff_head_sha": diff_head_sha,
+        "tested_checkout_sha": tested_checkout_sha,
+        "workflow_sha": workflow_sha,
+        "event_name": event_name,
+        "selected_component": "docker_context_policy" if candidate_changed else None,
+        "implementation_paths": [".dockerignore"] if candidate_changed else [],
+        "test_paths": [exact_test] if candidate_changed else [],
+        "artifact_path": "outputs/docker_context_candidate_evidence.json",
+        "execution_outcome": execution_outcome,
+        "counts": {
+            "collected": None,
+            "passed": None,
+            "skipped": None,
+            "failures": None,
+            "errors": None,
+            "timeouts": None,
+        },
+        "status": "INCONCLUSIVE",
+        "failure_reason": None,
+    }
+    if not candidate_changed:
+        evidence["status"] = "NOT_APPLICABLE"
+        evidence["failure_reason"] = "no registered Docker candidate path changed"
+        return evidence
+
+    valid, reason, test_count = validate_docker_engine_test_artifacts(
+        root, telemetry_path, junit_path, exact_test
+    )
+    if valid:
+        evidence["counts"] = {
+            "collected": test_count,
+            "passed": test_count,
+            "skipped": 0,
+            "failures": 0,
+            "errors": 0,
+            "timeouts": 0,
+        }
+        evidence["status"] = "PASS"
+        return evidence
+
+    evidence["failure_reason"] = reason
+    timeout_count: int | None = None
+    try:
+        telemetry_bytes = _read_contained_bytes(
+            root,
+            telemetry_path,
+            "Docker Engine telemetry path",
+            max_bytes=MAX_RUNNER_TELEMETRY_BYTES,
+        )
+        telemetry = _strict_json_loads(telemetry_bytes.decode("utf-8"))
+        if isinstance(telemetry, dict) and isinstance(telemetry.get("summary"), dict):
+            raw_timeouts = telemetry["summary"].get("timeout_batches")
+            if type(raw_timeouts) is int and raw_timeouts >= 0:
+                timeout_count = raw_timeouts
+        batches = telemetry.get("batches", []) if isinstance(telemetry, dict) else []
+        if isinstance(batches, list) and len(batches) == 1 and isinstance(batches[0], dict):
+            pytest_summary = _pytest_result_summary(batches[0].get("stdout_tail"))
+            if pytest_summary is not None:
+                evidence["counts"]["passed"] = pytest_summary[0] + pytest_summary[1]
+    except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+    try:
+        junit_bytes = _read_contained_bytes(
+            root,
+            junit_path,
+            "Docker Engine JUnit path",
+            max_bytes=MAX_JUNIT_XML_BYTES,
+        )
+        outcomes, _, total_tests = _junit_details_from_bytes(junit_bytes)
+        cases, skipped, failed, errors = outcomes
+        evidence["counts"].update({
+            "collected": total_tests,
+            "skipped": skipped,
+            "failures": failed,
+            "errors": errors,
+        })
+        # A declared total may include unittest subtests; only infer passes
+        # when the runner independently reports the same nonzero total.
+        if evidence["counts"]["passed"] is not None and (
+            evidence["counts"]["passed"] + skipped + failed + errors == total_tests
+        ):
+            evidence["counts"]["passed"] = total_tests - skipped - failed - errors
+        elif total_tests == cases:
+            evidence["counts"]["passed"] = cases - skipped - failed - errors
+    except (OSError, ValueError, UnicodeDecodeError, ET.ParseError):
+        pass
+    evidence["counts"]["timeouts"] = timeout_count
+    known_test_failure = any(
+        type(evidence["counts"][key]) is int and evidence["counts"][key] > 0
+        for key in ("skipped", "failures", "errors", "timeouts")
+    )
+    if known_test_failure:
+        evidence["status"] = "FAIL"
+    else:
+        evidence["status"] = "BLOCKED"
+    return evidence
+
+
 def run(
     root: Path,
     diff_base_sha: str,
@@ -1979,13 +2367,21 @@ def run(
     workflow_sha: str | None = None,
     event_name: str | None = None,
     require_checkout_match: bool = False,
+    only_components: list[str] | tuple[str, ...] = (),
+    pytest_marker: str | None = None,
 ) -> int:
     root = root.resolve()
     report_path = _lexically_contained_path(root, report_path, "report path")
     always_components = list(dict.fromkeys(always_components))
+    only_components = list(dict.fromkeys(only_components))
     unknown_always = sorted(set(always_components) - set(COMPONENTS))
     if unknown_always:
         raise ValueError(f"unknown always-run components: {unknown_always}")
+    unknown_only = sorted(set(only_components) - set(COMPONENTS))
+    if unknown_only:
+        raise ValueError(f"unknown component filters: {unknown_only}")
+    if pytest_marker not in {None, "requires_mne", "not requires_mne"}:
+        raise ValueError("unsupported pytest marker profile")
     if tested_checkout_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", tested_checkout_sha):
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
@@ -1998,18 +2394,28 @@ def run(
                 )
     changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
+    if only_components:
+        selected = [name for name in selected if name in only_components]
+    component_scope = only_components or tuple(COMPONENTS)
     changed_casefold = {normalize_repo_path(path).casefold() for path in changed}
     delegated_test_owners = {
         normalize_repo_path(path): job
-        for spec in COMPONENTS.values()
+        for name, spec in COMPONENTS.items()
+        if name in component_scope
         for path, job in spec.get("external_test_paths", {}).items()
         if normalize_repo_path(path).casefold() in changed_casefold
     }
     relevant_paths = sorted({
         normalize_repo_path(path)
         for path in changed
-        if any(_is_component_relevant(name, {path}) for name in COMPONENTS)
+        if any(_is_component_relevant(name, {path}) for name in component_scope)
     })
+    unmapped_candidate_paths = _unmapped_candidate_paths(changed)
+    if only_components:
+        unmapped_candidate_paths = [
+            path for path in unmapped_candidate_paths
+            if any(_is_component_relevant(name, {path}) for name in only_components)
+        ]
     report: dict[str, Any] = {
         "schema_version": "round6-experimental-ci-report-v1",
         "event_name": event_name,
@@ -2023,8 +2429,10 @@ def run(
         "delegated_test_owners": delegated_test_owners,
         "selected_components": selected,
         "always_components": always_components,
+        "only_components": only_components,
+        "pytest_marker_profile": pytest_marker,
         "not_applicable_components": [],
-        "unmapped_candidate_paths": _unmapped_candidate_paths(changed),
+        "unmapped_candidate_paths": unmapped_candidate_paths,
         "selected_paths": {},
         "executed_commands": [],
         "components": [],
@@ -2199,6 +2607,10 @@ def run(
             entry = inspect_component(
                 name, root, component_changes, require_all_pairs=require_all_pairs
             )
+            if pytest_marker is not None:
+                entry["test_markers"] = {
+                    test_path: pytest_marker for test_path in entry["tests_to_run"]
+                }
             report["components"].append(entry)
             report["selected_paths"][name] = sorted({
                 *component_changes,
@@ -2307,6 +2719,9 @@ def run(
                     f"--pytest-arg=--junitxml={junit_arg}",
                     test_file,
                 ]
+                test_marker = entry.get("test_markers", {}).get(test_file)
+                if test_marker:
+                    cmd[-1:-1] = ["--marker", test_marker]
                 if name == "docker_context_policy":
                     # The host-side Docker Engine probe reports the daemon
                     # version; keep that evidence visible in the job log.
@@ -2317,6 +2732,7 @@ def run(
                     "owner_prs": entry["owner_prs"],
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
+                    "pytest_marker": test_marker,
                     "diff_base_sha": diff_base_sha,
                     "diff_head_sha": diff_head_sha,
                     "tested_checkout_sha": tested_checkout_sha,
@@ -2704,6 +3120,14 @@ def main(argv: list[str] | None = None) -> int:
         "--always-component", action="append", default=[], choices=sorted(COMPONENTS),
         help="Run the registered component when its candidate files exist; absence is NOT_APPLICABLE, not PASS.",
     )
+    parser.add_argument(
+        "--only-component", action="append", default=[], choices=sorted(COMPONENTS),
+        help="Restrict this focused profile to changed paths for the named component.",
+    )
+    parser.add_argument(
+        "--pytest-marker", choices=("requires_mne", "not requires_mne"),
+        help="Apply a validated optional-dependency test marker to this focused profile.",
+    )
     args = parser.parse_args(argv)
     try:
         return run(
@@ -2713,6 +3137,8 @@ def main(argv: list[str] | None = None) -> int:
             workflow_sha=args.workflow_sha,
             event_name=args.event_name,
             require_checkout_match=True,
+            only_components=args.only_component,
+            pytest_marker=args.pytest_marker,
         )
     except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         print(f"Round 6 candidate test discovery failed closed: {exc}", file=sys.stderr)
