@@ -818,8 +818,14 @@ def _condition_from_manifest(
     if not condition_manifest:
         return None, "absent"
     recordings = condition_manifest.get("recordings")
-    if recordings is None and isinstance(condition_manifest.get(relative_path), str):
-        return str(condition_manifest[relative_path]), "explicit_manifest"
+    flat = condition_manifest.get(relative_path)
+    if recordings is None and isinstance(flat, str):
+        if not flat.strip():
+            return None, "absent"
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN,
+            f"flat condition label for {relative_path} lacks confirmed=true; use a recordings entry",
+        )
     if not isinstance(recordings, _Mapping):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.AMBIGUOUS_CONDITION_LABEL,
@@ -830,8 +836,12 @@ def _condition_from_manifest(
         return None, "absent"
     entry = recordings[relative_path]
     if isinstance(entry, str):
-        label = entry.strip()
-        return (label or None), ("explicit_manifest" if label else "absent")
+        if not entry.strip():
+            return None, "absent"
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN,
+            f"condition label for {relative_path} lacks confirmed=true in manifest",
+        )
     if not isinstance(entry, _Mapping):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.AMBIGUOUS_CONDITION_LABEL,
@@ -862,6 +872,21 @@ def _condition_from_manifest(
     return str(label).strip(), "explicit_manifest"
 
 
+def _require_contained_relative_path(local_root: str, relative_path: str) -> None:
+    """Reject a relative_path that resolves outside local_root, symlinks included.
+
+    Backslashes count as separators on every platform. resolve() reads path
+    metadata only; no recording is opened here.
+    """
+    root = Path(local_root).resolve()
+    target = (root / str(relative_path).replace("\\", "/")).resolve()
+    if not target.is_relative_to(root):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            f"relative_path must stay inside local_root: {relative_path!r}",
+        )
+
+
 def enforce_bids_access_gate(request: BIDSAccessRequest) -> None:
     """Reject full-dataset and unrestricted remote requests before any I/O."""
     _normalize_dataset_id(request.dataset_id)
@@ -890,6 +915,8 @@ def enforce_bids_access_gate(request: BIDSAccessRequest) -> None:
             BIDSAdapterErrorCode.MISSING_LOCAL_OR_BOUNDED_WINDOW,
             "provide an explicit local_root or a bounded approved remote window",
         )
+    if request.local_root and request.relative_path:
+        _require_contained_relative_path(request.local_root, request.relative_path)
     if request.window is not None:
         request.window.validate()
     if request.expected_checksum is not None:

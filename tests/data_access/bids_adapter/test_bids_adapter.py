@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from data import bids_ingest
 from data.bids_ingest import (
     BIDSAccessRequest,
     BIDSAdapterError,
@@ -18,6 +19,7 @@ from data.bids_ingest import (
     index_bids_metadata,
     optional_dependency_status,
     plan_bounded_window_access,
+    read_bounded_window_lazy,
     serialize_bids_manifest,
 )
 from data import openneuro_loader as onl
@@ -256,3 +258,60 @@ def test_governance_compile_and_whitespace(tmp_path: Path):
         text=True,
     )
     assert gov.returncode in {0, 1}, gov.stdout + gov.stderr
+
+
+@pytest.mark.parametrize(
+    "escaping",
+    [
+        "../outside/secret.edf",
+        "..\\outside\\secret.edf",
+        "sub-01/../../outside/secret.edf",
+        "{outside}",
+    ],
+)
+def test_relative_path_escaping_local_root_rejected(tmp_path: Path, monkeypatch, escaping: str):
+    root = tmp_path / "dataset"
+    root.mkdir()
+    outside = tmp_path / "outside" / "secret.edf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"synthetic-outside-root")
+    escaping = escaping.format(outside=outside)
+    reads: list[str] = []
+    monkeypatch.setattr(
+        bids_ingest,
+        "read_window_signal",
+        lambda path, *args, **kwargs: reads.append(path),
+    )
+    request = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root=str(root),
+        relative_path=escaping,
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+    )
+    with pytest.raises(BIDSAdapterError) as plan_exc:
+        plan_bounded_window_access(request)
+    assert plan_exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+    with pytest.raises(BIDSAdapterError) as read_exc:
+        read_bounded_window_lazy(request)
+    assert read_exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+    assert reads == [], "signal reader must not be reached for a path outside local_root"
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": "resting"},
+        {"recordings": {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": "resting"}},
+    ],
+    ids=["flat_string", "recordings_string"],
+)
+def test_unconfirmed_string_labels_rejected_in_every_manifest_form(manifest):
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(
+            BIDSAccessRequest(
+                dataset_id="dsFIX001",
+                local_root=str(VALID),
+                condition_manifest=manifest,
+            )
+        )
+    assert exc.value.code == BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN.value

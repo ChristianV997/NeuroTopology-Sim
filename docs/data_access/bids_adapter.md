@@ -74,6 +74,10 @@ plan = plan_bounded_window_access(
 - `openneuro_download(...)` / `reject_full_dataset_download(...)`
 - condition labels with `confirmed=false` or missing manifest entries used as
   inferred labels
+- bare string labels (flat `{relative_path: label}` or a `recordings` string
+  entry) without `confirmed=true`
+- `relative_path` that resolves outside `local_root` (parent traversal, absolute
+  path, or a symlink that leaves the root)
 
 ## Scientific limitation
 
