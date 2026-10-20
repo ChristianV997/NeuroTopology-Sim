@@ -160,6 +160,9 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
                 "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
             ),
+            "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json": (
+                "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+            ),
         },
         "implementation_roots": ("neurotopology_sim/experimental/preprocessing/", "tools/mne_csd_reference_audit/"),
         "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/", "tests/optional_live_mne/test_mne_csd_live_parity.py"),

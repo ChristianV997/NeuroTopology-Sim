@@ -397,6 +397,13 @@ class OwnershipSnapshotTests(unittest.TestCase):
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/experimental/test_spherical_csd_parity.py"},
             helper.COMPONENTS["spherical_csd"]["candidate_pairs"],
         )
+        csd_fixture = "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json"
+        self.assertEqual(
+            helper.COMPONENTS["spherical_csd"]["support_files"][csd_fixture],
+            ("tests/mne_csd_reference_audit/test_mne_integration_optional.py",),
+        )
+        self.assertEqual(helper.select_components({csd_fixture}), ["spherical_csd"])
+        self.assertEqual(helper._unmapped_candidate_paths({csd_fixture}), [])
         self.assertIn(
             {"implementation": "shared/bids_inventory_audit/paths.py", "test": "tests/bids_inventory_audit/test_privacy_boundary.py"},
             helper.COMPONENTS["bids_inventory_audit"]["candidate_pairs"],
@@ -450,38 +457,57 @@ class OwnershipSnapshotTests(unittest.TestCase):
     def test_test_support_files_map_to_real_test_pairs_and_fail_closed(self):
         helper = _helper()
         expected = {
-            "spherical_csd": "tests/mne_csd_reference_audit/conftest.py",
-            "surrogate_audit": "tests/surrogate_audit/fixtures.py",
-            "provenance_join": "tests/tools/batch3_provenance_join/helpers.py",
+            "spherical_csd": (
+                "tests/mne_csd_reference_audit/conftest.py",
+                "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json",
+            ),
+            "surrogate_audit": ("tests/surrogate_audit/fixtures.py",),
+            "provenance_join": ("tests/tools/batch3_provenance_join/helpers.py",),
         }
-        for component, support_path in expected.items():
-            with self.subTest(component=component):
-                spec = helper.COMPONENTS[component]
-                mapped_tests = spec["support_files"][support_path]
-                self.assertTrue(mapped_tests)
-                self.assertTrue(set(mapped_tests) <= set(spec["tests"]))
-                self.assertEqual(helper._unmapped_candidate_paths({support_path}), [])
-                with TemporaryDirectory() as td:
-                    root = Path(td)
-                    support = root / support_path
-                    support.parent.mkdir(parents=True, exist_ok=True)
-                    support.write_text("# test support fixture\n", encoding="utf-8")
-                    relevant_pairs = [pair for pair in spec["candidate_pairs"] if pair["test"] in mapped_tests]
-                    for pair in relevant_pairs:
-                        for relative in (pair["implementation"], pair["test"]):
-                            target = root / relative
-                            target.parent.mkdir(parents=True, exist_ok=True)
-                            target.write_text("# mapped candidate fixture\n", encoding="utf-8")
-                    result = helper.inspect_component(component, root, {support_path})
-                    self.assertEqual(result["status"], "READY_TO_RUN", result["blockers"])
-                    self.assertEqual(result["tests_to_run"], list(dict.fromkeys(pair["test"] for pair in relevant_pairs)))
-                    self.assertEqual(result["selected_support_files"], [support_path])
-                    self.assertIn(support_path, result["selected_paths"])
+        for component, support_paths in expected.items():
+            for support_path in support_paths:
+                with self.subTest(component=component, support_path=support_path):
+                    spec = helper.COMPONENTS[component]
+                    mapped_tests = spec["support_files"][support_path]
+                    self.assertTrue(mapped_tests)
+                    self.assertTrue(set(mapped_tests) <= set(spec["tests"]))
+                    self.assertEqual(helper._unmapped_candidate_paths({support_path}), [])
+                    with TemporaryDirectory() as td:
+                        root = Path(td)
+                        related_support_paths = [
+                            path
+                            for path, related_tests in spec["support_files"].items()
+                            if set(related_tests) & set(mapped_tests)
+                        ]
+                        related_test_paths = {
+                            test_path
+                            for path in related_support_paths
+                            for test_path in spec["support_files"][path]
+                        }
+                        for related_path in related_support_paths:
+                            support = root / related_path
+                            support.parent.mkdir(parents=True, exist_ok=True)
+                            support.write_text("# test support fixture\n", encoding="utf-8")
+                        relevant_pairs = [
+                            pair for pair in spec["candidate_pairs"]
+                            if pair["test"] in related_test_paths
+                        ]
+                        for pair in relevant_pairs:
+                            for relative in (pair["implementation"], pair["test"]):
+                                target = root / relative
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                target.write_text("# mapped candidate fixture\n", encoding="utf-8")
+                        result = helper.inspect_component(component, root, {support_path})
+                        self.assertEqual(result["status"], "READY_TO_RUN", result["blockers"])
+                        expected_tests = [test for test in spec["tests"] if test in mapped_tests]
+                        self.assertEqual(result["tests_to_run"], expected_tests)
+                        self.assertEqual(result["selected_support_files"], [support_path])
+                        self.assertIn(support_path, result["selected_paths"])
 
-                    support.unlink()
-                    missing = helper.inspect_component(component, root, {support_path})
-                    self.assertEqual(missing["status"], "BLOCKED")
-                    self.assertEqual(missing["missing_support_files"], [support_path])
+                        (root / support_path).unlink()
+                        missing = helper.inspect_component(component, root, {support_path})
+                        self.assertEqual(missing["status"], "BLOCKED")
+                        self.assertEqual(missing["missing_support_files"], [support_path])
 
     def test_support_mapping_to_unpaired_test_is_blocked(self):
         helper = _helper()
