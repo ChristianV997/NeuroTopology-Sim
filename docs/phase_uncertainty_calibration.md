@@ -14,7 +14,7 @@ treated as that missing module.
 
 ## 1. Executive Summary
 
-This audit evaluates the calibration, empirical coverage, and mathematical failure modes of the proposed **Round 6 narrowband phase-uncertainty estimator**. 
+This audit evaluates the calibration, empirical coverage, and mathematical failure modes of the proposed **Round 6 narrowband phase-uncertainty estimator**.
 
 The core question investigated is: **Does the reported `phase_std` represent a calibrated, statistically valid measure of phase uncertainty, or is it an uncalibrated heuristic?**
 
