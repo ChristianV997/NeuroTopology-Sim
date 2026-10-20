@@ -471,8 +471,15 @@ def test_h1_cycle_channel_locations_too_few_channels_returns_empty() -> None:
     assert h1_cycle_channel_locations(plv, mask) == []
 
 
-@pytest.mark.skipif(not _HAVE_GUDHI, reason="requires optional gudhi dependency")
-def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> None:
+def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs(monkeypatch) -> None:
+    if not _HAVE_GUDHI:
+        mock_raw = [
+            {"birth_cell": (1, 2), "death_cell": (3, 4)},
+            {"birth_cell": (2, 1), "death_cell": (4, 3)},
+            {"birth_cell": (0, 1), "death_cell": (2, 3)},
+        ]
+        import core.topology
+        monkeypatch.setattr(core.topology, "extract_h1_cycle_locations", lambda arr: mock_raw)
     """A real symmetric PLV matrix must not report the mirror-image (c, r) cell
     as a second, distinct feature from (r, c) -- exercises the actual bug found
     when this was first run on real data (368 raw features collapsing to far
@@ -492,8 +499,13 @@ def test_h1_cycle_channel_locations_deduplicates_symmetric_mirror_pairs() -> Non
         keys.add(key)
 
 
-@pytest.mark.skipif(not _HAVE_GUDHI, reason="requires optional gudhi dependency")
-def test_h1_cycle_channel_locations_restricts_before_extracting() -> None:
+def test_h1_cycle_channel_locations_restricts_before_extracting(monkeypatch) -> None:
+    if not _HAVE_GUDHI:
+        def mock_extract(arr):
+            assert arr.shape == (3, 3)
+            return [{"birth_cell": (0, 1), "death_cell": (1, 2)}]
+        import core.topology
+        monkeypatch.setattr(core.topology, "extract_h1_cycle_locations", mock_extract)
     """Directly verify the submatrix restriction: a 5x5 PLV with only 3 channels
     finite must only ever return indices in [0, 3)."""
     rng = np.random.default_rng(2)
