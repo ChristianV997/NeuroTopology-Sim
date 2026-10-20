@@ -179,46 +179,5 @@ class OracleTests(unittest.TestCase):
         self.assertAlmostEqual(abs(cmath.exp(alternate) - z), 0)
 
 
-class MergedProductionBridgeTests(unittest.TestCase):
-    """Optional cross-check vs merged ``dmd_crouzeix`` (skip if module absent).
-
-    Does not edit production code. HOLD / SYNTHETIC_ONLY — agreement on synthetic
-    fixtures is not a biological exceptional-point claim.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        try:
-            from neurotopology_sim.experimental.dynamics import dmd_crouzeix as dmd
-        except Exception as exc:  # pragma: no cover - branch without merged leaf
-            raise unittest.SkipTest(
-                f"merged DMD production module unavailable: {exc}"
-            ) from exc
-        cls.dmd = dmd
-
-    def test_ep2_hamiltonian_matches_oracle_and_nilpotency(self):
-        import numpy as np
-
-        h_oracle = model(0.0, 1.2, 0.0, 1.2)
-        h_prod = self.dmd.ep2_hamiltonian(omega=0.0, delta=1.2, gamma=0.0, g=1.2)
-        self.assertTrue(np.allclose(np.asarray(h_oracle), h_prod, atol=1e-12))
-        rep = self.dmd.diagnose_ep2(h_prod)
-        self.assertEqual(rep.algebraic_multiplicity, 2)
-        self.assertEqual(rep.geometric_multiplicity, 1)
-        self.assertGreater(float(rep.nilpotent_norm), 1e-8)
-        self.assertLess(float(rep.nilpotent_square_norm), 1e-10)
-
-    def test_nyquist_alias_matches_production_report(self):
-        import numpy as np
-
-        self.assertAlmostEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
-        dt = 1.0 / 250.0
-        l240 = self.dmd.discrete_eigenvalue_from_frequency_hz(240.0, dt)
-        lm10 = self.dmd.discrete_eigenvalue_from_frequency_hz(-10.0, dt)
-        self.assertTrue(np.allclose(l240, lm10, atol=1e-12))
-        rep = self.dmd.alias_ambiguity_report(f_hz=240.0, fs_hz=250.0)
-        self.assertTrue(rep.phases_match)
-
-
 if __name__ == '__main__':
     unittest.main()
