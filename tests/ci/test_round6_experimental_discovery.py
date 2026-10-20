@@ -1133,6 +1133,17 @@ def test_fixture():
             )
             self.assertEqual(contract["tested_tree_blob_sha"], expected_blob)
             self.assertEqual(contract["expected_delta"], 12)
+            self.assertEqual(contract["source_head_sha"], "ab9090bb023695e32915a8f0302f086dc92fa780")
+            self.assertEqual(contract["verification_run_id"], 39382340982)
+            self.assertEqual(
+                contract["verification_run_url"],
+                "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
+            )
+            self.assertEqual(contract["verified_junit_total"], 53)
+            self.assertEqual(contract["verified_junit_testcase_records"], 41)
+            self.assertEqual(contract["component"], "mne_signal_blocks")
+            self.assertEqual(contract["owner_pr"], 438)
+            self.assertIn(438, helper.COMPONENT_OWNER_PRS[contract["component"]])
             self.assertEqual(
                 helper._registered_junit_subtest_contract(
                     Path.cwd(), "1" * 40, "tests/elsewhere/test_changed.py"
@@ -1145,6 +1156,45 @@ def test_fixture():
                 None,
             )
 
+        original = helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]
+        invalid_evidence = {
+            **original,
+            "verification": {
+                **original["verification"],
+                "junit_reported_total": 54,
+            },
+        }
+        with (
+            patch.object(
+                helper, "REGISTERED_JUNIT_SUBTEST_DELTAS",
+                {MNE_SIGNAL_TEST: invalid_evidence},
+            ),
+            patch.object(helper, "_git_tree_blob_sha", return_value=expected_blob),
+        ):
+            self.assertIsNone(
+                helper._registered_junit_subtest_contract(
+                    Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
+                )
+            )
+
+        for key, value in (("runner_telemetry_valid", False), ("skipped", 1)):
+            invalid_verification = {
+                **original,
+                "verification": {**original["verification"], key: value},
+            }
+            with (
+                patch.object(
+                    helper, "REGISTERED_JUNIT_SUBTEST_DELTAS",
+                    {MNE_SIGNAL_TEST: invalid_verification},
+                ),
+                patch.object(helper, "_git_tree_blob_sha", return_value=expected_blob),
+            ):
+                self.assertIsNone(
+                    helper._registered_junit_subtest_contract(
+                        Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
+                    )
+                )
+
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             commit = _repo(root, with_candidate=False)
@@ -1154,6 +1204,22 @@ def test_fixture():
             expected_actual_blob = _git(root, "rev-parse", f"{commit}:{MNE_SIGNAL_TEST}")
             self.assertEqual(actual_blob, expected_actual_blob)
             self.assertNotEqual(actual_blob, expected_blob)
+
+    def test_updated_438_test_blob_does_not_inherit_historical_subtest_allowance(self):
+        helper = _helper()
+        # PR #438's merged test file no longer has the historical six two-case
+        # unittest.subTest loops represented by the older b37cc... blob.
+        merged_438_blob = "6efe159f38e2ee4f5c662f0a63d32e9b0952751b"
+        self.assertNotEqual(
+            merged_438_blob,
+            helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+        )
+        with patch.object(helper, "_git_tree_blob_sha", return_value=merged_438_blob):
+            self.assertIsNone(
+                helper._registered_junit_subtest_contract(
+                    Path.cwd(), "1" * 40, MNE_SIGNAL_TEST
+                )
+            )
 
     def test_failed_pytest_retains_bounded_junit_diagnostics(self):
         helper = _helper()
@@ -1378,8 +1444,15 @@ def test_fixture():
         self.assertEqual(execution["registered_subtest_contract"], {
             "test_path": MNE_SIGNAL_TEST,
             "tested_tree_blob_sha": helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+            "source_head_sha": "ab9090bb023695e32915a8f0302f086dc92fa780",
+            "verification_run_id": 39382340982,
+            "verification_run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
             "expected_delta": 12,
             "observed_delta": 12,
+            "verified_junit_total": 53,
+            "verified_junit_testcase_records": 41,
+            "component": "mne_signal_blocks",
+            "owner_pr": 438,
             "applied_without_pytest_summary": True,
         })
         self.assertEqual(log_evidence["registered_subtest_contract"], execution["registered_subtest_contract"])
@@ -2001,6 +2074,11 @@ def test_fixture():
     def test_required_active_candidate_paths_are_not_silently_unmapped_or_not_applicable(self):
         helper = _helper()
         expected = {
+            "release_readiness_security": (
+                370,
+                "tools/release_readiness/batch2_security/artifact_states.py",
+                "tests/release_readiness/batch2_security/test_artifact_states.py",
+            ),
             "higher_order_runtime": (
                 377,
                 "tools/higher_order_runtime/stream_contract.py",
@@ -2050,6 +2128,16 @@ def test_fixture():
                 378,
                 "adapters/mne_csd/transform.py",
                 "tests/adapters/mne_csd/test_parameter_forwarding.py",
+            ),
+            "source_mining_evidence_boundary": (
+                382,
+                "tools/evidence_promotion_gate/evaluator.py",
+                "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            ),
+            "measurement_hypothesis_contract": (
+                384,
+                "shared/measurement_hypothesis/validate.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
             ),
             "batch2_pipeline_benchmark": (
                 371,
@@ -2122,7 +2210,7 @@ def test_fixture():
                 "tests/tools/moabb_protocol_conformance/test_manifest_and_validation.py",
             ),
             "mne_signal_blocks": (
-                380,
+                380, 438,
                 "adapters/mne_signal_blocks/converter.py",
                 "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py",
             ),
@@ -2136,6 +2224,73 @@ def test_fixture():
                 spec["candidate_pairs"],
             )
             self.assertEqual(helper.select_components({test_file}), [component])
+
+        security = helper.COMPONENTS["release_readiness_security"]
+        self.assertEqual(
+            {pair["implementation"] for pair in security["candidate_pairs"]},
+            {
+                "tools/release_readiness/batch2_security/artifact_states.py",
+                "tools/release_readiness/batch2_security/evidence_boundary.py",
+                "tools/release_readiness/batch2_security/finite_json.py",
+                "tools/release_readiness/batch2_security/fixtures.py",
+                "tools/release_readiness/batch2_security/network_policy.py",
+                "tools/release_readiness/batch2_security/path_containment.py",
+                "tools/release_readiness/batch2_security/report.py",
+                "tools/release_readiness/batch2_security/runner.py",
+                "tools/release_readiness/batch2_security/schema.py",
+                "tools/release_readiness/batch2_security/static_scan.py",
+                "tools/release_readiness/batch2_security/subprocess_guard.py",
+                "scripts/run_batch2_security_audit.py",
+            },
+        )
+        self.assertEqual(
+            {pair["test"] for pair in security["candidate_pairs"]},
+            set(security["tests"]),
+        )
+        self.assertEqual(
+            set(security["support_files"]),
+            {"tests/release_readiness/batch2_security/conftest.py"},
+        )
+
+        source_mining = helper.COMPONENTS["source_mining_evidence_boundary"]
+        self.assertEqual(
+            {(pair["implementation"], pair["test"]) for pair in source_mining["candidate_pairs"]},
+            {
+                (
+                    "tools/evidence_promotion_gate/adapters.py",
+                    "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+                ),
+                (
+                    "tools/evidence_promotion_gate/evaluator.py",
+                    "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+                ),
+                (
+                    "tools/public_repo_harvest/schema.py",
+                    "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+                ),
+            },
+        )
+
+        measurement = helper.COMPONENTS["measurement_hypothesis_contract"]
+        self.assertEqual(
+            {pair["implementation"] for pair in measurement["candidate_pairs"]},
+            {
+                "shared/measurement_hypothesis/validate.py",
+                "shared/measurement_hypothesis/schema.py",
+                "shared/measurement_hypothesis/resolve.py",
+                "shared/measurement_hypothesis/language.py",
+                "shared/measurement_hypothesis/__main__.py",
+                "tools/research_claim_gate/gate.py",
+            },
+        )
+        self.assertEqual(
+            {pair["test"] for pair in measurement["candidate_pairs"]},
+            set(measurement["tests"]),
+        )
+        self.assertEqual(
+            measurement["package_initializers"]["shared/measurement_hypothesis/__init__.py"],
+            tuple(measurement["tests"]),
+        )
 
         self.assertIn(
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_adversarial_contracts.py"},
@@ -2352,6 +2507,15 @@ def test_fixture():
             helper.COMPONENTS["dandi_nwb_bounded"]["implementation_roots"],
         )
 
+    def test_report_only_replication_suites_remain_unmapped_and_fail_closed(self):
+        helper = _helper()
+        paths = {
+            "tests/research/batch3/test_replication_dataset_feasibility.py",
+            "tests/research/batch3/test_dataset_metadata_audit.py",
+        }
+        self.assertEqual(helper.select_components(paths), [])
+        self.assertEqual(helper._unmapped_candidate_paths(paths), sorted(paths))
+
     def test_docker_engine_test_change_runs_static_policy_and_is_reported_as_delegated(self):
         helper = _helper()
         engine_test = "tests/docker_context/test_docker_engine_build_context.py"
@@ -2387,9 +2551,17 @@ def test_fixture():
             "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
             "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
             "tests/research/batch3/test_claim_matrix.py",  # PR #393
-            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",  # PR #382
         ):
             self.assertIn(test_path, helper._unmapped_candidate_paths({test_path}))
+
+        source_mining_path = (
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py"
+        )
+        self.assertEqual(
+            helper.select_components({source_mining_path}),
+            ["source_mining_evidence_boundary"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths({source_mining_path}), [])
 
         # The BIDS audit is now explicitly mapped despite its historical guard
         # root; registered mappings take precedence over the fail-closed list.
@@ -2619,9 +2791,7 @@ def test_fixture():
             (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
             (393, "tests/research/batch3/test_claim_matrix.py"),
             (386, "oss_opportunities/opportunity_batch.py"),
-            (384, "shared/measurement_hypothesis/validate.py"),
             (383, "tools/research_plan_quality_eval/harness.py"),
-            (382, "tests/source_mining_integration/test_source_mining_evidence_boundary.py"),
             (376, "tests/scientific_falsification/test_batch3_falsification_matrix.py"),
             (375, "tests/research/test_batch3_source_registry.py"),
             (373, "sciencer_d/btc_icft/level_t/base_real_topology.py"),

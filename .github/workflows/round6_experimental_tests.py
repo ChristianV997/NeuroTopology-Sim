@@ -47,6 +47,21 @@ REGISTERED_JUNIT_SUBTEST_DELTAS = {
     "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": {
         "blob_sha": "b37cc987b1e369295552c574ac2bbd1312ecc733",
         "delta": 12,
+        "component": "mne_signal_blocks",
+        "owner_pr": 438,
+        "source_head_sha": "ab9090bb023695e32915a8f0302f086dc92fa780",
+        "verification": {
+            "run_id": 39382340982,
+            "run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
+            "junit_reported_total": 53,
+            "junit_testcase_records": 41,
+            "runner_exit_code": 0,
+            "runner_telemetry_valid": True,
+            "skipped": 0,
+            "failed": 0,
+            "errors": 0,
+            "timeouts": 0,
+        },
     },
 }
 PINNED_OUTPUT_PROBE_MARKER = b"round6-pinned-output-probe-v1"
@@ -934,6 +949,215 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/benchmarks/batch2_pipeline/",
         ),
     },
+    "release_readiness_security": {
+        "triggers": (
+            "tools/release_readiness/batch2_security/",
+            "scripts/run_batch2_security_audit.py",
+            "tests/release_readiness/batch2_security/",
+        ),
+        "tests": (
+            "tests/release_readiness/batch2_security/test_artifact_states.py",
+            "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+            "tests/release_readiness/batch2_security/test_finite_json.py",
+            "tests/release_readiness/batch2_security/test_network_policy.py",
+            "tests/release_readiness/batch2_security/test_path_containment.py",
+            "tests/release_readiness/batch2_security/test_static_scan.py",
+            "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+            "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/release_readiness/batch2_security/artifact_states.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                ),
+                "tools/release_readiness/batch2_security/evidence_boundary.py": (
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                ),
+                "tools/release_readiness/batch2_security/finite_json.py": (
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                ),
+                "tools/release_readiness/batch2_security/network_policy.py": (
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                ),
+                "tools/release_readiness/batch2_security/path_containment.py": (
+                    "tests/release_readiness/batch2_security/test_path_containment.py",
+                ),
+                "tools/release_readiness/batch2_security/static_scan.py": (
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                ),
+                "tools/release_readiness/batch2_security/subprocess_guard.py": (
+                    "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                ),
+                "tools/release_readiness/batch2_security/report.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "tools/release_readiness/batch2_security/runner.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "scripts/run_batch2_security_audit.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                # The schema is exercised by every focused suite module.
+                "tools/release_readiness/batch2_security/schema.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                    "tests/release_readiness/batch2_security/test_path_containment.py",
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                    "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "tools/release_readiness/batch2_security/fixtures.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                ),
+            }.items()
+            for test in tests
+        ),
+        "support_files": {
+            "tests/release_readiness/batch2_security/conftest.py": (
+                "tests/release_readiness/batch2_security/test_artifact_states.py",
+                "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                "tests/release_readiness/batch2_security/test_finite_json.py",
+                "tests/release_readiness/batch2_security/test_network_policy.py",
+                "tests/release_readiness/batch2_security/test_path_containment.py",
+                "tests/release_readiness/batch2_security/test_static_scan.py",
+                "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+            ),
+        },
+        "implementation_roots": (
+            "tools/release_readiness/batch2_security/",
+            "scripts/run_batch2_security_audit.py",
+        ),
+        "candidate_test_roots": ("tests/release_readiness/batch2_security/",),
+    },
+    "source_mining_evidence_boundary": {
+        "triggers": (
+            "tools/evidence_promotion_gate/adapters.py",
+            "tools/evidence_promotion_gate/evaluator.py",
+            "tools/public_repo_harvest/schema.py",
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+        "tests": (
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/evidence_promotion_gate/adapters.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+            {
+                "implementation": "tools/evidence_promotion_gate/evaluator.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+            {
+                "implementation": "tools/public_repo_harvest/schema.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/evidence_promotion_gate/adapters.py",
+            "tools/evidence_promotion_gate/evaluator.py",
+            "tools/public_repo_harvest/schema.py",
+        ),
+        "candidate_test_roots": (
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+    },
+    "measurement_hypothesis_contract": {
+        "triggers": (
+            "shared/measurement_hypothesis/",
+            "tools/research_claim_gate/gate.py",
+            "tests/measurement_hypothesis/",
+        ),
+        "tests": (
+            "tests/measurement_hypothesis/test_boundary_regressions.py",
+            "tests/measurement_hypothesis/test_five_level_contract.py",
+            "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+            "tests/measurement_hypothesis/test_implementation_resolution.py",
+            "tests/measurement_hypothesis/test_interpretation_language.py",
+            "tests/measurement_hypothesis/test_measurement_and_operator.py",
+            "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+            "tests/measurement_hypothesis/test_provenance_and_sources.py",
+            "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "shared/measurement_hypothesis/validate.py",
+                "shared/measurement_hypothesis/schema.py",
+                "shared/measurement_hypothesis/resolve.py",
+                "shared/measurement_hypothesis/language.py",
+            )
+            for test in (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            )
+        ) + (
+            {
+                "implementation": "shared/measurement_hypothesis/__main__.py",
+                "test": "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+            },
+            {
+                "implementation": "tools/research_claim_gate/gate.py",
+                "test": "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            },
+        ),
+        "support_files": {
+            "tests/measurement_hypothesis/conftest.py": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/empirical_support_implied.json": (
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/missing_provenance.json": (
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/origin_shift_cortical_wave_equivalence.json": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/theory_term_leak.json": (
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/valid_hypothetical_mapping.json": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            ),
+        },
+        "implementation_roots": (
+            "shared/measurement_hypothesis/",
+            "tools/research_claim_gate/gate.py",
+        ),
+        "candidate_test_roots": ("tests/measurement_hypothesis/",),
+    },
     "dandi_nwb_bounded": {
         "triggers": (
             "data/dandi_nwb_ingest.py",
@@ -1317,6 +1541,13 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "tools/benchmarks/__init__.py",
         "tools/benchmarks/batch2_pipeline/__init__.py",
     ),
+    "release_readiness_security": (
+        "tools/release_readiness/batch2_security/__init__.py",
+        "tests/release_readiness/batch2_security/__init__.py",
+    ),
+    "measurement_hypothesis_contract": (
+        "shared/measurement_hypothesis/__init__.py",
+    ),
     "dandi_nwb_bounded": (
         "tests/data_access/dandi_nwb_bounded/__init__.py",
     ),
@@ -1382,12 +1613,15 @@ COMPONENT_OWNER_PRS = {
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
     "finite_jitter_production_bridge": (410,),
+    "release_readiness_security": (370,),
+    "source_mining_evidence_boundary": (382,),
+    "measurement_hypothesis_contract": (384,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
     "ds005620_cohort_stream": (437,),
     "moabb_protocol_conformance": (379,),
-    "mne_signal_blocks": (380,),
+    "mne_signal_blocks": (380, 438),
     "mne_csd_adapter": (378,),
 }
 
@@ -2491,16 +2725,62 @@ def _registered_junit_subtest_contract(
     contract = REGISTERED_JUNIT_SUBTEST_DELTAS.get(normalized)
     if not isinstance(contract, dict) or not isinstance(commit_sha, str):
         return None
-    observed_blob_sha = _git_tree_blob_sha(root, commit_sha, normalized)
-    if observed_blob_sha != contract.get("blob_sha"):
-        return None
+    component = contract.get("component")
+    owner_pr = contract.get("owner_pr")
+    blob_sha = contract.get("blob_sha")
+    source_head_sha = contract.get("source_head_sha")
+    verification = contract.get("verification")
     delta = contract.get("delta")
-    if type(delta) is not int or delta <= 0:
+    if (
+        not isinstance(component, str)
+        or type(owner_pr) is not int
+        or owner_pr not in COMPONENT_OWNER_PRS.get(component, ())
+        or not isinstance(blob_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", blob_sha)
+        or not isinstance(source_head_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", source_head_sha)
+        or not isinstance(verification, dict)
+        or type(verification.get("run_id")) is not int
+        or verification["run_id"] <= 0
+        or type(delta) is not int
+        or delta <= 0
+        or not any(
+            normalize_repo_path(pair.get("test", "")) == normalized
+            for pair in COMPONENTS.get(component, {}).get("candidate_pairs", ())
+        )
+    ):
+        return None
+    observed_blob_sha = _git_tree_blob_sha(root, commit_sha, normalized)
+    source_blob_sha = _git_tree_blob_sha(root, source_head_sha, normalized)
+    if observed_blob_sha != blob_sha or source_blob_sha != blob_sha:
+        return None
+    junit_total = verification.get("junit_reported_total")
+    testcase_records = verification.get("junit_testcase_records")
+    runner_exit_code = verification.get("runner_exit_code")
+    outcomes = tuple(verification.get(key) for key in ("skipped", "failed", "errors", "timeouts"))
+    if (
+        type(junit_total) is not int
+        or junit_total <= 0
+        or type(testcase_records) is not int
+        or testcase_records < 0
+        or junit_total - testcase_records != delta
+        or type(runner_exit_code) is not int
+        or runner_exit_code != 0
+        or verification.get("runner_telemetry_valid") is not True
+        or any(type(value) is not int or value != 0 for value in outcomes)
+    ):
         return None
     return {
         "test_path": normalized,
         "tested_tree_blob_sha": observed_blob_sha,
+        "source_head_sha": source_head_sha,
+        "verification_run_id": verification["run_id"],
+        "verification_run_url": verification.get("run_url"),
         "expected_delta": delta,
+        "verified_junit_total": junit_total,
+        "verified_junit_testcase_records": testcase_records,
+        "component": component,
+        "owner_pr": owner_pr,
     }
 
 
