@@ -61,15 +61,21 @@ def relative_cross_spectral_error(original: np.ndarray, surrogate: np.ndarray) -
     """Frobenius relative error of the full complex cross-spectral tensor.
 
     Strictly scale-invariant: relative error = ||C_surr - C_orig||_F / ||C_orig||_F.
+    Uses peak-magnitude normalization to prevent float underflow or overflow across
+    extreme dynamic ranges (e.g. 1e-150 to 1e150).
     """
     c0 = cross_spectral_tensor(original)
     c1 = cross_spectral_tensor(surrogate)
     if c0.shape != c1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for spectral error")
-    num = float(np.linalg.norm(c1 - c0))
-    den = float(np.linalg.norm(c0))
-    if den == 0.0:
-        return 0.0 if num == 0.0 else float("inf")
+    m0 = float(np.max(np.abs(c0)))
+    if m0 == 0.0:
+        m1 = float(np.max(np.abs(c1)))
+        return 0.0 if m1 == 0.0 else float("inf")
+    scaled_c0 = c0 / m0
+    diff = (c1 - c0) / m0
+    num = float(np.linalg.norm(diff))
+    den = float(np.linalg.norm(scaled_c0))
     return num / den
 
 
@@ -77,13 +83,21 @@ def relative_autospectral_error(original: np.ndarray, surrogate: np.ndarray) -> 
     """Relative error of per-channel auto-spectra only (not the multivariate gate).
 
     Strictly scale-invariant: relative error = ||A_surr - A_orig||_F / ||A_orig||_F.
+    Uses peak-magnitude normalization to prevent float underflow or overflow across
+    extreme dynamic ranges (e.g. 1e-150 to 1e150).
     """
     a0 = np.abs(np.fft.rfft(validate_array(original), axis=1)) ** 2
     a1 = np.abs(np.fft.rfft(validate_array(surrogate), axis=1)) ** 2
-    num = float(np.linalg.norm(a1 - a0))
-    den = float(np.linalg.norm(a0))
-    if den == 0.0:
-        return 0.0 if num == 0.0 else float("inf")
+    if a0.shape != a1.shape:
+        raise SurrogateAuditError("original/surrogate shapes disagree for autospectral error")
+    m0 = float(np.max(np.abs(a0)))
+    if m0 == 0.0:
+        m1 = float(np.max(np.abs(a1)))
+        return 0.0 if m1 == 0.0 else float("inf")
+    scaled_a0 = a0 / m0
+    diff = (a1 - a0) / m0
+    num = float(np.linalg.norm(diff))
+    den = float(np.linalg.norm(scaled_a0))
     return num / den
 
 

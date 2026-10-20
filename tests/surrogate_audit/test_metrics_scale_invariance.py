@@ -17,7 +17,7 @@ from tools.surrogate_audit.mv_iaaft import generate_mv_iaaft
 from tools.surrogate_audit.report import audit_surrogate
 
 
-@pytest.mark.parametrize("scale", [1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20])
+@pytest.mark.parametrize("scale", [1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100])
 def test_cross_spectral_error_scale_invariance_under_relative_mismatch(scale: float):
     """A constant 10% amplitude mismatch (21% cross-spectral error) must not falsely pass at small scale."""
     x = gaussian_linear(n_ch=4, n_t=128, seed=42)
@@ -31,7 +31,7 @@ def test_cross_spectral_error_scale_invariance_under_relative_mismatch(scale: fl
     assert err > SPECTRAL_GATE_1E3, f"scale {scale:1.0e} falsely passed the 1e-3 gate with err={err}"
 
 
-@pytest.mark.parametrize("scale", [1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20])
+@pytest.mark.parametrize("scale", [1e100, 1e50, 1e6, 1.0, 1e-3, 1e-6, 1e-8, 1e-10, 1e-12, 1e-15, 1e-20, 1e-50, 1e-100])
 def test_autospectral_error_scale_invariance(scale: float):
     """Autospectral relative error must also be strictly scale invariant."""
     x = gaussian_linear(n_ch=4, n_t=128, seed=42)
