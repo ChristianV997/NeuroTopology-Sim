@@ -3,14 +3,15 @@
 **Status:** HOLD / SYNTHETIC_ONLY  
 **Oracle label:** `INDEPENDENT_ORACLE_BATCH2_CURSOR_C`  
 **Base (original audit):** `origin/main` @ `3f3fe8593303184cb88eef056c1322f3d4e57a16`  
-**Live main (rebased):** `origin/main` @ `bc91af19a22783d2721fc881842573f7e08a8925`  
+**Live main (merged):** `origin/main` @ `e59dd6c23000c3e76d81ab0bb7d895be32243352`  
+**Prior live tip:** `bc91af19a22783d2721fc881842573f7e08a8925`  
 **Branch:** `batch2/cursor-c-3d-chain-audit`
 
 ## Candidate search
 
 No Round 6 finite chain-complex engine (endpoint validation + ∂ matrices + exact
 rational ranks + Betti) was present on live `main` at the original audited SHA,
-and still absent after rebase onto `bc91af19…` (confirmed: no
+and still absent after merge of `e59dd6c…` (confirmed: no
 `neurotopology_sim/**/chain_complex*` / `finite_chain*` production leaf).
 
 Related but **out of lane** on live main: `neurotopology_sim/experimental/topology/winding.py`
@@ -110,9 +111,10 @@ numpy SVD; no SciPy; no datasets; no VALIDATED/PASS scientific claims.
 ## CI / Round 6 discovery note (PR #397)
 
 Round 6 helper maps this lane as `finite_chain_audit` →
-`tests/batch2_chain_complex_audit/*.py` (self-pair oracle). After rebase onto
-live main, hosted Round 6 must re-run those exact paths with nonzero collection;
-path-mapping edits (if any) go to Codex Agent A — this PR does not edit workflows.
+`tests/batch2_chain_complex_audit/*.py` (self-pair oracle). After merge of live
+main `e59dd6c…`, hosted Round 6 must re-run those exact paths with nonzero
+collection; path-mapping edits (if any) go to Codex Agent A — this PR does not
+edit workflows.
 
 On prior head `506f13f8…`: `core-tests`, `Cross-system smoke`, and
 `ontology-claim-language` passed. `awareness-tests` failed in
