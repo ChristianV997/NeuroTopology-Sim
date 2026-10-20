@@ -271,6 +271,7 @@ def evaluate_phase_uncertainty_calibration(
         bin_edges = np.linspace(min_std, max_std + 1e-6, n_bins + 1)
 
     bins: list[CalibrationBin] = []
+    weak_bias_bins: list[int] = []
     for b_idx in range(n_bins):
         lo = float(bin_edges[b_idx])
         hi = float(bin_edges[b_idx + 1])
@@ -296,7 +297,9 @@ def evaluate_phase_uncertainty_calibration(
         b_err = error[mask]
         b_std = pred_std[mask]
         m_std = float(np.mean(b_std))
-        m_bias, _ = _circular_mean_phase_error(b_err)
+        m_bias, b_bias_resultant = _circular_mean_phase_error(b_err)
+        if b_bias_resultant < 0.1:
+            weak_bias_bins.append(b_idx)
         m_rms = float(np.sqrt(np.mean(b_err ** 2)))
         b_cov1 = float(np.mean(np.abs(b_err) <= 1.0 * b_std))
         b_cov2 = float(np.mean(np.abs(b_err) <= 1.96 * b_std))
@@ -336,6 +339,12 @@ def evaluate_phase_uncertainty_calibration(
     if overall_bias_resultant < 0.1:
         notes.append(
             "Circular mean phase-error direction is weakly determined because the error resultant length is below 0.1."
+        )
+    if weak_bias_bins:
+        bin_labels = ", ".join(str(b_idx) for b_idx in weak_bias_bins)
+        notes.append(
+            f"Circular bias direction is weakly determined for calibration bins [{bin_labels}] because their resultant length is below 0.1; "
+            "a numerically near-zero mean direction in these bins is not evidence of near-zero bias."
         )
     if overall_verdict == CalibrationVerdict.OVERCONFIDENT.value:
         notes.append(f"Estimator is OVERCONFIDENT overall (RMS error is {ratio:.2f}x predicted phase_std).")

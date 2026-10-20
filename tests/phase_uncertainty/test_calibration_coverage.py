@@ -220,3 +220,23 @@ def test_phase_bias_uses_circular_mean_across_wrap_boundary() -> None:
 
     assert abs(report.overall_bias) == pytest.approx(np.pi, abs=0.1)
     assert abs(report.bins[0].mean_phase_error) == pytest.approx(np.pi, abs=0.1)
+
+
+def test_weak_circular_bias_direction_is_reported_per_bin() -> None:
+    fixture = make_stationary_narrowband(n_samples=8, seed=61)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+    errors = np.array([0.0, np.pi, 0.0, np.pi, 0.2, 0.2, 0.2, 0.2])
+    phase_std = np.array([0.1] * 4 + [0.5] * 4)
+    ambiguous_bin = replace(
+        result,
+        phase=errors,
+        phase_std=phase_std,
+        amplitude=np.ones(8),
+        instantaneous_freq=np.full(8, result.median_freq),
+    )
+
+    report = evaluate_phase_uncertainty_calibration(ambiguous_bin, np.zeros(8), n_bins=2)
+
+    assert abs(report.overall_bias) < 0.3  # The other bin keeps the overall direction defined.
+    assert abs(report.bins[0].mean_phase_error) < 0.3  # Numerically zero, but direction is ambiguous.
+    assert any("bins [0]" in note and "weakly determined" in note for note in report.summary_notes)
