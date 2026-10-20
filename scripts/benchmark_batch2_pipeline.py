@@ -65,11 +65,49 @@ def _write_atomic(path: str, text: str) -> None:
             os.unlink(tmp)
 
 
+_HARD_FAIL_STATUSES = frozenset(
+    {"timeout", "child_crash", "infrastructure_failure", "error", "budget_overrun"}
+)
+
+
+def _cli_exit_code(report: Dict[str, Any]) -> int:
+    """Non-zero when equivalence fails, authoritative budgets fail, or hard child errors.
+
+    Advisory runtime/RSS do not drive ``all_within_budget`` (see budgets.py), so
+    they cannot flip this exit code by themselves.
+    """
+    if report.get("error"):
+        return 2
+    if report.get("all_equivalent") is False:
+        return 1
+    if report.get("all_within_budget") is False:
+        return 1
+    summary = report.get("summary") or {}
+    if any(summary.get(status, 0) > 0 for status in _HARD_FAIL_STATUSES):
+        return 1
+    if report.get("num_targets", 0) == 0 and report.get("mode") != "validate":
+        return 2
+    return 0
+
+
 def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
     budgets = _budgets(args)
-    names = sorted(TARGETS.keys())
-    if args.target:
-        names = [args.target] if args.target in TARGETS else []
+    if args.target is not None and args.target not in TARGETS:
+        return json_safe(
+            {
+                "schema": SCHEMA_VERSION,
+                "mode": "isolated",
+                "evidence_class": EVIDENCE_CLASS,
+                "synthetic": True,
+                "error": f"unknown target: {args.target!r}",
+                "num_targets": 0,
+                "summary": {},
+                "results": [],
+                "all_equivalent": None,
+                "all_within_budget": None,
+            }
+        )
+    names = sorted(TARGETS.keys()) if args.target is None else [args.target]
     results: List[Dict[str, Any]] = []
     summary: Dict[str, int] = {}
     script = str(Path(__file__).resolve())
@@ -84,9 +122,19 @@ def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
             str(args.seed),
             "--repetitions",
             str(args.repetitions),
+            "--max-workers",
+            str(args.max_workers),
         ]
         if args.size is not None:
             argv += ["--size", str(args.size)]
+        if args.memory_budget_mb is not None:
+            argv += ["--memory-budget-mb", str(args.memory_budget_mb)]
+        if args.disk_budget_mb is not None:
+            argv += ["--disk-budget-mb", str(args.disk_budget_mb)]
+        if args.rss_budget_mb is not None:
+            argv += ["--rss-budget-mb", str(args.rss_budget_mb)]
+        if args.runtime_budget_s is not None:
+            argv += ["--runtime-budget-s", str(args.runtime_budget_s)]
         child = execute_child(argv, timeout_s=args.per_target_timeout_s)
         if child.timed_out:
             record = {
@@ -121,6 +169,15 @@ def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
                 }
         summary[record.get("status", "unknown")] = summary.get(record.get("status", "unknown"), 0) + 1
         results.append(record)
+    matches = [
+        (r.get("deterministic") or {}).get("checksum_match")
+        for r in results
+    ]
+    known = [m for m in matches if m is not None]
+    all_equivalent = all(known) if known else None
+    budget_verdicts = [(r.get("deterministic") or {}).get("budget", {}) or {} for r in results]
+    evaluated = [v.get("within_budget") for v in budget_verdicts if v.get("within_budget") is not None]
+    all_within_budget = all(evaluated) if evaluated else None
     return json_safe(
         {
             "schema": SCHEMA_VERSION,
@@ -137,6 +194,8 @@ def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
             "budgets": budgets.to_dict(),
             "num_targets": len(results),
             "summary": summary,
+            "all_equivalent": all_equivalent,
+            "all_within_budget": all_within_budget,
             "results": results,
             "notes": [
                 "Each target ran in its own bounded, timed child process (shell=False).",
@@ -152,17 +211,24 @@ def _cmd_child(argv: List[str]) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--size", type=int, default=None)
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--memory-budget-mb", type=float, default=None)
+    parser.add_argument("--disk-budget-mb", type=float, default=None)
+    parser.add_argument("--rss-budget-mb", type=float, default=None)
+    parser.add_argument("--runtime-budget-s", type=float, default=None)
+    parser.add_argument("--max-workers", type=int, default=1)
     args = parser.parse_args(argv)
     if args.target not in TARGETS:
         print(json.dumps({"target": args.target, "status": "error", "error": "unknown target"}), flush=True)
         return 2
     record = run_target(
         TARGETS[args.target],
-        ResourceBudgets(),
+        _budgets(args),
         seed=args.seed,
         size=args.size,
         repetitions=args.repetitions,
     )
+    # Always exit 0 when a JSON record was emitted so the parent can parse
+    # status (including budget_overrun) instead of treating it as child_crash.
     print(json.dumps(record, allow_nan=False), flush=True)
     return 0
 
@@ -212,6 +278,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("error: max_workers must be 1 (bounded)", file=sys.stderr)
         return 2
 
+    if args.target is not None and args.target not in TARGETS and not args.isolated:
+        print(f"error: unknown target {args.target!r}", file=sys.stderr)
+        return 2
+
     if args.isolated:
         report = _run_isolated(args)
     else:
@@ -233,9 +303,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.output:
         _write_atomic(args.output, (dumps(report) if not args.json else text) + "\n")
     print(text if args.json or not args.output else f"wrote {args.output}")
-    if report.get("all_equivalent") is False:
-        return 1
-    return 0
+    return _cli_exit_code(report)
 
 
 if __name__ == "__main__":
