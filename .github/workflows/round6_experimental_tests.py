@@ -1369,6 +1369,10 @@ COMPONENT_OWNER_PRS = {
 # root blocks discovery until an owner registers a pair. Such changes are never
 # silently classified NOT_APPLICABLE.
 UNMAPPED_CANDIDATE_ROOTS = (
+    # This is a shared test namespace. Exact mapped paths are handled by their
+    # owners; new or changed unregistered tests must block rather than become
+    # NOT_APPLICABLE merely because each component narrows its test roots.
+    "tests/experimental/",
     "sim/nuisance_scenarios/",
     "tests/nuisance_scenarios/",
     "tools/whitening_audit/",

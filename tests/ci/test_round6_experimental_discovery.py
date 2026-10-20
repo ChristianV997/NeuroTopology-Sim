@@ -1541,6 +1541,35 @@ def test_fixture():
         self.assertEqual(report["selected_components"], [])
         self.assertEqual(report["executed_commands"], [])
 
+    def test_unregistered_test_in_shared_experimental_root_blocks_not_applicable(self):
+        helper = _helper()
+        new_test = "tests/experimental/test_planar_triangulation_extra.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _write(root, new_test, "def test_unregistered_candidate():\n    assert True\n")
+            head = _commit(root, "unregistered shared experimental test")
+            report_path = root / "outputs/report.json"
+
+            def no_candidate_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" in command:
+                    raise AssertionError("unmapped tests must not launch a candidate suite")
+                return _REAL_SUBPROCESS_RUN(command, **kwargs)
+
+            with patch.object(helper.subprocess, "run", side_effect=no_candidate_runner):
+                exit_code = helper.run(
+                    root, base, head, report_path,
+                    tested_checkout_sha=head, workflow_sha=base,
+                    event_name="pull_request", require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["selected_components"], [])
+        self.assertEqual(report["unmapped_candidate_paths"], [new_test])
+        self.assertEqual(report["executed_commands"], [])
+
     def test_case_mismatched_registered_paths_fail_closed(self):
         helper = _helper()
         wrong_case = "Tools/surrogate_nulls/nulls.py"
