@@ -188,6 +188,21 @@ class TestWhiteningAudit(unittest.TestCase):
         with self.assertRaises(EmptyDataError):
             model.fit([])
 
+    def test_nonpositive_eigenvalue_floor_fails_closed(self) -> None:
+        """Regression: floor <= 0 must not reach ZeroDivisionError / silent accept.
+
+        A non-positive floor bypasses the SPD projection contract and can crash
+        Cholesky/ZCA with an untyped ZeroDivisionError on singular covariances.
+        """
+        from tools.whitening_audit.types import WhiteningAuditError
+
+        X_collinear = generate_collinear_dataset(n_samples=40, n_features=4, seed=2)
+        for bad_floor in (0.0, -1.0, -1e-6):
+            with self.assertRaises(WhiteningAuditError):
+                TrainOnlyWhiteningModel(eigenvalue_floor=bad_floor).fit(X_collinear)
+            with self.assertRaises(WhiteningAuditError):
+                project_spd_covariance([[1.0, 0.0], [0.0, 1.0]], eigenvalue_floor=bad_floor)
+
     # -------------------------------------------------------------------------
     # 7. Fail-Closed: Non-Finite Values (NaN / Inf)
     # -------------------------------------------------------------------------
@@ -366,6 +381,27 @@ class TestWhiteningAudit(unittest.TestCase):
         self.assertIn("method_comparison", parsed)
         self.assertNotIn("NaN", json_str)
         self.assertNotIn("Infinity", json_str)
+
+    def test_cli_refuses_output_outside_repository(self) -> None:
+        """Security boundary: CLI must not write JSON/MD outside the repo root."""
+        import subprocess
+
+        outside = Path("/tmp/whitening_audit_outside_repo.json")
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(_REPO_ROOT / "scripts" / "audit_round6_whitening.py"),
+                "--json-out",
+                str(outside),
+            ],
+            cwd=str(_REPO_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("refusing to write outside repository root", proc.stderr + proc.stdout)
+        self.assertFalse(outside.exists())
 
 
 if __name__ == "__main__":

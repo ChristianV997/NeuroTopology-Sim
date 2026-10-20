@@ -25,6 +25,7 @@ from tools.whitening_audit.matrix_ops import (
     matrix_subtract,
     matrix_transpose,
     project_spd_covariance,
+    validate_eigenvalue_floor,
     validate_finite_matrix,
 )
 from tools.whitening_audit.types import (
@@ -50,6 +51,7 @@ class TrainOnlyWhiteningModel:
         method: WhiteningMethod = WhiteningMethod.CHOLESKY,
         eigenvalue_floor: float = 1e-6,
     ) -> None:
+        validate_eigenvalue_floor(eigenvalue_floor)
         self.method = method
         self.eigenvalue_floor = eigenvalue_floor
         self._mean: Optional[Tuple[float, ...]] = None
@@ -187,6 +189,7 @@ def compare_whitening_methods(
     - Orthogonal coordinate rotation R = W_chol * Sigma^(1/2).
     - Structural properties (Cholesky lower-triangular vs ZCA symmetric).
     """
+    validate_eigenvalue_floor(eigenvalue_floor)
     d = len(covariance)
     cov_spd, _ = project_spd_covariance(covariance, eigenvalue_floor=eigenvalue_floor)
 

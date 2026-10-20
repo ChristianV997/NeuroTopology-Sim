@@ -11,7 +11,7 @@ The audit was conducted by Antigravity Agent B (Batch 2) on branch `batch2/antig
 2. **Whitening Convention Distinction**: The proposal applies Cholesky whitening $W_{\text{chol}} = L^{-1}(x - \mu)$, where $\Sigma = L L^T$. This is mathematically distinct from Symmetric ZCA whitening $W_{\text{zca}} = \Sigma^{-1/2}(x - \mu)$. Both whiten covariance to identity, but they rotate coordinates differently ($W_{\text{chol}} = R W_{\text{zca}}$ with $R \in O(d)$). Calling them equivalent is inaccurate and must not occur silently.
 3. **Leakage Protocol**: Strict train-only fitting is enforced. The mean, covariance, and SPD projection are computed exclusively on training data $X_{\text{train}}$. Held-out test data $X_{\text{test}}$ is transformed using fixed training parameters. A dedicated leakage regression fixture proves that leaking test data contaminates training parameters and artificially suppresses out-of-sample covariance errors.
 4. **SPD Repair Disclosure**: Empirical covariance regularization and eigenvalue flooring must be explicitly disclosed, including the raw minimum eigenvalue, the applied floor, the correction Frobenius norm, and whether the modification is material.
-5. **Fail-Closed Robustness**: The verifier fails closed on insufficient samples ($n \le 1$), empty inputs, non-finite values (`NaN`/`Inf`), and feature dimension mismatches.
+5. **Fail-Closed Robustness**: The verifier fails closed on insufficient samples ($n \le 1$), empty inputs, non-finite values (`NaN`/`Inf`), feature dimension mismatches, and non-positive SPD `eigenvalue_floor` values (must be finite and $> 0$). CLI artifact writes are confined to the repository root.
 
 ---
 

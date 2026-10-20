@@ -54,6 +54,23 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    def _confine_output(path: Path) -> Path:
+        """Refuse writes outside the repository root (path-traversal boundary)."""
+        resolved = path.expanduser().resolve()
+        root = _REPO_ROOT.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise SystemExit(
+                f"refusing to write outside repository root ({root}): {path}"
+            ) from exc
+        return resolved
+
+    if args.json_out is not None:
+        args.json_out = _confine_output(args.json_out)
+    if args.md_out is not None:
+        args.md_out = _confine_output(args.md_out)
+
     whitening_method = WhiteningMethod(args.method)
     print(f"[*] Running Round 6 Whitening Audit with method={whitening_method.value}...")
 

@@ -7,7 +7,7 @@ Guarantees deterministic, machine-precision operations with explicit fail-closed
 from __future__ import annotations
 
 import math
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from tools.whitening_audit.types import (
     EmptyDataError,
@@ -17,7 +17,20 @@ from tools.whitening_audit.types import (
     NonFiniteValuesError,
     NonPositiveDefiniteError,
     SPDRepairReport,
+    WhiteningAuditError,
 )
+
+
+def validate_eigenvalue_floor(eigenvalue_floor: float) -> None:
+    """Fail closed when the SPD floor is non-positive or non-finite.
+
+    A floor of 0 / negative values silently disables the SPD contract and can
+    later crash Cholesky / ZCA with an untyped ZeroDivisionError.
+    """
+    if not math.isfinite(eigenvalue_floor) or eigenvalue_floor <= 0.0:
+        raise WhiteningAuditError(
+            f"eigenvalue_floor must be a finite positive float; got {eigenvalue_floor!r}."
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -288,6 +301,7 @@ def project_spd_covariance(
     Sigma_spd = V * diag(max(lambda, floor)) * V^T.
     Returns (Sigma_spd, SPDRepairReport).
     """
+    validate_eigenvalue_floor(eigenvalue_floor)
     validate_square_symmetric(cov)
     n = len(cov)
     evals, V = jacobi_eigh(cov)
