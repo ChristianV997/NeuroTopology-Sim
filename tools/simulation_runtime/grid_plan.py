@@ -89,7 +89,7 @@ ROC_API_NAMES = (
     "auc",
     "average_precision",
 )
-AUDITED_MAIN_SHA = "bc91af19a22783d2721fc881842573f7e08a8925"
+AUDITED_MAIN_SHA = "d2544b83289efde0e63b70cff270d2ff523b7095"
 # Hosted adversarial evidence for the exact #417 merge. False keeps
 # surrogate_null blocked after a promotion report exists.
 SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN = False

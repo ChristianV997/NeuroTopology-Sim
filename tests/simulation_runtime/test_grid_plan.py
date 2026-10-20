@@ -323,7 +323,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "bc91af19a22783d2721fc881842573f7e08a8925")
+        self.assertEqual(AUDITED_MAIN_SHA, "d2544b83289efde0e63b70cff270d2ff523b7095")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -1849,6 +1849,17 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("substitute_module_rejected", substitute_reasons)
         self.assertIn("dependency_not_merged_on_main", substitute_reasons)
 
+    def test_audited_main_sha_equals_live_main_d2544b83(self):
+        """The audited constant is the live main tip, and the previous tip remains its ancestor."""
+
+        live = "d2544b83289efde0e63b70cff270d2ff523b7095"
+        previous = "bc91af19a22783d2721fc881842573f7e08a8925"
+        _require_audited_main_ancestor(self)
+        self.assertEqual(AUDITED_MAIN_SHA, live)
+        self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, live)
+        ancestor = _git_cwd("merge-base", "--is-ancestor", previous, AUDITED_MAIN_SHA)
+        self.assertEqual(ancestor.returncode, 0, ancestor.stderr)
+
     def test_audited_main_sha_is_an_ancestor_or_the_test_fails(self):
         main_sha = _require_audited_main_ancestor(self)
         info = grid_plan_module.GATE_CONTRACT["roc_metrics"]["informational_candidate"]
@@ -2417,7 +2428,7 @@ class GridPlanTests(unittest.TestCase):
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
         self.assertEqual(
             grid_plan_module.AUDITED_MAIN_SHA,
-            "bc91af19a22783d2721fc881842573f7e08a8925",
+            "d2544b83289efde0e63b70cff270d2ff523b7095",
         )
         self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
@@ -2500,7 +2511,7 @@ class GridPlanTests(unittest.TestCase):
 
         roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
-        audited = "bc91af19a22783d2721fc881842573f7e08a8925"
+        audited = "d2544b83289efde0e63b70cff270d2ff523b7095"
         roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
