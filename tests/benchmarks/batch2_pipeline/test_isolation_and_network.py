@@ -73,14 +73,32 @@ def test_worker_bound_enforcement_candidate_is_one():
 
 
 def test_no_network_execution():
+    from tools.benchmarks.batch2_pipeline.validator import (
+        _hostname_is_remote,
+        _string_references_remote_host,
+        validate_report,
+    )
+
     report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
-    blob = json.dumps(report).lower()
-    assert "openneuro.org" not in blob
-    assert "amazonaws.com" not in blob
-    assert "dandiarchive" not in blob
     assert report["production_probe"]["network_used"] is False
     assert report["production_probe"]["remote_data_accessed"] is False
     assert report["tooling_availability"]["REA"] == "REA_UNAVAILABLE"
+    assert validate_report(report)["ok"] is True
+
+    # Hostname parsing (CodeQL: incomplete URL substring sanitization).
+    assert _hostname_is_remote("openneuro.org")
+    assert _hostname_is_remote("s3.amazonaws.com")
+    assert _hostname_is_remote("api.dandiarchive.org")
+    assert not _hostname_is_remote("example.com")
+    assert _string_references_remote_host("https://openneuro.org/datasets/ds000001")
+    assert _string_references_remote_host("https://bucket.s3.amazonaws.com/x")
+    # Substring lookalikes must not trip the denylist.
+    assert not _string_references_remote_host("https://evilopenneuro.org.attacker.example/x")
+    assert not _string_references_remote_host("notes mentioning openneuro.org in prose")
+
+    poisoned = dict(report)
+    poisoned["notes"] = ["https://openneuro.org/datasets/ds000001"]
+    assert "remote_data_reference" in validate_report(poisoned)["violations"]
 
 
 def test_cli_rejects_unbounded_workers():

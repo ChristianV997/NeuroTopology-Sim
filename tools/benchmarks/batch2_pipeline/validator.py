@@ -4,8 +4,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List
+from urllib.parse import urlparse
 
 from .schema import (
     EVIDENCE_CLASS,
@@ -14,6 +16,71 @@ from .schema import (
     SCHEMA_VERSION,
     TARGET_NAMES,
 )
+
+# Remote hosts forbidden in synthetic local performance evidence.
+# Checked via parsed hostnames (exact / DNS-suffix), not raw substring scans.
+_REMOTE_HOST_EXACT = frozenset(
+    {
+        "openneuro.org",
+        "www.openneuro.org",
+        "amazonaws.com",
+        "dandiarchive.org",
+        "www.dandiarchive.org",
+        "api.dandiarchive.org",
+    }
+)
+_REMOTE_HOST_SUFFIXES = (
+    ".openneuro.org",
+    ".amazonaws.com",
+    ".dandiarchive.org",
+)
+_URLISH = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_HOSTISH = re.compile(
+    r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$",
+    re.IGNORECASE,
+)
+
+
+def _hostname_is_remote(host: str | None) -> bool:
+    if not host:
+        return False
+    host = host.lower().rstrip(".")
+    if host in _REMOTE_HOST_EXACT:
+        return True
+    return any(host.endswith(suffix) for suffix in _REMOTE_HOST_SUFFIXES)
+
+
+def _string_references_remote_host(value: str) -> bool:
+    """Return True iff ``value`` names a forbidden remote host (URL or bare host)."""
+    text = value.strip()
+    if not text:
+        return False
+    if _URLISH.match(text):
+        return _hostname_is_remote(urlparse(text).hostname)
+    # Bare hostname tokens only (avoids incomplete substring matches inside prose).
+    if _HOSTISH.match(text):
+        return _hostname_is_remote(text)
+    return False
+
+
+def _iter_strings(obj: Any) -> Iterable[str]:
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(key, str):
+                yield key
+            yield from _iter_strings(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from _iter_strings(item)
+
+
+def _scan_remote_hosts(report: Dict[str, Any], violations: List[str]) -> None:
+    for value in _iter_strings(report):
+        if _string_references_remote_host(value):
+            violations.append("remote_data_reference")
+            return
 
 
 def _finite(obj: Any, path: str, violations: List[str]) -> None:
@@ -66,8 +133,7 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
     blob = json.dumps(report, allow_nan=False, default=str)
     _scan_forbidden(blob, violations, "report")
     _finite(report, "$", violations)
-    if "openneuro.org" in blob.lower() or "amazonaws.com" in blob.lower() or "dandiarchive" in blob.lower():
-        violations.append("remote_data_reference")
+    _scan_remote_hosts(report, violations)
     return {
         "ok": not violations,
         "violations": violations,
