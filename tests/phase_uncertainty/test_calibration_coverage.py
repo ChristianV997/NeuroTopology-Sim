@@ -202,3 +202,21 @@ def test_saturated_two_sigma_coverage_is_flagged_as_uninformative() -> None:
 
     assert report.overall_coverage_2sigma == 1.0
     assert any("geometrically saturated" in note for note in report.summary_notes)
+
+
+def test_phase_bias_uses_circular_mean_across_wrap_boundary() -> None:
+    fixture = make_stationary_narrowband(n_samples=4, seed=60)
+    result = estimate_narrowband_phase_uncertainty(fixture.signal, fs=fixture.fs)
+    wrapped_errors = np.array([np.pi - 0.1, -np.pi + 0.1, np.pi - 0.12, -np.pi + 0.12])
+    edge_result = replace(
+        result,
+        phase=wrapped_errors,
+        phase_std=np.full(4, 0.1),
+        amplitude=np.ones(4),
+        instantaneous_freq=np.full(4, result.median_freq),
+    )
+
+    report = evaluate_phase_uncertainty_calibration(edge_result, np.zeros(4), n_bins=1)
+
+    assert abs(report.overall_bias) == pytest.approx(np.pi, abs=0.1)
+    assert abs(report.bins[0].mean_phase_error) == pytest.approx(np.pi, abs=0.1)

@@ -52,7 +52,7 @@ class CalibrationBin:
     upper_bound: float
     sample_count: int
     mean_predicted_std: float
-    mean_phase_error: float          # Bias
+    mean_phase_error: float          # Circular-mean bias in radians
     rms_phase_error: float           # Empirical standard error
     coverage_1sigma: float           # Fraction with |e| <= 1.0 * phase_std (nominal ~68.3%)
     coverage_2sigma: float           # Fraction with |e| <= 1.96 * phase_std (nominal ~95.0%)
@@ -109,6 +109,18 @@ class CalibrationReport:
         }
 
 
+def _circular_mean_phase_error(errors: np.ndarray) -> tuple[float, float]:
+    """Return circular mean error and mean resultant length for wrapped radians."""
+    if errors.size == 0:
+        return 0.0, 0.0
+    sine_mean = float(np.mean(np.sin(errors)))
+    cosine_mean = float(np.mean(np.cos(errors)))
+    resultant_length = math.hypot(sine_mean, cosine_mean)
+    if resultant_length <= 1e-12:
+        return 0.0, resultant_length
+    return math.atan2(sine_mean, cosine_mean), resultant_length
+
+
 def classify_frame_reliability(
     amplitude: np.ndarray,
     phase_std: np.ndarray,
@@ -160,7 +172,7 @@ def classify_frame_reliability(
     for i in range(n):
         if not valid[i]:
             continue
-        # 1. Near-zero amplitude singularity
+        # 1. Zero/near-zero amplitude makes phase undefined or noise-sensitive
         if amplitude_values[i] < amp_floor:
             tiers[i] = ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value
         # 2. Uncertainty near the configured maximum
@@ -235,7 +247,7 @@ def evaluate_phase_uncertainty_calibration(
 
     # Overall metrics
     overall_mean_std = float(np.mean(pred_std))
-    overall_bias = float(np.mean(error))
+    overall_bias, overall_bias_resultant = _circular_mean_phase_error(error)
     overall_rms = float(np.sqrt(np.mean(error ** 2)))
 
     cov_1 = float(np.mean(np.abs(error) <= 1.0 * pred_std))
@@ -284,7 +296,7 @@ def evaluate_phase_uncertainty_calibration(
         b_err = error[mask]
         b_std = pred_std[mask]
         m_std = float(np.mean(b_std))
-        m_bias = float(np.mean(b_err))
+        m_bias, _ = _circular_mean_phase_error(b_err)
         m_rms = float(np.sqrt(np.mean(b_err ** 2)))
         b_cov1 = float(np.mean(np.abs(b_err) <= 1.0 * b_std))
         b_cov2 = float(np.mean(np.abs(b_err) <= 1.96 * b_std))
@@ -321,15 +333,24 @@ def evaluate_phase_uncertainty_calibration(
     tier_counts = {t.value: int(np.count_nonzero(tiers == t.value)) for t in ReliabilityTier}
 
     notes = []
+    if overall_bias_resultant < 0.1:
+        notes.append(
+            "Circular mean phase-error direction is weakly determined because the error resultant length is below 0.1."
+        )
     if overall_verdict == CalibrationVerdict.OVERCONFIDENT.value:
         notes.append(f"Estimator is OVERCONFIDENT overall (RMS error is {ratio:.2f}x predicted phase_std).")
     elif overall_verdict == CalibrationVerdict.CONSERVATIVE.value:
         notes.append(f"Estimator is CONSERVATIVE overall (RMS error is {ratio:.2f}x predicted phase_std).")
     else:
-        notes.append("Estimator is reasonably calibrated overall under the tested synthetic regime.")
+        notes.append(
+            "The synthetic RMS-to-reported-std ratio falls within the configured heuristic band; this is not a calibrated CI claim."
+        )
 
     if tier_counts[ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value] > 0:
-        notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value]} frames quarantined due to near-zero amplitude singularities.")
+        notes.append(
+            f"{tier_counts[ReliabilityTier.FAIL_CLOSED_NEAR_ZERO_AMP.value]} frames quarantined for zero or near-zero amplitude; "
+            "phase is undefined at zero and noise-sensitive at low amplitude."
+        )
     if tier_counts[ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value] > 0:
         notes.append(f"{tier_counts[ReliabilityTier.FAIL_CLOSED_FREQUENCY_DRIFT.value]} frames quarantined due to severe carrier frequency drift.")
     if tier_counts[ReliabilityTier.FAIL_CLOSED_MAX_UNCERTAINTY.value] > 0:

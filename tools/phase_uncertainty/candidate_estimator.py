@@ -92,10 +92,28 @@ class EstimatorConfig:
     second_difference_factor: float = math.sqrt(6.0)
 
     def __post_init__(self) -> None:
+        if isinstance(self.jitter_window_len, (bool, np.bool_)) or not isinstance(
+            self.jitter_window_len, (int, np.integer)
+        ):
+            raise ValueError("jitter_window_len must be an integer")
         if self.jitter_window_len < 3 or self.jitter_window_len % 2 == 0:
             raise ValueError(f"jitter_window_len must be an odd integer >= 3, got {self.jitter_window_len}")
-        if self.min_amplitude_floor <= 0.0:
-            raise ValueError(f"min_amplitude_floor must be positive, got {self.min_amplitude_floor}")
+        if not isinstance(self.cap_at_uniform_std, (bool, np.bool_)):
+            raise ValueError("cap_at_uniform_std must be a boolean")
+
+        positive_numeric_fields = (
+            ("min_amplitude_floor", self.min_amplitude_floor),
+            ("mad_scale_factor", self.mad_scale_factor),
+            ("second_difference_factor", self.second_difference_factor),
+        )
+        for name, value in positive_numeric_fields:
+            if isinstance(value, (bool, np.bool_)) or not isinstance(
+                value, (int, float, np.integer, np.floating)
+            ):
+                raise ValueError(f"{name} must be a numeric scalar")
+            numeric_value = float(value)
+            if not math.isfinite(numeric_value) or numeric_value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
 
 
 @dataclass
@@ -145,6 +163,10 @@ def estimate_narrowband_phase_uncertainty(
     """
     cfg = config or EstimatorConfig()
 
+    if isinstance(fs, (bool, np.bool_)) or not isinstance(
+        fs, (int, float, np.integer, np.floating)
+    ):
+        raise ValueError("fs must be a finite positive numeric scalar in Hz")
     fs_val = float(fs)
     if not math.isfinite(fs_val) or fs_val <= 0.0:
         raise ValueError(f"fs must be a finite positive sampling frequency in Hz, got {fs!r}")

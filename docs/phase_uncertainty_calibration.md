@@ -18,6 +18,8 @@ This audit evaluates the calibration, empirical coverage, and mathematical failu
 
 The core question investigated is: **Does the reported `phase_std` represent a calibrated, statistically valid measure of phase uncertainty, or is it an uncalibrated heuristic?**
 
+Reported phase-error bias is computed as a circular mean. When the error resultant length is very small, the mean direction is weakly determined and is noted as such.
+
 ### Key Findings
 1. **Severe Overconfidence under Colored Noise**:
    Under autoregressive noise ($AR(1)$ with $\rho = 0.85$), the empirical RMS phase error is **1.60× larger than the predicted `phase_std`**. Empirical $1\sigma$ coverage drops from the nominal Gaussian $68.27\%$ to **$42.30\%$**, and $2\sigma$ coverage drops from $95.00\%$ to **$77.40\%$**.

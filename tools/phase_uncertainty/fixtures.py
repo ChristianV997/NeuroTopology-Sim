@@ -172,10 +172,11 @@ def make_near_zero_amplitude_signal(
     snr_db: float = 15.0,
     seed: int = 45,
 ) -> NarrowbandFixture:
-    """Fixture 4: Signal with near-zero amplitude period (phase singularity).
+    """Fixture 4: Signal with a deep, nonzero amplitude dip.
 
-    Amplitude drops into the noise floor between dip_start and dip_start + dip_len.
-    Phase is undefined / uniformly distributed in the noise floor during the dip.
+    The ground-truth phase remains defined for this synthetic fixture. During the
+    low-amplitude interval, additive noise can dominate the measured phase; the
+    fixture does not impose a uniform phase distribution.
     """
     rng = np.random.default_rng(seed)
     t = np.arange(n_samples, dtype=np.float64) / fs

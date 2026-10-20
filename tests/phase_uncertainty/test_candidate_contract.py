@@ -65,6 +65,39 @@ def test_fs_must_be_positive_finite() -> None:
             estimate_narrowband_phase_uncertainty(z, fs=fs)
 
 
+@pytest.mark.parametrize("fs", [True, "1000"], ids=["boolean", "numeric-string"])
+def test_fs_rejects_coerced_non_numeric_scalars(fs: object) -> None:
+    z = np.exp(1j * np.linspace(0.0, 4.0 * np.pi, 64))
+    with pytest.raises(ValueError, match="fs"):
+        estimate_narrowband_phase_uncertainty(z, fs=fs)
+
+
+@pytest.mark.parametrize(
+    "config_kwargs",
+    [
+        {"min_amplitude_floor": float("nan")},
+        {"min_amplitude_floor": float("inf")},
+        {"min_amplitude_floor": 0.0},
+        {"mad_scale_factor": float("nan")},
+        {"mad_scale_factor": 0.0},
+        {"second_difference_factor": float("inf")},
+        {"second_difference_factor": 0.0},
+        {"jitter_window_len": 3.5},
+        {"jitter_window_len": True},
+        {"cap_at_uniform_std": 1},
+    ],
+    ids=[
+        "nan-amplitude-floor", "infinite-amplitude-floor", "zero-amplitude-floor",
+        "nan-mad-scale", "zero-mad-scale", "infinite-second-difference-factor",
+        "zero-second-difference-factor", "fractional-window", "boolean-window",
+        "non-boolean-cap",
+    ],
+)
+def test_estimator_config_rejects_non_finite_or_invalid_values(config_kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        EstimatorConfig(**config_kwargs)
+
+
 def test_wrap_phase_half_turn_matches_open_closed_interval() -> None:
     """Contract interval is (-π, π]: wrap(+π) must be +π, not -π."""
     assert float(wrap_phase(np.array([np.pi]))[0]) == pytest.approx(np.pi)
