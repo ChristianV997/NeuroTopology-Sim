@@ -1,13 +1,14 @@
 """Legendre-series spherical-spline functions, evaluated without MNE.
 
-Formulas (stated mathematically; not transcribed from any implementation):
+Formulas, stated mathematically. No code is transcribed in this module.
 
     g_m(x) = sum_{n=1..N} (2n+1) / ((n(n+1))^m * 4*pi) * P_n(x)
     h_m(x) = sum_{n=1..N} (2n+1) / ((n(n+1))^(m-1) * 4*pi) * P_n(x)
 
 with stiffness m, N = n_legendre_terms (inclusive), P_n the Legendre
-polynomials, and no P_0 term and no leading minus sign. These are the
-conventions the pinned MNE release uses; see pin.py for the verified source.
+polynomials, and no P_0 term and no leading minus sign. The same conventions
+appear in the pinned MNE source (interpolation.py lines 20-62) and in the
+CSD Toolbox GetGH.m; see pin.py and docs/mne_csd_reference_audit.md for sources.
 P_n is evaluated with the three-term recurrence (Bonnet), independently of
 numpy.polynomial, so the two can be cross-checked.
 """

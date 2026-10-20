@@ -9,9 +9,10 @@ Provenance and its status:
 - source-file SHA-256 values: computed from the extracted sdist members. Re-verified 2026-10-19 from a
   fresh extraction of the same sdist.
 
-The reference implementation here was written from the mathematical formulas. No MNE code is copied
-into this package. The independent MNE code-path transcription in tests/mne_csd_reference_audit/
-is test-only and is cited to the same source lines.
+The reference implementation here was written from the mathematical formulas; no MNE code is copied into
+this package. The MNE code-path transcription in tests/mne_csd_reference_audit/conftest.py is test-only. It is
+a near-literal copy of the pinned BSD-3-Clause operations, and it carries MNE's copyright notice and licence text.
+It is cited to the same source lines.
 """
 from __future__ import annotations
 

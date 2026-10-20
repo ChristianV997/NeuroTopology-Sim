@@ -69,16 +69,19 @@
         "discriminant_lambda_after_inverse_rel": 0.0004921845905810871,
         "discriminant_no_sum_constraint_rel": 7.592709238849071e-15,
         "finite": true,
+        "gi_asymmetry_abs_max": 4.547473508864641e-13,
         "kkt_vs_projection_max_abs": 1.2789769243681803e-12,
         "kkt_vs_projection_rel_to_max": 7.347783134370068e-15,
         "max_abs_M": 174.06296579244756,
         "n_channels": 4,
         "name": "tetrahedron_4",
+        "operator_ordering_rel_to_max": 0.0,
         "shape": [
           4,
           4
         ],
-        "sphere_scaling_rel_error": 2.120205198052305e-16
+        "sphere_scaling_rel_error": 2.120205198052305e-16,
+        "tc_ordering_abs_max": 1.8189894035458565e-12
       },
       {
         "channel_permutation_residual_rel": 1.8617037209168717e-15,
@@ -88,16 +91,19 @@
         "discriminant_lambda_after_inverse_rel": 0.00729982798308268,
         "discriminant_no_sum_constraint_rel": 3.7234074418337434e-15,
         "finite": true,
+        "gi_asymmetry_abs_max": 2.7284841053187847e-12,
         "kkt_vs_projection_max_abs": 1.3358203432289883e-12,
         "kkt_vs_projection_rel_to_max": 3.977276131049681e-15,
         "max_abs_M": 335.8631131493602,
         "n_channels": 6,
         "name": "octahedron_6",
+        "operator_ordering_rel_to_max": 0.0,
         "shape": [
           6,
           6
         ],
-        "sphere_scaling_rel_error": 0.0
+        "sphere_scaling_rel_error": 0.0,
+        "tc_ordering_abs_max": 1.4551915228366852e-11
       },
       {
         "channel_permutation_residual_rel": 5.735754781916991e-14,
@@ -107,16 +113,19 @@
         "discriminant_lambda_after_inverse_rel": 0.3606804059471906,
         "discriminant_no_sum_constraint_rel": 0.412749124049217,
         "finite": true,
+        "gi_asymmetry_abs_max": 3.922195901395753e-10,
         "kkt_vs_projection_max_abs": 7.056399908833555e-11,
         "kkt_vs_projection_rel_to_max": 9.727080044265307e-14,
         "max_abs_M": 725.43865956914,
         "n_channels": 9,
         "name": "ring_apex_9",
+        "operator_ordering_rel_to_max": 2.918809639705052e-14,
         "shape": [
           9,
           9
         ],
-        "sphere_scaling_rel_error": 1.0894782293251588e-13
+        "sphere_scaling_rel_error": 1.0894782293251588e-13,
+        "tc_ordering_abs_max": 5.292122295941226e-11
       },
       {
         "channel_permutation_residual_rel": 3.778865609887165e-14,
@@ -126,16 +135,19 @@
         "discriminant_lambda_after_inverse_rel": 0.39932044278364764,
         "discriminant_no_sum_constraint_rel": 0.5042515625750316,
         "finite": true,
+        "gi_asymmetry_abs_max": 3.774403012357652e-10,
         "kkt_vs_projection_max_abs": 2.404476617812179e-11,
         "kkt_vs_projection_rel_to_max": 2.1129678162356522e-14,
         "max_abs_M": 1137.9617802678429,
         "n_channels": 7,
         "name": "seeded_cap_7",
+        "operator_ordering_rel_to_max": 2.6974057228540305e-14,
         "shape": [
           7,
           7
         ],
-        "sphere_scaling_rel_error": 8.241727114367487e-14
+        "sphere_scaling_rel_error": 8.241727114367487e-14,
+        "tc_ordering_abs_max": 3.456079866737127e-11
       },
       {
         "channel_permutation_residual_rel": 1.4311063001097186e-13,
@@ -145,16 +157,19 @@
         "discriminant_lambda_after_inverse_rel": 2.55667365069888,
         "discriminant_no_sum_constraint_rel": 0.4349848539708992,
         "finite": true,
+        "gi_asymmetry_abs_max": 1.3087628758512437e-09,
         "kkt_vs_projection_max_abs": 1.1857537174364552e-10,
         "kkt_vs_projection_rel_to_max": 8.242097576004619e-14,
         "max_abs_M": 1438.655277375705,
         "n_channels": 12,
         "name": "seeded_cap_12",
+        "operator_ordering_rel_to_max": 3.548132130034773e-14,
         "shape": [
           12,
           12
         ],
-        "sphere_scaling_rel_error": 1.063034299457847e-13
+        "sphere_scaling_rel_error": 1.063034299457847e-13,
+        "tc_ordering_abs_max": 1.4802026271354407e-10
       },
       {
         "channel_permutation_residual_rel": 9.01102265407143e-14,
@@ -164,16 +179,19 @@
         "discriminant_lambda_after_inverse_rel": 7.794059396442592,
         "discriminant_no_sum_constraint_rel": 0.4641271968697097,
         "finite": true,
+        "gi_asymmetry_abs_max": 2.099795892718248e-10,
         "kkt_vs_projection_max_abs": 6.389200279954821e-11,
         "kkt_vs_projection_rel_to_max": 6.609063271240644e-14,
         "max_abs_M": 966.73310842059,
         "n_channels": 6,
         "name": "near_coincident_6",
+        "operator_ordering_rel_to_max": 2.9950992916265733e-14,
         "shape": [
           6,
           6
         ],
-        "sphere_scaling_rel_error": 3.929467656536277e-14
+        "sphere_scaling_rel_error": 3.929467656536277e-14,
+        "tc_ordering_abs_max": 2.1827872842550278e-11
       }
     ]
   },

@@ -225,3 +225,27 @@ def test_report_l3_status_names_the_live_test_location_and_not_a_skip():
     status = build_report()["levels"]["L3_mne_execution_parity"]
     assert "tests/optional_live_mne/" in status, status
     assert "integration test skips" not in status, status
+
+
+# Regression (2026-10-20, reference audit): the doc said the TC ordering difference was 1.5e-10 to 1.7e-10 and the
+# operator difference at most 4.4e-13. Neither figure was in any artifact, and re-measuring gave 1.8e-12 to 1.5e-10
+# and about 3e-14. The snapshot now carries both measured figures per montage, so the doc quotes checked numbers.
+def test_report_records_the_mne_ordering_difference_within_documented_bounds():
+    from tools.mne_csd_reference_audit.report import build_report
+
+    rows = build_report()["operator"]["montages"]
+    assert rows
+    for row in rows:
+        assert "tc_ordering_abs_max" in row and "operator_ordering_rel_to_max" in row, row["name"]
+        assert row["tc_ordering_abs_max"] < 1e-9, row
+        assert row["operator_ordering_rel_to_max"] < 1e-13, row
+
+
+# Regression (2026-10-20, reference audit): conftest.py holds a near-literal transcription of MNE 1.13.2 code, yet it
+# carried no notice, while pin.py said no MNE code is copied. BSD-3-Clause requires the copyright notice and the
+# conditions to travel with source copies, so the notice must be in the file that contains the copy.
+def test_transcription_carries_the_mne_licence_notice():
+    conftest = (REPO_ROOT / "tests" / "mne_csd_reference_audit" / "conftest.py").read_text(encoding="utf-8")
+    assert "Copyright 2011-2025 MNE-Python authors" in conftest
+    assert "Redistributions of source code must retain the above copyright notice" in conftest
+    assert "BSD-3-Clause" in conftest

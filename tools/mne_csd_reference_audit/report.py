@@ -67,6 +67,30 @@ def legendre_report() -> dict[str, Any]:
     return {"rows": rows, "convention": "n = 1..N inclusive, factor 1/(4*pi), no minus sign, no P_0 term"}
 
 
+def _mne_ordering_checks(positions: np.ndarray, radius: float) -> dict[str, float]:
+    # The package's projection form takes TC = Gi @ 1 and sgi = 1^T Gi 1. MNE 1.13.2 takes TC = Gi.sum(0) and
+    # sgi = sum(TC). These are equal in exact arithmetic. Each ordering is evaluated with its own sgi, as in its code.
+    unit = unit_vectors(positions)
+    G, H = legendre_matrices(unit, stiffness=STIFFNESS, n_terms=N_TERMS)
+    Gi = np.linalg.inv(regularise(G, LAMBDA2))
+    n = G.shape[0]
+    Cp = Gi @ centering_matrix(n)
+
+    def operator(TC: np.ndarray, sgi: float) -> np.ndarray:
+        C = Cp - np.outer(TC, Cp.sum(axis=0) / sgi)
+        return H.T @ C / radius**2
+
+    tc_package = Gi @ np.ones(n)
+    tc_mne = Gi.sum(axis=0)
+    M_package = operator(tc_package, float(np.ones(n) @ Gi @ np.ones(n)))
+    M_mne = operator(tc_mne, float(np.sum(tc_mne)))
+    return {
+        "tc_ordering_abs_max": float(np.max(np.abs(tc_package - tc_mne))),
+        "operator_ordering_rel_to_max": float(np.max(np.abs(M_package - M_mne)) / np.max(np.abs(M_package))),
+        "gi_asymmetry_abs_max": float(np.max(np.abs(Gi - Gi.T))),
+    }
+
+
 def _operator_checks(name: str, positions_unit: np.ndarray) -> dict[str, Any]:
     radius = SPHERE_RADIUS_M
     positions = radius * positions_unit
@@ -108,6 +132,7 @@ def _operator_checks(name: str, positions_unit: np.ndarray) -> dict[str, Any]:
         "finite": bool(np.all(np.isfinite(M_kkt))),
         "shape": list(M_kkt.shape),
         "max_abs_M": scale,
+        **_mne_ordering_checks(positions, radius),
     }
 
 

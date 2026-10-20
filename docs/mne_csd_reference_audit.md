@@ -27,9 +27,10 @@ arithmetic as the reference, on synthetic inputs.
    (Δ P_n = −n(n+1) P_n). This checks the m and m−1 exponent convention against a first-principles identity,
    not against MNE. The identity is verified numerically here. The standard DLMF citation was not re-fetched:
    that host is unreachable from this environment.
-3. **The KKT and projection forms agree with the MNE code path within a conditioning bound.** The
-   package's projection form uses TC = Gi·1; MNE 1.13.2 uses TC = Gi.sum(0). They are equal in exact
-   arithmetic, because Gi is symmetric. Both forms match a transcription of the MNE code path within
+3. **The KKT and projection forms agree with a transcription of the MNE code path within a conditioning bound.**
+   The transcription is a second implementation of the pinned operations, not executed MNE. The package's projection
+   form uses TC = Gi·1; MNE 1.13.2 uses TC = Gi.sum(0). They are equal in exact arithmetic, because Gi is symmetric
+   in exact arithmetic. Both forms match the transcription within
    10·cond(G+λ²I)·eps on six synthetic montages (`test_kkt_operator.py`). The transcription matches the frozen fixture
    within the same bound (`test_mne_integration_optional.py`). No gated test compares the package directly with the frozen
    matrices: a regenerated fixture is a snapshot, so it constrains the transcription, not the package.
@@ -70,20 +71,32 @@ arithmetic as the reference, on synthetic inputs.
 | Bad EEG channels refused; EEG picks only | sdist `_csd.py` lines 108-123 | **Re-verified**. Not modelled by the reference |
 | Public API page and defaults | https://mne.tools/stable/generated/mne.preprocessing.compute_current_source_density.html | **Not reachable** from this environment (DNS failure). The sdist docstring is used instead |
 | Legendre equation | https://dlmf.nist.gov/14.2 | **Not reachable** from this environment. The identity is verified numerically (below) |
-| Perrin et al. (1989) spline formulation | paper | **Not accessed** |
+| Perrin et al. (1989) spline formulation, the method MNE cites (`_csd.py` line 67; `interpolation.py` lines 68 and 87) | *Electroencephalogr Clin Neurophysiol* 72(2):184-187, DOI `10.1016/0013-4694(89)90180-6`, from search results. `doi.org` unreachable | **Not accessed**. The printed equations were not read |
+| Perrin et al. (1990) corrigendum, "Corrigenda EEG 02274" (*ECN* 76:565) | cited in the header of the CSD Toolbox `CSD.m` (see next row). The toolbox says the 1989 current-density equation had an error that the corrigendum fixes | **Not accessed**. Its content is unknown here, so it is not known whether the corrected equation is the `h_m` form above |
+| CSD Toolbox (Kayser; GPL), `func/GetGH.m` and `func/CSD.m`, mirrored at https://github.com/lcnhappe/happe (`Packages/eeglab14_0_0b/CSDtoolbox/func/`) | read through a WebFetch excerpt, not byte-verified. Not run, not transcribed | **Corroborating implementation.** `G` uses `(n(n+1))^m` and `H` uses `(n(n+1))^(m-1)`, both with `1/(4π)`, `n = 1..50` with `P_0` excluded, `m` default 4. `H = −h/4π` with `h` numerator `−(2n+1)`, so `H` is positive. `λ` default 1e-5 is added to the diagonal of `G`. `X = Σ C·H / head` with `head = R²`. Header: "[µV/m²]" for a unit sphere, rescaled to µV/cm² with the radius in cm |
+| Kayser & Tenke (2015), "Issues and considerations for using the scalp surface Laplacian in EEG/ERP research: a tutorial review", cited by MNE (`_csd.py` line 67) | search excerpts only, not read in full | **Partial**. Excerpts describe the surface Laplacian as "a truly reference-free technique" (the reference wording in MNE's docstring, `_csd.py` line 70). The PR's "average-referenced" label is therefore a construction label, not a property of the output |
+| Other MNE citations: Perrin et al. (1987), Cohen (2014) (`_csd.py` line 67) | not read | **Not used** by this PR |
 
-Convention, stated as formulas (read from the pinned source, implemented independently):
+Convention, stated as formulas and checked against the pinned MNE source and the CSD Toolbox rows above. Implemented
+independently. No code is transcribed in `tools/`:
 
 - `g_m(x) = Σ_{n=1..N} (2n+1) / ((n(n+1))^m · 4π) · P_n(x)`, and `h_m(x) = Σ_{n=1..N} (2n+1) / ((n(n+1))^(m−1) · 4π) · P_n(x)`.
   The sum runs over `n = 1..N` inclusive, with no `P_0` term and no minus sign.
 - Operator: `G` from cosines of unit sensor vectors. `λ²` is added to the diagonal of `G`. `Gi = G⁻¹`.
   `C = Gi·Z − TC·(1ᵀGi·Z)/sgi`, where `Z = I − 11ᵀ/n`, `sgi = 1ᵀGi1`, and `M = Hᵀ·C / R²`. Output `M·V`.
 - **Where the package and MNE differ in ordering.** The package's projection form takes `TC = Gi·1`.
-  MNE 1.13.2 computes `TC = Gi.sum(0)` (that is, `Giᵀ·1`). These are the same in exact arithmetic. In
-  float64 they differ in TC by about 1.5e-10 to 1.7e-10 absolute on the six montages, depending on how `G` is
-  assembled. The operators differ by at most 4.4e-13 relative. The regression test bounds the operator
-  difference. It does not assert the TC difference itself.
-- The output unit is recorded as V/m² for positions in metres, following MNE's `FIFF_UNIT_V_M2`.
+  MNE 1.13.2 computes `TC = Gi.sum(0)` (that is, `Giᵀ·1`). In exact arithmetic these are equal, because `Gi` is
+  symmetric. In float64 the difference is exactly `(Gi − Giᵀ)·1`, so it measures the rounding asymmetry of the
+  computed `Gi`. Measured on the six montages (snapshot fields `tc_ordering_abs_max`,
+  `operator_ordering_rel_to_max`, `gi_asymmetry_abs_max` in `docs/audits/mne_csd_reference_audit.json`):
+  the TC difference is 1.8e-12 (`tetrahedron_4`) to 1.5e-10 (`seeded_cap_12`) absolute. `Gi` is asymmetric by up to
+  1.3e-9 absolute, on `seeded_cap_12`. The operators differ by at most 3.5e-14 relative. The regression tests bound
+  the TC difference at 1e-9 and the operator difference at 1e-13.
+- The output unit is recorded as V/m² for positions in metres, following MNE's `FIFF_UNIT_V_M2`. The CSD Toolbox
+  header uses the same convention: µV/m² for a unit sphere, and µV/cm² when the radius is given in cm. The unit is
+  therefore "input unit / length²" with the radius in the length unit of the positions. It is a surface-Laplacian
+  unit, not a physical current density. A physical current density would need a conductivity and layer thickness,
+  which this PR does not use.
 - Local convention, not a source claim: `R = 0.095 m` is the test radius used throughout this audit.
 
 ## Refusal behaviour (L2c)
@@ -155,7 +168,7 @@ The zero-sum constraint is redundant on the symmetric tetrahedron and octahedron
 
 ### Code-path comparison against the MNE transcription
 
-Error is the Frobenius-relative difference from the MNE code path. Bound in the test: `10 · cond · eps`.
+Error is the Frobenius-relative difference from the MNE transcription (not executed MNE). Bound in the test: `10 · cond · eps`.
 
 | montage | n | cond(G+λ²I) | cond·eps | kkt vs MNE path | projection vs MNE path | max error / (cond·eps) |
 |---|---|---|---|---|---|---|
@@ -175,8 +188,8 @@ loosened to pass; the existing `1e-10` KKT-vs-projection test is unchanged.
 |---|---|
 | Round 6 constants vs the pinned-source N = 50 series | **No discrepancy** (matches to ~1e-15 relative). Sign convention agrees: `H(1) > 0`, no minus sign |
 | 50-term constants vs exact infinite series | **Truncation-specific, not a parity failure.** `H(1)` shifts 1.8e-7 relative at N = 4000 |
-| Package `TC = Gi·1` vs MNE `TC = Gi.sum(0)` | **Ordering difference, not a numerical discrepancy beyond rounding.** TC differs by about 1.5e-10 to 1.7e-10 absolute; the operator by at most 4.4e-13 relative |
-| KKT and projection forms vs the MNE code path | **No discrepancy beyond float64 rounding**, bounded by 10·cond·eps in the tests |
+| Package `TC = Gi·1` vs MNE `TC = Gi.sum(0)` | **Ordering difference, not a numerical discrepancy beyond rounding.** The TC difference is `(Gi − Giᵀ)·1`: 1.8e-12 to 1.5e-10 absolute on the six montages. The operator differs by at most 3.5e-14 relative |
+| KKT and projection forms vs the MNE transcription | **No discrepancy beyond float64 rounding**, bounded by 10·cond·eps in the tests |
 | Legendre-ODE identity | **Holds**: 2.2e-16 relative with an independent H; 8.6e-16 to 2.2e-15 with the package's H |
 | Refusal behaviour | **Matches MNE 1.13.2** on the listed inputs; was a gap for three inputs before the 2026-10-19 repair (see the refusal section) |
 | Proposal's custom KKT operator vs MNE operator | **Insufficient evidence.** The proposal's code is absent, so it was not compared |
@@ -210,12 +223,12 @@ No mathematical or numerical discrepancy was found in the parts that could be ch
   That SHA was not checked against the merge ref. Its `spherical_csd` executions were 81, 18 and 14 collected with
   zero skips. The fourth, `test_mne_integration_optional.py`,
   collected 3 and skipped 3. That was the **only** cause of the gate's `spherical_csd: FAIL`.
-- **Simulated gate on this change**: a disposable tree at the PR's base `3f3fe859` with the change committed as
-  temp commit `e93e9450` (not pushed), run with main's gate script (blob `e1c3d86`). Result: `status PASS`,
-  `unmapped_candidate_paths []`, and `spherical_csd` executions **81 / 18 / 31 / 7 collected, 0 skipped,
-  0 failed, 0 errors, 0 timeouts** (148 in total). This is a simulation, not a hosted run.
-- **Hosted run for the pushed head**: pending at the time of writing. The tested SHA will be the PR merge commit
-  reported by the run.
+- **Superseded simulation (temp commit `e93e9450`, before the 2026-10-20 repair)**: run with main's gate script
+  (blob `e1c3d86`), `status PASS`, `unmapped_candidate_paths []`. Its per-file split is not carried forward. The
+  split printed here earlier summed to 137, not the stated total of 148, so it could not be relied on.
+- **Hosted evidence for each head** is in the PR's check runs, in the `core-tests` job log (the round-6
+  `spherical_csd` executions, with `tests_collected`, `skipped`, `failed`, `errors`, `timeouts`, and
+  `tested_commit_sha`). This file does not record run IDs, so it does not go stale with each push.
 - The owned tests are not in any core batch of `.github/workflows/required-checks.yml`. The round-6 gate is
   the only hosted path that runs them. It is absent at the PR's base `3f3fe85`, present on `origin/main`
   (`bc91af19`), and maps these paths to `spherical_csd`.
@@ -236,7 +249,7 @@ No mathematical or numerical discrepancy was found in the parts that could be ch
 ## Reproduce
 
 ```
-PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 148 passed, 0 skipped (gated surface)
+PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 150 passed, 0 skipped (gated surface)
 PYTHONPATH=. python -m pytest tests/optional_live_mne -q                  # 3 skipped without MNE 1.13.2 (not evidence)
 PYTHONPATH=. python -m tools.mne_csd_reference_audit --json-out docs/audits/mne_csd_reference_audit.json
 ```
@@ -253,7 +266,7 @@ assertions and bounds. The snapshot command does not regenerate their numerical 
   (81), `test_legendre_constants.py` (18), `test_isolation_and_pin.py` (41),
   `test_mne_integration_optional.py` (8, deterministic; the name is a legacy mapping key and does not mean optional).
 - Command: `python .github/workflows/round6_experimental_tests.py --base <PR base> --head <PR head> --always-component surrogate_nulls --report outputs/round6_experimental_ci_report.json`.
-- Expected for `spherical_csd`: status PASS, four executions, 148 collected, 0 skipped, 0 failed, 0 errors, 0 timeouts.
+- Expected for `spherical_csd`: status PASS, four executions, 150 collected (81 / 18 / 43 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts.
 - Not mapped and not counted: `tests/optional_live_mne/test_mne_csd_live_parity.py`. It must not be added to a
   required surface unless CI installs MNE 1.13.2.
 - Renaming `test_mne_integration_optional.py` requires a mapping change, which belongs to the workflow owner.
