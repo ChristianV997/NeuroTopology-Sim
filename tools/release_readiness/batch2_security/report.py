@@ -63,8 +63,24 @@ def render_markdown(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_reports(payload: Dict[str, Any], output_dir: PathLike) -> Dict[str, str]:
-    out = Path(output_dir)
+def write_reports(
+    payload: Dict[str, Any],
+    output_dir: PathLike,
+    trusted_root: PathLike | None = None,
+) -> Dict[str, str]:
+    """Write JSON and Markdown reports.
+
+    When ``trusted_root`` is provided, the resolved output directory must stay
+    inside that root. Traversal, absolute escapes, Windows-drive patterns, and
+    symlink escapes are rejected via the existing path-containment guard.
+    This is a local harness boundary, not a repository-wide security claim.
+    """
+    from tools.release_readiness.batch2_security.path_containment import resolve_under_root
+
+    if trusted_root is not None:
+        out = resolve_under_root(Path(trusted_root), output_dir)
+    else:
+        out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     jp = out / "batch2_security_report.json"
     mp = out / "batch2_security_report.md"
