@@ -153,12 +153,25 @@ def run_target(
 
     budget = compare_budget(candidate, budgets)
     if budget["within_budget"] is False:
-        over = [k for k, v in budget["checks"].items() if v is False]
+        over = [
+            k
+            for k in budget.get("authoritative_checks", ())
+            if budget["checks"].get(k) is False
+        ]
         recommendations.append(
             f"candidate exceeds budget ({', '.join(over)}); reduce size or raise the budget"
         )
         if status == STATUS_OK:
             status = STATUS_BUDGET_OVERRUN
+    adv_over = [
+        k
+        for k in budget.get("advisory_checks", ())
+        if budget["checks"].get(k) is False
+    ]
+    if adv_over:
+        recommendations.append(
+            f"advisory resource note ({', '.join(adv_over)}); host-dependent, not a pass/fail gate"
+        )
 
     tm_ratio = _ratio(candidate.get("tracemalloc_peak_bytes"), baseline.get("tracemalloc_peak_bytes"))
     rt_ratio = _ratio(candidate.get("runtime_best_s"), baseline.get("runtime_best_s"))

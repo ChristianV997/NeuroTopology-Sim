@@ -48,16 +48,20 @@ def compare_budget(metrics: Dict[str, Any], budgets: ResourceBudgets) -> Dict[st
         "rss_within_budget": _within(metrics.get("rss_after_bytes"), budgets.rss_bytes),
         "workers_within_budget": worker_ok,
     }
-    evaluated = [v for v in checks.values() if v is not None]
+    # Wall-clock / RSS are host-dependent advisory signals only. They must not
+    # drive within_budget or TargetStatus.BUDGET_OVERRUN (brittle CI gates).
+    advisory_checks = ("runtime_within_budget", "rss_within_budget")
+    authoritative_checks = (
+        "memory_within_budget",
+        "disk_within_budget",
+        "workers_within_budget",
+    )
+    evaluated = [checks[k] for k in authoritative_checks if checks[k] is not None]
     within = all(evaluated) if evaluated else None
     return {
         "within_budget": within,
         "checks": checks,
-        "advisory_checks": ["runtime_within_budget", "rss_within_budget"],
-        "authoritative_checks": [
-            "memory_within_budget",
-            "disk_within_budget",
-            "workers_within_budget",
-        ],
+        "advisory_checks": list(advisory_checks),
+        "authoritative_checks": list(authoritative_checks),
         "budgets": budgets.to_dict(),
     }

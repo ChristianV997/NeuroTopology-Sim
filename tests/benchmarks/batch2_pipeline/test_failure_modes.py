@@ -46,6 +46,27 @@ def test_missing_metric_is_null_not_zero():
     assert result["checks"]["rss_within_budget"] is None
 
 
+def test_runtime_and_rss_budgets_are_advisory_not_status_gates():
+    """Regression: brittle wall-clock/RSS thresholds must not set budget_overrun."""
+    tiny_timing = ResourceBudgets(
+        memory_bytes=10**12,
+        disk_bytes=10**12,
+        runtime_s=1e-18,
+        rss_bytes=1,
+        max_workers=1,
+    )
+    rec = run_target(
+        TARGETS["full_recording_reread"], tiny_timing, seed=0, size=8, repetitions=1
+    )
+    checks = rec["deterministic"]["budget"]["checks"]
+    assert checks["runtime_within_budget"] is False
+    # RSS may be unavailable (None) on some hosts; when present it must be advisory.
+    assert checks["rss_within_budget"] in (False, None)
+    assert rec["deterministic"]["budget"]["within_budget"] is True
+    assert rec["status"] == "ok"
+    assert "advisory resource note" in " ".join(rec.get("recommendations") or [])
+
+
 def test_measure_reports_null_for_unavailable(monkeypatch):
     monkeypatch.setattr(telemetry, "_PSUTIL", None)
     monkeypatch.setattr(sys, "platform", "darwin")
