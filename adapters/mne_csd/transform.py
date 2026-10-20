@@ -266,18 +266,21 @@ def apply_csd(
         raise CSDAdapterError(
             f"stiffness must be a finite non-negative float (MNE API); got {stiffness!r}"
         )
-    if isinstance(n_legendre_terms, float) and not math.isfinite(n_legendre_terms):
-        raise CSDAdapterError(
-            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
-        )
     try:
-        n_terms = int(n_legendre_terms)
-    except (TypeError, ValueError, OverflowError) as exc:
+        n_terms_f = float(n_legendre_terms)
+    except (TypeError, ValueError) as exc:
         raise CSDAdapterError(
             f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
         ) from exc
-    if n_terms < 1:
-        raise CSDAdapterError("n_legendre_terms must be >= 1")
+    if (
+        not math.isfinite(n_terms_f)
+        or n_terms_f != int(n_terms_f)
+        or int(n_terms_f) < 1
+    ):
+        raise CSDAdapterError(
+            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
+        )
+    n_terms = int(n_terms_f)
     lambda2 = lambda2_f
     stiffness = stiffness_f
     n_legendre_terms = n_terms

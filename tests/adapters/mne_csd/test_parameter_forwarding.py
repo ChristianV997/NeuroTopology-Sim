@@ -142,6 +142,7 @@ def test_invalid_lambda2_rejected(eeg_raw):
         {"stiffness": float("nan")},
         {"stiffness": float("inf")},
         {"n_legendre_terms": float("nan")},
+        {"n_legendre_terms": 50.5},
     ],
 )
 def test_non_finite_csd_parameters_rejected(eeg_raw, kwargs):
@@ -154,6 +155,17 @@ def test_non_finite_csd_parameters_rejected(eeg_raw, kwargs):
             **kwargs,
         )
     assert backend.calls == []
+
+
+def test_integral_float_n_legendre_terms_accepted(eeg_raw):
+    backend = RecordingCallable()
+    apply_csd(
+        eeg_raw,
+        channels=["Fz", "Cz", "Pz"],
+        n_legendre_terms=50.0,
+        csd_callable=backend,
+    )
+    assert backend.calls[0]["n_legendre_terms"] == 50
 
 
 @pytest.mark.parametrize(
