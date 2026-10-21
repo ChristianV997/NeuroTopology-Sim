@@ -203,16 +203,44 @@ def _auto_power_errors(spectra_a, spectra_b):
 
 
 def _csd_rel_error(csd_actual, csd_target):
-    """Frobenius relative error summed over bins: ``sqrt(sum ||A-T||^2) / (sqrt(sum ||T||^2) + EPS)``."""
-    num = 0.0
-    den = 0.0
-    for a_mat, t_mat in zip(csd_actual, csd_target):
-        d = len(t_mat)
-        for i in range(d):
-            for j in range(d):
-                num += abs(a_mat[i][j] - t_mat[i][j]) ** 2
-                den += abs(t_mat[i][j]) ** 2
-    return math.sqrt(num) / (math.sqrt(den) + sp.EPS)
+    """Return the scale-invariant Frobenius relative error summed over bins.
+
+    A zero target has zero error only when the actual CSD is also zero; otherwise
+    its relative error is infinite. Any non-finite input likewise returns
+    infinity so a strict tolerance check fails closed. Components are scaled
+    before subtraction and accumulated with ``hypot`` to avoid squared-norm
+    overflow and underflow across the finite float64 range.
+    """
+    def entries():
+        for a_mat, t_mat in zip(csd_actual, csd_target):
+            d = len(t_mat)
+            for i in range(d):
+                for j in range(d):
+                    yield complex(a_mat[i][j]), complex(t_mat[i][j])
+
+    scale = 0.0
+    for actual, target in entries():
+        components = (actual.real, actual.imag, target.real, target.imag)
+        if not all(math.isfinite(value) for value in components):
+            return math.inf
+        scale = max(scale, *(abs(value) for value in components))
+
+    if scale == 0.0:
+        return 0.0
+
+    numerator = 0.0
+    denominator = 0.0
+    for actual, target in entries():
+        numerator = math.hypot(
+            numerator,
+            actual.real / scale - target.real / scale,
+            actual.imag / scale - target.imag / scale,
+        )
+        denominator = math.hypot(denominator, target.real / scale, target.imag / scale)
+
+    if denominator == 0.0:
+        return math.inf if numerator != 0.0 else 0.0
+    return numerator / denominator
 
 
 def _target_for_compare(csd, n):
