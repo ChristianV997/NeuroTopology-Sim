@@ -73,10 +73,10 @@ def legendre_matrices(unit: np.ndarray, *, stiffness: float = 4.0, n_terms: int 
 
 
 def regularise(G: np.ndarray, lambda2: float) -> np.ndarray:
-    # MNE 1.13.2 accepts every finite non-negative lambda2; it does not impose
-    # an upper bound of one. Keep the reference's domain check aligned with it.
-    if not (math.isfinite(lambda2) and lambda2 >= 0.0):
-        raise OperatorInputError("lambda2 must be finite and non-negative")
+    # Same domain as the pinned MNE 1.13.2: `if not 0 <= lambda2 < 1` (mne/preprocessing/_csd.py L126-127).
+    # The chained comparison is False for NaN, so NaN and inf are refused as well.
+    if not (0.0 <= lambda2 < 1.0):
+        raise OperatorInputError("lambda2 must satisfy 0 <= lambda2 < 1")
     return G + lambda2 * np.eye(G.shape[0])
 
 

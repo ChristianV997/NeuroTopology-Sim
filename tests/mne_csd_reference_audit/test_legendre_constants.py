@@ -89,6 +89,15 @@ def test_non_positive_term_count_is_rejected(bad):
         g_function(np.array([0.5]), 4.0, bad)
 
 
+# Regression (2026-10-21, #402 lane): n_terms=True was accepted as a single Legendre term and silently changed the
+# operator. The pinned MNE 1.13.2 refuses it: `_ensure_int` raises TypeError for bool and for non-integers
+# (mne/utils/check.py L33-37, used at _csd.py L133).
+@pytest.mark.parametrize("bad", [True, False, 50.0, 50.7, float("nan")])
+def test_non_integer_term_count_is_rejected_as_mne_does(bad):
+    with pytest.raises(TypeError):
+        g_function(np.array([0.5]), 4.0, bad)
+
+
 @pytest.mark.parametrize("bad", [np.nan, np.inf, 1.0 + 1e-6, -1.5])
 def test_out_of_domain_arguments_are_rejected(bad):
     with pytest.raises(ValueError):

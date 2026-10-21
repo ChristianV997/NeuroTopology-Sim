@@ -15,6 +15,7 @@ numpy.polynomial, so the two can be cross-checked.
 from __future__ import annotations
 
 import math
+import operator
 from typing import Sequence
 
 import numpy as np
@@ -34,6 +35,10 @@ def legendre_polynomials(n_max: int, x: np.ndarray) -> list[np.ndarray]:
 
 
 def _series(x: np.ndarray, stiffness: float, n_terms: int, exponent_shift: int) -> np.ndarray:
+    # Only true integers, as the pinned MNE does (mne/utils/check.py _ensure_int): bool and float raise TypeError.
+    if isinstance(n_terms, bool):
+        raise TypeError("n_legendre_terms must be an integer, got bool")
+    n_terms = operator.index(n_terms)
     if n_terms < 1:
         raise ValueError("n_legendre_terms must be >= 1")
     polys = legendre_polynomials(n_terms, x)

@@ -130,8 +130,11 @@ def test_invalid_radius_is_rejected(radius):
         csd_operator(_positions("tetrahedron_4"), radius=radius)
 
 
-@pytest.mark.parametrize("lambda2", [-1e-9, float("nan"), float("inf"), -float("inf")])
-def test_nonfinite_or_negative_lambda2_is_rejected(lambda2):
+# Regression (2026-10-21, #402 lane): commit 6f7175db removed the upper bound and accepted lambda2 = 1.0 and 2.0. The
+# pinned MNE 1.13.2 refuses them: `if not 0 <= lambda2 < 1: raise ValueError` (mne/preprocessing/_csd.py L126-127).
+# The reference must refuse the same domain, and NaN / inf fall outside it too.
+@pytest.mark.parametrize("lambda2", [-1e-9, 1.0, 2.0, float("nan"), float("inf"), -float("inf")])
+def test_lambda2_outside_mne_range_is_rejected(lambda2):
     with pytest.raises(OperatorInputError, match="lambda2"):
         csd_operator(_positions("tetrahedron_4"), radius=RADIUS, lambda2=lambda2)
 
