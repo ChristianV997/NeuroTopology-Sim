@@ -136,12 +136,8 @@ def test_relative_error_diagnostics_are_scale_invariant_for_nonzero_signal() -> 
     for scale in (1e-100, 1e100):
         result = compute_weighted_hodge_decomposition(c, scale * omega, weights_edges=weights)
         expected_reconstruction = result.reconstruction_residual_norm / np.sqrt(result.energy_total)
-        expected_energy = abs(
-            result.energy_total
-            - result.energy_exact
-            - result.energy_coexact
-            - result.energy_harmonic
-        ) / result.energy_total
+        sum_energies = result.energy_exact + result.energy_coexact + result.energy_harmonic
+        expected_energy = abs(result.energy_total - sum_energies) / result.energy_total
 
         assert result.relative_reconstruction_error == pytest.approx(
             expected_reconstruction, rel=1e-10, abs=0.0
