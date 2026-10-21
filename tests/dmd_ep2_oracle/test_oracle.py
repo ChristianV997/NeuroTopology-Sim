@@ -61,6 +61,38 @@ def mat_mul(a, b):
     )
 
 
+def mat_inv_2x2(a, tol=1e-14):
+    """Invert a nonsingular 2×2 matrix; reject ill-conditioned det analytically."""
+    det = a[0][0] * a[1][1] - a[0][1] * a[1][0]
+    if abs(det) <= tol:
+        raise ValueError(f"singular / ill-conditioned 2x2 inverse; |det|={abs(det)}")
+    inv_det = 1.0 / det
+    return (
+        (a[1][1] * inv_det, -a[0][1] * inv_det),
+        (-a[1][0] * inv_det, a[0][0] * inv_det),
+    )
+
+
+def mat_similarity(p, b):
+    """Return A = P B P^{-1} (synthetic similarity transform)."""
+    return mat_mul(p, mat_mul(b, mat_inv_2x2(p)))
+
+
+def frobenius_cond_diag_dominant(a):
+    """Crude 2×2 spectral condition proxy: |λ_max|/|λ_min| for diagonalizable diag case.
+
+    Used only to justify residual tolerances on synthetic nonnormal fixtures;
+    not a production κ estimator and not an empirical claim.
+    """
+    center = (a[0][0] + a[1][1]) / 2
+    half_diff = (a[0][0] - a[1][1]) / 2
+    radius = cmath.sqrt(half_diff * half_diff + a[0][1] * a[1][0])
+    l1, l2 = center + radius, center - radius
+    if l1 == 0 or l2 == 0:
+        raise ValueError("zero eigenvalue: matrix log undefined")
+    return abs(l1) / abs(l2) if abs(l1) >= abs(l2) else abs(l2) / abs(l1)
+
+
 def assert_full_nilpotency(n, tol=1e-12):
     """Require the full matrix condition N**2 == 0 (not a single-entry proxy)."""
     n2 = mat_mul(n, n)
@@ -203,6 +235,34 @@ class OracleTests(unittest.TestCase):
         alternate = principal + 2j * math.pi
         self.assertAlmostEqual(abs(cmath.exp(principal) - z), 0)
         self.assertAlmostEqual(abs(cmath.exp(alternate) - z), 0)
+
+    def test_matrix_log_similarity_covariance(self):
+        """f(P B P^{-1}) = P f(B) P^{-1} for the principal matrix log (diag case)."""
+        b = ((2 + 0j, 0j), (0j, 3 + 0j))
+        # Unimodular shear: det(P)=1, well-conditioned.
+        p = ((1 + 0j, 0.5 + 0j), (0j, 1 + 0j))
+        a = mat_similarity(p, b)
+        log_b = principal_matrix_log(b)
+        log_a = principal_matrix_log(a)
+        conjugated = mat_similarity(p, log_b)
+        # Exact algebraic identity for primary matrix functions on this spectrum.
+        self.assertLess(max_entry_error(log_a, conjugated), 1e-10)
+        # Reconstruction residual remains a check on exp∘log, not branch ID.
+        self.assertLess(max_entry_error(mat_exp(log_a), a), 1e-10)
+
+    def test_ill_conditioned_nonnormal_residual_tolerance(self):
+        """Strongly nonnormal 2×2: residual tol scales with κ_proxy, not loosened ad hoc."""
+        # Eigenvalues 2 and 3 (κ_proxy = 1.5); off-diagonal 1e3 drives nonnormality.
+        a = ((2 + 0j, 1e3 + 0j), (0j, 3 + 0j))
+        kappa = frobenius_cond_diag_dominant(a)
+        self.assertAlmostEqual(kappa, 1.5)
+        log_a = principal_matrix_log(a)
+        residual = max_entry_error(mat_exp(log_a), a)
+        # Analytic budget: unit-roundoff-scale * κ * ||A||_F (synthetic bound).
+        # For this fixture ||A||_F ≈ 1e3; allow 1e-9 * κ * ||A||_F ≈ 1.5e-6.
+        budget = 1e-9 * kappa * mat_norm(a)
+        self.assertLess(residual, budget)
+        self.assertLess(residual, 1e-6)  # absolute floor still tight; do not weaken
 
 
 if __name__ == '__main__':

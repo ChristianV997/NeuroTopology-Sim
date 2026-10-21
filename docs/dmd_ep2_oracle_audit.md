@@ -16,8 +16,8 @@ Bridge helper imports load sibling `test_oracle.py` by file path so a missing pr
 
 ## Oracle coverage
 
-Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signed Nyquist 240↔−10 @ 250 Hz, principal matrix log, branch proximity. The repeated-root matrix-function branch calls `assert_full_nilpotency` (full `||N²||`, not a single-entry proxy). Regression: single-entry `n00²+n01·n10` proxy is insufficient.
+Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signed Nyquist 240↔−10 @ 250 Hz, principal matrix log, branch proximity, similarity covariance `f(PBP⁻¹)=P f(B) P⁻¹`, and ill-conditioned nonnormal residual budgets (`κ_proxy`-scaled, not ad hoc loosening). The repeated-root matrix-function branch calls `assert_full_nilpotency` (full `||N²||`, not a single-entry proxy). Regression: single-entry `n00²+n01·n10` proxy is insufficient.
 
 ## Discovery note
 
-`tests/dmd_ep2_oracle/` is **not** registered in Round-6 `COMPONENTS` / Required Checks allowlist. Path-level hosted execution needs Codex Agent A mapping (CI not edited in this lane).
+On current `main`, Round-6 maps **only** `tests/dmd_ep2_oracle/test_production_bridge.py` under `COMPONENTS["dmd_crouzeix"]` (with `DMD_EP2_REQUIRE_PRODUCTION=1`). `tests/dmd_ep2_oracle/test_oracle.py` remains under `UNMAPPED_CANDIDATE_ROOTS` (`tests/dmd_ep2_oracle/`). Path-level hosted execution of the oracle-only suite needs Codex Agent A mapping (CI not edited in this lane). See orchestrator artifact for exact pairs.
