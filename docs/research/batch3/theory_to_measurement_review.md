@@ -1,117 +1,78 @@
-# Theory-to-Measurement Review (Batch 3, Grok Chat Agent A)
+# Theory-to-Measurement Review (Batch 3, Grok Chat A)
 
-**Audit date:** 2026-10-16  
-**Base commit:** `3f3fe8593303184cb88eef056c1322f3d4e57a16` (origin/main)  
-**Scope:** Independent source-grounded review of theoretical-to-operational bridges implied by repository materials (PITNN, open-quantum / Fröhlich / EP layers, higher-order topological descriptors, graph beta-1, entropy production) in the context of prior Batch 1/2 audits and the higher-order literature audit.  
-**Not a line-by-line equation audit** (that narrower task was assigned elsewhere).  
-**Retrieval:** Public peer-reviewed sources and official repository claim-language contracts. Preprints labeled as such. Gemini-generated assertions or test output are not treated as primary evidence.
+**Audit date:** 2026-10-21
+**Current-main reference:** `4e91c6f080647280940ded4f90f4ee9278960c4b`
+**PR content reviewed before correction:** `5634a707db09457330b413f739b2dd8eebf89647`
+**Scope:** Claim-language and citation-scope review for the five propositions in the Batch 3 matrix. The categories identify the kind of bridge under review, not whether the proposition is true.
+**Method:** Checked the cited public source pages and current repository claim-language contract. This was a bounded source check, not a systematic literature review or a line-by-line model audit.
 
-## Distinctions enforced
+## Reading the matrix
 
-| Category | Meaning | Does not license |
-|----------|---------|------------------|
-| Formal mathematical identity | Proven equality under stated axioms | Empirical measurement of a biological construct |
-| Computational analogy / borrowed operator | Operator transferred from another domain | Identity with the biological mechanism |
-| Operational measurement claim | Feature is computable from sensors | Feature measures the proposed construct |
-| Empirical claim | Observation under stated controls | Causal or mechanistic interpretation |
-| Phenomenological / mechanistic interpretation | Narrative linking math to biology | Confirmation without independent identification |
+Each `review_question` is a proposition being evaluated, not an asserted result. `direct_support_for_proposition` asks whether that particular source supports the proposition as written; it is not a rating of source quality. Every source record states its support scope and limitations. Repository policies and prior audits are labeled as repository sources, not primary scientific evidence.
 
-“A feature is computable” ≠ “the feature measures the proposed biological construct.”
+A computational representation, an operational measurement, empirical evidence, a formal identity, and a biological/mechanistic interpretation are separate levels. Support at one level does not automatically transfer to another.
 
-## Source-to-claim table (summary)
+## Claim-by-claim source assessment
 
-| Claim ID | Category | Strongest primary source | Direct support? | Key assumption | Counterevidence / uncertainty | Alternative | Falsifiable test |
-|----------|----------|---------------------------|-----------------|----------------|-------------------------------|-------------|------------------|
-| TTM-001 | Computational analogy | Giusti et al. 2016 (J Comput Neurosci) simplicial complexes for higher-order neural structure | Nearby only (graph → simplicial encoding) | Sensor data embed higher-order relations | Volume conduction, inverse non-uniqueness, reference choice | Pairwise + noise or linear mixing | Pre-registered pairwise nulls on independent EEG cohort; source-space vs sensor-space discrepancy |
-| TTM-002 | Operational measurement | Repository claim_language.md + prior PITNN K>100 gate failure (20/20 on ds005620) | No (gate failed) | K>100 from empirical marginal likelihood | Synthetic/proxy never PASS; no independent replication | Classifier accuracy without topological invariant | Independent cohort, full provenance, multiplicity-controlled formal K>100 with pairwise baselines |
-| TTM-003 | Phenomenological interpretation | Open-quantum Fröhlich / EP simulation literature (theoretical) | No empirical identification from EEG/fMRI | Quantum coherence or EP maps to macroscopic EEG | No validated biological quantum inputs; decoherence timescales | Classical nonlinear oscillator or filtered noise | Biophysical constraint matching (temperature, coupling) + null classical models that reproduce the same EEG descriptors |
-| TTM-004 | Formal mathematical identity (graph) | Algebraic topology textbooks / Betti number definitions | Yes for graph cycle rank | Graph constructed from thresholded connectivity | Threshold dependence, nonstationarity, phase uncertainty at amplitude zeros | Alternative filtrations or random geometric graphs | Sensitivity analysis across thresholds and montages; comparison to spatial winding number (distinct per claim_language) |
-| TTM-005 | Empirical claim (higher-order) | Higher-order literature audit (arXiv:2609.03987 preprint, Neuron 2026 breathing paper, etc.) | Source identity only; supported_for_repository=false | Triadic or spectral features add information | Preprint status; construct confounds (discernment ≠ nonjudgment) | Pairwise baselines + demand characteristics | Preregistered independent replication with pairwise and null models |
+| ID | Proposition class | Sources checked | Direct support for proposition? | Review finding |
+|---|---|---|---|---|
+| TTM-001 | Computational analogy / borrowed operator | Giusti et al. (2016), a peer-reviewed methodological review | Yes, narrowly: it describes simplicial complexes as higher-order representations and reviews neural-data applications | Supports a computational representation, not the biological validity of a resulting EEG/fMRI measure. |
+| TTM-002 | Operational measurement | Current repository evidence/claim-language contract | No | A formal model-comparison threshold is not, by itself, validation of a measurement construct or identification of a biological mechanism. No primary empirical source establishing the PITNN-to-mechanism mapping is cited here. |
+| TTM-003 | Biological/mechanistic interpretation | Fröhlich (1968), Diósi (1984), and Penrose (1996) theoretical papers | No | These sources concern theoretical proposals; they do not establish that the corresponding processes are measured in macroscopic EEG/fMRI. No primary source for an exceptional-point-to-EEG biological mapping was identified in this bounded review. |
+| TTM-004 | Formal mathematical identity | Current repository claim-language contract | No | The contract explicitly keeps graph cycle rank, spatial winding/topological charge, and scalar chirality distinct. The identity is not supported. |
+| TTM-005 | Empirical evidence | Li et al. (arXiv:2609.03987) and Kovach & Kumar (arXiv:2609.03172), version 1 pages | No | The preprints report their own triadic-connectivity and higher-order-spectral methods; the inspected source pages do not test the repository-specific PITNN, spatial-charge, or quantum-mechanism propositions. This is a citation-scope finding, not a disconfirmation of those hypotheses. |
 
-Full matrix in `reports/batch3/grok_chat_a/claim_matrix.json`.
+## Detailed assessment
 
-## Detailed claims
+### TTM-001 — Computational representation is not measurement validation
 
-### TTM-001 — Simplicial / higher-order operators license measurement of neural higher-order structure
+**Question under review:** Can simplicial-complex methods represent groupwise relationships beyond pairwise edges in neural-data analyses?
 
-- **Statement:** Algebraic-topological operators (simplicial complexes, persistent homology, higher-order spectra) applied to EEG/fMRI functional connectivity measure biologically meaningful higher-order interactions beyond pairwise dependence.
-- **Category:** Computational analogy / borrowed operator.
-- **Strongest source:** Giusti, Ghrist, Bassett (2016) “Two’s company, three (or more) is a simplex,” *J Comput Neurosci* 41:1–14. DOI: 10.1007/s10827-016-0608-6. Primary mathematical result on encoding non-dyadic relations.
-- **Direct support?** Only for the mathematical encoding step. Does not establish that EEG sensor measurements recover the underlying simplicial structure of neural interactions.
-- **Assumptions:** Connectivity matrix faithfully represents interactions; embedding dimension and filtration recover relevant topology; sensors sample the relevant manifold.
-- **Counterevidence / uncertainty:** Volume conduction mixes sources; reference choice and montage geometry alter pairwise measures; inverse problem non-uniqueness; phase uncertainty near amplitude zeros; nonstationarity; limited sensor coverage.
-- **Alternatives:** Linear mixing of pairwise sources; thresholding artifacts; spectral leakage from filtering.
-- **Falsifiable prediction:** On independent, preregistered EEG data, higher-order descriptors must significantly outperform pairwise + matched nulls (phase-randomized, spatial-surrogate) after controlling for volume conduction (source-space vs sensor-space) and reference. Failure on both spaces disconfirms the operational claim.
-- **Evidence limit:** Literature audit already set supported_for_repository=false.
+Giusti, Ghrist, and Bassett describe simplicial complexes as a generalization of graph representations and review applications to neural data ([2016 article](https://doi.org/10.1007/s10827-016-0608-6)). This is a methods review, not an independent empirical validation of a biological construct. It supports the narrow computational-representation proposition only.
 
-### TTM-002 — PITNN / K>100 gate as evidence of topological neural network mechanism
+Whether a particular EEG/fMRI-derived feature measures biologically meaningful higher-order neural interaction is a separate operational question. This review did not estimate source mixing, reference, montage, threshold, filtering, or nonstationarity effects. Those are potential controls for future tests, not effects demonstrated by this artifact.
 
-- **Statement:** Phase-invariant topological neural network (PITNN) features that pass a formal Bayes-factor gate K>100 identify a topological mechanism in EEG.
-- **Category:** Operational measurement claim (computable) vs empirical claim (gate failed).
-- **Strongest source:** Repository scientific falsification contract and prior execution result: PITNN K>100 gate failed 20/20 on ds005620. Claim language explicitly separates proxy K from formal Bayes factor.
-- **Direct support?** No. Gate failure is the available result.
-- **Assumptions:** Marginal likelihood correctly specified; multiplicity controlled; provenance complete.
-- **Counterevidence:** Explicit failure; synthetic/proxy never allowed as PASS.
-- **Alternatives:** Overfitting to noise structure; incomplete null models; dataset-specific artifacts.
-- **Falsifiable test:** Independent dataset, locked analysis pipeline, formal K>100 with pairwise spectral and graph baselines, full provenance, and sensitivity to filtering/montage. Current result is disconfirming for the operational claim on that dataset.
+### TTM-002 — A statistical gate does not identify a mechanism
 
-### TTM-003 — Open-quantum / Fröhlich condensation / exceptional-point layers map to EEG
+**Question under review:** Would a formal Bayes factor greater than 100 for a PITNN feature establish that the feature measures a biological topological mechanism in EEG?
 
-- **Statement:** Open quantum system simulations of Fröhlich condensation, Diósi-Penrose effects, or exceptional points produce descriptors that measure biological quantum or critical phenomena in macroscopic EEG.
-- **Category:** Phenomenological / mechanistic interpretation.
-- **Strongest source:** Theoretical physics literature on Fröhlich condensates and exceptional points (e.g., classical reviews of coherent excitations; modern EP literature in non-Hermitian systems). No peer-reviewed primary source demonstrates identification from standard EEG/fMRI.
-- **Direct support?** No. Prior review: “PITNN/open-quantum/EP layers are speculative and not empirically identifiable from available EEG/fMRI.”
-- **Assumptions:** Quantum coherence timescales survive to macroscopic sensors; gravitational or EP effects are detectable above thermal noise.
-- **Counterevidence / uncertainty:** Decoherence rates at biological temperatures; lack of validated quantum inputs for the simulation; classical nonlinear models can produce similar spectral and topological descriptors.
-- **Alternatives:** Classical limit-cycle oscillators, filtered 1/f noise, or thresholded connectivity graphs.
-- **Falsifiable prediction:** Biophysical parameter constraints (temperature, coupling strength, timescale) must be matched by the simulation, and a classical null model of equal complexity must fail to reproduce the same EEG topological statistics under the same sensor forward model. Current simulations do not meet this bar.
-- **Evidence limit:** Historical repository prose; not a current empirical claim.
+The current [repository claim-language contract](https://github.com/ChristianV997/NeuroTopology-Sim/blob/4e91c6f080647280940ded4f90f4ee9278960c4b/docs/scientific_falsification/claim_language.md) defines the project’s evidence boundary and explicitly distinguishes proxy quantities from formal Bayes factors. That internal contract is not an empirical source for construct or mechanism validity.
 
-### TTM-004 — Graph beta-1 as spatial topological charge
+The earlier draft asserted that a PITNN gate failed “20/20” on ds005620. I could not locate a linked run record in the reviewed PR, documentation, or report tree that establishes the exact run, configuration, and count. The number is removed from the matrix and is not relied on as evidence. No participant files or dataset contents were inspected.
 
-- **Statement:** Graph cycle rank (beta-1) computed on functional connectivity equals or measures spatial winding number / topological charge.
-- **Category:** Formal mathematical identity for the graph quantity; does not transfer to spatial charge.
-- **Strongest source:** Repository claim_language.md (explicit distinction: graph_beta1, spatial_winding_q, scalar_chirality remain distinct). Standard algebraic topology definitions.
-- **Direct support?** Yes for the graph definition; no for the identification with spatial charge.
-- **Assumptions:** Graph construction preserves spatial topology.
-- **Counterevidence:** Different constructions (threshold, lag, source vs sensor) yield different beta-1; spatial winding requires a continuous field or embedding not recovered by graph cycle rank.
-- **Alternatives:** Cycle rank as a connectivity complexity measure only.
-- **Falsifiable test:** Compute both quantities on the same data under controlled embeddings; systematic divergence under montage or inverse changes disconfirms identity.
-- **Evidence limit:** Explicitly prohibited as promoted language.
+### TTM-003 — Theoretical proposals do not establish a biological EEG mapping
 
-### TTM-005 — Higher-order literature as support for repository theories
+**Question under review:** Do simulations using Fröhlich-like coherence, Diósi–Penrose state-reduction proposals, or exceptional-point dynamics establish biological quantum or critical processes measured in macroscopic EEG/fMRI?
 
-- **Statement:** Preprints on triadic FC, higher-order spectra, and related construct papers support PITNN, topological charge, or quantum-layer claims.
-- **Category:** Empirical claim (source identity) / phenomenological interpretation (upgrade).
-- **Strongest source:** Higher-order literature audit (docs/research/higher_order_literature_audit.md) on origin/main. All five requested identifiers confirmed as sources; all supported_for_repository=false.
-- **Direct support?** Source existence only.
-- **Assumptions:** Methodological similarity implies theoretical support.
-- **Counterevidence:** Preprint status; construct confounds (discernment ≠ nonjudgment; breathing ≠ detachment); no EEG topology or quantum identification.
-- **Alternatives:** Independent methodological contributions that do not license the repository’s mechanistic claims.
-- **Falsifiable test:** Independent replication that simultaneously satisfies the repository’s falsification contract (K>100, provenance, nulls). Current audit disconfirms the upgrade.
-- **Evidence limit:** Explicit downgrade in the literature audit.
+The original Fröhlich article proposes long-range coherence in biological systems ([Fröhlich, 1968](https://doi.org/10.1002/qua.560020505)). Diósi’s article proposes gravitationally related quantum localization ([Diósi, 1984](https://doi.org/10.1016/0375-9601(84)90397-9)); Penrose develops a theoretical argument concerning gravity and quantum state reduction ([Penrose, 1996](https://doi.org/10.1007/BF02105068)). These are theory papers, not demonstrations that the proposed processes occur in the brain or are identifiable from EEG/fMRI. The source set checked here contains no primary empirical source for the exceptional-point-to-EEG mapping either. That bounded finding must not be read as proof that no such source exists.
 
-## Alternative explanations (cross-cutting)
+A classical model remains an alternative to test, not a result of this review. No simulation comparison, biophysical parameter validation, or empirical identifiability analysis was run here.
 
-1. Volume conduction and source mixing produce apparent higher-order dependence from pairwise sources.
-2. Reference electrode and montage geometry systematically alter phase and connectivity estimates.
-3. Filtering and Hilbert phase extraction introduce uncertainty near amplitude zeros and nonstationarity.
-4. Inverse-problem non-uniqueness allows multiple source configurations consistent with the same sensor data.
-5. Graph or persistent-homology features capture complexity or noise structure rather than a specific biological construct.
-6. Quantum or EP simulations are computational analogies whose macroscopic predictions are indistinguishable from classical nonlinear models under current sensor constraints.
+### TTM-004 — Graph cycle rank is not spatial winding or charge
 
-## What remains unknown
+**Question under review:** Is the cycle rank (β₁) of a constructed functional-connectivity graph mathematically identical to spatial winding number or topological charge?
 
-- Whether any higher-order descriptor survives rigorous pairwise + spatial-surrogate nulls in source space on independent data.
-- Whether formal K>100 can be obtained under the full falsification contract on any real dataset.
-- Whether classical models of equal complexity can reproduce the topological statistics attributed to quantum or EP layers.
-- The precise contribution of volume conduction versus genuine higher-order interactions under realistic forward models.
-- Independent replication status of the cited preprints.
+The current repository [claim-language contract](https://github.com/ChristianV997/NeuroTopology-Sim/blob/4e91c6f080647280940ded4f90f4ee9278960c4b/docs/scientific_falsification/claim_language.md) explicitly keeps `graph_beta1`, `spatial_winding_q`, and `scalar_chirality` distinct and prohibits calling graph beta-1 spatial charge. The contract is a project rule, not evidence that either quantity measures a biological construct. The submitted proposition has no direct support in the cited source and must not be promoted.
+
+### TTM-005 — Methodological overlap is not evidence for repository-specific mechanisms
+
+**Question under review:** Do the cited triadic-connectivity and higher-order-spectral papers provide empirical evidence for this repository’s PITNN, spatial-charge, or quantum-layer mechanisms?
+
+Li et al.’s arXiv v1 page reports a triadic functional-connectivity method and analyses distinguishing resting-state from task activity ([arXiv:2609.03987](https://arxiv.org/abs/2609.03987)). Kovach and Kumar’s arXiv v1 page describes higher-order spectral/modulogram methods and illustrates them with beta-burst detection in rodent and human local-field-potential recordings ([arXiv:2609.03172](https://arxiv.org/abs/2609.03172)). These source pages describe their own methods and reported analyses; they do not test the repository-specific PITNN, graph-charge, or open-quantum propositions. The arXiv pages were checked at version 1; publication or independent replication status beyond those pages was not verified for this audit.
+
+The source-scope mismatch means these citations do not support the proposed upgrade. It does not disconfirm the underlying hypotheses.
+
+## Open questions and limits
+
+- Whether any higher-order descriptor measures a stable construct after matched pairwise and spatial-surrogate controls remains untested here.
+- No independent cohort, participant data, or dataset artifacts were accessed.
+- No model, solver, or third-party code was executed for this source review.
+- Citation presence, source identity, and a completed audit do not establish scientific validity, causation, biological mechanism, or replication.
+- All falsifiable tests in the matrix are proposed future tests, not results from this audit.
 
 ## Explicit non-promotion
 
-This review does not introduce VALIDATED status. No claim is promoted. Successful completion of the audit artifact does not establish that any scientific hypothesis is true. A literature or theory-to-measurement review is not scientific evidence for the repository’s theories.
+This artifact does not emit or assign scientific `VALIDATED` status and does not establish any scientific claim. It records a bounded review of source scope and claim wording only. The project remains **HOLD / SYNTHETIC_ONLY**.
 
-**Retrieval date for all sources:** 2026-10-16.  
-**Source types:** Peer-reviewed articles, repository claim contracts, prior audit documents. Preprints labeled.  
-**Evidence limits:** No participant data downloaded; no third-party code executed; no network during validation.
+**Retrieval date:** 2026-10-21.
+**Evidence boundary:** Public source pages and repository documentation only; no participant data, dataset contents, or third-party code.
