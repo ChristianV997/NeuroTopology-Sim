@@ -89,7 +89,7 @@ ROC_API_NAMES = (
     "auc",
     "average_precision",
 )
-AUDITED_MAIN_SHA = "d2544b83289efde0e63b70cff270d2ff523b7095"
+AUDITED_MAIN_SHA = "4e91c6f080647280940ded4f90f4ee9278960c4b"
 # Hosted adversarial evidence for the exact #417 merge. False keeps
 # surrogate_null blocked after a promotion report exists.
 SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN = False
@@ -203,7 +203,7 @@ MERGED_PIN_PAIRS: Dict[str, Tuple[int, str]] = {
     "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
     "planar_geometry": (416, "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc"),
     "hodge": (423, "ba441f161a87549d6e51b767b819318500946b17"),
-    "surrogate_null": (417, "20222fdeba68ca5746609ce4305c7259b3266e95"),
+    "surrogate_null": (440, "18a523894f92151ee69086304fb0e154028d4af6"),
 }
 GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
     "four_sphere_forward_model": _contract_row(
@@ -409,22 +409,25 @@ GATE_CONTRACT: Dict[str, Dict[str, Any]] = {
             "GENERATORS",
         ),
         contract_source=CONTRACT_SOURCE_OBSERVED,
-        candidate_pr=417,
+        candidate_pr=440,
         candidate_head="c39f715c84e928c0204b8c58ef9e40bc1f0ab684",
-        pinned_commit="20222fdeba68ca5746609ce4305c7259b3266e95",
-        merged_pr=417,
+        pinned_commit="18a523894f92151ee69086304fb0e154028d4af6",
+        merged_pr=440,
         symbols_verified_on_candidate_head=True,
         added_in_commit="f8eaa29d70c7bd73c0b561662061d61988800639",
-        implementation_blob_sha="8dfe299692d5cb056ddeff9506cfe392b08115f2",
+        implementation_blob_sha="a951050961119bc403012884c1a18d8e820d8f20",
         candidate_note=(
-            "Merge commit of pull request #417 on main. "
+            "Squash commit 18a523894f92151ee69086304fb0e154028d4af6 of pull request #440 "
+            "on main. Its nulls.py blob is a951050961119bc403012884c1a18d8e820d8f20. "
             "The file was added at f8eaa29d70c7bd73c0b561662061d61988800639 "
             "(blob 80da34cc311bbe9e55dacc5ab6248059d71522f3). "
             "That adding commit is not the pin. "
+            "The previous pin 20222fdeba68ca5746609ce4305c7259b3266e95 of #417 "
+            "(blob 8dfe299692d5cb056ddeff9506cfe392b08115f2) is not the pin. "
             "Informational head c39f715c84e928c0204b8c58ef9e40bc1f0ab684 is not the pin. "
             "Pull request #430 at e5e1136631d500dddab7a5b31d6916962b5da5e3 was stacked on #417. "
             "#430 green alone does not count. "
-            "A hosted-green adversarial suite on the exact merged #417 candidate is still required. "
+            "Hosted run 39354095591 line 823 covered the old blob and is stale for this pin. "
             "SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN is false, so a promotion report does not open this gate."
         ),
     ),
@@ -2274,7 +2277,7 @@ def _pin_blob_differs(row: Mapping[str, Any], path: str) -> bool:
 
 
 def _surrogate_hosted_evidence_missing(gate_id: str) -> bool:
-    """True until a hosted adversarial suite is recorded for the #417 merge."""
+    """True until a hosted adversarial suite is recorded for the current pin blob."""
 
     if gate_id != "surrogate_null":
         return False

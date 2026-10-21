@@ -323,7 +323,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "d2544b83289efde0e63b70cff270d2ff523b7095")
+        self.assertEqual(AUDITED_MAIN_SHA, "4e91c6f080647280940ded4f90f4ee9278960c4b")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -1155,7 +1155,7 @@ class GridPlanTests(unittest.TestCase):
             "roc_metrics": "9f10956d521e96f961f29c24f033374c3c20e065",
             "planar_geometry": "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc",
             "hodge": "ba441f161a87549d6e51b767b819318500946b17",
-            "surrogate_null": "20222fdeba68ca5746609ce4305c7259b3266e95",
+            "surrogate_null": "18a523894f92151ee69086304fb0e154028d4af6",
         }
         for gate_id in BLOCKING_GATE_IDS:
             row = next(item for item in plan.gate_resolution if item["gate_id"] == gate_id)
@@ -1757,7 +1757,7 @@ class GridPlanTests(unittest.TestCase):
             "roc_metrics": (426, "9f10956d521e96f961f29c24f033374c3c20e065"),
             "planar_geometry": (416, "f3346b128ed8d55e815c1a78f237c0fd9fa71fcc"),
             "hodge": (423, "ba441f161a87549d6e51b767b819318500946b17"),
-            "surrogate_null": (417, "20222fdeba68ca5746609ce4305c7259b3266e95"),
+            "surrogate_null": (440, "18a523894f92151ee69086304fb0e154028d4af6"),
         }
         for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
             if gate_id in pinned:
@@ -1814,7 +1814,8 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("09e6e0c182fa47693954ebee1b5194c3f0a5d0b0", hashed_text)
         self.assertIn("f3346b128ed8d55e815c1a78f237c0fd9fa71fcc", hashed_text)
         self.assertIn("ba441f161a87549d6e51b767b819318500946b17", hashed_text)
-        self.assertIn("20222fdeba68ca5746609ce4305c7259b3266e95", hashed_text)
+        self.assertIn("18a523894f92151ee69086304fb0e154028d4af6", hashed_text)
+        self.assertNotIn("20222fdeba68ca5746609ce4305c7259b3266e95", hashed_text)
         for informational in (
             "1785a3a14e1cdf3c2f27924d64b88b9354cf427f",
             "eb5bfa288144d3150d2ec8a85b1f90ed5fd8e5c9",
@@ -1849,11 +1850,11 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("substitute_module_rejected", substitute_reasons)
         self.assertIn("dependency_not_merged_on_main", substitute_reasons)
 
-    def test_audited_main_sha_equals_live_main_d2544b83(self):
+    def test_audited_main_sha_equals_live_main_4e91c6f0(self):
         """The audited constant is the live main tip, and the previous tip remains its ancestor."""
 
-        live = "d2544b83289efde0e63b70cff270d2ff523b7095"
-        previous = "bc91af19a22783d2721fc881842573f7e08a8925"
+        live = "4e91c6f080647280940ded4f90f4ee9278960c4b"
+        previous = "d2544b83289efde0e63b70cff270d2ff523b7095"
         _require_audited_main_ancestor(self)
         self.assertEqual(AUDITED_MAIN_SHA, live)
         self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, live)
@@ -2428,7 +2429,7 @@ class GridPlanTests(unittest.TestCase):
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
         self.assertEqual(
             grid_plan_module.AUDITED_MAIN_SHA,
-            "d2544b83289efde0e63b70cff270d2ff523b7095",
+            "4e91c6f080647280940ded4f90f4ee9278960c4b",
         )
         self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
@@ -2511,7 +2512,7 @@ class GridPlanTests(unittest.TestCase):
 
         roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
-        audited = "d2544b83289efde0e63b70cff270d2ff523b7095"
+        audited = "4e91c6f080647280940ded4f90f4ee9278960c4b"
         roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
@@ -2682,16 +2683,16 @@ class GridPlanTests(unittest.TestCase):
         self.assertNotEqual(row["status"], "promotion_report_missing")
 
     def test_surrogate_null_pin_stays_blocked_without_hosted_adversarial_suite(self):
-        pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
-        blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
+        pin = "18a523894f92151ee69086304fb0e154028d4af6"
+        blob = "a951050961119bc403012884c1a18d8e820d8f20"
         added = "f8eaa29d70c7bd73c0b561662061d61988800639"
         row = grid_plan_module.GATE_CONTRACT["surrogate_null"]
         self.assertEqual(row["pinned_commit"], pin)
-        self.assertEqual(row["merged_pr"], 417)
+        self.assertEqual(row["merged_pr"], 440)
         self.assertEqual(row["added_in_commit"], added)
         self.assertNotEqual(row["pinned_commit"], row["added_in_commit"])
         self.assertEqual(row["implementation_blob_sha"], blob)
-        self.assertEqual(grid_plan_module.MERGED_PIN_PAIRS["surrogate_null"], (417, pin))
+        self.assertEqual(grid_plan_module.MERGED_PIN_PAIRS["surrogate_null"], (440, pin))
         self.assertFalse(grid_plan_module.SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN)
         _require_audited_main_ancestor(self)
         self.assertEqual(grid_plan_module._blob_sha(pin, row["required_module_path"]), blob)

@@ -85,8 +85,8 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited commit
-`d2544b83289efde0e63b70cff270d2ff523b7095`. The previous audited tip
-`bc91af19a22783d2721fc881842573f7e08a8925` is an ancestor of that commit.
+`4e91c6f080647280940ded4f90f4ee9278960c4b`. The previous audited tip
+`d2544b83289efde0e63b70cff270d2ff523b7095` is an ancestor of that commit.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.
@@ -432,25 +432,29 @@ The file was added at `0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`
 (blob `f5ddd4f497e7462e098aa624317a2a28c6c60b1d`). The blob at the pin
 equals audited main (`6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2`).
 The status is `promotion_report_missing`.
-`csd_full_matrix_pinned_mne` is not on audited main:
-`spherical_csd.py` is absent. Pull request #414 is still open; ls-remote
-returns `b9aaa868db7cf0aa63ad2cda09afdbf4c8dc8fb6`. The pin stays null.
-`phase_dispersion_module` has no path and
+`csd_full_matrix_pinned_mne` stays unpinned. A `spherical_csd.py` file on
+audited main is not a pin. `phase_dispersion_module` has no path and
 no symbols (`contract_declared_unobserved`) and stays unpinned. No open
 pull request fetched for this audit ships a `phase_dispersion` module.
-A path under `tools/phase_uncertainty/` is `substitute_module_rejected`.
-Pull request #403 is not that module. `surrogate_null` is pinned to merge
-commit `20222fdeba68ca5746609ce4305c7259b3266e95` of pull request #417.
+`tools/phase_uncertainty/` is on audited main. A path under that prefix
+is `substitute_module_rejected`. Pull request #403 is not
+`phase_dispersion_module`. `surrogate_null` is pinned to squash commit
+`18a523894f92151ee69086304fb0e154028d4af6` of pull request #440.
 The file was added at `f8eaa29d70c7bd73c0b561662061d61988800639`
-(blob `80da34cc311bbe9e55dacc5ab6248059d71522f3`). The blob at the pin
-equals audited main (`8dfe299692d5cb056ddeff9506cfe392b08115f2`).
+(blob `80da34cc311bbe9e55dacc5ab6248059d71522f3`). That adding commit is
+not the pin. The blob at the pin equals audited main
+(`a951050961119bc403012884c1a18d8e820d8f20`). The previous pin
+`20222fdeba68ca5746609ce4305c7259b3266e95` of #417
+(blob `8dfe299692d5cb056ddeff9506cfe392b08115f2`) is stale.
 With no report the status is `promotion_report_missing` and the reason
 list also contains `adversarial_suite_hosted_evidence_missing`. A
 writer-shaped report that would otherwise be admissible stays
 `adversarial_suite_hosted_evidence_missing` while
 `SURROGATE_ADVERSARIAL_SUITE_HOSTED_GREEN` is false. Pull request #430
 (`e5e1136631d500dddab7a5b31d6916962b5da5e3`) was stacked on #417.
-#430 green alone does not count.
+#430 green alone does not count. Required Checks run 39354095591 core-tests
+job 118404797268 log line 823 covered the old blob and must be re-read
+at this head.
 `contract_declared_unobserved` rows stay `module_missing_on_main` and
 cannot become admissible. `phase_score_limitations_recorded` is a
 separate limitations row and still requires `limitations_recorded: true`
@@ -475,10 +479,10 @@ Abort order is the blocking-id order. The first blocking gate that is not
 | `planar_geometry` | merged #416; added in `0eec157b9f20ba088ebf31ddbabf05b7c5ee0fcf`; blob `6e1e6b2a7c5c8fdee586776e318ba1d016a4bfd2` | `neurotopology_sim/experimental/geometry/planar_triangulation.py` | `f3346b128ed8d55e815c1a78f237c0fd9fa71fcc` | `promotion_report_missing` |
 | `winding` | merged #413; added in `eefabe97690caeec33f3777a05d2acbe0398ea6b`; blob `39084e1735206c616a1befdaddf8b83f23365bdf` | `neurotopology_sim/experimental/topology/winding.py` | `9abf3abeebd1c210d59df44b4d208678d203404c` | `promotion_report_missing` |
 | `hodge` | merged #423; added in `a7369294f3b93186f49562eefc621d2a40831422`; blob `a5cad32e4b6095d1f8467750f03351e96304b96a` | `neurotopology_sim/experimental/topology/hodge_2d.py` | `ba441f161a87549d6e51b767b819318500946b17` | `promotion_report_missing` |
-| `csd_full_matrix_pinned_mne` | open #414; ls-remote `b9aaa868db7cf0aa63ad2cda09afdbf4c8dc8fb6`; module absent on audited main | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
+| `csd_full_matrix_pinned_mne` | pin null; a file at the module path is not a pin | `neurotopology_sim/experimental/preprocessing/spherical_csd.py` | null | `dependency_not_merged_on_main` |
 | `phase_dispersion_module` | contract_declared_unobserved | none | null | `dependency_not_merged_on_main` |
 | `phase_score_limitations_recorded` | limitations_record | none | null | `dependency_not_merged_on_main` |
-| `surrogate_null` | merged #417; added in `f8eaa29d70c7bd73c0b561662061d61988800639`; blob `8dfe299692d5cb056ddeff9506cfe392b08115f2`; hosted adversarial suite absent | `tools/surrogate_nulls/nulls.py` | `20222fdeba68ca5746609ce4305c7259b3266e95` | `promotion_report_missing` plus `adversarial_suite_hosted_evidence_missing` |
+| `surrogate_null` | squash #440 `18a523894f92151ee69086304fb0e154028d4af6`; added in `f8eaa29d70c7bd73c0b561662061d61988800639`; blob `a951050961119bc403012884c1a18d8e820d8f20`; hosted suite for the old blob is stale | `tools/surrogate_nulls/nulls.py` | `18a523894f92151ee69086304fb0e154028d4af6` | `promotion_report_missing` plus `adversarial_suite_hosted_evidence_missing` |
 | `roc_metrics` | merged #426; added in `9f10956d521e96f961f29c24f033374c3c20e065`; blob `09e6e0c182fa47693954ebee1b5194c3f0a5d0b0` | `neurotopology_sim/experimental/benchmarks/synthetic_forward_roc.py` | `9f10956d521e96f961f29c24f033374c3c20e065` | `promotion_report_missing` |
 | `ci_discovery` | ci_collection | `tests/simulation_runtime/test_grid_plan.py` | null, and blocked | `ci_discovery_blocked` |
 
