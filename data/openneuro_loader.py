@@ -16,10 +16,12 @@ from data.bids_ingest import (
     BIDSAdapterError,
     BIDSAdapterErrorCode,
     BoundedWindowRequest,
+    clear_raw_cache,
     enforce_bids_access_gate,
     index_bids_metadata,
     plan_bounded_window_access,
     read_bounded_window_lazy,
+    release_recording,
     serialize_bids_manifest,
 )
 
@@ -28,21 +30,27 @@ _EEG_GLOBS = ("*.edf", "*.fif", "*.bdf", "*.set", "*.vhdr")
 
 def find_eeg_files(root: str | Path):
     """List local EEG candidates under an explicit root. Local filesystem only."""
-    root = Path(root)
-    if not root.exists():
+    root_path = Path(root).resolve()
+    if not root_path.exists():
         raise FileNotFoundError(f"OpenNeuro/BIDS root does not exist: {root}")
     files = []
     for ext in _EEG_GLOBS:
-        files.extend(sorted(root.rglob(ext)))
+        for f in sorted(root_path.rglob(ext)):
+            if f.is_file() and f.resolve().is_relative_to(root_path):
+                files.append(f)
     return files
 
 
 def find_events(root: str | Path):
     """List local ``*_events.tsv`` files under an explicit root."""
-    root = Path(root)
-    if not root.exists():
+    root_path = Path(root).resolve()
+    if not root_path.exists():
         raise FileNotFoundError(f"OpenNeuro/BIDS root does not exist: {root}")
-    return sorted(root.rglob("*_events.tsv"))
+    return [
+        f
+        for f in sorted(root_path.rglob("*_events.tsv"))
+        if f.is_file() and f.resolve().is_relative_to(root_path)
+    ]
 
 
 def dataset_manifest():
@@ -175,6 +183,7 @@ __all__ = [
     "BIDSAdapterErrorCode",
     "BoundedWindowRequest",
     "access_gate_preflight",
+    "clear_raw_cache",
     "dataset_manifest",
     "ensure_local_bids_index",
     "find_eeg_files",
@@ -183,5 +192,6 @@ __all__ = [
     "plan_openneuro_bounded_window",
     "read_local_bounded_window",
     "reject_full_dataset_download",
+    "release_recording",
     "serialize_bids_manifest",
 ]

@@ -1180,7 +1180,7 @@ def read_bounded_window_lazy(
     if not path.is_file():
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
-            f"local recording not found: {path}",
+            f"local recording not found: {request.relative_path}",
         )
     if request.expected_checksum:
         declared, _ = _normalize_checksum(request.expected_checksum)

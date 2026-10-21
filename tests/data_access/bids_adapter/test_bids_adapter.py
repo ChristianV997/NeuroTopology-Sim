@@ -491,3 +491,93 @@ def test_finite_json_serialization_numpy_types():
     with pytest.raises(BIDSAdapterError) as exc_inf:
         serialize_bids_manifest(bad_inf)
     assert exc_inf.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+def test_privacy_safe_missing_recording_diagnostic(tmp_path: Path):
+    secret_dir = tmp_path / "super_secret_host_directory_name"
+    secret_dir.mkdir()
+    req = BIDSAccessRequest(
+        dataset_id="dsPRIV01",
+        local_root=str(secret_dir),
+        relative_path="sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        read_bounded_window_lazy(req)
+    msg = str(exc.value)
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+    assert "super_secret_host_directory_name" not in msg, "host path must not leak in error message"
+    assert "sub-01/eeg/sub-01_task-rest_run-01_eeg.edf" in msg
+
+
+def test_openneuro_loader_cache_cleanup(monkeypatch):
+    import numpy as np
+
+    fake_signal = np.ones((2, 100), dtype=float)
+    monkeypatch.setattr(bids_ingest, "read_window_signal", lambda *args, **kwargs: fake_signal)
+
+    rec_path = "sub-01/eeg/sub-01_task-rest_run-01_eeg.edf"
+    res, samples = onl.read_local_bounded_window(
+        "dsFIX001",
+        VALID,
+        relative_path=rec_path,
+        start_s=0.0,
+        end_s=1.0,
+    )
+    assert res["state"] == "WINDOW_READ_LOCAL"
+    # Ensure cache functions are callable and clean
+    onl.release_recording(str(VALID / rec_path))
+    onl.clear_raw_cache()
+
+
+def test_simulated_symlink_escape_during_index(monkeypatch, tmp_path: Path):
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    (dataset / "dataset_description.json").write_text(
+        json.dumps({"Name": "SimulatedEscape", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    (dataset / "sub-01").mkdir()
+    # Mock _filesystem_metadata_index to return a simulated escaping relative_path
+    monkeypatch.setattr(
+        bids_ingest,
+        "_filesystem_metadata_index",
+        lambda root: [
+            {
+                "relative_path": "../outside_escape/secret.edf",
+                "subject_id": "sub-01",
+                "session_id": None,
+                "task": "rest",
+                "run": "01",
+                "acquisition": None,
+                "datatype": "eeg",
+                "montage": None,
+                "sampling_frequency_hz": None,
+                "provenance": "local_bids_unvalidated",
+            }
+        ],
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(
+            BIDSAccessRequest(dataset_id="dsSIM01", local_root=str(dataset))
+        )
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+def test_find_eeg_files_and_events_containment(tmp_path: Path):
+    root = tmp_path / "dataset"
+    root.mkdir()
+    sub_eeg = root / "sub-01" / "eeg"
+    sub_eeg.mkdir(parents=True)
+    edf_file = sub_eeg / "sub-01_task-rest_eeg.edf"
+    edf_file.write_bytes(b"synthetic")
+    events_file = sub_eeg / "sub-01_task-rest_events.tsv"
+    events_file.write_bytes(b"synthetic")
+
+    eeg_found = onl.find_eeg_files(root)
+    assert len(eeg_found) == 1
+    assert eeg_found[0].resolve() == edf_file.resolve()
+
+    events_found = onl.find_events(root)
+    assert len(events_found) == 1
+    assert events_found[0].resolve() == events_file.resolve()
