@@ -4,7 +4,7 @@
 - **PR head reviewed:** `69fb8af983a168ffd7934b9c03f95e5236007362`
 - **Live `main` at review:** `4e91c6f080647280940ded4f90f4ee9278960c4b`
 - **Scope:** Official upstream GitHub release/tag pages and top-level license artifacts for the listed software only.
-- **Data boundary:** No datasets or participant data were accessed, and no third-party software was executed in this review.
+- **Data boundary:** No datasets or participant data were accessed, and no listed upstream candidate software was executed in this review.
 
 ## Separation of Claims
 
@@ -46,7 +46,7 @@ The topics below are catalog labels only. Each has status `not assessed`; `REFER
 - The SPDX-style label is transcribed from the linked upstream root license at the reviewed tag. It does not cover every dependency or grant project-wide reuse clearance.
 - Security, known vulnerabilities/CVEs, maintenance/support, dependencies, and data-access behavior are **not assessed**; no “low risk,” “active,” or “no known CVE” conclusion is made.
 - `REJECT` for The Virtual Brain is a compatibility recommendation pending legal review, not legal advice or a finding about license compatibility.
-- Any future integration requires a separate engineering, security, provenance, and legal review. No third-party code was copied or executed for this registry.
+- Any future integration requires a separate engineering, security, provenance, and legal review. No upstream candidate source was copied or executed for this registry.
 
 ## Next Actions
 
