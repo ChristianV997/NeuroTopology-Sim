@@ -109,6 +109,7 @@ independently. No code is transcribed in `tools/`:
 | `radius <= 0` | refuses (`_csd.py:155`) | refuses, for all three operator forms (test `test_discriminator_variants_refuse_invalid_radius_as_the_reference_does`). Non-finite radius is also refused, which is stricter |
 | `lambda2` outside `[0, 1)` | refuses (`_csd.py:127`) | refuses |
 | `n_legendre_terms < 1` | refuses (`_csd.py:134-136`) | refuses |
+| `n_legendre_terms` not a true integer (bool, float, NaN) | refuses: `_ensure_int` raises `TypeError` for bool and non-integers (`mne/utils/check.py` L25-37, used at `_csd.py:133`) | refuses with `TypeError` (`legendre._series`). Before the 2026-10-21 fix, `True` was accepted as one term |
 | `"auto"` sphere | fits a sphere from digitisation | **not accepted**: the reference takes an explicit centre and radius only |
 | single channel | a 1×1 operator of zeros (source-derived: with one channel `Z = 0`, so `C = 0`) | **refuses** (`kkt.py`, at least two channels). Stricter than MNE, stated here. Not executed here |
 | sensor exactly at a non-zero sphere origin | NaN with a RuntimeWarning (source-derived: `pos / ||pos||` divides by zero after centring) | **refuses** (`kkt.py`, a sensor coincides with the sphere origin). Stricter than MNE, stated here. Not executed here |
@@ -249,7 +250,7 @@ No mathematical or numerical discrepancy was found in the parts that could be ch
 ## Reproduce
 
 ```
-PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 150 passed, 0 skipped (gated surface)
+PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 158 passed, 0 skipped (gated surface)
 PYTHONPATH=. python -m pytest tests/optional_live_mne -q                  # 3 skipped without MNE 1.13.2 (not evidence)
 PYTHONPATH=. python -m tools.mne_csd_reference_audit --json-out docs/audits/mne_csd_reference_audit.json
 ```
@@ -266,7 +267,7 @@ assertions and bounds. The snapshot command does not regenerate their numerical 
   (81), `test_legendre_constants.py` (18), `test_isolation_and_pin.py` (41),
   `test_mne_integration_optional.py` (8, deterministic; the name is a legacy mapping key and does not mean optional).
 - Command: `python .github/workflows/round6_experimental_tests.py --base <PR base> --head <PR head> --always-component surrogate_nulls --report outputs/round6_experimental_ci_report.json`.
-- Expected for `spherical_csd`: status PASS, four executions, 150 collected (81 / 18 / 43 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts.
+- Expected for the component `mne_csd_reference_audit` on main (gate blob 3e737372): status PASS, four executions, 158 collected (84 / 23 / 43 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts. The live test is external (`optional-eeg-suite`) and is not counted.
 - Not mapped and not counted: `tests/optional_live_mne/test_mne_csd_live_parity.py`. It must not be added to a
   required surface unless CI installs MNE 1.13.2.
 - Renaming `test_mne_integration_optional.py` requires a mapping change, which belongs to the workflow owner.
