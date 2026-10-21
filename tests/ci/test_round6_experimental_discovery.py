@@ -1012,6 +1012,15 @@ def test_fixture():
         self.assertEqual(report["selected_components"], [])
         self.assertIn("does not certify", report["statement"])
 
+    def test_workflow_owned_changes_do_not_self_select_candidate_suites(self):
+        helper = _helper()
+        workflow_owned_changes = {
+            ".github/workflows/round6_experimental_tests.py",
+            "tests/ci/test_round6_experimental_discovery.py",
+        }
+        self.assertEqual(helper.select_components(workflow_owned_changes), [])
+        self.assertEqual(helper._unmapped_candidate_paths(workflow_owned_changes), [])
+
     def test_dmd_production_bridge_is_paired_but_oracle_only_change_blocks(self):
         helper = _helper()
         implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
@@ -1087,7 +1096,7 @@ def test_fixture():
         self.assertEqual(result["environment_overrides"], {})
         self.assertNotIn("do-not-log", json.dumps(result))
 
-    def test_unmapped_yaml_candidate_configs_block_instead_of_becoming_not_applicable(self):
+    def test_yaml_candidate_configs_are_registered_or_fail_closed(self):
         helper = _helper()
         guarded_configs = {
             "configs/scientific_falsification/batch3_falsification_matrix.yaml",
@@ -1101,7 +1110,17 @@ def test_fixture():
                 report = json.loads((root / "report.json").read_text(encoding="utf-8"))
             self.assertEqual(result, 1)
             self.assertEqual(report["status"], "BLOCKED")
-            self.assertEqual(report["unmapped_candidate_paths"], [path])
+            if path == "configs/research/batch3_source_registry.yaml":
+                self.assertEqual(report["selected_components"], ["batch3_source_registry"])
+                self.assertEqual(report["unmapped_candidate_paths"], [])
+                self.assertEqual(
+                    report["components"][0]["component"], "batch3_source_registry"
+                )
+                self.assertEqual(
+                    report["components"][0]["status"], "BLOCKED"
+                )
+            else:
+                self.assertEqual(report["unmapped_candidate_paths"], [path])
             self.assertNotEqual(report["status"], "NOT_APPLICABLE")
 
     def test_junit_root_and_summary_must_match_testcase_outcomes(self):
@@ -2669,14 +2688,20 @@ def test_fixture():
                 ("tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",),
             )
             self.assertEqual(helper._unmapped_candidate_paths({fixture}), [])
-        for config_path in (
-            "configs/scientific_falsification/batch3_falsification_matrix.yaml",
-            "configs/research/batch3_source_registry.yaml",
-        ):
-            self.assertEqual(helper._unmapped_candidate_paths({config_path}), [config_path])
-        # Unregistered candidate roots remain fail-closed even when the only
-        # changed Python file is a package initializer.
-        self.assertIn("tests/nuisance_scenarios/__init__.py", helper._unmapped_candidate_paths({"tests/nuisance_scenarios/__init__.py"}))
+        falsification_matrix = "configs/scientific_falsification/batch3_falsification_matrix.yaml"
+        self.assertEqual(
+            helper._unmapped_candidate_paths({falsification_matrix}),
+            [falsification_matrix],
+        )
+        self.assertEqual(
+            helper._unmapped_candidate_paths({"configs/research/batch3_source_registry.yaml"}),
+            [],
+        )
+        # A newly registered candidate package initializer selects only its
+        # mapped test suite; unrelated unregistered initializers still block.
+        nuisance_initializer = "tests/nuisance_scenarios/__init__.py"
+        self.assertEqual(helper._unmapped_candidate_paths({nuisance_initializer}), [])
+        self.assertEqual(helper.select_components({nuisance_initializer}), ["nuisance_scenarios"])
         self.assertNotIn("tests/surrogate_nulls/__init__.py", helper._unmapped_candidate_paths({"tests/surrogate_nulls/__init__.py"}))
 
     def test_package_initializers_require_exact_test_support_mappings(self):
@@ -2874,18 +2899,254 @@ def test_fixture():
             (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
             (393, "tests/research/batch3/test_claim_matrix.py"),
             (386, "oss_opportunities/opportunity_batch.py"),
-            (383, "tools/research_plan_quality_eval/harness.py"),
             (376, "tests/scientific_falsification/test_batch3_falsification_matrix.py"),
-            (375, "tests/research/test_batch3_source_registry.py"),
-            (373, "sciencer_d/btc_icft/level_t/base_real_topology.py"),
-            (388, "dual_engine/forward_model_contract.py"),
+            # PR #400's standalone mathematical oracle does not exercise the
+            # registered production DMD implementation; do not relabel it as
+            # production coverage merely because the same PR adds a bridge test.
+            (400, "tests/dmd_ep2_oracle/test_oracle.py"),
             (400, "tests/dmd_ep2_oracle/test_unregistered_extra.py"),
-            (373, "tests/test_base_real_topology_missingness.py"),
         )
         for pr_number, path in current_open_pr_gaps:
             with self.subTest(pr=pr_number, path=path):
                 self.assertIn(path, helper._unmapped_candidate_paths({path}))
                 self.assertEqual(helper.select_components({path}), [])
+
+    def test_report_only_candidate_tests_remain_unmapped(self):
+        helper = _helper()
+        report_only_paths = (
+            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
+            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
+            "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 standalone oracle
+        )
+        for path in report_only_paths:
+            with self.subTest(path=path):
+                self.assertIn(path, helper._unmapped_candidate_paths({path}))
+                self.assertEqual(helper.select_components({path}), [])
+
+    def test_registered_uppercase_support_path_is_not_a_case_mismatch(self):
+        helper = _helper()
+        readme = "tests/data_access/bids_adapter/fixtures/invalid_bids/README"
+        spec = helper.COMPONENTS["bids_adapter"]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in (
+                *(pair["implementation"] for pair in spec["candidate_pairs"]),
+                *spec["tests"],
+                *spec["support_files"],
+            ):
+                _write(root, path, "fixture placeholder\n")
+            result = helper.inspect_component("bids_adapter", root, {readme})
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertEqual(result["unmapped_candidate_paths"], [])
+        self.assertEqual(
+            result["tests_to_run"],
+            ["tests/data_access/bids_adapter/test_bids_adapter.py"],
+        )
+
+    def test_live_batch_candidate_pairs_have_explicit_owners_and_no_fanout(self):
+        helper = _helper()
+        expected_pairs = {
+            "bids_adapter": (
+                369,
+                {
+                    ("data/bids_ingest.py", "tests/data_access/bids_adapter/test_bids_adapter.py"),
+                    ("data/openneuro_loader.py", "tests/data_access/bids_adapter/test_bids_adapter.py"),
+                },
+            ),
+            "level_t_missingness": (
+                373,
+                {
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_base_real_topology_missingness.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_cohort_missingness.py"),
+                },
+            ),
+            "batch3_source_registry": (
+                375,
+                {
+                    ("configs/research/batch3_source_registry.yaml", "tests/research/test_batch3_source_registry.py"),
+                },
+            ),
+            "research_plan_quality_eval": (
+                383,
+                {
+                    ("tools/research_plan_quality_eval/harness.py", "tests/research_plan_quality_eval/test_manifest.py"),
+                    ("tools/research_plan_quality_eval/isolation.py", "tests/research_plan_quality_eval/test_isolation.py"),
+                    ("tools/research_plan_quality_eval/records.py", "tests/research_plan_quality_eval/test_records.py"),
+                    ("tools/research_plan_quality_eval/splits.py", "tests/research_plan_quality_eval/test_splits.py"),
+                },
+            ),
+            "forward_model_contract": (
+                388,
+                {
+                    ("dual_engine/forward_model_contract.py", "tests/forward_model_contract/test_forward_model_contract.py"),
+                },
+            ),
+            "nuisance_scenarios": (
+                408,
+                {
+                    ("sim/nuisance_scenarios/factory.py", "tests/nuisance_scenarios/test_factory_and_grid.py"),
+                    ("sim/nuisance_scenarios/snr_mixer.py", "tests/nuisance_scenarios/test_target_snr.py"),
+                },
+            ),
+        }
+        for component, (owner_pr, expected) in expected_pairs.items():
+            with self.subTest(component=component):
+                spec = helper.COMPONENTS[component]
+                pairs = {
+                    (pair["implementation"], pair["test"])
+                    for pair in spec["candidate_pairs"]
+                }
+                self.assertTrue(expected.issubset(pairs))
+                self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (owner_pr,))
+                for implementation, test_path in expected:
+                    self.assertEqual(helper.select_components({implementation}), [component])
+                    self.assertEqual(helper.select_components({test_path}), [component])
+                    self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
+                    self.assertEqual(helper._unmapped_candidate_paths({test_path}), [])
+
+        exact_candidate_diffs = {
+            "bids_adapter": {
+                "data/bids_ingest.py",
+                "data/openneuro_loader.py",
+                "tests/data_access/bids_adapter/__init__.py",
+                "tests/data_access/bids_adapter/test_bids_adapter.py",
+                "tests/data_access/bids_adapter/fixtures/condition_manifest_ambiguous.json",
+                "tests/data_access/bids_adapter/fixtures/condition_manifest_ok.json",
+                "tests/data_access/bids_adapter/fixtures/invalid_bids/README",
+                "tests/data_access/bids_adapter/fixtures/missing_entities/dataset_description.json",
+                "tests/data_access/bids_adapter/fixtures/missing_entities/sub-01/eeg/sub-01_task-rest_eeg.edf",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/dataset_description.json",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/participants.tsv",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_channels.tsv",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_eeg.json",
+            },
+            "level_t_missingness": {
+                "sciencer_d/btc_icft/level_t/base_real_topology.py",
+                "tests/test_base_real_topology_missingness.py",
+                "tests/test_cohort_missingness.py",
+            },
+            "batch3_source_registry": {
+                "configs/research/batch3_source_registry.yaml",
+                "tests/research/test_batch3_source_registry.py",
+            },
+            "research_plan_quality_eval": {
+                "tests/research_plan_quality_eval/__init__.py",
+                "tests/research_plan_quality_eval/conftest.py",
+                "tests/research_plan_quality_eval/test_cli.py",
+                "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                "tests/research_plan_quality_eval/test_isolation.py",
+                "tests/research_plan_quality_eval/test_leakage.py",
+                "tests/research_plan_quality_eval/test_manifest.py",
+                "tests/research_plan_quality_eval/test_records.py",
+                "tests/research_plan_quality_eval/test_report.py",
+                "tests/research_plan_quality_eval/test_splits.py",
+                "tools/research_plan_quality_eval/__init__.py",
+                "tools/research_plan_quality_eval/__main__.py",
+                "tools/research_plan_quality_eval/errors.py",
+                "tools/research_plan_quality_eval/harness.py",
+                "tools/research_plan_quality_eval/isolation.py",
+                "tools/research_plan_quality_eval/leakage.py",
+                "tools/research_plan_quality_eval/manifest.py",
+                "tools/research_plan_quality_eval/records.py",
+                "tools/research_plan_quality_eval/splits.py",
+                "tools/research_plan_quality_eval/fixtures/v1/labels.json",
+                "tools/research_plan_quality_eval/fixtures/v1/manifest.json",
+                *(
+                    f"tools/research_plan_quality_eval/fixtures/v1/plans/P{index:02}.json"
+                    for index in range(1, 11)
+                ),
+            },
+            "forward_model_contract": {
+                "dual_engine/forward_model_contract.py",
+                "tests/forward_model_contract/__init__.py",
+                "tests/forward_model_contract/test_forward_model_contract.py",
+            },
+            "nuisance_scenarios": {
+                "sim/nuisance_scenarios/__init__.py",
+                "sim/nuisance_scenarios/colored_noise.py",
+                "sim/nuisance_scenarios/config.py",
+                "sim/nuisance_scenarios/factory.py",
+                "sim/nuisance_scenarios/jitter.py",
+                "sim/nuisance_scenarios/models.py",
+                "sim/nuisance_scenarios/snr_mixer.py",
+                "tests/nuisance_scenarios/__init__.py",
+                "tests/nuisance_scenarios/test_colored_noise.py",
+                "tests/nuisance_scenarios/test_config_serialization.py",
+                "tests/nuisance_scenarios/test_coordinate_jitter.py",
+                "tests/nuisance_scenarios/test_factory_and_grid.py",
+                "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+                "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                "tests/nuisance_scenarios/test_target_snr.py",
+            },
+        }
+        for component, paths in exact_candidate_diffs.items():
+            with self.subTest(exact_candidate_diff=component):
+                self.assertEqual(helper.select_components(paths), [component])
+                self.assertEqual(helper._unmapped_candidate_paths(paths), [])
+
+        # A changed source that declares multiple required tests is blocked
+        # when its candidate checkout contains only one companion test.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            implementation = "sciencer_d/btc_icft/level_t/base_real_topology.py"
+            first_test = "tests/test_base_real_topology_missingness.py"
+            missing_test = "tests/test_cohort_missingness.py"
+            _write(root, implementation, "# source fixture\n")
+            _write(root, first_test, "def test_fixture(): pass\n")
+            result = helper.inspect_component(
+                "level_t_missingness", root, {implementation}
+            )
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["missing_required_tests"], [missing_test])
+
+        # A fresh Hodge-reference candidate must not select or require the
+        # independent numerical-audit PR, and vice versa.
+        self.assertEqual(
+            helper.select_components({"experimental/phase_cochain_reference/hodge.py"}),
+            ["phase_cochain_reference"],
+        )
+        self.assertEqual(
+            helper.select_components({"tools/hodge_decomposition_audit/audit.py"}),
+            ["hodge_decomposition_audit"],
+        )
+
+        # The #402 audit pair is distinct from #414/#419 spherical parity.
+        csd_audit_paths = {
+            "tools/mne_csd_reference_audit/kkt.py",
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
+        }
+        self.assertEqual(helper.select_components(csd_audit_paths), ["mne_csd_reference_audit"])
+        self.assertEqual(
+            helper.select_components({"tests/experimental/test_spherical_csd_parity.py"}),
+            ["spherical_csd"],
+        )
+
+        # The #399 production bridge is not conflated with the merged #410
+        # finite-jitter bridge, despite both living in experimental audits.
+        self.assertEqual(
+            helper.select_components({"tests/experimental_audits/test_winding_charge_production_import.py"}),
+            ["winding_charge_audit"],
+        )
+        pr399_paths = {
+            "docs/research/batch2/winding_charge_round6_conformance_audit.md",
+            "tests/experimental_audits/__init__.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tools/experimental_audits/__init__.py",
+            "tools/experimental_audits/winding_charge_round6/__init__.py",
+            "tools/experimental_audits/winding_charge_round6/__main__.py",
+            "tools/experimental_audits/winding_charge_round6/audit.py",
+            "tools/experimental_audits/winding_charge_round6/conventions.py",
+            "tools/experimental_audits/winding_charge_round6/fixtures.py",
+            "tools/experimental_audits/winding_charge_round6/oracle.py",
+        }
+        self.assertEqual(helper.select_components(pr399_paths), ["winding_charge_audit"])
+        self.assertEqual(helper._unmapped_candidate_paths(pr399_paths), [])
+        self.assertEqual(
+            helper.select_components({"tests/test_finite_jitter_production_import.py"}),
+            ["finite_jitter_production_bridge"],
+        )
 
 
 if __name__ == "__main__":

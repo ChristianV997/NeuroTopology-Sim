@@ -1443,6 +1443,280 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
         "candidate_test_roots": ("tests/test_finite_jitter_production_import.py",),
     },
+    "bids_adapter": {
+        "triggers": (
+            "data/bids_ingest.py",
+            "data/openneuro_loader.py",
+            "tests/data_access/bids_adapter/test_bids_adapter.py",
+        ),
+        "implementation_any": (
+            "data/bids_ingest.py",
+            "data/openneuro_loader.py",
+        ),
+        "tests": ("tests/data_access/bids_adapter/test_bids_adapter.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/data_access/bids_adapter/test_bids_adapter.py",
+            }
+            for implementation in (
+                "data/bids_ingest.py",
+                "data/openneuro_loader.py",
+            )
+        ),
+        "support_files": {
+            path: ("tests/data_access/bids_adapter/test_bids_adapter.py",)
+            for path in (
+                "tests/data_access/bids_adapter/fixtures/condition_manifest_ambiguous.json",
+                "tests/data_access/bids_adapter/fixtures/condition_manifest_ok.json",
+                "tests/data_access/bids_adapter/fixtures/invalid_bids/README",
+                "tests/data_access/bids_adapter/fixtures/missing_entities/dataset_description.json",
+                "tests/data_access/bids_adapter/fixtures/missing_entities/sub-01/eeg/sub-01_task-rest_eeg.edf",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/dataset_description.json",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/participants.tsv",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_channels.tsv",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+                "tests/data_access/bids_adapter/fixtures/valid_bids/sub-01/eeg/sub-01_task-rest_run-01_eeg.json",
+            )
+        },
+        "implementation_roots": (
+            "data/bids_ingest.py",
+            "data/openneuro_loader.py",
+        ),
+        "candidate_test_roots": (
+            "tests/data_access/bids_adapter/test_bids_adapter.py",
+        ),
+    },
+    "level_t_missingness": {
+        "triggers": (
+            "sciencer_d/btc_icft/level_t/base_real_topology.py",
+            "tests/test_base_real_topology_missingness.py",
+            "tests/test_cohort_missingness.py",
+        ),
+        "implementation": "sciencer_d/btc_icft/level_t/base_real_topology.py",
+        "tests": (
+            "tests/test_base_real_topology_missingness.py",
+            "tests/test_cohort_missingness.py",
+        ),
+        "candidate_pairs": tuple(
+            {
+                "implementation": "sciencer_d/btc_icft/level_t/base_real_topology.py",
+                "test": test_path,
+            }
+            for test_path in (
+                "tests/test_base_real_topology_missingness.py",
+                "tests/test_cohort_missingness.py",
+            )
+        ),
+        "implementation_roots": (
+            "sciencer_d/btc_icft/level_t/base_real_topology.py",
+        ),
+        "candidate_test_roots": (
+            "tests/test_base_real_topology_missingness.py",
+            "tests/test_cohort_missingness.py",
+        ),
+    },
+    "batch3_source_registry": {
+        "triggers": (
+            "configs/research/batch3_source_registry.yaml",
+            "tests/research/test_batch3_source_registry.py",
+        ),
+        "implementation": "configs/research/batch3_source_registry.yaml",
+        "tests": ("tests/research/test_batch3_source_registry.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "configs/research/batch3_source_registry.yaml",
+                "test": "tests/research/test_batch3_source_registry.py",
+            },
+        ),
+        "implementation_roots": ("configs/research/batch3_source_registry.yaml",),
+        "candidate_test_roots": ("tests/research/test_batch3_source_registry.py",),
+    },
+    "research_plan_quality_eval": {
+        "triggers": (
+            "tools/research_plan_quality_eval/",
+            "tests/research_plan_quality_eval/",
+        ),
+        "tests": (
+            "tests/research_plan_quality_eval/test_cli.py",
+            "tests/research_plan_quality_eval/test_held_out_boundary.py",
+            "tests/research_plan_quality_eval/test_isolation.py",
+            "tests/research_plan_quality_eval/test_leakage.py",
+            "tests/research_plan_quality_eval/test_manifest.py",
+            "tests/research_plan_quality_eval/test_records.py",
+            "tests/research_plan_quality_eval/test_report.py",
+            "tests/research_plan_quality_eval/test_splits.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test_path}
+            for implementation, test_paths in {
+                "tools/research_plan_quality_eval/__init__.py": (
+                    "tests/research_plan_quality_eval/test_cli.py",
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                    "tests/research_plan_quality_eval/test_leakage.py",
+                    "tests/research_plan_quality_eval/test_manifest.py",
+                    "tests/research_plan_quality_eval/test_records.py",
+                    "tests/research_plan_quality_eval/test_report.py",
+                    "tests/research_plan_quality_eval/test_splits.py",
+                ),
+                "tools/research_plan_quality_eval/__main__.py": (
+                    "tests/research_plan_quality_eval/test_cli.py",
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                ),
+                "tools/research_plan_quality_eval/errors.py": (
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                    "tests/research_plan_quality_eval/test_leakage.py",
+                    "tests/research_plan_quality_eval/test_manifest.py",
+                    "tests/research_plan_quality_eval/test_records.py",
+                    "tests/research_plan_quality_eval/test_report.py",
+                    "tests/research_plan_quality_eval/test_splits.py",
+                ),
+                "tools/research_plan_quality_eval/harness.py": (
+                    "tests/research_plan_quality_eval/test_cli.py",
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                    "tests/research_plan_quality_eval/test_manifest.py",
+                    "tests/research_plan_quality_eval/test_report.py",
+                ),
+                "tools/research_plan_quality_eval/isolation.py": (
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                ),
+                "tools/research_plan_quality_eval/leakage.py": (
+                    "tests/research_plan_quality_eval/test_leakage.py",
+                ),
+                "tools/research_plan_quality_eval/manifest.py": (
+                    "tests/research_plan_quality_eval/test_cli.py",
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                    "tests/research_plan_quality_eval/test_manifest.py",
+                    "tests/research_plan_quality_eval/test_report.py",
+                ),
+                "tools/research_plan_quality_eval/records.py": (
+                    "tests/research_plan_quality_eval/test_leakage.py",
+                    "tests/research_plan_quality_eval/test_records.py",
+                    "tests/research_plan_quality_eval/test_splits.py",
+                ),
+                "tools/research_plan_quality_eval/splits.py": (
+                    "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                    "tests/research_plan_quality_eval/test_isolation.py",
+                    "tests/research_plan_quality_eval/test_leakage.py",
+                    "tests/research_plan_quality_eval/test_report.py",
+                    "tests/research_plan_quality_eval/test_splits.py",
+                ),
+            }.items()
+            for test_path in test_paths
+        ),
+        "support_files": {
+            path: (
+                "tests/research_plan_quality_eval/test_cli.py",
+                "tests/research_plan_quality_eval/test_held_out_boundary.py",
+                "tests/research_plan_quality_eval/test_isolation.py",
+                "tests/research_plan_quality_eval/test_leakage.py",
+                "tests/research_plan_quality_eval/test_manifest.py",
+                "tests/research_plan_quality_eval/test_records.py",
+                "tests/research_plan_quality_eval/test_report.py",
+                "tests/research_plan_quality_eval/test_splits.py",
+            )
+            for path in (
+                "tests/research_plan_quality_eval/conftest.py",
+                "tools/research_plan_quality_eval/fixtures/v1/labels.json",
+                "tools/research_plan_quality_eval/fixtures/v1/manifest.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P01.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P02.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P03.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P04.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P05.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P06.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P07.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P08.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P09.json",
+                "tools/research_plan_quality_eval/fixtures/v1/plans/P10.json",
+            )
+        },
+        "implementation_roots": ("tools/research_plan_quality_eval/",),
+        "candidate_test_roots": ("tests/research_plan_quality_eval/",),
+    },
+    "forward_model_contract": {
+        "triggers": (
+            "dual_engine/forward_model_contract.py",
+            "tests/forward_model_contract/",
+        ),
+        "implementation": "dual_engine/forward_model_contract.py",
+        "tests": ("tests/forward_model_contract/test_forward_model_contract.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "dual_engine/forward_model_contract.py",
+                "test": "tests/forward_model_contract/test_forward_model_contract.py",
+            },
+        ),
+        "implementation_roots": ("dual_engine/forward_model_contract.py",),
+        "candidate_test_roots": ("tests/forward_model_contract/",),
+    },
+    "nuisance_scenarios": {
+        "triggers": (
+            "sim/nuisance_scenarios/",
+            "tests/nuisance_scenarios/",
+        ),
+        "tests": (
+            "tests/nuisance_scenarios/test_colored_noise.py",
+            "tests/nuisance_scenarios/test_config_serialization.py",
+            "tests/nuisance_scenarios/test_coordinate_jitter.py",
+            "tests/nuisance_scenarios/test_factory_and_grid.py",
+            "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+            "tests/nuisance_scenarios/test_seed_reproducibility.py",
+            "tests/nuisance_scenarios/test_target_snr.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test_path}
+            for implementation, test_paths in {
+                # The package initializer re-exports the entire public API;
+                # each candidate test imports through that package surface.
+                "sim/nuisance_scenarios/__init__.py": (
+                    "tests/nuisance_scenarios/test_colored_noise.py",
+                    "tests/nuisance_scenarios/test_config_serialization.py",
+                    "tests/nuisance_scenarios/test_coordinate_jitter.py",
+                    "tests/nuisance_scenarios/test_factory_and_grid.py",
+                    "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+                    "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                    "tests/nuisance_scenarios/test_target_snr.py",
+                ),
+                "sim/nuisance_scenarios/colored_noise.py": (
+                    "tests/nuisance_scenarios/test_colored_noise.py",
+                    "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                ),
+                "sim/nuisance_scenarios/config.py": (
+                    "tests/nuisance_scenarios/test_config_serialization.py",
+                    "tests/nuisance_scenarios/test_factory_and_grid.py",
+                    "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+                    "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                ),
+                "sim/nuisance_scenarios/factory.py": (
+                    "tests/nuisance_scenarios/test_config_serialization.py",
+                    "tests/nuisance_scenarios/test_coordinate_jitter.py",
+                    "tests/nuisance_scenarios/test_factory_and_grid.py",
+                    "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+                    "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                ),
+                "sim/nuisance_scenarios/jitter.py": (
+                    "tests/nuisance_scenarios/test_coordinate_jitter.py",
+                    "tests/nuisance_scenarios/test_seed_reproducibility.py",
+                ),
+                "sim/nuisance_scenarios/models.py": (
+                    "tests/nuisance_scenarios/test_factory_and_grid.py",
+                ),
+                "sim/nuisance_scenarios/snr_mixer.py": (
+                    "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
+                    "tests/nuisance_scenarios/test_target_snr.py",
+                ),
+            }.items()
+            for test_path in test_paths
+        ),
+        "implementation_roots": ("sim/nuisance_scenarios/",),
+        "candidate_test_roots": ("tests/nuisance_scenarios/",),
+    },
 }
 
 # Keep the historical spherical-CSD inventory aware of the exact NumPy
@@ -1609,6 +1883,20 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "adapters/mne_csd/__init__.py",
         "tests/adapters/mne_csd/__init__.py",
     ),
+    "bids_adapter": (
+        "tests/data_access/bids_adapter/__init__.py",
+    ),
+    "research_plan_quality_eval": (
+        "tools/research_plan_quality_eval/__init__.py",
+        "tests/research_plan_quality_eval/__init__.py",
+    ),
+    "forward_model_contract": (
+        "tests/forward_model_contract/__init__.py",
+    ),
+    "nuisance_scenarios": (
+        "sim/nuisance_scenarios/__init__.py",
+        "tests/nuisance_scenarios/__init__.py",
+    ),
     "streaming_s3_transfer": (),
     "ds005620_cohort_stream": (),
 }
@@ -1669,6 +1957,12 @@ COMPONENT_OWNER_PRS = {
     "moabb_protocol_conformance": (379,),
     "mne_signal_blocks": (380, 438),
     "mne_csd_adapter": (378,),
+    "bids_adapter": (369,),
+    "level_t_missingness": (373,),
+    "batch3_source_registry": (375,),
+    "research_plan_quality_eval": (383,),
+    "forward_model_contract": (388,),
+    "nuisance_scenarios": (408,),
 }
 
 
@@ -2225,6 +2519,21 @@ def select_components(changed_paths: set[str]) -> list[str]:
             for initializer in spec.get("package_initializers", {})
         }
     }
+    shared_experimental_audit_initializers = {
+        "tools/experimental_audits/__init__.py",
+        "tests/experimental_audits/__init__.py",
+    }
+    if changed_casefold & {
+        path.casefold() for path in shared_experimental_audit_initializers
+    }:
+        # These parent-package initializers are shared by two independent
+        # audit components. When the same diff contains a component-specific
+        # source/test pair, that pair disambiguates the initializer; otherwise
+        # both owners remain selected and the missing companion blocks.
+        if "winding_charge_audit" in direct and "four_sphere" not in direct:
+            initializer_owners.discard("four_sphere")
+        elif "four_sphere" in direct and "winding_charge_audit" not in direct:
+            initializer_owners.discard("winding_charge_audit")
     # A mixed diff must validate both directly changed pairs and every owner of
     # a changed package initializer. Dropping initializer owners just because a
     # direct component also changed can silently omit shared import/API effects.
@@ -2274,7 +2583,14 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path)
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
-    } | {normalize_repo_path(path) for path in mapped_support_paths | external_test_paths}
+    } | {
+        normalize_repo_path(path)
+        for path in (
+            *spec.get("support_files", {}).keys(),
+            *spec.get("package_initializers", {}).keys(),
+            *spec.get("external_test_paths", {}).keys(),
+        )
+    }
     unmapped = _case_mismatched_known_paths(changed_paths, known_exact)
     for original in changed_paths:
         path = normalize_repo_path(original)
