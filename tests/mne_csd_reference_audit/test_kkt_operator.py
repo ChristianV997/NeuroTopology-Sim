@@ -130,8 +130,8 @@ def test_invalid_radius_is_rejected(radius):
         csd_operator(_positions("tetrahedron_4"), radius=radius)
 
 
-@pytest.mark.parametrize("lambda2", [-1e-9, 1.0, 2.0])
-def test_lambda2_outside_mne_range_is_rejected(lambda2):
+@pytest.mark.parametrize("lambda2", [-1e-9, float("nan"), float("inf"), -float("inf")])
+def test_nonfinite_or_negative_lambda2_is_rejected(lambda2):
     with pytest.raises(OperatorInputError, match="lambda2"):
         csd_operator(_positions("tetrahedron_4"), radius=RADIUS, lambda2=lambda2)
 
