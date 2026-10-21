@@ -179,7 +179,17 @@ class NuisanceScenarioFactory:
         rms_disp = 0.0
 
         if isinstance(coordinates, str) and coordinates.lower() in ("sphere", "synthetic_sphere"):
-            radius = 100.0 if config.jitter_units == "mm" else (10.0 if config.jitter_units == "cm" else 0.1)
+            units = str(config.jitter_units).strip().lower()
+            if units == "mm":
+                radius = 100.0
+            elif units == "cm":
+                radius = 10.0
+            elif units == "m":
+                radius = 0.1
+            else:
+                raise ValueError(
+                    f"unsupported coordinate units for synthetic_sphere: {config.jitter_units!r}"
+                )
             orig_coords = generate_synthetic_spherical_coordinates(config.n_channels, radius=radius)
         elif coordinates is not None:
             orig_coords = np.asarray(coordinates, dtype=np.float64)

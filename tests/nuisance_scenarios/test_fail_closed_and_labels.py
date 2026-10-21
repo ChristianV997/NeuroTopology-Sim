@@ -60,6 +60,32 @@ def test_config_rejects_duration_yielding_too_few_samples() -> None:
         NuisanceScenarioConfig(duration_s=0.01, sfreq_hz=100.0)
 
 
+def test_coordinate_units_aliases_normalize_case_for_sphere_radius() -> None:
+    """Regression: accepted unit aliases must not silently pick the wrong sphere radius.
+
+    Validation lowercases for membership, but storing mixed-case ``MM`` / ``CM``
+    previously made the factory treat them as meters (radius 0.1) instead of
+    mm/cm (100.0 / 10.0). Inputs must map correctly — no silent unit fallback.
+    """
+    for units, expected_radius in (("MM", 100.0), ("Cm", 10.0), ("m", 0.1)):
+        cfg = NuisanceScenarioConfig.from_dict(
+            {
+                "chi": 1.0,
+                "jitter_units": units,
+                "n_channels": 4,
+                "duration_s": 0.5,
+                "sampling_rate_hz": 200.0,
+                "seed": 3,
+            }
+        )
+        assert cfg.coordinate_units == units.strip().lower()
+        assert cfg.jitter_units == units.strip().lower()
+        res = NuisanceScenarioFactory.generate(cfg, coordinates="synthetic_sphere")
+        assert res.original_coordinates is not None
+        radii = np.linalg.norm(res.original_coordinates, axis=1)
+        np.testing.assert_allclose(radii, expected_radius, atol=1e-12)
+
+
 def test_mixer_rejects_non_finite_target_snr() -> None:
     clean = np.ones((2, 64))
     noise = np.ones((2, 64))

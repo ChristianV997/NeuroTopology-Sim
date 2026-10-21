@@ -107,9 +107,12 @@ class NuisanceScenarioConfig:
         eff_jit = jitter_std if jitter_std is not None else (
             coordinate_jitter_std if coordinate_jitter_std is not None else 0.0
         )
-        eff_units = jitter_units if jitter_units is not None else (
+        eff_units_raw = jitter_units if jitter_units is not None else (
             coordinate_units if coordinate_units is not None else "mm"
         )
+        # Canonicalize units at construction so alias case cannot silently
+        # change downstream sphere-radius / jitter semantics.
+        eff_units = str(eff_units_raw).strip().lower()
         eff_sfreq = sampling_rate_hz if sampling_rate_hz is not None else (
             sfreq_hz if sfreq_hz is not None else 250.0
         )
@@ -118,7 +121,7 @@ class NuisanceScenarioConfig:
         object.__setattr__(self, "noise_exponent", float(eff_chi))
         object.__setattr__(self, "target_snr_db", float(target_snr_db))
         object.__setattr__(self, "coordinate_jitter_std", float(eff_jit))
-        object.__setattr__(self, "coordinate_units", str(eff_units))
+        object.__setattr__(self, "coordinate_units", eff_units)
         object.__setattr__(self, "renormalize_to_sphere", bool(renormalize_to_sphere))
         object.__setattr__(self, "sfreq_hz", float(eff_sfreq))
         object.__setattr__(self, "duration_s", float(duration_s))
@@ -139,9 +142,9 @@ class NuisanceScenarioConfig:
             raise ValueError(
                 f"coordinate_jitter_std must be a non-negative finite float, got {self.coordinate_jitter_std}"
             )
-        if self.coordinate_units.lower() not in SUPPORTED_COORDINATE_UNITS:
+        if self.coordinate_units not in SUPPORTED_COORDINATE_UNITS:
             raise ValueError(
-                f"coordinate_units must be one of {sorted(SUPPORTED_COORDINATE_UNITS)}, got '{self.coordinate_units}'"
+                f"coordinate_units must be one of {sorted(SUPPORTED_COORDINATE_UNITS)}, got '{eff_units_raw}'"
             )
         if not math.isfinite(self.sfreq_hz) or self.sfreq_hz <= 0.0:
             raise ValueError(
