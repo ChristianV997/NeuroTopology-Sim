@@ -19,9 +19,9 @@ Every extraction window in Level T carries explicit lifecycle status, validity m
 | `computed` | Actual signal successfully read and topology computed | `"computed"` | `True` | Genuine `float` values |
 | `missing_source_file` | Source recording path does not exist on disk | `"skipped"` | `False` | `None` / `null` |
 | `missing_companion_file` | Header exists but required companion file (`.vmrk`, `.eeg`, etc.) is absent | `"skipped"` | `False` | `None` / `null` |
-| `failed_read` | Signal reader raised an exception (corrupt data, out-of-bounds window, 0 channels) | `"skipped"` | `False` | `None` / `null` |
-| `partial_run` | Subject recording terminated prematurely before window completion | `"skipped"` | `False` | `None` / `null` |
-| `unobserved` | Window row instantiated without computed metrics | `"skipped"` | `False` | `None` / `null` |
+| `failed_read` | Signal reader raised an exception (corrupt data, 0 channels, or non-finite samples) | `"skipped"` | `False` | `None` / `null` |
+| `partial_run` | Subject recording terminated prematurely before window completion (`out of range` / truncated duration) | `"skipped"` | `False` | `None` / `null` |
+| `unobserved` | Window row instantiated without computed metrics or with any `None`/non-finite metric field | `"skipped"` | `False` | `None` / `null` |
 
 ---
 
@@ -64,13 +64,14 @@ Under no circumstances is a missing observation assigned `0.0` or treated as neu
   - `pass`: $n_{\text{missing}} = 0$ and all valid rows satisfy quality criteria ($\text{quality} \ge 0.25$, $n_{\text{valid\_triangles}} > 0$)
 
 ### 3.2 Artifact Alignment Reporting (`build_artifact_alignment_report`)
-- Averages artifact scores and topology quality only over non-null observations.
+- Averages artifact scores and topology quality only over finite, non-null observations.
+- Safely parses and rejects malformed or non-finite (`NaN`/`Inf`) `artifact_score` entries as missing without raising conversion errors or polluting `high_artifact_rows`.
 - Explicitly isolates `missing_topology_rows` and `missing_artifact_scores` without zero-fill substitution.
 - Emits warnings when artifact scores are partially unobserved.
 
-### 3.3 Group Significance Permutation Tests (`build_group_significance_report`)
-- Filters rows to eligible, valid, warning-free computed observations.
-- Enforces `max_skip_rate` gate (default 20%): blocks execution if data loss exceeds threshold.
+### 3.3 Group Significance Permutation Tests (`build_group_significance_report`) & ML Decoding (`build_ml_decoding_report`)
+- Filters rows strictly to eligible, valid (`is_valid=True`, `topology_status="computed"`), warning-free computed observations with finite metrics.
+- Enforces `max_skip_rate` gate (default 20%): blocks execution if data loss exceeds threshold (`skip_rate > max_skip_rate`).
 - Enforces `min_paired_subjects` gate: fails closed if paired subject count is insufficient for statistical power.
 - Calculates precision metrics for each condition:
   $$\text{SEM} = \frac{s}{\sqrt{n}}, \quad \text{CI}_{95\%} = \left[\bar{x} - 1.96 \cdot \text{SEM}, \, \bar{x} + 1.96 \cdot \text{SEM}\right]$$

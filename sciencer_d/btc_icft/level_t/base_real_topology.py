@@ -56,6 +56,7 @@ from dataclasses import asdict, dataclass
 import csv
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -104,7 +105,23 @@ class LevelTRealTopologyRow:
     uncertainty_metadata: dict | None = None
 
     def __post_init__(self) -> None:
-        if self.q_abs is None or self.topology_quality is None:
+        metric_fields = ("q_net", "q_abs", "f_dress", "defect_density", "topology_quality")
+        has_missing_or_nonfinite = False
+        for fname in metric_fields:
+            val = getattr(self, fname)
+            if val is None:
+                has_missing_or_nonfinite = True
+            else:
+                try:
+                    fval = float(val)
+                except (TypeError, ValueError):
+                    setattr(self, fname, None)
+                    has_missing_or_nonfinite = True
+                else:
+                    if not math.isfinite(fval):
+                        setattr(self, fname, None)
+                        has_missing_or_nonfinite = True
+        if has_missing_or_nonfinite:
             self.is_valid = False
             if self.topology_status == "computed":
                 self.topology_status = "skipped"
@@ -247,21 +264,50 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
         )
     except (ValueError, OSError) as exc:
         exc_str = str(exc).lower()
-        is_companion = (
-            isinstance(exc, FileNotFoundError)
-            or "file not found" in exc_str
-            or any(ext in exc_str for ext in (".vmrk", ".eeg", ".vhdr", ".bdf", ".edf", ".set", ".fdt"))
+        is_partial_run = (
+            "out of range" in exc_str
+            or "duration" in exc_str
+            or "short_window" in exc_str
+            or "premature" in exc_str
+            or "truncated" in exc_str
         )
+        is_companion = (
+            not is_partial_run
+            and (
+                isinstance(exc, FileNotFoundError)
+                or "companion" in exc_str
+                or "file not found" in exc_str
+                or "no such file" in exc_str
+                or "cannot find" in exc_str
+                or "missing" in exc_str
+            )
+        )
+        if is_partial_run:
+            return _missing_row(
+                f"partial run or out-of-range window: {exc}",
+                missingness_state="partial_run",
+                run_status="partial",
+            )
         if is_companion:
-            missing_state = "missing_companion_file"
-            reason = f"companion file missing or unreadable: {exc}"
-        else:
-            missing_state = "failed_read"
-            reason = f"window signal read failed: {exc}"
-        return _missing_row(reason, missingness_state=missing_state)
+            return _missing_row(
+                f"companion file missing or unreadable: {exc}",
+                missingness_state="missing_companion_file",
+                run_status="failed",
+            )
+        return _missing_row(
+            f"window signal read failed: {exc}",
+            missingness_state="failed_read",
+            run_status="failed",
+        )
 
     if channels is None or len(channels) == 0:
         return _missing_row("no channels returned for window", missingness_state="failed_read")
+
+    channel_arr = np.asarray(channels, dtype=float)
+    if channel_arr.size == 0:
+        return _missing_row("empty channel samples returned for window", missingness_state="failed_read")
+    if not np.all(np.isfinite(channel_arr)):
+        return _missing_row("non-finite samples in window signal", missingness_state="failed_read")
 
     channel_data = [list(map(float, ch)) for ch in channels]
     (
@@ -895,7 +941,17 @@ def build_ml_decoding_report(
     # fail-closed and require signal-derived, non-degenerate topology rows.
     eligible_rows = [
         r for r in rows
-        if not r.warnings and r.n_triangles > 0 and r.n_valid_triangles > 0
+        if (
+            r.is_valid
+            and r.topology_status == "computed"
+            and not r.warnings
+            and r.n_triangles > 0
+            and r.n_valid_triangles > 0
+            and all(
+                getattr(r, c, None) is not None and math.isfinite(float(getattr(r, c)))
+                for c in value_cols
+            )
+        )
     ]
     if not eligible_rows:
         return {
@@ -957,7 +1013,8 @@ def build_ml_decoding_report(
 
 def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: list[dict]) -> dict:
     by_id = {str(r.get("row_id")): r for r in m_rows}
-    art = []
+    art: list[float] = []
+    high_artifact_rows: list[str] = []
     missing = 0
     for r in rows:
         v = by_id.get(r.row_id, {}).get("artifact_score")
@@ -965,20 +1022,23 @@ def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: l
             missing += 1
         else:
             try:
-                art.append(float(v))
+                fv = float(v)
             except (ValueError, TypeError):
                 missing += 1
+            else:
+                if not math.isfinite(fv):
+                    missing += 1
+                else:
+                    art.append(fv)
+                    if fv > 0.5:
+                        high_artifact_rows.append(r.row_id)
     valid_qualities = [r.topology_quality for r in rows if r.is_valid and r.topology_quality is not None]
     return {
         "n_rows": len(rows),
         "n_matched_m_rows": sum(1 for r in rows if r.row_id in by_id),
         "n_missing_artifact_scores": missing,
         "mean_artifact_score": (sum(art) / len(art)) if art else None,
-        "high_artifact_rows": [
-            r.row_id for r in rows
-            if (by_id.get(r.row_id, {}).get("artifact_score") not in (None, "")
-                and float(by_id[r.row_id]["artifact_score"]) > 0.5)
-        ],
+        "high_artifact_rows": high_artifact_rows,
         "topology_quality_mean": (sum(valid_qualities) / len(valid_qualities)) if valid_qualities else None,
         "low_topology_quality_rows": [r.row_id for r in rows if r.is_valid and r.topology_quality is not None and r.topology_quality < 0.25],
         "missing_topology_rows": [r.row_id for r in rows if not r.is_valid or r.topology_quality is None],

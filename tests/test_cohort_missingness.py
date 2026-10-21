@@ -379,3 +379,35 @@ print(json.dumps(report))
     assert payload["verdict"] == "PASS"
     assert payload["gate_passed"] is True
     assert payload["n_total_windows"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 11. Skip-rate exact boundary (0.20) vs above boundary (>0.20)
+# ---------------------------------------------------------------------------
+
+def test_cohort_skip_rate_exact_boundary_is_incomplete_not_blocked():
+    # 5 subjects x 2 conditions x 1 window = 10 windows total
+    # If 2 windows are missing (both in an extra 6th subject so 5 subjects remain paired),
+    # let's make 10 windows total: 5 subjects x 2 conditions = 10 windows.
+    # If 2 windows of sub-05 are missing, skip_rate = 2 / 10 = 0.20 exactly!
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=1)
+    # 6 subjects x 2 conditions = 12 windows; let's use 5 subjects x 2 conditions = 10 windows
+    t_rows = t_rows[:10]
+    m_rows = m_rows[:10]
+    # Invalidate 2 windows of sub-05 (indices 8 and 9) -> skip_rate = 2/10 = 0.20 exactly
+    for idx in (8, 9):
+        t_rows[idx], _ = _make_row(
+            idx, "sub-05", "awake" if idx == 8 else "sedated",
+            is_valid=False, state="partial_run", reason="window out of range (duration 3.2s)"
+        )
+
+    # With min_paired_subjects=4 and max_skip_rate=0.20, skip_rate == 0.20 does NOT trigger BLOCKED,
+    # it falls through to INCOMPLETE and tracks partial_run!
+    rep = audit_cohort_missingness(
+        t_rows, m_rows, min_paired_subjects=4, max_skip_rate=0.20
+    )
+    assert rep["skip_rate"] == 0.20
+    assert rep["verdict"] == "INCOMPLETE"
+    assert rep["gate_passed"] is False
+    assert rep["missingness_by_reason"]["partial_run"] == 2
+    assert "sub-05" in rep["failed_subjects"]

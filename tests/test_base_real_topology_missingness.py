@@ -26,6 +26,7 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     build_artifact_alignment_report,
     build_group_significance_report,
     build_level_t_omega_event,
+    build_ml_decoding_report,
     build_topology_quality_report,
     compute_real_topology_for_window,
     write_level_t_topology_outputs,
@@ -473,3 +474,230 @@ def test_write_level_t_topology_outputs_serializes_empty_string_for_none(tmp_pat
     report_md = Path(out_paths["report.md"]).read_text(encoding="utf-8")
     assert "Cohort missingness audit report" in report_md
     assert "verdict: INCOMPLETE" in report_md
+
+
+# ---------------------------------------------------------------------------
+# 11. Partial run (prematurely terminated window) yields partial_run state
+# ---------------------------------------------------------------------------
+
+def test_partial_run_out_of_range_window_classified_as_partial_run(tmp_path, monkeypatch):
+    edf_file = tmp_path / "truncated_sub-01.edf"
+    edf_file.write_bytes(b"header")
+
+    def _mock_read(*args, **kwargs):
+        raise ValueError(
+            "window [4.0,6.0]s out of range for truncated_sub-01.edf (duration 4.85s)"
+        )
+
+    monkeypatch.setattr("data.bids_ingest.read_window_signal", _mock_read)
+
+    m_row = {
+        "row_id": "r_part_1",
+        "subject_id": "sub-01",
+        "window_id": "w2",
+        "task_label": "rest",
+        "source_file": str(edf_file),
+        "window_start_s": "4.0",
+        "window_end_s": "6.0",
+    }
+    row = compute_real_topology_for_window(m_row)
+
+    assert row.is_valid is False
+    assert row.topology_status == "skipped"
+    assert row.missingness_state == "partial_run"
+    assert row.run_status == "partial"
+    assert row.q_net is None
+    assert row.q_abs is None
+    assert row.f_dress is None
+    assert row.defect_density is None
+    assert row.topology_quality is None
+    assert row.replicate_count == 0
+
+
+def test_nonfinite_channel_samples_yield_failed_read_not_zeros(tmp_path, monkeypatch):
+    edf_file = tmp_path / "nan_signal.edf"
+    edf_file.write_bytes(b"header")
+
+    def _mock_read(*args, **kwargs):
+        arr = np.ones((4, 100), dtype=float)
+        arr[1, 10] = float("nan")
+        return arr
+
+    monkeypatch.setattr("data.bids_ingest.read_window_signal", _mock_read)
+
+    m_row = {
+        "row_id": "r_nan_1",
+        "subject_id": "sub-01",
+        "window_id": "w0",
+        "task_label": "rest",
+        "source_file": str(edf_file),
+        "window_start_s": "0.0",
+        "window_end_s": "2.0",
+    }
+    row = compute_real_topology_for_window(m_row)
+
+    assert row.is_valid is False
+    assert row.topology_status == "skipped"
+    assert row.missingness_state == "failed_read"
+    assert row.q_net is None
+    assert row.q_abs is None
+    assert row.topology_quality is None
+
+
+# ---------------------------------------------------------------------------
+# 12. Any None or non-finite metric demotes row to invalid/unobserved
+# ---------------------------------------------------------------------------
+
+def test_row_with_any_none_or_nonfinite_metric_demotes_to_unobserved():
+    # q_net is None while q_abs and topology_quality are finite
+    row_partial_none = LevelTRealTopologyRow(
+        row_id="r_none_qnet",
+        subject_id="sub-01",
+        session_id="ses-01",
+        run_id="run-01",
+        window_id="w0",
+        task_label="rest",
+        q_net=None,
+        q_abs=0.25,
+        f_dress=0.05,
+        defect_density=0.02,
+        n_triangles=10,
+        n_valid_triangles=9,
+        topology_quality=0.9,
+        null_method="real_none",
+        null_seed=0,
+        source_file="f.edf",
+        window_start_s=0.0,
+        window_end_s=2.0,
+        warnings=[],
+    )
+    assert row_partial_none.is_valid is False
+    assert row_partial_none.topology_status == "skipped"
+    assert row_partial_none.missingness_state == "unobserved"
+    assert row_partial_none.replicate_count == 0
+
+    # q_abs is NaN
+    row_nan = LevelTRealTopologyRow(
+        row_id="r_nan_qabs",
+        subject_id="sub-01",
+        session_id="ses-01",
+        run_id="run-01",
+        window_id="w1",
+        task_label="rest",
+        q_net=0.1,
+        q_abs=float("nan"),
+        f_dress=0.05,
+        defect_density=0.02,
+        n_triangles=10,
+        n_valid_triangles=9,
+        topology_quality=0.9,
+        null_method="real_none",
+        null_seed=0,
+        source_file="f.edf",
+        window_start_s=0.0,
+        window_end_s=2.0,
+        warnings=[],
+    )
+    assert row_nan.is_valid is False
+    assert row_nan.topology_status == "skipped"
+    assert row_nan.missingness_state == "unobserved"
+    assert row_nan.q_abs is None
+    assert row_nan.replicate_count == 0
+
+
+# ---------------------------------------------------------------------------
+# 13. Artifact alignment report handles malformed / NaN artifact_score safely
+# ---------------------------------------------------------------------------
+
+def test_build_artifact_alignment_report_handles_malformed_and_nonfinite_scores():
+    rows = [
+        _valid_row(0, topology_quality=0.9),
+        _valid_row(1, topology_quality=0.8),
+        _valid_row(2, topology_quality=0.85),
+    ]
+    m_rows = [
+        {"row_id": "row-0", "artifact_score": "0.60"},
+        {"row_id": "row-1", "artifact_score": "not_a_float"},
+        {"row_id": "row-2", "artifact_score": "NaN"},
+    ]
+    report = build_artifact_alignment_report(rows, m_rows)
+
+    assert report["n_rows"] == 3
+    assert report["n_missing_artifact_scores"] == 2
+    assert abs(report["mean_artifact_score"] - 0.60) < 1e-6
+    assert report["high_artifact_rows"] == ["row-0"]
+    assert report["artifact_dominance_proxy"] is True
+
+
+# ---------------------------------------------------------------------------
+# 14. Group significance report: skip-rate boundary, paired-subject gate, and missing row exclusion
+# ---------------------------------------------------------------------------
+
+def test_build_group_significance_report_skip_rate_exact_boundary_and_paired_subject_gate():
+    pytest.importorskip("pandas")
+    # 10 rows total: 8 valid (4 subjects x 2 conditions), 2 missing -> skip_rate = 0.20 exactly
+    rows = []
+    m_rows = []
+    idx = 0
+    for s in range(4):
+        for cond, q_val in (("awake", 0.2 + 0.01 * s), ("sedated", 0.5 + 0.01 * s)):
+            r = _valid_row(idx, subject_id=f"sub-{s}", task_label=cond, q_abs=q_val)
+            rows.append(r)
+            m_rows.append({"row_id": r.row_id, "state_label": cond})
+            idx += 1
+    for s in range(4, 6):
+        r = _missing_row(idx, subject_id=f"sub-{s}", task_label="awake")
+        rows.append(r)
+        m_rows.append({"row_id": r.row_id, "state_label": "awake"})
+        idx += 1
+
+    # At max_skip_rate=0.20, skip_rate == 0.20 is at boundary (not > 0.20),
+    # but min_paired_subjects=5 should fail with insufficient_power because only 4 subjects are paired!
+    rep_power = build_group_significance_report(
+        rows, m_rows, max_skip_rate=0.20, min_paired_subjects=5, n_permutations=50, seed=0
+    )
+    assert rep_power["status"] == "insufficient_power"
+    assert rep_power["n_paired_subjects"] == 4
+
+    # With min_paired_subjects=4 and max_skip_rate=0.20, it computes using ONLY the 8 valid rows
+    rep_ok = build_group_significance_report(
+        rows, m_rows, max_skip_rate=0.20, min_paired_subjects=4, n_permutations=50, seed=0
+    )
+    assert rep_ok["status"] == "computed"
+    assert rep_ok["n_rows_total"] == 10
+    assert rep_ok["n_rows_eligible"] == 8
+    assert rep_ok["n_rows_excluded"] == 2
+    assert rep_ok["metrics"]["q_abs"]["n_obs_a"] == 4
+    assert rep_ok["metrics"]["q_abs"]["n_obs_b"] == 4
+
+
+def test_build_ml_decoding_report_excludes_invalid_or_missing_metric_rows():
+    # Construct invalid rows that happen to have empty warnings and positive n_triangles
+    bad_rows = [
+        LevelTRealTopologyRow(
+            row_id=f"r{i}",
+            subject_id=f"sub-{i}",
+            session_id="ses-01",
+            run_id="run-01",
+            window_id=f"w{i}",
+            task_label="a" if i < 5 else "b",
+            q_net=None,
+            q_abs=None,
+            f_dress=None,
+            defect_density=None,
+            n_triangles=10,
+            n_valid_triangles=9,
+            topology_quality=None,
+            null_method="real_none",
+            null_seed=0,
+            source_file="f.edf",
+            window_start_s=0.0,
+            window_end_s=2.0,
+            warnings=[],
+        )
+        for i in range(10)
+    ]
+    m_rows = [{"row_id": r.row_id, "state_label": r.task_label} for r in bad_rows]
+    rep = build_ml_decoding_report(bad_rows, m_rows)
+    assert rep["status"] == "not_applicable"
+    assert rep["n_rows_excluded"] == 10
