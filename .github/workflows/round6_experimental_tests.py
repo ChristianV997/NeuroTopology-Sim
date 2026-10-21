@@ -36,6 +36,44 @@ MAX_JUNIT_XML_BYTES = 32 * 1024 * 1024
 MAX_RUNNER_STDERR_TAIL_BYTES = 4096
 MAX_JUNIT_FAILURE_CASES = 50
 MAX_JUNIT_FAILURE_NAME_CHARS = 512
+# Only this non-sensitive opt-in is allowed into candidate test processes.
+SAFE_CANDIDATE_ENVIRONMENT_OVERRIDES = {
+    "DMD_EP2_REQUIRE_PRODUCTION": frozenset({"1"}),
+}
+# This exact historical test blob has six two-case unittest.subTest loops (12
+# outcomes), while pytest emits one parent testcase record per loop. Run
+# 39382340982 verified the 53/41 delta with a clean test process, but the
+# candidate gate correctly failed because the delta was not yet registered.
+# The exception below records that failure explicitly; the later #438 test blob
+# is different and does not inherit the exception. Any other delta is rejected
+# unless the pytest stdout summary independently reconciles it.
+REGISTERED_JUNIT_SUBTEST_DELTAS = {
+    "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": {
+        "blob_sha": "b37cc987b1e369295552c574ac2bbd1312ecc733",
+        "delta": 12,
+        "component": "mne_signal_blocks",
+        "owner_pr": 438,
+        "source_head_sha": "ab9090bb023695e32915a8f0302f086dc92fa780",
+        "verification": {
+            "run_id": 39382340982,
+            "run_url": "https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/39382340982",
+            "tested_checkout_sha": "224a92303b08277ea0885d54be68b82e475f951f",
+            "workflow_conclusion": "failure",
+            "candidate_status": "FAIL",
+            "failure_classification": "missing_or_invalid_junit",
+            "junit_reconciliation": "mismatch",
+            "test_process_outcome": "passed",
+            "junit_reported_total": 53,
+            "junit_testcase_records": 41,
+            "runner_exit_code": 0,
+            "runner_telemetry_valid": True,
+            "skipped": 0,
+            "failed": 0,
+            "errors": 0,
+            "timeouts": 0,
+        },
+    },
+}
 PINNED_OUTPUT_PROBE_MARKER = b"round6-pinned-output-probe-v1"
 PINNED_OUTPUT_PROBE_TIMEOUT_S = 3
 _PROBE_SUBPROCESS_RUN = subprocess.run
@@ -67,83 +105,162 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "test_roots": ("tests/neurotopology_sim/experimental/geometry/", "tests/experimental/"),
         "candidate_test_roots": ("tests/neurotopology_sim/experimental/geometry/",),
     },
+    "higher_order_runtime": {
+        "triggers": (
+            "tools/higher_order_runtime/",
+            "tests/higher_order_runtime_contract/",
+        ),
+        "tests": (
+            "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+            "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+            "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+            "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "tools/higher_order_runtime/__init__.py",
+                "tools/higher_order_runtime/stream_contract.py",
+            )
+            for test in (
+                "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+                "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+                "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+                "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+            )
+        ),
+        "support_files": {
+            "tests/higher_order_runtime_contract/conftest.py": (
+                "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+                "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
+                "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
+                "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
+            ),
+        },
+        "implementation_roots": ("tools/higher_order_runtime/",),
+        "candidate_test_roots": ("tests/higher_order_runtime_contract/",),
+    },
+    "synthetic_pipeline_replay": {
+        "triggers": (
+            "tools/synthetic_pipeline_replay/",
+            "tests/integration/synthetic_pipeline_replay/",
+        ),
+        "tests": (
+            "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+            "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "tools/synthetic_pipeline_replay/__init__.py",
+                "tools/synthetic_pipeline_replay/checker.py",
+                "tools/synthetic_pipeline_replay/contracts.py",
+                "tools/synthetic_pipeline_replay/runner.py",
+                "tools/synthetic_pipeline_replay/stages.py",
+            )
+            for test in (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            )
+        ),
+        "support_files": {
+            "tests/integration/synthetic_pipeline_replay/fixtures.py": (
+                "tests/integration/synthetic_pipeline_replay/test_replay_harness.py",
+                "tests/integration/synthetic_pipeline_replay/test_replay_negative_cases.py",
+            ),
+        },
+        "implementation_roots": ("tools/synthetic_pipeline_replay/",),
+        "candidate_test_roots": ("tests/integration/synthetic_pipeline_replay/",),
+    },
     "hodge_2d": {
         "triggers": (
             "neurotopology_sim/experimental/topology/hodge_2d.py",
             "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
-            "tools/hodge_decomposition_audit/",
-            "tests/tools/hodge_decomposition_audit/",
+        ),
+        "tests": ("tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",),
+        "candidate_pairs": (
+            {"implementation": "neurotopology_sim/experimental/topology/hodge_2d.py", "test": "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"},
+        ),
+        "implementation": "neurotopology_sim/experimental/topology/hodge_2d.py",
+        "implementation_roots": ("neurotopology_sim/experimental/topology/hodge_2d.py",),
+        "candidate_test_roots": ("tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",),
+    },
+    "phase_cochain_reference": {
+        "triggers": (
             "experimental/phase_cochain_reference/",
             "tests/experimental/phase_cochain_reference/",
         ),
-        "implementation_any": (
-            "neurotopology_sim/experimental/topology/hodge_2d.py",
-            "tools/hodge_decomposition_audit/audit.py",
-            "experimental/phase_cochain_reference/hodge.py",
-        ),
         "tests": (
-            "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py",
-            "tests/tools/hodge_decomposition_audit/test_hodge_audit.py",
             "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py",
             "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py",
             "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py",
             "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py",
         ),
         "candidate_pairs": (
-            {"implementation": "neurotopology_sim/experimental/topology/hodge_2d.py", "test": "tests/neurotopology_sim/experimental/topology/test_hodge_2d.py"},
-            {"implementation": "tools/hodge_decomposition_audit/audit.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/__main__.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
-            {"implementation": "tools/hodge_decomposition_audit/charges.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/fixtures.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/hodge_oracle.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/incidence.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/report.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "tools/hodge_decomposition_audit/schema.py", "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"},
-            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
+            {"implementation": "experimental/phase_cochain_reference/__init__.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
+            {"implementation": "experimental/phase_cochain_reference/cochain.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
             {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/complex.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
             {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_charge_moments_and_centroids.py"},
-            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_coboundary_exactness.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
+            {"implementation": "experimental/phase_cochain_reference/fixtures.py", "test": "tests/experimental/phase_cochain_reference/test_wrapped_phase_charges.py"},
+            {"implementation": "experimental/phase_cochain_reference/hodge.py", "test": "tests/experimental/phase_cochain_reference/test_weighted_hodge_decomposition.py"},
         ),
-        "implementation_roots": ("neurotopology_sim/experimental/topology/", "tools/hodge_decomposition_audit/", "experimental/phase_cochain_reference/"),
-        "test_roots": ("tests/neurotopology_sim/experimental/topology/", "tests/tools/hodge_decomposition_audit/", "tests/experimental/phase_cochain_reference/"),
+        "implementation_roots": ("experimental/phase_cochain_reference/",),
+        "candidate_test_roots": ("tests/experimental/phase_cochain_reference/",),
+    },
+    "hodge_decomposition_audit": {
+        "triggers": (
+            "tools/hodge_decomposition_audit/",
+            "tests/tools/hodge_decomposition_audit/",
+        ),
+        "tests": ("tests/tools/hodge_decomposition_audit/test_hodge_audit.py",),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": "tests/tools/hodge_decomposition_audit/test_hodge_audit.py"}
+            for implementation in (
+                "tools/hodge_decomposition_audit/__init__.py",
+                "tools/hodge_decomposition_audit/__main__.py",
+                "tools/hodge_decomposition_audit/audit.py",
+                "tools/hodge_decomposition_audit/charges.py",
+                "tools/hodge_decomposition_audit/fixtures.py",
+                "tools/hodge_decomposition_audit/hodge_oracle.py",
+                "tools/hodge_decomposition_audit/incidence.py",
+                "tools/hodge_decomposition_audit/report.py",
+                "tools/hodge_decomposition_audit/schema.py",
+            )
+        ),
+        "implementation_roots": ("tools/hodge_decomposition_audit/",),
+        "candidate_test_roots": ("tests/tools/hodge_decomposition_audit/",),
     },
     "spherical_csd": {
         "triggers": (
-            "neurotopology_sim/experimental/preprocessing/",
-            "tests/neurotopology_sim/experimental/preprocessing/",
+            "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json",
-            "tools/mne_csd_reference_audit/",
-            "tests/mne_csd_reference_audit/",
-            "tests/optional_live_mne/test_mne_csd_live_parity.py",
-        ),
-        "implementation_any": (
-            "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
-            "tools/mne_csd_reference_audit/kkt.py",
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
         ),
         "tests": (
             "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
             "tests/experimental/test_spherical_csd_parity.py",
+            # This exact KKT test is shared with the independent reference
+            # audit. The selector assigns a test-only change here for legacy
+            # CSD parity; audit implementation changes remain separately owned.
             "tests/mne_csd_reference_audit/test_kkt_operator.py",
-            "tests/mne_csd_reference_audit/test_legendre_constants.py",
-            "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
             "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
-            "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py"},
             {"implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py", "test": "tests/experimental/test_spherical_csd_parity.py"},
             {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_legendre_constants.py"},
-            {"implementation": "tools/mne_csd_reference_audit/__main__.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/legendre.py", "test": "tests/mne_csd_reference_audit/test_legendre_constants.py"},
-            {"implementation": "tools/mne_csd_reference_audit/montages.py", "test": "tests/mne_csd_reference_audit/test_kkt_operator.py"},
-            {"implementation": "tools/mne_csd_reference_audit/pin.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
-            {"implementation": "tools/mne_csd_reference_audit/report.py", "test": "tests/mne_csd_reference_audit/test_isolation_and_pin.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/mne_csd_reference_audit/test_mne_integration_optional.py"},
-            {"implementation": "tools/mne_csd_reference_audit/kkt.py", "test": "tests/optional_live_mne/test_mne_csd_live_parity.py"},
         ),
+        "implementation": "neurotopology_sim/experimental/preprocessing/spherical_csd.py",
         "support_files": {
             "tests/neurotopology_sim/experimental/preprocessing/fixtures/tetrahedron_csd_matrix_mne_1_13_2.json": (
                 "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
@@ -154,28 +271,88 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/experimental/fixtures/spherical_csd_mne_1_13_2_reference.json": (
                 "tests/experimental/test_spherical_csd_parity.py",
             ),
+        },
+        "implementation_roots": ("neurotopology_sim/experimental/preprocessing/spherical_csd.py",),
+        "test_roots": (
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            "tests/experimental/test_spherical_csd_parity.py",
+        ),
+        "candidate_test_roots": (
+            "tests/neurotopology_sim/experimental/preprocessing/test_spherical_csd.py",
+            "tests/experimental/test_spherical_csd_parity.py",
+        ),
+    },
+    "mne_csd_reference_audit": {
+        "triggers": (
+            "tools/mne_csd_reference_audit/",
+            "tests/mne_csd_reference_audit/",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
+        ),
+        "tests": (
+            "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+            "tests/mne_csd_reference_audit/test_kkt_operator.py",
+            "tests/mne_csd_reference_audit/test_legendre_constants.py",
+            "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/mne_csd_reference_audit/__init__.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_legendre_constants.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                ),
+                "tools/mne_csd_reference_audit/__main__.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                ),
+                "tools/mne_csd_reference_audit/kkt.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/legendre.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_legendre_constants.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/montages.py": (
+                    "tests/mne_csd_reference_audit/test_kkt_operator.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/pin.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                    "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
+                    "tests/optional_live_mne/test_mne_csd_live_parity.py",
+                ),
+                "tools/mne_csd_reference_audit/report.py": (
+                    "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
+                ),
+            }.items()
+            for test in tests
+        ),
+        "support_files": {
             "tests/mne_csd_reference_audit/conftest.py": (
+                "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
                 "tests/mne_csd_reference_audit/test_kkt_operator.py",
                 "tests/mne_csd_reference_audit/test_legendre_constants.py",
-                "tests/mne_csd_reference_audit/test_isolation_and_pin.py",
                 "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
             ),
             "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json": (
                 "tests/mne_csd_reference_audit/test_mne_integration_optional.py",
             ),
         },
-        "implementation_roots": ("neurotopology_sim/experimental/preprocessing/", "tools/mne_csd_reference_audit/"),
-        "test_roots": ("tests/neurotopology_sim/experimental/preprocessing/", "tests/experimental/", "tests/mne_csd_reference_audit/", "tests/optional_live_mne/test_mne_csd_live_parity.py"),
+        "implementation_roots": ("tools/mne_csd_reference_audit/",),
         "candidate_test_roots": (
-            "tests/neurotopology_sim/experimental/preprocessing/",
             "tests/mne_csd_reference_audit/",
             "tests/optional_live_mne/test_mne_csd_live_parity.py",
         ),
-        # The live operator parity test requires the audit owner's pinned MNE
-        # environment. The gate records it as delegated and never auto-installs
-        # MNE or turns an import/version skip into a pass.
+        # The live operator parity test runs in the EEG job, which pins MNE
+        # 1.13.2; it is never silently counted as core evidence.
         "external_test_paths": {
-            "tests/optional_live_mne/test_mne_csd_live_parity.py": "owner-controlled-pinned-mne-1.13.2",
+            "tests/optional_live_mne/test_mne_csd_live_parity.py": "optional-eeg-suite",
         },
     },
     "four_sphere": {
@@ -285,21 +462,57 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/surrogate_audit/test_mv_fpr.py",
             "tests/surrogate_audit/test_mv_iaaft.py",
             "tests/surrogate_audit/test_invalid_inputs.py",
+            "tests/surrogate_audit/test_metrics_scale_invariance.py",
         ),
-        "candidate_pairs": (
-            {"implementation": "tools/surrogate_audit/mv_fpr.py", "test": "tests/surrogate_audit/test_mv_fpr.py"},
-            {"implementation": "tools/surrogate_audit/mv_iaaft.py", "test": "tests/surrogate_audit/test_mv_iaaft.py"},
-            {"implementation": "tools/surrogate_audit/mv_iaaft.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/errors.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/metrics.py", "test": "tests/surrogate_audit/test_mv_fpr.py"},
-            {"implementation": "tools/surrogate_audit/report.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
-            {"implementation": "tools/surrogate_audit/status.py", "test": "tests/surrogate_audit/test_invalid_inputs.py"},
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/surrogate_audit/__init__.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/errors.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                ),
+                "tools/surrogate_audit/metrics.py": (
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/mv_fpr.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                ),
+                "tools/surrogate_audit/mv_iaaft.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/report.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+                "tools/surrogate_audit/status.py": (
+                    "tests/surrogate_audit/test_invalid_inputs.py",
+                    "tests/surrogate_audit/test_metrics_scale_invariance.py",
+                    "tests/surrogate_audit/test_mv_fpr.py",
+                    "tests/surrogate_audit/test_mv_iaaft.py",
+                ),
+            }.items()
+            for test in tests
         ),
         "support_files": {
             "tests/surrogate_audit/fixtures.py": (
                 "tests/surrogate_audit/test_mv_fpr.py",
                 "tests/surrogate_audit/test_mv_iaaft.py",
                 "tests/surrogate_audit/test_invalid_inputs.py",
+                "tests/surrogate_audit/test_metrics_scale_invariance.py",
             ),
         },
         "implementation_roots": ("tools/surrogate_audit/",),
@@ -335,6 +548,34 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "implementation_roots": ("tools/simulation_runtime/",),
         "test_roots": ("tests/simulation_runtime/",),
+    },
+    "fusion_validation_null_models": {
+        # Registered from the exact implementation/test paths and command in
+        # PR #374. Keep this component narrow; the candidate remains open and
+        # must be present in the tested checkout before its tests can pass.
+        "triggers": (
+            "dual_engine/fusion_validation.py",
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "implementation": "dual_engine/fusion_validation.py",
+        "tests": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "candidate_pairs": (
+            {"implementation": "dual_engine/fusion_validation.py", "test": "tests/test_fusion_null_models.py"},
+            {"implementation": "dual_engine/fusion_validation.py", "test": "tests/test_fusion_validation.py"},
+        ),
+        "implementation_roots": ("dual_engine/fusion_validation.py",),
+        "test_roots": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
+        "candidate_test_roots": (
+            "tests/test_fusion_null_models.py",
+            "tests/test_fusion_validation.py",
+        ),
     },
     "report_firewall": {
         "triggers": ("tools/batch3_report_firewall/", "tests/tools/batch3_report_firewall/", "scripts/check_batch3_report_language.py"),
@@ -426,7 +667,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "test_roots": ("tests/batch2_chain_complex_audit/",),
     },
     "winding_charge_audit": {
-        "triggers": ("tools/experimental_audits/winding_charge_round6/", "tests/experimental_audits/test_winding_charge_round6_oracle.py"),
+        "triggers": (
+            "tools/experimental_audits/winding_charge_round6/",
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "neurotopology_sim/experimental/topology/winding.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
         "implementation_any": (
             "tools/experimental_audits/winding_charge_round6/__main__.py",
             "tools/experimental_audits/winding_charge_round6/audit.py",
@@ -434,37 +680,61 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tools/experimental_audits/winding_charge_round6/fixtures.py",
             "tools/experimental_audits/winding_charge_round6/oracle.py",
         ),
-        "tests": ("tests/experimental_audits/test_winding_charge_round6_oracle.py",),
+        "tests": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
         "candidate_pairs": (
             {"implementation": "tools/experimental_audits/winding_charge_round6/__main__.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/audit.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/conventions.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/fixtures.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
             {"implementation": "tools/experimental_audits/winding_charge_round6/oracle.py", "test": "tests/experimental_audits/test_winding_charge_round6_oracle.py"},
+            {"implementation": "tools/experimental_audits/winding_charge_round6/oracle.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
+            {"implementation": "neurotopology_sim/experimental/topology/winding.py", "test": "tests/experimental_audits/test_winding_charge_production_import.py"},
         ),
-        "implementation_roots": ("tools/experimental_audits/winding_charge_round6/",),
-        "test_roots": ("tests/experimental_audits/",),
-        "candidate_test_roots": ("tests/experimental_audits/test_winding_charge_round6_oracle.py",),
+        "implementation_roots": (
+            "tools/experimental_audits/winding_charge_round6/",
+            "neurotopology_sim/experimental/topology/winding.py",
+        ),
+        "test_roots": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
+        "candidate_test_roots": (
+            "tests/experimental_audits/test_winding_charge_round6_oracle.py",
+            "tests/experimental_audits/test_winding_charge_production_import.py",
+        ),
     },
     "dmd_crouzeix": {
         "triggers": (
             "neurotopology_sim/experimental/dynamics/",
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
         "tests": (
             "tests/dmd_crouzeix_contract/test_production_contract.py",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_crouzeix_contract/test_production_contract.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
+            {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
         ),
+        "environment_overrides": {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
         "test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
+        ),
+        "candidate_test_roots": (
+            "tests/dmd_crouzeix_contract/",
+            "tests/experimental/test_dmd_crouzeix.py",
+            "tests/dmd_ep2_oracle/test_production_bridge.py",
         ),
     },
     "docker_context_policy": {
@@ -581,6 +851,324 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "implementation_roots": ("tools/public_repo_harvest/",),
         "candidate_test_roots": ("tests/tools/test_public_repo_harvest_source_pack.py",),
+    },
+    "batch2_pipeline_benchmark": {
+        "triggers": (
+            "tools/benchmarks/batch2_pipeline/",
+            "tools/benchmarks/__init__.py",
+            "scripts/benchmark_batch2_pipeline.py",
+            "tests/benchmarks/batch2_pipeline/",
+        ),
+        # This regression test belongs to the workflow itself. Its changes run
+        # in core-tests and must not select an absent unmerged benchmark source.
+        "non_selecting_test_paths": (
+            "tests/ci/test_round6_benchmark_makefile.py",
+        ),
+        "tests": (
+            "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+            "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+            "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+            "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+            "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+            "tests/ci/test_round6_benchmark_makefile.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/benchmarks/__init__.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/__init__.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/budgets.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/fixtures.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/harness.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/reporting.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/schema.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/telemetry.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/validator.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "tools/benchmarks/batch2_pipeline/workloads.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_failure_modes.py",
+                    "tests/benchmarks/batch2_pipeline/test_governance_compile.py",
+                    "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+                "scripts/benchmark_batch2_pipeline.py": (
+                    "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                    "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                ),
+            }.items()
+            for test in tests
+        ) + (
+            {
+                "implementation": "tools/benchmarks/batch2_pipeline/Makefile",
+                "test": "tests/ci/test_round6_benchmark_makefile.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/benchmarks/batch2_pipeline/",
+            "tools/benchmarks/__init__.py",
+            "scripts/benchmark_batch2_pipeline.py",
+        ),
+        "test_roots": (
+            "tests/benchmarks/batch2_pipeline/",
+        ),
+        "candidate_test_roots": (
+            "tests/benchmarks/batch2_pipeline/",
+        ),
+    },
+    "release_readiness_security": {
+        "triggers": (
+            "tools/release_readiness/batch2_security/",
+            "scripts/run_batch2_security_audit.py",
+            "tests/release_readiness/batch2_security/",
+        ),
+        "tests": (
+            "tests/release_readiness/batch2_security/test_artifact_states.py",
+            "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+            "tests/release_readiness/batch2_security/test_finite_json.py",
+            "tests/release_readiness/batch2_security/test_network_policy.py",
+            "tests/release_readiness/batch2_security/test_path_containment.py",
+            "tests/release_readiness/batch2_security/test_static_scan.py",
+            "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+            "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "tools/release_readiness/batch2_security/artifact_states.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                ),
+                "tools/release_readiness/batch2_security/evidence_boundary.py": (
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                ),
+                "tools/release_readiness/batch2_security/finite_json.py": (
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                ),
+                "tools/release_readiness/batch2_security/network_policy.py": (
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                ),
+                "tools/release_readiness/batch2_security/path_containment.py": (
+                    "tests/release_readiness/batch2_security/test_path_containment.py",
+                ),
+                "tools/release_readiness/batch2_security/static_scan.py": (
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                ),
+                "tools/release_readiness/batch2_security/subprocess_guard.py": (
+                    "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                ),
+                "tools/release_readiness/batch2_security/report.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "tools/release_readiness/batch2_security/runner.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "scripts/run_batch2_security_audit.py": (
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                # The schema is exercised by every focused suite module.
+                "tools/release_readiness/batch2_security/schema.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                    "tests/release_readiness/batch2_security/test_path_containment.py",
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                    "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                    "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+                ),
+                "tools/release_readiness/batch2_security/fixtures.py": (
+                    "tests/release_readiness/batch2_security/test_artifact_states.py",
+                    "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                    "tests/release_readiness/batch2_security/test_finite_json.py",
+                    "tests/release_readiness/batch2_security/test_network_policy.py",
+                    "tests/release_readiness/batch2_security/test_static_scan.py",
+                ),
+            }.items()
+            for test in tests
+        ),
+        "support_files": {
+            "tests/release_readiness/batch2_security/conftest.py": (
+                "tests/release_readiness/batch2_security/test_artifact_states.py",
+                "tests/release_readiness/batch2_security/test_evidence_boundary.py",
+                "tests/release_readiness/batch2_security/test_finite_json.py",
+                "tests/release_readiness/batch2_security/test_network_policy.py",
+                "tests/release_readiness/batch2_security/test_path_containment.py",
+                "tests/release_readiness/batch2_security/test_static_scan.py",
+                "tests/release_readiness/batch2_security/test_subprocess_isolation.py",
+                "tests/release_readiness/batch2_security/test_suite_and_governance.py",
+            ),
+        },
+        "implementation_roots": (
+            "tools/release_readiness/batch2_security/",
+            "scripts/run_batch2_security_audit.py",
+        ),
+        "candidate_test_roots": ("tests/release_readiness/batch2_security/",),
+    },
+    "source_mining_evidence_boundary": {
+        "triggers": (
+            "tools/evidence_promotion_gate/adapters.py",
+            "tools/evidence_promotion_gate/evaluator.py",
+            "tools/public_repo_harvest/schema.py",
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+        "tests": (
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/evidence_promotion_gate/adapters.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+            {
+                "implementation": "tools/evidence_promotion_gate/evaluator.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+            {
+                "implementation": "tools/public_repo_harvest/schema.py",
+                "test": "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/evidence_promotion_gate/adapters.py",
+            "tools/evidence_promotion_gate/evaluator.py",
+            "tools/public_repo_harvest/schema.py",
+        ),
+        "candidate_test_roots": (
+            "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
+        ),
+    },
+    "measurement_hypothesis_contract": {
+        "triggers": (
+            "shared/measurement_hypothesis/",
+            "tools/research_claim_gate/gate.py",
+            "tests/measurement_hypothesis/",
+        ),
+        "tests": (
+            "tests/measurement_hypothesis/test_boundary_regressions.py",
+            "tests/measurement_hypothesis/test_five_level_contract.py",
+            "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+            "tests/measurement_hypothesis/test_implementation_resolution.py",
+            "tests/measurement_hypothesis/test_interpretation_language.py",
+            "tests/measurement_hypothesis/test_measurement_and_operator.py",
+            "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+            "tests/measurement_hypothesis/test_provenance_and_sources.py",
+            "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation in (
+                "shared/measurement_hypothesis/validate.py",
+                "shared/measurement_hypothesis/schema.py",
+                "shared/measurement_hypothesis/resolve.py",
+                "shared/measurement_hypothesis/language.py",
+            )
+            for test in (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            )
+        ) + (
+            {
+                "implementation": "shared/measurement_hypothesis/__main__.py",
+                "test": "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+            },
+            {
+                "implementation": "tools/research_claim_gate/gate.py",
+                "test": "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            },
+        ),
+        "support_files": {
+            "tests/measurement_hypothesis/conftest.py": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/empirical_support_implied.json": (
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/missing_provenance.json": (
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/origin_shift_cortical_wave_equivalence.json": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/theory_term_leak.json": (
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+            ),
+            "tests/measurement_hypothesis/fixtures/valid_hypothetical_mapping.json": (
+                "tests/measurement_hypothesis/test_boundary_regressions.py",
+                "tests/measurement_hypothesis/test_five_level_contract.py",
+                "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
+                "tests/measurement_hypothesis/test_implementation_resolution.py",
+                "tests/measurement_hypothesis/test_interpretation_language.py",
+                "tests/measurement_hypothesis/test_measurement_and_operator.py",
+                "tests/measurement_hypothesis/test_namespace_and_renaming.py",
+                "tests/measurement_hypothesis/test_provenance_and_sources.py",
+                "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            ),
+        },
+        "implementation_roots": (
+            "shared/measurement_hypothesis/",
+            "tools/research_claim_gate/gate.py",
+        ),
+        "candidate_test_roots": ("tests/measurement_hypothesis/",),
     },
     "dandi_nwb_bounded": {
         "triggers": (
@@ -746,6 +1334,84 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py": "not requires_mne",
         },
     },
+    "mne_csd_adapter": {
+        "triggers": (
+            "adapters/mne_csd/",
+            "tests/adapters/mne_csd/",
+        ),
+        "tests": (
+            "tests/adapters/mne_csd/test_governance_and_availability.py",
+            "tests/adapters/mne_csd/test_optional_mne_integration.py",
+            "tests/adapters/mne_csd/test_parameter_forwarding.py",
+            "tests/adapters/mne_csd/test_preconditions.py",
+            "tests/adapters/mne_csd/test_provenance_and_units.py",
+        ),
+        "candidate_pairs": tuple(
+            {"implementation": implementation, "test": test}
+            for implementation, tests in {
+                "adapters/mne_csd/__init__.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/constants.py": (
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/errors.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                ),
+                "adapters/mne_csd/preconditions.py": (
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/provenance.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+                "adapters/mne_csd/transform.py": (
+                    "tests/adapters/mne_csd/test_governance_and_availability.py",
+                    "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                    "tests/adapters/mne_csd/test_preconditions.py",
+                    "tests/adapters/mne_csd/test_provenance_and_units.py",
+                ),
+            }.items()
+            for test in tests
+        ) + tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/adapters/mne_csd/test_optional_mne_integration.py",
+            }
+            for implementation in (
+                "adapters/mne_csd/__init__.py",
+                "adapters/mne_csd/constants.py",
+                "adapters/mne_csd/errors.py",
+                "adapters/mne_csd/preconditions.py",
+                "adapters/mne_csd/provenance.py",
+                "adapters/mne_csd/transform.py",
+            )
+        ),
+        "support_files": {
+            "tests/adapters/mne_csd/conftest.py": (
+                "tests/adapters/mne_csd/test_governance_and_availability.py",
+                "tests/adapters/mne_csd/test_parameter_forwarding.py",
+                "tests/adapters/mne_csd/test_preconditions.py",
+                "tests/adapters/mne_csd/test_provenance_and_units.py",
+            ),
+        },
+        "implementation_roots": ("adapters/mne_csd/",),
+        "candidate_test_roots": ("tests/adapters/mne_csd/",),
+        # The file imports MNE at collection time. Keep it out of the CPU
+        # candidate run and execute it only in the existing installed EEG job.
+        "external_test_paths": {
+            "tests/adapters/mne_csd/test_optional_mne_integration.py": "optional-eeg-suite",
+        },
+    },
     "finite_jitter_geometry_audit": {
         "triggers": (
             "tools/audit_finite_jitter_triangulation.py",
@@ -762,7 +1428,56 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
         "candidate_test_roots": ("tests/test_finite_jitter_triangulation_audit.py",),
     },
+    "finite_jitter_production_bridge": {
+        "triggers": (
+            "tools/audit_finite_jitter_triangulation.py",
+            "tests/test_finite_jitter_production_import.py",
+        ),
+        "tests": ("tests/test_finite_jitter_production_import.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/audit_finite_jitter_triangulation.py",
+                "test": "tests/test_finite_jitter_production_import.py",
+            },
+        ),
+        "implementation_roots": ("tools/audit_finite_jitter_triangulation.py",),
+        "candidate_test_roots": ("tests/test_finite_jitter_production_import.py",),
+    },
 }
+
+# Keep the historical spherical-CSD inventory aware of the exact NumPy
+# reference-audit tests and their support files. Selection remains source-aware
+# above: an audit implementation/test diff runs only mne_csd_reference_audit,
+# while a spherical-CSD diff requires only its own source/test pairs.
+_spherical_csd_spec = COMPONENTS["spherical_csd"]
+_mne_csd_audit_spec = COMPONENTS["mne_csd_reference_audit"]
+_mne_audit_external_tests = set(_mne_csd_audit_spec.get("external_test_paths", {}))
+_shared_mne_audit_tests = tuple(
+    test for test in _mne_csd_audit_spec["tests"]
+    if test not in _mne_audit_external_tests
+)
+_spherical_csd_spec["tests"] = tuple(dict.fromkeys((
+    *_spherical_csd_spec["tests"],
+    *_shared_mne_audit_tests,
+)))
+_spherical_csd_pair_ids = {
+    (pair["implementation"], pair["test"])
+    for pair in _spherical_csd_spec["candidate_pairs"]
+}
+_spherical_csd_spec["candidate_pairs"] = (
+    *_spherical_csd_spec["candidate_pairs"],
+    *(
+        pair for pair in _mne_csd_audit_spec["candidate_pairs"]
+        if pair["test"] in _shared_mne_audit_tests
+        and (pair["implementation"], pair["test"]) not in _spherical_csd_pair_ids
+    ),
+)
+for _support_path, _mapped_tests in _mne_csd_audit_spec.get("support_files", {}).items():
+    _shared_mapped_tests = tuple(
+        test for test in _mapped_tests if test in _shared_mne_audit_tests
+    )
+    if _shared_mapped_tests:
+        _spherical_csd_spec["support_files"][_support_path] = _shared_mapped_tests
 
 
 # Package initializers are executable import surfaces, not automatic exemptions.
@@ -777,16 +1492,30 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
         "tests/neurotopology_sim/experimental/geometry/__init__.py",
     ),
     "hodge_2d": (
-        "experimental/phase_cochain_reference/__init__.py",
-        "tests/experimental/phase_cochain_reference/__init__.py",
-        "tools/hodge_decomposition_audit/__init__.py",
-        "tests/tools/hodge_decomposition_audit/__init__.py",
         "neurotopology_sim/experimental/topology/__init__.py",
         "tests/neurotopology_sim/experimental/topology/__init__.py",
+    ),
+    "phase_cochain_reference": (
+        "experimental/phase_cochain_reference/__init__.py",
+        "tests/experimental/phase_cochain_reference/__init__.py",
+    ),
+    "hodge_decomposition_audit": (
+        "tools/hodge_decomposition_audit/__init__.py",
+        "tests/tools/hodge_decomposition_audit/__init__.py",
+    ),
+    "higher_order_runtime": (
+        "tools/higher_order_runtime/__init__.py",
+        "tests/higher_order_runtime_contract/__init__.py",
+    ),
+    "synthetic_pipeline_replay": (
+        "tools/synthetic_pipeline_replay/__init__.py",
+        "tests/integration/synthetic_pipeline_replay/__init__.py",
     ),
     "spherical_csd": (
         "neurotopology_sim/experimental/preprocessing/__init__.py",
         "tests/neurotopology_sim/experimental/preprocessing/__init__.py",
+    ),
+    "mne_csd_reference_audit": (
         "tools/mne_csd_reference_audit/__init__.py",
         "tests/mne_csd_reference_audit/__init__.py",
     ),
@@ -848,13 +1577,23 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
     "dmd_crouzeix": (
         "neurotopology_sim/experimental/dynamics/__init__.py",
         "tests/dmd_crouzeix_contract/__init__.py",
-        "tests/experimental/__init__.py",
     ),
     "bids_inventory_audit": (
         "shared/bids_inventory_audit/__init__.py",
         "tests/bids_inventory_audit/__init__.py",
     ),
     "public_repo_source_pack": (),
+    "batch2_pipeline_benchmark": (
+        "tools/benchmarks/__init__.py",
+        "tools/benchmarks/batch2_pipeline/__init__.py",
+    ),
+    "release_readiness_security": (
+        "tools/release_readiness/batch2_security/__init__.py",
+        "tests/release_readiness/batch2_security/__init__.py",
+    ),
+    "measurement_hypothesis_contract": (
+        "shared/measurement_hypothesis/__init__.py",
+    ),
     "dandi_nwb_bounded": (
         "tests/data_access/dandi_nwb_bounded/__init__.py",
     ),
@@ -865,6 +1604,10 @@ PACKAGE_INITIALIZER_SUPPORT_PATHS: dict[str, tuple[str, ...]] = {
     "mne_signal_blocks": (
         "adapters/mne_signal_blocks/__init__.py",
         "tests/adapters/mne_signal_blocks/__init__.py",
+    ),
+    "mne_csd_adapter": (
+        "adapters/mne_csd/__init__.py",
+        "tests/adapters/mne_csd/__init__.py",
     ),
     "streaming_s3_transfer": (),
     "ds005620_cohort_stream": (),
@@ -889,9 +1632,14 @@ for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.ite
 # pairs, including merged implementation PRs and open independent-test PRs.
 # They are ownership evidence, not approval or merge state.
 COMPONENT_OWNER_PRS = {
-    "planar_geometry": (416, 421),
-    "hodge_2d": (423, 396, 385),
-    "spherical_csd": (414, 419, 402),
+    "planar_geometry": (416,),
+    "higher_order_runtime": (377,),
+    "synthetic_pipeline_replay": (387,),
+    "hodge_2d": (423,),
+    "phase_cochain_reference": (385,),
+    "hodge_decomposition_audit": (396,),
+    "spherical_csd": (402, 414, 419),
+    "mne_csd_reference_audit": (402,),
     "four_sphere": (418, 409),
     "phase_winding": (413,),
     "surrogate_nulls": (417, 430),
@@ -899,21 +1647,28 @@ COMPONENT_OWNER_PRS = {
     "surrogate_audit": (398,),
     "synthetic_roc": (426, 427),
     "simulation_grid_planner": (424,),
+    "fusion_validation_null_models": (374,),
     "report_firewall": (390,),
     "provenance_join": (392,),
     "topology_backend_conformance": (389,),
     "finite_chain_audit": (397,),
     "winding_charge_audit": (399,),
-    "dmd_crouzeix": (415, 420),
+    "dmd_crouzeix": (415, 420, 400),
+    "batch2_pipeline_benchmark": (371,),
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
+    "finite_jitter_production_bridge": (410,),
+    "release_readiness_security": (370,),
+    "source_mining_evidence_boundary": (382,),
+    "measurement_hypothesis_contract": (384,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
     "ds005620_cohort_stream": (437,),
     "moabb_protocol_conformance": (379,),
-    "mne_signal_blocks": (380,),
+    "mne_signal_blocks": (380, 438),
+    "mne_csd_adapter": (378,),
 }
 
 
@@ -923,6 +1678,9 @@ COMPONENT_OWNER_PRS = {
 # root blocks discovery until an owner registers a pair. Such changes are never
 # silently classified NOT_APPLICABLE.
 UNMAPPED_CANDIDATE_ROOTS = (
+    # tests/experimental is a shared namespace, not an ownership root. Exact
+    # registered paths there select components; unrelated tests remain
+    # NOT_APPLICABLE instead of being attributed by directory alone.
     "sim/nuisance_scenarios/",
     "tests/nuisance_scenarios/",
     "tools/whitening_audit/",
@@ -983,9 +1741,6 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "tests/scientific_falsification/test_batch3_falsification_matrix.py",  # PR #376
     "configs/research/batch3_source_registry.yaml",
     "tests/research/test_batch3_source_registry.py",  # PR #375
-    "dual_engine/fusion_validation.py",
-    "tests/test_fusion_null_models.py",
-    "tests/test_fusion_validation.py",  # PR #374
     "sciencer_d/btc_icft/level_t/base_real_topology.py",
     "tests/test_base_real_topology_missingness.py",
     "tests/test_cohort_missingness.py",  # PR #373
@@ -1021,6 +1776,13 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "scripts/build_release_manifest.py",
     "scripts/run_registered_fhn.py",
     "scripts/validate_research_cycle_preflight.py",
+)
+
+# Narrow guards for known candidate families that live under the shared
+# tests/experimental namespace. These are prefixes for a single candidate
+# family, not a directory-wide ownership assumption.
+UNMAPPED_CANDIDATE_PREFIXES = (
+    "tests/experimental/test_planar_triangulation_",
 )
 
 
@@ -1370,6 +2132,10 @@ def _case_mismatched_known_paths(changed_paths: set[str], known_paths: set[str])
 _DOCUMENTATION_SUFFIXES = {".md", ".mdx", ".rst", ".adoc"}
 
 
+def _is_documentation_path(path: str) -> bool:
+    return Path(normalize_repo_path(path)).suffix.casefold() in _DOCUMENTATION_SUFFIXES
+
+
 def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[str] | None = None) -> bool:
     """Treat files under candidate roots as inputs unless they are documentation."""
     normalized = normalize_repo_path(path)
@@ -1377,7 +2143,7 @@ def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[st
         return True
     if not any(_path_in_root(normalized, root) for root in roots):
         return False
-    return Path(normalized).suffix.casefold() not in _DOCUMENTATION_SUFFIXES
+    return not _is_documentation_path(normalized)
 
 
 def _is_component_relevant(
@@ -1388,7 +2154,7 @@ def _is_component_relevant(
 ) -> bool:
     spec = COMPONENTS[name]
     if any(
-        _trigger_matches(path, trigger)
+        not _is_documentation_path(path) and _trigger_matches(path, trigger)
         for path in changed_paths
         for trigger in spec["triggers"]
     ):
@@ -1400,6 +2166,11 @@ def _is_component_relevant(
     }
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("external_test_paths", {}))
+    non_selecting_test_paths = {
+        normalize_repo_path(path).casefold()
+        for path in spec.get("non_selecting_test_paths", ())
+    }
+    mapped.difference_update(non_selecting_test_paths)
     if include_package_initializers:
         mapped.update(normalize_repo_path(path).casefold() for path in spec.get("package_initializers", {}))
     return any(normalize_repo_path(path).casefold() in mapped for path in changed_paths)
@@ -1416,6 +2187,35 @@ def select_components(changed_paths: set[str]) -> list[str]:
             name, changed_paths, include_package_initializers=False
         )
     }
+    # The KKT test and its pinned transcription fixture are shared legacy CSD
+    # probes. Select either through the spherical-CSD compatibility mapping
+    # when changed alone. If any other reference-audit path changes, the audit
+    # component owns the run and the sphere component is suppressed to avoid
+    # requiring an unrelated PR's implementation files.
+    shared_csd_alias_paths = {
+        "tests/mne_csd_reference_audit/test_kkt_operator.py",
+        "tests/mne_csd_reference_audit/fixtures/mne_code_path_transcription.json",
+    }
+    shared_csd_alias_paths_casefold = {
+        path.casefold() for path in shared_csd_alias_paths
+    }
+    shared_csd_alias_changed = bool(changed_casefold & shared_csd_alias_paths_casefold)
+    other_audit_paths_changed = any(
+        _path_in_root(path, "tools/mne_csd_reference_audit/")
+        or (
+            _path_in_root(path, "tests/mne_csd_reference_audit/")
+            and normalize_repo_path(path).casefold()
+            not in shared_csd_alias_paths_casefold
+        )
+        or normalize_repo_path(path).casefold()
+        == "tests/optional_live_mne/test_mne_csd_live_parity.py"
+        for path in changed_paths
+    )
+    if other_audit_paths_changed:
+        direct.discard("spherical_csd")
+    elif shared_csd_alias_changed:
+        direct.discard("mne_csd_reference_audit")
+        direct.add("spherical_csd")
     initializer_owners = {
         name
         for name, spec in COMPONENTS.items()
@@ -1425,13 +2225,12 @@ def select_components(changed_paths: set[str]) -> list[str]:
             for initializer in spec.get("package_initializers", {})
         }
     }
-    # Shared package initializers can sit above several experimental
-    # components. When a PR changes an actual registered implementation/test,
-    # select that directly changed component instead of blocking it on
-    # unrelated candidate pairs that exist only on other open PR branches.
-    # An initializer-only change remains fail-closed by selecting its explicit
-    # owners; inspect_component will require an available implementation/test.
-    selected = direct if direct else initializer_owners
+    # A mixed diff must validate both directly changed pairs and every owner of
+    # a changed package initializer. Dropping initializer owners just because a
+    # direct component also changed can silently omit shared import/API effects.
+    # inspect_component keeps each selected component fail-closed on its exact
+    # implementation/test and initializer mappings.
+    selected = direct | initializer_owners
     return [name for name in COMPONENTS if name in selected]
 
 
@@ -1548,10 +2347,16 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
         belongs_to_unmapped_candidate_root = _is_candidate_file(
             path, guard_roots, explicit_guard_files
         )
+        belongs_to_unmapped_candidate_prefix = any(
+            path.casefold().startswith(prefix.casefold())
+            and Path(path).suffix.casefold() == ".py"
+            for prefix in UNMAPPED_CANDIDATE_PREFIXES
+        )
         mapped = path.casefold() in mapped_paths_casefold
         if (
             path in mapped_case_mismatches
             or belongs_to_unmapped_candidate_root and not mapped
+            or belongs_to_unmapped_candidate_prefix and not mapped
             or belongs_to_registered_root and not mapped
         ):
             unmapped.append(path)
@@ -1594,6 +2399,12 @@ def inspect_component(
         if normalize_repo_path(initializer_path).casefold() in changes
         for test in mapped_tests
     }
+    changed_initializer_test_order = list(dict.fromkeys(
+        test
+        for initializer_path, mapped_tests in spec.get("package_initializers", {}).items()
+        if normalize_repo_path(initializer_path).casefold() in changes
+        for test in mapped_tests
+    ))
     selected_pairs.extend(
         pair for pair in pairs
         if normalize_repo_path(pair["test"]).casefold() in changed_support_tests | changed_initializer_tests
@@ -1683,19 +2494,72 @@ def inspect_component(
         not in {normalize_repo_path(pair["test"]).casefold() for pair in pairs}
         or marker not in {"requires_mne", "not requires_mne"}
     )
-    pair_tests = [
-        pair["test"] for pair in selected_pairs
+    raw_environment_overrides = spec.get("environment_overrides", {})
+    invalid_environment_overrides = []
+    if not isinstance(raw_environment_overrides, dict):
+        invalid_environment_overrides.append("<mapping>")
+        environment_overrides: dict[str, str] = {}
+    else:
+        invalid_environment_overrides = sorted(
+            str(key)
+            for key, value in raw_environment_overrides.items()
+            if not isinstance(key, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key)
+            or not isinstance(value, str)
+            or "\x00" in value
+            or value not in SAFE_CANDIDATE_ENVIRONMENT_OVERRIDES.get(key, ())
+        )
+        environment_overrides = (
+            dict(raw_environment_overrides) if not invalid_environment_overrides else {}
+        )
+    independent_reference_tests = tuple(spec.get("independent_reference_tests", ()))
+    invalid_independent_reference_tests = sorted(
+        path for path in independent_reference_tests
+        if path not in spec.get("tests", ()) or path not in spec.get("support_files", {})
+    )
+    changed_reference_tests = [
+        path for path in independent_reference_tests
+        if normalize_repo_path(path).casefold() in changes
+    ]
+    missing_reference_tests = sorted(
+        path for path in changed_reference_tests if not (root / path).is_file()
+    )
+    missing_required_tests = sorted(set(missing_required_tests) | set(missing_reference_tests))
+    selected_runnable_test_paths = {
+        normalize_repo_path(pair["test"]).casefold()
+        for pair in selected_pairs
         if (
             normalize_repo_path(pair["test"]).casefold() not in external_tests
             or normalize_repo_path(pair["test"]) in test_markers
         )
-        and (root / pair["test"]).is_file()
-    ]
-    delegated_tests = sorted(
+    }
+    if changed_initializer_test_order:
+        # Initializer-only edits execute tests in the exact order declared by
+        # the initializer ownership mapping.
+        pair_test_order = [
+            *changed_initializer_test_order,
+            *(test for test in spec["tests"]
+              if normalize_repo_path(test).casefold() in changed_support_tests),
+        ]
+    elif changed_support_tests:
+        # Support-only edits use stable component test order, independent of
+        # implementation-pair construction order.
+        pair_test_order = list(spec["tests"])
+    else:
+        pair_test_order = [pair["test"] for pair in selected_pairs]
+    pair_tests = list(dict.fromkeys(
+        test for test in pair_test_order
+        if normalize_repo_path(test).casefold() in selected_runnable_test_paths
+        and (root / test).is_file()
+    ))
+    delegated_tests = sorted({
         pair["test"] for pair in selected_pairs
         if normalize_repo_path(pair["test"]).casefold() in external_tests
-    )
-    tests_to_run = list(dict.fromkeys(pair_tests))
+    })
+    tests_to_run = list(dict.fromkeys([
+        *pair_tests,
+        *(path for path in changed_reference_tests if (root / path).is_file()),
+    ]))
     active_support_files = {
         support_path: mapped_tests
         for support_path, mapped_tests in spec.get("support_files", {}).items()
@@ -1768,6 +2632,10 @@ def inspect_component(
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if invalid_test_markers:
         blockers.append("candidate test marker mapping is invalid or unpaired")
+    if invalid_environment_overrides:
+        blockers.append("candidate environment override mapping is invalid")
+    if invalid_independent_reference_tests:
+        blockers.append("independent reference test mapping is invalid or unregistered")
     if unmapped:
         blockers.append("changed candidate source/test path has no explicit implementation-test mapping")
     if not selected_pairs:
@@ -1779,7 +2647,7 @@ def inspect_component(
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        } | set(selected_support_files) | set(selected_package_initializers)),
+        } | set(selected_support_files) | set(selected_package_initializers) | set(changed_reference_tests)),
         "selected_support_files": selected_support_files,
         "selected_package_initializers": selected_package_initializers,
         "required_pairs": selected_pairs,
@@ -1793,6 +2661,11 @@ def inspect_component(
         "invalid_support_test_mappings": invalid_support_test_mappings,
         "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
         "invalid_test_markers": invalid_test_markers,
+        "invalid_environment_overrides": invalid_environment_overrides,
+        "environment_overrides": environment_overrides,
+        "independent_reference_tests": list(independent_reference_tests),
+        "invalid_independent_reference_tests": invalid_independent_reference_tests,
+        "missing_reference_tests": missing_reference_tests,
         "unmapped_candidate_paths": unmapped,
         "available_candidate_tests": tests,
         "tests_to_run": tests_to_run,
@@ -1807,6 +2680,8 @@ def inspect_component(
 
 def _junit_details_from_bytes(
     content: bytes,
+    *,
+    allow_subtest_totals: bool = False,
 ) -> tuple[tuple[int, int, int, int], list[dict[str, str]], int]:
     """Validate JUnit structure and keep explicit testcase count separate from suite totals."""
     root = ET.fromstring(content)
@@ -1866,6 +2741,20 @@ def _junit_details_from_bytes(
                     raise ValueError(
                         f"JUnit tests summary {declared} is below {actual} testcase outcomes"
                     )
+                if declared > actual:
+                    missing_outcome_totals = sorted(
+                        field for field in ("skipped", "failures", "errors")
+                        if field not in suite.attrib
+                    )
+                    if missing_outcome_totals:
+                        raise ValueError(
+                            "JUnit subtest total requires explicit outcome summaries; "
+                            f"missing {missing_outcome_totals}"
+                        )
+                    if not allow_subtest_totals:
+                        raise ValueError(
+                            "JUnit test total exceeds testcase records without a registered subtest contract"
+                        )
                 declared_tests[id(suite)] = declared
                 continue
             if declared != actual:
@@ -1920,6 +2809,109 @@ def _pytest_result_summary(stdout_tail: Any) -> tuple[int, int] | None:
     if match is None:
         return None
     return int(match.group(1)), int(match.group(2) or 0)
+
+
+def _git_tree_blob_sha(root: Path, commit_sha: str, relative_path: str) -> str | None:
+    """Read a path's Git blob identity without following a worktree symlink."""
+    if not re.fullmatch(r"[0-9a-f]{40}", commit_sha):
+        return None
+    try:
+        normalized = normalize_repo_path(relative_path)
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{commit_sha}:{normalized}"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    blob_sha = result.stdout.strip()
+    return blob_sha if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", blob_sha) else None
+
+
+def _registered_junit_subtest_contract(
+    root: Path, commit_sha: str | None, test_file: str
+) -> dict[str, Any] | None:
+    """Return evidence only for the exact reviewed test content and count."""
+    try:
+        normalized = normalize_repo_path(test_file)
+    except ValueError:
+        return None
+    contract = REGISTERED_JUNIT_SUBTEST_DELTAS.get(normalized)
+    if not isinstance(contract, dict) or not isinstance(commit_sha, str):
+        return None
+    component = contract.get("component")
+    owner_pr = contract.get("owner_pr")
+    blob_sha = contract.get("blob_sha")
+    source_head_sha = contract.get("source_head_sha")
+    verification = contract.get("verification")
+    delta = contract.get("delta")
+    if (
+        not isinstance(component, str)
+        or type(owner_pr) is not int
+        or owner_pr not in COMPONENT_OWNER_PRS.get(component, ())
+        or not isinstance(blob_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", blob_sha)
+        or not isinstance(source_head_sha, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", source_head_sha)
+        or not isinstance(verification, dict)
+        or type(verification.get("run_id")) is not int
+        or verification["run_id"] <= 0
+        or not isinstance(verification.get("tested_checkout_sha"), str)
+        or not re.fullmatch(r"[0-9a-f]{40}", verification["tested_checkout_sha"])
+        or verification.get("workflow_conclusion") != "failure"
+        or verification.get("candidate_status") != "FAIL"
+        or verification.get("failure_classification") != "missing_or_invalid_junit"
+        or verification.get("junit_reconciliation") != "mismatch"
+        or verification.get("test_process_outcome") != "passed"
+        or type(delta) is not int
+        or delta <= 0
+        or not any(
+            normalize_repo_path(pair.get("test", "")) == normalized
+            for pair in COMPONENTS.get(component, {}).get("candidate_pairs", ())
+        )
+    ):
+        return None
+    observed_blob_sha = _git_tree_blob_sha(root, commit_sha, normalized)
+    source_blob_sha = _git_tree_blob_sha(root, source_head_sha, normalized)
+    if observed_blob_sha != blob_sha or source_blob_sha != blob_sha:
+        return None
+    junit_total = verification.get("junit_reported_total")
+    testcase_records = verification.get("junit_testcase_records")
+    runner_exit_code = verification.get("runner_exit_code")
+    outcomes = tuple(verification.get(key) for key in ("skipped", "failed", "errors", "timeouts"))
+    if (
+        type(junit_total) is not int
+        or junit_total <= 0
+        or type(testcase_records) is not int
+        or testcase_records < 0
+        or junit_total - testcase_records != delta
+        or type(runner_exit_code) is not int
+        or runner_exit_code != 0
+        or verification.get("runner_telemetry_valid") is not True
+        or any(type(value) is not int or value != 0 for value in outcomes)
+    ):
+        return None
+    return {
+        "test_path": normalized,
+        "tested_tree_blob_sha": observed_blob_sha,
+        "source_head_sha": source_head_sha,
+        "verification_run_id": verification["run_id"],
+        "verification_run_url": verification.get("run_url"),
+        "tested_checkout_sha": verification["tested_checkout_sha"],
+        "workflow_conclusion": verification["workflow_conclusion"],
+        "candidate_status": verification["candidate_status"],
+        "failure_classification": verification["failure_classification"],
+        "junit_reconciliation": verification["junit_reconciliation"],
+        "test_process_outcome": verification["test_process_outcome"],
+        "expected_delta": delta,
+        "verified_junit_total": junit_total,
+        "verified_junit_testcase_records": testcase_records,
+        "component": component,
+        "owner_pr": owner_pr,
+    }
 
 
 def junit_counts(path: Path) -> tuple[int, int, int, int]:
@@ -2223,7 +3215,9 @@ def validate_docker_engine_test_artifacts(
             "Docker Engine JUnit path",
             max_bytes=MAX_JUNIT_XML_BYTES,
         )
-        counts, _, junit_total = _junit_details_from_bytes(junit_bytes)
+        counts, _, junit_total = _junit_details_from_bytes(
+            junit_bytes, allow_subtest_totals=runner_total is not None
+        )
         cases, skipped, failed, errors = counts
         if cases < 1 or skipped or failed or errors:
             return False, (
@@ -2343,7 +3337,9 @@ def docker_engine_candidate_evidence(
             "Docker Engine JUnit path",
             max_bytes=MAX_JUNIT_XML_BYTES,
         )
-        outcomes, _, total_tests = _junit_details_from_bytes(junit_bytes)
+        outcomes, _, total_tests = _junit_details_from_bytes(
+            junit_bytes, allow_subtest_totals=type(evidence["counts"].get("passed")) is int
+        )
         cases, skipped, failed, errors = outcomes
         evidence["counts"].update({
             "collected": total_tests,
@@ -2386,6 +3382,7 @@ def run(
     require_checkout_match: bool = False,
     only_components: list[str] | tuple[str, ...] = (),
     pytest_marker: str | None = None,
+    external_test_job: str | None = None,
 ) -> int:
     root = root.resolve()
     report_path = _lexically_contained_path(root, report_path, "report path")
@@ -2399,6 +3396,17 @@ def run(
         raise ValueError(f"unknown component filters: {unknown_only}")
     if pytest_marker not in {None, "requires_mne", "not requires_mne"}:
         raise ValueError("unsupported pytest marker profile")
+    external_test_jobs = {
+        job
+        for spec in COMPONENTS.values()
+        for job in spec.get("external_test_paths", {}).values()
+    }
+    if external_test_job is not None and external_test_job not in external_test_jobs:
+        raise ValueError(f"unknown external test job: {external_test_job}")
+    if external_test_job is not None and not only_components:
+        raise ValueError("external test execution requires an explicit --only-component")
+    if external_test_job is not None and pytest_marker is not None:
+        raise ValueError("external test execution cannot be combined with --pytest-marker")
     if tested_checkout_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", tested_checkout_sha):
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
@@ -2448,6 +3456,7 @@ def run(
         "always_components": always_components,
         "only_components": only_components,
         "pytest_marker_profile": pytest_marker,
+        "external_test_job": external_test_job,
         "not_applicable_components": [],
         "unmapped_candidate_paths": unmapped_candidate_paths,
         "selected_paths": {},
@@ -2624,6 +3633,31 @@ def run(
             entry = inspect_component(
                 name, root, component_changes, require_all_pairs=require_all_pairs
             )
+            if external_test_job is not None:
+                external_tests_to_run = [
+                    path for path in entry["delegated_tests"]
+                    if spec.get("external_test_paths", {}).get(path) == external_test_job
+                ]
+                entry["external_tests_selected_for_job"] = external_tests_to_run
+                if entry["status"] != "READY_TO_RUN":
+                    report["components"].append(entry)
+                    report["selected_paths"][name] = sorted({
+                        *component_changes,
+                        *entry["selected_paths"],
+                    })
+                    saw_blocked = True
+                    continue
+                if not external_tests_to_run:
+                    entry["status"] = "NOT_APPLICABLE"
+                    entry["reason"] = "no changed candidate pair delegates a test to this external job"
+                    report["not_applicable_components"].append(name)
+                    report["components"].append(entry)
+                    report["selected_paths"][name] = sorted({
+                        *component_changes,
+                        *entry["selected_paths"],
+                    })
+                    continue
+                entry["tests_to_run"] = external_tests_to_run
             if pytest_marker is not None:
                 entry["test_markers"] = {
                     test_path: pytest_marker for test_path in entry["tests_to_run"]
@@ -2750,6 +3784,7 @@ def run(
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
                     "pytest_marker": test_marker,
+                    "environment_overrides": entry.get("environment_overrides", {}),
                     "diff_base_sha": diff_base_sha,
                     "diff_head_sha": diff_head_sha,
                     "tested_checkout_sha": tested_checkout_sha,
@@ -2792,6 +3827,7 @@ def run(
                         completed = subprocess.run(
                             cmd, cwd=root, timeout=130, check=False,
                             stdout=stdout_stream, stderr=stderr_stream,
+                            env={**os.environ, **entry.get("environment_overrides", {})},
                             **({"pass_fds": tuple(pinned_output_fds)} if pinned_output_transport else {}),
                         )
                 except subprocess.TimeoutExpired:
@@ -2948,16 +3984,55 @@ def run(
                 if junit_bytes is not None:
                     junit_parsed = False
                     try:
-                        counts, cases, junit_reported_tests = _junit_details_from_bytes(junit_bytes)
+                        pytest_summary_available = (
+                            telemetry_ok
+                            and bool(batches)
+                            and isinstance(batches[0], dict)
+                            and batches[0].get("_round6_pytest_summary_available") is True
+                        )
+                        registered_subtest_contract = _registered_junit_subtest_contract(
+                            root, tested_checkout_sha, test_file
+                        )
+                        registered_subtest_delta = (
+                            registered_subtest_contract["expected_delta"]
+                            if registered_subtest_contract else 0
+                        )
+                        counts, cases, junit_reported_tests = _junit_details_from_bytes(
+                            junit_bytes,
+                            allow_subtest_totals=(
+                                pytest_summary_available
+                                or registered_subtest_delta > 0
+                            ),
+                        )
                         junit_parsed = True
+                        subtest_delta = junit_reported_tests - counts[0]
                         execution.update({
                             "tests_collected": junit_reported_tests,
                             "junit_testcase_records": counts[0],
+                            "registered_subtest_delta": registered_subtest_delta,
+                            "registered_subtest_contract": (
+                                {
+                                    **registered_subtest_contract,
+                                    "observed_delta": subtest_delta,
+                                    "applied_without_pytest_summary": (
+                                        not pytest_summary_available and subtest_delta > 0
+                                    ),
+                                }
+                                if registered_subtest_contract else None
+                            ),
                             "skipped": counts[1],
                             "failed": counts[2],
                             "errors": counts[3],
                             "junit_reported_test_outcomes": junit_reported_tests,
                         })
+                        if (
+                            not pytest_summary_available
+                            and subtest_delta not in (0, registered_subtest_delta)
+                        ):
+                            raise ValueError(
+                                "JUnit subtest delta "
+                                f"{subtest_delta} does not match registered delta {registered_subtest_delta}"
+                            )
                         failure_cases = [
                             {
                                 "name": case["name"][:MAX_JUNIT_FAILURE_NAME_CHARS],
@@ -2994,12 +4069,11 @@ def run(
                                     "junit_reconciliation": "matched",
                                 })
                             else:
-                                if junit_reported_tests != counts[0]:
-                                    execution["junit_reconciliation"] = "mismatch"
-                                    raise ValueError(
-                                        "JUnit subtest total cannot be reconciled without a pytest stdout summary"
-                                    )
-                                execution["junit_reconciliation"] = "matched_junit_authoritative_no_summary"
+                                execution["junit_reconciliation"] = (
+                                    "matched_junit_declared_subtest_total_no_summary"
+                                    if junit_reported_tests > counts[0]
+                                    else "matched_junit_authoritative_no_summary"
+                                )
                             execution["test_cases"] = cases
                         else:
                             execution["junit_reconciliation"] = "not_attempted_runner_telemetry_invalid"
@@ -3073,6 +4147,7 @@ def run(
                     "owner_prs": entry["owner_prs"],
                     "implementation_paths": entry["implementations"],
                     "test_file": test_file,
+                    "environment_overrides": entry.get("environment_overrides", {}),
                     "diff_base_sha": diff_base_sha,
                     "diff_head_sha": diff_head_sha,
                     "tested_checkout_sha": tested_checkout_sha,
@@ -3083,6 +4158,9 @@ def run(
                     "failed": counts[2],
                     "errors": counts[3],
                     "timeouts": int(execution["timeout"]),
+                    "junit_testcase_records": execution.get("junit_testcase_records"),
+                    "junit_reconciliation": execution.get("junit_reconciliation"),
+                    "registered_subtest_contract": execution.get("registered_subtest_contract"),
                     "artifact_path": execution["artifact_path"],
                     "status": execution.get("status"),
                     "failure_classification": execution.get("failure_classification"),
@@ -3154,6 +4232,15 @@ def main(argv: list[str] | None = None) -> int:
         "--pytest-marker", choices=("requires_mne", "not requires_mne"),
         help="Apply a validated optional-dependency test marker to this focused profile.",
     )
+    parser.add_argument(
+        "--external-test-job",
+        choices=sorted({
+            job
+            for spec in COMPONENTS.values()
+            for job in spec.get("external_test_paths", {}).values()
+        }),
+        help="Execute only changed tests explicitly delegated to this external job.",
+    )
     args = parser.parse_args(argv)
     try:
         return run(
@@ -3165,6 +4252,7 @@ def main(argv: list[str] | None = None) -> int:
             require_checkout_match=True,
             only_components=args.only_component,
             pytest_marker=args.pytest_marker,
+            external_test_job=args.external_test_job,
         )
     except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         print(f"Round 6 candidate test discovery failed closed: {exc}", file=sys.stderr)
