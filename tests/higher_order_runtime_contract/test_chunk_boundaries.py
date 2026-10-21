@@ -118,3 +118,23 @@ def test_overlap_remainder_not_emitted_even_when_uneven_final_allowed(signal):
     remainder = signal.shape[0] - windows[-1][3]
     if remainder:
         assert remainder < policy.chunk_size
+
+
+def test_overlap_tail_refused_when_uneven_finals_disabled():
+    """Regression: overlap mode must not silently drop samples past the last full window.
+
+    n=40, chunk=16, stride=10 leaves samples 36..39 uncovered. With uneven finals
+    disabled the contract says a short remainder raises, so this must not pass.
+    """
+    bounds = StreamBounds(max_chunk_samples=64, max_channels=8, allow_uneven_final=False)
+    x = np.zeros((40, 2))
+    with pytest.raises(ChunkBoundError, match="uneven finals are disabled"):
+        list(iter_contract_windows(x, ChunkingPolicy(chunk_size=16, stride=10), bounds))
+
+
+def test_overlap_without_tail_accepted_when_uneven_finals_disabled():
+    """Positive control: when the last full window ends at n, nothing is left over."""
+    bounds = StreamBounds(max_chunk_samples=64, max_channels=8, allow_uneven_final=False)
+    x = np.zeros((36, 2))
+    windows = list(iter_contract_windows(x, ChunkingPolicy(chunk_size=16, stride=10), bounds))
+    assert [(w[2], w[3]) for w in windows] == [(0, 16), (10, 26), (20, 36)]

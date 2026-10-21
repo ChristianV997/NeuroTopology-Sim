@@ -22,7 +22,7 @@ from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from .bounded import IncrementalSummary, RollingCovariance, _as_2d
+from .bounded import IncrementalSummary, RollingCovariance
 
 
 class StreamContractError(ValueError):
@@ -105,6 +105,10 @@ def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray
         raise TimelineContractError("timestamps are empty")
     if not np.issubdtype(ts.dtype, np.number):
         raise TimelineContractError("timestamps must be numeric")
+    if np.iscomplexobj(ts):
+        raise TimelineContractError(
+            "timestamps must be real-valued; complex input is rejected, not cast"
+        )
     if not np.all(np.isfinite(ts)):
         raise TimelineContractError("timestamps contain non-finite values")
     if ts.shape[0] >= 2 and not np.all(np.diff(ts.astype(np.float64)) > 0):
@@ -115,14 +119,24 @@ def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray
     return ts.astype(np.float64, copy=False)
 
 
+def _as_real_float64(values: object, *, what: str) -> np.ndarray:
+    """Return ``values`` as float64. Complex input is refused, never cast."""
+    arr = np.asarray(values)
+    if np.iscomplexobj(arr):
+        raise StreamContractError(
+            f"{what} must be real-valued; complex input is rejected, not cast"
+        )
+    return arr.astype(np.float64, copy=False)
+
+
 def validate_signal_shape(signal: np.ndarray, *, max_channels: int) -> np.ndarray:
     """Require ``(samples, channels)`` layout; reject empty / oversized channel axes.
 
-    Unlike the legacy ``_as_2d`` helper used by accumulator utilities, this path
-    does **not** silently reshape a 1-D vector into a single-channel matrix.
-    That keeps ``iter_contract_windows`` aligned with ``StreamSession.update``.
+    A 1-D vector is rejected rather than reshaped into a single-channel matrix, and
+    complex input is rejected rather than cast. ``batch_stream_covariance_parity``
+    applies the same rules, so batch and stream paths accept the same inputs.
     """
-    data = np.asarray(signal, dtype=np.float64)
+    data = _as_real_float64(signal, what="signal")
     if data.ndim != 2:
         raise ShapeContractError("signal must be 2-D (samples, channels)")
     if data.shape[0] == 0:
@@ -151,7 +165,8 @@ def iter_contract_windows(
       otherwise a short final remainder raises ``ChunkBoundError``.
     * Incomplete windows shorter than ``chunk_size`` at end-of-stream are yielded
       only for non-overlapping mode when ``allow_uneven_final`` is True. Overlap
-      mode never fabricates padding to fill a partial window.
+      mode never pads: samples past the last full window are dropped when
+      ``allow_uneven_final`` is True and raise ``ChunkBoundError`` otherwise.
     * Timestamps, when provided, are sliced with the same indices (no fabrication).
     """
     if policy.chunk_size > bounds.max_chunk_samples:
@@ -164,11 +179,19 @@ def iter_contract_windows(
     ts = None if timestamps is None else validate_timestamps(timestamps, n_samples=n)
     stride = policy.effective_stride
     start = 0
+    covered = 0
     while start < n:
         stop = start + policy.chunk_size
         if stop > n:
             if policy.overlapping:
-                # Overlap mode: do not emit a padded partial window.
+                # Overlap mode never pads. Samples after the last full window form an
+                # uneven final: dropped when allowed, refused when uneven finals are off.
+                if covered < n and not bounds.allow_uneven_final:
+                    raise ChunkBoundError(
+                        f"end-of-stream remainder {n - covered} samples past the last "
+                        f"full window is shorter than chunk_size {policy.chunk_size} and "
+                        "uneven finals are disabled"
+                    )
                 break
             if not bounds.allow_uneven_final:
                 raise ChunkBoundError(
@@ -185,6 +208,7 @@ def iter_contract_windows(
                 f"{bounds.max_chunk_samples}"
             )
         chunk_ts = None if ts is None else ts[start:stop]
+        covered = stop
         yield chunk, chunk_ts, start, stop
         start += stride
 
@@ -244,7 +268,7 @@ class StreamSession:
                 f"run_id mismatch: session={self.run_id!r} chunk={run_id!r}; "
                 "call reset() between independent subjects/runs"
             )
-        block = np.asarray(chunk, dtype=np.float64)
+        block = _as_real_float64(chunk, what="chunk")
         if block.ndim != 2:
             raise ShapeContractError("chunk must be 2-D (samples, channels)")
         if block.shape[0] == 0:
@@ -288,7 +312,9 @@ def batch_stream_covariance_parity(
     Returns ``(chunk_size, equivalent, max_abs_diff)``. Declared tolerances are
     explicit; this is engineering parity, not a scientific PASS.
     """
-    data = _as_2d(signal)
+    data = _as_real_float64(signal, what="signal")
+    if data.ndim != 2:
+        raise ShapeContractError("signal must be 2-D (samples, channels)")
     if data.shape[0] < 2:
         raise EmptyInputError("covariance parity requires at least 2 samples")
     reference = np.cov(data, rowvar=False, ddof=1)

@@ -6,6 +6,7 @@ import pytest
 
 from tools.higher_order_runtime.benchmark import WorkloadConfig, compute_bounded, compute_full, make_signal, verify_equivalence
 from tools.higher_order_runtime.stream_contract import (
+    ShapeContractError,
     StreamBounds,
     StreamContractError,
     StreamSession,
@@ -89,3 +90,19 @@ def test_overlap_not_claimed_as_batch_window_independence():
     assert policy.overlapping is True
     # Contract docs: do not claim overlap windows == independent batch partitions.
     assert policy.warmup_samples == 8
+
+
+def test_batch_parity_rejects_oned_signal_like_the_stream_path():
+    """Regression: batch parity must not reshape a 1-D signal into one channel.
+
+    ``StreamSession.update`` and ``iter_contract_windows`` reject 1-D input, so the
+    batch reference must refuse the same layout instead of returning a verdict.
+    """
+    with pytest.raises(ShapeContractError, match="2-D"):
+        batch_stream_covariance_parity(np.arange(10.0), chunk_sizes=(5,))
+
+
+def test_batch_parity_rejects_complex_signal():
+    """Regression: complex input must fail closed rather than drop its imaginary part."""
+    with pytest.raises(StreamContractError, match="real-valued"):
+        batch_stream_covariance_parity(np.full((10, 2), 1.0 + 2.0j), chunk_sizes=(5,))

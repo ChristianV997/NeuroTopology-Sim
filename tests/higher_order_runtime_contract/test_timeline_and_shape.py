@@ -10,6 +10,7 @@ from tools.higher_order_runtime.stream_contract import (
     EmptyInputError,
     ShapeContractError,
     StreamBounds,
+    StreamContractError,
     StreamSession,
     TimelineContractError,
     iter_contract_windows,
@@ -103,3 +104,21 @@ def test_session_rejects_timeline_gap(bounds):
     session.update(np.zeros((4, 2)), timestamps=np.array([0.0, 0.1, 0.2, 0.3]))
     with pytest.raises(TimelineContractError, match="not continuous"):
         session.update(np.zeros((2, 2)), timestamps=np.array([0.3, 0.4]))  # not > last
+
+
+def test_complex_signal_rejected_not_silently_cast(bounds):
+    """Regression: complex chunks must fail closed; casting would discard imaginary parts."""
+    z = np.full((8, 2), 1.0 + 5.0j)
+    with pytest.raises(StreamContractError, match="real-valued"):
+        list(iter_contract_windows(z, ChunkingPolicy(4), bounds))
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    with pytest.raises(StreamContractError, match="real-valued"):
+        session.update(z[:4])
+    assert session.samples_seen == 0
+
+
+def test_complex_timestamps_rejected_not_silently_cast():
+    """Regression: complex timestamps must fail closed, not lose their imaginary part."""
+    ts = np.array([0.0, 1.0, 2.0]) + 1j * np.array([0.0, 5.0, 9.0])
+    with pytest.raises(TimelineContractError, match="real-valued"):
+        validate_timestamps(ts, n_samples=3)
