@@ -2583,7 +2583,14 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path)
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
-    } | {normalize_repo_path(path) for path in mapped_support_paths | external_test_paths}
+    } | {
+        normalize_repo_path(path)
+        for path in (
+            *spec.get("support_files", {}).keys(),
+            *spec.get("package_initializers", {}).keys(),
+            *spec.get("external_test_paths", {}).keys(),
+        )
+    }
     unmapped = _case_mismatched_known_paths(changed_paths, known_exact)
     for original in changed_paths:
         path = normalize_repo_path(original)

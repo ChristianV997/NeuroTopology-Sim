@@ -2923,6 +2923,26 @@ def test_fixture():
                 self.assertIn(path, helper._unmapped_candidate_paths({path}))
                 self.assertEqual(helper.select_components({path}), [])
 
+    def test_registered_uppercase_support_path_is_not_a_case_mismatch(self):
+        helper = _helper()
+        readme = "tests/data_access/bids_adapter/fixtures/invalid_bids/README"
+        spec = helper.COMPONENTS["bids_adapter"]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in (
+                *(pair["implementation"] for pair in spec["candidate_pairs"]),
+                *spec["tests"],
+                *spec["support_files"],
+            ):
+                _write(root, path, "fixture placeholder\n")
+            result = helper.inspect_component("bids_adapter", root, {readme})
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertEqual(result["unmapped_candidate_paths"], [])
+        self.assertEqual(
+            result["tests_to_run"],
+            ["tests/data_access/bids_adapter/test_bids_adapter.py"],
+        )
+
     def test_live_batch_candidate_pairs_have_explicit_owners_and_no_fanout(self):
         helper = _helper()
         expected_pairs = {
