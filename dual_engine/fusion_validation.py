@@ -175,9 +175,11 @@ def phase_randomize_embeddings(embeddings: np.ndarray, seed: Optional[int] = Non
     """
     if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
         raise ValueError("embeddings must be a 2D numpy array (n_samples, latent_dim)")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("embeddings contain non-finite values (NaN or Inf)")
 
     n_samples, n_dims = embeddings.shape
-    if n_samples < 2:
+    if n_samples < 2 or n_dims == 0:
         return embeddings.copy()
 
     rng = np.random.default_rng(seed)
@@ -215,6 +217,10 @@ def label_permutation(labels: np.ndarray, seed: Optional[int] = None) -> np.ndar
     Returns:
         permuted_labels: (n_samples,) randomly permuted labels
     """
+    if not isinstance(labels, np.ndarray):
+        raise ValueError("labels must be a numpy array")
+    if not np.all(np.isfinite(labels)):
+        raise ValueError("labels contain non-finite values (NaN or Inf)")
     rng = np.random.default_rng(seed)
     return rng.permutation(labels)
 
@@ -236,9 +242,11 @@ def block_permutation(embeddings: np.ndarray, block_size: int = 10,
     """
     if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
         raise ValueError("embeddings must be a 2D numpy array (n_samples, latent_dim)")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("embeddings contain non-finite values (NaN or Inf)")
 
     n_samples, n_dims = embeddings.shape
-    if n_samples == 0 or block_size <= 1 or block_size >= n_samples:
+    if n_samples == 0 or n_dims == 0 or block_size <= 1 or block_size >= n_samples:
         rng = np.random.default_rng(seed)
         return rng.permutation(embeddings, axis=0) if n_samples > 0 else embeddings.copy()
 
@@ -269,6 +277,11 @@ def matched_variance_null(embeddings: np.ndarray, seed: Optional[int] = None) ->
     """
     if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
         raise ValueError("embeddings must be a 2D numpy array (n_samples, latent_dim)")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("embeddings contain non-finite values (NaN or Inf)")
+
+    if embeddings.shape[0] == 0 or embeddings.shape[1] == 0:
+        return embeddings.copy()
 
     rng = np.random.default_rng(seed)
     means = np.mean(embeddings, axis=0)
@@ -294,8 +307,12 @@ def matched_autocorrelation_null(embeddings: np.ndarray, seed: Optional[int] = N
     """
     if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
         raise ValueError("embeddings must be a 2D numpy array (n_samples, latent_dim)")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("embeddings contain non-finite values (NaN or Inf)")
 
     n_samples, n_dims = embeddings.shape
+    if n_samples == 0 or n_dims == 0:
+        return embeddings.copy()
     if n_samples < 3:
         return matched_variance_null(embeddings, seed=seed)
 
@@ -350,6 +367,12 @@ def independent_shuffle_null(embeddings: np.ndarray, seed: Optional[int] = None)
     """
     if not isinstance(embeddings, np.ndarray) or embeddings.ndim != 2:
         raise ValueError("embeddings must be a 2D numpy array (n_samples, latent_dim)")
+    if not np.all(np.isfinite(embeddings)):
+        raise ValueError("embeddings contain non-finite values (NaN or Inf)")
+
+    n_samples, n_dims = embeddings.shape
+    if n_samples == 0 or n_dims == 0:
+        return embeddings.copy()
 
     rng = np.random.default_rng(seed)
     null_embeddings = np.zeros_like(embeddings)
@@ -422,6 +445,85 @@ def audit_null_model(embeddings: np.ndarray, null_type: Union[str, NullModelType
             "passed_audit": marginals_identical,
         }
 
+    elif null_type_str == NullModelType.MATCHED_AUTOCORRELATION.value:
+        surrogate = matched_autocorrelation_null(embeddings, seed=seed)
+        n_samples, n_dims = embeddings.shape
+        ac_diffs = []
+        for d in range(n_dims):
+            if n_samples < 3:
+                continue
+            c_real = np.corrcoef(embeddings[:-1, d], embeddings[1:, d])[0, 1]
+            c_null = np.corrcoef(surrogate[:-1, d], surrogate[1:, d])[0, 1]
+            if np.isfinite(c_real) and np.isfinite(c_null):
+                ac_diffs.append(abs(c_real - c_null))
+            else:
+                ac_diffs.append(0.0)
+        max_ac_diff = float(max(ac_diffs)) if ac_diffs else 0.0
+        var_real = np.var(embeddings, axis=0, ddof=1)
+        var_null = np.var(surrogate, axis=0, ddof=1)
+        rel_var_diff = float(np.max(np.abs(var_real - var_null) / (var_real + 1e-8))) if len(var_real) > 0 else 0.0
+        passed = bool((max_ac_diff < 0.35) and (rel_var_diff < 0.5))
+        return {
+            "null_type": null_type_str,
+            "preserves_autocorrelation": bool(max_ac_diff < 0.35),
+            "preserves_marginal_variance": bool(rel_var_diff < 0.5),
+            "max_autocorr_difference": max_ac_diff,
+            "max_rel_variance_difference": rel_var_diff,
+            "passed_audit": passed,
+        }
+
+    elif null_type_str == NullModelType.BLOCK_PERMUTATION.value:
+        block_size = kwargs.get("block_size", 10)
+        surrogate = block_permutation(embeddings, block_size=block_size, seed=seed)
+        n_samples = embeddings.shape[0]
+        if n_samples <= block_size or block_size <= 1:
+            passed = True
+            intra_block_ratio = 1.0
+        else:
+            orig_diffs = np.diff(embeddings, axis=0)
+            null_diffs = np.diff(surrogate, axis=0)
+            matches = 0
+            total = len(null_diffs)
+            for i in range(total):
+                if np.any(np.all(np.isclose(orig_diffs, null_diffs[i], atol=1e-10), axis=1)):
+                    matches += 1
+            intra_block_ratio = float(matches / total) if total > 0 else 1.0
+            passed = bool(intra_block_ratio > 0.70)
+        return {
+            "null_type": null_type_str,
+            "preserves_intra_block_structure": passed,
+            "intra_block_step_match_ratio": intra_block_ratio,
+            "passed_audit": passed,
+        }
+
+    elif null_type_str == NullModelType.LABEL_PERMUTATION.value:
+        if embeddings.ndim == 1:
+            permuted = label_permutation(embeddings, seed=seed)
+            unique_orig, counts_orig = np.unique(embeddings, return_counts=True)
+            unique_perm, counts_perm = np.unique(permuted, return_counts=True)
+            counts_preserved = (
+                np.array_equal(unique_orig, unique_perm) and np.array_equal(counts_orig, counts_perm)
+            )
+            order_shuffled = (len(unique_orig) <= 1) or not np.array_equal(embeddings, permuted)
+            passed = bool(counts_preserved and order_shuffled)
+            return {
+                "null_type": null_type_str,
+                "preserves_class_counts": bool(counts_preserved),
+                "order_shuffled": bool(order_shuffled),
+                "passed_audit": passed,
+            }
+        else:
+            rng = np.random.default_rng(seed)
+            perm_idx = rng.permutation(len(embeddings))
+            surrogate = embeddings[perm_idx]
+            order_shuffled = (len(embeddings) <= 1) or not np.array_equal(embeddings, surrogate)
+            return {
+                "null_type": null_type_str,
+                "preserves_row_marginals": True,
+                "order_shuffled": bool(order_shuffled),
+                "passed_audit": True,
+            }
+
     return {
         "null_type": null_type_str,
         "passed_audit": True,
@@ -439,7 +541,23 @@ def _fit_predict_logistic_fallback(
     """Pure NumPy/SciPy fallback for binary logistic regression."""
     import scipy.optimize
 
-    n_train, n_features = train_x.shape
+    n_train = len(train_x)
+    n_test = len(test_x)
+    if n_train == 0 or n_test == 0:
+        return np.zeros(n_test, dtype=int), np.full(n_test, 0.5, dtype=np.float64)
+
+    unique_classes = np.unique(train_y)
+    if len(unique_classes) < 2:
+        only_class = int(unique_classes[0]) if len(unique_classes) == 1 else 0
+        prob_val = 1.0 if only_class == 1 else 0.0
+        return np.full(n_test, only_class, dtype=int), np.full(n_test, prob_val, dtype=np.float64)
+
+    if train_x.ndim == 1:
+        train_x = train_x[:, None]
+    if test_x.ndim == 1:
+        test_x = test_x[:, None]
+
+    n_features = train_x.shape[1]
     mean = np.mean(train_x, axis=0)
     std = np.std(train_x, axis=0)
     std = np.where(std < 1e-12, 1.0, std)
@@ -448,7 +566,7 @@ def _fit_predict_logistic_fallback(
     x_test_std = (test_x - mean) / std
 
     x_train_aug = np.column_stack([x_train_std, np.ones(n_train)])
-    x_test_aug = np.column_stack([x_test_std, np.ones(len(test_x))])
+    x_test_aug = np.column_stack([x_test_std, np.ones(n_test)])
 
     def obj_func(w):
         z = np.clip(x_train_aug @ w, -30.0, 30.0)
@@ -500,6 +618,10 @@ def _f1_score_fallback(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
 
 def _stratified_kfold_fallback(labels: np.ndarray, n_splits: int, seed: Optional[int] = 42):
+    if n_splits < 2:
+        raise ValueError("n_splits must be at least 2")
+    if len(labels) < n_splits:
+        raise ValueError(f"Cannot have number of splits n_splits={n_splits} greater than number of samples: {len(labels)}")
     rng = np.random.default_rng(seed)
     unique_classes = np.unique(labels)
     class_splits = {}
@@ -883,7 +1005,8 @@ class FusionValidator:
 
     def cross_dataset_generalization(self, train_embeddings: np.ndarray, train_labels: np.ndarray,
                                      test_embeddings: np.ndarray, test_labels: np.ndarray,
-                                     seed: Optional[int] = 42) -> Dict[str, Any]:
+                                     seed: Optional[int] = 42,
+                                     force_fallback: bool = False) -> Dict[str, Any]:
         """Evaluate generalization: train classifier on train set, test on held-out dataset.
 
         Args:
@@ -892,28 +1015,66 @@ class FusionValidator:
             test_embeddings: (n_test, latent_dim)
             test_labels: (n_test,) state labels
             seed: random state for reproducible logistic regression
+            force_fallback: force use of pure NumPy/SciPy fallback solver
 
         Returns:
             dict with accuracy, AUC, F1, status, and metadata
         """
-        if (not np.all(np.isfinite(train_embeddings)) or not np.all(np.isfinite(train_labels)) or
-                not np.all(np.isfinite(test_embeddings)) or not np.all(np.isfinite(test_labels))):
+        # Guard 1: Non-array or non-finite inputs
+        if (not isinstance(train_embeddings, np.ndarray) or not np.all(np.isfinite(train_embeddings)) or
+                not isinstance(train_labels, np.ndarray) or not np.all(np.isfinite(train_labels)) or
+                not isinstance(test_embeddings, np.ndarray) or not np.all(np.isfinite(test_embeddings)) or
+                not isinstance(test_labels, np.ndarray) or not np.all(np.isfinite(test_labels))):
             return {
                 "accuracy": 0.0,
                 "auc": 0.0,
                 "f1": 0.0,
                 "status": ValidationStatus.BLOCKED.value,
-                "error": "Non-finite values in generalization dataset",
+                "error": "Non-finite values or non-array inputs in generalization dataset",
+                "seed": seed,
             }
 
-        try:
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-            has_sklearn = True
-        except ImportError:
-            has_sklearn = False
+        # Guard 2: Shape, dimension, and length consistency
+        if (train_embeddings.ndim != 2 or test_embeddings.ndim != 2 or
+                train_embeddings.shape[1] != test_embeddings.shape[1] or
+                len(train_embeddings) != len(train_labels) or
+                len(test_embeddings) != len(test_labels) or
+                len(train_embeddings) == 0 or len(test_embeddings) == 0):
+            return {
+                "accuracy": 0.0,
+                "auc": 0.0,
+                "f1": 0.0,
+                "status": ValidationStatus.BLOCKED.value,
+                "error": "Shape mismatch, dimension discrepancy, or empty dataset in generalization",
+                "seed": seed,
+                "n_train": len(train_embeddings),
+                "n_test": len(test_embeddings),
+            }
 
-        if has_sklearn:
+        # Guard 3: Training class variety (needs >= 2 classes for decision boundary)
+        unique_train_classes = np.unique(train_labels)
+        if len(unique_train_classes) < 2:
+            return {
+                "accuracy": 0.0,
+                "auc": 0.5,
+                "f1": 0.0,
+                "status": ValidationStatus.INCONCLUSIVE.value,
+                "error": "Training labels must contain at least 2 distinct classes to train decision boundary",
+                "seed": seed,
+                "n_train": len(train_embeddings),
+                "n_test": len(test_embeddings),
+            }
+
+        use_sklearn = False
+        if not force_fallback:
+            try:
+                from sklearn.linear_model import LogisticRegression
+                from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+                use_sklearn = True
+            except ImportError:
+                use_sklearn = False
+
+        if use_sklearn:
             clf = LogisticRegression(max_iter=1000, random_state=seed)
             clf.fit(train_embeddings, train_labels)
 
@@ -954,41 +1115,54 @@ class FusionValidator:
         }
 
     def kfold_cross_validation(self, embeddings: np.ndarray, labels: np.ndarray,
-                               n_splits: int = 5, seed: Optional[int] = 42) -> Dict[str, Any]:
+                               n_splits: int = 5, seed: Optional[int] = 42,
+                               force_fallback: bool = False) -> Dict[str, Any]:
         """Perform held-out stratified k-fold cross validation on learned embeddings.
 
         Returns mean and fold-level generalization metrics.
         """
-        if not np.all(np.isfinite(embeddings)) or not np.all(np.isfinite(labels)):
+        if (not isinstance(embeddings, np.ndarray) or not np.all(np.isfinite(embeddings)) or
+                not isinstance(labels, np.ndarray) or not np.all(np.isfinite(labels))):
             return {
                 "accuracy_mean": 0.0,
                 "auc_mean": 0.0,
                 "f1_mean": 0.0,
                 "status": ValidationStatus.BLOCKED.value,
-                "error": "Non-finite values in cross-validation dataset",
+                "error": "Non-finite values or non-array inputs in cross-validation dataset",
+            }
+
+        if embeddings.ndim != 2 or len(embeddings) != len(labels) or len(embeddings) == 0:
+            return {
+                "accuracy_mean": 0.0,
+                "auc_mean": 0.0,
+                "f1_mean": 0.0,
+                "status": ValidationStatus.BLOCKED.value,
+                "error": "Shape mismatch, non-2D embeddings, or empty dataset",
             }
 
         n_samples = len(labels)
-        if n_samples < n_splits * 2 or len(np.unique(labels)) < 2:
+        if n_splits < 2 or n_samples < n_splits * 2 or len(np.unique(labels)) < 2:
             return {
                 "accuracy_mean": 0.0,
                 "auc_mean": 0.0,
                 "f1_mean": 0.0,
                 "status": ValidationStatus.INCONCLUSIVE.value,
-                "error": "Insufficient samples or classes for stratified k-fold",
+                "error": "Insufficient samples or classes for stratified k-fold (requires n_splits >= 2, N >= 2*n_splits, >= 2 classes)",
             }
 
-        try:
-            from sklearn.linear_model import LogisticRegression
-            from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
-            from sklearn.model_selection import StratifiedKFold
-            has_sklearn = True
-        except ImportError:
-            has_sklearn = False
+        use_sklearn = False
+        if not force_fallback:
+            try:
+                from sklearn.linear_model import LogisticRegression
+                from sklearn.metrics import accuracy_score, roc_auc_score, f1_score
+                from sklearn.model_selection import StratifiedKFold
+                use_sklearn = True
+            except ImportError:
+                use_sklearn = False
 
         fold_metrics: List[Dict[str, float]] = []
 
-        if has_sklearn:
+        if use_sklearn:
             skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
 
             for train_idx, val_idx in skf.split(embeddings, labels):

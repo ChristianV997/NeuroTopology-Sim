@@ -211,6 +211,79 @@ class TestNullModelAuditAndDataIdentity:
         assert audit_shuffle["passed_audit"] is True
         assert audit_shuffle["preserves_exact_marginals"] is True
 
+    def test_audit_null_model_all_taxonomies(self, synthetic_multivariate_timeseries: np.ndarray):
+        """Verify audit passes and returns expected diagnostics across all null models."""
+        audit_phase = audit_null_model(synthetic_multivariate_timeseries, NullModelType.PHASE_RANDOMIZE)
+        assert audit_phase["passed_audit"] is True
+        assert "preserves_magnitude_spectrum" in audit_phase
+
+        audit_var = audit_null_model(synthetic_multivariate_timeseries, NullModelType.MATCHED_VARIANCE)
+        assert audit_var["passed_audit"] is True
+        assert "preserves_marginal_variance" in audit_var
+
+        audit_ac = audit_null_model(synthetic_multivariate_timeseries, NullModelType.MATCHED_AUTOCORRELATION)
+        assert audit_ac["passed_audit"] is True
+        assert "preserves_autocorrelation" in audit_ac
+
+        audit_block = audit_null_model(synthetic_multivariate_timeseries, NullModelType.BLOCK_PERMUTATION, block_size=20)
+        assert audit_block["passed_audit"] is True
+        assert "preserves_intra_block_structure" in audit_block
+
+        audit_shuffle = audit_null_model(synthetic_multivariate_timeseries, NullModelType.INDEPENDENT_SHUFFLE)
+        assert audit_shuffle["passed_audit"] is True
+        assert "preserves_exact_marginals" in audit_shuffle
+
+        labels = np.array([0] * 50 + [1] * 50)
+        audit_lbl = audit_null_model(labels, NullModelType.LABEL_PERMUTATION)
+        assert audit_lbl["passed_audit"] is True
+        assert "preserves_class_counts" in audit_lbl
+
+    def test_standalone_null_generators_reject_non_finite_inputs(
+        self, synthetic_multivariate_timeseries: np.ndarray
+    ):
+        """Verify that every null generator fails closed when given NaN or Inf."""
+        corrupted = synthetic_multivariate_timeseries.copy()
+        corrupted[10, 2] = np.nan
+
+        with pytest.raises(ValueError, match="non-finite"):
+            phase_randomize_embeddings(corrupted)
+
+        with pytest.raises(ValueError, match="non-finite"):
+            matched_variance_null(corrupted)
+
+        with pytest.raises(ValueError, match="non-finite"):
+            matched_autocorrelation_null(corrupted)
+
+        with pytest.raises(ValueError, match="non-finite"):
+            independent_shuffle_null(corrupted)
+
+        with pytest.raises(ValueError, match="non-finite"):
+            block_permutation(corrupted, block_size=10)
+
+        bad_labels = np.array([0.0, 1.0, np.nan, 1.0])
+        with pytest.raises(ValueError, match="non-finite"):
+            label_permutation(bad_labels)
+
+        audit_res = audit_null_model(corrupted, NullModelType.PHASE_RANDOMIZE)
+        assert audit_res["passed_audit"] is False
+        assert audit_res["status"] == "BLOCKED"
+
+    def test_standalone_null_generators_empty_inputs(self):
+        """Verify that standalone null generators handle (0, d) and (n, 0) gracefully without crashing."""
+        empty_rows = np.zeros((0, 8))
+        assert phase_randomize_embeddings(empty_rows).shape == (0, 8)
+        assert matched_variance_null(empty_rows).shape == (0, 8)
+        assert matched_autocorrelation_null(empty_rows).shape == (0, 8)
+        assert independent_shuffle_null(empty_rows).shape == (0, 8)
+        assert block_permutation(empty_rows, block_size=5).shape == (0, 8)
+
+        empty_cols = np.zeros((50, 0))
+        assert phase_randomize_embeddings(empty_cols).shape == (50, 0)
+        assert matched_variance_null(empty_cols).shape == (50, 0)
+        assert matched_autocorrelation_null(empty_cols).shape == (50, 0)
+        assert independent_shuffle_null(empty_cols).shape == (50, 0)
+        assert block_permutation(empty_cols, block_size=5).shape == (50, 0)
+
     def test_compute_data_identity_deterministic(self, synthetic_multivariate_timeseries: np.ndarray):
         id1 = compute_data_identity(synthetic_multivariate_timeseries)
         id2 = compute_data_identity(synthetic_multivariate_timeseries)

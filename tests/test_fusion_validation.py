@@ -241,6 +241,144 @@ class TestHeldOutGeneralization:
             assert len(train_idx) + len(val_idx) == len(condition_labels)
             assert len(np.intersect1d(train_idx, val_idx)) == 0
 
+    def test_cross_dataset_generalization_one_class_train_inconclusive(
+        self, sample_embeddings: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        train_emb = sample_embeddings[:60]
+        # Only class 0 present in train_labels
+        train_lbl = np.zeros(60, dtype=int)
+        test_emb = sample_embeddings[60:]
+        test_lbl = np.array([0] * 20 + [1] * 20)
+
+        res = validator.cross_dataset_generalization(train_emb, train_lbl, test_emb, test_lbl, seed=42)
+        assert res["status"] == ValidationStatus.INCONCLUSIVE.value
+        assert res["accuracy"] == 0.0
+        assert "at least 2 distinct classes" in res.get("error", "")
+
+    def test_cross_dataset_generalization_one_class_test_graceful(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        train_emb = sample_embeddings[:60]
+        train_lbl = condition_labels[:60]
+        test_emb = sample_embeddings[60:]
+        # Only class 1 in test set
+        test_lbl = np.ones(40, dtype=int)
+
+        res = validator.cross_dataset_generalization(train_emb, train_lbl, test_emb, test_lbl, seed=42)
+        assert res["status"] in (ValidationStatus.PASS.value, ValidationStatus.FAIL.value)
+        assert 0.0 <= res["accuracy"] <= 1.0
+        assert res["auc"] == 0.5  # AUC defaults gracefully when test has single class
+
+    def test_cross_dataset_generalization_constant_features(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        train_emb = sample_embeddings[:60].copy()
+        test_emb = sample_embeddings[60:].copy()
+        # Set first two features to constant across all samples
+        train_emb[:, :2] = 5.0
+        test_emb[:, :2] = 5.0
+
+        res = validator.cross_dataset_generalization(
+            train_emb, condition_labels[:60], test_emb, condition_labels[60:], seed=42
+        )
+        assert res["status"] in (ValidationStatus.PASS.value, ValidationStatus.FAIL.value)
+        assert np.isfinite(res["accuracy"])
+        assert np.isfinite(res["auc"])
+
+    def test_cross_dataset_generalization_empty_and_mismatched_blocked(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        empty_emb = np.zeros((0, 16))
+        empty_lbl = np.zeros((0,), dtype=int)
+
+        # Empty inputs
+        res_empty = validator.cross_dataset_generalization(
+            empty_emb, empty_lbl, sample_embeddings, condition_labels, seed=42
+        )
+        assert res_empty["status"] == ValidationStatus.BLOCKED.value
+
+        # Dimension mismatch: 16 dims vs 8 dims
+        mismatched_test = sample_embeddings[:, :8]
+        res_mismatch = validator.cross_dataset_generalization(
+            sample_embeddings[:60], condition_labels[:60],
+            mismatched_test[60:], condition_labels[60:], seed=42
+        )
+        assert res_mismatch["status"] == ValidationStatus.BLOCKED.value
+
+        # Length mismatch between embeddings and labels
+        res_len_mismatch = validator.cross_dataset_generalization(
+            sample_embeddings[:60], condition_labels[:50],  # 60 vs 50
+            sample_embeddings[60:], condition_labels[60:], seed=42
+        )
+        assert res_len_mismatch["status"] == ValidationStatus.BLOCKED.value
+
+    def test_cross_dataset_generalization_force_fallback(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        train_emb = sample_embeddings[:60]
+        train_lbl = condition_labels[:60]
+        test_emb = sample_embeddings[60:]
+        test_lbl = condition_labels[60:]
+
+        res = validator.cross_dataset_generalization(
+            train_emb, train_lbl, test_emb, test_lbl, seed=42, force_fallback=True
+        )
+        assert res["status"] in (ValidationStatus.PASS.value, ValidationStatus.FAIL.value)
+        assert 0.0 <= res["accuracy"] <= 1.0
+        assert 0.0 <= res["auc"] <= 1.0
+        assert 0.0 <= res["f1"] <= 1.0
+
+    def test_kfold_cross_validation_small_sample_and_splits_boundaries(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+
+        # n_splits < 2
+        res_splits = validator.kfold_cross_validation(
+            sample_embeddings, condition_labels, n_splits=1, seed=42
+        )
+        assert res_splits["status"] == ValidationStatus.INCONCLUSIVE.value
+
+        # n_samples < 2 * n_splits (sample size 6, n_splits=5)
+        res_small = validator.kfold_cross_validation(
+            sample_embeddings[:6], condition_labels[:6], n_splits=5, seed=42
+        )
+        assert res_small["status"] == ValidationStatus.INCONCLUSIVE.value
+
+        # Only one class present
+        mono_labels = np.zeros(len(sample_embeddings), dtype=int)
+        res_mono = validator.kfold_cross_validation(
+            sample_embeddings, mono_labels, n_splits=5, seed=42
+        )
+        assert res_mono["status"] == ValidationStatus.INCONCLUSIVE.value
+
+    def test_kfold_cross_validation_constant_features(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        emb = sample_embeddings.copy()
+        emb[:, 0] = 1.0  # Constant column
+        res = validator.kfold_cross_validation(emb, condition_labels, n_splits=5, seed=42)
+        assert res["status"] in (ValidationStatus.PASS.value, ValidationStatus.FAIL.value)
+        assert np.isfinite(res["accuracy_mean"])
+
+    def test_kfold_cross_validation_force_fallback(
+        self, sample_embeddings: np.ndarray, condition_labels: np.ndarray, tmp_path: Path
+    ):
+        validator = FusionValidator(output_dir=tmp_path)
+        res = validator.kfold_cross_validation(
+            sample_embeddings, condition_labels, n_splits=5, seed=42, force_fallback=True
+        )
+        assert res["status"] in (ValidationStatus.PASS.value, ValidationStatus.FAIL.value)
+        assert 0.0 <= res["accuracy_mean"] <= 1.0
+        assert 0.0 <= res["auc_mean"] <= 1.0
+        assert len(res["folds"]) == 5
+
 
 class TestSerializationAndGovernance:
     """Verify serialization to finite JSON and governance outputs."""
