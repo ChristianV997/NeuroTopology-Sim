@@ -29,7 +29,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     text = to_report_json(report)
     if args.json_out:
-        args.json_out.write_text(text, encoding="utf-8")
+        try:
+            args.json_out.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            print(f"harness error: cannot write {args.json_out}: {exc}", file=sys.stderr)
+            return 2
     else:
         sys.stdout.write(text)
     print(

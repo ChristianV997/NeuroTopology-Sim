@@ -102,12 +102,29 @@ separately. The held-out fraction is labelled
   a held-out plan edited and re-hashed. They also cover the loader's role filter and
   the CLI exit code. Labels remain single-author expectations, not ground truth.
 
+## Malformed inputs
+
+- Plan records are type-checked before the rubric runs. The nested objects
+  `power_analysis`, `null_model`, `split_strategy`, `compute_budget`,
+  `reproducibility`, and `ethics_privacy` must each be an object or null, and their
+  fields must have the declared types. Each `sources` entry must be an object with
+  typed fields. A violation raises `MalformedRecordError` naming the field.
+- Label entries are checked when the label file is loaded. Each entry must be an
+  object with a non-empty string `expected_overall_status` and a list of strings
+  `expected_non_passing_dimensions`. A violation raises `ManifestError` naming the
+  fixture. The label file is opened only in the post-hoc consistency comparison.
+- An unwritable `--json-out` path is reported as a harness error.
+
 ## Running
 
 ```
 PYTHONPATH=. python -m tools.research_plan_quality_eval --json-out report.json
 PYTHONPATH=. python -m pytest tests/research_plan_quality_eval -q
 ```
+
+Exit codes: 0 on success; 2 on any harness error, including a manifest, record,
+label, or output-path failure. The error prints as `harness error:` on stderr,
+with no traceback. A BLOCKED rubric outcome is reported as data and exits 0.
 
 The report records the fixture hashes, rubric identity, split definition,
 duplicate results, outcomes, consistency with the synthetic expectations,

@@ -153,3 +153,27 @@ def test_rehashed_fixture_edit_loads_cleanly(copy_fixture_tree):
     plan_file.write_text(plan_file.read_text().replace("thirty-six", "thirty-seven"), encoding="utf-8")
     rehash_plan(manifest_path, "fx-v1-P02")
     assert len(load_manifest(manifest_path).entries) == 10
+
+
+@pytest.mark.parametrize("entry", [
+    "not-an-object",
+    {"expected_overall_status": "BLOCKED"},
+    {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": "abc"},
+    {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": [1, 2]},
+    {"expected_overall_status": 3, "expected_non_passing_dimensions": []},
+])
+def test_malformed_label_entry_is_a_manifest_error(copy_fixture_tree, entry):
+    """Labels are expectations. A malformed one fails closed instead of being compared silently."""
+    from tools.research_plan_quality_eval.errors import ManifestError
+    from tools.research_plan_quality_eval.harness import build_report
+
+    from .conftest import rehash_labels
+
+    manifest_path = copy_fixture_tree()
+    labels_path = manifest_path.parent / "labels.json"
+    labels = json.loads(labels_path.read_text(encoding="utf-8"))
+    labels["labels"]["fx-v1-P01"] = entry
+    labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
+    rehash_labels(manifest_path)
+    with pytest.raises(ManifestError, match="fx-v1-P01"):
+        build_report(manifest_path)

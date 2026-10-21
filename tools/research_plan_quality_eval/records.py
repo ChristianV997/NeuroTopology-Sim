@@ -75,6 +75,40 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+_KIND_TEXT: dict[str, str] = {
+    "str": "a string",
+    "number": "a finite number",
+    "int": "an integer",
+    "bool": "a boolean",
+    "str_list": "a list of strings",
+}
+
+# Declared kind of each optional nested field (see tools/research_plan_quality/models.py).
+_NESTED_FIELDS: dict[str, dict[str, str]] = {
+    "power_analysis": {"method": "str", "target_power": "number", "effect_size": "number", "alpha": "number"},
+    "null_model": {"method": "str", "description": "str"},
+    "split_strategy": {"unit": "str", "method": "str"},
+    "compute_budget": {"estimated_hours": "number", "hardware": "str"},
+    "reproducibility": {"seed": "int", "code_version": "str", "environment_pinned": "bool"},
+    "ethics_privacy": {"irb_status": "str", "privacy_measures": "str_list"},
+}
+_SOURCE_FIELDS: dict[str, str] = {"title": "str", "identifier": "str", "verification_status": "str"}
+
+
+def _matches(value: Any, kind: str) -> bool:
+    if kind == "str":
+        return isinstance(value, str)
+    if kind == "number":
+        return _is_number(value)
+    if kind == "int":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "bool":
+        return isinstance(value, bool)
+    if kind == "str_list":
+        return isinstance(value, list) and all(isinstance(v, str) for v in value)
+    raise ValueError(f"unknown kind {kind!r}")
+
+
 def _type_errors(data: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
 
@@ -112,18 +146,23 @@ def _type_errors(data: Mapping[str, Any]) -> list[str]:
         errors.append(f"evidence_class_declared must be one of {sorted(EVIDENCE_CLASSES)} or null")
     if "sources" in data:
         sources = data["sources"]
-        expect("sources", isinstance(sources, list) and all(isinstance(s, dict) for s in sources), "a list of objects")
-    power = data.get("power_analysis")
-    if isinstance(power, dict):
-        for key in ("target_power", "effect_size", "alpha"):
-            if power.get(key) is not None:
-                expect(f"power_analysis.{key}", _is_number(power[key]), "a finite number")
-    budget = data.get("compute_budget")
-    if isinstance(budget, dict) and budget.get("estimated_hours") is not None:
-        expect("compute_budget.estimated_hours", _is_number(budget["estimated_hours"]), "a finite number")
-    repro = data.get("reproducibility")
-    if isinstance(repro, dict) and repro.get("seed") is not None:
-        expect("reproducibility.seed", isinstance(repro["seed"], int) and not isinstance(repro["seed"], bool), "an integer")
+        if not (isinstance(sources, list) and all(isinstance(s, dict) for s in sources)):
+            errors.append("sources must be a list of objects")
+        else:
+            for index, source in enumerate(sources):
+                for key, kind in _SOURCE_FIELDS.items():
+                    if source.get(key) is not None:
+                        expect(f"sources[{index}].{key}", _matches(source[key], kind), _KIND_TEXT[kind])
+    for name, fields in _NESTED_FIELDS.items():
+        value = data.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, dict):
+            errors.append(f"{name} must be an object or null")
+            continue
+        for key, kind in fields.items():
+            if value.get(key) is not None:
+                expect(f"{name}.{key}", _matches(value[key], kind), _KIND_TEXT[kind])
     return errors
 
 

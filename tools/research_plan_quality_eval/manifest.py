@@ -182,7 +182,16 @@ def load_labels(manifest: Manifest) -> dict[str, Any]:
     data = _expect_object(parse_json_bytes(raw, manifest.labels_path.name), "labels")
     if data.get("schema_version") != LABELS_SCHEMA:
         raise ManifestError(f"labels.schema_version must be {LABELS_SCHEMA!r}")
-    _expect_object(data.get("labels"), "labels.labels")
+    labels = _expect_object(data.get("labels"), "labels.labels")
+    for fixture_id, entry in labels.items():
+        where = f"labels.labels[{fixture_id!r}]"
+        entry_object = _expect_object(entry, where)
+        status = entry_object.get("expected_overall_status")
+        if not (isinstance(status, str) and status):
+            raise ManifestError(f"{where}.expected_overall_status must be a non-empty string")
+        dims = entry_object.get("expected_non_passing_dimensions")
+        if not (isinstance(dims, list) and all(isinstance(dim, str) for dim in dims)):
+            raise ManifestError(f"{where}.expected_non_passing_dimensions must be a list of strings")
     adjudication = _expect_object(data.get("adjudication"), "labels.adjudication")
     if adjudication.get("status") != ADJUDICATION_STATUS or adjudication.get("independent") is not False:
         raise ManifestError("labels must declare synthetic_author_expectation with independent=false")

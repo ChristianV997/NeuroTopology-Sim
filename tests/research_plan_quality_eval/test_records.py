@@ -149,3 +149,41 @@ def test_optional_scalar_fields_are_type_checked_before_the_rubric(base_plan_dic
     base_plan_dict[field] = value
     with pytest.raises(MalformedRecordError):
         plan_from_dict(base_plan_dict, "x")
+
+
+@pytest.mark.parametrize("field,value", [
+    ("power_analysis", [1]),
+    ("split_strategy", 5),
+    ("null_model", "x"),
+    ("compute_budget", "x"),
+    ("reproducibility", 7),
+    ("ethics_privacy", "x"),
+])
+def test_nested_objects_must_be_objects_or_null(base_plan_dict, field, value):
+    """A non-object nested block is malformed input, not an AttributeError inside the rubric."""
+    base_plan_dict[field] = value
+    with pytest.raises(MalformedRecordError, match=field):
+        plan_from_dict(base_plan_dict, "x")
+
+
+@pytest.mark.parametrize("field,subfield,value", [
+    ("split_strategy", "method", 5),
+    ("null_model", "description", 5),
+    ("ethics_privacy", "privacy_measures", 5),
+    ("ethics_privacy", "irb_status", ["x"]),
+    ("power_analysis", "method", 1),
+    ("power_analysis", "effect_size", "0.5"),
+    ("compute_budget", "hardware", 3),
+    ("reproducibility", "code_version", 2),
+    ("reproducibility", "environment_pinned", "yes"),
+])
+def test_nested_field_types_are_checked(base_plan_dict, field, subfield, value):
+    base_plan_dict[field] = {subfield: value}
+    with pytest.raises(MalformedRecordError):
+        plan_from_dict(base_plan_dict, "x")
+
+
+def test_source_entry_field_types_are_checked(base_plan_dict):
+    base_plan_dict["sources"] = [{"title": 5}]
+    with pytest.raises(MalformedRecordError, match="sources"):
+        plan_from_dict(base_plan_dict, "x")

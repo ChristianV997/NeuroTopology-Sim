@@ -72,3 +72,44 @@ def test_cli_manifest_default_points_at_the_shipped_fixture_set():
     manifest = load_manifest(DEFAULT_MANIFEST)
     assert manifest.fixture_set_id
     assert len(manifest.entries) == 10
+
+
+def test_cli_malformed_nested_plan_exits_2_without_a_traceback(copy_fixture_tree, capsys):
+    from tools.research_plan_quality_eval.__main__ import main
+
+    from .conftest import rehash_plan
+
+    manifest_path = copy_fixture_tree()
+    plan_file = manifest_path.parent / "plans" / "P03.json"
+    data = json.loads(plan_file.read_text(encoding="utf-8"))
+    data["reproducibility"] = 7
+    plan_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    rehash_plan(manifest_path, "fx-v1-P03")
+
+    code = main(["--manifest", str(manifest_path), "--allow-unpinned-split", "--no-label-consistency"])
+    assert code == 2
+    assert "harness error" in capsys.readouterr().err
+
+
+def test_cli_malformed_label_file_exits_2_without_a_traceback(copy_fixture_tree, capsys):
+    from tools.research_plan_quality_eval.__main__ import main
+
+    from .conftest import rehash_labels
+
+    manifest_path = copy_fixture_tree()
+    labels_path = manifest_path.parent / "labels.json"
+    labels = json.loads(labels_path.read_text(encoding="utf-8"))
+    labels["labels"]["fx-v1-P01"] = "not-an-object"
+    labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
+    rehash_labels(manifest_path)
+
+    assert main(["--manifest", str(manifest_path)]) == 2
+    assert "harness error" in capsys.readouterr().err
+
+
+def test_cli_unwritable_json_out_exits_2_with_a_message(tmp_path, capsys):
+    from tools.research_plan_quality_eval.__main__ import main
+
+    target = tmp_path  # an existing directory cannot be written as a report file
+    assert main(["--json-out", str(target), "--no-label-consistency"]) == 2
+    assert "harness error" in capsys.readouterr().err
