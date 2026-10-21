@@ -125,13 +125,18 @@ returns, and how it fails. The diagnostics are listed last. They are not nulls.
 | `CROSS_SPECTRUM_STRICT_TOL` | `1e-3` relative Frobenius error | IAAFT strict cross-spectrum status |
 | `MARGINAL_EXACT_TOL` | `1e-12` absolute | marginal "exact" status |
 | `ENSEMBLE_TOL` (tests) | `0.15` relative Frobenius | Cholesky expectation test (declared before measurement) |
-| `EPS` | `1e-12` denominator guard | every relative error |
+| `EPS` | `1e-12` denominator guard | spectral relative-error helpers (`complex_relative_error`, `power_relative_error`) |
 
 ## Denominators
 
-Every relative error is `||actual - target|| / (||target|| + EPS)`, summed over bins for
-CSD comparisons and over bins per channel for power comparisons. The denominator is reported
-in each report as `denominator_eps`.
+The spectral relative-error helpers use `||actual - target|| / (||target|| + EPS)`.
+CSD comparisons use the scale-invariant Frobenius error `||A - T|| / ||T||`, summed over
+bins, with common component scaling and stable norm accumulation; they do not add `EPS` to
+the denominator. A zero target returns zero only when the actual CSD is also zero; otherwise
+the result is infinity. Any non-finite CSD input also returns infinity.
+
+The report field `denominator_eps` records the `EPS` setting for the spectral helpers; it is
+not applied to the CSD relative error.
 
 ## What the reports say
 
