@@ -55,7 +55,8 @@ def _string_references_remote_host(value: str) -> bool:
     text = value.strip()
     if not text:
         return False
-    if _URLISH.match(text):
+    # Scheme URLs and protocol-relative URLs (//host/path) use parsed netloc.
+    if _URLISH.match(text) or text.startswith("//"):
         return _hostname_is_remote(urlparse(text).hostname)
     # Bare hostname tokens only (avoids incomplete substring matches inside prose).
     if _HOSTISH.match(text):

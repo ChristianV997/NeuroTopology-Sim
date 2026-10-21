@@ -81,3 +81,60 @@ def test_cli_exit_code_fails_on_hard_statuses():
     assert cli._cli_exit_code({"all_equivalent": True, "summary": {"timeout": 1}, "num_targets": 1}) == 1
     assert cli._cli_exit_code({"all_equivalent": True, "summary": {"child_crash": 1}, "num_targets": 1}) == 1
     assert cli._cli_exit_code({"error": "unknown target", "num_targets": 0, "summary": {}}) == 2
+
+
+def test_isolated_honors_memory_budget_passthrough(capsys):
+    """Regression: isolated children must receive parent authoritative budgets."""
+    rc = cli.main(
+        [
+            "--isolated",
+            "--target",
+            "checkpoint_fsync_overhead",
+            "--json",
+            "--size",
+            "8",
+            "--repetitions",
+            "1",
+            "--memory-budget-mb",
+            "0.000001",
+            "--per-target-timeout-s",
+            "60",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert rc != 0
+    assert report["all_within_budget"] is False
+    assert report["summary"].get("budget_overrun", 0) >= 1
+    child = report["results"][0]
+    assert child["status"] == "budget_overrun"
+    assert child["deterministic"]["budget"]["checks"]["memory_within_budget"] is False
+
+
+def test_isolated_advisory_runtime_rss_do_not_fail_exit(capsys):
+    """Advisory timing/RSS must not flip isolated CLI exit by themselves."""
+    rc = cli.main(
+        [
+            "--isolated",
+            "--target",
+            "checkpoint_fsync_overhead",
+            "--json",
+            "--size",
+            "8",
+            "--repetitions",
+            "1",
+            "--runtime-budget-s",
+            "1e-15",
+            "--rss-budget-mb",
+            "0.000001",
+            "--per-target-timeout-s",
+            "60",
+        ]
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert report["all_within_budget"] is True
+    child = report["results"][0]
+    assert child["status"] == "ok"
+    checks = child["deterministic"]["budget"]["checks"]
+    assert checks["runtime_within_budget"] is False
+    assert checks["rss_within_budget"] in (False, None)

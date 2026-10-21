@@ -92,13 +92,21 @@ def test_no_network_execution():
     assert not _hostname_is_remote("example.com")
     assert _string_references_remote_host("https://openneuro.org/datasets/ds000001")
     assert _string_references_remote_host("https://bucket.s3.amazonaws.com/x")
+    # Protocol-relative URLs must parse netloc (not silently skip).
+    assert _string_references_remote_host("//openneuro.org/datasets/ds000001")
+    assert _string_references_remote_host("//api.dandiarchive.org/v1")
     # Substring lookalikes must not trip the denylist.
     assert not _string_references_remote_host("https://evilopenneuro.org.attacker.example/x")
+    assert not _string_references_remote_host("//evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("notes mentioning openneuro.org in prose")
 
     poisoned = dict(report)
     poisoned["notes"] = ["https://openneuro.org/datasets/ds000001"]
     assert "remote_data_reference" in validate_report(poisoned)["violations"]
+
+    poisoned_protocol_relative = dict(report)
+    poisoned_protocol_relative["notes"] = ["//openneuro.org/datasets/ds000001"]
+    assert "remote_data_reference" in validate_report(poisoned_protocol_relative)["violations"]
 
 
 def test_cli_rejects_unbounded_workers():
