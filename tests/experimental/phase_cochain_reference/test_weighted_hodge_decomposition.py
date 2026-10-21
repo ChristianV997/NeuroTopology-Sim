@@ -123,6 +123,30 @@ def test_zero_signal_decomposition() -> None:
     assert np.allclose(decomp.harmonic, 0.0)
     assert decomp.energy_total == 0.0
     assert decomp.relative_reconstruction_error == 0.0
+    assert decomp.relative_energy_error == 0.0
+
+
+def test_relative_error_diagnostics_are_scale_invariant_for_nonzero_signal() -> None:
+    """Relative errors use the actual nonzero reference scale, not an absolute epsilon floor."""
+    c = build_vortex_quad_fixture()
+    rng = np.random.default_rng(20261021)
+    omega = rng.normal(size=c.num_edges)
+    weights = rng.uniform(0.5, 2.5, size=c.num_edges)
+
+    for scale in (1e-100, 1e100):
+        result = compute_weighted_hodge_decomposition(c, scale * omega, weights_edges=weights)
+        expected_reconstruction = result.reconstruction_residual_norm / np.sqrt(result.energy_total)
+        expected_energy = abs(
+            result.energy_total
+            - result.energy_exact
+            - result.energy_coexact
+            - result.energy_harmonic
+        ) / result.energy_total
+
+        assert result.relative_reconstruction_error == pytest.approx(
+            expected_reconstruction, rel=1e-10, abs=0.0
+        )
+        assert result.relative_energy_error == pytest.approx(expected_energy, rel=1e-10, abs=0.0)
 
 
 def test_invalid_weights_and_inputs() -> None:
