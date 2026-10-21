@@ -9,8 +9,8 @@
 **Worktree:** `C:/Users/HP/OneDrive/Documentos/GitHub/.repo-dev-worktrees/mesh-geometry-audit-batch1-20261016`
 
 **Verified base (original):** `origin/main` at `3f3fe8593303184cb88eef056c1322f3d4e57a16`.
-**Live main (merged):** `origin/main` at `d2544b83289efde0e63b70cff270d2ff523b7095`.
-**Prior live tip:** `bc91af19a22783d2721fc881842573f7e08a8925`.
+**Live main (merged):** `origin/main` at `9a200cd658443f47332ca9f1d04757a32f4f9e04` (includes #441 Round-6 discovery mappings).
+**Prior live tip (pre-#441 sync):** `d2544b83289efde0e63b70cff270d2ff523b7095`.
 **Submission note:** The independent reviewer was unavailable through the configured provider route; the user authorized proceeding without that review. Exact final head SHA and PR URL are in the submission handoff.
 
 ### Production-import addendum (Cursor Agent C / Batch 2)
@@ -24,14 +24,17 @@ asserts a production mesh passes this independent auditor, and asserts the
 overlapping-face adversarial mesh fails. Unit-square production builds use
 `DegeneracyPolicy.LEXICOGRAPHIC_TIEBREAK` (default policy may reject the square).
 
-**Round 6 discovery (live main `e59dd6c…`) → Codex Agent A:**
-Component `finite_jitter_geometry_audit` now maps the auditor +
-`tests/test_finite_jitter_triangulation_audit.py` only.
-`select_components({test_finite_jitter_production_import.py}) → []`.
-Please add the production bridge to `tests` / `triggers` / `candidate_pairs`,
-pairing `neurotopology_sim/experimental/geometry/planar_triangulation.py` with
-`tests/test_finite_jitter_production_import.py`. Do not treat empty selection
-or unrelated green CI as bridge execution.
+**Round 6 discovery (live main `9a200cd…` / PR #441):**
+Component `finite_jitter_geometry_audit` maps
+`tools/audit_finite_jitter_triangulation.py` +
+`tests/test_finite_jitter_triangulation_audit.py`.
+Component `finite_jitter_production_bridge` maps the same auditor
+implementation root with
+`tests/test_finite_jitter_production_import.py` as the candidate test.
+Local selector against tip vs `9a200cd…` selects both components with
+nonzero reconciled counts and empty `unmapped_candidate_paths`.
+Hosted Required Checks must still prove both paths ran on the exact head;
+prior green CI that omitted the bridge is not sufficient.
 
 ## Executive finding
 
@@ -132,4 +135,4 @@ Limitations: pairwise edge and face intersection checks are quadratic; this is i
 [4] https://github.com/ChristianV997/NeuroTopology-Sim/blob/c483aa3ea6fdca3f736c901f8867dc40cf6fe292/docs/research/batch3/grok_chat_a_round6_claim_audit.md — NeuroTopology-Sim Batch 3 Round 6 claim-audit document at pinned commit
 [5] https://github.com/ChristianV997/NeuroTopology-Sim/tree/c483aa3ea6fdca3f736c901f8867dc40cf6fe292 — NeuroTopology-Sim repository tree at inspected Batch 3 proposal commit
 
-**Selector note:** live main `d2544b8` still omits the production-import test. Codex branch `codex/round6-discovery-mappings-20261020` defines `finite_jitter_production_bridge` for `tests/test_finite_jitter_production_import.py` but is not merged to main. Please also pair `neurotopology_sim/experimental/geometry/planar_triangulation.py` ↔ that bridge test.
+**Selector note:** PR #441 merged `finite_jitter_production_bridge` onto main (`9a200cd…`). Both `finite_jitter_geometry_audit` and `finite_jitter_production_bridge` are registered. The bridge hard-imports production `neurotopology_sim.experimental.geometry.planar_triangulation`; the auditor remains stdlib-only and does not import that module. HOLD / SYNTHETIC_ONLY is unchanged.
