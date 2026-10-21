@@ -29,7 +29,9 @@ from tools.experimental_audits.winding_charge_round6.fixtures import (
 from tools.experimental_audits.winding_charge_round6.oracle import (
     IndependentComplex,
     apply_confidence_weights,
+    branch_index_and_wrapped,
     charge_moments,
+    net_charge,
     shift_origin,
     topological_charges_from_phases,
     translate_coordinates,
@@ -56,6 +58,25 @@ def test_oracle_does_not_import_candidate_engine():
         src = Path(rel).read_text(encoding="utf-8")
         assert "from experimental.phase_cochain_reference" not in src
         assert "import experimental.phase_cochain_reference" not in src
+
+
+def test_oracle_import_does_not_load_production_winding_module():
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys; "
+        "import tools.experimental_audits.winding_charge_round6.audit; "
+        "import tools.experimental_audits.winding_charge_round6.oracle; "
+        "loaded = [name for name in sys.modules if "
+        "name == 'neurotopology_sim.experimental.topology.winding' or "
+        "name.startswith('neurotopology_sim.experimental.topology.winding.')]; "
+        "assert not loaded, loaded"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_integer_valued_charges():
@@ -129,6 +150,16 @@ def test_exact_and_near_pm_pi():
     assert wrap_principal(vals["just_over_plus_pi"]) == pytest.approx(-math.pi, abs=1e-9)
 
 
+def test_exact_pm_pi_branch_index_is_unambiguous():
+    vals = phases_at_exact_pm_pi()
+    n_plus, omega_plus = branch_index_and_wrapped(vals["plus_pi"])
+    n_minus, omega_minus = branch_index_and_wrapped(vals["minus_pi"])
+    assert int(np.asarray(n_plus).reshape(())) == 1
+    assert int(np.asarray(n_minus).reshape(())) == 0
+    assert float(np.asarray(omega_plus).reshape(())) == -math.pi
+    assert float(np.asarray(omega_minus).reshape(())) == -math.pi
+
+
 def test_no_charge_separation_is_nan_not_zero():
     c = single_triangle_complex()
     res = charge_moments(c, np.array([0], dtype=np.int64))
@@ -179,6 +210,50 @@ def test_confidence_weights_do_not_alter_integer_charges():
     np.testing.assert_allclose(scores, np.array([0.5, -0.25, 0.0, 1.6]))
     with pytest.raises(ValueError):
         apply_confidence_weights(q, np.array([0.5, 0.0, 1.0, 0.8]))
+
+
+@pytest.mark.parametrize(
+    "helper", ["net_charge", "apply_confidence_weights", "charge_moments"]
+)
+@pytest.mark.parametrize("invalid", [1.5, float("nan"), float("inf"), float("-inf")])
+def test_charge_helpers_reject_noninteger_or_nonfinite_values(helper, invalid):
+    c = single_triangle_complex()
+    values = np.array([invalid], dtype=float)
+    with pytest.raises(ValueError, match="charges must be finite integer-valued"):
+        if helper == "net_charge":
+            net_charge(values)
+        elif helper == "apply_confidence_weights":
+            apply_confidence_weights(values, None)
+        else:
+            charge_moments(c, values)
+
+
+def test_charge_helpers_accept_exact_integer_floats():
+    values = np.array([2.0, -1.0])
+    assert net_charge(values) == 1
+    scores, q_out = apply_confidence_weights(values, np.array([0.5, 2.0]))
+    np.testing.assert_array_equal(q_out, np.array([2, -1], dtype=np.int64))
+    np.testing.assert_allclose(scores, np.array([1.0, -2.0]))
+    result = charge_moments(
+        single_triangle_complex(), np.array([1.0])
+    )
+    assert result.net_charge == 1
+
+
+def test_net_charge_accumulates_without_int64_overflow():
+    maximum = int(np.iinfo(np.int64).max)
+    assert net_charge(np.array([maximum, 1], dtype=np.int64)) == maximum + 1
+
+
+def test_charge_moments_handles_int64_minimum_magnitude():
+    minimum = int(np.iinfo(np.int64).min)
+    result = charge_moments(
+        single_triangle_complex(), np.array([minimum], dtype=np.int64)
+    )
+    assert result.net_charge == minimum
+    assert result.abs_charge == -minimum
+    assert result.negative_count == 1
+    assert result.negative_centroid is not None
 
 
 def test_full_audit_runner_hold_synthetic_only():

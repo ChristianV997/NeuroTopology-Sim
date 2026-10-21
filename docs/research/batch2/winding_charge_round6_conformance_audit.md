@@ -20,9 +20,10 @@ An independent, executable conformance audit of the Round 6 *phase-winding and s
 ## Candidate location (read-only context)
 
 Original audit base: `origin/main` @ `3f3fe859…` (Round 6 reference observed on
-open PR #385; absent from main). After merge of live `origin/main` @
-`d2544b8…` (prior tip `bc91af19…`), production leaf
-`neurotopology_sim/experimental/topology/winding.py` is present.
+open PR #385; absent from main at that base). The production leaf
+`neurotopology_sim/experimental/topology/winding.py` was later present on main
+at `d2544b8…`; this PR branch was ordinarily synced with live main
+`1692a2f223aea6abc5e9b0e6dc7d9c97973d98f7`.
 
 - Independent oracle remains in `tools/experimental_audits/winding_charge_round6/`
   (self-derived fixtures; does not import production).
@@ -35,12 +36,18 @@ open PR #385; absent from main). After merge of live `origin/main` @
   `charge_separation_defined` is `True` when both signs are present
   (`sep≈2`); missing-sign case remains undefined per claim 7.
 
-**Round 6 discovery note (for Codex Agent A — no workflow edits here):**
-On `d2544b8…`, component `winding_charge_audit` still lists only
-`tests/experimental_audits/test_winding_charge_round6_oracle.py`.
-`select_components({production_import}) → []`. Add the bridge path to
-`tests` / `triggers` / `candidate_pairs` paired with
-`neurotopology_sim/experimental/topology/winding.py`.
+## Test discovery mapping
+
+The live selector at main
+`1692a2f223aea6abc5e9b0e6dc7d9c97973d98f7` maps component
+`winding_charge_audit` to both the independent-oracle test
+`tests/experimental_audits/test_winding_charge_round6_oracle.py` and the
+production bridge test
+`tests/experimental_audits/test_winding_charge_production_import.py`. Running
+that selector against this PR candidate returned `READY_TO_RUN`, both test
+paths, no missing required tests, and no unmapped candidate paths. This PR does
+not modify workflow files. Selector discovery is not a substitute for a fresh
+hosted execution of both paths.
 
 ## Discrete claims under audit
 
@@ -54,6 +61,7 @@ On `d2544b8…`, component `winding_charge_audit` still lists only
    (equivalent to PR #385’s `m(r+v)=m+Q_net·v` with `a = −v`). Verified for `Q_net=0` and `Q_net≠0`.
 7. Missing-sign charge separation is **explicitly undefined** (`NaN` + `charge_separation_defined=False`), never silent `0.0`.
 8. Confidence weights scale scores only; integer `q` values are unchanged.
+9. Charge helpers reject nonfinite/fractional values before integer conversion; net and absolute charge sums avoid `int64` overflow.
 
 ## Branch convention (must be explicit)
 
@@ -85,4 +93,5 @@ python3 -m pytest tests/experimental_audits/ -q
 
 Engineering vocabulary only: `DISCRETE_IDENTITY_HOLDS` / `DISCRETE_IDENTITY_FAILS` / `INCONCLUSIVE_INPUT`.
 
-**Selector (live main `d2544b8`):** bridge still unselected. Codex branch `codex/round6-discovery-mappings-20261020` already lists the bridge file under `winding_charge_audit` but is not on main yet.
+The audit remains synthetic-only. The hosted run must report nonzero test counts
+for both mapped paths with no unexplained skips, failures, errors, or timeouts.

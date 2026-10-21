@@ -17,6 +17,7 @@ from tools.experimental_audits.winding_charge_round6.conventions import (
 )
 
 TWO_PI = 2.0 * np.pi
+_CHARGE_VALIDATION_ERROR = "charges must be finite integer-valued int64 values"
 
 
 def wrap_principal(phase: np.ndarray | float) -> np.ndarray | float:
@@ -166,8 +167,29 @@ def topological_charges_from_phases(
     return q
 
 
+def _as_int64_charges(charges: Sequence[int] | np.ndarray) -> np.ndarray:
+    """Validate charge inputs before conversion, rejecting lossy NumPy casts."""
+    raw = np.asarray(charges)
+    if raw.dtype.kind == "i":
+        return raw.astype(np.int64, copy=True)
+    if raw.dtype.kind == "u":
+        if np.any(raw > np.iinfo(np.int64).max):
+            raise ValueError(_CHARGE_VALIDATION_ERROR)
+        return raw.astype(np.int64, copy=True)
+    if raw.dtype.kind == "f":
+        if not np.all(np.isfinite(raw)):
+            raise ValueError(_CHARGE_VALIDATION_ERROR)
+        if not np.all(raw == np.rint(raw)):
+            raise ValueError(_CHARGE_VALIDATION_ERROR)
+        if np.any(raw < np.iinfo(np.int64).min) or np.any(raw >= 2**63):
+            raise ValueError(_CHARGE_VALIDATION_ERROR)
+        return raw.astype(np.int64)
+    raise ValueError(_CHARGE_VALIDATION_ERROR)
+
+
 def net_charge(charges: Sequence[int] | np.ndarray) -> int:
-    return int(np.sum(np.asarray(charges, dtype=np.int64)))
+    q = _as_int64_charges(charges)
+    return sum(int(value) for value in q.flat)
 
 
 def apply_confidence_weights(
@@ -175,7 +197,7 @@ def apply_confidence_weights(
     weights: Sequence[float] | np.ndarray | None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(scores, integer_charges_copy)``. Weights never mutate ``q``."""
-    q = np.asarray(charges, dtype=np.int64).copy()
+    q = _as_int64_charges(charges)
     if weights is None:
         return q.astype(float), q
     w = np.asarray(weights, dtype=float)
@@ -209,18 +231,18 @@ def charge_moments(
     charges: Sequence[int] | np.ndarray,
 ) -> ChargeMomentResult:
     """Compute moments; missing-sign separation is NaN + defined=False (never 0)."""
-    q = np.asarray(charges, dtype=np.int64)
+    q = _as_int64_charges(charges)
     if q.shape != (complex_.num_triangles,):
         raise ValueError("charges length must match triangle count")
     if not np.all(np.isfinite(q.astype(float))):
         raise ValueError("nonfinite charge values")
 
-    q_net = int(np.sum(q))
-    q_abs = int(np.sum(np.abs(q)))
+    q_net = sum(int(value) for value in q.flat)
+    q_abs = sum(abs(int(value)) for value in q.flat)
     pos = q > 0
     neg = q < 0
-    pos_count = int(np.sum(pos))
-    neg_count = int(np.sum(neg))
+    pos_count = int(np.count_nonzero(pos))
+    neg_count = int(np.count_nonzero(neg))
 
     nan = float("nan")
     if complex_.coordinates is None or complex_.num_triangles == 0:
@@ -243,23 +265,26 @@ def charge_moments(
         raise ValueError("nonfinite coordinates/barycenters")
 
     moment = np.sum(q[:, None].astype(float) * bary, axis=0)
+    abs_q = np.fromiter(
+        (abs(int(value)) for value in q.flat), dtype=float, count=q.size
+    ).reshape(q.shape)
 
     if q_abs > 0:
-        mag_centroid = np.sum(np.abs(q)[:, None].astype(float) * bary, axis=0) / float(q_abs)
+        mag_centroid = np.sum(abs_q[:, None] * bary, axis=0) / float(q_abs)
     else:
         mag_centroid = None
 
     if pos_count > 0:
         pos_centroid = np.sum(q[pos][:, None].astype(float) * bary[pos], axis=0) / float(
-            np.sum(q[pos])
+            sum(int(value) for value in q[pos])
         )
     else:
         pos_centroid = None
 
     if neg_count > 0:
         neg_centroid = np.sum(
-            np.abs(q[neg])[:, None].astype(float) * bary[neg], axis=0
-        ) / float(np.sum(np.abs(q[neg])))
+            abs_q[neg][:, None] * bary[neg], axis=0
+        ) / float(sum(abs(int(value)) for value in q[neg]))
     else:
         neg_centroid = None
 
