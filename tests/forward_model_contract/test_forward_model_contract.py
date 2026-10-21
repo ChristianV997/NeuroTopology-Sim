@@ -842,6 +842,90 @@ class TestForwardModelContract(unittest.TestCase):
         with self.assertRaises(CoordinateUnitMismatchError):
             audit_mne_forward_solution(mock_fwd, info=mock_info)
 
+    # -------------------------------------------------------------------------
+    # 22. Fail-closed finite geometry / moments (non-finite and zero-norm)
+    # -------------------------------------------------------------------------
+
+    def test_conductor_non_finite_sigma_rejected(self) -> None:
+        """NaN/Inf conductivity must fail closed before any forward evaluation."""
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(sigma=bad):
+                with self.assertRaises(ConductorGeometryError):
+                    ConductorModel(sigmas_sm=(bad, 0.0042, 0.33)).validate()
+
+    def test_conductor_non_finite_radius_rejected(self) -> None:
+        """NaN/Inf layer radii must fail closed."""
+        for bad in (float("nan"), float("inf")):
+            with self.subTest(radius=bad):
+                with self.assertRaises(ConductorGeometryError):
+                    ConductorModel(radii_m=(bad, 0.085, 0.09)).validate()
+
+    def test_sensor_non_finite_position_rejected(self) -> None:
+        """Non-finite electrode coordinates must fail closed with an explicit contract error."""
+        with self.assertRaises(ForwardModelContractError):
+            SensorGeometry(
+                channel_names=("Cz", "Fz", "Pz", "Oz"),
+                positions_m=(
+                    (float("nan"), 0.0, 0.09),
+                    (0.0, 0.05, 0.075),
+                    (0.0, -0.05, 0.075),
+                    (0.0, 0.0, 0.09),
+                ),
+            ).validate()
+
+    def test_source_non_finite_position_rejected(self) -> None:
+        """Non-finite source coordinates must fail closed."""
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(positions_m=((float("nan"), 0.0, 0.02),)).validate()
+
+    def test_source_non_finite_orientation_rejected(self) -> None:
+        """Non-finite fixed-orientation vectors must fail closed."""
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(
+                positions_m=((0.0, 0.0, 0.02),),
+                orientations=((float("nan"), 0.0, 0.0),),
+                is_fixed_orientation=True,
+            ).validate()
+
+    def test_zero_norm_electrode_potential_fails_closed(self) -> None:
+        """Zero-norm electrode must not raise ZeroDivisionError; contract error instead."""
+        with self.assertRaises(ConductorGeometryError):
+            compute_homogeneous_sphere_potential(
+                electrode_pos_m=(0.0, 0.0, 0.0),
+                source_pos_m=(0.0, 0.0, 0.02),
+                dipole_moment_am=(0.0, 0.0, 1e-8),
+            )
+        with self.assertRaises(ConductorGeometryError):
+            compute_concentric_spheres_potential(
+                electrode_pos_m=(0.0, 0.0, 0.0),
+                source_pos_m=(0.0, 0.0, 0.02),
+                dipole_moment_am=(0.0, 0.0, 1e-8),
+                conductor=ConductorModel(),
+            )
+
+    def test_non_finite_dipole_moment_in_potential_rejected(self) -> None:
+        """Non-finite dipole moments in analytic potentials must fail closed."""
+        with self.assertRaises(ForwardModelContractError):
+            compute_homogeneous_sphere_potential(
+                electrode_pos_m=(0.0, 0.0, 0.09),
+                source_pos_m=(0.0, 0.0, 0.02),
+                dipole_moment_am=(float("nan"), 0.0, 0.0),
+            )
+
+    def test_simulate_non_finite_dipole_moments_rejected(self) -> None:
+        """Leadfield simulation must reject NaN/Inf moments (no silent NaN potentials)."""
+        contract = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors,
+            source_space=make_synthetic_source_grid(n_sources=2, is_fixed_orientation=False),
+        )
+        n_col = contract.source_space.n_columns
+        for bad in (float("nan"), float("inf")):
+            moments = [0.0] * n_col
+            moments[0] = bad
+            with self.subTest(moment=bad):
+                with self.assertRaises(ForwardModelContractError):
+                    contract.simulate_scalp_potentials(moments)
+
 
 if __name__ == "__main__":
     unittest.main()

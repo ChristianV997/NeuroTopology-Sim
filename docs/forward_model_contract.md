@@ -23,7 +23,21 @@ The contract defines a rigorous, type-safe interface around synthetic forward so
 2. **No Biological Truth Claims**: Synthetic forward solutions and resulting inverse projections (e.g., eLORETA) do not constitute biological ground truth, direct cortical recordings, or causal neurophysiological evidence.
 3. **No Consciousness Claims**: No topology, phase winding, or source-space metric computed over synthetic forward models validates or proves theories of consciousness.
 4. **No Clinical Claims**: Outputs from this forward contract are unsuitable for clinical diagnostics, presurgical localization, or treatment planning.
-5. **Fail-Closed Geometry**: Ambiguous units (e.g. coordinates in millimeters instead of meters), mismatched coordinate frames, permuted channel lists, or sources placed outside the brain conductor shell fail closed immediately with descriptive exceptions.
+5. **Fail-Closed Geometry**: Ambiguous units (e.g. coordinates in millimeters instead of meters), mismatched coordinate frames, permuted channel lists, sources placed outside the brain conductor shell, non-finite radii/conductivities/coordinates/moments, or zero-norm electrodes fail closed immediately with descriptive exceptions.
+6. **Synthetic Contract ≠ Validated Physics / Measured EEG**: Analytic concentric-sphere leadfields and closed-form oracles in this module are **unit-verification fixtures**. They are not a validated physical head model, not a claim of agreement with measured scalp EEG, and not evidence that an inverse solution recovers biological sources.
+
+### Boundary Versus Neighboring PRs (Do Not Duplicate)
+
+| Surface | Owner | Role | Not this contract |
+| :--- | :--- | :--- | :--- |
+| `dual_engine/forward_model_contract.py` (this PR, #388) | Forward-model contract | Synthetic **source → sensor** leadfield / potential under concentric spheres; SI geometry; referencing; diagnostics | Not a sensor-space Laplacian / CSD operator |
+| `neurotopology_sim/experimental/preprocessing/spherical_csd.py` (#414) | Spherical CSD production | Sensor-space spherical-spline **CSD** (`compute_spherical_csd_transform` / `apply_spherical_csd`) over electrode positions | Not a volume conductor forward model; does not emit leadfields |
+| `tools/mne_csd_reference_audit/*` (#402) | MNE CSD reference audit | Independent NumPy transcription / pin / KKT / Legendre parity vs pinned MNE CSD | Not a forward solver; does not replace or audit #388 leadfields |
+
+Interface comparison (documentation only; #414/#402 code is out of scope here):
+- **#388 inputs**: conductor shells `(radii_m, sigmas_sm)`, source positions/orientations, sensor montage → **leadfield** \(L\) and \(V = Lq\) in volts.
+- **#414 inputs**: electrode positions (+ CSD config) and sensor time series → **CSD transform** / spatially filtered voltages (V/m² scaling under SI assumptions).
+- **#402 inputs**: the same CSD mathematical surface as the MNE pin, for audit/parity—not dual-engine forward construction.
 
 ---
 
@@ -206,15 +220,16 @@ The module provides zero-dependency, deterministic synthetic fixtures and indepe
 
 ## 7. Verification Results
 
-The test suite in `tests/forward_model_contract/test_forward_model_contract.py` executes 56 unit tests validating:
+The test suite in `tests/forward_model_contract/test_forward_model_contract.py` validates:
 
 - Rejection of millimeter units in conductor, sensors, and sources.
 - Rejection of unknown coordinate frames and unaligned cross-frame configurations without transform.
 - Affine coordinate transformation of source spaces into sensor frames.
-- Rejection of non-monotonic, non-positive, or unphysical conductor layers.
+- Rejection of non-monotonic, non-positive, non-finite, or unphysical conductor layers.
 - Multi-shell inner layer sensitivity: verified physical effect of skull conductivity $\sigma_{\text{skull}}$ and brain radius $r_{\text{brain}}$.
-- Rejection of out-of-bounds sources.
+- Rejection of out-of-bounds sources and non-finite source/orientation coordinates.
 - Non-unit fixed orientation vector rejection.
+- Fail-closed zero-norm electrode and non-finite dipole-moment handling (no `ZeroDivisionError`, no silent NaN potentials).
 - Exact dipole potential linearity and superposition ($\Delta < 10^{-18}\text{ V}$).
 - Dimensional consistency for free $(19, 48)$ and fixed $(19, 16)$ leadfield matrices.
 - Average reference column zero-sum invariant ($\Delta < 10^{-11}$) and idempotency.
@@ -225,3 +240,9 @@ The test suite in `tests/forward_model_contract/test_forward_model_contract.py` 
 - Deterministic replay bit-for-bit.
 - Strict non-promotional guardrails and disclaimer presence.
 - MNE forward auditor mock execution and validation.
+
+### Source / Math Limits (HOLD / SYNTHETIC_ONLY)
+
+- Series truncations (`n_max_terms`) are numerical cutoffs for the synthetic fixture, not claims of infinite-series physical completeness.
+- Default conductivities and radii are literature-typical engineering defaults for concentric spheres, not subject-specific tissue estimates.
+- Analytic oracles certify **internal consistency** of this synthetic solver against closed-form limits; they do not certify biological validity or measured-EEG agreement.

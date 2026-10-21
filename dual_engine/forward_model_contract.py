@@ -94,6 +94,38 @@ class SourceOutOfBoundsError(ForwardModelContractError):
     """Raised when a dipole source is positioned outside the innermost conductor shell."""
 
 
+def _require_finite(
+    value: float,
+    label: str,
+    *,
+    exc_cls: type = ForwardModelContractError,
+) -> float:
+    """Return ``value`` as float or raise ``exc_cls`` when non-finite."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise exc_cls(f"{label} must be a finite real number; got {value!r}.") from exc
+    if not math.isfinite(number):
+        raise exc_cls(f"{label} must be finite; got {number!r}.")
+    return number
+
+
+def _require_finite_vec3(
+    vec: Sequence[float],
+    label: str,
+    *,
+    exc_cls: type = ForwardModelContractError,
+) -> Tuple[float, float, float]:
+    """Validate a length-3 finite Cartesian vector."""
+    if len(vec) != 3:
+        raise exc_cls(f"{label} must be a length-3 vector; got length {len(vec)}.")
+    return (
+        _require_finite(vec[0], f"{label}[0]", exc_cls=exc_cls),
+        _require_finite(vec[1], f"{label}[1]", exc_cls=exc_cls),
+        _require_finite(vec[2], f"{label}[2]", exc_cls=exc_cls),
+    )
+
+
 # -----------------------------------------------------------------------------
 # Enums
 # -----------------------------------------------------------------------------
@@ -168,6 +200,7 @@ class ConductorModel:
             )
 
         for i, r in enumerate(self.radii_m):
+            r = _require_finite(r, f"Radius layer {i}", exc_cls=ConductorGeometryError)
             if r > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
                     f"Radius layer {i} is {r}m > 1.0m; coordinates must be in meters, not mm."
@@ -191,8 +224,12 @@ class ConductorModel:
             )
 
         for i, s in enumerate(self.sigmas_sm):
+            s = _require_finite(s, f"Conductivity layer {i}", exc_cls=ConductorGeometryError)
             if s <= 0:
                 raise ConductorGeometryError(f"Conductivity layer {i} must be positive, got {s}.")
+
+        for i, comp in enumerate(self.origin_m):
+            _require_finite(comp, f"Conductor origin[{i}]", exc_cls=ConductorGeometryError)
 
     @property
     def brain_radius_m(self) -> float:
@@ -235,7 +272,12 @@ class SensorGeometry:
             )
 
         for ch, pos in zip(self.channel_names, self.positions_m):
-            norm = math.sqrt(sum(p * p for p in pos))
+            finite_pos = _require_finite_vec3(pos, f"Channel '{ch}' position")
+            norm = math.sqrt(sum(p * p for p in finite_pos))
+            if not math.isfinite(norm) or norm <= 0.0:
+                raise ConductorGeometryError(
+                    f"Channel '{ch}' position norm must be strictly positive and finite; got {norm!r}."
+                )
             if norm > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
                     f"Channel '{ch}' position norm {norm:.2f}m > 1.0m; "
@@ -270,7 +312,12 @@ class SourceSpace:
         brain_r = conductor.brain_radius_m if conductor is not None else DEFAULT_BRAIN_RADIUS_M
 
         for i, pos in enumerate(self.positions_m):
-            norm = math.sqrt(sum(p * p for p in pos))
+            finite_pos = _require_finite_vec3(pos, f"Source index {i} position")
+            norm = math.sqrt(sum(p * p for p in finite_pos))
+            if not math.isfinite(norm):
+                raise ForwardModelContractError(
+                    f"Source index {i} position norm must be finite; got {norm!r}."
+                )
             if norm > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
                     f"Source index {i} position norm {norm:.2f}m > 1.0m; must be in meters."
@@ -292,8 +339,9 @@ class SourceSpace:
                     f"source count ({len(self.positions_m)})."
                 )
             for i, ori in enumerate(self.orientations):
-                norm = math.sqrt(sum(o * o for o in ori))
-                if abs(norm - 1.0) > 1e-4:
+                finite_ori = _require_finite_vec3(ori, f"Fixed orientation vector at index {i}")
+                norm = math.sqrt(sum(o * o for o in finite_ori))
+                if not math.isfinite(norm) or abs(norm - 1.0) > 1e-4:
                     raise ForwardModelContractError(
                         f"Fixed orientation vector at index {i} must be unit norm; got {norm}."
                     )
@@ -416,12 +464,16 @@ class ForwardModelContractResult:
                 raise LeadfieldDimensionMismatchError(
                     f"Moment vector at step {t_idx} has length {len(q_vec)}, expected {n_col}."
                 )
+            finite_q = [
+                _require_finite(qj, f"Dipole moment[{t_idx},{j}]")
+                for j, qj in enumerate(q_vec)
+            ]
             v_t = [0.0] * n_ch
             for i in range(n_ch):
                 row_sum = 0.0
                 row = self.leadfield[i]
                 for j in range(n_col):
-                    row_sum += row[j] * q_vec[j]
+                    row_sum += row[j] * finite_q[j]
                 v_t[i] = row_sum
             out_potentials.append(v_t)
 
@@ -477,8 +529,26 @@ def compute_homogeneous_sphere_potential(
     Uses the standard Legendre series expansion (Nunez & Srinivasan 2006, Frank 1952).
     Linear in dipole_moment_am, unconditionally convergent for r_source < sphere_radius.
     """
+    electrode_pos_m = _require_finite_vec3(electrode_pos_m, "electrode_pos_m")
+    source_pos_m = _require_finite_vec3(source_pos_m, "source_pos_m")
+    dipole_moment_am = _require_finite_vec3(dipole_moment_am, "dipole_moment_am")
+    sphere_radius_m = _require_finite(
+        sphere_radius_m, "sphere_radius_m", exc_cls=ConductorGeometryError
+    )
+    conductivity_sm = _require_finite(
+        conductivity_sm, "conductivity_sm", exc_cls=ConductorGeometryError
+    )
+    if conductivity_sm <= 0.0:
+        raise ConductorGeometryError(f"conductivity_sm must be positive; got {conductivity_sm}.")
+    if sphere_radius_m <= 0.0:
+        raise ConductorGeometryError(f"sphere_radius_m must be positive; got {sphere_radius_m}.")
+
     rs = math.sqrt(sum(p * p for p in source_pos_m))
     re = math.sqrt(sum(p * p for p in electrode_pos_m))
+    if not math.isfinite(re) or re <= 0.0:
+        raise ConductorGeometryError(
+            f"Electrode position norm must be strictly positive and finite; got {re!r}."
+        )
 
     # Center dipole limit (analytic exact)
     if rs < 1e-12:
@@ -545,6 +615,9 @@ def compute_concentric_spheres_potential(
     physical effect on the surface potential.
     """
     conductor.validate()
+    electrode_pos_m = _require_finite_vec3(electrode_pos_m, "electrode_pos_m")
+    source_pos_m = _require_finite_vec3(source_pos_m, "source_pos_m")
+    dipole_moment_am = _require_finite_vec3(dipole_moment_am, "dipole_moment_am")
     radii = conductor.radii_m
     sigmas = conductor.sigmas_sm
     K = len(radii)
@@ -553,6 +626,10 @@ def compute_concentric_spheres_potential(
 
     rs = math.sqrt(sum(p * p for p in source_pos_m))
     re = math.sqrt(sum(p * p for p in electrode_pos_m))
+    if not math.isfinite(re) or re <= 0.0:
+        raise ConductorGeometryError(
+            f"Electrode position norm must be strictly positive and finite; got {re!r}."
+        )
 
     def _get_cn(n: int) -> float:
         if K == 1:
