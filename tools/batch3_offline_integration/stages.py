@@ -5,6 +5,7 @@ from typing import Any, Dict, Mapping, Optional
 
 from tools.batch3_offline_integration.allowlist import StageSpec, resolve_callable
 from tools.batch3_offline_integration.fixture_producers import (
+    display_fixture_name,
     load_workflow_request,
     substitute_artifact_lineage,
     synthetic_registry_payload,
@@ -45,8 +46,8 @@ def execute_stage(
     """Execute one allowlisted stage or return a marked substitute/skip."""
     record = _base_record(spec)
     record["configuration"] = {
-        "fixture_name": fixture_name,
-        "prior_run_dir": prior_run_dir,
+        "fixture_name": display_fixture_name(fixture_name),
+        "prior_run_dir_supplied": prior_run_dir is not None,
         "force_fail_stage": force_fail_stage,
     }
 
@@ -59,7 +60,7 @@ def execute_stage(
 
     if spec.stage_id == "load_synthetic_fixture":
         record["execution_mode"] = ExecutionMode.FIXTURE_PRODUCER.value
-        record["inputs"] = {"fixture_name": fixture_name}
+        record["inputs"] = {"fixture_name": display_fixture_name(fixture_name)}
         try:
             output = load_workflow_request(fixture_name=fixture_name)
             if contains_nonfinite(output):
@@ -364,7 +365,17 @@ def _run_release(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
 def _run_optional_lineage(
     spec: StageSpec, record: Dict[str, Any], *, prior_run_dir: Optional[str]
 ) -> Dict[str, Any]:
-    if not prior_run_dir:
+    if prior_run_dir is not None:
+        # This harness is fixture-only. Never scan caller-controlled run trees:
+        # they may contain participant or dataset payloads.
+        record["execution_mode"] = ExecutionMode.NOT_EXECUTED.value
+        record["outcome"] = StageOutcome.REJECTED_INVALID_INPUT.value
+        record["inputs"] = {"prior_run_dir_supplied": True}
+        record["error"] = "caller_run_directory_not_scanned"
+        record["actual_upstream_producer_ran"] = False
+        return record
+
+    if prior_run_dir is None:
         record["execution_mode"] = ExecutionMode.FIXTURE_SUBSTITUTE.value
         record["outcome"] = StageOutcome.SKIPPED_OPTIONAL_ABSENT.value
         record["missing_dependency"] = "prior_run_dir"
@@ -374,31 +385,4 @@ def _run_optional_lineage(
         )
         record["actual_upstream_producer_ran"] = False
         return record
-    fn, missing = resolve_callable(spec)
-    if fn is None:
-        record["execution_mode"] = ExecutionMode.FIXTURE_SUBSTITUTE.value
-        record["outcome"] = StageOutcome.FIXTURE_SUBSTITUTED.value
-        record["missing_dependency"] = missing
-        record["outputs"] = substitute_artifact_lineage(
-            missing_dependency=str(missing),
-            reason="optional extract_run unavailable",
-        )
-        return record
-    record["execution_mode"] = ExecutionMode.ALLOWLISTED_CALLABLE.value
-    record["inputs"] = {"prior_run_dir": prior_run_dir}
-    try:
-        payload = fn(prior_run_dir)
-        record["outputs"] = json_safe(payload)
-        record["actual_upstream_producer_ran"] = True
-        record["outcome"] = StageOutcome.SUCCEEDED.value
-        return record
-    except Exception as exc:
-        record["execution_mode"] = ExecutionMode.FIXTURE_SUBSTITUTE.value
-        record["outcome"] = StageOutcome.FIXTURE_SUBSTITUTED.value
-        record["missing_dependency"] = f"extract_run_error:{type(exc).__name__}"
-        record["outputs"] = substitute_artifact_lineage(
-            missing_dependency=f"extract_run_error:{type(exc).__name__}",
-            reason="optional lineage call failed; fixture substitute recorded",
-        )
-        record["actual_upstream_producer_ran"] = False
-        return record
+    raise AssertionError("unreachable optional lineage state")

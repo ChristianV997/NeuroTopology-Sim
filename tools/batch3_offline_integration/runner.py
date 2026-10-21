@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence
 
-from tools.batch3_offline_integration.allowlist import STAGE_ORDER, STAGE_SPECS, assert_stage_allowlisted
+from tools.batch3_offline_integration.allowlist import STAGE_ORDER, STAGE_SPECS
 from tools.batch3_offline_integration.guards import no_network
+from tools.batch3_offline_integration.fixture_producers import MAX_FIXTURE_BYTES, display_fixture_name
 from tools.batch3_offline_integration.schema import (
     EVIDENCE_CLASS,
     RELATED_BUT_DISTINCT,
@@ -29,9 +30,27 @@ def run_offline_integration(
     Returns an ENGINEERING_ONLY / SYNTHETIC_ONLY report. Never claims scientific
     validity. Workflow success is distinct from scientific validity.
     """
-    selected = list(stage_ids) if stage_ids is not None else list(STAGE_ORDER)
-    for stage_id in selected:
-        assert_stage_allowlisted(stage_id)
+    if stage_ids is None:
+        selected = list(STAGE_ORDER)
+    else:
+        if isinstance(stage_ids, (str, bytes)):
+            raise ValueError("stage_ids must be a sequence of allowlisted stage identifiers")
+        selected = []
+        try:
+            for stage_id in stage_ids:
+                if len(selected) >= len(STAGE_ORDER):
+                    raise ValueError("stage_ids exceeds the maximum number of allowlisted stages")
+                selected.append(stage_id)
+        except TypeError:
+            raise ValueError("stage_ids must be a sequence of allowlisted stage identifiers") from None
+    if not selected:
+        raise ValueError("stage_ids must select at least one allowlisted stage")
+    if any(not isinstance(stage_id, str) or stage_id not in STAGE_ORDER for stage_id in selected):
+        raise ValueError("stage_ids must contain only fixed-allowlist stage identifiers")
+    if force_fail_stage is not None and (
+        not isinstance(force_fail_stage, str) or force_fail_stage not in STAGE_ORDER
+    ):
+        raise ValueError("force_fail_stage must match a fixed-allowlist stage identifier")
 
     specs = [s for s in STAGE_SPECS if s.stage_id in selected]
     specs.sort(key=lambda s: s.order)
@@ -88,6 +107,15 @@ def run_offline_integration(
     observed_order = [r["stage_id"] for r in stage_records]
     expected_order = [s.stage_id for s in specs]
     order_ok = observed_order == expected_order
+    rejected_input = any(
+        r["outcome"]
+        in {
+            StageOutcome.REJECTED_NONFINITE.value,
+            StageOutcome.REJECTED_SCHEMA.value,
+            StageOutcome.REJECTED_INVALID_INPUT.value,
+        }
+        for r in stage_records
+    )
 
     release_decision = None
     release_rec = context["stages"].get("release_evaluate") or {}
@@ -102,10 +130,12 @@ def run_offline_integration(
         "network_accessed": False,
         "dependencies_installed": False,
         "data_downloaded": False,
+        "caller_run_data_scanned": False,
+        "fixture_max_bytes": MAX_FIXTURE_BYTES,
         "scientific_validity_claimed": False,
         "scientific_pass_emitted": False,
-        "workflow_executed_successfully": bool(required_ok and order_ok),
-        "fixture_name": fixture_name,
+        "workflow_executed_successfully": bool(required_ok and order_ok and not rejected_input),
+        "fixture_name": display_fixture_name(fixture_name),
         "stage_order_expected": expected_order,
         "stage_order_observed": observed_order,
         "stage_order_ok": order_ok,

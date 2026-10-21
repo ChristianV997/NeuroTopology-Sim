@@ -7,6 +7,8 @@ substitutes and must never claim the real upstream producer executed.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
@@ -14,14 +16,83 @@ from tools.batch3_offline_integration.serialization import sha256_hex
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 DEFAULT_REQUEST_NAME = "workflow_request.json"
+MAX_FIXTURE_BYTES = 1024 * 1024
+ALLOWED_FIXTURE_NAMES = frozenset(
+    {
+        "complete_plan_request.json",
+        "incomplete_plan_request.json",
+        "nonfinite_probe.json",
+        "release_bundle_synthetic.json",
+        "workflow_request.json",
+    }
+)
 
 PRODUCER_LABEL = "fixture_producer"
 SUBSTITUTE_LABEL = "fixture_substitute"
 
 
+def _is_bundled_filename(name: Any) -> bool:
+    return bool(
+        isinstance(name, str)
+        and name
+        and name in ALLOWED_FIXTURE_NAMES
+        and "/" not in name
+        and "\\" not in name
+        and not Path(name).is_absolute()
+    )
+
+
+def display_fixture_name(name: Any) -> str:
+    """Avoid reflecting rejected caller paths into reports."""
+    return name if _is_bundled_filename(name) else "<rejected>"
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(token: str) -> None:
+    raise ValueError(f"non-finite JSON constant: {token}")
+
+
 def _read_fixture(name: str) -> Dict[str, Any]:
-    path = FIXTURE_DIR / name
-    data = json.loads(path.read_text(encoding="utf-8"))
+    if not _is_bundled_filename(name):
+        raise ValueError("fixture name must be a bundled filename")
+
+    if FIXTURE_DIR.is_symlink() or (hasattr(FIXTURE_DIR, "is_junction") and FIXTURE_DIR.is_junction()):
+        raise ValueError("fixture directory must not be a symlink or junction")
+    fixture_root = FIXTURE_DIR.resolve(strict=True)
+    path = fixture_root / name
+    if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+        raise ValueError("fixture must not be a symlink or junction")
+    resolved = path.resolve(strict=True)
+    if resolved.parent != fixture_root:
+        raise ValueError("fixture path escapes the bundled fixture directory")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(resolved, flags)
+    try:
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = -1
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise ValueError("fixture must be a regular file")
+            raw = handle.read(MAX_FIXTURE_BYTES + 1)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+    if len(raw) > MAX_FIXTURE_BYTES:
+        raise ValueError("fixture exceeds the 1 MiB size limit")
+    data = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+        parse_constant=_reject_nonfinite_constant,
+    )
     if not isinstance(data, dict):
         raise ValueError("fixture root must be an object")
     return data

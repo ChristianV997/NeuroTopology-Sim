@@ -85,12 +85,12 @@ STAGE_SPECS: Tuple[StageSpec, ...] = (
     StageSpec(
         stage_id="optional_artifact_lineage",
         order=70,
-        title="Optional simulation artifact lineage",
-        module="tools.simulation_artifacts.extractor",
-        qualname="extract_run",
+        title="Optional artifact lineage (caller paths are never scanned)",
+        module="tools.batch3_offline_integration.fixture_producers",
+        qualname="substitute_artifact_lineage",
         required=False,
         depends_on=("load_synthetic_fixture",),
-        optional_dependency=True,
+        optional_dependency=False,
     ),
 )
 

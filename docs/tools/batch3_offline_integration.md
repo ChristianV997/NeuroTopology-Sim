@@ -1,6 +1,6 @@
 # Batch 3 Offline Integration Harness
 
-Status: **implemented**. Deterministic, offline fixture runner that composes
+Status: **implemented**. Deterministic, fixture-only runner that composes
 merged-main research-cycle stages into one synthetic end-to-end workflow for
 **execution-order and failure-propagation** testing.
 
@@ -35,11 +35,36 @@ Audited and left alone because they solve different problems:
 4. `preflight` → `tools.research_cycle_preflight.compose.run_preflight`
 5. `registry_probe` → `tools.research_cycle.registry.ResearchCycleRegistry`
 6. `release_evaluate` → `tools.research_cycle_release.evaluator.evaluate_research_cycle_release`
-7. `optional_artifact_lineage` → `tools.simulation_artifacts.extractor.extract_run` (optional)
+7. `optional_artifact_lineage` — fixture substitute only; caller paths are never scanned
 
-Missing optional upstream components are replaced only by a clearly marked
-fixture substitute. The report records `missing_dependency` and
+The artifact-lineage slot is deliberately a fixture substitute. A caller-supplied
+`--prior-run-dir` is rejected without scanning the directory; run trees may
+contain participant or dataset payloads. The report records the rejection and
+does not reflect the path or its contents. Missing optional components are
+represented by a clearly marked fixture substitute with
 `actual_upstream_producer_ran=false`.
+
+## Input and resource boundary
+
+- `--fixture-name` accepts only one of the five source-controlled filenames in
+  the bundled `fixtures/` directory; absolute paths, traversal, separators,
+  symlinks, and junctions are rejected.
+- Fixture files are opened read-only and capped at 1 MiB. Where the platform
+  exposes `O_NOFOLLOW`, it is used for the final file open. This is not a defense
+  against hostile concurrent replacement of parent directories or a compromised
+  checkout.
+- Malformed, duplicate-key, non-finite, non-object, or oversized fixtures
+  produce a rejected stage and a nonzero CLI status; rejected external paths are
+  represented as `<rejected>` in reports.
+- An empty stage selection and an unknown forced-failure stage are invalid API
+  inputs rather than successful empty runs.
+- The runner creates no intermediate or temporary files. `--output` is an
+  explicit caller-selected report destination.
+- The no-network guard replaces Python socket entry points during execution.
+  It is an in-process guard, not an operating-system sandbox; it does not claim
+  to constrain native code, cached socket references, or unrelated processes.
+- No caller-provided run directory is opened, no dataset is downloaded, and no
+  participant payload is read by this fixture-only runner.
 
 ## Result semantics
 
@@ -47,7 +72,7 @@ fixture substitute. The report records `missing_dependency` and
 - `result_label = ENGINEERING_ONLY` (release stage may surface `SYNTHETIC_ONLY`)
 - `workflow_executed_successfully` is distinct from scientific validity
 - `scientific_validity_claimed` / `scientific_pass_emitted` always false
-- No network, no installs, no dataset downloads
+- No network access, installs, dataset downloads, or caller-run scans
 
 ## CLI
 
@@ -60,4 +85,6 @@ python -m tools.batch3_offline_integration \
 python scripts/run_batch3_offline_integration.py --json-stdout
 ```
 
-Exit code `0` only when required stages succeed in allowlist order.
+Exit code `0` only when required stages succeed in allowlist order and no input
+is rejected. Invalid fixture paths and unsupported `--prior-run-dir` inputs
+exit nonzero with a structured JSON report when `--json-stdout` is requested.

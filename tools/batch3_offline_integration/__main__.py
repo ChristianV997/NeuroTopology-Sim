@@ -10,6 +10,7 @@ if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from tools.batch3_offline_integration.runner import run_offline_integration, write_report
+from tools.batch3_offline_integration.allowlist import STAGE_ORDER
 from tools.batch3_offline_integration.serialization import dumps
 
 
@@ -17,7 +18,7 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--fixture-name", default="workflow_request.json")
     p.add_argument("--prior-run-dir", default=None)
-    p.add_argument("--force-fail-stage", default=None)
+    p.add_argument("--force-fail-stage", choices=STAGE_ORDER, default=None)
     p.add_argument("--output", default=None)
     p.add_argument("--json-stdout", action="store_true")
     return p.parse_args(argv)
