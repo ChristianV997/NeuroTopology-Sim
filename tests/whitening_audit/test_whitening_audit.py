@@ -476,6 +476,55 @@ class TestWhiteningAudit(unittest.TestCase):
         with self.assertRaises(WhiteningAuditError):
             model.transform([[1.0, 2.0]])
 
+    def test_tiny_spd_condition_number_not_false_inf(self) -> None:
+        """Regression: positive tiny eigenvalues must not report raw_condition_number=inf.
+
+        An absolute 1e-15 gate previously forced inf whenever lambda_min <= 1e-15
+        even for well-conditioned micro-scale SPD matrices (true cond ≈ 2).
+        """
+        cov = [[2e-16, 0.0], [0.0, 1e-16]]
+        _, rep = project_spd_covariance(cov, eigenvalue_floor=1e-20)
+        self.assertGreater(rep.raw_min_eigenvalue, 0.0)
+        self.assertTrue(math.isfinite(rep.raw_condition_number))
+        self.assertAlmostEqual(rep.raw_condition_number, 2.0, delta=1e-6)
+
+    def test_tiny_floored_covariance_marks_material_correction(self) -> None:
+        """Regression: flooring eigenvalues on micro-scale cov must disclose material repair.
+
+        Absolute Frobenius / relative gates keyed at 1e-15 previously hid repairs
+        when ||Sigma||_F itself was << 1e-15 (rel_norm forced to 0).
+        """
+        scale = 1e-16
+        cov = [[scale, 0.5 * scale], [0.5 * scale, scale]]
+        _, rep = project_spd_covariance(cov, eigenvalue_floor=1e-15)
+        self.assertGreater(rep.n_floored_eigenvalues, 0)
+        self.assertGreater(rep.correction_frobenius_norm, 0.0)
+        self.assertTrue(math.isfinite(rep.relative_correction_norm))
+        self.assertGreater(rep.relative_correction_norm, 0.0)
+        self.assertTrue(rep.is_correction_material)
+
+    def test_jacobi_matches_independent_numpy_oracle_when_available(self) -> None:
+        """Compare Jacobi eigenvalues to NumPy eigh on random SPD (skip if NumPy absent)."""
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("numpy unavailable; independent oracle skipped")
+
+        from tools.whitening_audit.matrix_ops import jacobi_eigh
+
+        rng = __import__("random").Random(20261021)
+        d = 4
+        B = [[rng.uniform(-1.0, 1.0) for _ in range(d)] for _ in range(d)]
+        A = [[0.0] * d for _ in range(d)]
+        for i in range(d):
+            for j in range(d):
+                A[i][j] = sum(B[i][k] * B[j][k] for k in range(d)) + (0.5 if i == j else 0.0)
+        evals, _ = jacobi_eigh(A)
+        oracle = sorted(np.linalg.eigvalsh(np.asarray(A, dtype=float)), reverse=True)
+        for got, want in zip(evals, oracle):
+            # Relative tolerance — do not loosen absolute floors to manufacture a pass.
+            self.assertAlmostEqual(got, float(want), delta=max(1e-12, 1e-9 * abs(float(want))))
+
 
 if __name__ == "__main__":
     unittest.main()

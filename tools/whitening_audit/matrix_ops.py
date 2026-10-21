@@ -315,13 +315,25 @@ def project_spd_covariance(
 
     raw_min = evals[-1]
     raw_max = evals[0]
-    raw_cond = (raw_max / raw_min) if raw_min > 1e-15 else float("inf")
+    # Condition number is scale-invariant: only non-positive / non-finite minima
+    # (or overflowed ratios) are infinite — never an absolute 1e-15 cutoff.
+    if raw_min > 0.0 and math.isfinite(raw_min) and math.isfinite(raw_max):
+        raw_cond = raw_max / raw_min
+        if not math.isfinite(raw_cond):
+            raw_cond = float("inf")
+    else:
+        raw_cond = float("inf")
 
     n_floored = sum(1 for ev in evals if ev < eigenvalue_floor)
     repaired_evals = [max(ev, eigenvalue_floor) for ev in evals]
     repaired_min = repaired_evals[-1]
     repaired_max = repaired_evals[0]
-    repaired_cond = repaired_max / repaired_min
+    if repaired_min > 0.0 and math.isfinite(repaired_min) and math.isfinite(repaired_max):
+        repaired_cond = repaired_max / repaired_min
+        if not math.isfinite(repaired_cond):
+            repaired_cond = float("inf")
+    else:
+        repaired_cond = float("inf")
 
     # Reconstruct V * diag(repaired_evals) * V^T
     repaired_cov: List[List[float]] = [[0.0] * n for _ in range(n)]
@@ -335,9 +347,18 @@ def project_spd_covariance(
     diff = matrix_subtract(repaired_cov, cov)
     corr_norm = matrix_frobenius_norm(diff)
     cov_norm = matrix_frobenius_norm(cov)
-    rel_norm = (corr_norm / cov_norm) if cov_norm > 1e-15 else 0.0
+    if cov_norm > 0.0 and math.isfinite(cov_norm):
+        rel_norm = corr_norm / cov_norm
+        if not math.isfinite(rel_norm):
+            rel_norm = float("inf")
+    else:
+        # Do not force 0.0 for micro-scale covariances — that hid real floors.
+        rel_norm = 0.0 if corr_norm == 0.0 else float("inf")
 
+    # Material if eigenvalues were floored and either absolute or relative
+    # correction exceeds numerical noise (relative path covers micro-scale SPD).
     is_material = (n_floored > 0) and (corr_norm > 1e-10 or rel_norm > 1e-6)
+
 
     report = SPDRepairReport(
         raw_min_eigenvalue=raw_min,

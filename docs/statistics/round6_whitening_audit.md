@@ -69,13 +69,13 @@ The verifier regularizes $\Sigma_{\text{raw}}$ via spectral eigenvalue flooring:
 The audit framework mandates full transparency around any covariance modification through `SPDRepairReport`:
 - `raw_min_eigenvalue`: $\lambda_{\min}(\Sigma_{\text{raw}})$.
 - `raw_max_eigenvalue`: $\lambda_{\max}(\Sigma_{\text{raw}})$.
-- `raw_condition_number`: $\lambda_{\max} / \lambda_{\min}$.
+- `raw_condition_number`: $\lambda_{\max} / \lambda_{\min}$ when $\lambda_{\min} > 0$ and finite; otherwise $\infty$. (Scale-invariant — not gated by an absolute $10^{-15}$ cutoff.)
 - `applied_floor`: $\epsilon_{\text{floor}}$ (default $10^{-6}$).
 - `repaired_min_eigenvalue`: $\max(\lambda_{\min}, \epsilon_{\text{floor}})$.
 - `repaired_condition_number`: $\lambda_{\max}' / \lambda_{\min}'$.
 - `correction_frobenius_norm`: $\|\Sigma_{\text{spd}} - \Sigma_{\text{raw}}\|_F$.
-- `relative_correction_norm`: $\|\Sigma_{\text{spd}} - \Sigma_{\text{raw}}\|_F / \|\Sigma_{\text{raw}}\|_F$.
-- `is_correction_material`: `True` if any eigenvalue was clamped and the modification exceeds numerical tolerance ($10^{-10}$).
+- `relative_correction_norm`: $\|\Sigma_{\text{spd}} - \Sigma_{\text{raw}}\|_F / \|\Sigma_{\text{raw}}\|_F$ when $\|\Sigma_{\text{raw}}\|_F > 0$.
+- `is_correction_material`: `True` when any eigenvalue was floored and $(\|\Delta\|_F > 10^{-10}$ or relative correction $> 10^{-6})$. Relative correction (not an absolute $\|\Sigma\|_F > 10^{-15}$ gate) keeps micro-scale repairs disclosed.
 - `n_floored_eigenvalues`: Number of eigenvalues shifted by the projection.
 
 ---
