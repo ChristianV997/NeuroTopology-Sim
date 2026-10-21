@@ -9,6 +9,7 @@ against the measured numbers rather than assuming the algorithm meets them.
 """
 from __future__ import annotations
 
+import math
 import random
 import unittest
 
@@ -86,6 +87,67 @@ class MvIaaftTests(unittest.TestCase):
     def test_report_declares_what_is_preserved(self):
         _, report = N.mv_iaaft_rank_adjusted(self.x, 3)
         self.assertEqual(report.status["intended_use"], "MARGINAL_PRESERVING_NULL_WITH_APPROXIMATE_AUTO_SPECTRA")
+
+
+class CsdRelativeErrorTests(unittest.TestCase):
+    def test_tiny_scale_does_not_hide_a_large_relative_error(self):
+        target = 1e-20
+        actual = 1.21e-20
+
+        error = N._csd_rel_error([[[actual]]], [[[target]]])
+
+        # Independent scalar oracle: |1.21*t - t| / |t| = 0.21.
+        self.assertAlmostEqual(error, 0.21, delta=1e-14)
+
+    def test_relative_error_is_scale_invariant(self):
+        base = [[2.0, complex(0.3, 0.4)], [complex(0.3, -0.4), 1.0]]
+        for scale in (1e-200, 1e-20, 1.0, 1e20, 1e200):
+            with self.subTest(scale=scale):
+                target = [[[scale * value for value in row] for row in base]]
+                factor = 1.21 * scale
+                actual = [[[factor * value for value in row] for row in base]]
+
+                error = N._csd_rel_error(actual, target)
+
+                self.assertAlmostEqual(error, 0.21, delta=1e-14)
+
+    def test_both_zero_inputs_have_zero_relative_error(self):
+        self.assertEqual(N._csd_rel_error([[[0j]]], [[[0j]]]), 0.0)
+
+    def test_nonzero_actual_with_zero_target_fails_closed(self):
+        error = N._csd_rel_error([[[1e-20]]], [[[0.0]]])
+        self.assertEqual(error, math.inf)
+
+    def test_zero_actual_with_nonzero_target_has_unit_relative_error(self):
+        self.assertEqual(N._csd_rel_error([[[0.0]]], [[[1e-20]]]), 1.0)
+
+    def test_non_finite_values_fail_closed(self):
+        for actual, target in (
+            (float("nan"), 1.0),
+            (float("inf"), 1.0),
+            (1.0, float("nan")),
+            (1.0, float("inf")),
+        ):
+            with self.subTest(actual=actual, target=target):
+                error = N._csd_rel_error([[[actual]]], [[[target]]])
+                self.assertEqual(error, math.inf)
+
+    def test_large_finite_hermitian_inputs_do_not_overflow(self):
+        target = [[[1.7e308, -1.7e308], [-1.7e308, 1.7e308]]]
+        actual = [[[1.7e308, 1.7e308], [1.7e308, 1.7e308]]]
+
+        error = N._csd_rel_error(actual, target)
+
+        self.assertAlmostEqual(error, math.sqrt(2.0), delta=1e-14)
+
+    def test_small_residual_survives_extreme_target_dynamic_range(self):
+        target = [[[1e160, 0.0], [0.0, 1e-160]]]
+        actual = [[[1e160, 0.0], [0.0, 2e-160]]]
+
+        error = N._csd_rel_error(actual, target)
+
+        # The only residual is 1e-160 against a Frobenius target norm of 1e160.
+        self.assertTrue(math.isclose(error, 1e-320, rel_tol=0.1, abs_tol=0.0), error)
 
 
 if __name__ == "__main__":
