@@ -108,6 +108,38 @@ def test_weighted_orthogonality_and_energy_closure_on_disk():
     assert decomp.relative_reconstruction_error < ATOL
 
 
+def test_zero_signal_has_defined_zero_relative_errors():
+    result = decompose(disk_single_triangle(), np.zeros(3))
+    assert result.accepted
+    assert result.energy_total == 0.0
+    assert result.relative_reconstruction_error == 0.0
+    assert result.relative_energy_error == 0.0
+
+
+def test_relative_errors_are_scale_invariant_for_nonzero_signal():
+    """Independent audit diagnostics must not use an absolute epsilon floor."""
+    complex_ = disk_quad_fan()
+    rng = np.random.default_rng(20261021)
+    omega = rng.normal(size=complex_.num_edges)
+    weights = rng.uniform(0.5, 2.5, size=complex_.num_edges)
+
+    for scale in (1e-100, 1e100):
+        result = decompose(complex_, scale * omega, weights_edges=weights)
+        assert result.accepted
+        expected_reconstruction = result.reconstruction_residual_w1 / np.sqrt(result.energy_total)
+        expected_energy = abs(
+            result.energy_total
+            - result.energy_exact
+            - result.energy_coexact
+            - result.energy_harmonic
+        ) / result.energy_total
+
+        assert result.relative_reconstruction_error == pytest.approx(
+            expected_reconstruction, rel=1e-10, abs=0.0
+        )
+        assert result.relative_energy_error == pytest.approx(expected_energy, rel=1e-10, abs=0.0)
+
+
 def test_ill_conditioned_weights_rejected():
     c = disk_single_triangle()
     omega = np.array([0.1, -0.2, 0.3])
