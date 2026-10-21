@@ -101,6 +101,55 @@ def _normalize_sample_rate(value: Any) -> float | None:
     return rate if math.isfinite(rate) and rate > 0 else None
 
 
+def _is_sample_index(value: Any) -> bool:
+    """Accept integral sample indices without accepting bools or coercible text."""
+    return isinstance(value, numbers.Integral) and not isinstance(value, bool)
+
+
+def _invalid_sample_bounds_result(
+    *,
+    source_id: str | None,
+    source_sha256: str | None,
+    mne_available: bool,
+    mne_version: str | None,
+) -> ConversionResult:
+    """Return a fail-closed, value-redacted result for invalid bounds."""
+    block = CanonicalInMemorySignalBlock(
+        schema_version=SCHEMA_VERSION,
+        status=BlockStatus.REJECTED,
+        reason_codes=(ReasonCode.INVALID_SAMPLE_BOUNDS.value,),
+        channel_names=(),
+        channel_types=(),
+        units=(),
+        sample_rate_hz=None,
+        time_origin=None,
+        block_start_sample=None,
+        block_end_sample=None,
+        n_channels=0,
+        n_samples=0,
+        data_shape=(),
+        bad_channels=(),
+        events=(),
+        annotations=(),
+        reference=None,
+        montage_name=None,
+        montage_coordinates=None,
+        preprocessing_history=(),
+        source_id=source_id,
+        source_sha256=source_sha256,
+        checksum_state="unknown" if not source_sha256 else "declared",
+        scientific_pass=False,
+        data=None,
+        warnings=(
+            "sample bounds must be non-negative integer half-open bounds "
+            "within the available sample range",
+        ),
+        mne_available=mne_available,
+        mne_version=mne_version,
+    )
+    return ConversionResult(block=block, input_fingerprint="", mutated_input=False)
+
+
 def convert_in_memory_block(
     payload: Mapping[str, Any],
     *,
@@ -335,6 +384,18 @@ def convert_from_mne_object(
     metadata when present; otherwise left unknown (never defaulted to ``V``).
     """
     available, version = _probe_mne()
+    # Validate caller-provided bounds before any coercion or object slicing.
+    # NumPy integral scalars are accepted, while bools, floats, and numeric
+    # strings must not be silently changed by int().
+    if not _is_sample_index(start_sample) or (
+        stop_sample is not None and not _is_sample_index(stop_sample)
+    ):
+        return _invalid_sample_bounds_result(
+            source_id=source_id,
+            source_sha256=source_sha256,
+            mne_available=available,
+            mne_version=version,
+        )
     if not available:
         block = CanonicalInMemorySignalBlock(
             schema_version=SCHEMA_VERSION,
@@ -369,6 +430,37 @@ def convert_from_mne_object(
         return ConversionResult(block=block, input_fingerprint="", mutated_input=False)
 
     import mne
+
+    n_times = getattr(obj, "n_times", None)
+    if n_times is not None and not _is_sample_index(n_times):
+        return _invalid_sample_bounds_result(
+            source_id=source_id,
+            source_sha256=source_sha256,
+            mne_available=True,
+            mne_version=version,
+        )
+    effective_stop = n_times if stop_sample is None else stop_sample
+    if (
+        start_sample < 0
+        or (effective_stop is not None and effective_stop <= start_sample)
+        or (
+            n_times is not None
+            and (
+                start_sample >= n_times
+                or (effective_stop is not None and effective_stop > n_times)
+            )
+        )
+    ):
+        return _invalid_sample_bounds_result(
+            source_id=source_id,
+            source_sha256=source_sha256,
+            mne_available=True,
+            mne_version=version,
+        )
+
+    # Coercion is now safe: validation established integral, in-range bounds.
+    start_sample = int(start_sample)
+    stop_sample = int(effective_stop) if effective_stop is not None else None
 
     info = getattr(obj, "info", None)
     if info is None:
@@ -411,9 +503,6 @@ def convert_from_mne_object(
 
     # Data slice — Raw and Epochs expose different APIs.
     data = None
-    n_times = getattr(obj, "n_times", None)
-    if stop_sample is None:
-        stop_sample = int(n_times) if n_times is not None else None
     try:
         if hasattr(obj, "get_data") and not hasattr(obj, "preload"):
             # Epochs-like
@@ -430,9 +519,11 @@ def convert_from_mne_object(
                 data = arr[0]
             payload_events = []
         elif hasattr(obj, "__getitem__"):
-            start = int(start_sample)
-            stop = int(stop_sample) if stop_sample is not None else None
-            picked = obj[:, start:stop] if stop is not None else obj[:, start:]
+            picked = (
+                obj[:, start_sample:stop_sample]
+                if stop_sample is not None
+                else obj[:, start_sample:]
+            )
             data = picked[0]
             warnings_extra = []
             payload_events = []
@@ -488,8 +579,8 @@ def convert_from_mne_object(
             else None
         ),
         "time_origin": time_origin,
-        "block_start_sample": int(start_sample),
-        "block_end_sample": int(stop_sample) if stop_sample is not None else None,
+        "block_start_sample": start_sample,
+        "block_end_sample": stop_sample,
         "bad_channels": bads,
         "events": payload_events,
         "annotations": annotations,
