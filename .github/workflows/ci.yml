@@ -8,12 +8,12 @@ on:
   workflow_dispatch:
     inputs:
       diff_base_sha:
-        description: Optional full base commit SHA for focused EEG candidate discovery
-        required: false
+        description: Full base commit SHA for focused EEG candidate discovery
+        required: true
         type: string
       diff_head_sha:
-        description: Optional full head commit SHA for focused EEG candidate discovery
-        required: false
+        description: Full head commit SHA for focused EEG candidate discovery
+        required: true
         type: string
 
 concurrency:
@@ -220,6 +220,22 @@ jobs:
       - name: Install EEG profile dependencies
         run: python -m pip install --no-cache-dir -r requirements-eeg.txt
 
+      - name: Detect changed MNE CSD reference paths
+        id: mne_csd_reference_scope
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before || github.sha }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA" | grep -Eq '^(tools/mne_csd_reference_audit/(kkt|legendre|montages|pin)\.py|tests/optional_live_mne/test_mne_csd_live_parity\.py)$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pin MNE for the independent CSD parity job
+        if: steps.mne_csd_reference_scope.outputs.changed == 'true'
+        run: python -m pip install --no-cache-dir --disable-pip-version-check "mne==1.13.2"
+
       - name: Run isolated EEG tests
         run: >
           python scripts/run_tests_isolated.py
@@ -249,6 +265,42 @@ jobs:
           --pytest-marker requires_mne
           --report outputs/mne_signal_blocks_ci_report.json
 
+      - name: Run changed MNE CSD adapter integration tests
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before || github.sha }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: >-
+          python .github/workflows/round6_experimental_tests.py
+          --diff-base "$DIFF_BASE_SHA"
+          --diff-head "$DIFF_HEAD_SHA"
+          --tested-checkout "$TESTED_CHECKOUT_SHA"
+          --workflow-sha "$WORKFLOW_SHA"
+          --event-name "$EVENT_NAME"
+          --only-component mne_csd_adapter
+          --external-test-job optional-eeg-suite
+          --report outputs/mne_csd_adapter_eeg_report.json
+
+      - name: Run changed MNE CSD reference parity tests
+        env:
+          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before || github.sha }}
+          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: >-
+          python .github/workflows/round6_experimental_tests.py
+          --diff-base "$DIFF_BASE_SHA"
+          --diff-head "$DIFF_HEAD_SHA"
+          --tested-checkout "$TESTED_CHECKOUT_SHA"
+          --workflow-sha "$WORKFLOW_SHA"
+          --event-name "$EVENT_NAME"
+          --only-component mne_csd_reference_audit
+          --external-test-job optional-eeg-suite
+          --report outputs/mne_csd_reference_audit_eeg_report.json
+
       - name: Capture EEG diagnostics
         if: failure()
         run: |
@@ -274,5 +326,7 @@ jobs:
           path: |
             outputs/eeg_test_report.json
             outputs/mne_signal_blocks_ci_report.json
+            outputs/mne_csd_adapter_eeg_report.json
+            outputs/mne_csd_reference_audit_eeg_report.json
             outputs/round6-experimental-logs/**
             eeg-failure.txt
