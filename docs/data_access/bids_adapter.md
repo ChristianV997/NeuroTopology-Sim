@@ -74,10 +74,14 @@ plan = plan_bounded_window_access(
 - `openneuro_download(...)` / `reject_full_dataset_download(...)`
 - condition labels with `confirmed=false` or missing manifest entries used as
   inferred labels
+- condition labels with non-boolean `confirmed` values (e.g. string `"true"` or int `1`)
 - bare string labels (flat `{relative_path: label}` or a `recordings` string
   entry) without `confirmed=true`
 - `relative_path` that resolves outside `local_root` (parent traversal, absolute
   path, or a symlink that leaves the root)
+- `relative_path` that is empty, whitespace, or resolves to `local_root` itself (`"."`)
+- `expected_checksum` mismatch against computed file digest
+- malformed BIDS entities (empty entity values like `sub-`, `run-`, or non-alphanumeric tokens)
 
 ## Scientific limitation
 

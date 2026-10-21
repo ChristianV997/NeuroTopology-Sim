@@ -84,7 +84,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
     except Exception:  # pragma: no cover - defensive fallback
         for fpath in _iter_eeg_candidate_files(root_path):
             rel = fpath.relative_to(root_path).as_posix()
-            ents = {k: v for k, v in (part.split("-", 1) for part in fpath.stem.split("_") if "-" in part)}
+            ents = _parse_bids_filename_entities(fpath.stem)
             records.append(
                 BIDSEEGRecord(
                     path=str(fpath),
@@ -477,20 +477,43 @@ class BIDSAdapterError(ValueError):
         super().__init__(f"{self.code}: {message}")
 
 
+_ENTITY_VAL_RE = _re.compile(r"^[a-zA-Z0-9]+$")
+
+
+def _parse_bids_filename_entities(stem: str) -> dict[str, str]:
+    ents: dict[str, str] = {}
+    for part in stem.split("_"):
+        if "-" not in part:
+            continue
+        key, val = part.split("-", 1)
+        key = key.strip()
+        val = val.strip()
+        if key and val and _ENTITY_VAL_RE.fullmatch(key) and _ENTITY_VAL_RE.fullmatch(val):
+            ents[key] = val
+    return ents
+
+
 def _finite_json_value(value: _Any, path: str = "$") -> _Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
-    if isinstance(value, float):
-        if not _math.isfinite(value):
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        fval = float(value)
+        if not _math.isfinite(fval):
             raise BIDSAdapterError(
                 BIDSAdapterErrorCode.MALFORMED_REQUEST,
                 f"non-finite float at {path}",
             )
-        return value
+        return fval
     if isinstance(value, _Enum):
         return value.value
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, (set, frozenset)):
+        return [_finite_json_value(v, f"{path}[*]") for v in sorted(value)]
     if isinstance(value, _Mapping):
         return {str(k): _finite_json_value(v, f"{path}.{k}") for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -685,7 +708,7 @@ def _structural_bids_validation(root: Path) -> dict[str, _Any]:
         if "BIDSVersion" not in description and "bids_version" not in description:
             issues.append("dataset_description.json missing BIDSVersion")
 
-    subjects = sorted(p.name for p in root.glob("sub-*") if p.is_dir())
+    subjects = sorted(p.name for p in root.glob("sub-*") if p.is_dir() and len(p.name) > 4 and _ENTITY_VAL_RE.fullmatch(p.name[4:]))
     if not subjects:
         issues.append("no sub-* directories found")
 
@@ -782,12 +805,7 @@ def _filesystem_metadata_index(root: Path) -> list[dict[str, _Any]]:
     rows: list[dict[str, _Any]] = []
     for fpath in _iter_eeg_candidate_files(root):
         rel = fpath.relative_to(root).as_posix()
-        ents = {
-            key: value
-            for key, value in (
-                part.split("-", 1) for part in fpath.stem.split("_") if "-" in part
-            )
-        }
+        ents = _parse_bids_filename_entities(fpath.stem)
         rows.append(
             {
                 "relative_path": rel,
@@ -818,15 +836,25 @@ def _condition_from_manifest(
     if not condition_manifest:
         return None, "absent"
     recordings = condition_manifest.get("recordings")
-    flat = condition_manifest.get(relative_path)
-    if recordings is None and isinstance(flat, str):
-        if not flat.strip():
+    if recordings is None:
+        if relative_path in condition_manifest:
+            entry = condition_manifest[relative_path]
+            if isinstance(entry, str):
+                if not entry.strip():
+                    return None, "absent"
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN,
+                    f"flat condition label for {relative_path} lacks confirmed=true; use a recordings entry",
+                )
+            if not isinstance(entry, _Mapping):
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.AMBIGUOUS_CONDITION_LABEL,
+                    f"condition entry for {relative_path} must be a string or object",
+                )
+            recordings = condition_manifest
+        else:
             return None, "absent"
-        raise BIDSAdapterError(
-            BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN,
-            f"flat condition label for {relative_path} lacks confirmed=true; use a recordings entry",
-        )
-    if not isinstance(recordings, _Mapping):
+    elif not isinstance(recordings, _Mapping):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.AMBIGUOUS_CONDITION_LABEL,
             "condition_manifest.recordings must be an object keyed by relative_path",
@@ -878,9 +906,15 @@ def _require_contained_relative_path(local_root: str, relative_path: str) -> Non
     Backslashes count as separators on every platform. resolve() reads path
     metadata only; no recording is opened here.
     """
+    rel_str = str(relative_path).strip().replace("\\", "/")
+    if not rel_str or rel_str == ".":
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            f"relative_path cannot be empty or root: {relative_path!r}",
+        )
     root = Path(local_root).resolve()
-    target = (root / str(relative_path).replace("\\", "/")).resolve()
-    if not target.is_relative_to(root):
+    target = (root / rel_str).resolve()
+    if target == root or not target.is_relative_to(root):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
             f"relative_path must stay inside local_root: {relative_path!r}",
@@ -988,6 +1022,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
 
     recordings_out: list[BIDSIndexedRecording] = []
     for row in sorted(rows, key=lambda item: item["relative_path"]):
+        _require_contained_relative_path(str(root), row["relative_path"])
         if request.require_subject and not row.get("subject_id"):
             raise BIDSAdapterError(
                 BIDSAdapterErrorCode.MISSING_SUBJECT_SESSION_RUN,
@@ -1015,7 +1050,13 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
         checksum, checksum_state = _file_checksum_or_unknown(abs_path)
         if request.expected_checksum and request.relative_path == row["relative_path"]:
             declared, declared_state = _normalize_checksum(request.expected_checksum)
-            checksum, checksum_state = declared, declared_state
+            if declared is not None and checksum is not None and declared.lower() != checksum.lower():
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.MALFORMED_REQUEST,
+                    f"declared checksum {declared} does not match computed checksum {checksum}",
+                )
+            if declared is not None:
+                checksum, checksum_state = declared, declared_state
         sfreq = row.get("sampling_frequency_hz")
         if isinstance(sfreq, (int, float)) and not _math.isfinite(float(sfreq)):
             sfreq = None
@@ -1141,6 +1182,20 @@ def read_bounded_window_lazy(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
             f"local recording not found: {path}",
         )
+    if request.expected_checksum:
+        declared, _ = _normalize_checksum(request.expected_checksum)
+        if declared is not None:
+            actual_checksum, _ = _file_checksum_or_unknown(path)
+            if actual_checksum is None:
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.CHECKSUM_UNKNOWN,
+                    f"cannot verify expected_checksum for {request.relative_path}: file unreadable",
+                )
+            if actual_checksum.lower() != declared.lower():
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.MALFORMED_REQUEST,
+                    f"checksum mismatch for {request.relative_path}: expected {declared}, got {actual_checksum}",
+                )
     samples = read_window_signal(
         str(path),
         float(request.window.start_s),

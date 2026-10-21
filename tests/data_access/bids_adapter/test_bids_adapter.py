@@ -315,3 +315,179 @@ def test_unconfirmed_string_labels_rejected_in_every_manifest_form(manifest):
             )
         )
     assert exc.value.code == BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN.value
+
+
+def test_symlink_escaping_local_root_rejected_during_index(tmp_path: Path):
+    dataset = tmp_path / "dataset"
+    dataset.mkdir()
+    (dataset / "dataset_description.json").write_text(
+        json.dumps({"Name": "SyntheticSymlink", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    eeg_dir = dataset / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    outside = tmp_path / "outside" / "secret.edf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"synthetic-secret-bytes")
+
+    symlink_target = eeg_dir / "sub-01_task-rest_run-01_eeg.edf"
+    try:
+        symlink_target.symlink_to(outside)
+    except OSError:
+        pytest.skip("Symlinks not supported on this platform/privilege level")
+
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(
+            BIDSAccessRequest(dataset_id="dsSYM01", local_root=str(dataset))
+        )
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+@pytest.mark.parametrize(
+    "bad_rel_path",
+    ["", "   ", ".", "./", "sub-01/..", "/sub-01/eeg/sub-01_task-rest_run-01_eeg.edf"],
+    ids=["empty", "spaces", "dot", "dot_slash", "parent_to_root", "leading_slash"],
+)
+def test_relative_path_empty_root_or_leading_slash_rejected(bad_rel_path: str):
+    req = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root=str(VALID),
+        relative_path=bad_rel_path,
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        plan_bounded_window_access(req)
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+def test_flat_manifest_with_confirmed_true_is_accepted():
+    manifest = {
+        "sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {
+            "condition_label": "resting",
+            "confirmed": True,
+        }
+    }
+    result = index_bids_metadata(
+        BIDSAccessRequest(
+            dataset_id="dsFIX001",
+            local_root=str(VALID),
+            condition_manifest=manifest,
+        )
+    )
+    rec = result["recordings"][0]
+    assert rec["condition_label"] == "resting"
+    assert rec["condition_label_source"] == "explicit_manifest"
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {"condition_label": "resting", "confirmed": False}},
+        {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {"condition_label": "resting"}},
+        {"recordings": {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {"condition_label": "resting", "confirmed": "true"}}},
+        {"recordings": {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {"condition_label": "resting", "confirmed": 1}}},
+        {"sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {"condition_label": "resting", "confirmed": "true"}},
+    ],
+    ids=["flat_unconfirmed", "flat_missing_confirmed", "nested_string_true", "nested_int_one", "flat_string_true"],
+)
+def test_manifest_variants_requiring_confirmed_true_rejected(manifest):
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(
+            BIDSAccessRequest(
+                dataset_id="dsFIX001",
+                local_root=str(VALID),
+                condition_manifest=manifest,
+            )
+        )
+    assert exc.value.code == BIDSAdapterErrorCode.LABEL_INFERENCE_FORBIDDEN.value
+
+
+def test_malformed_bids_entity_handling(tmp_path: Path):
+    ds = tmp_path / "ds_malformed"
+    ds.mkdir()
+    (ds / "dataset_description.json").write_text(
+        json.dumps({"Name": "MalformedDS", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    eeg_dir = ds / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    # File with empty subject entity: sub-_task-rest_run-01_eeg.edf
+    bad_sub_file = eeg_dir / "sub-_task-rest_run-01_eeg.edf"
+    bad_sub_file.write_bytes(b"synthetic")
+
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(
+            BIDSAccessRequest(
+                dataset_id="dsMAL01",
+                local_root=str(ds),
+                require_subject=True,
+            )
+        )
+    assert exc.value.code == BIDSAdapterErrorCode.MISSING_SUBJECT_SESSION_RUN.value
+
+    # Dataset with only empty subject directory: sub-
+    ds_empty_sub = tmp_path / "ds_empty_sub"
+    ds_empty_sub.mkdir()
+    (ds_empty_sub / "dataset_description.json").write_text(
+        json.dumps({"Name": "EmptySubDS", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    (ds_empty_sub / "sub-").mkdir()
+    res = index_bids_metadata(
+        BIDSAccessRequest(dataset_id="dsEMPTY01", local_root=str(ds_empty_sub))
+    )
+    assert res["state"] == "BLOCKED_INVALID_BIDS"
+    assert res["bids_validation"]["status"] == "invalid"
+
+
+def test_expected_checksum_verification_against_actual_file(monkeypatch):
+    import numpy as np
+
+    fake_signal = np.ones((2, 100), dtype=float)
+    monkeypatch.setattr(bids_ingest, "read_window_signal", lambda *args, **kwargs: fake_signal)
+
+    mismatched_checksum = "0" * 64
+    req = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root=str(VALID),
+        relative_path="sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+        expected_checksum=mismatched_checksum,
+    )
+    # Lazy read with mismatched expected_checksum must fail closed
+    with pytest.raises(BIDSAdapterError) as exc:
+        read_bounded_window_lazy(req)
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+    # Index with mismatched expected_checksum on matching relative_path must fail closed
+    with pytest.raises(BIDSAdapterError) as exc_idx:
+        index_bids_metadata(req)
+    assert exc_idx.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+def test_finite_json_serialization_numpy_types():
+    import numpy as np
+
+    safe_payload = {
+        "dataset_id": "ds001",
+        "flag_np": np.bool_(True),
+        "int_np": np.int64(42),
+        "float_np": np.float64(3.14),
+        "tags": {"alpha", "beta"},
+    }
+    serialized = serialize_bids_manifest(safe_payload)
+    parsed = json.loads(serialized)
+    assert parsed["flag_np"] is True
+    assert parsed["int_np"] == 42
+    assert parsed["float_np"] == 3.14
+    assert parsed["tags"] == ["alpha", "beta"]
+
+    bad_payload = {"val": np.float64(np.nan)}
+    with pytest.raises(BIDSAdapterError) as exc_nan:
+        serialize_bids_manifest(bad_payload)
+    assert exc_nan.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+    bad_inf = {"val": np.float64(np.inf)}
+    with pytest.raises(BIDSAdapterError) as exc_inf:
+        serialize_bids_manifest(bad_inf)
+    assert exc_inf.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
