@@ -2646,6 +2646,41 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(resolved["reason_codes"], ["promotion_report_missing"])
         self.assertNotIn("dependency_not_merged_on_main", resolved["reason_codes"])
 
+    def test_old_surrogate_pin_blob_drifts_against_live_main(self):
+        """The #417 pin blob is not the nulls.py blob on live main, so the pin fails closed."""
+
+        live = "4e91c6f080647280940ded4f90f4ee9278960c4b"
+        old_pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
+        old_blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
+        current_blob = "a951050961119bc403012884c1a18d8e820d8f20"
+        path = "tools/surrogate_nulls/nulls.py"
+        _require_audited_main_ancestor(self)
+        self.assertEqual(grid_plan_module._blob_sha(live, path), current_blob)
+        self.assertEqual(grid_plan_module._blob_sha(old_pin, path), old_blob)
+        self.assertNotEqual(old_blob, current_blob)
+        with patch.dict(
+            grid_plan_module.GATE_CONTRACT["surrogate_null"],
+            {
+                "pinned_commit": old_pin,
+                "merged_pr": 417,
+                "implementation_blob_sha": old_blob,
+            },
+        ), patch.dict(
+            grid_plan_module.MERGED_PIN_PAIRS,
+            {"surrogate_null": (417, old_pin)},
+        ):
+            resolved, _blockers = grid_plan_module._resolve_gates_from_rows(
+                [],
+                main_sha=live,
+                git_failure=None,
+            )
+        row = next(item for item in resolved if item["gate_id"] == "surrogate_null")
+        self.assertEqual(row["status"], "pin_blob_mismatch_main")
+        self.assertIn("pin_blob_mismatch_main", row["reason_codes"])
+        self.assertIn("stale", row["reason_codes"])
+        self.assertNotEqual(row["status"], "admissible_on_ancestor")
+        self.assertNotEqual(row["status"], "promotion_report_missing")
+
     def test_surrogate_null_pin_stays_blocked_without_hosted_adversarial_suite(self):
         pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
         blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
