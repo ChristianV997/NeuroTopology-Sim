@@ -101,13 +101,43 @@ class ProductionImportBridgeTests(unittest.TestCase):
     def test_nyquist_alias_matches_production_report(self):
         import numpy as np
 
-        self.assertAlmostEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
+        # Exact signed equivalence (oracle) — do not relax to almost-equal.
+        self.assertEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
+        self.assertEqual(
+            signed_nyquist_alias(240.0, 250.0),
+            signed_nyquist_alias(-10.0, 250.0),
+        )
         dt = 1.0 / 250.0
         l240 = self.dmd.discrete_eigenvalue_from_frequency_hz(240.0, dt)
         lm10 = self.dmd.discrete_eigenvalue_from_frequency_hz(-10.0, dt)
         self.assertTrue(np.allclose(l240, lm10, atol=1e-12))
         rep = self.dmd.alias_ambiguity_report(f_hz=240.0, fs_hz=250.0)
         self.assertTrue(rep.phases_match)
+        self.assertEqual(float(rep.f_alias_hz), -10.0)
+
+    def test_bridge_loaded_real_production_module(self):
+        """Hard-import proof: resolved module path is the production leaf file."""
+        path = Path(self.dmd.__file__).resolve()
+        self.assertEqual(path.name, "dmd_crouzeix.py")
+        self.assertIn("neurotopology_sim", path.parts)
+        self.assertIn("experimental", path.parts)
+        self.assertIn("dynamics", path.parts)
+        self.assertEqual(self.dmd.__name__, "neurotopology_sim.experimental.dynamics.dmd_crouzeix")
+
+    def test_production_finite_and_shape_validation(self):
+        """Bridge surfaces production fail-closed contracts (synthetic only)."""
+        Err = self.dmd.DMDValidationError
+        with self.assertRaises(Err):
+            self.dmd.ep2_hamiltonian(float("nan"), 1.2, 0.0, 1.2)
+        with self.assertRaises(Err):
+            self.dmd.ep2_hamiltonian(0.0, float("inf"), 0.0, 1.2)
+        import numpy as np
+
+        with self.assertRaises(Err):
+            self.dmd.diagnose_ep2(np.ones((3, 3), dtype=np.complex128))
+        bad = np.array([[np.nan + 0j, 0j], [0j, 1 + 0j]], dtype=np.complex128)
+        with self.assertRaises(Err):
+            self.dmd.diagnose_ep2(bad)
 
 
 if __name__ == "__main__":

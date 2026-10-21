@@ -23,9 +23,53 @@ def log_diag(z):
     return cmath.log(z)
 
 
+def _require_finite_scalar(z, name='value'):
+    if isinstance(z, complex):
+        if not (math.isfinite(z.real) and math.isfinite(z.imag)):
+            raise ValueError(f'{name} must be finite')
+        return
+    if isinstance(z, (int, float)):
+        if not math.isfinite(float(z)):
+            raise ValueError(f'{name} must be finite')
+        return
+    # numpy scalars / other numeric
+    try:
+        c = complex(z)
+    except Exception as exc:
+        raise ValueError(f'{name} must be numeric') from exc
+    if not (math.isfinite(c.real) and math.isfinite(c.imag)):
+        raise ValueError(f'{name} must be finite')
+
+
+def _require_finite_2x2(a, name='matrix'):
+    """Fail closed on non-2×2 shape or non-finite entries (oracle contract)."""
+    try:
+        rows = len(a)
+        cols = [len(row) for row in a]
+    except TypeError as exc:
+        raise ValueError(f'{name} must be a 2x2 sequence') from exc
+    if rows != 2 or cols != [2, 2]:
+        raise ValueError(f'{name} must be shape (2, 2); got rows={rows} cols={cols}')
+    for i in range(2):
+        for j in range(2):
+            _require_finite_scalar(a[i][j], name=f'{name}[{i},{j}]')
+
+
 def branch_diagnostic(eigenvalues, margin=1e-6):
     # Distance in phase to +/-pi; warning only, not an aliasing test.
-    d = min(abs(math.pi - abs(cmath.phase(z))) for z in eigenvalues if z != 0)
+    # Exact-zero / empty spectra are degenerate for a branch-cut proximity
+    # check: fail closed rather than crashing on min() of an empty iterable.
+    nonzero = []
+    for z in eigenvalues:
+        _require_finite_scalar(z, name='eigenvalue')
+        if z != 0:
+            nonzero.append(z)
+    if not nonzero:
+        raise ValueError(
+            'branch_diagnostic requires at least one nonzero finite eigenvalue; '
+            'exact-zero or empty spectra are degenerate'
+        )
+    d = min(abs(math.pi - abs(cmath.phase(z))) for z in nonzero)
     return {'near_cut': d <= margin, 'phase_margin': d}
 
 
@@ -106,6 +150,7 @@ def assert_full_nilpotency(n, tol=1e-12):
 
 def matrix_function_2x2(a, function, derivative, tol=1e-12):
     """Analytic 2x2 oracle, using interpolation or the repeated-root limit."""
+    _require_finite_2x2(a, name='matrix')
     center = (a[0][0] + a[1][1]) / 2
     half_diff = (a[0][0] - a[1][1]) / 2
     radius = cmath.sqrt(half_diff * half_diff + a[0][1] * a[1][0])
@@ -118,6 +163,9 @@ def matrix_function_2x2(a, function, derivative, tol=1e-12):
         return mat_add(mat_scale(function(center), mat_identity()),
                        mat_scale(derivative(center), n))
     l1, l2 = center + radius, center - radius
+    # Exact-zero eigenvalue ⇒ principal log undefined.
+    if abs(l1) <= tol or abs(l2) <= tol:
+        raise ValueError('singular matrix has no logarithm')
     slope = (function(l1) - function(l2)) / (l1 - l2)
     return mat_add(mat_scale(function(l2), mat_identity()),
                    mat_scale(slope, mat_sub(a, mat_scale(l2, mat_identity()))))
@@ -263,6 +311,45 @@ class OracleTests(unittest.TestCase):
         budget = 1e-9 * kappa * mat_norm(a)
         self.assertLess(residual, budget)
         self.assertLess(residual, 1e-6)  # absolute floor still tight; do not weaken
+
+    def test_branch_diagnostic_rejects_exact_zero_and_empty_spectra(self):
+        """Regression: exact-zero / empty spectra must fail closed (not min() crash)."""
+        with self.assertRaises(ValueError):
+            branch_diagnostic([0j, 0j])
+        with self.assertRaises(ValueError):
+            branch_diagnostic([])
+
+    def test_matrix_rejects_bad_shape_and_nonfinite(self):
+        """Shape / finite validation before any matrix-function evaluation."""
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((1 + 0j, 0j),))  # not 2×2
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((1 + 0j, 0j, 0j), (0j, 1 + 0j, 0j)))
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((float('nan') + 0j, 0j), (0j, 1 + 0j)))
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((float('inf') + 0j, 0j), (0j, 1 + 0j)))
+        with self.assertRaises(ValueError):
+            branch_diagnostic([float('nan') + 0j])
+
+    def test_ep_discriminant_exact_zero_and_scaling(self):
+        """At EP, discriminant is exact 0; homogeneous scaling preserves coalescence."""
+        self.assertEqual(discriminant(0.0, 0.0), 0.0)
+        self.assertEqual(discriminant(1.2, 1.2), 0.0)
+        # Scale (delta, g) by α: disc → α² disc; EP remains EP.
+        for alpha in (1e-6, 1.0, 1e3):
+            self.assertEqual(discriminant(alpha * 1.2, alpha * 1.2), 0.0)
+            h = model(0.0, alpha * 1.2, 0.0, alpha * 1.2)
+            det = h[0][0] * h[1][1] - h[0][1] * h[1][0]
+            self.assertAlmostEqual(det, 0j)
+            # Full N² == 0 at every scale (synthetic algebraic identity).
+            assert_full_nilpotency(h, tol=1e-9 * max(1.0, abs(alpha) ** 2))
+
+    def test_nyquist_240_minus10_exact_equivalence(self):
+        """240 Hz and −10 Hz are the same signed representative at Fs=250 Hz."""
+        self.assertEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
+        # Do not relax: exact float identity for this dyadic-friendly pair.
+        self.assertEqual(signed_nyquist_alias(240.0, 250.0), signed_nyquist_alias(-10.0, 250.0))
 
 
 if __name__ == '__main__':
