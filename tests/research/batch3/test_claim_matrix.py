@@ -68,6 +68,22 @@ def test_required_fields_and_categories():
         assert isinstance(src["direct_support"], bool)
 
 
+def test_claims_are_explicitly_framed_as_questions_under_review():
+    """The matrix records questions, not unsupported findings or conclusions."""
+    data = load_matrix()
+    for claim in data["claims"]:
+        statement = claim["statement"].strip()
+        assert statement.startswith("Question under review:"), claim["claim_id"]
+        assert statement.endswith("?"), claim["claim_id"]
+
+
+def test_graph_cycle_rank_is_not_directly_supported_as_spatial_charge():
+    """The cited repository contract distinguishes these metric namespaces."""
+    data = load_matrix()
+    claim = next(c for c in data["claims"] if c["claim_id"] == "TTM-004")
+    assert claim["strongest_primary_source"]["direct_support"] is False
+
+
 def test_no_validated_status():
     data = load_matrix()
     # Ensure no top-level or claim-level promotion key
