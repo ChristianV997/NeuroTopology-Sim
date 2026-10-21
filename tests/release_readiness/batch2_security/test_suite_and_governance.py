@@ -47,6 +47,12 @@ def test_security_pass_is_not_scientific_pass_alias(tmp_path: Path):
     assert payload.get("scientific_pass") is None
 
 
+def test_security_suite_cleans_up_path_fixture_files(tmp_path: Path):
+    work_root = tmp_path / "work"
+    run_security_suite(work_root=work_root)
+    assert list(work_root.iterdir()) == []
+
+
 def test_all_threat_classes_have_remediation_owners():
     for threat in ThreatClass:
         owners = REMEDIATION_OWNERS.get(threat.value)

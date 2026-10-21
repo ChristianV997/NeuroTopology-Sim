@@ -20,7 +20,11 @@ DEFAULT_LIMITATIONS = (
     "Static detections against fixtures prove scanner coverage; they do not prove repository-wide compliance.",
     "Inventory remediations name production owner paths without modifying them.",
     "REA was not used for live inspection; static fixture inspection only (REA_UNAVAILABLE when REA absent).",
-    "ecc:* and gstack:* tooling was unavailable in this agent environment; harness implements equivalent local checks.",
+    "ecc:* and gstack:* tooling was unavailable; local fixture checks are not substitutes for those tools.",
+    "no_network is an in-process socket guard, not an OS firewall or sandbox for arbitrary child code.",
+    "The Python executable allowlist does not restrict child arguments; only fixed local fixture commands are used.",
+    "POSIX timeout cleanup kills the process group; Windows cleanup only guarantees direct-child termination.",
+    "The subprocess worker limit uses caller-reported active_workers; no process-wide worker pool is managed.",
 )
 
 

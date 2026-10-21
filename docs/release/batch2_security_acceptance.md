@@ -21,11 +21,11 @@ Studio, or topology code. It does **not** certify scientific validity.
 | --- | --- |
 | Network default enabled / opt-in | `network_policy` |
 | Full-object / full-dataset / curl / wget / urllib / boto3 / aws sync | `static_scan` |
-| Output-root traversal, symlink, Windows drive escape | `path_containment` |
-| Subprocess allowlist, `shell=False`, timeout, process-tree kill, IO/worker bounds | `subprocess_isolation` |
+| Output-root traversal, absolute/drive escapes, symlinks, atomic report replacement | `path_containment` |
+| Exact-path allowlist for fixed fixtures, `shell=False`, finite timeout, bounded streaming IO | `subprocess_isolation` |
 | Finite JSON (reject NaN/Infinity) | `finite_json` |
 | Fabricated provenance, missing checksum/commit, synthetic→empirical | `evidence_boundary` |
-| Failed / partial / timed-out / interrupted / malformed artifacts | `artifact_states` |
+| Failed / partial / timed-out / interrupted / malformed or unknown artifacts | `artifact_states` |
 | Security vs scientific PASS separation | `security_vs_scientific` |
 
 ## Exit codes
@@ -65,5 +65,17 @@ REA are unavailable in the agent environment, the report records
 - Report destinations are a trusted local path for the CLI. Callers that need
   containment must pass `trusted_root` to `write_reports`. This is a local
   harness boundary, not a repository-wide security certification.
+- Trusted-root checks reject report-file symlink escapes; atomic replacement
+  prevents an existing hard link from redirecting report contents to another
+  path. These pathname checks are not race-proof against concurrent parent
+  directory replacement.
+- `no_network()` blocks socket creation in the current Python process; it is
+  not an OS firewall or a sandbox for arbitrary subprocess code. An executable
+  allowlist does not constrain child-process arguments; the harness only runs
+  fixed local print/sleep fixtures.
+- POSIX timeout cleanup kills the subprocess group. On Windows, cleanup kills
+  the direct child only; spawned descendants are not guaranteed to terminate.
+- Worker-limit validation uses the caller-reported `active_workers` value; the
+  helper does not manage a process-wide worker pool.
 - No network, no neurodata, no credentials, no AWS/DANDI/OpenNeuro access.
 - A green security harness is not a scientific PASS.

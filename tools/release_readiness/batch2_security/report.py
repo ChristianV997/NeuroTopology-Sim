@@ -1,6 +1,8 @@
 """Finite JSON / Markdown writers for Batch 2 security reports."""
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -63,6 +65,24 @@ def render_markdown(payload: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _write_text_atomically(destination: Path, text: str) -> None:
+    """Replace a report entry without following an existing file link."""
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".tmp", dir=str(destination.parent)
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+        os.replace(temporary, destination)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def write_reports(
     payload: Dict[str, Any],
     output_dir: PathLike,
@@ -72,18 +92,27 @@ def write_reports(
 
     When ``trusted_root`` is provided, the resolved output directory must stay
     inside that root. Traversal, absolute escapes, Windows-drive patterns, and
-    symlink escapes are rejected via the existing path-containment guard.
+    report-file symlink escapes are rejected via the path-containment guard.
+    Atomic replacement prevents writes from following pre-existing hard links.
     This is a local harness boundary, not a repository-wide security claim.
     """
     from tools.release_readiness.batch2_security.path_containment import resolve_under_root
 
-    if trusted_root is not None:
-        out = resolve_under_root(Path(trusted_root), output_dir)
+    trusted = Path(trusted_root) if trusted_root is not None else None
+    if trusted is not None:
+        out = resolve_under_root(trusted, output_dir)
     else:
         out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     jp = out / "batch2_security_report.json"
     mp = out / "batch2_security_report.md"
-    jp.write_text(dumps(payload) + "\n", encoding="utf-8")
-    mp.write_text(render_markdown(payload), encoding="utf-8")
+    json_text = dumps(payload) + "\n"
+    markdown_text = render_markdown(payload)
+    if trusted is not None:
+        # Validate both final names before writing either file. Atomic replacement
+        # below avoids following a file symlink/hard link after this check.
+        resolve_under_root(trusted, jp)
+        resolve_under_root(trusted, mp)
+    _write_text_atomically(jp, json_text)
+    _write_text_atomically(mp, markdown_text)
     return {"json": str(jp), "markdown": str(mp)}

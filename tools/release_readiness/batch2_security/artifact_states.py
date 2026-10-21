@@ -23,7 +23,10 @@ def classify_artifact_state(record: Dict[str, Any]) -> str:
         if not record.get("run_id") and not record.get("artifact_id"):
             return "MALFORMED"
         return "INCOMPLETE"
-    return str(status).upper()
+    normalized = str(status).upper()
+    if normalized in INCOMPLETE_STATUSES or normalized in COMPLETE_STATUSES:
+        return normalized
+    return "MALFORMED"
 
 
 def evaluate_artifact_state(record: Dict[str, Any], *, fixture_id: str | None = None) -> List[Finding]:
@@ -56,7 +59,7 @@ def evaluate_artifact_state(record: Dict[str, Any], *, fixture_id: str | None = 
                     expected=True,
                 )
             )
-        if record.get("security_pass") is True and status in {"MALFORMED", "FAILED", "INTERRUPTED"}:
+        if record.get("security_pass") is True:
             findings.append(
                 Finding(
                     threat_class=ThreatClass.ARTIFACT_INCOMPLETE_STATE.value,

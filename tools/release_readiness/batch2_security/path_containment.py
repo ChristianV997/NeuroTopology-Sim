@@ -43,9 +43,9 @@ def resolve_under_root(root: Path, candidate: str | Path, *, follow_symlinks: bo
     root_resolved = root.expanduser().resolve()
     raw = str(candidate)
 
-    if looks_like_windows_drive(raw):
+    if looks_like_windows_drive(raw) and (raw.startswith("\\\\") or not Path(raw).is_absolute()):
         # On POSIX CI agents a Windows drive path cannot be contained under a
-        # POSIX root; treat as an explicit escape class.
+        # POSIX root; on Windows, let absolute paths proceed to root comparison.
         raise PathEscapeError(f"windows drive escape: {raw}")
 
     pure = PureWindowsPath(raw) if "\\" in raw and not raw.startswith("/") else PurePosixPath(raw)
@@ -80,7 +80,7 @@ def resolve_under_root(root: Path, candidate: str | Path, *, follow_symlinks: bo
 def classify_path_threat(root: Path, candidate: str, *, follow_symlinks: bool = True) -> Optional[str]:
     """Return a ThreatClass value when candidate escapes; otherwise None."""
     raw = str(candidate)
-    if looks_like_windows_drive(raw):
+    if looks_like_windows_drive(raw) and (raw.startswith("\\\\") or not Path(raw).is_absolute()):
         return ThreatClass.WINDOWS_DRIVE_ESCAPE.value
     try:
         resolve_under_root(root, candidate, follow_symlinks=follow_symlinks)
@@ -89,7 +89,7 @@ def classify_path_threat(root: Path, candidate: str, *, follow_symlinks: bool = 
         msg = str(exc).lower()
         if "symlink" in msg:
             return ThreatClass.SYMLINK_ESCAPE.value
-        if "windows" in msg:
+        if "windows" in msg or looks_like_windows_drive(raw):
             return ThreatClass.WINDOWS_DRIVE_ESCAPE.value
         return ThreatClass.OUTPUT_ROOT_ESCAPE.value
 

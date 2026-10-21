@@ -33,7 +33,7 @@ def parse_args(argv=None):
     p.add_argument(
         "--work-root",
         default=None,
-        help="Scratch directory for path-containment / symlink fixtures.",
+        help="Parent for temporary path-containment fixtures (files are cleaned up).",
     )
     p.add_argument("--json-stdout", action="store_true")
     return p.parse_args(argv)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -116,40 +117,43 @@ def _check_static_scan() -> CheckResult:
 
 
 def _check_path_containment(tmp_root: Path) -> CheckResult:
-    tmp_root.mkdir(parents=True, exist_ok=True)
-    (tmp_root / "artifacts").mkdir(exist_ok=True)
-    # Symlink escape case (POSIX): link inside root pointing outside.
-    cases = list(fx.path_cases())
-    link_path = tmp_root / "evil_link"
-    outside = tmp_root.parent / "outside_secret"
-    outside.write_text("x", encoding="utf-8")
-    if link_path.exists() or link_path.is_symlink():
-        link_path.unlink()
-    try:
-        link_path.symlink_to(outside)
-        cases.append(("path_symlink_escape", "evil_link", True))
-    except (OSError, NotImplementedError):
-        # Symlink creation unavailable — record advisory in details.
-        cases.append(("path_symlink_escape_skipped", "evil_link", True))
+    scratch_parent = tmp_root.parent
+    scratch_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="batch2-security-path-", dir=str(scratch_parent)
+    ) as scratch:
+        root = Path(scratch) / "root"
+        root.mkdir()
+        (root / "artifacts").mkdir()
+        # Symlink escape case: link inside root points to a sibling fixture.
+        cases = list(fx.path_cases())
+        link_path = root / "evil_link"
+        outside = Path(scratch) / "outside_secret"
+        outside.write_text("x", encoding="utf-8")
+        try:
+            link_path.symlink_to(outside)
+            cases.append(("path_symlink_escape", "evil_link", True))
+        except (OSError, NotImplementedError):
+            # Symlink creation unavailable — record advisory in details.
+            cases.append(("path_symlink_escape_skipped", "evil_link", True))
 
-    findings = evaluate_path_cases(tmp_root, cases)
-    unexpected = [f for f in findings if f.expected is False]
-    # For skipped symlink, classify may treat missing path as escape via resolve failure.
-    # Accept either detected escape or explicit skip without unexpected mismatches.
-    skipped = any(c[0] == "path_symlink_escape_skipped" for c in cases)
-    if skipped:
-        # Remove the synthetic skipped case expectation failure if present.
-        unexpected = [
-            f for f in unexpected if f.fixture_id != "path_symlink_escape_skipped"
-        ]
-        findings = [f for f in findings if f.fixture_id != "path_symlink_escape_skipped"]
-    passed = not unexpected
-    return CheckResult(
-        check_id="path_containment",
-        passed=passed,
-        findings=findings,
-        details={"n_cases": len(cases), "symlink_skipped": skipped},
-    )
+        findings = evaluate_path_cases(root, cases)
+        unexpected = [f for f in findings if f.expected is False]
+        skipped = any(c[0] == "path_symlink_escape_skipped" for c in cases)
+        if skipped:
+            unexpected = [
+                f for f in unexpected if f.fixture_id != "path_symlink_escape_skipped"
+            ]
+            findings = [
+                f for f in findings if f.fixture_id != "path_symlink_escape_skipped"
+            ]
+        passed = not unexpected
+        return CheckResult(
+            check_id="path_containment",
+            passed=passed,
+            findings=findings,
+            details={"n_cases": len(cases), "symlink_skipped": skipped},
+        )
 
 
 def _check_subprocess() -> CheckResult:

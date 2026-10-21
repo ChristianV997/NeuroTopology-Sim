@@ -20,6 +20,12 @@ def test_child_path_is_contained(tmp_path: Path):
     assert resolved.is_relative_to(tmp_path.resolve())
 
 
+def test_absolute_path_inside_root_is_contained(tmp_path: Path):
+    candidate = tmp_path / "artifacts" / "report.json"
+    resolved = resolve_under_root(tmp_path, candidate)
+    assert resolved.is_relative_to(tmp_path.resolve())
+
+
 def test_traversal_is_rejected(tmp_path: Path):
     with pytest.raises(PathEscapeError):
         resolve_under_root(tmp_path, "../etc/passwd")
@@ -95,3 +101,46 @@ def test_write_reports_rejects_symlink_escape(tmp_path: Path):
     payload = {"schema_version": "v1", "security_pass": True, "findings": []}
     with pytest.raises(PathEscapeError):
         write_reports(payload, "link", trusted_root=trusted)
+
+
+def test_write_reports_rejects_report_file_symlink_escape(tmp_path: Path):
+    """A report filename symlink must not redirect writes outside trusted_root."""
+    from tools.release_readiness.batch2_security.report import write_reports
+
+    trusted = tmp_path / "trusted"
+    output = trusted / "out"
+    output.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text("synthetic sentinel", encoding="utf-8")
+    report_link = output / "batch2_security_report.json"
+    try:
+        report_link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable")
+
+    payload = {"schema_version": "v1", "security_pass": True, "findings": []}
+    with pytest.raises(PathEscapeError):
+        write_reports(payload, "out", trusted_root=trusted)
+    assert outside.read_text(encoding="utf-8") == "synthetic sentinel"
+
+
+def test_write_reports_does_not_follow_hard_link_outside_trusted_root(tmp_path: Path):
+    """Replacing a report must not mutate an outside file linked into output."""
+    import os
+
+    from tools.release_readiness.batch2_security.report import write_reports
+
+    trusted = tmp_path / "trusted"
+    output = trusted / "out"
+    output.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text("synthetic sentinel", encoding="utf-8")
+    report_path = output / "batch2_security_report.json"
+    try:
+        os.link(outside, report_path)
+    except OSError:
+        pytest.skip("hard links unavailable")
+
+    payload = {"schema_version": "v1", "security_pass": True, "findings": []}
+    write_reports(payload, "out", trusted_root=trusted)
+    assert outside.read_text(encoding="utf-8") == "synthetic sentinel"
