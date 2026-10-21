@@ -225,3 +225,26 @@ def test_missing_coords_never_reaches_backend():
     with pytest.raises(Exception):
         apply_csd(raw, channels=["Fz", "Cz"], csd_callable=backend)
     assert backend.calls == []
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"n_legendre_terms": True},
+        {"n_legendre_terms": "50"},
+        {"stiffness": True},
+        {"stiffness": "4.0"},
+        {"lambda2": False},
+        {"lambda2": "1e-5"},
+        {"sphere": (True, 0.0, 0.0, 0.09)},
+        {"sphere": ("0", "0", "0", "0.09")},
+        {"copy": "False"},
+        {"copy": 0},
+    ],
+)
+def test_boolean_and_string_parameters_are_refused(eeg_raw, kwargs):
+    """Numeric parameters are numbers, not booleans or numeric strings; copy is a real bool."""
+    backend = RecordingCallable()
+    with pytest.raises(CSDAdapterError):
+        apply_csd(eeg_raw, channels=["Fz", "Cz", "Pz"], csd_callable=backend, **kwargs)
+    assert backend.calls == []

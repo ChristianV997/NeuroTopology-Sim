@@ -102,3 +102,19 @@ def test_constant_common_offset_documented_reference_free_policy(eeg_raw):
     for row in result.data:
         for value in row:
             assert math.isfinite(float(value))
+
+
+def test_output_units_unknown_when_backend_reports_no_unit():
+    """'documented' needs a unit the backend reported; an absent unit is unknown."""
+
+    def backend(inst, **kwargs):
+        out = inst.copy()
+        for ch in out.info["chs"]:
+            ch["unit"] = None
+        out._data = [[0.0, 0.0] for _ in out.ch_names]
+        return out
+
+    raw = FakeRaw(["Fz", "Cz"], locs=standard_locs(2))
+    result = apply_csd(raw, channels=["Fz", "Cz"], csd_callable=backend)
+    assert result.provenance.output_units is None
+    assert result.provenance.output_units_status == "unknown"

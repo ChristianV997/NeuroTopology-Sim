@@ -34,7 +34,11 @@ about consciousness or neural mechanism.
 | `lambda2` | `1e-5` | Regularization; MNE requires `0 <= lambda2 < 1` |
 | `stiffness` | `4` | Spline stiffness; non-negative |
 | `n_legendre_terms` | `50` | Legendre expansion length |
-| `copy` | `True` | Copy vs in-place on the picked instance |
+| `copy` | `True` | Must be a real `bool`; the adapter always picks on a copy |
+
+Numeric parameters must be real numbers. Booleans and strings are refused
+rather than coerced, so `n_legendre_terms=True` and `lambda2="1e-5"` both fail
+closed before MNE is called.
 
 Defaults are taken from the official MNE API documentation / source. They
 are **not** Gemini Round 4/5 proposal pins and are not independently
@@ -46,7 +50,9 @@ MNE’s `_csd.py` assigns `FIFF.FIFF_UNIT_V_M2` to transformed EEG channels.
 The adapter therefore reports output units as `V/m^2` with
 `output_units_status="documented"` when that mapping is established. If the
 runtime unit token cannot be mapped for the installed backend/version, units
-are reported as **unknown** (never fabricated).
+are reported as **unknown** (never fabricated). The same holds when the backend
+reports no unit for the selected channels, or returns no channel info: the
+documented unit is not claimed without runtime evidence.
 
 ## What the adapter guarantees
 

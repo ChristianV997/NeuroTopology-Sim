@@ -6,6 +6,7 @@ and provenance. Not a scientific claim about neural mechanism or consciousness.
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -44,6 +45,32 @@ def get_mne_version() -> Optional[str]:
     return getattr(mne, "__version__", None)
 
 
+def _strict_real(name: str, value: Any) -> float:
+    """A finite real number. Booleans and strings are refused, never coerced."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise CSDAdapterError(f"{name} must be a finite real number; got {value!r}")
+    result = float(value)
+    if not math.isfinite(result):
+        raise CSDAdapterError(f"{name} must be finite; got {value!r}")
+    return result
+
+
+def _strict_integer(name: str, value: Any) -> int:
+    """An integer >= 1. An integral float is accepted; booleans and strings are refused."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise CSDAdapterError(f"{name} must be an integer >= 1; got {value!r}")
+    if isinstance(value, numbers.Integral):
+        number = int(value)
+    else:
+        as_float = float(value)
+        if not math.isfinite(as_float) or as_float != int(as_float):
+            raise CSDAdapterError(f"{name} must be an integer >= 1; got {value!r}")
+        number = int(as_float)
+    if number < 1:
+        raise CSDAdapterError(f"{name} must be an integer >= 1; got {value!r}")
+    return number
+
+
 def _normalize_sphere(
     sphere: Union[str, Sequence[float]],
 ) -> Union[str, Tuple[float, float, float, float]]:
@@ -54,17 +81,14 @@ def _normalize_sphere(
             )
         return sphere
     try:
-        vals = tuple(float(v) for v in sphere)
-    except (TypeError, ValueError) as exc:
+        items = tuple(sphere)
+    except TypeError as exc:
         raise CSDAdapterError(
             "sphere must be 'auto' or (x, y, z, r) with finite float meters"
         ) from exc
-    if len(vals) != 4:
+    if len(items) != 4:
         raise CSDAdapterError("sphere must be (x, y, z, r) in meters")
-    if not all(math.isfinite(v) for v in vals):
-        raise CSDAdapterError(
-            f"sphere components must be finite floats (meters); got {vals!r}"
-        )
+    vals = tuple(_strict_real("sphere component", item) for item in items)
     if vals[3] <= 0:
         raise CSDAdapterError("sphere radius must be positive (meters)")
     return (vals[0], vals[1], vals[2], vals[3])
@@ -142,11 +166,11 @@ def _infer_input_units(inst: Any, channels: Sequence[str]) -> Optional[str]:
 
 def _read_output_units(inst: Any, channels: Sequence[str]) -> Tuple[Optional[str], str, Optional[str]]:
     """Prefer runtime channel units; fall back to documented V/m^2 status."""
-    documented, status, source = documented_output_units()
+    documented, _, source = documented_output_units()
     info = getattr(inst, "info", {}) or {}
     chs = info.get("chs") if isinstance(info, dict) else None
     if not isinstance(chs, Sequence):
-        return documented, status, source
+        return None, "unknown", "backend returned no channel info; no unit was reported"
     runtime = []
     for ch in chs:
         if not isinstance(ch, dict):
@@ -159,7 +183,7 @@ def _read_output_units(inst: Any, channels: Sequence[str]) -> Tuple[Optional[str
             continue
         runtime.append(str(unit))
     if not runtime:
-        return documented, status, source
+        return None, "unknown", "backend reported no unit for the selected channels"
     # If runtime units disagree, do not claim a known physical unit.
     if len(set(runtime)) != 1:
         return None, "unknown", "runtime channel units disagree"
@@ -252,35 +276,18 @@ def apply_csd(
         CSD / surface Laplacian, not anatomical source localization.
     """
     reject_reference_mutation(alter_reference=alter_reference)
+    if not isinstance(copy, bool):
+        raise CSDAdapterError(f"copy must be a bool; got {copy!r}")
     sphere_norm = _normalize_sphere(sphere)
-    try:
-        lambda2_f = float(lambda2)
-        stiffness_f = float(stiffness)
-    except (TypeError, ValueError) as exc:
-        raise CSDAdapterError("lambda2 and stiffness must be finite floats") from exc
-    if not math.isfinite(lambda2_f) or not (0.0 <= lambda2_f < 1.0):
+    lambda2_f = _strict_real("lambda2", lambda2)
+    stiffness_f = _strict_real("stiffness", stiffness)
+    if not (0.0 <= lambda2_f < 1.0):
         raise CSDAdapterError(
-            f"lambda2 must be finite and satisfy 0 <= lambda2 < 1 (MNE API); got {lambda2!r}"
+            f"lambda2 must satisfy 0 <= lambda2 < 1 (MNE API); got {lambda2!r}"
         )
-    if not math.isfinite(stiffness_f) or stiffness_f < 0.0:
-        raise CSDAdapterError(
-            f"stiffness must be a finite non-negative float (MNE API); got {stiffness!r}"
-        )
-    try:
-        n_terms_f = float(n_legendre_terms)
-    except (TypeError, ValueError) as exc:
-        raise CSDAdapterError(
-            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
-        ) from exc
-    if (
-        not math.isfinite(n_terms_f)
-        or n_terms_f != int(n_terms_f)
-        or int(n_terms_f) < 1
-    ):
-        raise CSDAdapterError(
-            f"n_legendre_terms must be an integer >= 1; got {n_legendre_terms!r}"
-        )
-    n_terms = int(n_terms_f)
+    if stiffness_f < 0.0:
+        raise CSDAdapterError(f"stiffness must be non-negative (MNE API); got {stiffness!r}")
+    n_terms = _strict_integer("n_legendre_terms", n_legendre_terms)
     lambda2 = lambda2_f
     stiffness = stiffness_f
     n_legendre_terms = n_terms

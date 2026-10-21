@@ -106,3 +106,10 @@ def test_usable_coords_accepted():
     assert selected == ["A", "B"]
     assert errors == []
     assert all(r.usable for r in reports)
+
+
+def test_duplicate_channel_names_are_ambiguous_and_refused():
+    """A name that maps to two channels has no unambiguous coordinates or type."""
+    raw = FakeRaw(["Fz", "Fz", "Cz"], locs=standard_locs(3))
+    with pytest.raises(InvalidChannelSelectionError, match="duplicate"):
+        extract_channel_inventory(raw)

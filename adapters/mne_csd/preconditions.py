@@ -69,6 +69,8 @@ def extract_channel_inventory(inst: Any) -> Dict[str, Dict[str, Any]]:
             ch_type = "eeg"
         else:
             ch_type = normalized
+        if name in inventory:
+            raise InvalidChannelSelectionError(f"duplicate channel name in instance: {name!r}")
         inventory[name] = {"ch_type": ch_type, "xyz_m": xyz, "index": index}
     return inventory
 
