@@ -5,6 +5,7 @@ Synthetic local fixtures only. No network. No API keys.
 from __future__ import annotations
 
 import importlib.util
+import io
 import sys
 import types
 from pathlib import Path
@@ -70,6 +71,7 @@ class FakeS3Client:
         self.download_impl = download_impl
         self.get_object_impl = get_object_impl
         self.download_calls: list[tuple] = []
+        self.get_object_calls: list[dict] = []
 
     def get_paginator(self, name: str):
         assert name == "list_objects_v2"
@@ -78,11 +80,18 @@ class FakeS3Client:
     def download_file(self, bucket, key, filename, Config=None):
         self.download_calls.append((bucket, key, filename))
         if self.download_impl is None:
-            Path(filename).write_bytes(b"ok")
-            return
+            raise AssertionError("download_file must not be used for subject sync")
         self.download_impl(bucket, key, filename, Config)
 
     def get_object(self, **kwargs):
+        self.get_object_calls.append(dict(kwargs))
         if self.get_object_impl is None:
             raise AssertionError("get_object not configured")
         return self.get_object_impl(**kwargs)
+
+
+def ranged_body(payload: bytes, range_header: str) -> dict:
+    """Return a mocked S3 get_object body for an inclusive bytes= Range."""
+    start_s, end_s = range_header.removeprefix("bytes=").split("-", 1)
+    start, end = int(start_s), int(end_s)
+    return {"Body": io.BytesIO(payload[start : end + 1])}

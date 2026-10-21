@@ -1,0 +1,14 @@
+{
+  "claim_type": "benchmark_result",
+  "data_mode": "performance_only",
+  "evidence_class": "performance_only",
+  "metrics": {
+    "runtime_s": 0.01
+  },
+  "notes": "Performance-only benchmark; not empirical evidence.",
+  "run_id": "perf-001",
+  "run_kind": "benchmark",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "verdict": "PASS"
+}

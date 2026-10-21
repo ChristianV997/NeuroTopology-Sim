@@ -15,6 +15,7 @@ from awareness_studio.research_cycle import (
     ExperimentSpec,
     Hypothesis,
     ImmutableCycleError,
+    LedgerError,
     ResearchCycleError,
     ResearchCycleLedger,
     RunRecordLink,
@@ -141,6 +142,14 @@ def test_finalized_cycle_rejects_edits_and_child_cycle_supports_revision(tmp_pat
     ledger = ResearchCycleLedger(tmp_path / "frozen.sqlite3")
     ledger.create_cycle("cycle-1")
     ledger.append_record("cycle-1", source())
+    ledger.append_record(
+        "cycle-1",
+        Claim(
+            "claim-1", "cycle-1", "A retained planning claim.", ("snapshot-1",),
+            EvidenceClass.HYPOTHESIS, "Revision input only.", LIMITATIONS,
+            parent_ids=("snapshot-1",),
+        ),
+    )
     ledger.finalize_cycle("cycle-1")
     ledger.finalize_cycle("cycle-1")
     with pytest.raises(ImmutableCycleError):
@@ -153,6 +162,31 @@ def test_finalized_cycle_rejects_edits_and_child_cycle_supports_revision(tmp_pat
     assert ledger.recover(child)
 
 
+def test_unrelated_cycle_links_and_duplicate_record_ids_are_rejected(tmp_path: Path):
+    ledger = ResearchCycleLedger(tmp_path / "lineage.sqlite3")
+    ledger.create_cycle("cycle-a")
+    ledger.create_cycle("cycle-b")
+    ledger.append_record("cycle-a", source("cycle-a"))
+    with pytest.raises(LedgerError, match="unrelated cycle"):
+        ledger.append_record(
+            "cycle-b",
+            Claim(
+                "claim-b", "cycle-b", "A planning claim.", ("snapshot-1",),
+                EvidenceClass.HYPOTHESIS, "planning only", LIMITATIONS,
+                parent_ids=("snapshot-1",),
+            ),
+        )
+    with pytest.raises(ImmutableCycleError, match="already exists in cycle cycle-a"):
+        ledger.append_record("cycle-b", source("cycle-b"))
+
+
+def test_recover_rejects_unknown_cycle(tmp_path: Path):
+    ledger = ResearchCycleLedger(tmp_path / "unknown.sqlite3")
+    ledger.create_cycle("cycle-a")
+    with pytest.raises(LedgerError, match="unknown cycle"):
+        ledger.recover("missing-cycle")
+
+
 def test_invalid_provenance_and_scientific_promotion_are_rejected():
     with pytest.raises(ResearchCycleError):
         SourceSnapshot("bad", "cycle-1", "local", "not-a-hash", "empirical", EvidenceClass.DESCRIPTIVE_EMPIRICAL, "scope", LIMITATIONS)
@@ -160,6 +194,12 @@ def test_invalid_provenance_and_scientific_promotion_are_rejected():
         SourceSnapshot("bad", "cycle-1", "local", SOURCE_SHA, "synthetic_demo", EvidenceClass.DESCRIPTIVE_EMPIRICAL, "scope", LIMITATIONS)
     with pytest.raises(ResearchCycleError, match="proxy"):
         Claim("claim-proxy", "cycle-1", "This proxy measurement establishes a causal mechanism.", ("evidence-1",), EvidenceClass.PROXY_INFERENCE, "scope", LIMITATIONS)
+    with pytest.raises(ResearchCycleError, match="synthetic"):
+        EvidenceRecord("synthetic-promoted", "cycle-1", ("snapshot-1",), "fixture", "synthetic", EvidenceClass.BENCHMARK_RESULT, "scope", LIMITATIONS)
+    with pytest.raises(ResearchCycleError, match="proxy"):
+        EvidenceRecord("proxy-promoted", "cycle-1", ("snapshot-1",), "fixture", "proxy", EvidenceClass.FORMAL_STATISTICAL_EVIDENCE, "scope", LIMITATIONS)
+    with pytest.raises(ResearchCycleError, match="failed"):
+        RunRecordLink("failed-run", "cycle-1", "experiment-1", "0.1", PROVENANCE_SHA, "FAILED", EvidenceClass.BENCHMARK_RESULT, "scope", LIMITATIONS)
 
 
 def test_finite_json_and_no_network_imports():

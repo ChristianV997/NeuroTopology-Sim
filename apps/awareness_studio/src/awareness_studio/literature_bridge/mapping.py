@@ -149,6 +149,12 @@ def bridge_source(
     no checksum is available at all (preserves the missing-snapshot
     state instead of inventing one).
     """
+    if snapshot is not None and snapshot.source_id != record.source_id:
+        return _not_bridged(
+            f"snapshot_source_mismatch: snapshot.source_id={snapshot.source_id!r} "
+            f"record.source_id={record.source_id!r}",
+            _preserved_source_state(record, "source_snapshot_mismatch"),
+        )
     validation = validate_record(record, snapshot)
     preserved = _preserved_source_state(record, validation.state)
 
@@ -232,6 +238,13 @@ def bridge_claim(
         "claim_kind": claim.claim_kind,
         "claim_version": claim.version,
     }
+
+    expected_snapshot_id = f"lit-source-{claim.source_id}"
+    if source_snapshot_id != expected_snapshot_id:
+        return _not_bridged(
+            f"source_snapshot_mismatch: expected {expected_snapshot_id}",
+            preserved,
+        )
 
     if claim.status != "active":
         return _not_bridged(f"claim_status={claim.status}", preserved)

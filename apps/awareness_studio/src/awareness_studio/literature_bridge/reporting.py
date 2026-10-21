@@ -35,3 +35,4 @@ def to_finite_json(outcome: BridgeOutcome, *, indent: int = 2) -> str:
     payload = outcome.to_dict()
     _check_finite(payload)
     return json.dumps(payload, indent=indent, allow_nan=False, sort_keys=False)
+

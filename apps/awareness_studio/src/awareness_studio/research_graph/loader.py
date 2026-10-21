@@ -23,7 +23,6 @@ from .types import (
 )
 
 
-_VERIFIED_SOURCE_TIERS = frozenset({"T1_verified_primary", "T2_verified_secondary"})
 _TERMINAL_SOURCE_STATUSES = frozenset({"disputed", "retracted"})
 
 
@@ -43,29 +42,6 @@ def _classify_evidence(data: Mapping[str, Any]) -> str:
     ev_cls = data.get("evidence_class")
     if ev_cls in (e.value for e in EvidenceClass):
         return ev_cls
-    return EvidenceClass.UNKNOWN.value
-
-
-def _classify_source_evidence(source: Mapping[str, Any]) -> str:
-    """Classify a source snapshot without treating its presence as evidence.
-
-    A graph projection cannot independently resolve a DOI or recompute a source
-    snapshot checksum.  It may preserve an upstream *verified* source tier, but
-    it must not turn an arbitrary source dictionary into empirical evidence.
-    This class describes source-record verification only; it never promotes a
-    claim or hypothesis.
-    """
-    inherited = _classify_evidence(source)
-    if inherited in {EvidenceClass.SYNTHETIC.value, EvidenceClass.PROXY.value}:
-        return inherited
-
-    if str(source.get("status", "")).strip().lower() in _TERMINAL_SOURCE_STATUSES:
-        return EvidenceClass.UNKNOWN.value
-
-    tier = source.get("evidence_tier")
-    verified = source.get("verification_status") == "verified"
-    if tier in _VERIFIED_SOURCE_TIERS and verified:
-        return EvidenceClass.EMPIRICAL.value
     return EvidenceClass.UNKNOWN.value
 
 
@@ -129,7 +105,7 @@ def load_from_dict(
             if not isinstance(s, dict) or "source_id" not in s:
                 continue
             sid = str(s["source_id"])
-            evidence_class = _classify_source_evidence(s)
+            evidence_class = _classify_evidence(s)
             builder.add_node(
                 GraphNode(
                     node_id=sid,

@@ -1,0 +1,17 @@
+{
+  "claim_type": "synthetic_demonstration",
+  "created_at": "2026-09-13T00:00:00Z",
+  "data_mode": "synthetic",
+  "evidence_class": "synthetic_demonstration",
+  "metrics": {
+    "I_mean": 0.2,
+    "Qabs": 1.0
+  },
+  "notes": "Synthetic demonstration of the hypothesis pipeline threshold.",
+  "run_id": "syn-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "synthetic": true,
+  "verdict": "PASS"
+}

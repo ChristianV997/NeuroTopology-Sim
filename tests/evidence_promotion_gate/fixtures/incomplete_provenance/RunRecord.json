@@ -1,0 +1,26 @@
+{
+  "claim_type": "descriptive_empirical",
+  "data_mode": "empirical",
+  "effect_size": {
+    "name": "difference",
+    "value": 0.15
+  },
+  "evidence_class": "descriptive_empirical",
+  "labels_verified": true,
+  "multiplicity_correction": "not_needed_single_test",
+  "n_tests": 1,
+  "notes": "Descriptive association without complete provenance.",
+  "null_controls": [
+    "phase_shuffle"
+  ],
+  "run_id": "prov-001",
+  "run_kind": "hypothesis",
+  "schema_version": "0.1",
+  "source": "fixture",
+  "uncertainty": {
+    "ci95": [
+      0.1,
+      0.2
+    ]
+  }
+}

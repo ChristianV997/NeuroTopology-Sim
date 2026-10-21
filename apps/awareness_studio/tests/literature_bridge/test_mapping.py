@@ -138,6 +138,16 @@ def test_checksum_matching_real_local_snapshot_bridges(tmp_path, valid_peer_revi
     assert outcome.record["source_sha256"] == file_checksum(real_file)
 
 
+def test_snapshot_from_another_source_is_not_bridged(valid_peer_reviewed_record):
+    snapshot = LitSnapshot(
+        snapshot_id="snap-other-source", source_id="different-source",
+        kind="full_local_snapshot", local_path=None, content_checksum="a" * 64,
+    )
+    outcome = bridge_source(valid_peer_reviewed_record, cycle_id="cycle-1", snapshot=snapshot)
+    assert outcome.status == "not_bridged"
+    assert outcome.reason.startswith("snapshot_source_mismatch")
+
+
 # -- disputed / superseded / retracted source status preserved --------------------------------
 
 @pytest.mark.parametrize("status", ["disputed", "superseded", "retracted"])
@@ -161,6 +171,13 @@ def test_claim_bridges_as_pending_by_default():
     assert outcome.record["status"] == "PENDING"
     assert outcome.record["evidence_class"] == EvidenceClass.HYPOTHESIS.value
     assert outcome.record["evidence_ids"] == ["lit-source-fixture-src-0001"]
+
+
+def test_claim_cannot_attach_to_an_unrelated_snapshot():
+    claim = ClaimRecord(claim_id="claim-wrong-source", source_id="fixture-src-0001", claim_text="X correlates with Y.")
+    outcome = bridge_claim(claim, cycle_id="cycle-1", source_snapshot_id="lit-source-different-source")
+    assert outcome.status == "not_bridged"
+    assert outcome.reason.startswith("source_snapshot_mismatch")
 
 
 def test_claim_downgraded_to_review_required_is_preserved():

@@ -1,4 +1,20 @@
-.PHONY: validate-governance test-root test-root-isolated test-runner test-core-isolated test-eeg-isolated test-ml-isolated dependency-inventory test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query
+.PHONY: validate-governance test-root test-root-isolated test-runner test-core-isolated test-eeg-isolated test-ml-isolated dependency-inventory test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query benchmark-solvers validate-benchmark test-optimization-isolated optimization-cycle
+
+benchmark-solvers:
+	python scripts/benchmark_simulation_solvers.py --n-layers 1 --solvers exact_dense sparse_shift_invert --output-dir outputs/benchmarks
+
+validate-benchmark:
+	python tools/validate_solver_benchmark.py outputs/benchmarks/simulation_solver_benchmark.json
+
+test-optimization-isolated:
+	python scripts/run_tests_isolated.py tests/test_sparse_open_quantum.py tests/test_topological_filtration_kernel.py tests/test_non_parametric_stats.py tests/test_rfc8259_serialization.py tests/test_benchmark_simulation_solvers.py
+
+optimization-cycle:
+	$(MAKE) validate-governance
+	$(MAKE) test-optimization-isolated
+	$(MAKE) benchmark-solvers
+	$(MAKE) validate-benchmark
+
 
 validate-governance:
 	python -m governance.validate

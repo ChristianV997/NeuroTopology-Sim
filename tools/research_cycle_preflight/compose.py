@@ -134,3 +134,4 @@ def run_preflight(request: Mapping[str, Any], *, now: Optional[str] = None) -> d
     canonical = _finite_canonical_json(report)
     report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return report
+

@@ -151,6 +151,43 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
                     )
                 )
 
+        # Check sources AND claims for an unverified empirical/formal claim.
+        # A literature/data source, or a claim derived from one, is at most
+        # hypothesis-generating input unless something in its own properties
+        # actually corroborates it (an independent verification/peer-review
+        # signal, or the same preregistered+held-out-locked bar
+        # EVIDENCE_RECORD formal claims must clear). Absent that,
+        # EMPIRICAL/FORMAL is an unsupported promotion, not a fact -- flag
+        # it rather than silently trusting whatever evidence_class a
+        # manifest declared. This covers CLAIM nodes as well as
+        # SOURCE_SNAPSHOT ones deliberately: a claim's evidence_class comes
+        # from the same manifest-declared, unverified-by-construction path,
+        # and nothing else in this function checked a CLAIM node's
+        # evidence_class at all before this.
+        if node.node_type in (NodeType.SOURCE_SNAPSHOT.value, NodeType.CLAIM.value) and node.evidence_class in (
+            EvidenceClass.EMPIRICAL.value,
+            EvidenceClass.FORMAL.value,
+        ):
+            props = node.properties
+            verified = (
+                props.get("verification_status") == "verified"
+                or props.get("peer_review_status") == "peer_reviewed"
+                or props.get("review_status") == "reviewed_accepted"
+                or (props.get("preregistered", False) and props.get("held_out_split_locked", False))
+            )
+            if not verified:
+                diagnostics.append(
+                    GraphDiagnostic(
+                        code=DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value,
+                        severity=DiagnosticSeverity.ERROR.value,
+                        message=(
+                            f"Node '{nid}' ({node.node_type}) claims evidence_class={node.evidence_class!r} "
+                            "with no independent verification/peer-review signal in its properties."
+                        ),
+                        affected_ids=(nid,),
+                    )
+                )
+
         # Check unsupported promotion on hypotheses/claims
         if node.node_type in (NodeType.HYPOTHESIS.value, NodeType.CLAIM.value):
             if node.status in (NodeStatus.SUPPORTED.value, "confirmed", "fact"):

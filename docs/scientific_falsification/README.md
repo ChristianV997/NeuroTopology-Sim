@@ -102,3 +102,10 @@ The current classical arm is explicitly
 `wilson_cowan_proxy_regression` with `likelihood_status: not_implemented`.
 Downstream code must not display it as a fitted Wilson--Cowan likelihood or as
 biological confirmation.
+
+## Promotion gate
+
+Cross-system promotion into empirical labels is handled separately by
+`tools/evidence_promotion_gate` (`docs/scientific_falsification/evidence_promotion_gate.md`).
+That package is a reporting gate, not scientific confirmation. Synthetic,
+proxy, and literature-hypothesis records cannot be promoted.

@@ -41,3 +41,4 @@ def load_request():
         raw = json.loads((FIXTURES_DIR / f"{name}.json").read_text(encoding="utf-8"))
         return resolve_request(raw)
     return _load
+

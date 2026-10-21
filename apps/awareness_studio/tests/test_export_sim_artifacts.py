@@ -8,11 +8,14 @@ from pathlib import Path
 import pytest
 
 # Make tools/ importable from this test
-_TOOLS_DIR = Path(__file__).resolve().parent.parent
+_TOOLS_DIR = Path(__file__).resolve().parent.parent / "tools"
 if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
-from tools.export_sim_artifacts import export, _render_markdown, _out_filename
+try:
+    from tools.export_sim_artifacts import export, _render_markdown, _out_filename
+except ModuleNotFoundError:
+    from export_sim_artifacts import export, _render_markdown, _out_filename
 
 _RUN_ID = "deadbeef01234567"
 _RUN_KIND = "hypothesis"

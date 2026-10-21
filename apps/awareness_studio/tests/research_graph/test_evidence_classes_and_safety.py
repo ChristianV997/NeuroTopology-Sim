@@ -170,35 +170,151 @@ def test_missing_validation_verdict_is_not_promoted_to_pass():
     assert not any(edge.source_id == "val-missing" and edge.edge_type == EdgeType.SUPPORTS.value for edge in graph.edges)
 
 
-def test_sources_require_explicit_verified_tier_before_empirical_classification():
-    graph = load_from_dict({
+def test_source_with_no_evidence_signal_is_not_silently_empirical():
+    """Regression test: load_from_dict used to hardcode evidence_class=EMPIRICAL
+    for every source_snapshot node regardless of its actual data, silently
+    promoting any literature/data source (e.g. a hypothesis-tier source from
+    tools.literature_evidence) to empirical status. A source manifest that
+    carries no recognized evidence signal at all must classify as UNKNOWN,
+    never as an unearned EMPIRICAL."""
+    manifest = {
+        "sources": [
+            {"source_id": "src-no-signal", "title": "An Unclassified Source"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("src-no-signal")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+
+
+def test_source_declaring_synthetic_data_mode_is_classified_synthetic():
+    manifest = {
+        "sources": [
+            {"source_id": "src-synth", "title": "A Synthetic-Data Source", "data_mode": "synthetic"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("src-synth")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.SYNTHETIC.value
+
+
+def test_source_claiming_empirical_without_verification_is_flagged():
+    """A source_snapshot with evidence_class=empirical and nothing in its own
+    properties corroborating that (no verification_status/peer_review_status/
+    review_status/preregistered+held_out_split_locked signal) is an
+    unsupported promotion -- flagged, never silently trusted."""
+    manifest = {
+        "sources": [
+            {"source_id": "src-unverified-empirical", "title": "X", "evidence_class": "empirical"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("src-unverified-empirical")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    violations = [
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+    ]
+    assert len(violations) == 1
+    assert violations[0].severity == DiagnosticSeverity.ERROR.value
+    assert violations[0].affected_ids == ("src-unverified-empirical",)
+
+
+def test_source_claiming_empirical_with_verification_is_not_flagged():
+    manifest = {
         "sources": [
             {
-                "source_id": "src-unverified",
-                "title": "Unverified Source",
-                "source_type": "journal_article",
-                "evidence_tier": "T3_unverified_claimed",
-                "verification_status": "unverified",
-            },
-            {
-                "source_id": "src-verified",
-                "title": "Verified Source",
-                "source_type": "journal_article",
-                "evidence_tier": "T1_verified_primary",
+                "source_id": "src-verified-empirical",
+                "title": "X",
+                "evidence_class": "empirical",
                 "verification_status": "verified",
             },
+        ]
+    }
+    graph = load_from_dict(manifest)
+    violations = [
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+    ]
+    assert violations == []
+
+
+def test_source_claiming_formal_without_verification_is_flagged():
+    manifest = {
+        "sources": [
+            {"source_id": "src-unverified-formal", "title": "X", "evidence_class": "formal"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    violations = [
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+    ]
+    assert len(violations) == 1
+
+
+def test_source_with_hypothesis_evidence_class_is_never_flagged_as_unsupported_promotion():
+    """A source honestly declaring evidence_class=hypothesis (e.g. bridged
+    from tools.literature_evidence, which never emits empirical/formal at
+    all) must never trip this guardrail -- only an EMPIRICAL/FORMAL claim
+    without corroboration does."""
+    manifest = {
+        "sources": [
+            {"source_id": "src-hypothesis", "title": "X", "evidence_class": "hypothesis"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("src-hypothesis")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value  # "hypothesis" is not a research_graph EvidenceClass value
+    violations = [
+        d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+    ]
+    assert violations == []
+
+
+def test_claim_with_unrecognized_evidence_class_is_not_passed_through_unchecked():
+    """Regression test: the claims loading path used to pass whatever
+    string a manifest supplied straight through as evidence_class with no
+    validation at all (unlike every other section, which already used
+    _classify_evidence). A claim declaring a non-research_graph value
+    (e.g. "hypothesis", from a bridged literature claim) must classify as
+    UNKNOWN, never be accepted verbatim as an unrecognized evidence_class
+    string on the node."""
+    manifest = {
+        "claims": [
+            {"claim_id": "clm-unchecked", "source_id": "src-1", "claim_text": "X", "evidence_class": "hypothesis"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("clm-unchecked")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+
+
+def test_claim_declaring_recognized_evidence_class_still_classifies_correctly():
+    manifest = {
+        "claims": [
+            {"claim_id": "clm-proxy", "source_id": "src-1", "claim_text": "X", "evidence_class": "proxy"},
+        ]
+    }
+    graph = load_from_dict(manifest)
+    node = graph.get_node("clm-proxy")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.PROXY.value
+
+
+def test_source_without_evidence_signal_is_review_required_not_active():
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-bare", "title": "Bare Source", "source_type": "journal_article"},
         ],
     })
 
-    unverified = graph.get_node("src-unverified")
-    verified = graph.get_node("src-verified")
-    assert unverified is not None
-    assert verified is not None
-    assert unverified.evidence_class == EvidenceClass.UNKNOWN.value
-    assert unverified.status == NodeStatus.REVIEW_REQUIRED.value
-    assert SafetyLabel.REVIEW_REQUIRED.value in unverified.safety_labels
-    assert verified.evidence_class == EvidenceClass.EMPIRICAL.value
-    assert verified.status == NodeStatus.ACTIVE.value
+    node = graph.get_node("src-bare")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
 
 
 def test_pass_validation_stays_pending_without_independent_adjudication():

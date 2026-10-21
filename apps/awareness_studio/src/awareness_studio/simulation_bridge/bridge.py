@@ -391,8 +391,11 @@ class SimulationBridge:
         if diagnostics or rejected:
             return BridgeResult(BridgeState.EXECUTION_FAILED, request, execution_state="PASS", accepted_artifacts=[], rejected_artifacts=rejected, runner_manifest=manifest, lineage_report=lineage, diagnostics=diagnostics or ["artifact verification rejected output"], evidence_class="engineering_execution")
 
-        synthetic = bool(record.get("synthetic")) or str(record.get("data_mode", "")).lower() in {"synthetic", "synthetic_demo"} if record else False
-        evidence_class = "synthetic_demo_only" if synthetic else "engineering_simulation_artifact"
+        record_mode = str(record.get("data_mode", "")).strip().lower() if record else ""
+        request_mode = str(request.provenance.get("data_mode", "")).strip().lower()
+        synthetic = bool(record.get("synthetic")) or record_mode in {"synthetic", "synthetic_demo", "synthetic_demo_only"} if record else False
+        proxy = record_mode in {"proxy", "proxy_inference", "proxy_only"} or request_mode in {"proxy", "proxy_inference", "proxy_only"}
+        evidence_class = "synthetic_demo_only" if synthetic else "proxy" if proxy else "engineering_simulation_artifact"
         state = BridgeState.ENGINEERING_EXECUTION_COMPLETE if synthetic else BridgeState.EVIDENCE_READY_FOR_REVIEW
         return BridgeResult(state, request, execution_state="PASS", accepted_artifacts=accepted, runner_manifest=manifest, lineage_report=lineage, diagnostics=["checksums, finite JSON, provenance, and artifact lineage verified"], evidence_class=evidence_class)
 

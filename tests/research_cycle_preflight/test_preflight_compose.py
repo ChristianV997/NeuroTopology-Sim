@@ -80,3 +80,4 @@ def test_no_claim_is_not_applicable_not_admissible(load_request):
     result = run_preflight(load_request("complete_plan"), now="2026-01-01T00:00:00+00:00")
     assert result["validators_composed"]["research_claim_gate"] is None
     assert result["scientific_admissibility"] == "NOT_APPLICABLE"
+

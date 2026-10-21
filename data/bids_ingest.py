@@ -9,9 +9,10 @@ Two responsibilities, kept explicit:
 2. `read_window_signal(path, start_s, end_s, ...)` — open a recording with MNE and return the
    REAL samples for one time window as a 1-D array, for feature extraction.
 
-Provenance is explicit: records discovered through validated mne-bids paths
-carry `provenance="real_bids"`; the defensive filesystem fallback is labelled
-`local_bids_unvalidated`. Synthetic paths live elsewhere and are labelled
+Provenance is explicit: records discovered through `mne-bids` carry
+`provenance="real_bids"`; the constrained filesystem fallback carries
+`provenance="unvalidated_filesystem_fallback"` (or `local_bids_unvalidated`) and must not be treated as a
+validated BIDS inventory. Synthetic paths live elsewhere and are labelled
 `synthetic_proxy`. This module never fabricates signal.
 """
 from __future__ import annotations
@@ -44,8 +45,10 @@ _EEG_EXTS = (".edf", ".bdf", ".set", ".vhdr", ".fif")
 def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
     """Discover EEG recordings under a BIDS root using mne-bids.
 
-    Falls back to a filesystem glob only if mne-bids raises on a non-standard tree,
-    so a slightly-off dataset still yields records instead of crashing the pipeline.
+    Falls back to a filesystem candidate scan only if mne-bids raises on a
+    non-standard tree. Fallback records are explicitly marked
+    `unvalidated_filesystem_fallback`; filename-shaped entities are structural
+    hints only and do not establish BIDS validation.
     """
     root_path = Path(root)
     if not root_path.exists():
@@ -74,10 +77,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                     run_id=bp.run,
                     acq_label=getattr(bp, "acquisition", None),
                     extension=fpath.suffix.lower(),
-                    # A filesystem glob is useful for a non-standard local
-                    # tree, but it has not been validated by mne-bids. Keep
-                    # that distinction visible to downstream evidence gates.
-                    provenance="local_bids_unvalidated",
+                    provenance="real_bids",
                     is_eeg_candidate=True,
                 )
             )
@@ -95,7 +95,7 @@ def discover_bids_eeg(root: str) -> list[BIDSEEGRecord]:
                     run_id=ents.get("run"),
                     acq_label=ents.get("acq"),
                     extension=fpath.suffix.lower(),
-                    provenance="real_bids",
+                    provenance="unvalidated_filesystem_fallback",
                     is_eeg_candidate=True,
                 )
             )
@@ -129,19 +129,21 @@ def _iter_eeg_candidate_files(root_path: Path):
 
 
 def inventory_from_records(dataset_id: str, records: list[BIDSEEGRecord]) -> dict:
-    """Emit the `file_inventory.json` shape the existing Level-M window builder consumes."""
     subjects = sorted({r.subject_id for r in records if r.subject_id})
+    provenances = {r.provenance for r in records}
+    if provenances == {"real_bids"}:
+        provenance = "real_bids"
+    elif "local_bids_unvalidated" in provenances:
+        provenance = "unvalidated_or_mixed"
+    else:
+        provenance = "unvalidated_filesystem_fallback"
     return {
         "dataset_id": dataset_id,
         "bids_root": None,
         "n_files": len(records),
         "n_subjects": len(subjects),
         "eeg_candidates": [asdict(r) for r in records],
-        "provenance": (
-            "real_bids"
-            if {r.provenance for r in records} == {"real_bids"}
-            else "unvalidated_or_mixed"
-        ),
+        "provenance": provenance,
     }
 
 

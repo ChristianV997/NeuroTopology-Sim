@@ -106,3 +106,4 @@ def test_omitted_now_only_changes_generated_at_and_checksum(load_request):
     stable1 = {k: v for k, v in result1.items() if k not in volatile}
     stable2 = {k: v for k, v in result2.items() if k not in volatile}
     assert stable1 == stable2
+
