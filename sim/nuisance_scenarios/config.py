@@ -14,6 +14,34 @@ from typing import Any, Iterator, Mapping, Optional, Sequence, Union
 
 SUPPORTED_COORDINATE_UNITS = frozenset({"mm", "cm", "m"})
 
+# Colored-noise synthesis requires at least 4 samples (Nyquist + positive bins).
+_MIN_N_SAMPLES = 4
+
+
+def _require_alias_agreement(
+    canonical_name: str,
+    canonical_value: Any,
+    alias_name: str,
+    alias_value: Any,
+) -> None:
+    """Fail closed when both alias and canonical keys are present but disagree."""
+    if canonical_value is None or alias_value is None:
+        return
+    if isinstance(canonical_value, (int, float)) and isinstance(alias_value, (int, float)):
+        c_f = float(canonical_value)
+        a_f = float(alias_value)
+        if not (math.isfinite(c_f) and math.isfinite(a_f) and c_f == a_f):
+            raise ValueError(
+                f"conflict: '{canonical_name}'={canonical_value!r} disagrees with "
+                f"alias '{alias_name}'={alias_value!r}"
+            )
+        return
+    if str(canonical_value).strip().lower() != str(alias_value).strip().lower():
+        raise ValueError(
+            f"conflict: '{canonical_name}'={canonical_value!r} disagrees with "
+            f"alias '{alias_name}'={alias_value!r}"
+        )
+
 
 @dataclass(frozen=True)
 class NuisanceScenarioConfig:
@@ -65,6 +93,16 @@ class NuisanceScenarioConfig:
         jitter_units: Optional[str] = None,
         sampling_rate_hz: Optional[float] = None,
     ) -> None:
+        # Prefer alias when only one side is supplied; refuse silent disagreement.
+        _require_alias_agreement("noise_exponent", noise_exponent, "chi", chi)
+        _require_alias_agreement(
+            "coordinate_jitter_std", coordinate_jitter_std, "jitter_std", jitter_std
+        )
+        _require_alias_agreement(
+            "coordinate_units", coordinate_units, "jitter_units", jitter_units
+        )
+        _require_alias_agreement("sfreq_hz", sfreq_hz, "sampling_rate_hz", sampling_rate_hz)
+
         eff_chi = chi if chi is not None else (noise_exponent if noise_exponent is not None else 1.0)
         eff_jit = jitter_std if jitter_std is not None else (
             coordinate_jitter_std if coordinate_jitter_std is not None else 0.0
@@ -116,6 +154,12 @@ class NuisanceScenarioConfig:
         if self.n_channels <= 0:
             raise ValueError(
                 f"n_channels must be a positive integer, got {self.n_channels}"
+            )
+        n_samp = int(round(self.duration_s * self.sfreq_hz))
+        if n_samp < _MIN_N_SAMPLES:
+            raise ValueError(
+                f"n_samples must be >= {_MIN_N_SAMPLES} for colored-noise synthesis, "
+                f"got {n_samp} from duration_s={self.duration_s} * sfreq_hz={self.sfreq_hz}"
             )
 
         eff_id = scenario_id if scenario_id else self._generate_id()
@@ -179,6 +223,24 @@ class NuisanceScenarioConfig:
         meta = d.pop("metadata", {})
         # Derived sample count is never a constructor input.
         d.pop("n_samples", None)
+
+        # Refuse silent disagreement before collapsing aliases.
+        _require_alias_agreement("noise_exponent", d.get("noise_exponent"), "chi", d.get("chi"))
+        _require_alias_agreement(
+            "coordinate_jitter_std",
+            d.get("coordinate_jitter_std"),
+            "jitter_std",
+            d.get("jitter_std"),
+        )
+        _require_alias_agreement(
+            "coordinate_units",
+            d.get("coordinate_units"),
+            "jitter_units",
+            d.get("jitter_units"),
+        )
+        _require_alias_agreement(
+            "sfreq_hz", d.get("sfreq_hz"), "sampling_rate_hz", d.get("sampling_rate_hz")
+        )
 
         # Map aliases → constructor kwargs without discarding values.
         # Prefer explicit alias when the canonical key is absent.

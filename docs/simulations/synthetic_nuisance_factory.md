@@ -24,7 +24,8 @@ This module implements a deterministic, reproducible, synthetic-only nuisance-sc
 > - **No Classifier/Detector**: This module does not implement detection algorithms, threshold tuning, or ROC/PR classification scoring.
 > - **No Claim States**: Results are tagged strictly with `HOLD / SYNTHETIC_ONLY` and report purely descriptive/engineering realized metrics.
 > - **Pure NumPy**: Zero SciPy dependencies; all spectral, linear algebraic, and regression routines use standard `numpy`.
-> - **Config aliases**: `from_dict` accepts `chi` / `jitter_std` / `jitter_units` / `sampling_rate_hz` and must preserve them (no silent defaulting).
+> - **Config aliases**: `from_dict` accepts `chi` / `jitter_std` / `jitter_units` / `sampling_rate_hz` and must preserve them (no silent defaulting). Conflicting alias/canonical pairs fail closed. Configurations that yield `n_samples < 4` are rejected.
+> - **No label inference**: Scenario outputs never invent class/condition labels from nuisance parameters; caller `metadata` is preserved verbatim only.
 
 ---
 
