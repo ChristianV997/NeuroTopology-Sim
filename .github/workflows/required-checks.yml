@@ -80,6 +80,7 @@ jobs:
           tests/runner/test_runner_isolation.py
           tests/audits/test_live_repo_pr_ownership_map.py
           tests/ci/test_round6_experimental_discovery.py
+          tests/ci/test_round6_benchmark_makefile.py
           tests/docker_context/test_build_context_policy.py
 
       - name: Discover and run changed Round 6 candidate suites
