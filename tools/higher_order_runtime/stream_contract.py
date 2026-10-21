@@ -18,6 +18,7 @@ Design notes
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -48,6 +49,16 @@ class EmptyInputError(StreamContractError):
     """Raised for empty or unusable signal inputs."""
 
 
+def _positive_integer(value: object, *, name: str) -> int:
+    """Validate an integer-valued contract field, excluding bool and floats."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
+        raise StreamContractError(f"{name} must be an integer")
+    normalized = int(value)
+    if normalized < 1:
+        raise StreamContractError(f"{name} must be >= 1")
+    return normalized
+
+
 @dataclass(frozen=True)
 class StreamBounds:
     """Hard bounds for one streaming session."""
@@ -57,10 +68,16 @@ class StreamBounds:
     allow_uneven_final: bool = True
 
     def __post_init__(self) -> None:
-        if self.max_chunk_samples < 1:
-            raise StreamContractError("max_chunk_samples must be >= 1")
-        if self.max_channels < 1:
-            raise StreamContractError("max_channels must be >= 1")
+        object.__setattr__(
+            self,
+            "max_chunk_samples",
+            _positive_integer(self.max_chunk_samples, name="max_chunk_samples"),
+        )
+        object.__setattr__(
+            self,
+            "max_channels",
+            _positive_integer(self.max_channels, name="max_channels"),
+        )
 
 
 @dataclass(frozen=True)
@@ -71,10 +88,13 @@ class ChunkingPolicy:
     stride: Optional[int] = None
 
     def __post_init__(self) -> None:
-        if self.chunk_size < 1:
-            raise StreamContractError("chunk_size must be >= 1")
-        if self.stride is not None and self.stride < 1:
-            raise StreamContractError("stride must be >= 1")
+        object.__setattr__(
+            self, "chunk_size", _positive_integer(self.chunk_size, name="chunk_size")
+        )
+        if self.stride is not None:
+            object.__setattr__(
+                self, "stride", _positive_integer(self.stride, name="stride")
+            )
         if self.stride is not None and self.stride > self.chunk_size:
             raise StreamContractError("stride must be <= chunk_size")
 
@@ -318,10 +338,12 @@ def batch_stream_covariance_parity(
     if data.shape[0] < 2:
         raise EmptyInputError("covariance parity requires at least 2 samples")
     reference = np.cov(data, rowvar=False, ddof=1)
+    validated_chunk_sizes = tuple(
+        _positive_integer(chunk_size, name="chunk_size")
+        for chunk_size in chunk_sizes
+    )
     out: List[Tuple[int, bool, float]] = []
-    for chunk_size in chunk_sizes:
-        if chunk_size < 1:
-            raise StreamContractError("chunk_size must be >= 1")
+    for chunk_size in validated_chunk_sizes:
         acc = RollingCovariance(data.shape[1])
         for start in range(0, data.shape[0], chunk_size):
             acc.update(data[start : start + chunk_size])

@@ -35,7 +35,7 @@ other paths and was left untouched.
 
 | Topic | Behavior |
 | --- | --- |
-| Chunk sizes | Supported: `1`, short, uneven final, exact divisors. `chunk_size > max_chunk_samples` raises `ChunkBoundError` (no silent clamp). |
+| Chunk/stride configuration | `chunk_size`, explicit `stride`, `max_chunk_samples`, and `max_channels` require positive Python/NumPy integers. Booleans and floats are rejected at configuration time with `StreamContractError`, rather than failing later during slicing. Supported window sizes include `1`, short, uneven final, and exact divisors. `chunk_size > max_chunk_samples` raises `ChunkBoundError` (no silent clamp). |
 | Ordering | Windows are emitted in increasing sample index order. |
 | Timestamps | Optional. When present: finite, length-matched, strictly monotonic. Never fabricated, resampled, or interpolated. |
 | Warm-up / overlap | Default tumbling (`stride = chunk_size`). Overlap mode uses explicit `stride < chunk_size`; warm-up = `chunk_size - stride`. |

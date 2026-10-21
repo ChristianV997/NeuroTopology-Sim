@@ -11,6 +11,7 @@ from tools.higher_order_runtime.stream_contract import (
     StreamBounds,
     StreamContractError,
     StreamSession,
+    batch_stream_covariance_parity,
     iter_contract_windows,
 )
 
@@ -70,3 +71,51 @@ def test_invalid_policy_rejected():
         ChunkingPolicy(chunk_size=8, stride=9)
     with pytest.raises(StreamContractError):
         StreamBounds(max_chunk_samples=0, max_channels=2)
+
+
+def test_chunk_and_stride_configuration_rejects_non_integer_values():
+    """Integer annotations are runtime contracts, not late slice-time failures."""
+    invalid_configurations = (
+        lambda: ChunkingPolicy(chunk_size=4.5),
+        lambda: ChunkingPolicy(chunk_size=4.0),
+        lambda: ChunkingPolicy(chunk_size=True),
+        lambda: ChunkingPolicy(chunk_size="4"),
+        lambda: ChunkingPolicy(chunk_size=4, stride=2.5),
+        lambda: ChunkingPolicy(chunk_size=4, stride=2.0),
+        lambda: ChunkingPolicy(chunk_size=4, stride=True),
+        lambda: ChunkingPolicy(chunk_size=4, stride="2"),
+        lambda: StreamBounds(max_chunk_samples=8.5, max_channels=2),
+        lambda: StreamBounds(max_chunk_samples=8, max_channels=2.5),
+        lambda: StreamBounds(max_chunk_samples=True, max_channels=2),
+        lambda: StreamBounds(max_chunk_samples=8, max_channels="2"),
+    )
+
+    for make_config in invalid_configurations:
+        with pytest.raises(StreamContractError, match="must be an integer"):
+            make_config()
+
+
+def test_stream_configuration_accepts_numpy_integer_scalars(bounds):
+    """Reject ambiguous floats/bools without excluding NumPy's integer scalars."""
+    policy = ChunkingPolicy(chunk_size=np.int64(4), stride=np.int32(2))
+    assert policy.chunk_size == 4
+    assert policy.stride == 2
+
+    numpy_bounds = StreamBounds(
+        max_chunk_samples=np.int64(8), max_channels=np.int32(4)
+    )
+    windows = list(
+        iter_contract_windows(np.arange(8.0).reshape(8, 1), policy, numpy_bounds)
+    )
+    assert [(start, stop) for _, _, start, stop in windows] == [
+        (0, 4),
+        (2, 6),
+        (4, 8),
+    ]
+
+
+def test_batch_parity_rejects_non_integer_chunk_sizes():
+    with pytest.raises(StreamContractError, match="must be an integer"):
+        batch_stream_covariance_parity(
+            np.arange(8.0).reshape(4, 2), chunk_sizes=(2.5,)
+        )
