@@ -11,9 +11,9 @@ import pytest
 
 from shared.measurement_hypothesis import validate_mapping
 from shared.measurement_hypothesis.language import scan_interpretation, target_construct_hits
-from shared.measurement_hypothesis.validate import load_mapping
+from shared.measurement_hypothesis.validate import load_mapping, main
 
-AS_OF = date(2026, 10, 16)
+AS_OF = date(2026, 10, 21)
 TARGET_SENTENCE = "The descriptor is a cortical wave."
 
 
@@ -117,10 +117,22 @@ def test_past_tense_result_in_the_empirical_statement_is_rejected(valid_mapping,
 
 def test_duplicate_keys_in_a_mapping_file_are_rejected(tmp_path):
     path = tmp_path / "mapping.json"
-    path.write_text('{"construct_validity": {"status": "VALIDATED"}, '
-                    '"construct_validity": {"status": "NOT_ESTABLISHED"}}', encoding="utf-8")
-    with pytest.raises(ValueError, match="duplicate"):
+    untrusted_key = "SYNTHETIC_PRIVATE_FIELD_SENTINEL"
+    path.write_text(f'{{"{untrusted_key}": 1, "{untrusted_key}": 2}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate") as exc_info:
         load_mapping(path)
+    assert untrusted_key not in str(exc_info.value)
+
+
+def test_cli_does_not_echo_unreadable_mapping_path(tmp_path, capsys):
+    private_path_marker = "SYNTHETIC_PRIVATE_PATH_SENTINEL"
+    missing = tmp_path / f"{private_path_marker}.json"
+
+    assert main([str(missing)]) == 1
+
+    output = capsys.readouterr().out
+    assert "MAPPING_UNREADABLE" in output
+    assert private_path_marker not in output
 
 
 # ── F6: a key counts only when a function returns it ─────────────────────────

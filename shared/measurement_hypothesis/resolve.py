@@ -28,7 +28,11 @@ def repo_file(repo_root: Path, relative: object) -> Optional[Path]:
 
 
 def sha256_of(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # Git's core.autocrlf may rewrite checked-out Python files on Windows. Hash a
+    # canonical newline representation so a committed mapping resolves identically
+    # from LF and CRLF worktrees while still detecting source-content changes.
+    source = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(source).hexdigest()
 
 
 def parse(path: Path) -> ast.Module:

@@ -186,9 +186,18 @@ def _check_sources(raw: Any, as_of: date, fail: Fail) -> dict[str, Mapping[str, 
             fail("SOURCE_ID_INVALID", f"{path}.source_id", "expected a lowercase identifier")
         uri = source.get("uri")
         if isinstance(uri, str) and uri:
-            parts = urlsplit(uri)
-            if parts.scheme != "https" or not parts.netloc:
-                fail("SOURCE_URI_NOT_HTTPS", f"{path}.uri", "source uri must be an https URL")
+            try:
+                parts = urlsplit(uri)
+                hostname = parts.hostname
+                # Accessing .port performs urllib's deferred port validation.
+                _ = parts.port
+            except ValueError:
+                fail("SOURCE_URI_INVALID", f"{path}.uri", "source uri is malformed")
+            else:
+                if parts.scheme != "https" or not hostname:
+                    code = "SOURCE_URI_NOT_HTTPS" if parts.scheme != "https" else "SOURCE_URI_INVALID"
+                    message = "source uri must be an https URL" if code == "SOURCE_URI_NOT_HTTPS" else "source uri is malformed"
+                    fail(code, f"{path}.uri", message)
         published = source.get("published")
         if isinstance(published, str) and published and not PUBLISHED_RE.fullmatch(published):
             fail("SOURCE_DATE_INVALID", f"{path}.published", "expected YYYY, YYYY-MM, or YYYY-MM-DD")
@@ -545,7 +554,10 @@ def _check_construct_validity(raw: Any, fail: Fail) -> None:
         value = raw.get(field)
         if not (isinstance(value, str) and value.strip()):
             fail("CONSTRUCT_VALIDITY_FIELD_MISSING", f"{base}.{field}", f"{field} is required")
-    _scan_target(raw.get("basis"), f"{base}.basis", fail)
+    basis = raw.get("basis")
+    if isinstance(basis, str) and basis.strip():
+        _scan_language(basis, f"{base}.basis", fail)
+        _scan_target(basis, f"{base}.basis", fail)
 
 
 def _check_not_established(raw: Any, fail: Fail) -> None:
@@ -639,7 +651,8 @@ def load_mapping(path: Path) -> Any:
         keys = [key for key, _ in pairs]
         repeated = sorted({key for key in keys if keys.count(key) > 1})
         if repeated:
-            raise ValueError(f"duplicate JSON keys are not allowed: {repeated}")
+            # Do not echo caller-controlled field names into CLI diagnostics.
+            raise ValueError("duplicate JSON keys are not allowed")
         return dict(pairs)
 
     return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject,
@@ -654,8 +667,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         mapping: Any = load_mapping(args.mapping)
-    except (OSError, ValueError) as exc:
-        report = _report(None, [{"code": "MAPPING_UNREADABLE", "path": "$", "message": str(exc)}], {}, None)
+    except (OSError, ValueError):
+        # Parser and filesystem exceptions may contain caller-controlled paths or
+        # input fragments. Keep the machine-readable failure stable and sanitized.
+        report = _report(None, [{"code": "MAPPING_UNREADABLE", "path": "$",
+                                "message": "mapping could not be read or parsed"}], {}, None)
     else:
         report = validate_mapping(mapping, repo_root=args.repo_root, as_of=args.as_of)
     sys.stdout.write(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")

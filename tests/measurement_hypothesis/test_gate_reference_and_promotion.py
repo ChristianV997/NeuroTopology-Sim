@@ -104,7 +104,7 @@ def test_cli_exit_codes_and_strict_json_output(tmp_path):
     fixture = REPO_ROOT / "tests" / "measurement_hypothesis" / "fixtures"
     ok = subprocess.run(
         [sys.executable, "-m", "shared.measurement_hypothesis", str(fixture / "valid_hypothetical_mapping.json"),
-         "--as-of", "2026-10-16"],
+         "--as-of", "2026-10-21"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, timeout=120,
     )
     assert ok.returncode == 0, ok.stderr
@@ -112,7 +112,7 @@ def test_cli_exit_codes_and_strict_json_output(tmp_path):
 
     bad = subprocess.run(
         [sys.executable, "-m", "shared.measurement_hypothesis", str(fixture / "theory_term_leak.json"),
-         "--as-of", "2026-10-16"],
+         "--as-of", "2026-10-21"],
         cwd=REPO_ROOT, capture_output=True, text=True, check=False, timeout=120,
     )
     assert bad.returncode == 1

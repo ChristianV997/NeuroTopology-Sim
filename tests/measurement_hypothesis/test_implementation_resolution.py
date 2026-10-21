@@ -70,6 +70,20 @@ def test_checksum_matches_when_module_is_unchanged(valid_mapping, check):
     assert check(valid_mapping)["implementation"]["sha256_matches"] is True
 
 
+def test_checksum_is_stable_across_lf_and_crlf_checkouts(valid_mapping, check, tmp_path):
+    source = _TMP_SOURCE.encode("utf-8")
+    repo = tmp_path / "repo"
+    target = repo / "pkg" / "mod.py"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(source.replace(b"\n", b"\r\n"))
+    mapping = _tmp_mapping(valid_mapping, _TMP_SOURCE)
+
+    report = check(mapping, repo_root=repo)
+
+    assert report["contract_status"] == "VALID_HYPOTHESIS_MAPPING"
+    assert report["implementation"]["sha256_matches"] is True
+
+
 def test_drift_detected_in_a_temporary_repository(valid_mapping, check, tmp_path):
     repo = _tmp_repo(tmp_path, _TMP_SOURCE)
     mapping = _tmp_mapping(valid_mapping, _TMP_SOURCE)
@@ -143,7 +157,7 @@ def test_validation_does_not_import_or_execute_the_scientific_module(tmp_path):
         "from pathlib import Path\n"
         "from shared.measurement_hypothesis import validate_mapping, load_mapping\n"
         "fixture = Path('tests/measurement_hypothesis/fixtures/valid_hypothetical_mapping.json')\n"
-        "report = validate_mapping(load_mapping(fixture), repo_root=Path('.'), as_of=date(2026, 10, 16))\n"
+        "report = validate_mapping(load_mapping(fixture), repo_root=Path('.'), as_of=date(2026, 10, 21))\n"
         "assert report['contract_status'] == 'VALID_HYPOTHESIS_MAPPING'\n"
         "heavy = sorted(m for m in sys.modules if m.split('.')[0] in {'scipy', 'numpy', 'sklearn', 'mne'}\n"
         "               or m == 'validation.analytic_phase')\n"

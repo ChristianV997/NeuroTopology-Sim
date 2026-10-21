@@ -101,9 +101,9 @@
       "title": "Topological signal processing over simplicial complexes",
       "uri": "https://doi.org/10.1109/TSP.2020.2981920",
       "version": "IEEE Trans. Signal Process. vol. 68 (2020), pp. 2992-3007",
-      "published": "2020",
-      "accessed": "2026-10-16",
-      "verification": "search_index_metadata"
+      "published": "2020-03-23",
+      "accessed": "2026-10-21",
+      "verification": "publisher_page"
     },
     {
       "source_id": "jiang2011hodge",
@@ -111,8 +111,8 @@
       "uri": "https://doi.org/10.1007/s10107-010-0419-x",
       "version": "Math. Program., Ser. B, vol. 127 (2011), pp. 203-244",
       "published": "2010-11-28",
-      "accessed": "2026-10-16",
-      "verification": "search_index_metadata"
+      "accessed": "2026-10-21",
+      "verification": "publisher_page"
     },
     {
       "source_id": "nolte2004",
@@ -120,17 +120,17 @@
       "uri": "https://doi.org/10.1016/j.clinph.2004.04.029",
       "version": "Clin. Neurophysiol. vol. 115 (2004), pp. 2292-2307",
       "published": "2004-10",
-      "accessed": "2026-10-16",
+      "accessed": "2026-10-21",
       "verification": "search_index_metadata"
     },
     {
       "source_id": "stam2007",
-      "title": "Phase lag index: assessment of functional connectivity from multi channel EEG and MEG with diminished bias from common sources",
+      "title": "Phase lag index: Assessment of functional connectivity from multi channel EEG and MEG with diminished bias from common sources",
       "uri": "https://doi.org/10.1002/hbm.20346",
       "version": "Hum. Brain Mapp. vol. 28 (2007), pp. 1178-1193",
-      "published": "2007-11",
-      "accessed": "2026-10-16",
-      "verification": "search_index_metadata"
+      "published": "2007-01-31",
+      "accessed": "2026-10-21",
+      "verification": "publisher_page"
     }
   ],
   "not_established": [

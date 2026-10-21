@@ -51,6 +51,16 @@ def test_non_https_source_uri_is_rejected(valid_mapping, check, uri):
     assert "SOURCE_URI_NOT_HTTPS" in _codes(check(valid_mapping))
 
 
+def test_malformed_https_authority_is_reported_without_echoing_input(valid_mapping, check):
+    malformed_uri = "https://["
+    _source(valid_mapping, "stam2007")["uri"] = malformed_uri
+
+    report = check(valid_mapping)
+
+    assert "SOURCE_URI_INVALID" in _codes(report)
+    assert malformed_uri not in str(report)
+
+
 def test_access_date_after_validation_date_is_rejected(valid_mapping, check):
     _source(valid_mapping, "stam2007")["accessed"] = "2099-01-01"
     assert "SOURCE_ACCESS_IN_FUTURE" in _codes(check(valid_mapping))

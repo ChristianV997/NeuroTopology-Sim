@@ -12,7 +12,7 @@ from shared.measurement_hypothesis import validate_mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
-AS_OF = date(2026, 10, 16)  # fixed so access-date checks do not drift with the calendar
+AS_OF = date(2026, 10, 21)  # fixed so access-date checks do not drift with the calendar
 
 
 @pytest.fixture

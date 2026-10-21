@@ -142,6 +142,18 @@ def test_other_construct_validity_status_is_not_permitted(valid_mapping, check):
     assert "CONSTRUCT_VALIDITY_STATUS_NOT_PERMITTED" in _codes(check(valid_mapping))
 
 
+def test_construct_validity_basis_cannot_contradict_not_established_status(valid_mapping, check):
+    valid_mapping["construct_validity"]["basis"] = (
+        "Prior experiments validated this descriptor as measuring the intended construct."
+    )
+
+    report = check(valid_mapping)
+
+    assert report["contract_status"] == "REJECTED"
+    assert "EMPIRICAL_SUPPORT_IMPLIED" in _codes(report)
+    assert report["construct_validity_status"] == "NOT_ESTABLISHED"
+
+
 @pytest.mark.parametrize("field", ["intended_construct", "basis"])
 def test_construct_validity_requires_its_fields(valid_mapping, check, field):
     del valid_mapping["construct_validity"][field]
