@@ -51,6 +51,16 @@ Owned paths:
 Ill-conditioned or non-positive weights are **rejected** with diagnostics
 (`REJECTED_ILL_CONDITIONED`) rather than silently inverted.
 
+Relative reconstruction and energy-closure errors use the actual nonzero input
+norm/energy as denominator; no absolute epsilon is added. This keeps a fixed
+relative discrepancy from appearing smaller merely because the cochain is
+expressed at a smaller scale. For an exact zero input, both relative errors are
+defined as `0.0`. A nonzero input whose computed energy underflows to zero, or
+any non-finite energy diagnostic, raises `FloatingPointError` rather than
+producing a false finite pass. These checks are algebraic/numerical software
+diagnostics only and do not establish physical correctness or scientific
+validity.
+
 ## CLI
 
 ```bash

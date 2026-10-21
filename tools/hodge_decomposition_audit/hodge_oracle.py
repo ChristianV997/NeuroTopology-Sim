@@ -256,8 +256,21 @@ def decompose(
     # By construction residual is ~0; keep W1 residual for closure diagnostics.
     res_norm = float(np.sqrt(max(weighted_norm_sq(w_e, residual), 0.0)))
     tot_norm = float(np.sqrt(max(e_tot, 0.0)))
-    rel_rec = res_norm / (tot_norm + 1e-12)
-    rel_energy = abs(e_tot - (e_ex + e_co + e_h)) / (e_tot + 1e-12)
+    sum_energies = e_ex + e_co + e_h
+    if not all(
+        math.isfinite(value)
+        for value in (e_tot, e_ex, e_co, e_h, sum_energies, res_norm, tot_norm)
+    ):
+        raise FloatingPointError("Hodge energy diagnostics are non-finite")
+    if e_tot == 0.0:
+        if np.any(omega_arr != 0.0):
+            raise FloatingPointError("nonzero omega has zero computed weighted energy")
+        # Relative errors are defined as zero only for the exact zero signal.
+        rel_rec = 0.0
+        rel_energy = 0.0
+    else:
+        rel_rec = res_norm / tot_norm
+        rel_energy = abs(e_tot - sum_energies) / e_tot
 
     diagnostics["atol"] = atol
     diagnostics["orthogonality_class"] = (
