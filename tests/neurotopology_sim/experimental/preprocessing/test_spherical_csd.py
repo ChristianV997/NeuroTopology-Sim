@@ -168,12 +168,50 @@ def test_rejects_non_finite_guard_tolerances():
         SphericalCSDConfig(
             sphere=(0, 0, 0, 0.1), coincident_cos_tol=float("nan")
         ).validated()
-    with pytest.raises(SphericalCSDError, match="avg_ref_null_atol must be finite"):
+    with pytest.raises(SphericalCSDError, match="avg_ref_null_rtol must be finite"):
         SphericalCSDConfig(
-            sphere=(0, 0, 0, 0.1), avg_ref_null_atol=float("nan")
+            sphere=(0, 0, 0, 0.1), avg_ref_null_rtol=float("nan")
         ).validated()
-    with pytest.raises(SphericalCSDError, match="avg_ref_null_atol must be non-negative"):
-        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), avg_ref_null_atol=-1.0).validated()
+    with pytest.raises(SphericalCSDError, match="avg_ref_null_rtol must be non-negative"):
+        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), avg_ref_null_rtol=-1.0).validated()
+
+
+# Regression (2026-10-21, #414 audit): stiffness=inf was accepted. Every kernel factor underflowed to 0, the transform
+# came back as all zeros, and no error was raised. Non-finite stiffness must fail closed.
+@pytest.mark.parametrize("stiffness", [float("inf"), float("nan")])
+def test_rejects_non_finite_stiffness(stiffness):
+    pos = _regular_tetrahedron_unit() * 0.095
+    with pytest.raises(SphericalCSDError, match="stiffness"):
+        compute_spherical_csd_transform(pos, _cfg(stiffness=stiffness))
+
+
+# Regression (2026-10-21, #414 audit): n_legendre_terms=50.7 was accepted and silently truncated to 50. True was
+# accepted as 1, NaN raised ValueError, and "50" was coerced. The pinned MNE 1.13.2 applies operator.index
+# (mne/utils/check.py _ensure_int, used at _csd.py L133), so only true integers are valid.
+@pytest.mark.parametrize("n_terms", [50.7, 50.0, True, float("nan"), "50"])
+def test_rejects_non_integer_legendre_term_count(n_terms):
+    with pytest.raises(SphericalCSDError, match="n_legendre_terms"):
+        SphericalCSDConfig(sphere=(0, 0, 0, 0.1), n_legendre_terms=n_terms).validated()
+
+
+# Regression (2026-10-21, #414 audit): stiffness=400 raised a raw OverflowError from float exponentiation, so callers
+# could not catch it with the module's own error type.
+def test_overflowing_stiffness_raises_module_error():
+    pos = _regular_tetrahedron_unit() * 0.095
+    with pytest.raises(SphericalCSDError, match="stiffness"):
+        compute_spherical_csd_transform(pos, _cfg(stiffness=400.0))
+
+
+# Regression (2026-10-21, #414 audit): the average-reference null check compared ||M @ 1||_inf with an absolute
+# tolerance. That residual scales with 1/R^2, so a valid operator at a small radius was refused. Measured at 8
+# channels: R = 9.5e-5 m gives max|M| ~ 9e8 and a null residual of 7.7e-6, a relative residual of ~8e-15. Rounding
+# error in M @ 1 is about n * eps * max|M| (~1e-14 here), so a relative bound of 1e-10 leaves four orders of margin.
+@pytest.mark.parametrize("scale", [1.0, 1e-3, 1e-5])
+def test_null_check_is_scale_invariant(scale):
+    pos = _asymmetric_cap(8, seed=5) * 0.095 * scale
+    result = compute_spherical_csd_transform(pos, _cfg(radius=0.095 * scale))
+    peak = float(np.max(np.abs(result.transform)))
+    assert result.diagnostics["avg_ref_null_inf"] / peak < 1e-10
 
 
 # ---------------------------------------------------------------------------

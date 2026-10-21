@@ -63,6 +63,7 @@ order of ``positions`` / ``channel_names``.
 
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
@@ -105,7 +106,8 @@ OUTPUT_UNIT_SI = "V/m^2"
 # Fail-closed thresholds (engineering; documented, not silent).
 DEFAULT_COINCIDENT_COS_TOL = 1e-12
 DEFAULT_CONDITION_MAX = 1e12
-DEFAULT_AVG_REF_NULL_ATOL = 1e-8
+# Relative to ||M||_inf: the null residual of M @ 1 is rounding-level, about n * eps * ||M||_inf.
+DEFAULT_AVG_REF_NULL_RTOL = 1e-8
 
 
 class SphericalCSDError(ValueError):
@@ -135,9 +137,10 @@ class SphericalCSDConfig:
     condition_max :
         If ``cond(G + lambda2 I)`` exceeds this value, fail closed with a
         diagnostic (ill-conditioned / near-duplicate geometry).
-    avg_ref_null_atol :
-        Absolute tolerance for the constant-potential null check on the
-        finished transform (``||M @ 1||_∞``).
+    avg_ref_null_rtol :
+        Relative tolerance for the constant-potential null check on the finished
+        transform: ``||M @ 1||_∞ <= avg_ref_null_rtol * ||M||_∞``. Relative, so the
+        check does not depend on the length unit of the positions.
     enforce_avg_ref_null :
         When True (default), refuse to return a transform that fails the
         average-reference null-vector check.
@@ -149,7 +152,7 @@ class SphericalCSDConfig:
     n_legendre_terms: int = DEFAULT_N_LEGENDRE_TERMS
     coincident_cos_tol: float = DEFAULT_COINCIDENT_COS_TOL
     condition_max: float = DEFAULT_CONDITION_MAX
-    avg_ref_null_atol: float = DEFAULT_AVG_REF_NULL_ATOL
+    avg_ref_null_rtol: float = DEFAULT_AVG_REF_NULL_RTOL
     enforce_avg_ref_null: bool = True
 
     def validated(self) -> "SphericalCSDConfig":
@@ -174,18 +177,33 @@ class SphericalCSDConfig:
             raise SphericalCSDError(
                 f"lambda2 must satisfy 0 <= lambda2 < 1, got {self.lambda2!r}"
             )
+        if not np.isfinite(float(self.stiffness)):
+            raise SphericalCSDError(
+                f"stiffness must be finite, got {self.stiffness!r}"
+            )
         if float(self.stiffness) < 0.0:
             raise SphericalCSDError(
                 f"stiffness must be non-negative, got {self.stiffness!r}"
             )
-        n_terms = int(self.n_legendre_terms)
+        # Only true integers are valid, matching the pinned MNE (operator.index in
+        # mne/utils/check.py _ensure_int). Floats, bools, and strings are refused.
+        if isinstance(self.n_legendre_terms, bool):
+            raise SphericalCSDError(
+                f"n_legendre_terms must be an integer, got {self.n_legendre_terms!r}"
+            )
+        try:
+            n_terms = operator.index(self.n_legendre_terms)
+        except TypeError as exc:
+            raise SphericalCSDError(
+                f"n_legendre_terms must be an integer, got {self.n_legendre_terms!r}"
+            ) from exc
         if n_terms < 1:
             raise SphericalCSDError(
                 f"n_legendre_terms must be >= 1, got {self.n_legendre_terms!r}"
             )
         cos_tol = float(self.coincident_cos_tol)
         cond_max = float(self.condition_max)
-        null_atol = float(self.avg_ref_null_atol)
+        null_rtol = float(self.avg_ref_null_rtol)
         # NaN/Inf must fail closed: IEEE comparisons against NaN never trip the
         # ill-conditioning / avg-ref null guards, which would silently bypass them.
         if not np.isfinite(cos_tol):
@@ -200,12 +218,12 @@ class SphericalCSDConfig:
             )
         if cond_max <= 0.0:
             raise SphericalCSDError("condition_max must be positive")
-        if not np.isfinite(null_atol):
+        if not np.isfinite(null_rtol):
             raise SphericalCSDError(
-                f"avg_ref_null_atol must be finite, got {self.avg_ref_null_atol!r}"
+                f"avg_ref_null_rtol must be finite, got {self.avg_ref_null_rtol!r}"
             )
-        if null_atol < 0.0:
-            raise SphericalCSDError("avg_ref_null_atol must be non-negative")
+        if null_rtol < 0.0:
+            raise SphericalCSDError("avg_ref_null_rtol must be non-negative")
         return SphericalCSDConfig(
             sphere=(x, y, z, r),
             lambda2=float(self.lambda2),
@@ -213,7 +231,7 @@ class SphericalCSDConfig:
             n_legendre_terms=n_terms,
             coincident_cos_tol=cos_tol,
             condition_max=cond_max,
-            avg_ref_null_atol=null_atol,
+            avg_ref_null_rtol=null_rtol,
             enforce_avg_ref_null=bool(self.enforce_avg_ref_null),
         )
 
@@ -364,7 +382,6 @@ def _unit_vectors_and_cosines(
     unit = centred / norms[:, None]
     cos = np.clip(unit @ unit.T, -1.0, 1.0)
     # Nearly coincident distinct sensors → fail closed.
-    n = cos.shape[0]
     off = cos.copy()
     np.fill_diagonal(off, -np.inf)
     worst = float(np.max(off))
@@ -410,8 +427,13 @@ def compute_spherical_csd_transform(
         pos, (x, y, z), coincident_cos_tol=cfg.coincident_cos_tol
     )
 
-    G = _calc_g(cos, stiffness=cfg.stiffness, n_legendre_terms=cfg.n_legendre_terms)
-    H = _calc_h(cos, stiffness=cfg.stiffness, n_legendre_terms=cfg.n_legendre_terms)
+    try:
+        G = _calc_g(cos, stiffness=cfg.stiffness, n_legendre_terms=cfg.n_legendre_terms)
+        H = _calc_h(cos, stiffness=cfg.stiffness, n_legendre_terms=cfg.n_legendre_terms)
+    except OverflowError as exc:
+        raise SphericalCSDError(
+            f"stiffness {cfg.stiffness!r} overflows float64 in the Legendre kernel"
+        ) from exc
     if not np.all(np.isfinite(G)) or not np.all(np.isfinite(H)):
         raise SphericalCSDError("non-finite G/H kernel values")
 
@@ -437,6 +459,12 @@ def compute_spherical_csd_transform(
     null_residual = transform @ ones
     null_inf = float(np.max(np.abs(null_residual)))
     row_sum_inf = float(np.max(np.abs(transform.sum(axis=1))))
+    peak = float(np.max(np.abs(transform)))
+    # An identically zero operator passes any relative null check, so refuse it outright.
+    if peak == 0.0:
+        raise SphericalCSDError(
+            "CSD transform is identically zero; the kernel or regularization is degenerate"
+        )
     diagnostics = {
         "n_channels": int(transform.shape[0]),
         "sphere_m": cfg.sphere,
@@ -446,6 +474,7 @@ def compute_spherical_csd_transform(
         "cond_G_reg": cond,
         "sgi": sgi,
         "avg_ref_null_inf": null_inf,
+        "avg_ref_null_rel": null_inf / peak,
         "row_sum_inf": row_sum_inf,
         "scaling": "1/R^2",
         "channel_order": list(names),
@@ -459,10 +488,10 @@ def compute_spherical_csd_transform(
         "evidence_class": "SYNTHETIC_ONLY",
         "not_source_localization": True,
     }
-    if cfg.enforce_avg_ref_null and null_inf > cfg.avg_ref_null_atol:
+    if cfg.enforce_avg_ref_null and null_inf > cfg.avg_ref_null_rtol * peak:
         raise SphericalCSDError(
-            f"average-reference null-vector check failed: "
-            f"||M @ 1||_∞ = {null_inf!r} > atol {cfg.avg_ref_null_atol}"
+            f"average-reference null-vector check failed: ||M @ 1||_∞ = {null_inf!r} "
+            f"> rtol {cfg.avg_ref_null_rtol} * ||M||_∞ = {cfg.avg_ref_null_rtol * peak!r}"
         )
 
     return SphericalCSDResult(

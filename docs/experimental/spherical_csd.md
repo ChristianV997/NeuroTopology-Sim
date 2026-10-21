@@ -37,12 +37,13 @@ result = compute_spherical_csd_transform(positions_m, cfg, channel_names=names)
 csd = apply_spherical_csd(result.transform, data_volts)  # -> V/m^2
 ```
 
-Import the module path above directly. A package-level `__init__` re-export is intentionally omitted while Round-6 `package_initializers` would otherwise fan this PR into absent `#402` audit companions; the NumPy operator API is unchanged.
+Import the module path above directly. `neurotopology_sim/experimental/preprocessing/` has no `__init__.py` on `main`, and this PR does not add one, so the module path is the public import.
 
 - Full N×N matrix; channel order is the row order of `positions`.
 - Rejects non-finite / zero coordinates, sphere `"auto"`, nearly coincident
   sensors, and ill-conditioned `G + λ²I`.
-- Average-reference null: `||M @ 1||_∞` checked fail-closed.
+- Rejects non-finite or negative `stiffness`, any `stiffness` that overflows float64, and `n_legendre_terms` that is not a true integer (floats, bools, and strings are refused, as the pinned MNE does through `operator.index`).
+- Average-reference null: `||M @ 1||_∞ <= avg_ref_null_rtol * ||M||_∞`, with `avg_ref_null_rtol` defaulting to `1e-8`. The check is relative, so it does not depend on the length unit of `positions`. An identically zero operator is refused.
 - Scaling: `1/R²` with R in meters → output unit `V/m²` for volt inputs.
 
 ## Relation to other surfaces
