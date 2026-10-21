@@ -157,7 +157,7 @@ def load_from_dict(
                     node_type=NodeType.CLAIM.value,
                     label=c.get("claim_text") or cid,
                     status=c.get("claim_status", NodeStatus.PROPOSED.value),
-                    evidence_class=c.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    evidence_class=_classify_evidence(c),
                     properties=c,
                     source_id=sid,
                 )
