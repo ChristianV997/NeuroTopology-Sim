@@ -169,6 +169,21 @@ Thus, the three components are mutually orthogonal under $\langle \cdot, \cdot \
 ### 5.5 Energy Conservation
 $$\|\omega\|_{W_1}^2 = \|\omega_{\text{exact}}\|_{W_1}^2 + \|\omega_{\text{coexact}}\|_{W_1}^2 + \|h\|_{W_1}^2$$
 
+### 5.6 Scale-aware numerical diagnostics
+For nonzero input, the reported reconstruction and energy-closure errors divide
+by the corresponding nonzero input norm or energy directly. An absolute epsilon
+is not added to either denominator: that would make a fixed relative error look
+smaller solely because the same cochain was expressed at a smaller scale. For
+the exact zero signal, both relative errors are defined as `0.0`. If a nonzero
+input's computed weighted energy underflows to zero, or an energy diagnostic is
+non-finite, the decomposition raises `FloatingPointError` instead of reporting
+a misleading finite error. The `eps` argument remains accepted for source
+compatibility but no longer regularizes these denominators.
+
+These are floating-point diagnostics for this algebraic implementation; they do
+not establish physical model correctness, empirical validity, or biological
+interpretation.
+
 ---
 
 ## 6. Hand-Verifiable Complex Fixtures

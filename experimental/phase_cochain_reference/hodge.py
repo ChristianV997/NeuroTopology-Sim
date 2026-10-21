@@ -33,8 +33,10 @@ class HodgeDecomposition:
         orthogonality_exact_harmonic: <omega_exact, omega_harmonic>_{W1}.
         orthogonality_coexact_harmonic: <omega_coexact, omega_harmonic>_{W1}.
         reconstruction_residual_norm: ||omega - (exact + coexact + harmonic)||_{W1}.
-        relative_reconstruction_error: residual / (||omega||_{W1} + eps).
-        relative_energy_error: |E_total - sum(E_k)| / (E_total + eps).
+        relative_reconstruction_error: residual / ||omega||_{W1} for nonzero omega.
+            It is zero for the zero signal, whose residual is also zero.
+        relative_energy_error: |E_total - sum(E_k)| / E_total for nonzero omega.
+            It is zero for the zero signal, whose component energies are zero.
     """
 
     exact: np.ndarray
@@ -97,7 +99,9 @@ def compute_weighted_hodge_decomposition(
         weights_edges: Positive weights on edges, shape (|E|,). Defaults to 1.0.
         weights_faces: Positive weights on faces, shape (|T|,). Defaults to 1.0.
         weights_vertices: Positive weights on vertices, shape (|V|,). Defaults to 1.0.
-        eps: Small tolerance for relative metrics.
+        eps: Deprecated compatibility parameter. It is not added to the relative
+            metric denominators because doing so makes the diagnostics depend on
+            the absolute scale of omega.
 
     Returns:
         HodgeDecomposition containing components, potentials, energies, and diagnostic errors.
@@ -210,9 +214,22 @@ def compute_weighted_hodge_decomposition(
     res_norm = float(np.sqrt(w1_norm_sq(residual)))
     tot_norm = float(np.sqrt(energy_tot))
 
-    rel_rec_err = res_norm / (tot_norm + eps)
     sum_energies = energy_ex + energy_co + energy_harm
-    rel_energy_err = abs(energy_tot - sum_energies) / (energy_tot + eps)
+    if not all(
+        np.isfinite(value)
+        for value in (energy_tot, energy_ex, energy_co, energy_harm, sum_energies, res_norm, tot_norm)
+    ):
+        raise FloatingPointError("Hodge energy diagnostics are non-finite")
+    if energy_tot == 0.0:
+        if np.any(w1_arr != 0.0):
+            raise FloatingPointError("nonzero omega has zero computed weighted energy")
+        # The relative form is undefined at zero denominator. For the exact zero
+        # signal, both reconstruction and energy closure errors are exactly zero.
+        rel_rec_err = 0.0
+        rel_energy_err = 0.0
+    else:
+        rel_rec_err = res_norm / tot_norm
+        rel_energy_err = abs(energy_tot - sum_energies) / energy_tot
 
     return HodgeDecomposition(
         exact=omega_exact,
