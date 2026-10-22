@@ -76,6 +76,20 @@ def test_candidate_without_repo_url_is_accepted():
     assert candidate.validate() == []
 
 
+@pytest.mark.parametrize(("field", "bad_value"), [("repo_full_name", 123), ("owner", ["microsoft"]), ("repo_url", 42)])
+def test_non_string_identity_field_is_reported_not_raised(field, bad_value):
+    candidate = make_document_ingestion_candidate()
+    setattr(candidate, field, bad_value)
+    assert any(f"{field} must be a string" in e for e in candidate.validate())
+
+
+def test_non_string_identity_field_fails_closed_at_batch_build():
+    candidate = make_document_ingestion_candidate()
+    candidate.owner = ["microsoft"]
+    with pytest.raises(OssOpportunityValidationError, match="owner must be a string"):
+        build_opportunities_from_candidates([candidate])
+
+
 def test_missing_source_fails_closed_at_batch_build():
     candidate = make_document_ingestion_candidate()
     candidate.source = ""

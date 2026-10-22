@@ -242,20 +242,27 @@ def validate_repository_candidate(record: Any) -> list[str]:
 
     # Ambiguous source identity: one name must mean exactly one repository.
     # Each check runs only when the field is present; a missing
-    # repo_full_name is already reported above.
+    # repo_full_name is already reported above. A non-string identity field
+    # is reported as an error, never raised: this function does not raise.
     repo_full_name = getattr(record, "repo_full_name", None) or ""
-    if repo_full_name and not _REPO_FULL_NAME_RE.match(repo_full_name):
-        errors.append(f"repo_full_name {repo_full_name!r} must be 'owner/name' (ambiguous source identity)")
     owner = getattr(record, "owner", None) or ""
-    if owner and "/" in repo_full_name and owner.lower() != repo_full_name.split("/", 1)[0].lower():
-        errors.append(f"owner {owner!r} does not match repo_full_name {repo_full_name!r} (ambiguous source identity)")
-    repo_url = (getattr(record, "repo_url", None) or "").strip().rstrip("/")
-    if repo_url and repo_full_name:
-        expected_url = f"https://github.com/{repo_full_name}"
-        if repo_url.lower() != expected_url.lower():
-            errors.append(
-                f"repo_url {repo_url!r} does not point to repo_full_name {repo_full_name!r} (ambiguous source identity)"
-            )
+    repo_url = getattr(record, "repo_url", None) or ""
+    identity_fields = (("repo_full_name", repo_full_name), ("owner", owner), ("repo_url", repo_url))
+    non_string = [name for name, value in identity_fields if not isinstance(value, str)]
+    if non_string:
+        errors.extend(f"{name} must be a string" for name in non_string)
+    else:
+        if repo_full_name and not _REPO_FULL_NAME_RE.match(repo_full_name):
+            errors.append(f"repo_full_name {repo_full_name!r} must be 'owner/name' (ambiguous source identity)")
+        if owner and "/" in repo_full_name and owner.lower() != repo_full_name.split("/", 1)[0].lower():
+            errors.append(f"owner {owner!r} does not match repo_full_name {repo_full_name!r} (ambiguous source identity)")
+        repo_url = repo_url.strip().rstrip("/")
+        if repo_url and repo_full_name:
+            expected_url = f"https://github.com/{repo_full_name}"
+            if repo_url.lower() != expected_url.lower():
+                errors.append(
+                    f"repo_url {repo_url!r} does not point to repo_full_name {repo_full_name!r} (ambiguous source identity)"
+                )
 
     return errors
 
