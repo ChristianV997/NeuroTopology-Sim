@@ -45,6 +45,39 @@ def test_factory_generate_default() -> None:
     assert res.diagnostics.is_finite is True
 
 
+@pytest.mark.parametrize("n_points", [2.5, True])
+def test_synthetic_coordinate_generator_rejects_noninteger_count(n_points: object) -> None:
+    with pytest.raises(ValueError, match="n_points"):
+        generate_synthetic_spherical_coordinates(n_points=n_points)
+
+
+@pytest.mark.parametrize("radius", [True, float("nan"), 10**400])
+def test_synthetic_coordinate_generator_rejects_invalid_radius(radius: object) -> None:
+    with pytest.raises(ValueError, match="radius"):
+        generate_synthetic_spherical_coordinates(n_points=4, radius=radius)
+
+
+@pytest.mark.parametrize(
+    ("n_channels", "n_samples", "sampling_rate_hz"),
+    [
+        (True, 16, 100.0),
+        (2, 4.5, 100.0),
+        (2, 16, True),
+        (2, 16, float("nan")),
+        (2, 16, 10**400),
+    ],
+)
+def test_default_signal_generator_rejects_invalid_numeric_inputs(
+    n_channels: object, n_samples: object, sampling_rate_hz: object
+) -> None:
+    with pytest.raises(ValueError):
+        generate_default_signal(
+            n_channels=n_channels,
+            n_samples=n_samples,
+            sampling_rate_hz=sampling_rate_hz,
+        )
+
+
 def test_factory_with_custom_clean_signal() -> None:
     """Verifies factory accepts an external clean signal array."""
     cfg = NuisanceScenarioConfig(
@@ -103,6 +136,25 @@ def test_factory_grid_generation() -> None:
     # Verify scenario IDs are unique
     ids = [r.scenario_id for r in results]
     assert len(set(ids)) == 16
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("noise_exponent", 1.001),
+        ("target_snr_db", 0.04),
+        ("sfreq_hz", 101.0),
+        ("duration_s", 2.01),
+        ("n_channels", 5),
+    ],
+)
+def test_generated_scenario_ids_distinguish_configuration_values(
+    field: str, value: object
+) -> None:
+    base = NuisanceScenarioConfig()
+    changed = NuisanceScenarioConfig(**{field: value})
+
+    assert base.scenario_id != changed.scenario_id
 
 
 def test_serialization_to_dict_and_json() -> None:

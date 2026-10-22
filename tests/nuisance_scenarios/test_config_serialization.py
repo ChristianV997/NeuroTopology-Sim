@@ -68,6 +68,23 @@ def test_to_dict_from_dict_roundtrip_preserves_generation() -> None:
     assert b.diagnostics.status == "HOLD / SYNTHETIC_ONLY"
 
 
+def test_unavailable_spectral_fit_serializes_as_strict_json() -> None:
+    """An unavailable low-frequency fit must use JSON null, not NaN."""
+    cfg = NuisanceScenarioConfig(
+        sfreq_hz=5.0,
+        duration_s=1.6,
+        n_channels=2,
+    )
+    result = NuisanceScenarioFactory.generate(cfg)
+
+    def reject_nonstandard_constant(value: str) -> None:
+        raise ValueError(f"non-standard JSON constant: {value}")
+
+    payload = json.loads(result.to_json(), parse_constant=reject_nonstandard_constant)
+    assert payload["diagnostics"]["estimated_chi"] is None
+    assert payload["diagnostics"]["chi_fit_r2"] is None
+
+
 def test_module_has_no_network_or_remote_data_imports() -> None:
     """Factory package must not silently acquire network or remote-data clients."""
     import ast

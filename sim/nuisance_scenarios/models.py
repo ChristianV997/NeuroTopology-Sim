@@ -142,4 +142,6 @@ class ScenarioResult:
 
     def to_json(self, include_arrays: bool = False, indent: int = 2) -> str:
         """Serialize scenario result to JSON string."""
-        return json.dumps(self.to_dict(include_arrays=include_arrays), indent=indent)
+        return json.dumps(
+            self.to_dict(include_arrays=include_arrays), indent=indent, allow_nan=False
+        )

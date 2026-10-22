@@ -6,6 +6,8 @@ Adheres strictly to 'HOLD / SYNTHETIC_ONLY' and pure NumPy implementation.
 """
 from __future__ import annotations
 
+import math
+import numbers
 from typing import Any, Callable, List, Optional, Union
 
 import numpy as np
@@ -33,9 +35,17 @@ def generate_synthetic_spherical_coordinates(
     Returns:
         Array of shape (n_points, 3) with Cartesian coordinates strictly on sphere shell.
     """
-    if n_points <= 0:
+    if isinstance(n_points, bool) or not isinstance(n_points, numbers.Integral) or n_points <= 0:
         raise ValueError(f"n_points must be positive, got {n_points}")
-    if radius <= 0.0 or not np.isfinite(radius):
+    if isinstance(radius, bool) or not isinstance(radius, numbers.Real):
+        raise ValueError(f"radius must be a positive finite real number, got {radius!r}")
+    try:
+        radius = float(radius)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"radius must be representable as a finite float, got {radius!r}"
+        ) from exc
+    if radius <= 0.0 or not math.isfinite(radius):
         raise ValueError(f"radius must be positive and finite, got {radius}")
 
     indices = np.arange(n_points, dtype=np.float64) + 0.5
@@ -67,18 +77,35 @@ def generate_default_signal(
     Returns:
         Array of shape (n_channels, n_samples) with non-zero mean-squared power.
     """
-    if n_channels <= 0:
+    if isinstance(n_channels, bool) or not isinstance(n_channels, numbers.Integral) or n_channels <= 0:
         raise ValueError(f"n_channels must be positive, got {n_channels}")
-    if n_samples <= 0:
+    if isinstance(n_samples, bool) or not isinstance(n_samples, numbers.Integral) or n_samples <= 0:
         raise ValueError(f"n_samples must be positive, got {n_samples}")
-    if sampling_rate_hz <= 0.0:
+    if isinstance(sampling_rate_hz, bool) or not isinstance(sampling_rate_hz, numbers.Real):
+        raise ValueError(
+            "sampling_rate_hz must be a positive finite real number, "
+            f"got {sampling_rate_hz!r}"
+        )
+    try:
+        sampling_rate_hz = float(sampling_rate_hz)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "sampling_rate_hz must be representable as a finite float, "
+            f"got {sampling_rate_hz!r}"
+        ) from exc
+    if sampling_rate_hz <= 0.0 or not math.isfinite(sampling_rate_hz):
         raise ValueError(f"sampling_rate_hz must be positive, got {sampling_rate_hz}")
 
-    t = np.arange(n_samples, dtype=np.float64) / sampling_rate_hz
+    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+        t = np.arange(n_samples, dtype=np.float64) / sampling_rate_hz
+    if not np.all(np.isfinite(t)):
+        raise ValueError("sampling_rate_hz and n_samples produce non-finite time coordinates")
     phases = np.linspace(0.0, 2.0 * np.pi, n_channels, endpoint=False)[:, np.newaxis]
     sig = np.sin(2.0 * np.pi * 10.0 * t + phases) + 0.5 * np.cos(
         2.0 * np.pi * 20.0 * t + 2.0 * phases
     )
+    if not np.all(np.isfinite(sig)):
+        raise ValueError("sampling_rate_hz and n_samples produce a non-finite default signal")
     return sig
 
 
@@ -222,14 +249,17 @@ class NuisanceScenarioFactory:
             and (jittered_coords is None or np.all(np.isfinite(jittered_coords)))
         )
 
+        slope_fit_available = bool(
+            np.isfinite(slope_fit.estimated_chi) and np.isfinite(slope_fit.fit_r2)
+        )
         diagnostics = RealizedDiagnostics(
             realized_snr_db=mix_res.realized_snr_db,
             clean_signal_power=mix_res.clean_signal_power,
             noise_power_before_scaling=mix_res.noise_power_before_scaling,
             noise_power_scaled=mix_res.noise_power_scaled,
             noise_scale_factor=mix_res.noise_scale_factor,
-            estimated_chi=slope_fit.estimated_chi,
-            chi_fit_r2=slope_fit.fit_r2,
+            estimated_chi=slope_fit.estimated_chi if slope_fit_available else None,
+            chi_fit_r2=slope_fit.fit_r2 if slope_fit_available else None,
             jitter_mean_disp=mean_disp,
             jitter_max_disp=max_disp,
             jitter_rms_disp=rms_disp,

@@ -77,6 +77,42 @@ def test_invalid_parameters_raise_value_error() -> None:
         generate_colored_noise(n_samples=100, chi=1.0, sfreq_hz=-10.0)
 
 
+def test_sampling_rate_alias_conflict_fails_closed() -> None:
+    with pytest.raises(ValueError, match="conflict"):
+        generate_colored_noise(
+            n_samples=100,
+            chi=1.0,
+            sfreq_hz=100.0,
+            sampling_rate_hz=200.0,
+        )
+
+
+def test_seed_and_rng_aliases_cannot_both_be_supplied() -> None:
+    with pytest.raises(ValueError, match="seed.*rng"):
+        generate_colored_noise(n_samples=100, chi=1.0, seed=42, rng=43)
+
+
+def test_generator_rejects_boolean_numeric_inputs() -> None:
+    with pytest.raises(ValueError, match="n_channels"):
+        generate_colored_noise(n_samples=100, chi=1.0, n_channels=True)
+    with pytest.raises(ValueError, match="chi"):
+        generate_colored_noise(n_samples=100, chi=True)
+    with pytest.raises(ValueError, match="sfreq_hz"):
+        generate_colored_noise(n_samples=100, chi=1.0, sfreq_hz=True)
+    with pytest.raises(ValueError, match="chi"):
+        generate_colored_noise(n_samples=100, chi=10**400)
+
+
+def test_extreme_exponent_fails_closed_when_spectrum_underflows() -> None:
+    with pytest.raises(ValueError, match="chi"):
+        generate_colored_noise(
+            n_samples=100,
+            chi=1000.0,
+            n_channels=2,
+            sfreq_hz=1000.0,
+        )
+
+
 def test_estimate_spectral_slope_edge_cases() -> None:
     """Verifies error handling on invalid signals in estimate_spectral_slope."""
     with pytest.raises(ValueError, match="too short"):
@@ -90,3 +126,8 @@ def test_estimate_spectral_slope_edge_cases() -> None:
     # Signal where all valid frequencies are masked
     short_band = estimate_spectral_slope(np.ones((1, 20)), sfreq_hz=100.0, f_min=45.0, f_max=46.0)
     assert np.isnan(short_band.estimated_chi)
+
+
+def test_estimate_spectral_slope_rejects_invalid_sampling_rate() -> None:
+    with pytest.raises(ValueError, match="sfreq_hz"):
+        estimate_spectral_slope(np.ones(20), sfreq_hz=0.0)

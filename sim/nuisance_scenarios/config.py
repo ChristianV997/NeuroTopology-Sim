@@ -9,13 +9,32 @@ import dataclasses
 import hashlib
 import json
 import math
+import numbers
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Mapping, Optional, Sequence, Union
 
 SUPPORTED_COORDINATE_UNITS = frozenset({"mm", "cm", "m"})
 
-# Colored-noise synthesis requires at least 4 samples (Nyquist + positive bins).
-_MIN_N_SAMPLES = 4
+# Scenario generation also estimates spectral slope, which requires 8 samples.
+_MIN_N_SAMPLES = 8
+
+
+def _require_real_value(name: str, value: Any) -> float:
+    """Return a real numeric value without accepting bools or numeric strings."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} must be a real number, got {value!r}")
+    try:
+        return float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be representable as a finite float, got {value!r}") from exc
+
+
+def _require_integer_value(name: str, value: Any) -> int:
+    """Return an integral numeric value without truncation or bool coercion."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    return int(value)
 
 
 def _require_alias_agreement(
@@ -27,9 +46,9 @@ def _require_alias_agreement(
     """Fail closed when both alias and canonical keys are present but disagree."""
     if canonical_value is None or alias_value is None:
         return
-    if isinstance(canonical_value, (int, float)) and isinstance(alias_value, (int, float)):
-        c_f = float(canonical_value)
-        a_f = float(alias_value)
+    if isinstance(canonical_value, numbers.Real) and isinstance(alias_value, numbers.Real):
+        c_f = _require_real_value(canonical_name, canonical_value)
+        a_f = _require_real_value(alias_name, alias_value)
         if not (math.isfinite(c_f) and math.isfinite(a_f) and c_f == a_f):
             raise ValueError(
                 f"conflict: '{canonical_name}'={canonical_value!r} disagrees with "
@@ -93,6 +112,25 @@ class NuisanceScenarioConfig:
         jitter_units: Optional[str] = None,
         sampling_rate_hz: Optional[float] = None,
     ) -> None:
+        # Reject type coercions before aliases are collapsed; otherwise a string
+        # or bool on one side could compare equal after lossy conversion.
+        for name, value in (
+            ("noise_exponent", noise_exponent),
+            ("chi", chi),
+            ("coordinate_jitter_std", coordinate_jitter_std),
+            ("jitter_std", jitter_std),
+            ("sfreq_hz", sfreq_hz),
+            ("sampling_rate_hz", sampling_rate_hz),
+        ):
+            if value is not None:
+                _require_real_value(name, value)
+        for name, value in (
+            ("coordinate_units", coordinate_units),
+            ("jitter_units", jitter_units),
+        ):
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{name} must be a string, got {value!r}")
+
         # Prefer alias when only one side is supplied; refuse silent disagreement.
         _require_alias_agreement("noise_exponent", noise_exponent, "chi", chi)
         _require_alias_agreement(
@@ -118,15 +156,21 @@ class NuisanceScenarioConfig:
         )
         eff_meta = metadata if metadata is not None else {}
 
-        object.__setattr__(self, "noise_exponent", float(eff_chi))
-        object.__setattr__(self, "target_snr_db", float(target_snr_db))
-        object.__setattr__(self, "coordinate_jitter_std", float(eff_jit))
+        if not isinstance(renormalize_to_sphere, bool):
+            raise ValueError(
+                "renormalize_to_sphere must be a bool, "
+                f"got {renormalize_to_sphere!r}"
+            )
+
+        object.__setattr__(self, "noise_exponent", _require_real_value("noise_exponent", eff_chi))
+        object.__setattr__(self, "target_snr_db", _require_real_value("target_snr_db", target_snr_db))
+        object.__setattr__(self, "coordinate_jitter_std", _require_real_value("coordinate_jitter_std", eff_jit))
         object.__setattr__(self, "coordinate_units", eff_units)
-        object.__setattr__(self, "renormalize_to_sphere", bool(renormalize_to_sphere))
-        object.__setattr__(self, "sfreq_hz", float(eff_sfreq))
-        object.__setattr__(self, "duration_s", float(duration_s))
-        object.__setattr__(self, "n_channels", int(n_channels))
-        object.__setattr__(self, "seed", int(seed))
+        object.__setattr__(self, "renormalize_to_sphere", renormalize_to_sphere)
+        object.__setattr__(self, "sfreq_hz", _require_real_value("sfreq_hz", eff_sfreq))
+        object.__setattr__(self, "duration_s", _require_real_value("duration_s", duration_s))
+        object.__setattr__(self, "n_channels", _require_integer_value("n_channels", n_channels))
+        object.__setattr__(self, "seed", _require_integer_value("seed", seed))
         object.__setattr__(self, "metadata", eff_meta)
 
         # Validation
@@ -158,10 +202,17 @@ class NuisanceScenarioConfig:
             raise ValueError(
                 f"n_channels must be a positive integer, got {self.n_channels}"
             )
-        n_samp = int(round(self.duration_s * self.sfreq_hz))
+        sample_count = self.duration_s * self.sfreq_hz
+        if not math.isfinite(sample_count) or sample_count > sys.maxsize:
+            raise ValueError(
+                "n_samples must be finite and representable, "
+                f"got duration_s={self.duration_s} * sfreq_hz={self.sfreq_hz}"
+            )
+        n_samp = int(round(sample_count))
         if n_samp < _MIN_N_SAMPLES:
             raise ValueError(
-                f"n_samples must be >= {_MIN_N_SAMPLES} for colored-noise synthesis, "
+                f"n_samples must be >= {_MIN_N_SAMPLES} for scenario generation and "
+                "spectral-slope estimation, "
                 f"got {n_samp} from duration_s={self.duration_s} * sfreq_hz={self.sfreq_hz}"
             )
 
@@ -202,7 +253,22 @@ class NuisanceScenarioConfig:
             f"jit{self.coordinate_jitter_std:.2f}{self.coordinate_units.lower()}_{renorm_tag}_"
             f"seed{self.seed}"
         )
-        return base_desc
+        identity = {
+            "noise_exponent": self.noise_exponent,
+            "target_snr_db": self.target_snr_db,
+            "coordinate_jitter_std": self.coordinate_jitter_std,
+            "coordinate_units": self.coordinate_units,
+            "renormalize_to_sphere": self.renormalize_to_sphere,
+            "sfreq_hz": self.sfreq_hz,
+            "duration_s": self.duration_s,
+            "n_channels": self.n_channels,
+            "seed": self.seed,
+        }
+        identity_json = json.dumps(
+            identity, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        digest = hashlib.sha256(identity_json.encode("utf-8")).hexdigest()[:12]
+        return f"{base_desc}_{digest}"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to JSON-safe dictionary."""
@@ -228,6 +294,19 @@ class NuisanceScenarioConfig:
         d.pop("n_samples", None)
 
         # Refuse silent disagreement before collapsing aliases.
+        for name in (
+            "noise_exponent",
+            "chi",
+            "coordinate_jitter_std",
+            "jitter_std",
+            "sfreq_hz",
+            "sampling_rate_hz",
+        ):
+            if name in d and d[name] is not None:
+                _require_real_value(name, d[name])
+        for name in ("coordinate_units", "jitter_units"):
+            if name in d and d[name] is not None and not isinstance(d[name], str):
+                raise ValueError(f"{name} must be a string, got {d[name]!r}")
         _require_alias_agreement("noise_exponent", d.get("noise_exponent"), "chi", d.get("chi"))
         _require_alias_agreement(
             "coordinate_jitter_std",
@@ -288,15 +367,15 @@ class NuisanceGridConfig:
                     for renorm in self.renormalize_options:
                         for seed in self.seeds:
                             cfg = NuisanceScenarioConfig(
-                                noise_exponent=float(chi),
-                                target_snr_db=float(snr),
-                                coordinate_jitter_std=float(jit),
+                                noise_exponent=chi,
+                                target_snr_db=snr,
+                                coordinate_jitter_std=jit,
                                 coordinate_units=self.coordinate_units,
-                                renormalize_to_sphere=bool(renorm),
-                                sfreq_hz=float(self.sfreq_hz),
-                                duration_s=float(self.duration_s),
-                                n_channels=int(self.n_channels),
-                                seed=int(seed),
+                                renormalize_to_sphere=renorm,
+                                sfreq_hz=self.sfreq_hz,
+                                duration_s=self.duration_s,
+                                n_channels=self.n_channels,
+                                seed=seed,
                             )
                             scenarios.append(cfg)
         return scenarios

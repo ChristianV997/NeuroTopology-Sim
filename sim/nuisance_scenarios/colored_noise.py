@@ -17,6 +17,7 @@ Nyquist Convention:
 from __future__ import annotations
 
 import math
+import numbers
 from typing import NamedTuple, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -33,7 +34,7 @@ def generate_colored_noise(
     n_samples: int,
     chi: float,
     n_channels: int = 1,
-    sfreq_hz: float = 250.0,
+    sfreq_hz: Optional[float] = None,
     seed: Optional[Union[int, np.random.Generator, np.random.SeedSequence]] = None,
     *,
     sampling_rate_hz: Optional[float] = None,
@@ -54,17 +55,59 @@ def generate_colored_noise(
     Returns:
         noise: NumPy array of shape (n_channels, n_samples) with zero mean and unit variance.
     """
-    if not isinstance(n_samples, int) or n_samples < 4:
+    if isinstance(n_samples, bool) or not isinstance(n_samples, numbers.Integral) or n_samples < 4:
         raise ValueError(f"n_samples must be an integer >= 4, got {n_samples}")
-    if not isinstance(n_channels, int) or n_channels < 1:
+    if isinstance(n_channels, bool) or not isinstance(n_channels, numbers.Integral) or n_channels < 1:
         raise ValueError(f"n_channels must be an integer >= 1, got {n_channels}")
+    if isinstance(chi, bool) or not isinstance(chi, numbers.Real):
+        raise ValueError(f"chi must be a non-negative finite real number, got {chi!r}")
+    try:
+        chi = float(chi)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"chi must be representable as a finite float, got {chi!r}") from exc
     if not math.isfinite(chi) or chi < 0.0:
         raise ValueError(f"chi must be a non-negative finite float, got {chi}")
-    effective_sfreq = sampling_rate_hz if sampling_rate_hz is not None else sfreq_hz
+    canonical_sfreq = None
+    alias_sfreq = None
+    if sfreq_hz is not None:
+        if isinstance(sfreq_hz, bool) or not isinstance(sfreq_hz, numbers.Real):
+            raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz!r}")
+        try:
+            canonical_sfreq = float(sfreq_hz)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"sfreq_hz must be representable as a finite float, got {sfreq_hz!r}"
+            ) from exc
+    if sampling_rate_hz is not None:
+        if isinstance(sampling_rate_hz, bool) or not isinstance(sampling_rate_hz, numbers.Real):
+            raise ValueError(
+                "sampling_rate_hz must be a positive finite real number, "
+                f"got {sampling_rate_hz!r}"
+            )
+        try:
+            alias_sfreq = float(sampling_rate_hz)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "sampling_rate_hz must be representable as a finite float, "
+                f"got {sampling_rate_hz!r}"
+            ) from exc
+    if canonical_sfreq is not None and alias_sfreq is not None:
+        if not (math.isfinite(canonical_sfreq) and canonical_sfreq == alias_sfreq):
+            raise ValueError(
+                f"conflict: sfreq_hz={sfreq_hz!r} disagrees with "
+                f"alias sampling_rate_hz={sampling_rate_hz!r}"
+            )
+    effective_sfreq = alias_sfreq if alias_sfreq is not None else (
+        canonical_sfreq if canonical_sfreq is not None else 250.0
+    )
     if not math.isfinite(effective_sfreq) or effective_sfreq <= 0.0:
         raise ValueError(f"sfreq_hz must be a positive finite float, got {effective_sfreq}")
 
+    if seed is not None and rng is not None:
+        raise ValueError("provide only one of seed or rng")
     effective_seed = rng if rng is not None else seed
+    if isinstance(effective_seed, bool):
+        raise ValueError("seed/rng must not be a bool")
     gen = np.random.default_rng(effective_seed)
 
     # One-sided discrete Fourier frequencies
@@ -87,25 +130,37 @@ def generate_colored_noise(
         if chi > 0.0:
             # Positive frequency bins k >= 1
             amplitude_scaling = np.zeros(n_freqs, dtype=np.float64)
-            amplitude_scaling[1:] = freqs[1:] ** (-chi / 2.0)
+            with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+                amplitude_scaling[1:] = freqs[1:] ** (-chi / 2.0)
+            if (
+                not np.all(np.isfinite(amplitude_scaling))
+                or not np.any(amplitude_scaling[1:] > 0.0)
+            ):
+                raise ValueError("chi is outside the representable colored-noise range")
             complex_spec *= amplitude_scaling
+            if not np.all(np.isfinite(complex_spec)):
+                raise ValueError("chi produces non-finite colored-noise spectrum values")
 
         # Nyquist bin constraint for even N: imaginary part must be zero
         if n_samples % 2 == 0 and n_freqs > 1:
             complex_spec[-1] = complex_spec[-1].real + 0.0j
 
         # Synthesize time-domain sequence via inverse real FFT
-        raw_signal = np.fft.irfft(complex_spec, n=n_samples)
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            raw_signal = np.fft.irfft(complex_spec, n=n_samples)
+        if not np.all(np.isfinite(raw_signal)):
+            raise ValueError("chi produces non-finite colored-noise samples")
 
         # Standardize to zero-mean and unit variance per channel
         std_val = float(np.std(raw_signal, ddof=1)) if n_samples > 1 else 1.0
-        if std_val > 1e-12:
-            raw_signal = (raw_signal - np.mean(raw_signal)) / std_val
-        else:
-            raw_signal = raw_signal - np.mean(raw_signal)
+        if not math.isfinite(std_val) or std_val <= 1e-12:
+            raise ValueError("chi produced zero or non-finite colored-noise variance")
+        raw_signal = (raw_signal - np.mean(raw_signal)) / std_val
 
         noise_out[ch] = raw_signal
 
+    if not np.all(np.isfinite(noise_out)):
+        raise ValueError("colored-noise generation produced non-finite samples")
     return noise_out
 
 
@@ -131,6 +186,17 @@ def estimate_spectral_slope(
             estimated_chi: The empirical slope exponent (e.g. ~1.0 for pink noise).
             r_squared: Coefficient of determination of the log-log linear fit.
     """
+    if isinstance(sfreq_hz, bool) or not isinstance(sfreq_hz, numbers.Real):
+        raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz!r}")
+    try:
+        sfreq_hz = float(sfreq_hz)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"sfreq_hz must be representable as a finite float, got {sfreq_hz!r}"
+        ) from exc
+    if not math.isfinite(sfreq_hz) or sfreq_hz <= 0.0:
+        raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz}")
+
     arr = np.asarray(signal, dtype=np.float64)
     if arr.ndim == 1:
         arr = arr[None, :]

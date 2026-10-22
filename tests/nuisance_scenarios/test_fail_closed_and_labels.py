@@ -6,7 +6,7 @@ import math
 import numpy as np
 import pytest
 
-from sim.nuisance_scenarios.config import NuisanceScenarioConfig
+from sim.nuisance_scenarios.config import NuisanceGridConfig, NuisanceScenarioConfig
 from sim.nuisance_scenarios.factory import NuisanceScenarioFactory
 from sim.nuisance_scenarios.snr_mixer import mix_at_target_snr
 
@@ -55,9 +55,53 @@ def test_config_rejects_non_finite_and_invalid_sampling_rate() -> None:
 
 
 def test_config_rejects_duration_yielding_too_few_samples() -> None:
-    """n_samples < 4 is invalid for colored-noise synthesis — fail at config time."""
+    """n_samples below the full factory minimum must fail at config time."""
     with pytest.raises(ValueError, match="n_samples"):
         NuisanceScenarioConfig(duration_s=0.01, sfreq_hz=100.0)
+
+
+def test_config_rejects_sample_count_below_factory_estimator_minimum() -> None:
+    """A config accepted by the factory must satisfy its spectral-fit precondition."""
+    with pytest.raises(ValueError, match="n_samples"):
+        NuisanceScenarioConfig(duration_s=0.07, sfreq_hz=100.0)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"n_channels": 2.5},
+        {"n_channels": True},
+        {"seed": 1.5},
+        {"seed": False},
+        {"noise_exponent": True},
+        {"target_snr_db": True},
+        {"coordinate_jitter_std": True},
+        {"duration_s": True},
+        {"sfreq_hz": True, "duration_s": 8.0},
+        {"renormalize_to_sphere": "false"},
+    ],
+)
+def test_config_rejects_silent_numeric_and_boolean_coercion(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        NuisanceScenarioConfig(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"n_channels": 2.5},
+        {"seeds": (1.5,)},
+        {"renormalize_options": ("false",)},
+    ],
+)
+def test_grid_rejects_values_that_would_be_silently_coerced(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        NuisanceGridConfig(**kwargs).generate_scenarios()
+
+
+def test_config_rejects_overflowing_derived_sample_count() -> None:
+    with pytest.raises(ValueError, match="n_samples"):
+        NuisanceScenarioConfig(duration_s=1e308, sfreq_hz=1e308)
 
 
 def test_coordinate_units_aliases_normalize_case_for_sphere_radius() -> None:

@@ -12,6 +12,7 @@ Two distinct displacement modes:
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -63,7 +64,14 @@ def apply_coordinate_jitter(
     Returns:
         JitteredCoordinateResult containing perturbed coordinates and realized displacement metrics.
     """
-    raw_coords = coords if coords is not None else coordinates
+    if coords is not None and coordinates is not None:
+        canonical_coords = np.asarray(coordinates, dtype=np.float64)
+        alias_coords = np.asarray(coords, dtype=np.float64)
+        if not np.array_equal(canonical_coords, alias_coords, equal_nan=True):
+            raise ValueError("conflict: 'coordinates' and alias 'coords' disagree")
+        raw_coords = canonical_coords
+    else:
+        raw_coords = coords if coords is not None else coordinates
     if raw_coords is None:
         raise ValueError("Coordinates array must be provided via 'coordinates' or 'coords'")
 
@@ -75,9 +83,19 @@ def apply_coordinate_jitter(
         )
     if not np.all(np.isfinite(arr)):
         raise ValueError("coordinates contain non-finite values (NaN or Inf)")
+    if isinstance(jitter_std, bool) or not isinstance(jitter_std, numbers.Real):
+        raise ValueError(f"jitter_std must be a non-negative finite real number, got {jitter_std!r}")
+    try:
+        jitter_std = float(jitter_std)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"jitter_std must be representable as a finite float, got {jitter_std!r}"
+        ) from exc
     if not math.isfinite(jitter_std) or jitter_std < 0.0:
         raise ValueError(f"jitter_std must be a non-negative finite float, got {jitter_std}")
 
+    if not isinstance(units, str):
+        raise ValueError(f"units must be a string, got {units!r}")
     unit_str = units.strip().lower()
     if unit_str not in SUPPORTED_COORDINATE_UNITS:
         raise ValueError(
@@ -85,6 +103,17 @@ def apply_coordinate_jitter(
         )
 
     n_channels, n_dims = arr.shape
+
+    if not isinstance(renormalize_to_sphere, bool):
+        raise ValueError(
+            "renormalize_to_sphere must be a bool, "
+            f"got {renormalize_to_sphere!r}"
+        )
+    if seed is not None and rng is not None:
+        raise ValueError("provide only one of seed or rng")
+    effective_seed = rng if rng is not None else seed
+    if isinstance(effective_seed, bool):
+        raise ValueError("seed/rng must not be a bool")
 
     if jitter_std == 0.0:
         return JitteredCoordinateResult(
@@ -97,24 +126,32 @@ def apply_coordinate_jitter(
             renormalized_to_sphere=renormalize_to_sphere,
         )
 
-    effective_seed = rng if rng is not None else seed
     gen = np.random.default_rng(effective_seed)
-    delta = gen.normal(loc=0.0, scale=jitter_std, size=(n_channels, n_dims))
-    jittered = arr + delta
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        delta = gen.normal(loc=0.0, scale=jitter_std, size=(n_channels, n_dims))
+        jittered = arr + delta
+    if not np.all(np.isfinite(jittered)):
+        raise ValueError("jitter_std produces non-finite jittered coordinates")
 
     if renormalize_to_sphere:
         # Radial projection to preserve the original distance from origin per electrode
         for ch in range(n_channels):
-            r_orig = float(np.linalg.norm(arr[ch]))
-            r_jit = float(np.linalg.norm(jittered[ch]))
+            with np.errstate(over="ignore", invalid="ignore"):
+                r_orig = float(np.linalg.norm(arr[ch]))
+                r_jit = float(np.linalg.norm(jittered[ch]))
+            if not (math.isfinite(r_orig) and math.isfinite(r_jit)):
+                raise ValueError("coordinate values or jitter_std produce non-finite sphere radii")
             if r_jit > 1e-12 and r_orig > 1e-12:
                 jittered[ch] = (jittered[ch] / r_jit) * r_orig
 
     # Compute Euclidean displacement per channel
-    displacements = np.linalg.norm(jittered - arr, axis=1)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        displacements = np.linalg.norm(jittered - arr, axis=1)
     mean_disp = float(np.mean(displacements))
     max_disp = float(np.max(displacements))
     rms_disp = float(np.sqrt(np.mean(displacements ** 2)))
+    if not all(math.isfinite(value) for value in (mean_disp, max_disp, rms_disp)):
+        raise ValueError("jitter_std produces non-finite displacement diagnostics")
 
     return JitteredCoordinateResult(
         jittered_coordinates=jittered,

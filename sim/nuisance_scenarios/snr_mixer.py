@@ -10,6 +10,7 @@ Mathematical Formulation:
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from typing import Optional
 
@@ -56,7 +57,11 @@ def compute_signal_power(signal: np.ndarray) -> float:
         raise ValueError("signal array contains non-finite values (NaN or Inf)")
     if arr.size == 0:
         return 0.0
-    return float(np.mean(arr ** 2))
+    with np.errstate(over="ignore", invalid="ignore"):
+        power = float(np.mean(np.square(arr)))
+    if not math.isfinite(power):
+        raise ValueError("signal power is not representable as a finite float")
+    return power
 
 
 def mix_at_target_snr(
@@ -77,19 +82,34 @@ def mix_at_target_snr(
     Returns:
         MixedSignalResult with combined signal, scaled noise, and realized powers.
     """
-    raw_s = clean_signal if clean_signal is not None else signal
-    if raw_s is None:
+    if signal is None and clean_signal is None:
         raise ValueError("A clean signal array must be provided via 'signal' or 'clean_signal'")
     if noise is None:
         raise ValueError("A noise array must be provided via 'noise'")
 
-    s = np.asarray(raw_s, dtype=np.float64)
+    if signal is not None and clean_signal is not None:
+        canonical_signal = np.asarray(signal, dtype=np.float64)
+        alias_signal = np.asarray(clean_signal, dtype=np.float64)
+        if not np.array_equal(canonical_signal, alias_signal, equal_nan=True):
+            raise ValueError("conflict: 'signal' and alias 'clean_signal' disagree")
+        s = canonical_signal
+    else:
+        raw_s = signal if signal is not None else clean_signal
+        s = np.asarray(raw_s, dtype=np.float64)
     n = np.asarray(noise, dtype=np.float64)
 
     if s.shape != n.shape:
         raise ValueError(
             f"Shape mismatch between signal {s.shape} and noise {n.shape}"
         )
+    if isinstance(target_snr_db, bool) or not isinstance(target_snr_db, numbers.Real):
+        raise ValueError(f"target_snr_db must be a finite real number, got {target_snr_db!r}")
+    try:
+        target_snr_db = float(target_snr_db)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"target_snr_db must be representable as a finite float, got {target_snr_db!r}"
+        ) from exc
     if not math.isfinite(target_snr_db):
         raise ValueError(f"target_snr_db must be a finite float, got {target_snr_db}")
     if not np.all(np.isfinite(s)):
@@ -109,19 +129,35 @@ def mix_at_target_snr(
             f"Raw noise has near-zero or zero power ({p_n_raw}); cannot scale noise."
         )
 
-    # Calculate desired noise power: P_n = P_s / (10^(SNR/10))
-    snr_linear = 10.0 ** (target_snr_db / 10.0)
-    p_n_target = p_s / snr_linear
+    # Work in log-power space so large but representable dB values do not
+    # overflow in 10**(SNR/10), and reject targets outside float64 power range.
+    log_p_n_target = math.log(p_s) - target_snr_db * math.log(10.0) / 10.0
+    log_min_power = math.log(np.finfo(np.float64).tiny)
+    log_max_power = math.log(np.finfo(np.float64).max)
+    if not math.isfinite(log_p_n_target) or not log_min_power <= log_p_n_target <= log_max_power:
+        raise ValueError(
+            "target_snr_db produces noise power outside the normal float64 range"
+        )
 
-    # Scaling factor for noise amplitude
-    alpha = math.sqrt(p_n_target / p_n_raw)
-    scaled_n = alpha * n
+    log_alpha = 0.5 * (log_p_n_target - math.log(p_n_raw))
+    log_min_scale = math.log(float(np.nextafter(0.0, 1.0)))
+    if not math.isfinite(log_alpha) or not log_min_scale <= log_alpha <= log_max_power:
+        raise ValueError("target_snr_db produces a noise scale outside the float64 range")
+    alpha = math.exp(log_alpha)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        scaled_n = alpha * n
+        p_n_realized = float(np.mean(np.square(scaled_n)))
+    if not math.isfinite(p_n_realized) or p_n_realized <= 0.0:
+        raise ValueError("target_snr_db cannot be realized with finite float64 noise power")
 
     combined = s + scaled_n
-    p_n_realized = float(np.mean(scaled_n ** 2))
+    if not np.all(np.isfinite(combined)):
+        raise ValueError("target_snr_db produces a non-finite mixed signal")
 
     # Realized SNR in dB
-    realized_snr_db = 10.0 * math.log10(p_s / (p_n_realized + 1e-20))
+    realized_snr_db = 10.0 / math.log(10.0) * (
+        math.log(p_s) - math.log(p_n_realized)
+    )
 
     return MixedSignalResult(
         combined_signal=combined,

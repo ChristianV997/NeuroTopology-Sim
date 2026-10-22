@@ -67,6 +67,15 @@ def test_shape_mismatch_raises_error() -> None:
         mix_at_target_snr(signal=clean, noise=raw_noise, target_snr_db=0.0)
 
 
+def test_conflicting_clean_signal_alias_fails_closed() -> None:
+    with pytest.raises(ValueError, match="conflict"):
+        mix_at_target_snr(
+            signal=np.zeros((2, 64)),
+            clean_signal=np.ones((2, 64)),
+            noise=np.ones((2, 64)),
+        )
+
+
 def test_non_finite_inputs_raise_error() -> None:
     """Verifies that NaN or Inf in inputs raises ValueError."""
     clean = np.ones((2, 100))
@@ -82,3 +91,21 @@ def test_non_finite_inputs_raise_error() -> None:
 
     with pytest.raises(ValueError, match="non-finite"):
         mix_at_target_snr(signal=clean_ok, noise=raw_noise_inf, target_snr_db=0.0)
+
+
+@pytest.mark.parametrize("target_snr", [True, 4000.0, -4000.0, 10**400])
+def test_unrepresentable_target_snr_fails_with_value_error(target_snr: float) -> None:
+    clean = np.ones((2, 64))
+    noise = np.ones((2, 64))
+
+    with pytest.raises(ValueError, match="target_snr_db"):
+        mix_at_target_snr(signal=clean, noise=noise, target_snr_db=target_snr)
+
+
+def test_high_representable_target_snr_is_not_clamped_by_epsilon() -> None:
+    clean = np.ones((2, 64))
+    noise = np.ones((2, 64))
+
+    result = mix_at_target_snr(signal=clean, noise=noise, target_snr_db=400.0)
+
+    assert result.realized_snr_db == pytest.approx(400.0, abs=1e-8)

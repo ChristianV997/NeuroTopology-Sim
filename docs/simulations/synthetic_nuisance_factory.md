@@ -20,11 +20,12 @@ This module implements a deterministic, reproducible, synthetic-only nuisance-sc
 > **Scientific Guardrails & Epistemic Boundaries**:
 > - **Synthetic Only**: This factory is an engineering evaluation fixture. No biological realism or realistic head volume conduction is modeled or claimed.
 > - **Not empirical evidence**: Generated arrays must not be treated as participant, clinical, or dataset-derived measurements.
-> - **No network / remote data**: The package does not import or call network or remote-data clients; inputs are synthetic or caller-supplied arrays.
+> - **No network / remote data**: The package does not import or call network or remote-data clients; caller-supplied arrays and `signal_generator` callbacks remain caller-controlled. Tests use synthetic fixtures only and make no live API calls.
 > - **No Classifier/Detector**: This module does not implement detection algorithms, threshold tuning, or ROC/PR classification scoring.
 > - **No Claim States**: Results are tagged strictly with `HOLD / SYNTHETIC_ONLY` and report purely descriptive/engineering realized metrics.
 > - **Pure NumPy**: Zero SciPy dependencies; all spectral, linear algebraic, and regression routines use standard `numpy`.
-> - **Config aliases**: `from_dict` accepts `chi` / `jitter_std` / `jitter_units` / `sampling_rate_hz` and must preserve them (no silent defaulting). Conflicting alias/canonical pairs fail closed. Coordinate unit aliases are normalized to lowercase (`mm`/`cm`/`m`) so sphere-radius selection cannot silently fall through. Configurations that yield `n_samples < 4` are rejected.
+> - **Aliases and numeric bounds**: `from_dict` accepts `chi` / `jitter_std` / `jitter_units` / `sampling_rate_hz` and preserves them; conflicting canonical/alias values fail closed. Low-level `signal`/`clean_signal`, `coordinates`/`coords`, and `sfreq_hz`/`sampling_rate_hz` pairs must agree when both are supplied; `seed`/`rng` are mutually exclusive. Coordinate units normalize to lowercase (`mm`/`cm`/`m`). Numeric strings, booleans in numeric fields, fractional integer fields, and non-boolean projection flags are rejected. Configurations must yield a finite, representable `n_samples >= 8`, matching the factory's spectral-slope estimator.
+> - **Serialization and identifiers**: Generated scenario IDs retain a readable prefix and append a stable 12-character SHA-256 digest of generation-affecting config fields. Unavailable spectral-fit diagnostics serialize as JSON `null`; `to_json` rejects non-finite JSON values.
 > - **No label inference**: Scenario outputs never invent class/condition labels from nuisance parameters; caller `metadata` is preserved verbatim only.
 
 ---
@@ -76,7 +77,7 @@ Given a clean multichannel signal $s \in \mathbb{R}^{C \times N}$ and raw noise 
    $$x = s + \alpha n$$
    $$\text{SNR}_{\text{realized}} = 10 \log_{10} \left( \frac{P_s}{P_{n, \text{realized}}} \right)$$
 
-*Edge Case Rule*: If $P_s \le 10^{-15}$ or $P_{n, \text{raw}} \le 10^{-15}$, or if non-finite numbers exist, the mixer fails closed with an explicit `ValueError`.
+*Edge Case Rule*: If $P_s \le 10^{-15}$ or $P_{n, \text{raw}} \le 10^{-15}$, if inputs are non-finite, or if the requested target noise power is outside the normal float64 range, the mixer fails closed with an explicit `ValueError`. Scaling and realized-SNR diagnostics are computed in log space to avoid intermediate overflow and epsilon-clamping at high SNR.
 
 ### 2.4 Electrode Coordinate Jitter
 
@@ -125,6 +126,8 @@ print(f"Status: {result.diagnostics.status}")
 json_meta = result.to_json(include_arrays=False)
 ```
 
+Automatically generated scenario IDs include all generation-affecting configuration fields, so fine-grained grid values do not collapse to the same rounded display ID. A spectral-slope fit that has too few valid frequency bins is reported as unavailable (`null` in JSON), not as the non-standard JSON token `NaN`.
+
 ### Parameter Sweeps with `NuisanceGridConfig`
 
 ```python
@@ -150,6 +153,6 @@ The module is verified by a dedicated test suite in `tests/nuisance_scenarios/`:
 |---|---|
 | `test_seed_reproducibility.py` | Bit-for-bit identical outputs on matching seeds; RNG stream isolation across noise and coordinates. |
 | `test_colored_noise.py` | Strict zeroing of DC component ($X(0) = 0$); even and odd length support; unit variance standardization; empirical slope recovery for $\chi \in \{0.0, 1.0, 1.5, 2.0\}$. |
-| `test_target_snr.py` | Numerical precision of realized SNR ($< 10^{-6}$ dB); zero-signal and zero-noise fail-closed errors; shape and finiteness validation. |
+| `test_target_snr.py` | Numerical precision of realized SNR ($< 10^{-6}$ dB); high representable and out-of-range SNR behavior; zero-signal and zero-noise fail-closed errors; shape and finiteness validation. |
 | `test_coordinate_jitter.py` | Cartesian vs sphere projection verification; radius preservation under projection; displacement scaling; unit checking (`mm`, `cm`, `m`). |
 | `test_factory_and_grid.py` | End-to-end factory generation; custom callable integration; grid parameter expansion; JSON serialization fidelity; `HOLD / SYNTHETIC_ONLY` audit tag. |

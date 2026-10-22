@@ -110,3 +110,35 @@ def test_invalid_coordinates_raise_value_error() -> None:
 
     with pytest.raises(ValueError, match="jitter_std"):
         apply_coordinate_jitter(np.ones((2, 3)), jitter_std=-1.0)
+
+
+def test_coordinate_and_rng_alias_conflicts_fail_closed() -> None:
+    coords = np.zeros((2, 3))
+    with pytest.raises(ValueError, match="conflict"):
+        apply_coordinate_jitter(coordinates=coords, coords=np.ones((2, 3)))
+    with pytest.raises(ValueError, match="seed.*rng"):
+        apply_coordinate_jitter(coords, seed=42, rng=43)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"jitter_std": True},
+        {"jitter_std": 10**400},
+        {"renormalize_to_sphere": "false"},
+        {"units": 1},
+        {"seed": True},
+    ],
+)
+def test_jitter_rejects_boolean_and_non_string_coercions(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        apply_coordinate_jitter(np.ones((2, 3)), **kwargs)
+
+
+def test_jitter_fails_closed_when_displacement_metrics_overflow() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        apply_coordinate_jitter(
+            np.zeros((2, 3)),
+            jitter_std=1e308,
+            seed=42,
+        )
