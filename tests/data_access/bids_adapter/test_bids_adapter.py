@@ -688,3 +688,49 @@ def test_nonstring_dataset_id_and_unmatched_expected_checksum_fail_closed(tmp_pa
         )
     assert exc_root.value.code == BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE.value
     assert "private_host_parent_dir" not in str(exc_root.value)
+
+
+def test_plan_rejects_mismatched_local_expected_checksum():
+    """Regression: window *plan* must verify local checksums, not only lazy read."""
+    mismatched = "0" * 64
+    req = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root=str(VALID),
+        relative_path="sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+        expected_checksum=mismatched,
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        plan_bounded_window_access(req)
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+    assert "0" * 8 not in str(VALID)  # host fixture path must not be required in message
+
+
+def test_oversized_metadata_json_rejected(tmp_path: Path):
+    """Regression: dataset_description / sidecars must fail closed when oversized."""
+    root = tmp_path / "bids"
+    root.mkdir()
+    # Just over the adapter metadata JSON budget.
+    pad = "A" * (bids_ingest.MAX_METADATA_JSON_BYTES + 1)
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "Huge", "BIDSVersion": "1.8.0", "pad": pad}),
+        encoding="utf-8",
+    )
+    (root / "sub-01" / "eeg").mkdir(parents=True)
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(BIDSAccessRequest(dataset_id="dsHUGE01", local_root=str(root)))
+    assert exc.value.code == BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE.value
+    assert "oversized" in str(exc.value).lower() or "too large" in str(exc.value).lower()
+    assert "private" not in str(exc.value)  # sanity
+    assert str(root) not in str(exc.value)
+
+
+def test_find_eeg_files_missing_root_is_privacy_safe(tmp_path: Path):
+    """Regression: missing-root diagnostics must not echo absolute host paths."""
+    secret = tmp_path / "super_secret_host_directory_name" / "missing_bids"
+    with pytest.raises(FileNotFoundError) as exc:
+        onl.find_eeg_files(secret)
+    assert "super_secret_host_directory_name" not in str(exc.value)
+    with pytest.raises(FileNotFoundError) as exc_ev:
+        onl.find_events(secret)
+    assert "super_secret_host_directory_name" not in str(exc_ev.value)

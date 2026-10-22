@@ -32,7 +32,8 @@ def find_eeg_files(root: str | Path):
     """List local EEG candidates under an explicit root. Local filesystem only."""
     root_path = Path(root).resolve()
     if not root_path.exists():
-        raise FileNotFoundError(f"OpenNeuro/BIDS root does not exist: {root}")
+        # Privacy: do not echo absolute host paths in diagnostics.
+        raise FileNotFoundError("OpenNeuro/BIDS root does not exist")
     files = []
     for ext in _EEG_GLOBS:
         for f in sorted(root_path.rglob(ext)):
@@ -45,7 +46,7 @@ def find_events(root: str | Path):
     """List local ``*_events.tsv`` files under an explicit root."""
     root_path = Path(root).resolve()
     if not root_path.exists():
-        raise FileNotFoundError(f"OpenNeuro/BIDS root does not exist: {root}")
+        raise FileNotFoundError("OpenNeuro/BIDS root does not exist")
     return [
         f
         for f in sorted(root_path.rglob("*_events.tsv"))

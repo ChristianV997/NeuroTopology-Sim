@@ -450,6 +450,8 @@ from typing import Tuple as _Tuple  # noqa: E402
 BIDS_ADAPTER_SCHEMA = "BIDSAdapterManifest.v1"
 MAX_BOUNDED_WINDOW_SECONDS = 600.0
 MAX_BOUNDED_WINDOW_BYTES = 64 * 1024 * 1024
+# Sidecars / dataset_description are metadata, not recordings — bound parse size.
+MAX_METADATA_JSON_BYTES = 1 * 1024 * 1024
 _SHA256_HEX = _re.compile(r"^[0-9a-fA-F]{64}$")
 _DATASET_ID_RE = _re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -710,6 +712,18 @@ def _file_checksum_or_unknown(path: Path) -> tuple[Optional[str], str]:
 
 
 def _read_json_object(path: Path) -> dict[str, _Any]:
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+            f"unreadable JSON at {path.name}: {exc}",
+        ) from exc
+    if size > MAX_METADATA_JSON_BYTES:
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+            f"metadata JSON {path.name} is oversized (>{MAX_METADATA_JSON_BYTES} bytes)",
+        )
     try:
         payload = _json.loads(path.read_text(encoding="utf-8"))
     except (OSError, _json.JSONDecodeError) as exc:
@@ -1179,6 +1193,34 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
     return payload
 
 
+def _verify_local_expected_checksum(request: BIDSAccessRequest) -> None:
+    """When a local file is present, declared checksums must match before plan/read."""
+    if (
+        request.expected_checksum is None
+        or not request.local_root
+        or not request.relative_path
+    ):
+        return
+    declared, _ = _normalize_checksum(request.expected_checksum)
+    if declared is None:
+        return
+    _require_contained_relative_path(request.local_root, request.relative_path)
+    path = Path(request.local_root) / request.relative_path
+    if not path.is_file():
+        return
+    actual, _ = _file_checksum_or_unknown(path)
+    if actual is None:
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.CHECKSUM_UNKNOWN,
+            f"cannot verify expected_checksum for {request.relative_path}: file unreadable",
+        )
+    if actual.lower() != declared.lower():
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            f"checksum mismatch for {request.relative_path}",
+        )
+
+
 def plan_bounded_window_access(request: BIDSAccessRequest) -> dict[str, _Any]:
     """Plan a single bounded window read. Never downloads a full dataset."""
     enforce_bids_access_gate(request)
@@ -1192,6 +1234,7 @@ def plan_bounded_window_access(request: BIDSAccessRequest) -> dict[str, _Any]:
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
             "bounded window access requires relative_path",
         )
+    _verify_local_expected_checksum(request)
     if request.remote_uri and request.allow_network:
         # Planning only — no network call is performed here.
         mode = "bounded_remote_plan"
@@ -1258,20 +1301,7 @@ def read_bounded_window_lazy(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
             f"local recording not found: {request.relative_path}",
         )
-    if request.expected_checksum:
-        declared, _ = _normalize_checksum(request.expected_checksum)
-        if declared is not None:
-            actual_checksum, _ = _file_checksum_or_unknown(path)
-            if actual_checksum is None:
-                raise BIDSAdapterError(
-                    BIDSAdapterErrorCode.CHECKSUM_UNKNOWN,
-                    f"cannot verify expected_checksum for {request.relative_path}: file unreadable",
-                )
-            if actual_checksum.lower() != declared.lower():
-                raise BIDSAdapterError(
-                    BIDSAdapterErrorCode.MALFORMED_REQUEST,
-                    f"checksum mismatch for {request.relative_path}: expected {declared}, got {actual_checksum}",
-                )
+    _verify_local_expected_checksum(request)
     samples = read_window_signal(
         str(path),
         float(request.window.start_s),

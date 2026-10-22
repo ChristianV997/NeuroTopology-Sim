@@ -21,8 +21,14 @@ Schema: `BIDSAdapterManifest.v1`.
   with `confirmed=true`. Filename task tokens are structural entities, not
   confirmed conditions.
 - Source checksums may be `null` with `checksum_state="unknown"`; checksums are
-  never fabricated.
-- Lazy window reads are allowed only for bounded local windows.
+  never fabricated. When `local_root` + `expected_checksum` name an existing
+  file, **plan and read** both fail closed on mismatch.
+- Metadata JSON (`dataset_description.json`, sidecars) is bounded by
+  `MAX_METADATA_JSON_BYTES` (1 MiB); oversized inputs fail closed.
+- Lazy window reads are allowed only for bounded local windows. Remote
+  `allow_network=True` yields a **plan-only** artifact (`executed: false`);
+  this adapter never downloads datasets.
+- Missing-root diagnostics omit absolute host paths.
 - Manifests are deterministic strict JSON (`allow_nan=False`) with
   `scientific_pass: false`.
 
