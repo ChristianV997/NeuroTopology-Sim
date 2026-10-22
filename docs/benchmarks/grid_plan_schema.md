@@ -85,8 +85,8 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited tip
-`52e9a7cb5ed9c16000fc8a07c5c759649133f338`. The previous audited tip
-`4e91c6f080647280940ded4f90f4ee9278960c4b` is an ancestor of that commit.
+`d78f54128b6fd60c30665c9e9cff307056dbdd82`. The previous audited tip
+`52e9a7cb5ed9c16000fc8a07c5c759649133f338` is an ancestor of that commit.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.

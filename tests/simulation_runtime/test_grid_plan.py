@@ -323,7 +323,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "52e9a7cb5ed9c16000fc8a07c5c759649133f338")
+        self.assertEqual(AUDITED_MAIN_SHA, "d78f54128b6fd60c30665c9e9cff307056dbdd82")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -1850,7 +1850,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("substitute_module_rejected", substitute_reasons)
         self.assertIn("dependency_not_merged_on_main", substitute_reasons)
 
-    def test_audited_main_sha_equals_live_main_52e9a7cb(self):
+    def test_audited_main_sha_equals_live_main_d78f5412(self):
         """The audited constant equals resolved origin/main; the previous tip remains its ancestor.
 
         A frozen historical SHA that is only an ancestor must not pass. Stale-main
@@ -1858,11 +1858,11 @@ class GridPlanTests(unittest.TestCase):
         string that once was tip.
         """
 
-        previous = "4e91c6f080647280940ded4f90f4ee9278960c4b"
+        previous = "52e9a7cb5ed9c16000fc8a07c5c759649133f338"
         live = _require_audited_main_ancestor(self)
         self.assertEqual(AUDITED_MAIN_SHA, live)
         self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, live)
-        self.assertEqual(live, "52e9a7cb5ed9c16000fc8a07c5c759649133f338")
+        self.assertEqual(live, "d78f54128b6fd60c30665c9e9cff307056dbdd82")
         ancestor = _git_cwd("merge-base", "--is-ancestor", previous, AUDITED_MAIN_SHA)
         self.assertEqual(ancestor.returncode, 0, ancestor.stderr)
 
@@ -2434,7 +2434,7 @@ class GridPlanTests(unittest.TestCase):
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
         self.assertEqual(
             grid_plan_module.AUDITED_MAIN_SHA,
-            "52e9a7cb5ed9c16000fc8a07c5c759649133f338",
+            "d78f54128b6fd60c30665c9e9cff307056dbdd82",
         )
         self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
@@ -2517,7 +2517,7 @@ class GridPlanTests(unittest.TestCase):
 
         roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
-        audited = "52e9a7cb5ed9c16000fc8a07c5c759649133f338"
+        audited = "d78f54128b6fd60c30665c9e9cff307056dbdd82"
         roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
@@ -2655,7 +2655,7 @@ class GridPlanTests(unittest.TestCase):
     def test_old_surrogate_pin_blob_drifts_against_live_main(self):
         """The #417 pin blob is not the nulls.py blob on live main, so the pin fails closed."""
 
-        audited = "52e9a7cb5ed9c16000fc8a07c5c759649133f338"
+        audited = "d78f54128b6fd60c30665c9e9cff307056dbdd82"
         old_pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
         old_blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
         current_blob = "a951050961119bc403012884c1a18d8e820d8f20"
