@@ -1,6 +1,8 @@
 """Tests for evidence class classification, safety labels, and promotion guardrails."""
 from __future__ import annotations
 
+import pytest
+
 from awareness_studio.research_graph import (
     DiagnosticCode,
     DiagnosticSeverity,
@@ -314,6 +316,48 @@ def test_source_without_evidence_signal_is_review_required_not_active():
     node = graph.get_node("src-bare")
     assert node is not None
     assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+@pytest.mark.parametrize("declared", ["rejected", "falsified", "contradicted", "weakened", "inconclusive"])
+def test_negative_source_status_is_kept_without_evidence_signal(declared):
+    # Regression: _source_status downgraded every declared status outside disputed/retracted/superseded to
+    # review_required. A source declared rejected or falsified then read as merely pending review. main keeps it.
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-negative", "title": "Negative Source", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-negative")
+    assert node is not None
+    assert node.status == declared
+
+
+@pytest.mark.parametrize("declared", [None, "", "   "])
+def test_missing_source_status_is_review_required_not_a_literal_string(declared):
+    # Regression: an explicit null status was stringified to the literal "None" and escaped the downgrade.
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-blank", "title": "Blank Status", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-blank")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+@pytest.mark.parametrize("declared", ["active", "proposed", "provisional", "supported"])
+def test_unverified_positive_source_status_is_downgraded_without_evidence_signal(declared):
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-positive", "title": "Positive Source", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-positive")
+    assert node is not None
     assert node.status == NodeStatus.REVIEW_REQUIRED.value
 
 
