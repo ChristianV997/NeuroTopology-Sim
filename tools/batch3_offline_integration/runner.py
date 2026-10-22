@@ -97,10 +97,11 @@ def run_offline_integration(
         r["stage_id"] for r in stage_records if r["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
     ]
 
+    required_specs = [s for s in STAGE_SPECS if s.required]
     required_ok = all(
-        (context["stages"].get(s.stage_id) or {}).get("outcome") == StageOutcome.SUCCEEDED.value
-        for s in specs
-        if s.required
+        s.stage_id in selected
+        and (context["stages"].get(s.stage_id) or {}).get("outcome") == StageOutcome.SUCCEEDED.value
+        for s in required_specs
     )
 
     # Observed stage order must match allowlist order for selected stages.

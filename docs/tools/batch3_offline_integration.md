@@ -58,6 +58,10 @@ represented by a clearly marked fixture substitute with
   represented as `<rejected>` in reports.
 - An empty stage selection and an unknown forced-failure stage are invalid API
   inputs rather than successful empty runs.
+- A bounded API stage selection is diagnostic/partial only. The overall
+  `workflow_executed_successfully` flag is true only when every globally
+  required stage is selected and succeeds; optional-only, partial, or
+  prerequisite-skipped selections cannot pass through vacuous truth.
 - The runner creates no intermediate or temporary files. `--output` is an
   explicit caller-selected report destination.
 - The no-network guard replaces Python socket entry points during execution.

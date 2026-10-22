@@ -250,6 +250,21 @@ def test_empty_stage_selection_is_not_reported_as_success():
         run_offline_integration(stage_ids=[])
 
 
+def test_optional_only_selection_cannot_report_success_when_prerequisite_is_missing():
+    report = run_offline_integration(stage_ids=["optional_artifact_lineage"])
+
+    assert report["stages"][0]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_partial_required_stage_selection_cannot_report_workflow_success():
+    report = run_offline_integration(stage_ids=["load_synthetic_fixture"])
+
+    assert report["stages"][0]["outcome"] == StageOutcome.SUCCEEDED.value
+    assert len(report["stages"]) == 1
+    assert report["workflow_executed_successfully"] is False
+
+
 def test_stage_selection_is_bounded_by_fixed_allowlist():
     with pytest.raises(ValueError, match="maximum"):
         run_offline_integration(stage_ids=list(STAGE_ORDER) * 100)
