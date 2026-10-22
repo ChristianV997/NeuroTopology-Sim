@@ -108,7 +108,8 @@ def audit_surrogate(
             "limitations": [
                 "MV-FPR does not restore amplitude quantiles.",
                 "MV-FPR is not interchangeable with MV-IAAFT.",
-                "Round 6 production candidate was not on origin/main; this is a separate audit API.",
+                "Independent audit API: expected values come from audit metrics/generators, not production nulls helpers.",
+                "Production nulls on main are exercised only via the separate hard-import bridge tests.",
                 "SYNTHETIC_ONLY — not scientific VALIDATED.",
             ],
         }
@@ -158,7 +159,8 @@ def audit_surrogate(
                 "UNMET is reported honestly; the returned signal remains post-rank.",
                 "Auto-spectra alone are insufficient; full cross-spectral error is required.",
                 "MV-IAAFT is not interchangeable with MV-FPR.",
-                "Round 6 production candidate was not on origin/main; this is a separate audit API.",
+                "Independent audit API: expected values come from audit metrics/generators, not production nulls helpers.",
+                "Production nulls on main are exercised only via the separate hard-import bridge tests.",
                 "SYNTHETIC_ONLY — not scientific VALIDATED.",
             ],
         }

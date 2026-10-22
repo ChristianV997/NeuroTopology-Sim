@@ -9,12 +9,19 @@ Owner:
 
 This surface is **SYNTHETIC_ONLY**. It never emits scientific `VALIDATED`.
 
-## Round 6 status
+## Round 6 status / production separation
 
-The Round 6 production candidate was **not present** on verified `origin/main`
-(`3f3fe8593303184cb88eef056c1322f3d4e57a16`). This package is a **separate**
-verifier/API implementing the stated contract. It must **not** be read as a
-test of the missing Round 6 candidate (`round6_candidate_tested=false`).
+Live `origin/main` already ships production nulls at
+`tools/surrogate_nulls/nulls.py` (`common_phase_prichard_theiler`,
+`mv_iaaft_rank_adjusted`) with a scale-invariant `_csd_rel_error` gate.
+
+This package (`tools/surrogate_audit/**`) remains an **independent** synthetic
+audit API: its generators and metrics do **not** import production for expected
+values. A separate **production-import bridge** in
+`tests/surrogate_audit/test_metrics_scale_invariance.py` hard-imports the real
+`nulls.py` leaf and scores production draws with audit metrics. Oracle
+independence stays explicit: audit metrics are never computed by calling
+production residual helpers as the source of truth for audit gates.
 
 Existing `validation/surrogate_testing.py` (per-channel FT/IAAFT gates) was left
 unmodified.
@@ -38,11 +45,13 @@ error = ||C_surr - C_orig||_F / ||C_orig||_F
 ```
 
 This is the **full** channel×channel complex matrix at every frequency — not
-per-channel power spectra alone. The relative cross-spectral error is scale-invariant;
-Fourier coefficients are normalized by original peak spectral magnitude before forming
-cross-products or auto-spectral squares, completely preventing float underflow or overflow
-across extreme dynamic ranges (e.g. `1e-250` to `1e250`). No absolute denominator floor is
-applied, preventing false passes at small signal scales.
+per-channel power spectra alone. The relative cross-spectral error is scale-invariant.
+Both series are **peak-normalized in the time domain before ``rfft``**, then
+Fourier coefficients are peak-normalized again before forming cross-products /
+auto-spectral squares. That ordering avoids FFT overflow near the top of finite
+float64 (e.g. identical `1e308` series) and avoids absolute-denominator-floor
+false passes at tiny scales (e.g. `1e-20`). No absolute denominator floor is
+applied to the relative residual.
 
 ### Cross- versus auto-spectrum mutations
 

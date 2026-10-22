@@ -46,14 +46,37 @@ def validate_array(x: np.ndarray, *, min_channels: int = 1, min_time: int = 2) -
     return arr
 
 
+def _peak_normalize_pair(original: np.ndarray, surrogate: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """Scale both arrays by the original peak amplitude before any FFT.
+
+    FFT of unnormalized float64 near the top of the finite range overflows
+    (``rfft`` → non-finite). Peak-normalizing in the time domain keeps the
+    relative spectral geometry and avoids that overflow. Returns
+    ``(x0_hat, x1_hat, peak)`` where ``peak = max|original|``.
+    """
+    peak = float(np.max(np.abs(original)))
+    if peak == 0.0:
+        return original, surrogate, 0.0
+    return original / peak, surrogate / peak, peak
+
+
 def cross_spectral_tensor(x: np.ndarray) -> np.ndarray:
-    """Return ``C`` with shape ``(n_freq, n_channels, n_channels)`` (complex128)."""
+    """Return ``C`` with shape ``(n_freq, n_channels, n_channels)`` (complex128).
+
+    Peak-normalizes the time series before ``rfft`` so products stay finite for
+    large finite float64 amplitudes; the overall scale factor is restored on ``C``.
+    """
     arr = validate_array(x)
     n_ch, n_t = arr.shape
-    F = np.fft.rfft(arr, axis=1)  # (n_ch, n_freq)
-    # C[f] = outer(F[:,f], conj(F[:,f])) / n_t
-    C = (F[:, None, :] * np.conj(F[None, :, :])) / float(n_t)
-    # Currently (n_ch, n_ch, n_freq) — move freq to leading axis.
+    peak = float(np.max(np.abs(arr)))
+    if peak == 0.0:
+        n_freq = n_t // 2 + 1
+        return np.zeros((n_freq, n_ch, n_ch), dtype=np.complex128)
+    arr_hat = arr / peak
+    F = np.fft.rfft(arr_hat, axis=1)  # (n_ch, n_freq)
+    # C[f] = outer(F[:,f], conj(F[:,f])) / n_t  on unit-peak data, then restore peak².
+    C_hat = (F[:, None, :] * np.conj(F[None, :, :])) / float(n_t)
+    C = C_hat * (peak * peak)
     return np.transpose(C, (2, 0, 1))
 
 
@@ -61,17 +84,25 @@ def relative_cross_spectral_error(original: np.ndarray, surrogate: np.ndarray) -
     """Frobenius relative error of the full complex cross-spectral tensor.
 
     Strictly scale-invariant: relative error = ||C_surr - C_orig||_F / ||C_orig||_F.
-    Normalizes Fourier coefficients by original peak spectral magnitude before forming
-    cross-spectral products, completely preventing float underflow or overflow across
-    the entire finite float64 dynamic range (e.g. 1e-250 to 1e250).
+    Peak-normalizes both series in the **time domain** before ``rfft``, then forms
+    cross-spectral products on the unit-peak coefficients. This keeps the relative
+    geometry for finite float64 amplitudes (including near ``~1e308``) without an
+    absolute denominator floor that would false-pass tiny mismatches.
     """
     x0 = validate_array(original)
     x1 = validate_array(surrogate)
     if x0.shape != x1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for spectral error")
     n_ch, n_t = x0.shape
-    F0 = np.fft.rfft(x0, axis=1)
-    F1 = np.fft.rfft(x1, axis=1)
+    x0_hat, x1_hat, peak = _peak_normalize_pair(x0, x1)
+    if peak == 0.0:
+        m1 = float(np.max(np.abs(x1)))
+        return 0.0 if m1 == 0.0 else float("inf")
+
+    F0 = np.fft.rfft(x0_hat, axis=1)
+    F1 = np.fft.rfft(x1_hat, axis=1)
+    if not np.all(np.isfinite(F0)) or not np.all(np.isfinite(F1)):
+        return float("inf")
 
     m0 = float(np.max(np.abs(F0)))
     if m0 == 0.0:
@@ -96,16 +127,22 @@ def relative_autospectral_error(original: np.ndarray, surrogate: np.ndarray) -> 
     """Relative error of per-channel auto-spectra only (not the multivariate gate).
 
     Strictly scale-invariant: relative error = ||A_surr - A_orig||_F / ||A_orig||_F.
-    Normalizes Fourier coefficients by original peak spectral magnitude before squaring,
-    completely preventing float underflow or overflow across the entire finite float64
-    dynamic range (e.g. 1e-250 to 1e250).
+    Peak-normalizes in the time domain before ``rfft`` (same contract as the
+    cross-spectral gate) so large finite float64 amplitudes do not overflow FFT.
     """
     x0 = validate_array(original)
     x1 = validate_array(surrogate)
     if x0.shape != x1.shape:
         raise SurrogateAuditError("original/surrogate shapes disagree for autospectral error")
-    F0 = np.fft.rfft(x0, axis=1)
-    F1 = np.fft.rfft(x1, axis=1)
+    x0_hat, x1_hat, peak = _peak_normalize_pair(x0, x1)
+    if peak == 0.0:
+        m1 = float(np.max(np.abs(x1)))
+        return 0.0 if m1 == 0.0 else float("inf")
+
+    F0 = np.fft.rfft(x0_hat, axis=1)
+    F1 = np.fft.rfft(x1_hat, axis=1)
+    if not np.all(np.isfinite(F0)) or not np.all(np.isfinite(F1)):
+        return float("inf")
 
     m0 = float(np.max(np.abs(F0)))
     if m0 == 0.0:

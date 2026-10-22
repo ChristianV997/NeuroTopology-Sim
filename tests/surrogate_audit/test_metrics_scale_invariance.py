@@ -109,3 +109,70 @@ def test_nonfinite_and_invalid_spectral_gate():
     for bad_iter in [0, -5]:
         with pytest.raises(SurrogateAuditError, match="max_iter"):
             generate_mv_iaaft(x, max_iter=bad_iter)
+
+
+def test_pre_fft_peak_norm_keeps_identical_extreme_float64_at_zero_error():
+    """Regression: identical finite ~1e308 series must not report inf after rfft overflow.
+
+    Prior metrics called ``rfft`` before any normalization; at the top of float64
+    the transform overflows and the relative error falsely became ``inf``.
+    """
+    x = np.full((2, 64), 1e308, dtype=np.float64)
+    assert relative_cross_spectral_error(x, x) == 0.0
+    assert relative_autospectral_error(x, x) == 0.0
+    # 21% cross-spectral mismatch must still fail the 1e-3 gate (no threshold weakening).
+    err = relative_cross_spectral_error(x, 1.1 * x)
+    assert np.isclose(err, 0.21, rtol=1e-5), err
+    assert err > SPECTRAL_GATE_1E3
+
+
+def test_production_csd_rel_error_not_scale_false_pass():
+    """Bridge: production ``_csd_rel_error`` rejects tiny-scale 21% mismatch (EPS bug fixed).
+
+    The historical ``||A-T||/(||T||+1e-12)`` formula false-passes at 1e-20; current
+    ``tools/surrogate_nulls/nulls.py:_csd_rel_error`` must remain scale-invariant.
+    """
+    import math
+
+    from tools.surrogate_nulls import nulls as prod
+    from tools.surrogate_nulls import spectral as sp
+
+    target = [[[1e-20 + 0j]]]
+    actual = [[[1.21e-20 + 0j]]]
+    # Document legacy helper still false-passes (owned by production spectral lane).
+    legacy = math.sqrt(abs(1.21e-20 - 1e-20) ** 2) / (math.sqrt(abs(1e-20) ** 2) + sp.EPS)
+    assert legacy < SPECTRAL_GATE_1E3
+    # Production CSD gate used by null reports must NOT false-pass.
+    prod_err = prod._csd_rel_error(actual, target)
+    assert np.isclose(prod_err, 0.21, rtol=1e-9), prod_err
+    assert prod_err > SPECTRAL_GATE_1E3
+    assert np.isclose(prod_err, prod._csd_rel_error([[[1.21 + 0j]]], [[[1.0 + 0j]]]), rtol=1e-12)
+
+
+def test_production_generators_bridge_hard_import():
+    """Bridge: hard-import production nulls and score draws with audit metrics."""
+    from pathlib import Path
+
+    from tools.surrogate_nulls import nulls as prod
+
+    path = Path(prod.__file__).resolve()
+    assert path.name == "nulls.py"
+    assert "surrogate_nulls" in path.parts
+
+    x = gaussian_linear(n_ch=3, n_t=128, seed=7)
+    s_fpr, rep_fpr = prod.common_phase_prichard_theiler(x, seed=11)
+    s_fpr = np.asarray(s_fpr, dtype=np.float64)
+    assert s_fpr.shape == x.shape
+    # Shared-phase FPR: audit cross-spectral error must meet the tight algebraic bar.
+    cs = relative_cross_spectral_error(x, s_fpr)
+    assert cs <= 1e-10, cs
+    assert rep_fpr.cross_spectrum_rel_error is not None
+    assert float(rep_fpr.cross_spectrum_rel_error) <= 1e-3
+
+    s_iaaft, rep_iaaft = prod.mv_iaaft_rank_adjusted(x, seed=13, max_iter=40)
+    s_iaaft = np.asarray(s_iaaft, dtype=np.float64)
+    # Exact marginal restoration after rank adjustment.
+    from tools.surrogate_audit.metrics import marginal_sorted_error
+
+    assert marginal_sorted_error(x, s_iaaft) <= 1e-12
+    assert rep_iaaft.cross_spectrum_rel_error is not None
