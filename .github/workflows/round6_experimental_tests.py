@@ -1532,6 +1532,101 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("configs/research/batch3_source_registry.yaml",),
         "candidate_test_roots": ("tests/research/test_batch3_source_registry.py",),
     },
+    # These candidate pairs are declarative artifacts, not production modules.
+    # Their dedicated tests validate the exact artifact contract without
+    # promoting the artifact into scientific evidence or PASS.
+    "batch3_claim_matrix_artifact": {
+        "triggers": (
+            "reports/batch3/grok_chat_a/claim_matrix.json",
+            "tests/research/batch3/test_claim_matrix.py",
+        ),
+        "implementation": "reports/batch3/grok_chat_a/claim_matrix.json",
+        "tests": ("tests/research/batch3/test_claim_matrix.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "reports/batch3/grok_chat_a/claim_matrix.json",
+                "test": "tests/research/batch3/test_claim_matrix.py",
+            },
+        ),
+        "implementation_roots": ("reports/batch3/grok_chat_a/claim_matrix.json",),
+        "candidate_test_roots": ("tests/research/batch3/test_claim_matrix.py",),
+    },
+    "batch3_falsification_matrix_artifact": {
+        "triggers": (
+            "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+            "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+        ),
+        "implementation": "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+        "tests": (
+            "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+        ),
+        "candidate_pairs": (
+            {
+                "implementation": "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+                "test": "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+            },
+        ),
+        "implementation_roots": (
+            "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+        ),
+        "candidate_test_roots": (
+            "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+        ),
+    },
+    "batch3_offline_integration": {
+        "triggers": (
+            "scripts/run_batch3_offline_integration.py",
+            "tools/batch3_offline_integration/",
+            "tests/tools/batch3_offline_integration/",
+        ),
+        "implementation": "tools/batch3_offline_integration/runner.py",
+        "tests": (
+            "tests/tools/batch3_offline_integration/test_offline_integration.py",
+        ),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            }
+            for implementation in (
+                "scripts/run_batch3_offline_integration.py",
+                "tools/batch3_offline_integration/__init__.py",
+                "tools/batch3_offline_integration/__main__.py",
+                "tools/batch3_offline_integration/allowlist.py",
+                "tools/batch3_offline_integration/fixture_producers.py",
+                "tools/batch3_offline_integration/guards.py",
+                "tools/batch3_offline_integration/runner.py",
+                "tools/batch3_offline_integration/schema.py",
+                "tools/batch3_offline_integration/serialization.py",
+                "tools/batch3_offline_integration/stages.py",
+            )
+        ),
+        "support_files": {
+            "tests/tools/batch3_offline_integration/__init__.py": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+            "tools/batch3_offline_integration/fixtures/complete_plan_request.json": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+            "tools/batch3_offline_integration/fixtures/incomplete_plan_request.json": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+            "tools/batch3_offline_integration/fixtures/nonfinite_probe.json": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+            "tools/batch3_offline_integration/fixtures/release_bundle_synthetic.json": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+            "tools/batch3_offline_integration/fixtures/workflow_request.json": (
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+            ),
+        },
+        "implementation_roots": (
+            "scripts/run_batch3_offline_integration.py",
+            "tools/batch3_offline_integration/",
+        ),
+        "candidate_test_roots": ("tests/tools/batch3_offline_integration/",),
+    },
     "research_plan_quality_eval": {
         "triggers": (
             "tools/research_plan_quality_eval/",
@@ -1546,6 +1641,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/research_plan_quality_eval/test_records.py",
             "tests/research_plan_quality_eval/test_report.py",
             "tests/research_plan_quality_eval/test_splits.py",
+            "tests/research_plan_quality_eval/test_line_endings.py",
         ),
         "candidate_pairs": tuple(
             {"implementation": implementation, "test": test_path}
@@ -1572,6 +1668,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                     "tests/research_plan_quality_eval/test_records.py",
                     "tests/research_plan_quality_eval/test_report.py",
                     "tests/research_plan_quality_eval/test_splits.py",
+                    "tests/research_plan_quality_eval/test_line_endings.py",
                 ),
                 "tools/research_plan_quality_eval/harness.py": (
                     "tests/research_plan_quality_eval/test_cli.py",
@@ -1593,9 +1690,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                     "tests/research_plan_quality_eval/test_isolation.py",
                     "tests/research_plan_quality_eval/test_manifest.py",
                     "tests/research_plan_quality_eval/test_report.py",
+                    "tests/research_plan_quality_eval/test_line_endings.py",
                 ),
                 "tools/research_plan_quality_eval/records.py": (
                     "tests/research_plan_quality_eval/test_leakage.py",
+                    "tests/research_plan_quality_eval/test_line_endings.py",
                     "tests/research_plan_quality_eval/test_records.py",
                     "tests/research_plan_quality_eval/test_splits.py",
                 ),
@@ -1619,6 +1718,14 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "tests/research_plan_quality_eval/test_records.py",
                 "tests/research_plan_quality_eval/test_report.py",
                 "tests/research_plan_quality_eval/test_splits.py",
+                *(
+                    ("tests/research_plan_quality_eval/test_line_endings.py",)
+                    if path in (
+                        "tools/research_plan_quality_eval/fixtures/v1/manifest.json",
+                        "tools/research_plan_quality_eval/fixtures/v1/plans/P01.json",
+                    )
+                    else ()
+                ),
             )
             for path in (
                 "tests/research_plan_quality_eval/conftest.py",
@@ -1949,6 +2056,9 @@ COMPONENT_OWNER_PRS = {
     "finite_jitter_production_bridge": (410,),
     "release_readiness_security": (370,),
     "source_mining_evidence_boundary": (382,),
+    "batch3_claim_matrix_artifact": (393,),
+    "batch3_falsification_matrix_artifact": (376,),
+    "batch3_offline_integration": (381,),
     "measurement_hypothesis_contract": (384,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
@@ -2018,10 +2128,9 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "scripts/benchmark_batch2_pipeline.py",
     "scripts/run_batch3_offline_integration.py",
     # Open PR test gaps outside the currently assigned experimental pairs.
-    "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
+    "tests/research/batch3/",  # PRs #393, #394, and #411; exact mappings override
     "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
-    "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-    "tests/research/batch3/test_claim_matrix.py",  # PR #393
+    "reports/batch3/grok_chat_a/claim_matrix.json",  # PR #393 declarative artifact
     "tools/public_repo_harvest/",
     "tests/tools/test_public_repo_harvest_source_pack.py",  # PR #391
     "oss_opportunities/",

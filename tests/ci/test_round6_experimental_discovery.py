@@ -1119,6 +1119,16 @@ def test_fixture():
                 self.assertEqual(
                     report["components"][0]["status"], "BLOCKED"
                 )
+            elif path == "configs/scientific_falsification/batch3_falsification_matrix.yaml":
+                self.assertEqual(
+                    report["selected_components"],
+                    ["batch3_falsification_matrix_artifact"],
+                )
+                self.assertEqual(report["unmapped_candidate_paths"], [])
+                self.assertEqual(
+                    report["components"][0]["missing_required_tests"],
+                    ["tests/scientific_falsification/test_batch3_falsification_matrix.py"],
+                )
             else:
                 self.assertEqual(report["unmapped_candidate_paths"], [path])
             self.assertNotEqual(report["status"], "NOT_APPLICABLE")
@@ -2652,7 +2662,6 @@ def test_fixture():
             "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
             "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
             "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-            "tests/research/batch3/test_claim_matrix.py",  # PR #393
         ):
             self.assertIn(test_path, helper._unmapped_candidate_paths({test_path}))
 
@@ -2691,12 +2700,22 @@ def test_fixture():
         falsification_matrix = "configs/scientific_falsification/batch3_falsification_matrix.yaml"
         self.assertEqual(
             helper._unmapped_candidate_paths({falsification_matrix}),
-            [falsification_matrix],
+            [],
+        )
+        self.assertEqual(
+            helper.select_components({falsification_matrix}),
+            ["batch3_falsification_matrix_artifact"],
         )
         self.assertEqual(
             helper._unmapped_candidate_paths({"configs/research/batch3_source_registry.yaml"}),
             [],
         )
+        claim_matrix = "reports/batch3/grok_chat_a/claim_matrix.json"
+        self.assertEqual(
+            helper.select_components({claim_matrix}),
+            ["batch3_claim_matrix_artifact"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths({claim_matrix}), [])
         # A newly registered candidate package initializer selects only its
         # mapped test suite; unrelated unregistered initializers still block.
         nuisance_initializer = "tests/nuisance_scenarios/__init__.py"
@@ -2897,9 +2916,7 @@ def test_fixture():
             (411, "tests/research/batch3/test_dataset_metadata_audit.py"),
             (406, "tests/oss_compat/test_compatibility_inventory.py"),
             (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
-            (393, "tests/research/batch3/test_claim_matrix.py"),
             (386, "oss_opportunities/opportunity_batch.py"),
-            (376, "tests/scientific_falsification/test_batch3_falsification_matrix.py"),
             # PR #400's standalone mathematical oracle does not exercise the
             # registered production DMD implementation; do not relabel it as
             # production coverage merely because the same PR adds a bridge test.
@@ -2916,12 +2933,26 @@ def test_fixture():
         report_only_paths = (
             "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
             "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
+            "tests/research/batch3/test_claim_matrix_supplement.py",  # unregistered sibling
             "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 standalone oracle
         )
         for path in report_only_paths:
             with self.subTest(path=path):
                 self.assertIn(path, helper._unmapped_candidate_paths({path}))
                 self.assertEqual(helper.select_components({path}), [])
+
+    def test_research_plan_line_endings_regression_is_a_registered_pair(self):
+        helper = _helper()
+        implementation = "tools/research_plan_quality_eval/manifest.py"
+        test_path = "tests/research_plan_quality_eval/test_line_endings.py"
+        spec = helper.COMPONENTS["research_plan_quality_eval"]
+        self.assertIn(test_path, spec["tests"])
+        self.assertIn(
+            {"implementation": implementation, "test": test_path},
+            spec["candidate_pairs"],
+        )
+        self.assertEqual(helper.select_components({implementation, test_path}), ["research_plan_quality_eval"])
+        self.assertEqual(helper._unmapped_candidate_paths({implementation, test_path}), [])
 
     def test_registered_uppercase_support_path_is_not_a_case_mismatch(self):
         helper = _helper()
@@ -2973,12 +3004,51 @@ def test_fixture():
                     ("tools/research_plan_quality_eval/isolation.py", "tests/research_plan_quality_eval/test_isolation.py"),
                     ("tools/research_plan_quality_eval/records.py", "tests/research_plan_quality_eval/test_records.py"),
                     ("tools/research_plan_quality_eval/splits.py", "tests/research_plan_quality_eval/test_splits.py"),
+                    ("tools/research_plan_quality_eval/errors.py", "tests/research_plan_quality_eval/test_line_endings.py"),
+                    ("tools/research_plan_quality_eval/manifest.py", "tests/research_plan_quality_eval/test_line_endings.py"),
+                    ("tools/research_plan_quality_eval/records.py", "tests/research_plan_quality_eval/test_line_endings.py"),
                 },
             ),
             "forward_model_contract": (
                 388,
                 {
                     ("dual_engine/forward_model_contract.py", "tests/forward_model_contract/test_forward_model_contract.py"),
+                },
+            ),
+            "batch3_offline_integration": (
+                381,
+                {
+                    (implementation, "tests/tools/batch3_offline_integration/test_offline_integration.py")
+                    for implementation in (
+                        "scripts/run_batch3_offline_integration.py",
+                        "tools/batch3_offline_integration/__init__.py",
+                        "tools/batch3_offline_integration/__main__.py",
+                        "tools/batch3_offline_integration/allowlist.py",
+                        "tools/batch3_offline_integration/fixture_producers.py",
+                        "tools/batch3_offline_integration/guards.py",
+                        "tools/batch3_offline_integration/runner.py",
+                        "tools/batch3_offline_integration/schema.py",
+                        "tools/batch3_offline_integration/serialization.py",
+                        "tools/batch3_offline_integration/stages.py",
+                    )
+                },
+            ),
+            "batch3_claim_matrix_artifact": (
+                393,
+                {
+                    (
+                        "reports/batch3/grok_chat_a/claim_matrix.json",
+                        "tests/research/batch3/test_claim_matrix.py",
+                    ),
+                },
+            ),
+            "batch3_falsification_matrix_artifact": (
+                376,
+                {
+                    (
+                        "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+                        "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+                    ),
                 },
             ),
             "nuisance_scenarios": (
@@ -3037,6 +3107,7 @@ def test_fixture():
                 "tests/research_plan_quality_eval/test_held_out_boundary.py",
                 "tests/research_plan_quality_eval/test_isolation.py",
                 "tests/research_plan_quality_eval/test_leakage.py",
+                "tests/research_plan_quality_eval/test_line_endings.py",
                 "tests/research_plan_quality_eval/test_manifest.py",
                 "tests/research_plan_quality_eval/test_records.py",
                 "tests/research_plan_quality_eval/test_report.py",
@@ -3078,6 +3149,36 @@ def test_fixture():
                 "tests/nuisance_scenarios/test_fail_closed_and_labels.py",
                 "tests/nuisance_scenarios/test_seed_reproducibility.py",
                 "tests/nuisance_scenarios/test_target_snr.py",
+            },
+            "batch3_offline_integration": {
+                "docs/tools/batch3_offline_integration.md",
+                "scripts/run_batch3_offline_integration.py",
+                "tests/tools/batch3_offline_integration/__init__.py",
+                "tests/tools/batch3_offline_integration/test_offline_integration.py",
+                "tools/batch3_offline_integration/__init__.py",
+                "tools/batch3_offline_integration/__main__.py",
+                "tools/batch3_offline_integration/allowlist.py",
+                "tools/batch3_offline_integration/fixture_producers.py",
+                "tools/batch3_offline_integration/fixtures/complete_plan_request.json",
+                "tools/batch3_offline_integration/fixtures/incomplete_plan_request.json",
+                "tools/batch3_offline_integration/fixtures/nonfinite_probe.json",
+                "tools/batch3_offline_integration/fixtures/release_bundle_synthetic.json",
+                "tools/batch3_offline_integration/fixtures/workflow_request.json",
+                "tools/batch3_offline_integration/guards.py",
+                "tools/batch3_offline_integration/runner.py",
+                "tools/batch3_offline_integration/schema.py",
+                "tools/batch3_offline_integration/serialization.py",
+                "tools/batch3_offline_integration/stages.py",
+            },
+            "batch3_claim_matrix_artifact": {
+                "docs/research/batch3/theory_to_measurement_review.md",
+                "reports/batch3/grok_chat_a/claim_matrix.json",
+                "tests/research/batch3/test_claim_matrix.py",
+            },
+            "batch3_falsification_matrix_artifact": {
+                "configs/scientific_falsification/batch3_falsification_matrix.yaml",
+                "docs/scientific_falsification/batch3_adversarial_review.md",
+                "tests/scientific_falsification/test_batch3_falsification_matrix.py",
             },
         }
         for component, paths in exact_candidate_diffs.items():
