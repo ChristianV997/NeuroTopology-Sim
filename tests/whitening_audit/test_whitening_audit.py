@@ -540,6 +540,89 @@ class TestWhiteningAudit(unittest.TestCase):
             # Relative tolerance — do not loosen absolute floors to manufacture a pass.
             self.assertAlmostEqual(got, float(want), delta=max(1e-12, 1e-9 * abs(float(want))))
 
+    def test_condition_number_scale_invariant_across_magnitudes(self) -> None:
+        """Adversarial: raw_condition_number must be invariant under positive scaling."""
+        base = [[2.0, 0.5], [0.5, 1.0]]
+        conds = []
+        for scale in (1e-20, 1e-8, 1.0, 1e8, 1e20):
+            cov = [[scale * base[i][j] for j in range(2)] for i in range(2)]
+            # Floor far below all scaled eigenvalues so we measure raw cond only.
+            floor = min(1e-30, 1e-12 * scale) if scale > 0 else 1e-30
+            floor = max(floor, 1e-300)
+            _, rep = project_spd_covariance(cov, eigenvalue_floor=floor)
+            self.assertTrue(math.isfinite(rep.raw_condition_number), scale)
+            conds.append(rep.raw_condition_number)
+        for c in conds[1:]:
+            self.assertAlmostEqual(c, conds[0], delta=1e-6 * conds[0])
+
+    def test_ill_conditioned_and_near_degenerate_match_numpy_oracle(self) -> None:
+        """Adversarial: ill-conditioned / near-degenerate diagonal SPDs match NumPy cond."""
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("numpy unavailable; independent oracle skipped")
+
+        cases = [
+            [[1.0, 0.0], [0.0, 1.0 + 1e-14]],  # near-degenerate
+            [[1.0, 0.0], [0.0, 1e-14]],  # ill-conditioned
+            [[1e20, 0.0], [0.0, 1e6]],  # large magnitude, ill-conditioned
+            [[1e-16, 0.0], [0.0, 1e-30]],  # micro ill-conditioned
+        ]
+        for cov in cases:
+            _, rep = project_spd_covariance(cov, eigenvalue_floor=1e-40)
+            evals = sorted(np.linalg.eigvalsh(np.asarray(cov, dtype=float)), reverse=True)
+            if evals[-1] > 0:
+                want = float(evals[0] / evals[-1])
+                self.assertTrue(math.isfinite(rep.raw_condition_number))
+                self.assertAlmostEqual(
+                    rep.raw_condition_number,
+                    want,
+                    delta=max(1e-6, 1e-9 * want),
+                )
+
+    def test_nonfinite_covariance_fail_closed(self) -> None:
+        """Adversarial: NaN / Inf covariance entries must raise, not silently proceed."""
+        from tools.whitening_audit.types import NonFiniteValuesError
+
+        with self.assertRaises(NonFiniteValuesError):
+            project_spd_covariance([[float("nan"), 0.0], [0.0, 1.0]])
+        with self.assertRaises(NonFiniteValuesError):
+            project_spd_covariance([[float("inf"), 0.0], [0.0, 1.0]])
+
+    def test_ordinary_asymmetric_beyond_relative_tol_fail_closed(self) -> None:
+        """Adversarial: ordinary-scale one-sided off-diagonal beyond relative tol fails."""
+        from tools.whitening_audit.matrix_ops import validate_square_symmetric
+        from tools.whitening_audit.types import InvalidCovarianceError
+
+        # |1e-6 - 0| > 1e-9 * scale(diag=1) → reject (tolerances not loosened).
+        with self.assertRaises(InvalidCovarianceError):
+            validate_square_symmetric([[1.0, 1e-6], [0.0, 1.0]])
+        with self.assertRaises(InvalidCovarianceError):
+            project_spd_covariance([[1.0, 1e-6], [0.0, 1.0]])
+
+    def test_jacobi_numpy_oracle_across_tiny_ordinary_large_scales(self) -> None:
+        """Adversarial: Jacobi vs NumPy eigh under tiny / ordinary / large SPD scales."""
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("numpy unavailable; independent oracle skipped")
+
+        from tools.whitening_audit.matrix_ops import jacobi_eigh
+
+        rng = np.random.default_rng(7)
+        X = rng.normal(size=(4, 4))
+        base = X @ X.T + np.eye(4)
+        for scale in (1e-20, 1.0, 1e20):
+            A = (base * scale).tolist()
+            evals, _ = jacobi_eigh(A)
+            oracle = sorted(np.linalg.eigvalsh(np.asarray(A, dtype=float)), reverse=True)
+            for got, want in zip(evals, oracle):
+                self.assertAlmostEqual(
+                    got,
+                    float(want),
+                    delta=max(1e-12, 1e-8 * abs(float(want))),
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
