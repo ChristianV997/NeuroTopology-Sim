@@ -103,7 +103,16 @@ def _validate_artifact_checksums(
             reasons.append(f"recordings[{index}] {name} checksum must be a SHA-256 hex digest")
             invalid = True
             continue
-        if sha256_file(artifact).lower() != expected:
+        if not artifact.is_file():
+            # The caller already reports a missing or non-file artifact; there is no file to hash.
+            continue
+        try:
+            actual = sha256_file(artifact)
+        except OSError as exc:
+            reasons.append(f"recordings[{index}] {name} cannot be hashed: {exc}")
+            invalid = True
+            continue
+        if actual.lower() != expected:
             reasons.append(f"recordings[{index}] {name} checksum does not match the declared SHA-256")
             invalid = True
     return incomplete, invalid
