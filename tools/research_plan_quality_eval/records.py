@@ -60,6 +60,16 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def normalized_text_sha256(data: bytes) -> str:
+    """SHA-256 of a text artifact with CRLF folded to LF.
+
+    Git with core.autocrlf=true checks text out as CRLF, while the pins were computed
+    over the committed LF bytes. Only CRLF is folded: a lone CR or any other byte
+    still changes the digest, so a content change still fails closed.
+    """
+    return sha256_hex(data.replace(b"\r\n", b"\n"))
+
+
 def _reject_non_finite(token: str) -> None:
     raise MalformedRecordError(f"non-finite JSON constant {token!r} is not allowed")
 

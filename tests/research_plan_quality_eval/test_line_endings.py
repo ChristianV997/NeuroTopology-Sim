@@ -24,7 +24,7 @@ def _shipped_manifest() -> dict:
 
 def test_crlf_checkout_of_shipped_plan_verifies_against_its_lf_pin(tmp_path: Path):
     record = _shipped_manifest()["records"][0]
-    lf_bytes = (FIXTURES / record["plan_file"]).read_bytes()
+    lf_bytes = (FIXTURES / record["plan_file"]).read_bytes().replace(b"\r\n", b"\n")
     crlf_copy = tmp_path / "plan.json"
     crlf_copy.write_bytes(lf_bytes.replace(b"\n", b"\r\n"))
     assert _read_checked(crlf_copy, record["plan_sha256"], "plan file") == crlf_copy.read_bytes()
@@ -43,7 +43,7 @@ def test_lone_carriage_return_still_changes_the_digest():
 
 def test_content_change_in_crlf_checkout_still_fails_closed(tmp_path: Path):
     record = _shipped_manifest()["records"][0]
-    altered = (FIXTURES / record["plan_file"]).read_bytes().replace(b"\n", b"\r\n") + b" "
+    altered = (FIXTURES / record["plan_file"]).read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n") + b" "
     copy = tmp_path / "plan.json"
     copy.write_bytes(altered)
     with pytest.raises(ManifestError, match="hash mismatch"):

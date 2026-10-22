@@ -8,6 +8,7 @@ import pytest
 
 from tools.research_plan_quality_eval.errors import InsufficientEvaluationSetError, ManifestError
 from tools.research_plan_quality_eval.harness import DEFAULT_MANIFEST, NOT_MEASURED, build_report, to_report_json
+from tools.research_plan_quality_eval.records import normalized_text_sha256
 from tools.research_plan_quality_eval.splits import DEVELOPMENT
 
 from .conftest import rewrite_json
@@ -39,7 +40,7 @@ def test_report_records_manifest_and_every_plan_hash():
     assert report["fixture_set"]["manifest_sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
     for entry in report["fixture_set"]["plans"]:
         plan_file = DEFAULT_MANIFEST.parent / "plans" / f"{entry['fixture_id'].split('fx-v1-')[1]}.json"
-        assert entry["plan_sha256"] == hashlib.sha256(plan_file.read_bytes()).hexdigest()
+        assert entry["plan_sha256"] == normalized_text_sha256(plan_file.read_bytes())
 
 
 def test_report_records_rubric_identity_and_configuration_fingerprint():
@@ -94,7 +95,7 @@ def test_wrong_expectation_is_reported_but_never_changes_an_outcome(copy_fixture
     labels["labels"]["fx-v1-P03"]["expected_overall_status"] = "READY_FOR_EXECUTION"
     labels["labels"]["fx-v1-P03"]["expected_non_passing_dimensions"] = []
     labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
-    digest = hashlib.sha256(labels_path.read_bytes()).hexdigest()
+    digest = normalized_text_sha256(labels_path.read_bytes())
     rewrite_json(manifest_path, lambda d: d["labels"].update(sha256=digest))
 
     changed = build_report(manifest_path)
@@ -142,7 +143,7 @@ def test_evidence_class_is_never_overridden_by_fixture_content(copy_fixture_tree
     data["evidence_class_declared"] = "empirical"
     plan_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     rewrite_json(manifest_path, lambda d: d["records"][0].update(
-        plan_sha256=hashlib.sha256(plan_file.read_bytes()).hexdigest()))
+        plan_sha256=normalized_text_sha256(plan_file.read_bytes())))
     report = build_report(manifest_path, allow_unpinned=True)
     assert report["rubric_evidence_class"] == "research_plan_audit"
     assert all(o["evidence_class"] == "research_plan_audit" for o in report["development_stage"]["outcomes"])

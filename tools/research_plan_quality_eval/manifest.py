@@ -17,7 +17,7 @@ from tools.research_plan_quality import rubric as _rubric_module
 from tools.research_plan_quality.models import RUBRIC_DIMENSIONS
 
 from .errors import ManifestError, MalformedRecordError
-from .records import PlanRecord, canonical_json, parse_json_bytes, plan_from_dict, sha256_hex
+from .records import PlanRecord, canonical_json, normalized_text_sha256, parse_json_bytes, plan_from_dict, sha256_hex
 from .splits import SPLIT_ROLES, check_group_integrity
 
 MANIFEST_SCHEMA = "NTS.ResearchPlanEvalManifest.v1"
@@ -36,7 +36,7 @@ def rubric_source_sha256() -> str:
     digest = []
     for module in _RUBRIC_SOURCE_MODULES:
         source = Path(module.__file__).read_bytes()
-        digest.append(f"{Path(module.__file__).name}:{sha256_hex(source)}")
+        digest.append(f"{Path(module.__file__).name}:{normalized_text_sha256(source)}")
     return sha256_hex("\n".join(digest).encode("utf-8"))
 
 
@@ -76,7 +76,7 @@ def _read_checked(path: Path, expected_sha256: str, what: str) -> bytes:
     if not path.is_file():
         raise ManifestError(f"{what} is missing: {path.name}")
     raw = path.read_bytes()
-    actual = sha256_hex(raw)
+    actual = normalized_text_sha256(raw)
     if actual != expected_sha256:
         raise ManifestError(f"{what} hash mismatch for {path.name}: expected {expected_sha256}, got {actual}")
     return raw
@@ -169,7 +169,7 @@ def load_plan_records(manifest: Manifest, roles: Optional[Iterable[str]] = None)
         if wanted is not None and entry.split not in wanted:
             continue
         raw = entry.plan_path.read_bytes()
-        if sha256_hex(raw) != entry.plan_sha256:
+        if normalized_text_sha256(raw) != entry.plan_sha256:
             raise ManifestError(f"plan file for {entry.fixture_id} changed after the manifest was verified")
         plan = plan_from_dict(parse_json_bytes(raw, entry.plan_path.name), entry.plan_path.name)
         records.append(PlanRecord(fixture_id=entry.fixture_id, group_id=entry.group_id, split=entry.split, plan=plan))

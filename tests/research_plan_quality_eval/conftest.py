@@ -12,7 +12,7 @@ import pytest
 
 from tools.research_plan_quality.models import ResearchPlan
 from tools.research_plan_quality_eval.harness import DEFAULT_MANIFEST
-from tools.research_plan_quality_eval.records import PlanRecord, parse_json_bytes
+from tools.research_plan_quality_eval.records import PlanRecord, normalized_text_sha256, parse_json_bytes
 
 FIXTURE_ROOT: Path = DEFAULT_MANIFEST.parent
 
@@ -61,21 +61,17 @@ def rewrite_json(path: Path, mutate: Callable[[dict[str, Any]], None]) -> None:
 
 
 def rehash_labels(manifest_path: Path) -> None:
-    import hashlib
-
     labels = manifest_path.parent / "labels.json"
-    digest = hashlib.sha256(labels.read_bytes()).hexdigest()
+    digest = normalized_text_sha256(labels.read_bytes())
     rewrite_json(manifest_path, lambda d: d["labels"].update(sha256=digest))
 
 
 def rehash_plan(manifest_path: Path, fixture_id: str) -> None:
-    import hashlib
-
     def _mutate(data: dict[str, Any]) -> None:
         for record in data["records"]:
             if record["fixture_id"] == fixture_id:
                 plan_file = manifest_path.parent / record["plan_file"]
-                record["plan_sha256"] = hashlib.sha256(plan_file.read_bytes()).hexdigest()
+                record["plan_sha256"] = normalized_text_sha256(plan_file.read_bytes())
 
     rewrite_json(manifest_path, _mutate)
 
