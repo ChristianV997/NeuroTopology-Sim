@@ -74,8 +74,21 @@ def branch_diagnostic(eigenvalues, margin=1e-6):
 
 
 def signed_nyquist_alias(frequency, sampling_rate):
-    """Return the signed representative in [-Fs/2, Fs/2)."""
-    return ((frequency + sampling_rate / 2) % sampling_rate) - sampling_rate / 2
+    """Return the signed representative in [-Fs/2, Fs/2).
+
+    Fail closed on non-finite frequency/rate or non-positive sampling rate
+    (avoids silent NaN and ZeroDivisionError from ``% 0``).
+    """
+    try:
+        f = float(frequency)
+        fs = float(sampling_rate)
+    except (TypeError, ValueError) as exc:
+        raise ValueError('frequency and sampling_rate must be real floats') from exc
+    if not math.isfinite(f):
+        raise ValueError(f'frequency must be finite; got {frequency!r}')
+    if not math.isfinite(fs) or fs <= 0.0:
+        raise ValueError(f'sampling_rate must be a positive finite float; got {sampling_rate!r}')
+    return ((f + fs / 2) % fs) - fs / 2
 
 
 def mat_identity():
@@ -350,6 +363,19 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(signed_nyquist_alias(240.0, 250.0), -10.0)
         # Do not relax: exact float identity for this dyadic-friendly pair.
         self.assertEqual(signed_nyquist_alias(240.0, 250.0), signed_nyquist_alias(-10.0, 250.0))
+
+    def test_nyquist_rejects_nonfinite_and_nonpositive_rate(self):
+        """Regression: NaN/Inf frequency and Fs<=0 must fail closed (not NaN/%0)."""
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(float('nan'), 250.0)
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(float('inf'), 250.0)
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(10.0, 0.0)
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(10.0, -250.0)
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(10.0, float('nan'))
 
 
 if __name__ == '__main__':

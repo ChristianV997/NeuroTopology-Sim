@@ -118,6 +118,13 @@ class ProductionImportBridgeTests(unittest.TestCase):
     def test_bridge_loaded_real_production_module(self):
         """Hard-import proof: resolved module path is the production leaf file."""
         path = Path(self.dmd.__file__).resolve()
+        normalized = str(path).replace("\\", "/")
+        self.assertTrue(
+            normalized.endswith(
+                "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
+            ),
+            msg=f"resolved path is not the production leaf: {normalized!r}",
+        )
         self.assertEqual(path.name, "dmd_crouzeix.py")
         self.assertIn("neurotopology_sim", path.parts)
         self.assertIn("experimental", path.parts)
