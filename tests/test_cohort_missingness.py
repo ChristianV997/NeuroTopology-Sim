@@ -464,3 +464,42 @@ def test_cohort_skip_rate_exact_boundary_is_incomplete_not_blocked():
     assert rep["gate_passed"] is False
     assert rep["missingness_by_reason"]["partial_run"] == 2
     assert "sub-05" in rep["failed_subjects"]
+
+
+
+def test_audit_cohort_missingness_flags_contradictory_condition_labels():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows[0]["task_label"] = "sedated"  # Contradicts t_rows[0].task_label == "awake"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1
+    assert "contradictory" in report["verdict_reason"]
+
+
+def test_audit_cohort_missingness_respects_custom_group_col_over_task_label():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    for idx, m_row in enumerate(m_rows):
+        m_row["state_label"] = "" if idx == 0 else m_row["task_label"]
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="state_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_unlabeled_valid_windows"] == 1
+
+
+def test_audit_cohort_missingness_flags_duplicate_m_rows_with_conflicting_labels():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows.append({"row_id": t_rows[0].row_id, "subject_id": t_rows[0].subject_id, "task_label": "sedated"})
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1
+
+
+def test_audit_cohort_missingness_flags_contradictory_subject_ids():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows[0]["subject_id"] = "sub-99"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1

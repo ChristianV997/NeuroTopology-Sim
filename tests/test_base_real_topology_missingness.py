@@ -963,3 +963,129 @@ def test_ml_report_fails_closed_when_an_eligible_row_lacks_group_metadata():
     assert report["n_rows_missing_group_metadata"] == 1
     assert report["n_rows_used"] == 0
     assert "group metadata" in report["reason"]
+
+
+
+def test_boolean_and_out_of_range_metrics_or_triangles_demote_row():
+    from dataclasses import replace
+
+    bool_window_row = replace(_valid_row(0), window_start_s=False, window_end_s=True)
+    bool_metric_row = replace(_valid_row(1), q_abs=True)
+    bad_triangles_row = replace(_valid_row(2), n_triangles=2, n_valid_triangles=5)
+    negative_triangles_row = replace(_valid_row(3), n_triangles=-4, n_valid_triangles=0)
+    bad_quality_row = replace(_valid_row(4), topology_quality=1.5)
+    negative_q_abs_row = replace(_valid_row(5), q_abs=-0.1)
+
+    assert bad_quality_row.topology_quality is None
+    for row in (
+        bool_window_row,
+        bool_metric_row,
+        bad_triangles_row,
+        negative_triangles_row,
+        bad_quality_row,
+        negative_q_abs_row,
+    ):
+        assert row.is_valid is False
+        assert row.topology_status == "skipped"
+        assert row.missingness_state == "unobserved"
+    for row in (
+        bool_window_row,
+        bool_metric_row,
+        bad_triangles_row,
+        negative_triangles_row,
+        negative_q_abs_row,
+    ):
+        assert row.q_abs is None
+
+
+def test_group_and_ml_reports_fail_closed_on_contradictory_metadata():
+    rows = [
+        _valid_row(index, subject_id=f"sub-{index % 2}", task_label="awake" if index % 2 == 0 else "sedated")
+        for index in range(10)
+    ]
+    m_rows = [
+        {"row_id": row.row_id, "subject_id": row.subject_id, "task_label": row.task_label}
+        for row in rows
+    ]
+    m_rows[0]["task_label"] = "sedated"  # Contradicts rows[0].task_label == "awake"
+
+    group = build_group_significance_report(rows, m_rows, group_col="task_label", n_permutations=20)
+    decoding = build_ml_decoding_report(rows, m_rows, group_col="task_label")
+
+    assert group["status"] == "not_applicable"
+    assert group["n_rows_used"] == 0
+    assert "contradictory" in group["reason"]
+    assert decoding["status"] == "not_applicable"
+    assert decoding["n_rows_used"] == 0
+    assert "contradictory" in decoding["reason"]
+
+
+def test_ml_report_ignores_skipped_and_nonfinite_extra_features(monkeypatch):
+    import analysis.ml_decoding as ml_decoding
+
+    captured_feature_dicts = []
+
+    def fake_build_decoding_report(feature_dicts, labels, seed=0, n_permutations=1000, cv_folds=5):
+        captured_feature_dicts.extend(feature_dicts)
+        return {
+            "status": "computed",
+            "features_used": sorted({k for d in feature_dicts for k in d.keys()}),
+        }
+
+    monkeypatch.setattr(ml_decoding, "build_decoding_report", fake_build_decoding_report)
+
+    rows = [
+        _valid_row(index, subject_id=f"sub-{index}", task_label="awake" if index < 5 else "sedated")
+        for index in range(10)
+    ]
+    m_rows = [{"row_id": row.row_id, "state_label": row.task_label} for row in rows]
+    extra = [
+        [
+            {
+                "row_id": r.row_id,
+                "status": "skipped" if idx == 0 else "computed",
+                "skipped_only_metric": 999.0 if idx == 0 else float("nan"),
+                "valid_extra_metric": 0.5,
+                "bad_nan": float("nan"),
+                "bool_val": True,
+            }
+            for idx, r in enumerate(rows)
+        ]
+    ]
+
+    report = build_ml_decoding_report(rows, m_rows, extra_feature_reports=extra, n_permutations=10)
+    assert "bad_nan" not in report["features_used"]
+    assert "bool_val" not in report["features_used"]
+    assert "skipped_only_metric" not in report["features_used"]
+    assert "valid_extra_metric" in report["features_used"]
+    assert "valid_extra_metric" not in captured_feature_dicts[0]  # row 0 was skipped in extra report
+    json.dumps(report, allow_nan=False)
+
+
+def test_optional_signal_window_computers_fail_closed_on_nonfinite_samples(tmp_path, monkeypatch):
+    from data import bids_ingest
+
+    source = tmp_path / "synthetic.edf"
+    source.write_bytes(b"synthetic-only test marker")
+
+    monkeypatch.setattr(bids_ingest, "get_sample_rate", lambda *_args, **_kwargs: 100.0)
+    monkeypatch.setattr(
+        bids_ingest,
+        "read_window_signal",
+        lambda *_args, **_kwargs: np.array([[0.1, float("nan"), 0.2, 0.3], [0.2, 0.1, 0.3, 0.4]], dtype=float),
+    )
+    m_row = {
+        "row_id": "synthetic-nan-window",
+        "source_file": str(source),
+        "window_start_s": "0",
+        "window_end_s": "2",
+    }
+
+    phase = compute_phase_based_topology_for_window(m_row)
+    conn = compute_connectivity_for_window(m_row)
+    surr = compute_surrogate_gate_for_window(m_row, n_surrogates=4)
+
+    for res in (phase, conn, surr):
+        assert res["status"] == "skipped"
+        assert "non-finite" in res["reason"]
+        json.dumps(res, allow_nan=False)

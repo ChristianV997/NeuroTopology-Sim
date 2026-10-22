@@ -111,7 +111,8 @@ class LevelTRealTopologyRow:
         has_missing_or_nonfinite = False
         for fname in metric_fields:
             val = getattr(self, fname)
-            if val is None:
+            if val is None or isinstance(val, bool):
+                setattr(self, fname, None)
                 has_missing_or_nonfinite = True
             else:
                 try:
@@ -123,6 +124,16 @@ class LevelTRealTopologyRow:
                     if not math.isfinite(fval):
                         setattr(self, fname, None)
                         has_missing_or_nonfinite = True
+                    elif fname in ("q_abs", "f_dress", "defect_density") and fval < 0.0:
+                        setattr(self, fname, None)
+                        has_missing_or_nonfinite = True
+                    elif fname == "topology_quality" and not (0.0 <= fval <= 1.0):
+                        setattr(self, fname, None)
+                        has_missing_or_nonfinite = True
+        if not _has_valid_triangle_counts(self.n_triangles, self.n_valid_triangles):
+            has_missing_or_nonfinite = True
+            for fname in metric_fields:
+                setattr(self, fname, None)
         has_invalid_bounds = not _has_valid_window_bounds(self.window_start_s, self.window_end_s)
         if has_invalid_bounds:
             has_missing_or_nonfinite = True
@@ -165,6 +176,14 @@ class LevelTRealTopologyResult:
     warnings: list[str]
 
 
+def _has_valid_triangle_counts(n_triangles: object, n_valid_triangles: object) -> bool:
+    if isinstance(n_triangles, bool) or isinstance(n_valid_triangles, bool):
+        return False
+    if not isinstance(n_triangles, int) or not isinstance(n_valid_triangles, int):
+        return False
+    return n_triangles >= 0 and n_valid_triangles >= 0 and n_valid_triangles <= n_triangles
+
+
 def _is_eligible_topology_row(row: LevelTRealTopologyRow) -> bool:
     return (
         row.null_method != "fixture_none"
@@ -172,10 +191,15 @@ def _is_eligible_topology_row(row: LevelTRealTopologyRow) -> bool:
         and row.topology_status == "computed"
         and not row.warnings
         and _has_valid_window_bounds(row.window_start_s, row.window_end_s)
+        and _has_valid_triangle_counts(row.n_triangles, row.n_valid_triangles)
         and all(
             _is_finite_metric(getattr(row, field_name))
             for field_name in ("q_net", "q_abs", "f_dress", "defect_density", "topology_quality")
         )
+        and float(row.q_abs) >= 0.0
+        and float(row.f_dress) >= 0.0
+        and float(row.defect_density) >= 0.0
+        and 0.0 <= float(row.topology_quality) <= 1.0
     )
 
 
@@ -188,7 +212,7 @@ def _h(text: str) -> int:
 
 
 def _finite_window_bound(value: object) -> float | None:
-    if value is None or (isinstance(value, str) and not value.strip()):
+    if value is None or isinstance(value, bool) or (isinstance(value, str) and not value.strip()):
         return None
     try:
         result = float(value)
@@ -198,7 +222,7 @@ def _finite_window_bound(value: object) -> float | None:
 
 
 def _is_finite_metric(value: object) -> bool:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return False
     try:
         return math.isfinite(float(value))
@@ -499,11 +523,23 @@ def compute_phase_based_topology_for_window(
         # for the real case this was found on (ds003816).
         return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"window skipped: {exc}"}
 
-    if channels.shape[0] < 2:
+    channel_arr = np.asarray(channels, dtype=float)
+    if channel_arr.ndim != 2 or channel_arr.shape[0] < 2:
         return {
             "row_id": row_id, "band": band, "status": "skipped",
-            "reason": f"need >=2 channels for phase-gradient metrics, got {channels.shape[0]}",
+            "reason": f"need >=2 channels for phase-gradient metrics, got {channel_arr.shape[0] if channel_arr.ndim >= 1 else 0}",
         }
+    if channel_arr.shape[1] == 0 or not np.all(np.isfinite(channel_arr)):
+        return {
+            "row_id": row_id, "band": band, "status": "skipped",
+            "reason": "window contains non-finite or empty signal samples",
+        }
+    if not _is_finite_metric(sfreq) or float(sfreq) <= 0.0:
+        return {
+            "row_id": row_id, "band": band, "status": "skipped",
+            "reason": f"invalid sample rate sfreq={sfreq!r}",
+        }
+    sfreq = float(sfreq)
 
     lo, hi = DEFAULT_EEG_BANDS[band]
     nyq = sfreq / 2.0
@@ -514,11 +550,16 @@ def compute_phase_based_topology_for_window(
         }
 
     try:
-        phase = bandpass_hilbert_phase(channels, sfreq, lo, hi)
+        phase = bandpass_hilbert_phase(channel_arr, sfreq, lo, hi)
     except ValueError as exc:
         return {"row_id": row_id, "band": band, "status": "skipped", "reason": f"phase extraction failed: {exc}"}
 
     metrics = channel_phase_gradient_metrics(phase)
+    if not all(_is_finite_metric(metrics.get(k)) for k in ("Q", "Qabs", "phase_grad", "f_dress")):
+        return {
+            "row_id": row_id, "band": band, "status": "skipped",
+            "reason": "non-finite phase-gradient metric computed",
+        }
     return {"row_id": row_id, "band": band, "status": "computed", "sfreq": sfreq, **metrics}
 
 
@@ -622,10 +663,15 @@ def compute_connectivity_for_window(
         return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
 
     channel_data = np.asarray(channels, dtype=float)
-    if channel_data.shape[0] < 2:
+    if channel_data.ndim != 2 or channel_data.shape[0] < 2:
         return {
             "row_id": row_id, "status": "skipped",
-            "reason": f"need >=2 channels for connectivity, got {channel_data.shape[0]}",
+            "reason": f"need >=2 channels for connectivity, got {channel_data.shape[0] if channel_data.ndim >= 1 else 0}",
+        }
+    if channel_data.shape[1] == 0 or not np.all(np.isfinite(channel_data)):
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": "window contains non-finite or empty signal samples",
         }
 
     result: dict = {"row_id": row_id, "status": "computed", "n_channels": int(channel_data.shape[0])}
@@ -634,9 +680,14 @@ def compute_connectivity_for_window(
         fn = method_fns.get(m)
         if fn is None:
             continue
-        mat = fn(channel_data)
+        mat = np.asarray(fn(channel_data), dtype=float)
         off_diag = mat[~np.eye(mat.shape[0], dtype=bool)]
-        result[f"mean_{m}"] = float(np.mean(off_diag)) if off_diag.size else float("nan")
+        if not off_diag.size or not np.all(np.isfinite(mat)):
+            return {
+                "row_id": row_id, "status": "skipped",
+                "reason": f"non-finite connectivity matrix computed for {m}",
+            }
+        result[f"mean_{m}"] = float(np.mean(off_diag))
         result[f"{m}_matrix"] = mat.tolist()
 
     if compute_granger:
@@ -805,16 +856,36 @@ def compute_surrogate_gate_for_window(
         # multi-file format's companion file can be genuinely missing.
         return {"row_id": row_id, "status": "skipped", "reason": f"window skipped: {exc}"}
 
-    channel_data = [list(map(float, ch)) for ch in channels]
+    arr = np.asarray(channels, dtype=float)
+    if arr.ndim != 2 or arr.shape[0] < 2:
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": f"need >=2 channels for surrogate gate, got {arr.shape[0] if arr.ndim >= 1 else 0}",
+        }
+    if arr.shape[1] == 0 or not np.all(np.isfinite(arr)):
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": "window contains non-finite or empty signal samples",
+        }
+    channel_data = arr.tolist()
     observed_q_abs = compute_topology_from_channels(channel_data)[1]  # (q_net, q_abs, ...)
+    if not _is_finite_metric(observed_q_abs):
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": "non-finite observed topology metric for surrogate gate",
+        }
 
-    arr = np.asarray(channel_data, dtype=float)
     surrogate_q_abs = []
     for i in range(n_surrogates):
         surrogate = phase_randomize_time(arr, seed=seed + i)
         surrogate_q_abs.append(compute_topology_from_channels(surrogate.tolist())[1])
 
     summary = compute_null_summary(observed_q_abs, surrogate_q_abs)
+    if not all(_is_finite_metric(v) for v in summary.values()):
+        return {
+            "row_id": row_id, "status": "skipped",
+            "reason": "non-finite surrogate null summary",
+        }
     return {"row_id": row_id, "status": "gated", "n_surrogates": n_surrogates, **summary}
 
 
@@ -930,12 +1001,34 @@ def build_group_significance_report(
             "n_rows_excluded": len(rows),
         }
 
-    by_id = {str(m.get("row_id")): m for m in m_rows}
+    m_grouped: dict[str, list[dict]] = {}
+    for m in m_rows:
+        m_grouped.setdefault(str(m.get("row_id")), []).append(m)
     joined = []
     missing_group_metadata = 0
+    contradictory_metadata = 0
     for r in eligible_rows:
-        m = by_id.get(r.row_id)
-        group_val = _normalized_label(m.get(group_col)) if m is not None else None
+        matches = m_grouped.get(r.row_id, [])
+        if not matches:
+            missing_group_metadata += 1
+            continue
+        group_vals = {_normalized_label(m.get(group_col)) for m in matches if _normalized_label(m.get(group_col)) is not None}
+        if len(matches) > 1 and len(group_vals) != 1:
+            contradictory_metadata += 1
+            continue
+        m_sub_ids = {_normalized_label(m.get("subject_id")) for m in matches if _normalized_label(m.get("subject_id")) is not None}
+        if len(m_sub_ids) > 1 or (m_sub_ids and str(next(iter(m_sub_ids))) != str(r.subject_id)):
+            contradictory_metadata += 1
+            continue
+        m_task_labels = {_normalized_label(m.get("task_label")) for m in matches if _normalized_label(m.get("task_label")) is not None}
+        t_task = _normalized_label(r.task_label)
+        if len(m_task_labels) > 1 or (t_task is not None and m_task_labels and str(next(iter(m_task_labels))) != str(t_task)):
+            contradictory_metadata += 1
+            continue
+        if group_col == "task_label" and t_task is not None and group_vals and str(next(iter(group_vals))) != str(t_task):
+            contradictory_metadata += 1
+            continue
+        group_val = next(iter(group_vals)) if group_vals else None
         if group_val is None:
             missing_group_metadata += 1
             continue
@@ -945,6 +1038,21 @@ def build_group_significance_report(
             if val is not None:
                 row_vals[c] = val
         joined.append({"subject_id": r.subject_id, "group": group_val, **row_vals})
+
+    if contradictory_metadata:
+        return {
+            "status": "not_applicable",
+            "reason": (
+                f"{contradictory_metadata} eligible Level T rows have contradictory joined {group_col!r} "
+                "or subject/task metadata; report not computed"
+            ),
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+            "n_rows_contradictory_metadata": contradictory_metadata,
+            "n_rows_used": 0,
+        }
 
     if missing_group_metadata:
         return {
@@ -1104,23 +1212,53 @@ def build_ml_decoding_report(
             "n_rows_excluded": len(rows),
         }
 
-    by_id = {str(m.get("row_id")): m for m in m_rows}
+    m_grouped: dict[str, list[dict]] = {}
+    for m in m_rows:
+        m_grouped.setdefault(str(m.get("row_id")), []).append(m)
     extra_by_row: dict[str, dict] = {}
     for report_results in extra_feature_reports or []:
         for entry in report_results:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("status") not in (None, "computed", "gated"):
+                continue
             row_id = str(entry.get("row_id", ""))
             if not row_id:
                 continue
             extra_by_row.setdefault(row_id, {}).update(
-                {k: v for k, v in entry.items() if isinstance(v, (int, float)) and k not in ("status",)}
+                {
+                    k: float(v)
+                    for k, v in entry.items()
+                    if _is_finite_metric(v) and k not in ("status",)
+                }
             )
 
     feature_dicts: list[dict] = []
     labels: list = []
     missing_group_metadata = 0
+    contradictory_metadata = 0
     for r in eligible_rows:
-        m = by_id.get(r.row_id)
-        group_val = _normalized_label(m.get(group_col)) if m is not None else None
+        matches = m_grouped.get(r.row_id, [])
+        if not matches:
+            missing_group_metadata += 1
+            continue
+        group_vals = {_normalized_label(m.get(group_col)) for m in matches if _normalized_label(m.get(group_col)) is not None}
+        if len(matches) > 1 and len(group_vals) != 1:
+            contradictory_metadata += 1
+            continue
+        m_sub_ids = {_normalized_label(m.get("subject_id")) for m in matches if _normalized_label(m.get("subject_id")) is not None}
+        if len(m_sub_ids) > 1 or (m_sub_ids and str(next(iter(m_sub_ids))) != str(r.subject_id)):
+            contradictory_metadata += 1
+            continue
+        m_task_labels = {_normalized_label(m.get("task_label")) for m in matches if _normalized_label(m.get("task_label")) is not None}
+        t_task = _normalized_label(r.task_label)
+        if len(m_task_labels) > 1 or (t_task is not None and m_task_labels and str(next(iter(m_task_labels))) != str(t_task)):
+            contradictory_metadata += 1
+            continue
+        if group_col == "task_label" and t_task is not None and group_vals and str(next(iter(group_vals))) != str(t_task):
+            contradictory_metadata += 1
+            continue
+        group_val = next(iter(group_vals)) if group_vals else None
         if group_val is None:
             missing_group_metadata += 1
             continue
@@ -1128,6 +1266,21 @@ def build_ml_decoding_report(
         feats.update(extra_by_row.get(r.row_id, {}))
         feature_dicts.append(feats)
         labels.append(group_val)
+
+    if contradictory_metadata:
+        return {
+            "status": "not_applicable",
+            "reason": (
+                f"{contradictory_metadata} eligible Level T rows have contradictory joined {group_col!r} "
+                "or subject/task metadata; report not computed"
+            ),
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+            "n_rows_contradictory_metadata": contradictory_metadata,
+            "n_rows_used": 0,
+        }
 
     if missing_group_metadata:
         return {
@@ -1303,7 +1456,32 @@ def audit_cohort_missingness(
     partial_subjects = []
     failed_subjects = []
 
-    m_by_id = {str(m.get("row_id")): m for m in m_rows}
+    m_grouped: dict[str, list[dict]] = {}
+    for m in m_rows:
+        m_grouped.setdefault(str(m.get("row_id")), []).append(m)
+
+    def _resolve_cohort_condition(r: LevelTRealTopologyRow) -> tuple[str | None, bool]:
+        matches = m_grouped.get(r.row_id, [])
+        t_cond = _normalized_label(r.task_label) if group_col == "task_label" else None
+        if not matches:
+            return (str(t_cond) if t_cond is not None else None), False
+        m_sub_ids = {_normalized_label(m.get("subject_id")) for m in matches if _normalized_label(m.get("subject_id")) is not None}
+        if len(m_sub_ids) > 1 or (m_sub_ids and str(next(iter(m_sub_ids))) != str(r.subject_id)):
+            return None, True
+        m_task_labels = {_normalized_label(m.get("task_label")) for m in matches if _normalized_label(m.get("task_label")) is not None}
+        t_task = _normalized_label(r.task_label)
+        if len(m_task_labels) > 1 or (t_task is not None and m_task_labels and str(next(iter(m_task_labels))) != str(t_task)):
+            return None, True
+        m_group_vals = {_normalized_label(m.get(group_col)) for m in matches if _normalized_label(m.get(group_col)) is not None}
+        if len(matches) > 1 and len(m_group_vals) != 1:
+            return None, True
+        m_cond = next(iter(m_group_vals)) if m_group_vals else None
+        if group_col == "task_label":
+            if t_cond is not None and m_cond is not None and str(t_cond) != str(m_cond):
+                return None, True
+            resolved = t_cond if t_cond is not None else m_cond
+            return (str(resolved) if resolved is not None else None), False
+        return (str(m_cond) if m_cond is not None else None), False
 
     for sub_id in all_subject_ids:
         sub_rows = [r for r in t_rows if r.subject_id == sub_id]
@@ -1319,10 +1497,8 @@ def audit_cohort_missingness(
 
         sub_conditions = set()
         for r in sub_valid:
-            c = _normalized_label(r.task_label)
-            if c is None and r.row_id in m_by_id:
-                c = _normalized_label(m_by_id[r.row_id].get(group_col))
-            if c:
+            c, is_contradictory = _resolve_cohort_condition(r)
+            if c and not is_contradictory:
                 sub_conditions.add(str(c))
 
         n_sub_total = len(sub_rows)
@@ -1351,11 +1527,12 @@ def audit_cohort_missingness(
 
     joined_valid = []
     unlabeled_valid_rows = []
+    contradictory_label_rows = []
     for r in valid_t_rows:
-        cond = _normalized_label(r.task_label)
-        if cond is None and r.row_id in m_by_id:
-            cond = _normalized_label(m_by_id[r.row_id].get(group_col))
-        if cond is None:
+        cond, is_contradictory = _resolve_cohort_condition(r)
+        if is_contradictory:
+            contradictory_label_rows.append(r)
+        elif cond is None:
             unlabeled_valid_rows.append(r)
         else:
             joined_valid.append({"subject_id": r.subject_id, "condition": str(cond)})
@@ -1390,7 +1567,7 @@ def audit_cohort_missingness(
         verdict = "BLOCKED"
         gate_passed = False
         verdict_reason = f"Window skip rate {skip_rate:.2%} exceeds maximum threshold {max_skip_rate:.2%}."
-    elif fixture_t_rows or unlabeled_valid_rows:
+    elif fixture_t_rows or unlabeled_valid_rows or contradictory_label_rows:
         verdict = "INCOMPLETE"
         gate_passed = False
         reasons = []
@@ -1398,6 +1575,8 @@ def audit_cohort_missingness(
             reasons.append(f"{len(fixture_t_rows)} synthetic fixture windows are not observed signal windows")
         if unlabeled_valid_rows:
             reasons.append(f"{len(unlabeled_valid_rows)} valid windows are missing condition labels")
+        if contradictory_label_rows:
+            reasons.append(f"{len(contradictory_label_rows)} valid windows have contradictory condition or subject metadata")
         if n_missing:
             reasons.append(f"{n_missing} windows are missing or invalid")
         if partial_subjects:
@@ -1432,6 +1611,7 @@ def audit_cohort_missingness(
         "n_missing_windows": n_missing,
         "n_synthetic_fixture_windows": len(fixture_t_rows),
         "n_unlabeled_valid_windows": len(unlabeled_valid_rows),
+        "n_contradictory_label_windows": len(contradictory_label_rows),
         "skip_rate": round(skip_rate, 4),
         "max_skip_rate": max_skip_rate,
         "missingness_by_reason": missingness_by_reason,

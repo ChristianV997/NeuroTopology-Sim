@@ -1,25 +1,22 @@
-# Level T Missingness and Cohort-Completeness Checks
+# Missingness and Cohort Completeness Gates
 
-This document describes the software behavior in `sciencer_d/btc_icft/level_t/base_real_topology.py`. These checks describe whether rows are structurally available to downstream computations. They do not verify signal provenance, participant identity, data-use rights, cohort composition, model correctness, measurement validity, or biological interpretation. `PASS` means only that the configured software completeness checks passed; it is not scientific validation or evidence promotion.
+## Overview
 
-## Row-level behavior
+In EEG/MEG topology extraction (`sciencer_d/btc_icft/level_t/base_real_topology.py`), missing source files, missing multi-file format companions (e.g., BrainVision `.eeg` or `.vmrk` alongside `.vhdr`), out-of-range windows, or unreadable channels must **never** be silently imputed as zero-valued topology observations (`0.0`). Silent zero imputation creates artificial zero-charge observations (`q_net=0.0`, `q_abs=0.0`, `f_dress=0.0`) that bias downstream permutation tests and inflate sample sizes.
 
-`compute_real_topology_for_window` uses the Level M row's local source path and window bounds to request signal samples. Missing source/companion files, unreadable or partial windows, empty samples, non-finite samples, and invalid bounds produce a skipped row with `is_valid=false` and missing metrics rather than zero-filled topology values. Window bounds must be finite, non-negative, and satisfy `window_end_s > window_start_s`; missing, malformed, NaN, or infinite bounds are rejected before the signal reader is called.
+## Key Safeguards
 
-`LevelTRealTopologyRow` also demotes rows with missing/non-finite metrics or invalid bounds. `None` metrics serialize as blank CSV cells. A numerical zero is distinct from a missing value in the data structure, but a zero returned by this software is not, by itself, evidence of an empirical observation or a biological effect.
+- **No Silent Zero Imputation**: Missing or unreadable windows return `None` for all topology metric fields (`q_net`, `q_abs`, `f_dress`, `defect_density`, `topology_quality`) and serialize as empty strings (`""`) in `features_t.csv`. Genuine zero-valued observations (`0.0`) are preserved when computed from valid signal channels.
+- **Explicit Missingness Schema**: `LevelTRealTopologyRow` explicitly tracks `topology_status` (`computed` | `skipped`), `missingness_state` (`computed` | `missing_source` | `missing_companion` | `failed_read` | `partial_run` | `unobserved`), `missingness_reason`, `is_valid` (`bool`), `run_status` (`complete` | `partial` | `failed`), and `replicate_count`. Rows with boolean, out-of-range, or non-finite metrics/bounds or inconsistent triangle counts (`n_valid_triangles > n_triangles` or negative counts) are demoted to `is_valid=False`, `topology_status="skipped"`, `missingness_state="unobserved"`, and `run_status="failed"`.
+- **Cohort Missingness Gate (`audit_cohort_missingness`)**:
+  - Fails closed (`BLOCKED`) when window skip rate exceeds `max_skip_rate` (default `0.20`).
+  - Fails closed (`INSUFFICIENT_POWER`) when paired subject count in a 2-condition cohort falls below `min_paired_subjects` (default `5`).
+  - Fails closed (`INCOMPLETE`) when any expected subject, companion file, condition label, or window is missing, when synthetic fixture rows (`null_method="fixture_none"`) are present, or when joined condition/subject metadata is contradictory across Level T and Level M rows.
+  - Passes (`PASS`) only when all included windows, companion files, conditions, and subjects are complete, consistent, and valid.
+- **Downstream Report Protection**: `build_topology_quality_report`, `build_group_significance_report`, `build_ml_decoding_report`, `build_artifact_alignment_report`, and optional signal reports (`build_phase_based_topology_report`, `build_connectivity_report`, `build_null_gate_report`) exclude invalid, warning-bearing, non-finite, and synthetic fixture rows, and fail closed on missing or contradictory grouping metadata so missing/malformed inputs never masquerade as empirical observations.
 
-The explicit `compute_fixture_topology_for_window` path generates deterministic hash-based synthetic values. Those values are test/fixture output, not signal-derived measurements. Incomplete or invalid window metadata yields an unobserved row. Rows marked with `null_method="fixture_none"` are excluded from valid cohort counts and force the cohort audit to return `INCOMPLETE`; they cannot establish empirical completeness.
+## Verification
 
-## Reports and cohort checks
-
-- `build_topology_quality_report` summarizes row validity and the configured skip rate. Its status is an engineering/data-completeness result only.
-- `build_group_significance_report` and `build_ml_decoding_report` exclude invalid topology rows. If any otherwise eligible row lacks a matching Level M row or non-empty grouping value, the report returns `not_applicable` and does not analyze only the remaining subset.
-- Phase, connectivity, and surrogate-null report builders keep unmatched Level T rows visible as skipped results; they do not call the signal reader for explicit hash fixtures. Empty/skipped reports use `not_applicable` and null aggregate metrics instead of claiming work was performed or emitting NaN JSON values.
-- `audit_cohort_missingness` joins condition labels by `row_id`, treating missing and whitespace-only labels as absent. An unlabeled valid row or hash-based fixture prevents `PASS` and produces `INCOMPLETE` unless the skip-rate threshold takes precedence and produces `BLOCKED`. The audit also reports invalid windows, partial/failed subjects, unpaired subjects, missing expected subjects, and the configured skip-rate result. `max_skip_rate` must be finite and within `[0, 1]`.
-- `cohort_missingness_report.json` is written only when a caller explicitly supplies a cohort report to `write_level_t_topology_outputs`. The current dataset pipeline entry points do not automatically call `audit_cohort_missingness` or pass this optional report.
-
-The existing status vocabulary is preserved (`PASS`, `BLOCKED`, `INCOMPLETE`, `INSUFFICIENT_POWER`, and `EMPTY_DATASET` for the cohort audit). `PASS` is not a claim that the cohort is authentic, representative, scientifically adequate, or biologically meaningful. Missingness alone does not confirm or refute any hypothesis.
-
-## Verification scope and limits
-
-The focused tests use generated synthetic rows/signals, temporary marker files, and mocked signal reads; they do not require participant data. A successful test run establishes only the tested software behavior. It does not verify citations, provenance, permissions, cohort identity, model correctness, or scientific claims. The checker and reports must remain under `HOLD / SYNTHETIC_ONLY` unless separate evidence and governance gates authorize otherwise.
+```bash
+pytest tests/test_base_real_topology_missingness.py tests/test_cohort_missingness.py -q
+```
