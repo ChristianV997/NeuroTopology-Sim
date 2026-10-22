@@ -229,7 +229,10 @@ The test suite in `tests/forward_model_contract/test_forward_model_contract.py` 
 - Multi-shell inner layer sensitivity: verified physical effect of skull conductivity $\sigma_{\text{skull}}$ and brain radius $r_{\text{brain}}$.
 - Rejection of out-of-bounds sources and non-finite source/orientation coordinates.
 - Non-unit fixed orientation vector rejection.
-- Fail-closed zero-norm electrode and non-finite dipole-moment handling (no `ZeroDivisionError`, no silent NaN potentials).
+- Fail-closed zero-norm electrode, boolean rejection (`True`/`False` rejected in all numeric fields), and non-finite dipole-moment handling (no `ZeroDivisionError`, no silent NaN potentials).
+- Conductor origin (`origin_m`) 3D finite meter validation and exact shift invariance across containment and concentric-sphere potential evaluation.
+- Rejection of singular $4 \times 4$ affine coordinate transforms ($|\det(A)| < 10^{-12}$).
+- Finite validation on MNE forward-solution leadfield matrices, active source coordinates (`rr`), and sensor locations (`loc`).
 - Exact dipole potential linearity and superposition ($\Delta < 10^{-18}\text{ V}$).
 - Dimensional consistency for free $(19, 48)$ and fixed $(19, 16)$ leadfield matrices.
 - Average reference column zero-sum invariant ($\Delta < 10^{-11}$) and idempotency.

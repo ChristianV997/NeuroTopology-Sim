@@ -100,7 +100,9 @@ def _require_finite(
     *,
     exc_cls: type = ForwardModelContractError,
 ) -> float:
-    """Return ``value`` as float or raise ``exc_cls`` when non-finite."""
+    """Return ``value`` as float or raise ``exc_cls`` when non-finite or boolean."""
+    if isinstance(value, bool):
+        raise exc_cls(f"{label} must be a finite real number (not bool); got {value!r}.")
     try:
         number = float(value)
     except (TypeError, ValueError) as exc:
@@ -228,8 +230,14 @@ class ConductorModel:
             if s <= 0:
                 raise ConductorGeometryError(f"Conductivity layer {i} must be positive, got {s}.")
 
-        for i, comp in enumerate(self.origin_m):
-            _require_finite(comp, f"Conductor origin[{i}]", exc_cls=ConductorGeometryError)
+        finite_origin = _require_finite_vec3(
+            self.origin_m, "Conductor origin", exc_cls=ConductorGeometryError
+        )
+        origin_norm = math.sqrt(sum(c * c for c in finite_origin))
+        if origin_norm > MILLIMETER_THRESHOLD_M:
+            raise CoordinateUnitMismatchError(
+                f"Conductor origin norm {origin_norm:.2f}m > 1.0m; origin must be in meters, not mm."
+            )
 
     @property
     def brain_radius_m(self) -> float:
@@ -310,21 +318,32 @@ class SourceSpace:
             raise CoordinateFrameMismatchError("Coordinate frame UNKNOWN is rejected; must be HEAD or MNI.")
 
         brain_r = conductor.brain_radius_m if conductor is not None else DEFAULT_BRAIN_RADIUS_M
+        origin = (
+            _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
+            if conductor is not None
+            else (0.0, 0.0, 0.0)
+        )
 
         for i, pos in enumerate(self.positions_m):
             finite_pos = _require_finite_vec3(pos, f"Source index {i} position")
-            norm = math.sqrt(sum(p * p for p in finite_pos))
-            if not math.isfinite(norm):
+            abs_norm = math.sqrt(sum(p * p for p in finite_pos))
+            if not math.isfinite(abs_norm):
                 raise ForwardModelContractError(
-                    f"Source index {i} position norm must be finite; got {norm!r}."
+                    f"Source index {i} position norm must be finite; got {abs_norm!r}."
                 )
-            if norm > MILLIMETER_THRESHOLD_M:
+            if abs_norm > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
-                    f"Source index {i} position norm {norm:.2f}m > 1.0m; must be in meters."
+                    f"Source index {i} position norm {abs_norm:.2f}m > 1.0m; must be in meters."
                 )
-            if norm >= brain_r:
+            rel_pos = (
+                finite_pos[0] - origin[0],
+                finite_pos[1] - origin[1],
+                finite_pos[2] - origin[2],
+            )
+            rel_norm = math.sqrt(sum(p * p for p in rel_pos))
+            if rel_norm >= brain_r:
                 raise SourceOutOfBoundsError(
-                    f"Source index {i} position norm {norm:.4f}m exceeds "
+                    f"Source index {i} radial distance from conductor origin {rel_norm:.4f}m exceeds "
                     f"brain shell radius {brain_r:.4f}m."
                 )
 
@@ -618,6 +637,17 @@ def compute_concentric_spheres_potential(
     electrode_pos_m = _require_finite_vec3(electrode_pos_m, "electrode_pos_m")
     source_pos_m = _require_finite_vec3(source_pos_m, "source_pos_m")
     dipole_moment_am = _require_finite_vec3(dipole_moment_am, "dipole_moment_am")
+    origin_m = _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
+    electrode_pos_m = (
+        electrode_pos_m[0] - origin_m[0],
+        electrode_pos_m[1] - origin_m[1],
+        electrode_pos_m[2] - origin_m[2],
+    )
+    source_pos_m = (
+        source_pos_m[0] - origin_m[0],
+        source_pos_m[1] - origin_m[1],
+        source_pos_m[2] - origin_m[2],
+    )
     radii = conductor.radii_m
     sigmas = conductor.sigmas_sm
     K = len(radii)
@@ -793,16 +823,30 @@ def validate_affine_transform(
         raise CoordinateFrameMismatchError(
             f"Coordinate transform must be 4x4 matrix; got shape ({len(transform)}, ...)."
         )
-    for r_idx, row in enumerate(transform):
-        for c_idx, val in enumerate(row):
-            if not math.isfinite(val):
-                raise CoordinateFrameMismatchError(
-                    f"Non-finite value at ({r_idx}, {c_idx}) in coordinate transform matrix."
-                )
-    bottom = transform[3]
+    m = [
+        [
+            _require_finite(
+                val,
+                f"transform[{r_idx}][{c_idx}]",
+                exc_cls=CoordinateFrameMismatchError,
+            )
+            for c_idx, val in enumerate(row)
+        ]
+        for r_idx, row in enumerate(transform)
+    ]
+    bottom = m[3]
     if abs(bottom[0]) > 1e-6 or abs(bottom[1]) > 1e-6 or abs(bottom[2]) > 1e-6 or abs(bottom[3] - 1.0) > 1e-6:
         raise CoordinateFrameMismatchError(
-            f"Affine transform bottom row must be [0, 0, 0, 1], got {bottom}."
+            f"Affine transform bottom row must be [0, 0, 0, 1], got {transform[3]}."
+        )
+    det3 = (
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    )
+    if not math.isfinite(det3) or abs(det3) < 1e-12:
+        raise CoordinateFrameMismatchError(
+            f"Affine transform 3x3 linear block is singular or near-singular (det={det3!r})."
         )
 
 
@@ -1039,6 +1083,9 @@ def make_standard_1020_synthetic_sensors(
     radius_m: float = DEFAULT_SCALP_RADIUS_M,
 ) -> SensorGeometry:
     """Build canonical 19-channel 10-20 spherical electrode geometry in meters."""
+    radius_m = _require_finite(radius_m, "Electrode radius_m", exc_cls=ConductorGeometryError)
+    if radius_m <= 0.0:
+        raise ConductorGeometryError(f"Electrode radius_m must be strictly positive; got {radius_m}.")
     if radius_m > MILLIMETER_THRESHOLD_M:
         raise CoordinateUnitMismatchError("Electrode radius must be in meters, not mm.")
 
@@ -1094,6 +1141,19 @@ def make_synthetic_source_grid(
     is_fixed_orientation: bool = False,
 ) -> SourceSpace:
     """Generate deterministic synthetic dipole locations strictly inside the brain shell."""
+    if isinstance(n_sources, bool) or not isinstance(n_sources, int) or n_sources <= 0:
+        raise ForwardModelContractError(
+            f"n_sources must be a positive integer; got {n_sources!r}."
+        )
+    max_radius_m = _require_finite(max_radius_m, "Source grid max_radius_m")
+    if max_radius_m <= 0.0:
+        raise ForwardModelContractError(
+            f"Source grid max_radius_m must be strictly positive; got {max_radius_m}."
+        )
+    if max_radius_m > MILLIMETER_THRESHOLD_M:
+        raise CoordinateUnitMismatchError(
+            f"Source grid radius {max_radius_m}m > 1.0m; must be in meters, not mm."
+        )
     if max_radius_m >= DEFAULT_BRAIN_RADIUS_M:
         raise SourceOutOfBoundsError(
             f"Source grid radius {max_radius_m}m must be strictly inside brain radius {DEFAULT_BRAIN_RADIUS_M}m."
@@ -1325,10 +1385,16 @@ def audit_mne_forward_solution(
     if leadfield_data is None or row_names is None:
         raise ForwardModelContractError("MNE forward solution missing 'data' or 'row_names'.")
 
-    # Convert to pure Python list-of-lists
+    # Convert to pure Python list-of-lists with finite validation
     leadfield_list: List[List[float]] = [
-        [float(x) for x in row] for row in leadfield_data
+        [_require_finite(x, f"MNE leadfield[{r_idx}][{c_idx}]") for c_idx, x in enumerate(row)]
+        for r_idx, row in enumerate(leadfield_data)
     ]
+    if not leadfield_list or not leadfield_list[0]:
+        raise ForwardModelContractError("MNE forward solution leadfield data must be non-empty.")
+    n_cols_first = len(leadfield_list[0])
+    if any(len(row) != n_cols_first for row in leadfield_list):
+        raise LeadfieldDimensionMismatchError("MNE leadfield rows have inconsistent column counts.")
     ch_names_tuple = tuple(str(ch) for ch in row_names)
 
     # 3. Channel Order Verification against Info
@@ -1358,13 +1424,13 @@ def audit_mne_forward_solution(
             if rr is not None and inuse is not None:
                 for idx, active in enumerate(inuse):
                     if active:
-                        p = rr[idx]
-                        norm = math.sqrt(sum(float(x) ** 2 for x in p))
+                        p = _require_finite_vec3(rr[idx], f"MNE source vertex[{idx}]")
+                        norm = math.sqrt(sum(x * x for x in p))
                         if norm > MILLIMETER_THRESHOLD_M:
                             raise CoordinateUnitMismatchError(
                                 f"MNE source vertex norm {norm:.2f}m > 1.0m; units must be meters."
                             )
-                        positions.append((float(p[0]), float(p[1]), float(p[2])))
+                        positions.append(p)
 
     if n_sources is None:
         n_sources = len(positions) if positions else (len(leadfield_list[0]) // (1 if is_fixed else 3))
@@ -1385,7 +1451,7 @@ def audit_mne_forward_solution(
                 if ch.get("ch_name") in ch_names_tuple:
                     loc = ch.get("loc")
                     if loc is not None and len(loc) >= 3:
-                        p = (float(loc[0]), float(loc[1]), float(loc[2]))
+                        p = _require_finite_vec3(loc[:3], f"Sensor '{ch.get('ch_name')}' loc")
                         norm = math.sqrt(sum(x * x for x in p))
                         if norm > MILLIMETER_THRESHOLD_M:
                             raise CoordinateUnitMismatchError(

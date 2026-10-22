@@ -927,5 +927,127 @@ class TestForwardModelContract(unittest.TestCase):
                     contract.simulate_scalp_potentials(moments)
 
 
+    # -------------------------------------------------------------------------
+    # 23. Hardening Regressions: Booleans, Conductor Origin, Affine Singularity,
+    #     Helper Generators, and MNE Audit Finite Validation
+    # -------------------------------------------------------------------------
+
+    def test_boolean_inputs_rejected_across_contract(self) -> None:
+        """Boolean values (True/False) must not coerce to 1.0/0.0 in numeric fields."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(radii_m=(True, 0.085, 0.09)).validate()
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(sigmas_sm=(True, 0.0042, 0.33)).validate()
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(positions_m=((True, 0.0, 0.02),)).validate()
+        with self.assertRaises(ForwardModelContractError):
+            compute_homogeneous_sphere_potential(
+                electrode_pos_m=(0.0, 0.0, 0.09),
+                source_pos_m=(0.0, 0.0, 0.02),
+                dipole_moment_am=(True, 0.0, 0.0),
+            )
+
+    def test_conductor_origin_validation_and_shift_invariance(self) -> None:
+        """Conductor origin_m must be validated (3D, meters) and respected in containment and potential."""
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(origin_m=(0.0, 0.0)).validate()  # type: ignore[arg-type]
+        with self.assertRaises(CoordinateUnitMismatchError):
+            ConductorModel(origin_m=(0.0, 0.0, 15.0)).validate()
+
+        shift = (0.01, -0.015, 0.02)
+        cond_origin = ConductorModel(origin_m=(0.0, 0.0, 0.0))
+        cond_shifted = ConductorModel(origin_m=shift)
+
+        re_0 = (0.0, 0.0, 0.090)
+        rs_0 = (0.01, -0.02, 0.03)
+        q = (1.0e-9, -2.0e-9, 3.0e-9)
+
+        re_s = (re_0[0] + shift[0], re_0[1] + shift[1], re_0[2] + shift[2])
+        rs_s = (rs_0[0] + shift[0], rs_0[1] + shift[1], rs_0[2] + shift[2])
+
+        v_0 = compute_concentric_spheres_potential(re_0, rs_0, q, cond_origin)
+        v_s = compute_concentric_spheres_potential(re_s, rs_s, q, cond_shifted)
+        self.assertAlmostEqual(v_0, v_s, delta=1e-15)
+
+        cond_down = ConductorModel(origin_m=(0.0, 0.0, -0.01))
+        with self.assertRaises(SourceOutOfBoundsError):
+            SourceSpace(positions_m=((0.0, 0.0, 0.075),)).validate(cond_down)
+
+    def test_singular_affine_transform_rejected(self) -> None:
+        """Affine transform with singular 3x3 linear block (det=0) must fail closed."""
+        singular_matrix = (
+            (0.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        with self.assertRaises(CoordinateFrameMismatchError):
+            validate_affine_transform(singular_matrix)
+
+    def test_synthetic_generators_validate_parameters(self) -> None:
+        """Synthetic sensor and source generators must fail closed on non-finite, non-positive, or mm radii."""
+        for bad_r in (float("nan"), float("inf"), 0.0, -0.09):
+            with self.subTest(sensor_radius=bad_r):
+                with self.assertRaises(ConductorGeometryError):
+                    make_standard_1020_synthetic_sensors(radius_m=bad_r)
+
+        with self.assertRaises(CoordinateUnitMismatchError):
+            make_synthetic_source_grid(n_sources=4, max_radius_m=65.0)
+        for bad_r in (float("nan"), float("inf"), 0.0, -0.05):
+            with self.subTest(source_max_radius=bad_r):
+                with self.assertRaises(ForwardModelContractError):
+                    make_synthetic_source_grid(n_sources=4, max_radius_m=bad_r)
+        with self.assertRaises(ForwardModelContractError):
+            make_synthetic_source_grid(n_sources=0, max_radius_m=0.065)
+
+    def test_audit_mne_forward_solution_rejects_non_finite_data_and_coords(self) -> None:
+        """audit_mne_forward_solution must reject NaN/Inf in leadfield data, source rr, or sensor loc."""
+        bad_leadfield_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,
+            "nsource": 1,
+            "sol": {
+                "data": [[float("nan")], [1.0], [-0.5], [-0.5]],
+                "row_names": ["Fp1", "Fp2", "F3", "F4"],
+            },
+        }
+        with self.assertRaises(ForwardModelContractError):
+            audit_mne_forward_solution(bad_leadfield_fwd)
+
+        bad_src_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,
+            "nsource": 1,
+            "sol": {
+                "data": [[1.0], [-1.0], [0.5], [-0.5]],
+                "row_names": ["Fp1", "Fp2", "F3", "F4"],
+            },
+            "src": [{"rr": [[float("nan"), 0.0, 0.02]], "inuse": [1]}],
+        }
+        with self.assertRaises(ForwardModelContractError):
+            audit_mne_forward_solution(bad_src_fwd)
+
+        valid_fwd = {
+            "coord_frame": 4,
+            "source_ori": 1,
+            "nsource": 1,
+            "sol": {
+                "data": [[1.0], [-1.0], [0.5], [-0.5]],
+                "row_names": ["Fp1", "Fp2", "F3", "F4"],
+            },
+        }
+        bad_info = {
+            "ch_names": ["Fp1", "Fp2", "F3", "F4"],
+            "chs": [
+                {"ch_name": "Fp1", "loc": [float("nan"), 0.07, 0.05]},
+                {"ch_name": "Fp2", "loc": [0.0, -0.07, 0.05]},
+                {"ch_name": "F3", "loc": [-0.05, 0.0, 0.06]},
+                {"ch_name": "F4", "loc": [0.05, 0.0, 0.06]},
+            ],
+        }
+        with self.assertRaises(ForwardModelContractError):
+            audit_mne_forward_solution(valid_fwd, info=bad_info)
+
+
 if __name__ == "__main__":
     unittest.main()
