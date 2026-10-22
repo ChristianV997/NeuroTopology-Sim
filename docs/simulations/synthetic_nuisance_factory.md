@@ -1,8 +1,8 @@
 # Synthetic Nuisance-Scenario Factory: Operating-Characteristic Infrastructure
 
-**Status**: `HOLD / SYNTHETIC_ONLY`  
-**Module**: `sim.nuisance_scenarios`  
-**Test Suite**: `tests/nuisance_scenarios`  
+**Status**: `HOLD / SYNTHETIC_ONLY`
+**Module**: `sim.nuisance_scenarios`
+**Test Suite**: `tests/nuisance_scenarios`
 **Owner**: Antigravity Agent D (Batch 2)
 
 ---
