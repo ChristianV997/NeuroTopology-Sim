@@ -84,9 +84,9 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `TEST_FIXTURE_NOT_EVIDENCE`. The path is not opened and cannot become
 `admissible_on_ancestor`.
 
-No writer default path is committed on main at the audited commit
-`4e91c6f080647280940ded4f90f4ee9278960c4b`. The previous audited tip
-`d2544b83289efde0e63b70cff270d2ff523b7095` is an ancestor of that commit.
+No writer default path is committed on main at the audited tip
+`52e9a7cb5ed9c16000fc8a07c5c759649133f338`. The previous audited tip
+`4e91c6f080647280940ded4f90f4ee9278960c4b` is an ancestor of that commit.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.
@@ -95,9 +95,10 @@ so a promotion report does not make that gate admissible.
 `phase_dispersion_module`, `phase_score_limitations_recorded`, and
 `csd_full_matrix_pinned_mne` stay unpinned, so those gates are
 `dependency_not_merged_on_main`, and every cell stays blocked.
-The only live `origin/main` check in the suite is that `AUDITED_MAIN_SHA`
-is an ancestor. Other ancestry examples use that frozen tree or a
-temporary git repository.
+Live `origin/main` checks are that `AUDITED_MAIN_SHA` equals the resolved
+tip and is therefore also an ancestor. A hardcoded historical SHA that is
+only an ancestor must not pass. Other ancestry examples use that audited
+tree or a temporary git repository.
 A caller dict, list, or boolean passed to `execute` is not read, even
 when it says `ADMISSIBLE_*` and names an ancestor commit.
 
