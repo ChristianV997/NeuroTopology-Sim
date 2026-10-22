@@ -112,8 +112,23 @@ def apply_coordinate_jitter(
     if seed is not None and rng is not None:
         raise ValueError("provide only one of seed or rng")
     effective_seed = rng if rng is not None else seed
-    if isinstance(effective_seed, bool):
-        raise ValueError("seed/rng must not be a bool")
+    if effective_seed is not None:
+        if isinstance(effective_seed, bool):
+            raise ValueError("seed/rng must not be a bool")
+        if not isinstance(effective_seed, (numbers.Integral, np.random.Generator, np.random.SeedSequence)):
+            raise ValueError(f"seed/rng must be a non-negative integer, Generator, or SeedSequence, got {effective_seed!r}")
+        if isinstance(effective_seed, numbers.Integral) and int(effective_seed) < 0:
+            raise ValueError(f"seed/rng must be a non-negative integer, got {effective_seed}")
+
+    if renormalize_to_sphere:
+        for ch in range(n_channels):
+            with np.errstate(over="ignore", invalid="ignore"):
+                r_orig_check = float(np.linalg.norm(arr[ch]))
+            if not math.isfinite(r_orig_check) or r_orig_check <= 1e-12:
+                raise ValueError(
+                    f"renormalize_to_sphere requires strictly positive finite electrode radius from origin; "
+                    f"channel {ch} has radius {r_orig_check}"
+                )
 
     if jitter_std == 0.0:
         return JitteredCoordinateResult(
@@ -141,8 +156,9 @@ def apply_coordinate_jitter(
                 r_jit = float(np.linalg.norm(jittered[ch]))
             if not (math.isfinite(r_orig) and math.isfinite(r_jit)):
                 raise ValueError("coordinate values or jitter_std produce non-finite sphere radii")
-            if r_jit > 1e-12 and r_orig > 1e-12:
-                jittered[ch] = (jittered[ch] / r_jit) * r_orig
+            if r_jit <= 1e-12:
+                raise ValueError(f"jittered coordinate for channel {ch} collapsed to origin (radius {r_jit})")
+            jittered[ch] = (jittered[ch] / r_jit) * r_orig
 
     # Compute Euclidean displacement per channel
     with np.errstate(over="ignore", under="ignore", invalid="ignore"):

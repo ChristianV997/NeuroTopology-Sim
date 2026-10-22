@@ -177,3 +177,90 @@ def test_factory_never_infers_condition_labels_from_nuisance() -> None:
     assert res.config.metadata == {"note": "caller-supplied tag only"}
     assert not any(k in res.config.metadata for k in ("label", "class", "condition"))
     assert math.isfinite(res.diagnostics.realized_snr_db)
+def test_config_rejects_negative_seed_and_nonstring_scenario_id_or_nonmapping_metadata() -> None:
+    """Negative seeds, non-string scenario_id, and non-mapping metadata must fail closed."""
+    with pytest.raises(ValueError, match="seed"):
+        NuisanceScenarioConfig(seed=-1)
+    with pytest.raises(ValueError, match="scenario_id"):
+        NuisanceScenarioConfig(scenario_id=123)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="scenario_id"):
+        NuisanceScenarioConfig(scenario_id="   ")
+    with pytest.raises(ValueError, match="metadata"):
+        NuisanceScenarioConfig(metadata=["not", "a", "mapping"])  # type: ignore[arg-type]
+
+
+def test_config_rejects_non_finite_metadata_in_to_json() -> None:
+    """Metadata containing NaN/Inf must fail closed at config construction or JSON export."""
+    with pytest.raises(ValueError, match="metadata"):
+        NuisanceScenarioConfig(metadata={"bad": float("nan")})
+    with pytest.raises(ValueError, match="metadata"):
+        NuisanceScenarioConfig(metadata={"nested": [1.0, float("inf")]})
+
+
+def test_factory_rejects_invalid_coordinates_specifier() -> None:
+    """Unknown string or invalid coordinate types must raise ValueError instead of silently skipping jitter."""
+    cfg = NuisanceScenarioConfig(
+        coordinate_jitter_std=2.0,
+        sfreq_hz=100.0,
+        duration_s=1.0,
+        n_channels=4,
+    )
+    with pytest.raises(ValueError, match="coordinates"):
+        NuisanceScenarioFactory.generate(cfg, coordinates="spher")
+    with pytest.raises(ValueError, match="coordinates"):
+        NuisanceScenarioFactory.generate(cfg, coordinates="")
+
+
+def test_sphere_renormalization_rejects_zero_radius_origin_electrode() -> None:
+    """renormalize_to_sphere=True must fail closed if an input electrode is at the origin (r=0)."""
+    from sim.nuisance_scenarios.jitter import apply_coordinate_jitter
+
+    coords_with_origin = np.array([[0.0, 0.0, 0.0], [100.0, 0.0, 0.0]])
+    with pytest.raises(ValueError, match="radius|origin"):
+        apply_coordinate_jitter(
+            coords_with_origin,
+            jitter_std=2.0,
+            renormalize_to_sphere=True,
+            seed=42,
+        )
+
+
+def test_estimate_spectral_slope_validates_f_min_and_f_max_bounds() -> None:
+    """estimate_spectral_slope must reject non-finite, non-positive, Boolean, or inverted f_min/f_max."""
+    from sim.nuisance_scenarios.colored_noise import estimate_spectral_slope
+
+    sig = np.ones((2, 64))
+    for kwargs in (
+        {"f_min": True},
+        {"f_max": False},
+        {"f_min": float("nan")},
+        {"f_max": float("inf")},
+        {"f_min": -1.0},
+        {"f_max": 0.0},
+        {"f_min": 30.0, "f_max": 10.0},
+    ):
+        with pytest.raises(ValueError):
+            estimate_spectral_slope(sig, sfreq_hz=100.0, **kwargs)  # type: ignore[arg-type]
+
+
+def test_colored_noise_and_jitter_reject_invalid_seed_types() -> None:
+    """Negative integer seeds, float seeds, and string seeds must raise ValueError consistently."""
+    from sim.nuisance_scenarios.colored_noise import generate_colored_noise
+    from sim.nuisance_scenarios.jitter import apply_coordinate_jitter
+
+    for bad_seed in (-5, 1.5, "42"):
+        with pytest.raises(ValueError, match="seed"):
+            generate_colored_noise(n_samples=64, chi=1.0, seed=bad_seed)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="seed"):
+            apply_coordinate_jitter(np.ones((2, 3)), jitter_std=1.0, seed=bad_seed)  # type: ignore[arg-type]
+
+
+def test_huge_integer_seed_is_accepted_and_reproducible() -> None:
+    """Huge arbitrary-precision positive integer seeds (> 2**64) must work deterministically without OverflowError."""
+    huge_seed = (1 << 128) + 123456789
+    cfg1 = NuisanceScenarioConfig(seed=huge_seed, sfreq_hz=100.0, duration_s=0.5, n_channels=2)
+    cfg2 = NuisanceScenarioConfig(seed=huge_seed, sfreq_hz=100.0, duration_s=0.5, n_channels=2)
+    r1 = NuisanceScenarioFactory.generate(cfg1, coordinates="synthetic_sphere")
+    r2 = NuisanceScenarioFactory.generate(cfg2, coordinates="synthetic_sphere")
+    assert r1.scenario_id == r2.scenario_id
+    np.testing.assert_array_equal(r1.noisy_signal, r2.noisy_signal)

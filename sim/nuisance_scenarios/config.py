@@ -154,7 +154,21 @@ class NuisanceScenarioConfig:
         eff_sfreq = sampling_rate_hz if sampling_rate_hz is not None else (
             sfreq_hz if sfreq_hz is not None else 250.0
         )
-        eff_meta = metadata if metadata is not None else {}
+        if metadata is None:
+            eff_meta: dict[str, Any] = {}
+        elif isinstance(metadata, Mapping):
+            eff_meta = dict(metadata)
+            try:
+                json.dumps(eff_meta, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"metadata must be strict-JSON serializable with finite values: {exc}") from exc
+        else:
+            raise ValueError(f"metadata must be a mapping, got {metadata!r}")
+
+        if not isinstance(scenario_id, str):
+            raise ValueError(f"scenario_id must be a string, got {scenario_id!r}")
+        if scenario_id != "" and not scenario_id.strip():
+            raise ValueError("scenario_id must not be whitespace-only")
 
         if not isinstance(renormalize_to_sphere, bool):
             raise ValueError(
@@ -170,7 +184,10 @@ class NuisanceScenarioConfig:
         object.__setattr__(self, "sfreq_hz", _require_real_value("sfreq_hz", eff_sfreq))
         object.__setattr__(self, "duration_s", _require_real_value("duration_s", duration_s))
         object.__setattr__(self, "n_channels", _require_integer_value("n_channels", n_channels))
-        object.__setattr__(self, "seed", _require_integer_value("seed", seed))
+        seed_int = _require_integer_value("seed", seed)
+        if seed_int < 0:
+            raise ValueError(f"seed must be a non-negative integer, got {seed_int}")
+        object.__setattr__(self, "seed", seed_int)
         object.__setattr__(self, "metadata", eff_meta)
 
         # Validation

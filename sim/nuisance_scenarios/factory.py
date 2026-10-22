@@ -205,7 +205,11 @@ class NuisanceScenarioFactory:
         max_disp = 0.0
         rms_disp = 0.0
 
-        if isinstance(coordinates, str) and coordinates.lower() in ("sphere", "synthetic_sphere"):
+        if isinstance(coordinates, str):
+            if coordinates.strip().lower() not in ("sphere", "synthetic_sphere"):
+                raise ValueError(
+                    f"coordinates string specifier must be 'sphere' or 'synthetic_sphere', got {coordinates!r}"
+                )
             units = str(config.jitter_units).strip().lower()
             if units == "mm":
                 radius = 100.0

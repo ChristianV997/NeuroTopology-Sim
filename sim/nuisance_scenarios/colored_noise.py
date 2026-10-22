@@ -106,8 +106,13 @@ def generate_colored_noise(
     if seed is not None and rng is not None:
         raise ValueError("provide only one of seed or rng")
     effective_seed = rng if rng is not None else seed
-    if isinstance(effective_seed, bool):
-        raise ValueError("seed/rng must not be a bool")
+    if effective_seed is not None:
+        if isinstance(effective_seed, bool):
+            raise ValueError("seed/rng must not be a bool")
+        if not isinstance(effective_seed, (numbers.Integral, np.random.Generator, np.random.SeedSequence)):
+            raise ValueError(f"seed/rng must be a non-negative integer, Generator, or SeedSequence, got {effective_seed!r}")
+        if isinstance(effective_seed, numbers.Integral) and int(effective_seed) < 0:
+            raise ValueError(f"seed/rng must be a non-negative integer, got {effective_seed}")
     gen = np.random.default_rng(effective_seed)
 
     # One-sided discrete Fourier frequencies
@@ -215,9 +220,27 @@ def estimate_spectral_slope(
     psd_channels = (np.abs(fft_vals) ** 2) / (sfreq_hz * n_samples)
     psd_mean = np.mean(psd_channels, axis=0)
 
-    # Establish default frequency fit band
-    f_low = f_min if f_min is not None else max(1.0, float(freqs[1]) if len(freqs) > 1 else 1.0)
-    f_high = f_max if f_max is not None else float(0.4 * sfreq_hz)
+    # Validate and establish frequency fit band
+    if f_min is not None:
+        if isinstance(f_min, bool) or not isinstance(f_min, numbers.Real):
+            raise ValueError(f"f_min must be a positive finite real number, got {f_min!r}")
+        f_low = float(f_min)
+        if not math.isfinite(f_low) or f_low <= 0.0:
+            raise ValueError(f"f_min must be a positive finite float, got {f_low}")
+    else:
+        f_low = max(1.0, float(freqs[1]) if len(freqs) > 1 else 1.0)
+
+    if f_max is not None:
+        if isinstance(f_max, bool) or not isinstance(f_max, numbers.Real):
+            raise ValueError(f"f_max must be a positive finite real number, got {f_max!r}")
+        f_high = float(f_max)
+        if not math.isfinite(f_high) or f_high <= 0.0:
+            raise ValueError(f"f_max must be a positive finite float, got {f_high}")
+    else:
+        f_high = float(0.4 * sfreq_hz)
+
+    if f_min is not None and f_max is not None and f_low >= f_high:
+        raise ValueError(f"f_min ({f_low}) must be strictly less than f_max ({f_high})")
 
     # Mask positive frequencies within [f_low, f_high]
     valid_mask = (freqs >= f_low) & (freqs <= f_high) & (freqs > 0.0) & (psd_mean > 1e-20)
