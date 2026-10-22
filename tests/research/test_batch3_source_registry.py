@@ -85,7 +85,7 @@ EXPECTED_SOURCE_FACTS = {
         "4.2.0",
         "2026-09-02",
         "https://github.com/NeurodataWithoutBorders/pynwb/releases/tag/4.2.0",
-        "BSD-3-Clause",
+        "BSD-3-Clause-style + custom Enhancement clause",
         "https://github.com/NeurodataWithoutBorders/pynwb/blob/4.2.0/license.txt",
     ),
     "nilearn": (
@@ -222,6 +222,14 @@ def test_source_version_release_and_license_match_reviewed_upstream_artifact(sou
         source["license_source_url"],
     )
     assert actual == expected, f"{source_id} source, release, or license evidence drifted"
+
+
+def test_pynwb_license_descriptor_includes_custom_enhancement_clause():
+    with REGISTRY.open() as f:
+        data = yaml.safe_load(f)
+    pynwb = next(source for source in data["sources"] if source["id"] == "pynwb")
+    assert pynwb["license"] == "BSD-3-Clause-style + custom Enhancement clause"
+    assert "enhancement clause" in pynwb["license_scope"].lower()
 
 
 def test_literature_topics_are_unassessed_recommendations_not_findings():

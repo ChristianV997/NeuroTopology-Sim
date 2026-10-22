@@ -8,7 +8,7 @@
 
 ## Separation of Claims
 
-- **Verified release facts:** Each exact version is tied to its official upstream release/tag page; each license label is tied to the linked top-level license text at that tag.
+- **Verified release facts:** Each exact version is tied to its official upstream release/tag page; `release_date` is the UTC calendar date of that page's publication timestamp. Each license descriptor is tied to the linked top-level license text at that tag.
 - **Not assessed:** Authors, CVE/security status, maintenance/support, dependency inventory, data-access behavior, and legal compatibility. `not assessed` is not a negative finding.
 - **Compatibility recommendations:** `classification`, `adapter_boundary`, and `recommendation_notes` are project recommendations, not upstream facts, validated integrations, or endorsements.
 - **Scientific findings:** This registry review makes none. A software release or license record is not empirical or scientific evidence.
@@ -43,7 +43,7 @@ The topics below are catalog labels only. Each has status `not assessed`; `REFER
 
 ## License and Risk Summary
 
-- The SPDX-style label is transcribed from the linked upstream root license at the reviewed tag. It does not cover every dependency or grant project-wide reuse clearance.
+- License descriptors are bounded transcriptions of the linked upstream root license at the reviewed tag; they do not inventory every dependency or determine legal compatibility. PyNWB's tagged license contains three BSD-style conditions plus an additional custom Enhancement clause, recorded explicitly rather than reduced to plain BSD-3-Clause.
 - Security, known vulnerabilities/CVEs, maintenance/support, dependencies, and data-access behavior are **not assessed**; no “low risk,” “active,” or “no known CVE” conclusion is made.
 - `REJECT` for The Virtual Brain is a compatibility recommendation pending legal review, not legal advice or a finding about license compatibility.
 - Any future integration requires a separate engineering, security, provenance, and legal review. No upstream candidate source was copied or executed for this registry.
