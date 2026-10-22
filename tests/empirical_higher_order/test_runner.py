@@ -143,6 +143,33 @@ def test_missing_or_mismatched_artifact_checksum_is_not_forecasting_ready(tmp_pa
     assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
 
 
+def test_declared_checksum_for_missing_feature_is_reported_not_raised(tmp_path):
+    # Regression (#357): _validate_artifact_checksums hashed each declared artifact without guarding the read, so a
+    # declared but absent feature file escaped validate_manifest as FileNotFoundError. main reports INCONCLUSIVE.
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    (tmp_path / data["recordings"][0]["feature_paths"]["triadic_fc"]).unlink()
+    assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
+
+
+def test_declared_checksum_for_unreadable_feature_is_reported_not_raised(tmp_path):
+    # Regression (#357): a feature path that resolves to a directory raised IsADirectoryError from the checksum helper.
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    (tmp_path / "dir_as_feature").mkdir()
+    data["recordings"][0]["feature_paths"]["psd"] = "dir_as_feature"
+    path.write_text(json.dumps(data))
+    assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
+
+
+def test_declared_checksum_for_missing_target_is_not_forecasting_ready(tmp_path):
+    # Regression (#357): a declared but absent target raised FileNotFoundError. A missing target is never forecasting-ready.
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    (tmp_path / data["recordings"][0]["target_path"]).unlink()
+    assert validate_manifest(path).status is not ReadinessState.READY_FOR_FORECASTING
+
+
 def test_optional_spectra_is_classified(tmp_path):
     report = run_empirical(_manifest(tmp_path))
     assert report["model_ladder"][-1]["status"] == ReadinessState.MISSING_OPTIONAL_DEPENDENCY.value
