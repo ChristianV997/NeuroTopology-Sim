@@ -23,7 +23,13 @@ from .types import (
 )
 
 
-_TERMINAL_SOURCE_STATUSES = frozenset({"disputed", "retracted"})
+# Declared statuses that assert nothing verified. A source without an evidence signal cannot keep one of these.
+_UNVERIFIED_SOURCE_STATUSES = frozenset({
+    NodeStatus.ACTIVE.value,
+    NodeStatus.PROPOSED.value,
+    NodeStatus.PROVISIONAL.value,
+    NodeStatus.SUPPORTED.value,
+})
 
 
 def _classify_evidence(data: Mapping[str, Any]) -> str:
@@ -46,11 +52,10 @@ def _classify_evidence(data: Mapping[str, Any]) -> str:
 
 
 def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
-    """Preserve terminal lifecycle state, otherwise expose missing verification."""
-    declared = str(source.get("status", NodeStatus.ACTIVE.value))
-    if declared.strip().lower() in _TERMINAL_SOURCE_STATUSES | {NodeStatus.SUPERSEDED.value}:
-        return declared
-    if evidence_class == EvidenceClass.UNKNOWN.value:
+    """Expose missing verification without softening a declared negative or terminal status."""
+    raw = source.get("status")
+    declared = NodeStatus.ACTIVE.value if raw is None or not str(raw).strip() else str(raw)
+    if evidence_class == EvidenceClass.UNKNOWN.value and declared.strip().lower() in _UNVERIFIED_SOURCE_STATUSES:
         return NodeStatus.REVIEW_REQUIRED.value
     return declared
 
