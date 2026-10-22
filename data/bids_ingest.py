@@ -574,10 +574,26 @@ class BoundedWindowRequest:
     max_bytes: int = MAX_BOUNDED_WINDOW_BYTES
 
     def validate(self) -> None:
-        if not isinstance(self.start_s, (int, float)) or not isinstance(self.end_s, (int, float)):
+        if (
+            isinstance(self.start_s, (bool, np.bool_))
+            or isinstance(self.end_s, (bool, np.bool_))
+            or not isinstance(self.start_s, (int, float, np.number))
+            or not isinstance(self.end_s, (int, float, np.number))
+        ):
             raise BIDSAdapterError(BIDSAdapterErrorCode.INVALID_WINDOW, "window bounds must be numeric")
         if not _math.isfinite(float(self.start_s)) or not _math.isfinite(float(self.end_s)):
             raise BIDSAdapterError(BIDSAdapterErrorCode.INVALID_WINDOW, "window bounds must be finite")
+        if (
+            isinstance(self.max_duration_s, (bool, np.bool_))
+            or not isinstance(self.max_duration_s, (int, float, np.number))
+            or not _math.isfinite(float(self.max_duration_s))
+            or float(self.max_duration_s) <= 0
+            or float(self.max_duration_s) > MAX_BOUNDED_WINDOW_SECONDS
+        ):
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.INVALID_WINDOW,
+                f"max_duration_s must be finite and in (0, {MAX_BOUNDED_WINDOW_SECONDS}]",
+            )
         if float(self.start_s) < 0 or float(self.end_s) <= float(self.start_s):
             raise BIDSAdapterError(
                 BIDSAdapterErrorCode.INVALID_WINDOW,
@@ -589,7 +605,12 @@ class BoundedWindowRequest:
                 BIDSAdapterErrorCode.INVALID_WINDOW,
                 f"window duration {duration}s exceeds max_duration_s={self.max_duration_s}",
             )
-        if int(self.max_bytes) <= 0 or int(self.max_bytes) > MAX_BOUNDED_WINDOW_BYTES:
+        if (
+            isinstance(self.max_bytes, (bool, np.bool_))
+            or not isinstance(self.max_bytes, (int, np.integer))
+            or int(self.max_bytes) <= 0
+            or int(self.max_bytes) > MAX_BOUNDED_WINDOW_BYTES
+        ):
             raise BIDSAdapterError(
                 BIDSAdapterErrorCode.INVALID_WINDOW,
                 f"max_bytes must be in (0, {MAX_BOUNDED_WINDOW_BYTES}]",
@@ -639,7 +660,12 @@ class BIDSIndexedRecording:
 
 
 def _normalize_dataset_id(dataset_id: str) -> str:
-    value = (dataset_id or "").strip()
+    if not isinstance(dataset_id, str):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            f"invalid dataset_id: {dataset_id!r}",
+        )
+    value = dataset_id.strip()
     if not value or not _DATASET_ID_RE.fullmatch(value):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
@@ -651,7 +677,12 @@ def _normalize_dataset_id(dataset_id: str) -> str:
 def _normalize_checksum(value: Optional[str]) -> tuple[Optional[str], str]:
     if value is None or value == "":
         return None, "unknown"
-    text = str(value).strip().lower()
+    if not isinstance(value, str):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "expected_checksum must be a 64-char sha256 hex digest or unknown",
+        )
+    text = value.strip().lower()
     if text in {"unknown", "null", "none"}:
         return None, "unknown"
     if not _SHA256_HEX.fullmatch(text):
@@ -703,9 +734,15 @@ def _structural_bids_validation(root: Path) -> dict[str, _Any]:
         description: dict[str, _Any] = {}
     else:
         description = _read_json_object(description_path)
-        if "Name" not in description and "name" not in description:
+        name_val = description.get("Name") if "Name" in description else description.get("name")
+        if not isinstance(name_val, str) or not name_val.strip():
             issues.append("dataset_description.json missing Name")
-        if "BIDSVersion" not in description and "bids_version" not in description:
+        ver_val = (
+            description.get("BIDSVersion")
+            if "BIDSVersion" in description
+            else description.get("bids_version")
+        )
+        if not isinstance(ver_val, str) or not ver_val.strip():
             issues.append("dataset_description.json missing BIDSVersion")
 
     subjects = sorted(p.name for p in root.glob("sub-*") if p.is_dir() and len(p.name) > 4 and _ENTITY_VAL_RE.fullmatch(p.name[4:]))
@@ -900,24 +937,50 @@ def _condition_from_manifest(
     return str(label).strip(), "explicit_manifest"
 
 
+def _validate_relative_path_lexical(relative_path: str) -> str:
+    if not isinstance(relative_path, str):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "relative_path must be a string",
+        )
+    if "\x00" in relative_path:
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "relative_path cannot contain null bytes",
+        )
+    rel_str = relative_path.strip().replace("\\", "/")
+    if not rel_str or rel_str == ".":
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "relative_path cannot be empty or root",
+        )
+    if rel_str.startswith("/") or _re.match(r"^[A-Za-z]:", rel_str):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "relative_path must be a relative path inside the dataset root",
+        )
+    parts = [part for part in rel_str.split("/") if part and part != "."]
+    if not parts or any(part == ".." for part in parts):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.MALFORMED_REQUEST,
+            "relative_path must stay inside local_root",
+        )
+    return "/".join(parts)
+
+
 def _require_contained_relative_path(local_root: str, relative_path: str) -> None:
     """Reject a relative_path that resolves outside local_root, symlinks included.
 
     Backslashes count as separators on every platform. resolve() reads path
     metadata only; no recording is opened here.
     """
-    rel_str = str(relative_path).strip().replace("\\", "/")
-    if not rel_str or rel_str == ".":
-        raise BIDSAdapterError(
-            BIDSAdapterErrorCode.MALFORMED_REQUEST,
-            f"relative_path cannot be empty or root: {relative_path!r}",
-        )
+    rel_str = _validate_relative_path_lexical(relative_path)
     root = Path(local_root).resolve()
     target = (root / rel_str).resolve()
     if target == root or not target.is_relative_to(root):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
-            f"relative_path must stay inside local_root: {relative_path!r}",
+            "relative_path must stay inside local_root",
         )
 
 
@@ -949,8 +1012,11 @@ def enforce_bids_access_gate(request: BIDSAccessRequest) -> None:
             BIDSAdapterErrorCode.MISSING_LOCAL_OR_BOUNDED_WINDOW,
             "provide an explicit local_root or a bounded approved remote window",
         )
-    if request.local_root and request.relative_path:
-        _require_contained_relative_path(request.local_root, request.relative_path)
+    if request.relative_path is not None:
+        if request.local_root:
+            _require_contained_relative_path(request.local_root, request.relative_path)
+        else:
+            _validate_relative_path_lexical(request.relative_path)
     if request.window is not None:
         request.window.validate()
     if request.expected_checksum is not None:
@@ -969,7 +1035,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
     if not root.exists() or not root.is_dir():
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
-            f"local_root does not exist or is not a directory: {root}",
+            "local_root does not exist or is not a directory",
         )
 
     validation = _structural_bids_validation(root)
@@ -1021,6 +1087,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
         return manifest
 
     recordings_out: list[BIDSIndexedRecording] = []
+    matched_expected_checksum = False
     for row in sorted(rows, key=lambda item: item["relative_path"]):
         _require_contained_relative_path(str(root), row["relative_path"])
         if request.require_subject and not row.get("subject_id"):
@@ -1057,6 +1124,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
                 )
             if declared is not None:
                 checksum, checksum_state = declared, declared_state
+                matched_expected_checksum = True
         sfreq = row.get("sampling_frequency_hz")
         if isinstance(sfreq, (int, float)) and not _math.isfinite(float(sfreq)):
             sfreq = None
@@ -1078,6 +1146,14 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
                 provenance=str(row.get("provenance") or "local_bids_unvalidated"),
             )
         )
+
+    if request.expected_checksum and request.relative_path:
+        declared, _ = _normalize_checksum(request.expected_checksum)
+        if declared is not None and not matched_expected_checksum:
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.MALFORMED_REQUEST,
+                f"relative_path not found in indexed recordings: {request.relative_path}",
+            )
 
     payload = {
         "schema_version": BIDS_ADAPTER_SCHEMA,

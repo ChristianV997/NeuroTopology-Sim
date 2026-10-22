@@ -581,3 +581,110 @@ def test_find_eeg_files_and_events_containment(tmp_path: Path):
     events_found = onl.find_events(root)
     assert len(events_found) == 1
     assert events_found[0].resolve() == events_file.resolve()
+
+
+@pytest.mark.parametrize(
+    "bad_remote_rel_path",
+    [
+        "../outside/secret.edf",
+        "..\\outside\\secret.edf",
+        "sub-01/../../outside/secret.edf",
+        "/etc/passwd",
+        "\\Windows\\System32\\secret.edf",
+        "C:/outside/secret.edf",
+        "   ",
+        ".",
+        "./",
+    ],
+)
+def test_remote_window_plan_rejects_traversal_and_anchored_relative_paths(bad_remote_rel_path: str):
+    req = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        remote_uri="s3://openneuro.org/dsFIX001",
+        relative_path=bad_remote_rel_path,
+        window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+        allow_network=True,
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        plan_bounded_window_access(req)
+    assert exc.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+
+@pytest.mark.parametrize(
+    "bad_window",
+    [
+        BoundedWindowRequest(start_s=False, end_s=True),
+        BoundedWindowRequest(start_s=0.0, end_s=True),
+        BoundedWindowRequest(start_s=0.0, end_s=10000.0, max_duration_s=float("nan")),
+        BoundedWindowRequest(start_s=0.0, end_s=10000.0, max_duration_s=float("inf")),
+        BoundedWindowRequest(start_s=0.0, end_s=1000.0, max_duration_s=1000.0),
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_duration_s=0.0),
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_duration_s=-5.0),
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_duration_s=True),
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_bytes=True),
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_bytes=1024.5),  # type: ignore[arg-type]
+        BoundedWindowRequest(start_s=0.0, end_s=1.0, max_bytes="1024"),  # type: ignore[arg-type]
+    ],
+)
+def test_bounded_window_rejects_boolean_nonfinite_and_excessive_limits(bad_window: BoundedWindowRequest):
+    req = BIDSAccessRequest(
+        dataset_id="dsFIX001",
+        local_root=str(VALID),
+        relative_path="sub-01/eeg/sub-01_task-rest_run-01_eeg.edf",
+        window=bad_window,
+    )
+    with pytest.raises(BIDSAdapterError) as exc:
+        plan_bounded_window_access(req)
+    assert exc.value.code == BIDSAdapterErrorCode.INVALID_WINDOW.value
+
+
+@pytest.mark.parametrize(
+    "bad_desc",
+    [
+        {"Name": "", "BIDSVersion": "1.8.0"},
+        {"Name": "   ", "BIDSVersion": "1.8.0"},
+        {"Name": None, "BIDSVersion": "1.8.0"},
+        {"Name": 123, "BIDSVersion": "1.8.0"},
+        {"Name": "ValidName", "BIDSVersion": ""},
+        {"Name": "ValidName", "BIDSVersion": "   "},
+        {"Name": "ValidName", "BIDSVersion": None},
+        {"Name": "ValidName", "BIDSVersion": 180},
+    ],
+)
+def test_structural_validation_rejects_empty_or_nonstring_description_fields(
+    tmp_path: Path, bad_desc: dict
+):
+    ds = tmp_path / "ds_bad_desc"
+    ds.mkdir()
+    (ds / "dataset_description.json").write_text(json.dumps(bad_desc), encoding="utf-8")
+    (ds / "sub-01" / "eeg").mkdir(parents=True)
+    res = index_bids_metadata(BIDSAccessRequest(dataset_id="dsDESC01", local_root=str(ds)))
+    assert res["state"] == "BLOCKED_INVALID_BIDS"
+    assert res["bids_validation"]["status"] == "invalid"
+
+
+def test_nonstring_dataset_id_and_unmatched_expected_checksum_fail_closed(tmp_path: Path):
+    with pytest.raises(BIDSAdapterError) as exc_id:
+        index_bids_metadata(
+            BIDSAccessRequest(dataset_id=12345, local_root=str(VALID))  # type: ignore[arg-type]
+        )
+    assert exc_id.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+    with pytest.raises(BIDSAdapterError) as exc_ck:
+        index_bids_metadata(
+            BIDSAccessRequest(
+                dataset_id="dsFIX001",
+                local_root=str(VALID),
+                relative_path="sub-01/eeg/nonexistent_recording_eeg.edf",
+                expected_checksum="a" * 64,
+            )
+        )
+    assert exc_ck.value.code == BIDSAdapterErrorCode.MALFORMED_REQUEST.value
+
+    missing_root = tmp_path / "private_host_parent_dir" / "missing_bids_root"
+    with pytest.raises(BIDSAdapterError) as exc_root:
+        index_bids_metadata(
+            BIDSAccessRequest(dataset_id="dsPRIV02", local_root=str(missing_root))
+        )
+    assert exc_root.value.code == BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE.value
+    assert "private_host_parent_dir" not in str(exc_root.value)

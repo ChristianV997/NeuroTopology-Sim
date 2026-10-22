@@ -77,11 +77,15 @@ plan = plan_bounded_window_access(
 - condition labels with non-boolean `confirmed` values (e.g. string `"true"` or int `1`)
 - bare string labels (flat `{relative_path: label}` or a `recordings` string
   entry) without `confirmed=true`
-- `relative_path` that resolves outside `local_root` (parent traversal, absolute
-  path, or a symlink that leaves the root)
+- `relative_path` that resolves outside `local_root` or contains traversal/anchored
+  segments in local or remote window plans (parent traversal `..`, absolute path,
+  drive prefix, or a symlink that leaves the root)
 - `relative_path` that is empty, whitespace, or resolves to `local_root` itself (`"."`)
-- `expected_checksum` mismatch against computed file digest
+- boolean, non-finite, non-positive, or out-of-range `BoundedWindowRequest` bounds
+  (`start_s`, `end_s`, `max_duration_s > 600.0`, or non-integer `max_bytes`)
+- `expected_checksum` mismatch against computed file digest or unmatched `relative_path`
 - malformed BIDS entities (empty entity values like `sub-`, `run-`, or non-alphanumeric tokens)
+  or empty/non-string `Name`/`BIDSVersion` in `dataset_description.json`
 
 ## Scientific limitation
 
