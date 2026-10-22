@@ -1,6 +1,6 @@
 # Batch 3 — Cross-Dataset Replication Feasibility
 
-Access date: 2026-10-16. Verification audit date: 2026-10-21. Package maintainers: Grok Chat B, Antigravity Agent C.
+Access date: 2026-10-16. Verification audit date: 2026-10-22. Package maintainers: Grok Chat B, Antigravity Agent C.
 Status: Research feasibility audit only. Not empirical evidence.
 Project Posture: **HOLD / SYNTHETIC_ONLY**.
 No participant data were downloaded, opened, preprocessed, or analyzed. No signal files were touched.
@@ -35,7 +35,24 @@ Can EEG topological and spectral descriptors previously explored on propofol-sed
 
 ---
 
-## 3. Ranked Candidates
+## 3. Statement Provenance: Author Assertion vs. Independently Sourced
+
+To preserve epistemic integrity, every candidate metadata item is audited and classified into its verifiable source category:
+
+| Candidate Accession | Catalog N Provenance | License Provenance | DOI Provenance | Hardware / Montage Provenance | Empirical Status |
+|:---|:---|:---|:---|:---|:---|
+| `ds005620` | Author assertion (EEGDash / catalog text: 21 subjects) | Unresolved conflict: CC0 (`dataset_description.json`) vs CC-BY-4.0 (`README`) | OpenNeuro DOI resolver record (`10.18112/openneuro.ds005620.v1.0.0`) | Independently sourced from sidecar JSON (`sub-1010`, 5000 Hz, 65 ch) | Unverified (feasibility metadata only) |
+| `ds003969` | Author assertion (catalog states 98; source text reports ~100) | Author declaration: CC0 Public Domain in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds003969.v1.0.0`) | Independently sourced from NEMAR & publisher records (1024 Hz, BioSemi ActiveTwo 64 ch) | Unverified (feasibility metadata only) |
+| `ds008836` | Author assertion (catalog summary: 39 practitioners, 2 sessions) | Verified CC0 on OpenNeuro catalog page (audit date: 2026-10-21/22) | OpenNeuro DOI resolver record (`10.18112/openneuro.ds008836.v1.0.0`) | Author assertion in dataset description (64 ch EEG + ECG/EDA/respiration/EMG) | Unverified (feasibility metadata only) |
+| `ds001787` | Author assertion (catalog and README state 24 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds001787.v1.1.1`) | Author assertion in BIDS README (BioSemi 80 ch, 2048 Hz -> 256 Hz) | Unverified (feasibility metadata only) |
+| `ds004572` | Author assertion (catalog states 52 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds004572.v1.3.1`) | Independently sourced from published study ($N=43$ analyzed) and BrainVision sidecars | Unverified (feasibility metadata only) |
+| `ds004541` | Author assertion (catalog states 8 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds004541.v1.0.0`) | Independently sourced from EEGDash catalog (variable 30–59 channels) | Unverified (feasibility metadata only) |
+| `ds005555` | Author assertion conflict (catalog states 128 subjects; README states 100) | Verified CC0 on OpenNeuro catalog page | OpenNeuro DOI resolver record (`10.18112/openneuro.ds005555.v1.0.0`) | Author assertion in BIDS dataset description (Micromed PSG + Bitbrain wearable) | Unverified (feasibility metadata only) |
+| `ds003171` | Author assertion (catalog states 17 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds003171.v1.0.0`) | Author assertion in BIDS README (fMRI modality, excluded) | Unverified (feasibility metadata only) |
+
+---
+
+## 4. Ranked Candidates
 
 ### 1. ds003969 — Meditation vs Thinking Task
 - **Title**: Meditation vs thinking task
@@ -54,7 +71,7 @@ Can EEG topological and spectral descriptors previously explored on propofol-sed
 - **Role**: Autonomic covariate candidate (Rank 2)
 - **Modality**: High-density EEG (64 channels) + concurrent ECG, respiration, EMG, and electrodermal activity (EDA)
 - **Primary Source**: OpenNeuro `v1.0.1` / `v1.0.2` (https://openneuro.org/datasets/ds008836), DOI `10.18112/openneuro.ds008836.v1.0.0`
-- **License**: CC0 Public Domain Dedication (verified on OpenNeuro catalog page 2026-10-21)
+- **License**: CC0 Public Domain Dedication (verified on OpenNeuro catalog page 2026-10-21/22)
 - **Catalog Enrollment**: 39 participants, 2 sessions.
 - **Analyzed Cohort Status**: Catalog states 39 experienced meditators. No analysis performed; usable N after artifact rejection is unverified.
 - **Acquisition Protocol**: Silent meditation with repeated real-time self-reports of meditative depth across distinct blocks (rest, pre-up, SAPO, active oddball, SILENT, cool-down).
@@ -87,7 +104,7 @@ Can EEG topological and spectral descriptors previously explored on propofol-sed
 
 ---
 
-## 4. Primary Reference Cohort (Not a Replication)
+## 5. Primary Reference Cohort (Not a Replication)
 
 ### ds005620 — Propofol Repeated Awakening Study
 - **Accession**: `ds005620`
@@ -102,7 +119,7 @@ Can EEG topological and spectral descriptors previously explored on propofol-sed
 
 ---
 
-## 5. Deferred or Excluded Datasets
+## 6. Deferred or Excluded Datasets
 
 - **ds004541** — Multimodal EEG-fNIRS during surgical general anesthesia. OpenNeuro states 8 participants with variable channel counts (59, 40, 30, 38). **Deferred**: Sample size ($N=8$) is statistically inadequate for held-out validation; channel heterogeneity and surgical confounding.
 - **ds005555** — Bitbrain Open Access Sleep Dataset (BOAS). Catalog lists 128 participants, but README documents 128 nights from 100 participants. License verified as CC0. **Deferred**: Sleep architecture represents a distinct physiological construct from sedation or meditation; wearable headband montage is non-comparable without locked channel mapping.
@@ -111,7 +128,7 @@ Can EEG topological and spectral descriptors previously explored on propofol-sed
 
 ---
 
-## 6. What Would Prevent a Valid Replication
+## 7. What Would Prevent a Valid Replication
 
 A replication attempt is invalid and blocked if:
 1. Missing, ambiguous, or conflicting participant/session counts are treated as resolved without primary evidence.
@@ -126,13 +143,13 @@ A replication attempt is invalid and blocked if:
 
 ---
 
-## 7. Machine-Readable Matrix
+## 8. Machine-Readable Matrix
 
 The machine-readable dataset matrix is maintained at:
 [`reports/batch3/grok_chat_b/dataset_candidates.json`](file:///C:/Users/HP/OneDrive/Documentos/GitHub/.repo-dev-worktrees/batch2-replication-feasibility-pr394/reports/batch3/grok_chat_b/dataset_candidates.json)
 
 ---
 
-## 8. Epistemic Statement
+## 9. Epistemic Statement
 
 No participant data were downloaded or analyzed. All evaluations remain conditional on future access authorization, data-use agreements, license verification, and metadata checks under the repository bounded-access policy.

@@ -2,7 +2,7 @@
   "schema": "NeuroTopology.Batch3ReplicationDatasetCandidates.v1",
   "package_id": "batch3_grok_chat_b_replication_dataset_feasibility",
   "access_date": "2026-10-16",
-  "last_verified_date": "2026-10-21",
+  "last_verified_date": "2026-10-22",
   "verified_by": "Antigravity Agent C",
   "status": "FEASIBILITY_ONLY",
   "scientific_pass": false,
@@ -59,7 +59,14 @@
       "exclusions_or_missingness": "participants.tsv has excluded and bad_after_preprocessing columns. Filtered counts remain unverified.",
       "compatibility": "BIDS EEG. Primary reference cohort; cannot serve as an independent replication of itself.",
       "blockers": ["same_cohort_as_primary_reference", "included_n_after_exclusion_not_resolved", "license_conflict_cc0_vs_cc_by_4_0"],
-      "recommendation": "reference_only"
+      "recommendation": "reference_only",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_eegdash_and_openneuro_catalog",
+        "license_provenance": "unresolved_conflict_between_description_cc0_and_readme_cc_by_4_0",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "independently_sourced_from_sidecar_metadata",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": 1,
@@ -89,7 +96,14 @@
       "exclusions_or_missingness": "Participant subgroup count conflict between catalog headline (98) and source documentation (~100); external artifact channels require adapter mapping.",
       "compatibility": "BIDS EEG with task labels. Independent hardware (BioSemi vs Brain Products in ds005620) and non-pharmacological altered state.",
       "blockers": ["participant_count_subgroup_discrepancy", "no_autonomic_monitoring_channels", "requires_biosemi_bids_adapter"],
-      "recommendation": "rank_1_conditional"
+      "recommendation": "rank_1_conditional",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog_with_subgroup_discrepancy",
+        "license_provenance": "author_declaration_cc0_in_openneuro_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "independently_sourced_from_nemar_and_publisher_records",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": 2,
@@ -119,7 +133,14 @@
       "exclusions_or_missingness": "Companion peer-reviewed journal article in preparation / not yet indexed.",
       "compatibility": "BIDS EEG with cardiac and respiratory covariates. Enables partialling of autonomic confounders.",
       "blockers": ["companion_paper_unindexed", "no_prior_locked_validation_split"],
-      "recommendation": "rank_2_after_license_check"
+      "recommendation": "rank_2_after_license_check",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog_summary",
+        "license_provenance": "verified_cc0_in_openneuro_catalog_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "author_assertion_in_openneuro_dataset_description",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": 3,
@@ -149,7 +170,14 @@
       "exclusions_or_missingness": "Sample size (N=24) below preferred threshold for held-out split.",
       "compatibility": "BIDS EEG, Biosemi, thought-probe labels.",
       "blockers": ["n_24_below_preferred_held_out_size"],
-      "recommendation": "rank_3_small_n"
+      "recommendation": "rank_3_small_n",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog_and_readme",
+        "license_provenance": "author_declaration_cc0_in_openneuro_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "author_assertion_in_bids_readme",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": 4,
@@ -179,7 +207,14 @@
       "exclusions_or_missingness": "Hypnotizability score missingness (17% missing in published cohort analysis).",
       "compatibility": "BIDS EEG with balanced placebo conditions. Evaluates construct generalization across non-pharmacological induction, not propofol replication.",
       "blockers": ["construct_mismatch_hypnosis_vs_propofol", "incomplete_hypnotizability_scores", "version_tag_ambiguity_v1_3_1_vs_v1_3_2"],
-      "recommendation": "rank_4_construct_generalization"
+      "recommendation": "rank_4_construct_generalization",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
+        "license_provenance": "author_declaration_cc0_in_openneuro_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "independently_sourced_from_published_paper_and_sidecars",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": null,
@@ -209,7 +244,14 @@
       "exclusions_or_missingness": "N=8. Variable channel counts across subjects.",
       "compatibility": "Too small and heterogeneous for primary replication.",
       "blockers": ["n_8_insufficient_for_statistical_holdout", "variable_channel_count", "clinical_surgery_population"],
-      "recommendation": "defer"
+      "recommendation": "defer",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
+        "license_provenance": "author_declaration_cc0_in_openneuro_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "independently_sourced_from_eegdash_catalog_metadata",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": null,
@@ -239,7 +281,14 @@
       "exclusions_or_missingness": "Participant vs night count discrepancy; BIDS validation error flagged on catalog snippet.",
       "compatibility": "Sleep is a distinct neurophysiological construct. Wearable montage is not comparable to high-density propofol EEG without locked channel map.",
       "blockers": ["sleep_not_the_replication_construct", "participant_vs_night_count_conflict", "bids_invalid_on_catalog"],
-      "recommendation": "defer"
+      "recommendation": "defer",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_conflict_catalog_128_vs_readme_100_subjects",
+        "license_provenance": "verified_cc0_in_openneuro_catalog_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "author_assertion_in_bids_dataset_description",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     },
     {
       "rank": null,
@@ -269,7 +318,14 @@
       "exclusions_or_missingness": "Not EEG/MEG modality.",
       "compatibility": "Excluded from EEG replication scope.",
       "blockers": ["not_eeg_or_meg"],
-      "recommendation": "exclude"
+      "recommendation": "exclude",
+      "statement_provenance": {
+        "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
+        "license_provenance": "author_declaration_cc0_in_openneuro_metadata",
+        "doi_provenance": "openneuro_doi_resolver_record",
+        "hardware_and_sampling_provenance": "author_assertion_in_bids_readme_fmri_modality",
+        "empirical_status": "unverified_feasibility_metadata_only"
+      }
     }
   ],
   "not_eeg_datasets": [

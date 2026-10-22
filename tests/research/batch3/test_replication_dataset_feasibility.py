@@ -119,6 +119,7 @@ def validate_dataset_candidate_record(candidate: dict[str, Any]) -> None:
         "compatibility",
         "blockers",
         "recommendation",
+        "statement_provenance",
     ]
     for key in required_keys:
         if key not in candidate:
@@ -194,6 +195,23 @@ def validate_dataset_candidate_record(candidate: dict[str, Any]) -> None:
         if bad in rec_lower:
             raise ValueError(f"Overclaiming recommendation '{rec}' contains disallowed '{bad}'")
 
+    # Statement provenance: distinguish author assertions from independent sources
+    prov = candidate["statement_provenance"]
+    if not isinstance(prov, dict):
+        raise ValueError(f"statement_provenance must be a dict for {acc}")
+    required_prov_keys = [
+        "catalog_n_provenance",
+        "license_provenance",
+        "doi_provenance",
+        "hardware_and_sampling_provenance",
+        "empirical_status",
+    ]
+    for pkey in required_prov_keys:
+        if pkey not in prov or not isinstance(prov[pkey], str) or not prov[pkey].strip():
+            raise ValueError(f"Missing or invalid provenance key '{pkey}' in statement_provenance for {acc}")
+    if "empirical_evidence" in prov["empirical_status"].lower():
+        raise ValueError(f"Disallowed empirical claim in provenance for {acc}")
+
 
 def validate_feasibility_document(doc: dict[str, Any]) -> None:
     """Validates top-level document structure, governance flags, and candidates."""
@@ -261,7 +279,7 @@ def test_finite_json_and_deterministic() -> None:
     dumped = json.dumps(parsed, sort_keys=True, allow_nan=False)
     assert dumped == json.dumps(json.loads(raw), sort_keys=True, allow_nan=False)
     assert parsed["access_date"] == "2026-10-16"
-    assert parsed["last_verified_date"] == "2026-10-21"
+    assert parsed["last_verified_date"] == "2026-10-22"
 
 
 def test_ds005620_license_conflict_acknowledged_and_preserved() -> None:
@@ -335,6 +353,22 @@ def test_non_eeg_entries_documented() -> None:
     ds003171 = next(item for item in doc["candidates"] if item["accession"] == "ds003171")
     assert ds003171["recommendation"] == "exclude"
     assert "not_eeg_or_meg" in ds003171["blockers"]
+
+
+def test_statement_provenance_distinguishes_author_assertions_from_independent_sources() -> None:
+    doc = load_candidate_matrix()
+    for item in doc["candidates"]:
+        prov = item["statement_provenance"]
+        assert "catalog_n_provenance" in prov
+        assert "license_provenance" in prov
+        assert "doi_provenance" in prov
+        assert "hardware_and_sampling_provenance" in prov
+        assert "empirical_status" in prov
+        # No candidate may claim empirical status
+        assert prov["empirical_status"] in {
+            "unverified_feasibility_metadata_only",
+            "unverified_no_analysis_performed",
+        }
 
 
 # ── Adversarial & Negative Schema Tests ───────────────────────────────────────
@@ -437,3 +471,17 @@ def test_adversarial_rejects_document_overclaim() -> None:
     doc_copy["empirical_claim_allowed"] = True
     with pytest.raises(ValueError, match="empirical_claim_allowed must be False"):
         validate_feasibility_document(doc_copy)
+
+
+def test_adversarial_rejects_missing_provenance() -> None:
+    cand = _get_valid_sample_candidate()
+    del cand["statement_provenance"]
+    with pytest.raises(ValueError, match="missing required field 'statement_provenance'"):
+        validate_dataset_candidate_record(cand)
+
+
+def test_adversarial_rejects_empirical_status_claim() -> None:
+    cand = _get_valid_sample_candidate()
+    cand["statement_provenance"]["empirical_status"] = "validated_empirical_evidence"
+    with pytest.raises(ValueError, match="Disallowed empirical claim in provenance"):
+        validate_dataset_candidate_record(cand)
