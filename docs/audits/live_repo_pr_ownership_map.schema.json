@@ -1,0 +1,894 @@
+{
+  "$defs": {
+    "candidate_path_owner": {
+      "additionalProperties": false,
+      "properties": {
+        "head_branch": {"minLength": 1, "type": "string"},
+        "head_sha": {"$ref": "#/$defs/sha"},
+        "pr_number": {"minimum": 1, "type": "integer"},
+        "pr_state": {"enum": ["open", "merged"]},
+        "writer": {
+          "additionalProperties": false,
+          "properties": {
+            "identity_state": {"enum": ["known", "unknown"]},
+            "login": {"minLength": 1, "type": ["string", "null"]}
+          },
+          "required": ["login", "identity_state"],
+          "type": "object"
+        }
+      },
+      "required": ["pr_number", "pr_state", "head_branch", "head_sha", "writer"],
+      "type": "object"
+    },
+    "pull_request": {
+      "additionalProperties": true,
+      "properties": {
+        "base": {
+          "additionalProperties": true,
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "live_main_sha": {
+              "$ref": "#/$defs/sha"
+            },
+            "sha": {
+              "$ref": "#/$defs/sha"
+            },
+            "stale_against_live_main": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "branch",
+            "sha",
+            "stale_against_live_main",
+            "live_main_sha"
+          ],
+          "type": "object"
+        },
+        "changed_path_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "changed_paths": {
+          "items": {
+            "$ref": "#/$defs/repo_path"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ci": {
+          "additionalProperties": true,
+          "properties": {
+            "experimental_suite_discovery": {
+              "type": "string"
+            },
+            "observed_state": {
+              "enum": [
+                "pass",
+                "fail",
+                "pending",
+                "unknown"
+              ]
+            },
+            "required_check_reason": {
+              "type": "string"
+            },
+            "required_check_state": {
+              "enum": [
+                "pass",
+                "fail",
+                "pending",
+                "unknown",
+                "not_applicable"
+              ]
+            },
+            "required_checks_workflow_conclusion": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "retrieved_at_utc": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "workflow_runs": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "observed_state",
+            "required_check_state",
+            "required_check_reason",
+            "required_checks_workflow_conclusion",
+            "experimental_suite_discovery",
+            "workflow_runs",
+            "retrieved_at_utc"
+          ],
+          "type": "object"
+        },
+        "draft": {
+          "type": "boolean"
+        },
+        "head": {
+          "additionalProperties": true,
+          "properties": {
+            "branch": {
+              "type": "string"
+            },
+            "sha": {
+              "$ref": "#/$defs/sha"
+            }
+          },
+          "required": [
+            "branch",
+            "sha"
+          ],
+          "type": "object"
+        },
+        "mergeability": {
+          "additionalProperties": true,
+          "properties": {
+            "conflict_detail": {
+              "type": "string"
+            },
+            "conflicting_paths": {
+              "items": {
+                "$ref": "#/$defs/repo_path"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "github_mergeable": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "github_mergeable_state": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "github_mergeable",
+            "github_mergeable_state",
+            "conflicting_paths",
+            "conflict_detail"
+          ],
+          "type": "object"
+        },
+        "number": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "readiness": {
+          "additionalProperties": true,
+          "properties": {
+            "dependencies": {
+              "type": "array"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "state": {
+              "enum": [
+                "ready",
+                "draft",
+                "blocked",
+                "conflicted",
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "reasons",
+            "dependencies"
+          ],
+          "type": "object"
+        },
+        "review": {
+          "additionalProperties": true,
+          "properties": {
+            "approval_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "changes_requested_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "human_submission_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "retrieved_at_utc": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "source_url": {
+              "format": "uri",
+              "type": "string"
+            },
+            "state": {
+              "enum": [
+                "approved",
+                "human_comment_only",
+                "automated_comment_only",
+                "no_reviews",
+                "unknown"
+              ]
+            },
+            "submission_count": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "unresolved_inline_threads": {
+              "enum": [
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "submission_count",
+            "approval_count",
+            "changes_requested_count",
+            "human_submission_count",
+            "unresolved_inline_threads",
+            "source_url",
+            "retrieved_at_utc"
+          ],
+          "type": "object"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "title": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "updated_at_utc": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "writer": {
+          "additionalProperties": false,
+          "properties": {
+            "identity_state": {"enum": ["known", "unknown"]},
+            "login": {"minLength": 1, "type": ["string", "null"]}
+          },
+          "required": ["login", "identity_state"],
+          "type": "object"
+        },
+        "url": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "title",
+        "url",
+        "state",
+        "draft",
+        "updated_at_utc",
+        "base",
+        "head",
+        "changed_paths",
+        "changed_path_count",
+        "writer",
+        "mergeability",
+        "review",
+        "ci",
+        "readiness"
+      ],
+      "type": "object"
+    },
+    "repo_path": {
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:[\\\\/]"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(?:/|$)"
+          }
+        ]
+      },
+      "type": "string"
+    },
+    "sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    }
+  },
+  "$id": "https://github.com/ChristianV997/NeuroTopology-Sim/blob/main/docs/audits/live_repo_pr_ownership_map.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "candidate_pair_ownership": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {"minLength": 1, "type": "string"},
+          "implementation_path": {"$ref": "#/$defs/repo_path"},
+          "implementation_owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"},
+          "test_path": {"$ref": "#/$defs/repo_path"},
+          "test_owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"}
+        },
+        "required": ["component", "implementation_path", "implementation_owners", "test_path", "test_owners"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "assessment_boundaries": {
+      "additionalProperties": false,
+      "properties": {
+        "facts": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"},
+        "inferences": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"},
+        "unknowns": {"items": {"minLength": 1, "type": "string"}, "minItems": 1, "type": "array"}
+      },
+      "required": ["facts", "inferences", "unknowns"],
+      "type": "object"
+    },
+    "captured_at_utc": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "ci_failure_groups": {
+      "type": "array"
+    },
+    "evidence_retrieval_window_utc": {
+      "additionalProperties": true,
+      "properties": {
+        "live_metadata_refreshed": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "retrieval_timestamp_utc": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "retrieval_timestamp_utc",
+        "live_metadata_refreshed"
+      ],
+      "type": "object"
+    },
+    "evidence_sources": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url",
+          "claim"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "integration_dependencies": {
+      "type": "array"
+    },
+    "integration_lanes": {
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "main_ci": {
+      "additionalProperties": true,
+      "properties": {
+        "awareness_failure": {
+          "type": "object"
+        },
+        "check_runs": {
+          "type": "array"
+        },
+        "experimental_test_coverage": {
+          "type": "string"
+        },
+        "round6_candidate_discovery": {
+          "additionalProperties": true,
+          "properties": {
+            "candidate_pair_count": {"minimum": 0, "type": "integer"},
+            "component_count": {"minimum": 0, "type": "integer"},
+            "components": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_pairs": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "implementation": {"$ref": "#/$defs/repo_path"},
+                        "test": {"$ref": "#/$defs/repo_path"}
+                      },
+                      "required": ["implementation", "test"],
+                      "type": "object"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "name": {"minLength": 1, "type": "string"},
+                  "support_files": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "owners": {"items": {"$ref": "#/$defs/candidate_path_owner"}, "type": "array"},
+                        "path": {"$ref": "#/$defs/repo_path"},
+                        "test_files": {"items": {"$ref": "#/$defs/repo_path"}, "minItems": 1, "type": "array"}
+                      },
+                      "required": ["path", "test_files", "owners"],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "test_files": {
+                    "items": {"$ref": "#/$defs/repo_path"},
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "triggers": {
+                    "items": {"minLength": 1, "type": "string"},
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": ["name", "triggers", "candidate_pairs", "support_files", "test_files"],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "coverage_audit": {
+              "additionalProperties": false,
+              "properties": {
+                "checked_at_utc": {"format": "date-time", "type": "string"},
+                "open_pr_count": {"minimum": 0, "type": "integer"},
+                "relevant_pr_numbers": {
+                  "items": {"minimum": 1, "type": "integer"},
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "unmapped_candidate_paths": {
+                  "items": {"$ref": "#/$defs/repo_path"},
+                  "type": "array",
+                  "uniqueItems": true
+                }
+              },
+              "required": ["checked_at_utc", "open_pr_count", "relevant_pr_numbers", "unmapped_candidate_paths"],
+              "type": "object"
+            },
+            "execution_contract": {
+              "additionalProperties": false,
+              "properties": {
+                "empty_collection": {"const": "fail"},
+                "missing_implementation_or_test": {"const": "blocked"},
+                "no_candidate_change": {"const": "NOT_APPLICABLE_not_a_pass"},
+                "outer_timeout_seconds": {"minimum": 1, "type": "integer"},
+                "skipped_tests": {"const": "fail"},
+                "unmapped_changed_candidate_path": {"const": "blocked"},
+                "per_file_singleton_process": {"type": "boolean"}
+              },
+              "required": ["empty_collection", "missing_implementation_or_test", "no_candidate_change", "outer_timeout_seconds", "skipped_tests", "unmapped_changed_candidate_path", "per_file_singleton_process"],
+              "type": "object"
+            },
+            "helper_path": {"$ref": "#/$defs/repo_path"},
+            "hosted_candidate_execution": {"enum": ["not_observed", "observed", "unknown"]},
+            "hosted_candidate_runs": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidate_pr_numbers": {"items": {"minimum": 1, "type": "integer"}, "minItems": 1, "type": "array", "uniqueItems": true},
+                  "candidate_test_paths": {"items": {"$ref": "#/$defs/repo_path"}, "minItems": 1, "type": "array", "uniqueItems": true},
+                  "candidate_tests_executed": {"type": "boolean"},
+                  "conclusion": {"enum": ["success", "failure", "cancelled", "timed_out", "action_required", "unknown"]},
+                  "component_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_APPLICABLE", "UNKNOWN"]},
+                  "artifact_url": {"format": "uri", "type": "string"},
+                  "head_sha": {"$ref": "#/$defs/sha"},
+                  "job_name": {"minLength": 1, "type": "string"},
+                  "log_url": {"format": "uri", "type": "string"},
+                  "run_id": {"minimum": 1, "type": "integer"},
+                  "isolated_batches_skipped": {"minimum": 0, "type": "integer"},
+                  "isolated_batches_total": {"minimum": 0, "type": "integer"},
+                  "isolated_batches_failed": {"minimum": 0, "type": "integer"},
+                  "test_case_count": {"minimum": 0, "type": "integer"},
+                  "tested_checkout_sha": {"$ref": "#/$defs/sha"},
+                  "workflow_run_url": {"format": "uri", "type": "string"}
+                },
+                "required": ["candidate_pr_numbers", "candidate_test_paths", "candidate_tests_executed", "head_sha", "tested_checkout_sha", "run_id", "job_name", "conclusion", "component_status", "test_case_count", "isolated_batches_total", "isolated_batches_failed", "isolated_batches_skipped", "workflow_run_url", "log_url", "artifact_url"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "local_candidate_probe": {
+              "additionalProperties": false,
+              "properties": {
+                "candidate_probes": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "candidate_refs": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "head_sha": {"$ref": "#/$defs/sha"},
+                            "pr_number": {"minimum": 1, "type": "integer"}
+                          },
+                          "required": ["pr_number", "head_sha"],
+                          "type": "object"
+                        },
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "combined_worktree_commit": {"$ref": "#/$defs/sha"},
+                      "collected_test_count": {"minimum": 0, "type": "integer"},
+                      "candidate_tests_executed": {"type": "boolean"},
+                      "isolated_file_attempts": {"minimum": 0, "type": "integer"},
+                      "lane": {"minLength": 1, "type": "string"},
+                      "note": {"minLength": 1, "type": "string"},
+                      "result_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "MERGE_CONFLICT"]},
+                      "runner_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "TIMEOUT"]},
+                      "selected_components": {"items": {"minLength": 1, "type": "string"}, "type": "array"}
+                    },
+                    "required": ["lane", "candidate_refs", "combined_worktree_commit", "selected_components", "isolated_file_attempts", "collected_test_count", "runner_status", "result_status", "candidate_tests_executed", "note"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "environment": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "dependency_install_performed": {"const": false},
+                    "pytest_available": {"type": "boolean"},
+                    "pytest_timeout_available": {"type": "boolean"},
+                    "python_version": {"minLength": 1, "type": "string"}
+                  },
+                  "required": ["python_version", "pytest_available", "pytest_timeout_available", "dependency_install_performed"],
+                  "type": "object"
+                },
+                "retrieved_at_utc": {"format": "date-time", "type": "string"},
+                "status": {"enum": ["complete", "partial", "blocked", "inconclusive", "unknown"]},
+                "summary": {"minLength": 1, "type": "string"}
+              },
+              "required": ["retrieved_at_utc", "status", "environment", "candidate_probes", "summary"],
+              "type": "object"
+            }
+          },
+          "required": ["helper_path", "component_count", "candidate_pair_count", "components", "coverage_audit", "execution_contract", "local_candidate_probe", "hosted_candidate_execution"],
+          "type": "object"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "workflow_runs": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "head_sha",
+        "workflow_runs",
+        "check_runs",
+        "awareness_failure",
+        "experimental_test_coverage",
+        "round6_candidate_discovery"
+      ],
+      "type": "object"
+    },
+    "ownership_summary": {
+      "additionalProperties": true,
+      "required": [
+        "stale_base_pr_numbers",
+        "stale_base_count",
+        "path_collision_path_count",
+        "pairwise_pr_collision_count",
+        "observed_failed_pr_numbers",
+        "observed_failed_pr_count",
+        "ci_unknown_pr_numbers",
+        "review_state_counts",
+        "explicit_dependencies"
+      ],
+      "type": "object"
+    },
+    "path_collisions": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "classification": {
+            "const": "exact_changed_path_overlap"
+          },
+          "git_conflict": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "interpretation": {
+            "type": "string"
+          },
+          "path": {
+            "$ref": "#/$defs/repo_path"
+          },
+          "pr_numbers": {
+            "items": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "minItems": 2,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "path",
+          "pr_numbers",
+          "classification",
+          "git_conflict",
+          "interpretation"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "pr_405": {
+      "additionalProperties": true,
+      "properties": {
+        "base_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "changed_paths": {
+          "items": {
+            "$ref": "#/$defs/repo_path"
+          },
+          "type": "array"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "interface": {
+          "type": "object"
+        },
+        "merge_commit_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "merged": {
+          "const": true
+        },
+        "number": {
+          "const": 405
+        },
+        "source_url": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "state",
+        "merged",
+        "merge_commit_sha",
+        "base_sha",
+        "head_sha",
+        "merged_at_utc",
+        "changed_paths",
+        "interface",
+        "source_url"
+      ],
+      "type": "object"
+    },
+    "pull_requests": {
+      "items": {
+        "$ref": "#/$defs/pull_request"
+      },
+      "type": "array"
+    },
+    "readiness_summary": {
+      "additionalProperties": true,
+      "properties": {
+        "assessment": {
+          "type": "string"
+        },
+        "blocked_pr_numbers": {
+          "type": "array"
+        },
+        "conflicted_pr_numbers": {
+          "type": "array"
+        },
+        "counts": {
+          "type": "object"
+        },
+        "draft_pr_numbers": {
+          "type": "array"
+        },
+        "merge_ready_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ready_pr_numbers": {
+          "type": "array"
+        },
+        "unknown_pr_numbers": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "counts",
+        "ready_pr_numbers",
+        "draft_pr_numbers",
+        "blocked_pr_numbers",
+        "conflicted_pr_numbers",
+        "unknown_pr_numbers",
+        "merge_ready_count",
+        "assessment"
+      ],
+      "type": "object"
+    },
+    "repository": {
+      "additionalProperties": true,
+      "properties": {
+        "default_branch": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "html_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "main_sha": {
+          "$ref": "#/$defs/sha"
+        },
+        "posture": {
+          "const": "HOLD / SYNTHETIC_ONLY"
+        },
+        "remote_url": {
+          "format": "uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "full_name",
+        "html_url",
+        "remote_url",
+        "default_branch",
+        "main_sha",
+        "posture"
+      ],
+      "type": "object"
+    },
+    "required_check_configuration": {
+      "additionalProperties": true,
+      "properties": {
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "retrieved_at_utc": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "source_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pass",
+            "fail",
+            "pending",
+            "unknown",
+            "not_applicable"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "source_url",
+        "http_status",
+        "retrieved_at_utc"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "neurotopology.live-repo-pr-ownership-map.v4"
+    },
+    "scope": {
+      "additionalProperties": true,
+      "properties": {
+        "open_pr_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "open_pr_numbers": {
+          "items": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "open_pr_state": {
+          "const": "open"
+        }
+      },
+      "required": [
+        "open_pr_state",
+        "open_pr_count",
+        "open_pr_numbers"
+      ],
+      "type": "object"
+    },
+    "snapshot_kind": {
+      "const": "timestamped_read_only_repository_and_pull_request_audit"
+    }
+  },
+  "required": [
+    "assessment_boundaries",
+    "candidate_pair_ownership",
+    "schema_version",
+    "snapshot_kind",
+    "captured_at_utc",
+    "evidence_retrieval_window_utc",
+    "repository",
+    "scope",
+    "required_check_configuration",
+    "main_ci",
+    "pull_requests",
+    "path_collisions",
+    "integration_dependencies",
+    "integration_lanes",
+    "ci_failure_groups",
+    "readiness_summary",
+    "ownership_summary",
+    "pr_405",
+    "evidence_sources",
+    "limitations"
+  ],
+  "title": "Dated live repository and pull request ownership audit snapshot",
+  "type": "object"
+}
