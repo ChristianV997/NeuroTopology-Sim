@@ -3,15 +3,26 @@ from __future__ import annotations
 
 from typing import Any, Dict, Mapping, Optional
 
-from tools.batch3_offline_integration.allowlist import StageSpec, resolve_callable
+from tools.batch3_offline_integration.allowlist import STAGE_BY_ID, StageSpec, resolve_callable
 from tools.batch3_offline_integration.fixture_producers import (
+    _read_fixture,
     display_fixture_name,
     load_workflow_request,
     substitute_artifact_lineage,
     synthetic_registry_payload,
 )
 from tools.batch3_offline_integration.schema import ExecutionMode, StageOutcome
-from tools.batch3_offline_integration.serialization import contains_nonfinite, json_safe, load_json, sha256_hex
+from tools.batch3_offline_integration.serialization import contains_nonfinite, json_safe, sha256_hex
+
+_ADMISSIBLE_CLAIM_STAGE_DECISIONS = frozenset(
+    {
+        "CLAIM_ADMISSIBLE",
+        "CLAIM_SYNTHETIC_ONLY",
+        "CLAIM_REQUIRES_REVIEW",
+        "CLAIM_DOWNGRADED",
+    }
+)
+_ADMISSIBLE_RELEASE_STAGE_DECISIONS = frozenset({"SYNTHETIC_ONLY"})
 
 
 def _base_record(spec: StageSpec) -> Dict[str, Any]:
@@ -82,14 +93,18 @@ def execute_stage(
             record["error"] = f"{type(exc).__name__}"
             return record
 
-    # Dependency gate for required upstream outcomes.
+    # Dependency gate for required upstream outcomes: required stages must have
+    # explicitly succeeded (never substituted); optional stages may be substituted.
     failed_deps = []
     for dep in spec.depends_on:
         dep_rec = context.get("stages", {}).get(dep) or {}
-        if dep_rec.get("outcome") not in {
-            StageOutcome.SUCCEEDED.value,
-            StageOutcome.FIXTURE_SUBSTITUTED.value,
-        }:
+        dep_spec = STAGE_BY_ID.get(dep)
+        allowed_outcomes = (
+            {StageOutcome.SUCCEEDED.value}
+            if (dep_spec is None or dep_spec.required)
+            else {StageOutcome.SUCCEEDED.value, StageOutcome.FIXTURE_SUBSTITUTED.value}
+        )
+        if dep_rec.get("outcome") not in allowed_outcomes:
             failed_deps.append(dep)
     if failed_deps:
         record["outcome"] = StageOutcome.SKIPPED_UPSTREAM_FAILED.value
@@ -136,9 +151,13 @@ def _run_plan_quality(spec: StageSpec, record: Dict[str, Any], request: Mapping[
 
     plan_data = request.get("plan")
     record["execution_mode"] = ExecutionMode.ALLOWLISTED_CALLABLE.value
-    record["inputs"] = {"plan_keys": sorted((plan_data or {}).keys()) if isinstance(plan_data, dict) else []}
+    record["inputs"] = {"plan_keys": sorted(plan_data.keys()) if isinstance(plan_data, Mapping) else []}
+    if not isinstance(plan_data, Mapping):
+        record["outcome"] = StageOutcome.REJECTED_INVALID_INPUT.value
+        record["error"] = "plan_absent"
+        return record
     try:
-        plan = ResearchPlan.from_dict(dict(plan_data or {}))
+        plan = ResearchPlan.from_dict(dict(plan_data))
         result = fn(plan)
         payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
         if contains_nonfinite(payload):
@@ -148,14 +167,17 @@ def _run_plan_quality(spec: StageSpec, record: Dict[str, Any], request: Mapping[
         record["outputs"] = json_safe(payload)
         record["actual_upstream_producer_ran"] = True
         status = payload.get("overall_status")
-        if status == "BLOCKED":
+        if status == "READY_FOR_EXECUTION":
+            record["outcome"] = StageOutcome.SUCCEEDED.value
+        elif status == "BLOCKED":
             record["outcome"] = StageOutcome.FAILED.value
             record["error"] = "plan_blocked"
         elif status == "NEEDS_REVISION":
             record["outcome"] = StageOutcome.FAILED.value
             record["error"] = "plan_needs_revision"
         else:
-            record["outcome"] = StageOutcome.SUCCEEDED.value
+            record["outcome"] = StageOutcome.FAILED.value
+            record["error"] = f"plan_unrecognized_status:{status}"
         return record
     except TypeError:
         record["outcome"] = StageOutcome.REJECTED_SCHEMA.value
@@ -182,8 +204,8 @@ def _run_claim_gate(spec: StageSpec, record: Dict[str, Any], request: Mapping[st
         return record
     claim = request.get("claim")
     record["execution_mode"] = ExecutionMode.ALLOWLISTED_CALLABLE.value
-    record["inputs"] = {"claim_present": claim is not None}
-    if claim is None:
+    record["inputs"] = {"claim_present": isinstance(claim, Mapping)}
+    if not isinstance(claim, Mapping):
         record["outcome"] = StageOutcome.REJECTED_INVALID_INPUT.value
         record["error"] = "claim_absent"
         return record
@@ -197,12 +219,15 @@ def _run_claim_gate(spec: StageSpec, record: Dict[str, Any], request: Mapping[st
         record["outputs"] = json_safe(payload)
         record["actual_upstream_producer_ran"] = True
         decision = payload.get("decision")
-        if decision in {"CLAIM_REJECTED", "CLAIM_INCOMPLETE", "CLAIM_PROVENANCE_INVALID"}:
+        if payload.get("scientific_pass") is True:
             record["outcome"] = StageOutcome.FAILED.value
-            record["error"] = str(decision)
-        else:
-            # CLAIM_SYNTHETIC_ONLY / engineering admissible paths succeed as engineering stages.
+            record["error"] = "scientific_pass_emitted_forbidden"
+        elif decision in _ADMISSIBLE_CLAIM_STAGE_DECISIONS:
+            # Explicit allowlist of admissible engineering / synthetic decisions only.
             record["outcome"] = StageOutcome.SUCCEEDED.value
+        else:
+            record["outcome"] = StageOutcome.FAILED.value
+            record["error"] = str(decision or "claim_unrecognized_decision")
         return record
     except Exception as exc:
         record["outcome"] = StageOutcome.FAILED.value
@@ -225,10 +250,14 @@ def _run_preflight(spec: StageSpec, record: Dict[str, Any], request: Mapping[str
         return record
     record["execution_mode"] = ExecutionMode.ALLOWLISTED_CALLABLE.value
     record["inputs"] = {
-        "has_plan": "plan" in request,
-        "has_claim": "claim" in request,
+        "has_plan": isinstance(request.get("plan"), Mapping),
+        "has_claim": isinstance(request.get("claim"), Mapping),
         "data_access_request": request.get("data_access_request") or {},
     }
+    if not isinstance(request.get("plan"), Mapping) or not isinstance(request.get("claim"), Mapping):
+        record["outcome"] = StageOutcome.REJECTED_INVALID_INPUT.value
+        record["error"] = "preflight_missing_plan_or_claim"
+        return record
     try:
         payload = fn(
             {
@@ -244,7 +273,10 @@ def _run_preflight(spec: StageSpec, record: Dict[str, Any], request: Mapping[str
             return record
         record["outputs"] = json_safe(payload)
         record["actual_upstream_producer_ran"] = True
-        if payload.get("cleared_for_execution") is True:
+        if (
+            payload.get("cleared_for_execution") is True
+            and payload.get("operational_readiness") == "READY"
+        ):
             record["outcome"] = StageOutcome.SUCCEEDED.value
         else:
             record["outcome"] = StageOutcome.FAILED.value
@@ -284,11 +316,13 @@ def _run_registry(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
             record["outcome"] = StageOutcome.REJECTED_NONFINITE.value
             record["error"] = "nonfinite_registry_output"
             return record
+        hyp_ids = sorted(exported.get("hypotheses") or {})
+        plan_ids = sorted(exported.get("plans") or {})
         record["outputs"] = {
             "registry_id": exported.get("registry_id"),
             "schema_version": exported.get("schema_version"),
-            "hypothesis_ids": sorted(exported.get("hypotheses") or {}),
-            "plan_ids": sorted(exported.get("plans") or {}),
+            "hypothesis_ids": hyp_ids,
+            "plan_ids": plan_ids,
             "fixture_producer_used_for_inputs": True,
             "checksum": sha256_hex(
                 {
@@ -298,7 +332,11 @@ def _run_registry(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
             ),
         }
         record["actual_upstream_producer_ran"] = True
-        record["outcome"] = StageOutcome.SUCCEEDED.value
+        if hyp_ids and plan_ids:
+            record["outcome"] = StageOutcome.SUCCEEDED.value
+        else:
+            record["outcome"] = StageOutcome.FAILED.value
+            record["error"] = "registry_incomplete"
         return record
     except TypeError:
         record["outcome"] = StageOutcome.REJECTED_SCHEMA.value
@@ -323,24 +361,31 @@ def _run_release(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
             "missing_dependency": missing,
         }
         return record
-    from pathlib import Path
 
-    from tools.batch3_offline_integration.fixture_producers import FIXTURE_DIR
-
-    bundle_path = FIXTURE_DIR / "release_bundle_synthetic.json"
+    bundle_name = "release_bundle_synthetic.json"
     record["execution_mode"] = ExecutionMode.ALLOWLISTED_CALLABLE.value
-    record["inputs"] = {"bundle_fixture": str(bundle_path.name)}
+    record["inputs"] = {"bundle_fixture": bundle_name}
     try:
-        bundle = load_json(str(bundle_path))
+        bundle = _read_fixture(bundle_name)
+    except Exception as exc:
+        record["outcome"] = StageOutcome.REJECTED_INVALID_INPUT.value
+        record["error"] = type(exc).__name__
+        return record
+    if contains_nonfinite(bundle):
+        record["outcome"] = StageOutcome.REJECTED_NONFINITE.value
+        record["error"] = "nonfinite_in_release_bundle"
+        return record
+    try:
         report = fn(bundle, adapter_hint="generic")
         payload = report.to_dict() if hasattr(report, "to_dict") else dict(report)
         if contains_nonfinite(payload):
             record["outcome"] = StageOutcome.REJECTED_NONFINITE.value
             record["error"] = "nonfinite_release_output"
             return record
+        decision = payload.get("decision")
         # Keep report compact for determinism (drop bulky nested bundle if present).
         compact = {
-            "decision": payload.get("decision"),
+            "decision": decision,
             "evidence_class": payload.get("evidence_class"),
             "synthetic_flag": payload.get("synthetic_flag"),
             "scientific_pass_emitted": payload.get("scientific_pass_emitted"),
@@ -353,8 +398,17 @@ def _run_release(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
         if compact.get("scientific_pass_emitted") is True:
             record["outcome"] = StageOutcome.FAILED.value
             record["error"] = "scientific_pass_emitted_forbidden"
-        else:
+        elif compact.get("bayes_factor_emitted") is True:
+            record["outcome"] = StageOutcome.FAILED.value
+            record["error"] = "bayes_factor_emitted_forbidden"
+        elif (
+            decision in _ADMISSIBLE_RELEASE_STAGE_DECISIONS
+            and compact.get("synthetic_flag") is True
+        ):
             record["outcome"] = StageOutcome.SUCCEEDED.value
+        else:
+            record["outcome"] = StageOutcome.FAILED.value
+            record["error"] = f"release_decision_not_admissible:{decision}"
         return record
     except Exception as exc:
         record["outcome"] = StageOutcome.FAILED.value

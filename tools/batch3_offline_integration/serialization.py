@@ -5,7 +5,7 @@ import hashlib
 import json
 import math
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 
 def json_safe(value: Any) -> Any:
@@ -44,6 +44,23 @@ def sha256_hex(obj: Any) -> str:
     return hashlib.sha256(canonical_bytes(obj)).hexdigest()
 
 
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_constant(token: str) -> None:
+    raise ValueError(f"non-finite JSON constant: {token}")
+
+
 def load_json(path: str) -> Any:
     with open(path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+        return json.load(
+            handle,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_nonfinite_constant,
+        )

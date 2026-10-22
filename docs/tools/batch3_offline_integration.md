@@ -49,24 +49,35 @@ represented by a clearly marked fixture substitute with
 - `--fixture-name` accepts only one of the five source-controlled filenames in
   the bundled `fixtures/` directory; absolute paths, traversal, separators,
   symlinks, and junctions are rejected.
-- Fixture files are opened read-only and capped at 1 MiB. Where the platform
-  exposes `O_NOFOLLOW`, it is used for the final file open. This is not a defense
-  against hostile concurrent replacement of parent directories or a compromised
+- Both the primary request fixture and `release_bundle_synthetic.json` are read
+  through the same contained `_read_fixture` loader: opened read-only and capped
+  at 1 MiB. Where the platform exposes `O_NOFOLLOW`, it is used for the final
+  file open alongside `stat.S_ISREG` verification. This is not a defense against
+  hostile concurrent replacement of parent directories (TOCTOU) or a compromised
   checkout.
 - Malformed, duplicate-key, non-finite, non-object, or oversized fixtures
   produce a rejected stage and a nonzero CLI status; rejected external paths are
   represented as `<rejected>` in reports.
-- An empty stage selection and an unknown forced-failure stage are invalid API
-  inputs rather than successful empty runs.
+- An empty stage selection, a duplicate stage selection, or an unknown
+  forced-failure stage are invalid API inputs rather than successful runs.
 - A bounded API stage selection is diagnostic/partial only. The overall
   `workflow_executed_successfully` flag is true only when every globally
-  required stage is selected and succeeds; optional-only, partial, or
+  required stage is selected and explicitly succeeds; optional-only, partial, or
   prerequisite-skipped selections cannot pass through vacuous truth.
+- Required stages fail closed: `plan_quality` requires `overall_status == "READY_FOR_EXECUTION"`,
+  `claim_gate` requires an explicit admissible engineering/synthetic decision with
+  `scientific_pass == False`, `preflight` requires `cleared_for_execution == True`
+  and `operational_readiness == "READY"`, `registry_probe` requires registered
+  hypothesis and plan records, and `release_evaluate` requires `decision == "SYNTHETIC_ONLY"`
+  with `synthetic_flag == True` and `scientific_pass_emitted == False`. Required
+  stages cannot satisfy downstream dependencies via `fixture_substituted`.
 - The runner creates no intermediate or temporary files. `--output` is an
   explicit caller-selected report destination.
-- The no-network guard replaces Python socket entry points during execution.
-  It is an in-process guard, not an operating-system sandbox; it does not claim
-  to constrain native code, cached socket references, or unrelated processes.
+- The no-network guard (`no_network()`) replaces Python socket entry points
+  (`socket.socket`, `socket.create_connection`, `socket.getaddrinfo`) during
+  execution. It is an in-process Python guard, not an operating-system sandbox;
+  it does not claim to constrain native C extensions, pre-cached socket
+  references, or unrelated processes.
 - No caller-provided run directory is opened, no dataset is downloaded, and no
   participant payload is read by this fixture-only runner.
 

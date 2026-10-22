@@ -34,23 +34,25 @@ def run_offline_integration(
         selected = list(STAGE_ORDER)
     else:
         if isinstance(stage_ids, (str, bytes)):
-            raise ValueError("stage_ids must be a sequence of allowlisted stage identifiers")
+            raise ValueError("stage_ids must be a sequence of fixed allowlist stage identifiers")
         selected = []
         try:
             for stage_id in stage_ids:
                 if len(selected) >= len(STAGE_ORDER):
-                    raise ValueError("stage_ids exceeds the maximum number of allowlisted stages")
+                    raise ValueError("stage_ids exceeds the maximum number of fixed allowlist stages")
                 selected.append(stage_id)
         except TypeError:
-            raise ValueError("stage_ids must be a sequence of allowlisted stage identifiers") from None
+            raise ValueError("stage_ids must be a sequence of fixed allowlist stage identifiers") from None
     if not selected:
-        raise ValueError("stage_ids must select at least one allowlisted stage")
+        raise ValueError("stage_ids must select at least one fixed allowlist stage")
     if any(not isinstance(stage_id, str) or stage_id not in STAGE_ORDER for stage_id in selected):
-        raise ValueError("stage_ids must contain only fixed-allowlist stage identifiers")
+        raise ValueError("stage_ids must contain only fixed allowlist stage identifiers")
+    if len(set(selected)) != len(selected):
+        raise ValueError("stage_ids must not contain duplicate stage identifiers")
     if force_fail_stage is not None and (
         not isinstance(force_fail_stage, str) or force_fail_stage not in STAGE_ORDER
     ):
-        raise ValueError("force_fail_stage must match a fixed-allowlist stage identifier")
+        raise ValueError("force_fail_stage must match a fixed allowlist stage identifier")
 
     specs = [s for s in STAGE_SPECS if s.stage_id in selected]
     specs.sort(key=lambda s: s.order)

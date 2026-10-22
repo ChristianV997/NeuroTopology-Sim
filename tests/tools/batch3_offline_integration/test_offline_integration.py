@@ -233,8 +233,14 @@ def test_fixture_symlink_escape_is_rejected(tmp_path: Path, monkeypatch):
     link = fixture_root / "workflow_request.json"
     try:
         link.symlink_to(external_fixture)
-    except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"symlink creation unavailable on this platform: {type(exc).__name__}")
+    except (OSError, NotImplementedError):
+        link.write_text('{"request":{"marker":"SYNTHETIC_SYMLINK_ESCAPE_381"}}', encoding="utf-8")
+        orig_is_symlink = Path.is_symlink
+        monkeypatch.setattr(
+            Path,
+            "is_symlink",
+            lambda self: True if self == link else orig_is_symlink(self),
+        )
     monkeypatch.setattr(fixture_producers, "FIXTURE_DIR", fixture_root)
 
     report = run_offline_integration(fixture_name="workflow_request.json")
@@ -405,3 +411,176 @@ def test_does_not_overlap_batch2_paths():
     blob = dumps(report)
     assert "moabb_protocol_conformance" not in blob
     assert "dandi_nwb" not in blob
+
+
+def test_duplicate_stage_ids_rejected():
+    with pytest.raises(ValueError, match="duplicate"):
+        run_offline_integration(
+            stage_ids=["load_synthetic_fixture", "load_synthetic_fixture"],
+        )
+
+
+def test_plan_quality_rejects_unrecognized_or_missing_status(monkeypatch):
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "plan_quality":
+            return (lambda _plan: {"overall_status": "UNRECOGNIZED_STATUS", "plan_id": "P-1"}), None
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["plan_quality"]["outcome"] == StageOutcome.FAILED.value
+    assert by_id["preflight"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_plan_quality_rejects_missing_plan_object(monkeypatch):
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    monkeypatch.setattr(
+        stages_mod,
+        "load_workflow_request",
+        lambda fixture_name: {
+            "producer": "fixture_producer",
+            "fixture_name": fixture_name,
+            "fixture_sha256": "0" * 64,
+            "request": {"claim": {"claim_id": "C1", "text": "t", "claim_class": "engineering_fact"}},
+            "actual_upstream_producer_ran": False,
+        },
+    )
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["plan_quality"]["outcome"] == StageOutcome.REJECTED_INVALID_INPUT.value
+    assert by_id["preflight"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+@pytest.mark.parametrize("bad_decision", ["CLAIM_NOT_COMPARABLE", "UNRECOGNIZED_DECISION", None])
+def test_claim_gate_rejects_non_admissible_or_unknown_decisions(monkeypatch, bad_decision):
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "claim_gate":
+            return (lambda _claim: {"decision": bad_decision, "scientific_pass": False}), None
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["claim_gate"]["outcome"] == StageOutcome.FAILED.value
+    assert by_id["preflight"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+@pytest.mark.parametrize(
+    "bad_decision",
+    [
+        "EVIDENCE_INCOMPLETE",
+        "PROVENANCE_FAILURE",
+        "ARTIFACT_FAILURE",
+        "VALIDATION_FAILURE",
+        "RESOURCE_FAILURE",
+        "NETWORK_POLICY_FAILURE",
+        "INFRASTRUCTURE_BLOCKED",
+        "NOT_COMPARABLE",
+        "UNKNOWN_DECISION",
+        None,
+    ],
+)
+def test_release_evaluate_rejects_failure_or_unknown_decisions(monkeypatch, bad_decision):
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "release_evaluate":
+            return (
+                lambda _bundle, **_kw: {
+                    "decision": bad_decision,
+                    "evidence_class": "research_cycle_release_operational",
+                    "synthetic_flag": True,
+                    "scientific_pass_emitted": False,
+                    "bayes_factor_emitted": False,
+                    "reason_codes": ["forced_bad_decision"],
+                }
+            ), None
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["release_evaluate"]["outcome"] == StageOutcome.FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_required_stage_missing_callable_blocks_downstream(monkeypatch):
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "plan_quality":
+            return None, "import_failed:tools.research_plan_quality.rubric:ModuleNotFoundError"
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["plan_quality"]["outcome"] != StageOutcome.SUCCEEDED.value
+    assert by_id["preflight"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert by_id["registry_probe"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert by_id["release_evaluate"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_release_bundle_fixture_enforces_containment_and_duplicate_key_rejection(
+    tmp_path: Path, monkeypatch
+):
+    import shutil
+    from tools.batch3_offline_integration import fixture_producers
+
+    fixture_root = tmp_path / "fixtures"
+    shutil.copytree(fixture_producers.FIXTURE_DIR, fixture_root)
+    (fixture_root / "release_bundle_synthetic.json").write_text(
+        '{"cycle_id": "a", "cycle_id": "b"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(fixture_producers, "FIXTURE_DIR", fixture_root)
+
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["release_evaluate"]["outcome"] == StageOutcome.REJECTED_INVALID_INPUT.value
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_complete_plan_request_fixture_succeeds_end_to_end():
+    report = run_offline_integration(fixture_name="complete_plan_request.json")
+    assert report["workflow_executed_successfully"] is True
+    assert report["scientific_validity_claimed"] is False
+    assert report["scientific_pass_emitted"] is False
+
+
+def test_no_network_context_manager_blocks_and_restores_socket():
+    from tools.batch3_offline_integration.guards import no_network
+
+    orig_socket = socket.socket
+    orig_create_conn = socket.create_connection
+    orig_getaddrinfo = socket.getaddrinfo
+
+    with no_network():
+        with pytest.raises(RuntimeError, match="network_disabled"):
+            socket.socket()
+        with pytest.raises(RuntimeError, match="network_disabled"):
+            socket.create_connection(("127.0.0.1", 80))
+        with pytest.raises(RuntimeError, match="network_disabled"):
+            socket.getaddrinfo("localhost", 80)
+
+    assert socket.socket is orig_socket
+    assert socket.create_connection is orig_create_conn
+    assert socket.getaddrinfo is orig_getaddrinfo
