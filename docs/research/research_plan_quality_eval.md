@@ -42,7 +42,9 @@ self-distillation training, win-rate comparisons, and any reported PaperGym figu
 - Held-out role (`locked_internal_validation`, the vocabulary from `benchmarks/split_policy.py`): P06–P10, groups E–H.
 - `manifest.json` records the schema, fixture-set id and version, the rubric
   dimension and source hashes, the label file hash, and for each plan its
-  group, split, and SHA-256.
+  group, split, and SHA-256. The pins are SHA-256 digests of the text with CRLF
+  folded to LF, so a Windows checkout with `core.autocrlf` verifies the same as
+  the committed files. Only CRLF is folded; any other byte change still fails.
 - `labels.json` holds per-plan expectations and adjudication metadata:
   `synthetic_author_expectation`, `independent: false`. The evaluator never reads it.
 - Within group A, P01 and P02 are near-duplicates (Jaccard 0.774, below the
