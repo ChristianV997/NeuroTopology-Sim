@@ -152,3 +152,28 @@ def test_markdown_json_synchronization() -> None:
             assert "Montage and sampling harmonization" in text
         if "do_not_treat_catalog_n" in gate:
             assert "Catalog n is not treated as analyzed n" in text
+
+
+def test_source_statements_classification() -> None:
+    doc = load()
+    valid_classifications = {"author-supplied", "independently_verified"}
+    assert doc.get("source_statement_classifications_present") is True
+
+    # Check candidates
+    for item in doc["candidates"]:
+        assert item.get("catalog_participants_classification") in valid_classifications
+        if item.get("paper_inclusion_count") is not None:
+            assert item.get("paper_inclusion_classification") in valid_classifications
+        assert item.get("same_mechanism_classification") == "independently_verified"
+        assert item.get("source_url_classification") == "independently_verified"
+
+        # Check license evidence statements
+        evidence = item["license_evidence"]
+        for key in ("dataset_description_json", "nemar_catalog", "github_readme", "openneuro_catalog"):
+            if key in evidence and isinstance(evidence[key], dict):
+                assert evidence[key].get("classification") in valid_classifications
+
+    # Check markdown discussion of classification
+    text = DOC.read_text(encoding="utf-8")
+    assert "author-supplied" in text
+    assert "independently verified" in text

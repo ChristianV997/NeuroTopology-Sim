@@ -3,8 +3,8 @@
   "package_id": "batch3_grok_chat_b_metadata_audit",
   "research_date": "2026-10-16",
   "base_sha": "3f3fe8593303184cb88eef056c1322f3d4e57a16",
-  "sync_base_sha": "4e91c6f080647280940ded4f90f4ee9278960c4b",
-  "sync_date": "2026-10-21",
+  "sync_base_sha": "a65611adcf4490a0d2378cbecb92dd883f4c5f0a",
+  "sync_date": "2026-10-22",
   "prior_pr": "https://github.com/ChristianV997/NeuroTopology-Sim/pull/394",
   "status": "HOLD",
   "evidence_class": "SYNTHETIC_ONLY",
@@ -17,7 +17,8 @@
   "scientific_suitability_inferred": false,
   "analyzed_sample_size_inferred": false,
   "cohort_identity_inferred": false,
-  "note": "Catalog and sidecar metadata only. An inventory parser does not establish the paper analyzed cohort or an authoritative exclusion manifest. Conflicting claims are preserved with source URLs and retrieval dates; permission or suitability is not inferred.",
+  "source_statement_classifications_present": true,
+  "note": "Catalog and sidecar metadata only. An inventory parser does not establish the paper analyzed cohort or an authoritative exclusion manifest. Conflicting claims are preserved with source URLs and retrieval dates; permission or suitability is not inferred. Source claims are strictly classified as author-supplied or independently verified.",
   "replication_question": "Can descriptors explored on ds005620 propofol EEG generalize across an independent cohort, hardware, montage, and protocol?",
   "same_mechanism_candidate_present": false,
   "candidates": [
@@ -29,8 +30,10 @@
       "doi": "10.18112/openneuro.ds005620.v1.0.0",
       "doi_url": "https://doi.org/10.18112/openneuro.ds005620.v1.0.0",
       "source_url": "https://openneuro.org/datasets/ds005620/versions/1.0.0",
+      "source_url_classification": "independently_verified",
       "retrieved_date": "2026-10-16",
       "same_mechanism": false,
+      "same_mechanism_classification": "independently_verified",
       "permission_inferred": false,
       "scientific_suitability_inferred": false,
       "analyzed_sample_size_inferred": false,
@@ -41,21 +44,26 @@
         "dataset_description_json": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds005620/versions/1.0.0",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         },
         "nemar_catalog": {
           "statement": "CC0",
           "source_url": "https://nemar.org/dataexplorer/detail?dataset_id=on005620",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         },
         "github_readme": {
           "statement": "This dataset is licensed under CC-BY-4.0.",
           "source_url": "https://github.com/OpenNeuroDatasets/ds005620/blob/master/README",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         }
       },
       "catalog_participants": "NEMAR states 21. participants.tsv has a header plus 21 data rows and columns excluded and bad_after_preprocessing. Included or completer count is not established.",
+      "catalog_participants_classification": "author-supplied",
       "paper_inclusion_count": null,
+      "paper_inclusion_classification": null,
       "tasks": [
         "awake",
         "sed",
@@ -76,8 +84,10 @@
       "doi": "10.18112/openneuro.ds003969.v1.0.0",
       "doi_url": "https://doi.org/10.18112/openneuro.ds003969.v1.0.0",
       "source_url": "https://openneuro.org/datasets/ds003969/versions/1.0.0",
+      "source_url_classification": "independently_verified",
       "retrieved_date": "2026-10-16",
       "same_mechanism": false,
+      "same_mechanism_classification": "independently_verified",
       "permission_inferred": false,
       "scientific_suitability_inferred": false,
       "analyzed_sample_size_inferred": false,
@@ -88,11 +98,14 @@
         "dataset_description_json": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds003969/versions/1.0.0",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         }
       },
       "catalog_participants": "OpenNeuro catalog states 98. A public comment reports group counts summing to 98 and cites earlier studies of about 100.",
+      "catalog_participants_classification": "author-supplied",
       "paper_inclusion_count": "Braboszcz et al. 2017 (10.1371/journal.pone.0170647) states 20 Vipassana, 27 Himalayan Yoga, 20 Isha Shoonya, and 32 controls collected, then 4 matched groups of 16. Catalog 98 is not the analyzed N.",
+      "paper_inclusion_classification": "author-supplied",
       "tasks": [
         "med1breath",
         "med2",
@@ -114,8 +127,10 @@
       "doi": "10.18112/openneuro.ds008836.v1.0.1",
       "doi_url": "https://doi.org/10.18112/openneuro.ds008836.v1.0.1",
       "source_url": "https://openneuro.org/datasets/ds008836/versions/1.0.1",
+      "source_url_classification": "independently_verified",
       "retrieved_date": "2026-10-16",
       "same_mechanism": false,
+      "same_mechanism_classification": "independently_verified",
       "permission_inferred": false,
       "scientific_suitability_inferred": false,
       "analyzed_sample_size_inferred": false,
@@ -126,16 +141,20 @@
         "dataset_description_json": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds008836/versions/1.0.1",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         },
         "openneuro_catalog": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds008836/versions/1.0.1",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         }
       },
       "catalog_participants": "OpenNeuro catalog states 39 participants and 2 sessions.",
+      "catalog_participants_classification": "author-supplied",
       "paper_inclusion_count": "README cites Reggente et al. 2024 (10.1016/j.bpsgos.2024.100402) as the source experiment. Analyzed N for the HER companion was not extracted.",
+      "paper_inclusion_classification": "author-supplied",
       "tasks": [
         "meditation"
       ],
@@ -154,8 +173,10 @@
       "doi": "10.18112/openneuro.ds001787.v1.1.1",
       "doi_url": "https://doi.org/10.18112/openneuro.ds001787.v1.1.1",
       "source_url": "https://openneuro.org/datasets/ds001787/versions/1.1.1",
+      "source_url_classification": "independently_verified",
       "retrieved_date": "2026-10-16",
       "same_mechanism": false,
+      "same_mechanism_classification": "independently_verified",
       "permission_inferred": false,
       "scientific_suitability_inferred": false,
       "analyzed_sample_size_inferred": false,
@@ -166,11 +187,14 @@
         "dataset_description_json": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds001787/versions/1.1.1",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         }
       },
       "catalog_participants": "README and OpenNeuro catalog state 24 subjects; catalog states 3 sessions.",
+      "catalog_participants_classification": "author-supplied",
       "paper_inclusion_count": "Brandmeyer and Delorme 2016 (10.1007/s00221-016-4811-5) states 25 Himalayan Yoga meditators participated and that one participant reported additional information after collection. Catalog 24 is not automatically the paper N.",
+      "paper_inclusion_classification": "author-supplied",
       "tasks": [
         "meditation"
       ],
@@ -190,8 +214,10 @@
       "doi": "10.18112/openneuro.ds004572.v1.3.2",
       "doi_url": "https://doi.org/10.18112/openneuro.ds004572.v1.3.2",
       "source_url": "https://openneuro.org/datasets/ds004572/versions/1.3.2",
+      "source_url_classification": "independently_verified",
       "retrieved_date": "2026-10-16",
       "same_mechanism": false,
+      "same_mechanism_classification": "independently_verified",
       "permission_inferred": false,
       "scientific_suitability_inferred": false,
       "analyzed_sample_size_inferred": false,
@@ -202,11 +228,14 @@
         "dataset_description_json": {
           "statement": "CC0",
           "source_url": "https://openneuro.org/datasets/ds004572/versions/1.3.2",
-          "retrieved_date": "2026-10-16"
+          "retrieved_date": "2026-10-16",
+          "classification": "author-supplied"
         }
       },
       "catalog_participants": "README and catalog state 52 participants (39 females).",
+      "catalog_participants_classification": "author-supplied",
       "paper_inclusion_count": "A 2024 Scientific Reports paper states hypnotizability scores were available for 83 percent of participants. Completer N not re-derived.",
+      "paper_inclusion_classification": "author-supplied",
       "tasks": [
         "baseline1",
         "baseline2",
