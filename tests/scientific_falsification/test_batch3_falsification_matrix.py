@@ -168,3 +168,66 @@ def test_no_network() -> None:
         assert report["scientific_pass"] is False
     finally:
         socket.socket = original  # type: ignore[assignment]
+
+
+def test_campaign_execution_states_and_terminal_transitions() -> None:
+    doc = load_matrix()
+    expected_states = {
+        "PLANNING",
+        "REGISTERED",
+        "EXECUTING",
+        "INTERRUPTED",
+        "RESUMED",
+        "COMPLETED",
+        "ABORTED",
+    }
+    states = set(doc.get("campaign_execution_states") or [])
+    assert expected_states == states
+
+    terminal_states = set(doc.get("terminal_states") or [])
+    assert terminal_states == {"COMPLETED", "ABORTED"}
+
+    transitions = doc.get("valid_state_transitions") or {}
+    assert isinstance(transitions, dict)
+    for state in expected_states:
+        assert state in transitions
+
+    # Terminal states must have zero outgoing transitions
+    for term in terminal_states:
+        assert transitions[term] == []
+
+    # Verify transitions from planning, executing, interrupted, resumed
+    assert set(transitions["PLANNING"]) == {"REGISTERED", "ABORTED"}
+    assert set(transitions["REGISTERED"]) == {"EXECUTING", "ABORTED"}
+    assert set(transitions["EXECUTING"]) == {"INTERRUPTED", "COMPLETED", "ABORTED"}
+    assert set(transitions["INTERRUPTED"]) == {"RESUMED", "ABORTED"}
+    assert set(transitions["RESUMED"]) == {"INTERRUPTED", "COMPLETED", "ABORTED"}
+
+
+def test_resumability_policy_invariants() -> None:
+    doc = load_matrix()
+    policy = doc.get("resumability_policy") or {}
+    assert policy.get("allowed") is True
+    assert policy.get("require_exact_hash_match") is True
+    assert policy.get("require_checkpoint_manifest") is True
+    assert policy.get("recompute_interrupted_units_only") is True
+    assert policy.get("prohibit_terminal_state_reopening") is True
+    assert policy.get("prohibit_non_protocol_state") is True
+
+
+def test_proposed_thresholds_not_power_validation() -> None:
+    doc = load_matrix()
+    assert doc.get("scientific_pass") is False
+    assert doc.get("empirical_claim_allowed") is False
+
+    limits = doc.get("protocol_limits") or {}
+    assert limits.get("scientific_pass") is False
+    assert limits.get("empirical_claim_allowed") is False
+    assert limits.get("proposed_thresholds_are_power_validation") is False
+
+    sample = doc.get("sample_requirements") or {}
+    assert sample.get("proposed_thresholds_power_validated") is False
+
+    text = DOC.read_text(encoding="utf-8").lower()
+    assert "proposed thresholds are not power validation" in text
+    assert "protocol-only" in text or "protocol floor" in text

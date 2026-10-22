@@ -7,14 +7,42 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
+Live main synced: `52e9a7cb5ed9c16000fc8a07c5c759649133f338` (historical base `3f3fe8593303184cb88eef056c1322f3d4e57a16`).
+
 Owned paths only:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
 - `configs/scientific_falsification/batch3_falsification_matrix.yaml`
 - `tests/scientific_falsification/test_batch3_falsification_matrix.py`
 
-Primary checkout on `codex/disorder-averaged-collective-modes` was not
-touched. Branch starts from current `origin/main`. REA was unavailable;
-no neurodata, credentials, or external data services were accessed.
+Primary checkout was not touched. Branch starts from current `origin/main`.
+No neurodata, credentials, or external data services were accessed.
+
+## Protocol Limits and Power Validation
+
+- Status: protocol-only (`scientific_pass=false`, `empirical_claim_allowed=false`).
+- Proposed thresholds are not power validation: Proposed sample and effect thresholds
+  (such as `minimum_paired_subjects=20`, `minimum_held_out_subjects=8`, and minimum
+  100 null replicates) are conservative protocol floors and falsification criteria,
+  not empirical power validation or statistical ground truth.
+- Falsification metrics cannot be inverted into affirmative empirical confirmation.
+
+## Campaign Execution States and Resumability
+
+The campaign execution harness defines an explicit deterministic state machine:
+- **Campaign Execution States**:
+  - `PLANNING`: Initial specification and preregistration phase.
+  - `REGISTERED`: Protocol locked with cryptographic manifest digest.
+  - `EXECUTING`: Workload dispatch under isolated boundaries.
+  - `INTERRUPTED`: Gracefully stopped mid-execution upon timeout, signal, or boundary trigger.
+  - `RESUMED`: Resumed from intermediate checkpoint with verified plan digest.
+  - `COMPLETED`: Terminal state reached when all registered units finish cleanly.
+  - `ABORTED`: Terminal state reached upon hard failure, schema breach, or claim violation.
+- **Terminal States**: `COMPLETED` and `ABORTED` are terminal. They have zero outgoing transitions
+  and cannot be reopened or mutated.
+- **Resumability Invariants**:
+  - Resumption requires exact plan and artifact hash matches.
+  - Resumed runs must replay from verified checkpoint manifests and only execute interrupted units.
+  - Resumption cannot bypass falsification gates or transition into non-protocol states.
 
 ## Claims reviewed
 
@@ -58,16 +86,3 @@ no neurodata, credentials, or external data services were accessed.
 - biological quantum coherence
 - respiration as equanimity
 - discernment from EEG alone
-- nonattachment from EEG
-- triadic dependence as a biological mechanism
-- exceptional point as a biological phase transition
-- prediction as causation
-- graph beta-1 as spatial topological charge
-- scientific PASS / formal Bayes factor from this matrix
-
-## Scientific limit
-
-Completeness of this matrix is not evidence that higher-order
-connectivity, higher-order spectra, directed hypergraphs, or topological
-proxies forecast a state transition. Prior project review remains
-REVIEW_INCONCLUSIVE. PITNN K>100 failed 20/20 on ds005620.
