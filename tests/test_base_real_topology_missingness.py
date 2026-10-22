@@ -28,6 +28,13 @@ from sciencer_d.btc_icft.level_t.base_real_topology import (
     build_level_t_omega_event,
     build_ml_decoding_report,
     build_topology_quality_report,
+    build_phase_based_topology_report,
+    build_connectivity_report,
+    build_null_gate_report,
+    compute_phase_based_topology_for_window,
+    compute_connectivity_for_window,
+    compute_surrogate_gate_for_window,
+    compute_fixture_topology_for_window,
     compute_real_topology_for_window,
     write_level_t_topology_outputs,
 )
@@ -237,7 +244,7 @@ def test_empty_channels_returns_failed_read(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_real_zero_valued_observation_distinguished_from_missing():
-    # A genuine physical measurement where topological charge cancels out
+    # A zero-valued computed output remains distinct from a missing metric.
     row = _valid_row(1, q_net=0.0, q_abs=1.5, topology_quality=0.85)
 
     assert row.is_valid is True
@@ -441,7 +448,8 @@ def test_write_level_t_topology_outputs_serializes_empty_string_for_none(tmp_pat
     }
 
     out_paths = write_level_t_topology_outputs(
-        res, str(out_dir), rows, "ds005620", cohort_missingness_report=cohort_audit
+        res, str(out_dir), rows, "ds005620", cohort_missingness_report=cohort_audit,
+        spatial_topology_report={"status": "not_applicable"},
     )
 
     csv_path = Path(out_paths["features_t.csv"])
@@ -472,6 +480,8 @@ def test_write_level_t_topology_outputs_serializes_empty_string_for_none(tmp_pat
 
     # Verify report.md has the cohort audit section
     report_md = Path(out_paths["report.md"]).read_text(encoding="utf-8")
+    assert "Local Signal-Reader Level T Topology Extraction" in report_md
+    assert "genuine 2D phase field" not in report_md
     assert "Cohort missingness audit report" in report_md
     assert "verdict: INCOMPLETE" in report_md
 
@@ -575,6 +585,9 @@ def test_row_with_any_none_or_nonfinite_metric_demotes_to_unobserved():
     assert row_partial_none.topology_status == "skipped"
     assert row_partial_none.missingness_state == "unobserved"
     assert row_partial_none.replicate_count == 0
+    assert row_partial_none.run_status == "failed"
+    assert row_partial_none.missingness_reason == "missing or non-finite topology metric"
+    assert row_partial_none.warnings
 
     # q_abs is NaN
     row_nan = LevelTRealTopologyRow(
@@ -603,6 +616,16 @@ def test_row_with_any_none_or_nonfinite_metric_demotes_to_unobserved():
     assert row_nan.missingness_state == "unobserved"
     assert row_nan.q_abs is None
     assert row_nan.replicate_count == 0
+
+    from dataclasses import replace
+
+    row_inf = replace(_valid_row(2), f_dress=float("inf"))
+    report = build_topology_quality_report([row_inf])
+    assert row_inf.is_valid is False
+    assert row_inf.run_status == "failed"
+    assert report["n_valid_rows"] == 0
+    assert report["n_missing_rows"] == 1
+    assert report["quality_passed"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -701,3 +724,242 @@ def test_build_ml_decoding_report_excludes_invalid_or_missing_metric_rows():
     rep = build_ml_decoding_report(bad_rows, m_rows)
     assert rep["status"] == "not_applicable"
     assert rep["n_rows_excluded"] == 10
+
+
+def test_compute_real_topology_rejects_missing_or_invalid_window_bounds(tmp_path, monkeypatch):
+    from data import bids_ingest
+
+    source = tmp_path / "synthetic.edf"
+    source.write_bytes(b"synthetic-only test marker")
+    calls = []
+
+    def fake_reader(*args, **kwargs):
+        calls.append((args, kwargs))
+        return [[0.1, 0.2, 0.3], [0.3, 0.2, 0.1]]
+
+    monkeypatch.setattr(bids_ingest, "read_window_signal", fake_reader)
+    invalid_bounds = [
+        (None, "2"),
+        ("", "2"),
+        ("NaN", "2"),
+        ("Infinity", "3"),
+        ("not-a-number", "2"),
+        ("0", None),
+        ("0", "NaN"),
+        ("0", "Infinity"),
+        ("2", "1"),
+        ("0", "0"),
+    ]
+    for index, (start, end) in enumerate(invalid_bounds):
+        row = compute_real_topology_for_window({
+            "row_id": f"synthetic-{index}",
+            "subject_id": "synthetic-subject",
+            "window_id": f"window-{index}",
+            "source_file": str(source),
+            "window_start_s": start,
+            "window_end_s": end,
+        })
+        assert row.is_valid is False
+        assert row.topology_status == "skipped"
+        assert row.missingness_state == "unobserved"
+        assert row.q_net is None and row.q_abs is None
+
+    assert calls == []
+
+
+def test_fixture_topology_does_not_promote_missing_window_metadata():
+    row = compute_fixture_topology_for_window({
+        "row_id": "synthetic-row",
+        "subject_id": "synthetic-subject",
+        "window_id": "synthetic-window",
+        "source_file": "synthetic.edf",
+        "window_end_s": "2",
+    })
+
+    assert row.is_valid is False
+    assert row.missingness_state == "unobserved"
+    assert row.q_net is None and row.q_abs is None
+
+
+def test_fixture_rows_are_not_reported_as_valid_topology_or_artifact_alignment():
+    row = compute_fixture_topology_for_window({
+        "row_id": "synthetic-row",
+        "subject_id": "synthetic-subject",
+        "window_id": "synthetic-window",
+        "source_file": "synthetic.edf",
+        "window_start_s": "0",
+        "window_end_s": "2",
+    })
+
+    quality = build_topology_quality_report([row])
+    alignment = build_artifact_alignment_report([row], [{"row_id": row.row_id, "artifact_score": "0.2"}])
+
+    assert quality["status"] == "incomplete"
+    assert quality["quality_passed"] is False
+    assert quality["n_valid_rows"] == 0
+    assert quality["n_synthetic_fixture_rows"] == 1
+    assert alignment["topology_quality_mean"] is None
+    assert alignment["n_synthetic_fixture_topology_rows"] == 1
+
+
+def test_fixture_rows_are_excluded_from_group_and_ml_reports():
+    m_rows = [
+        {
+            "row_id": f"fixture-{index}",
+            "subject_id": f"synthetic-sub-{index}",
+            "window_id": f"window-{index}",
+            "source_file": "synthetic.edf",
+            "window_start_s": str(index * 2),
+            "window_end_s": str(index * 2 + 2),
+            "state_label": "awake" if index < 5 else "sedated",
+        }
+        for index in range(10)
+    ]
+    rows = [compute_fixture_topology_for_window(row) for row in m_rows]
+
+    group = build_group_significance_report(rows, m_rows)
+    decoding = build_ml_decoding_report(rows, m_rows)
+
+    assert group["status"] == "not_applicable"
+    assert group["n_rows_eligible"] == 0
+    assert decoding["status"] == "not_applicable"
+    assert decoding["n_rows_excluded"] == len(rows)
+
+
+def test_signal_reports_reject_invalid_bounds_before_loading_signal_tools():
+    m_row = {"row_id": "synthetic-row", "source_file": "synthetic.edf", "window_start_s": None, "window_end_s": "2"}
+
+    results = [
+        compute_phase_based_topology_for_window(m_row),
+        compute_connectivity_for_window(m_row),
+        compute_surrogate_gate_for_window(m_row),
+    ]
+
+    assert all(result["status"] == "skipped" for result in results)
+    assert all("window bounds" in result["reason"] for result in results)
+
+
+def test_signal_report_aggregators_keep_missing_joins_visible():
+    row = _valid_row(0)
+
+    phase = build_phase_based_topology_report([row], [])
+    connectivity = build_connectivity_report([row], [])
+    nulls = build_null_gate_report([row], [])
+
+    for report in (phase, connectivity):
+        assert report["status"] == "not_applicable"
+        assert report["n_windows_total_candidates"] == 1
+        assert report["n_windows_skipped"] == 1
+        assert report["results"][0]["reason"] == "matching Level M row is missing"
+        json.dumps(report, allow_nan=False)
+    assert nulls["status"] == "not_applicable"
+    assert nulls["real_nulls_performed"] is False
+    assert nulls["n_windows_total_candidates"] == 1
+    assert nulls["n_windows_skipped"] == 1
+    assert nulls["gate_results"][0]["reason"] == "matching Level M row is missing"
+    json.dumps(nulls, allow_nan=False)
+
+
+def test_warning_rows_are_not_reused_as_valid_measurements_across_reports():
+    from dataclasses import replace
+
+    row = replace(_valid_row(0), warnings=["synthetic warning marker"])
+    m_row = {
+        "row_id": row.row_id,
+        "source_file": "synthetic-missing.edf",
+        "window_start_s": 0.0,
+        "window_end_s": 2.0,
+        "state_label": "awake",
+    }
+
+    quality = build_topology_quality_report([row])
+    alignment = build_artifact_alignment_report([row], [{"row_id": row.row_id, "artifact_score": 0.2}])
+    phase = build_phase_based_topology_report([row], [m_row])
+    connectivity = build_connectivity_report([row], [m_row])
+    nulls = build_null_gate_report([row], [m_row])
+    group = build_group_significance_report([row], [m_row], max_skip_rate=0.0)
+    decoding = build_ml_decoding_report([row], [m_row])
+    cohort = audit_cohort_missingness([row], [m_row], max_skip_rate=0.0)
+
+    assert quality["n_valid_rows"] == 0
+    assert quality["n_missing_rows"] == 1
+    assert quality["quality_passed"] is False
+    assert alignment["topology_quality_mean"] is None
+    assert group["status"] == "blocked_high_skip_rate"
+    assert group["n_rows_eligible"] == 0
+    assert decoding["status"] == "not_applicable"
+    assert phase["results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert connectivity["results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert nulls["gate_results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert cohort["verdict"] == "BLOCKED"
+    assert cohort["n_valid_windows"] == 0
+    for report in (quality, alignment, phase, connectivity, nulls, group, decoding, cohort):
+        json.dumps(report, allow_nan=False)
+
+
+def test_post_construction_nonfinite_mutation_is_rejected_by_aggregates():
+    row = _valid_row(0)
+    row.q_abs = float("nan")
+
+    quality = build_topology_quality_report([row])
+    cohort = audit_cohort_missingness([row], [], max_skip_rate=0.0)
+
+    assert quality["n_valid_rows"] == 0
+    assert quality["n_missing_rows"] == 1
+    assert quality["quality_passed"] is False
+    assert cohort["n_valid_windows"] == 0
+    assert cohort["verdict"] == "BLOCKED"
+
+
+def test_direct_row_with_nonfinite_window_bounds_is_demoted():
+    from dataclasses import replace
+
+    row = replace(_valid_row(0), window_start_s=float("nan"))
+
+    assert row.is_valid is False
+    assert row.topology_status == "skipped"
+    assert row.missingness_state == "unobserved"
+    assert row.q_net is None and row.q_abs is None
+
+
+def test_group_report_fails_closed_when_an_eligible_row_lacks_group_metadata():
+    rows = [
+        _valid_row(0, subject_id="sub-01", task_label="awake"),
+        _valid_row(1, subject_id="sub-01", task_label="sedated"),
+        _valid_row(2, subject_id="sub-02", task_label="awake"),
+        _valid_row(3, subject_id="sub-02", task_label="sedated"),
+    ]
+    m_rows = [
+        {"row_id": row.row_id, "state_label": "" if index == 3 else row.task_label}
+        for index, row in enumerate(rows)
+    ]
+
+    report = build_group_significance_report(rows, m_rows, n_permutations=20)
+
+    assert report["status"] == "not_applicable"
+    assert report["n_rows_missing_group_metadata"] == 1
+    assert report["n_rows_used"] == 0
+    assert "group metadata" in report["reason"]
+
+
+def test_group_report_rejects_nonfinite_skip_threshold():
+    with pytest.raises(ValueError, match="max_skip_rate must be finite"):
+        build_group_significance_report([], [], max_skip_rate=float("nan"))
+
+
+def test_ml_report_fails_closed_when_an_eligible_row_lacks_group_metadata():
+    rows = [
+        _valid_row(index, subject_id=f"sub-{index}", task_label="awake" if index < 5 else "sedated")
+        for index in range(10)
+    ]
+    m_rows = [
+        {"row_id": row.row_id, "state_label": "" if index == 9 else row.task_label}
+        for index, row in enumerate(rows)
+    ]
+
+    report = build_ml_decoding_report(rows, m_rows)
+
+    assert report["status"] == "not_applicable"
+    assert report["n_rows_missing_group_metadata"] == 1
+    assert report["n_rows_used"] == 0
+    assert "group metadata" in report["reason"]

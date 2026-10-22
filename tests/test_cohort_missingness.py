@@ -243,6 +243,59 @@ def test_unpaired_condition_subjects_detected():
     assert set(report["unpaired_subjects"]) == {"sub-07", "sub-08"}
 
 
+def test_missing_condition_labels_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.task_label = None
+    for m_row in m_rows:
+        m_row.pop("task_label", None)
+        m_row.pop("state_label", None)
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["conditions_detected"] == []
+    assert report["n_unlabeled_valid_windows"] == len(t_rows)
+    assert report["n_paired_subjects"] == 0
+    assert "condition labels" in report["verdict_reason"]
+
+
+def test_partially_unlabeled_valid_windows_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    t_rows[0].task_label = None
+    m_rows[0].pop("task_label", None)
+    m_rows[0].pop("state_label", None)
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_unlabeled_valid_windows"] == 1
+    assert "condition labels" in report["verdict_reason"]
+
+
+def test_fixture_topology_rows_cannot_pass_empirical_cohort_gate():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.null_method = "fixture_none"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_synthetic_fixture_windows"] == len(t_rows)
+    assert report["n_paired_subjects"] == 0
+    assert "synthetic fixture" in report["verdict_reason"]
+
+
+def test_nonfinite_skip_threshold_is_rejected():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=1, windows_per_condition=1)
+
+    with pytest.raises(ValueError, match="max_skip_rate must be finite"):
+        audit_cohort_missingness(t_rows, m_rows, max_skip_rate=float("nan"))
+
+
 # ---------------------------------------------------------------------------
 # 6. Missing expected subject from preregistered cohort
 # ---------------------------------------------------------------------------

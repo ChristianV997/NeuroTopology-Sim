@@ -1,4 +1,4 @@
-"""Shared real signal-derived Level T topology logic for all datasets.
+"""Shared signal-reader-derived Level T topology logic for all datasets.
 
 Extracted from `ds005620_real_topology.py`, `ds003969_real_topology.py`, and
 `ds001787_real_topology.py`, which were confirmed function-for-function
@@ -8,9 +8,11 @@ identical (same dataclasses, same 10 functions, same order) except for
 module is now a thin shim over this file, parameterized by its own
 `DATASET_ID`.
 
-`compute_real_topology_for_window` reads the actual per-channel signal for a
-window and computes topology via `eeg_signal_topology.compute_topology_from_channels`
--- not a hash of row_id/metadata text. `compute_fixture_topology_for_window`
+`compute_real_topology_for_window` computes topology from per-channel samples
+returned by the configured local reader via
+`eeg_signal_topology.compute_topology_from_channels` -- not a hash of row_id/
+metadata text. This software path does not authenticate the source or establish
+that returned samples are empirical. `compute_fixture_topology_for_window`
 (hash-based) is kept only as the explicit, clearly-labeled `--mock-fixture`
 fallback; `--real` never falls back to it (see `build_level_t_rows_from_m_windows`'s
 mutual-exclusivity contract, enforced by each dataset's CLI).
@@ -93,8 +95,8 @@ class LevelTRealTopologyRow:
     null_method: str
     null_seed: int
     source_file: str
-    window_start_s: float
-    window_end_s: float
+    window_start_s: float | None
+    window_end_s: float | None
     warnings: list[str]
     topology_status: str = "computed"
     missingness_state: str = "computed"
@@ -114,19 +116,36 @@ class LevelTRealTopologyRow:
             else:
                 try:
                     fval = float(val)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     setattr(self, fname, None)
                     has_missing_or_nonfinite = True
                 else:
                     if not math.isfinite(fval):
                         setattr(self, fname, None)
                         has_missing_or_nonfinite = True
+        has_invalid_bounds = not _has_valid_window_bounds(self.window_start_s, self.window_end_s)
+        if has_invalid_bounds:
+            has_missing_or_nonfinite = True
+            for fname in metric_fields:
+                setattr(self, fname, None)
+            if self.missingness_reason is None:
+                self.missingness_reason = "missing or invalid finite window bounds"
+            if self.missingness_reason not in self.warnings:
+                self.warnings.append(self.missingness_reason)
+            if self.run_status == "complete":
+                self.run_status = "failed"
         if has_missing_or_nonfinite:
             self.is_valid = False
             if self.topology_status == "computed":
                 self.topology_status = "skipped"
             if self.missingness_state == "computed":
                 self.missingness_state = "unobserved"
+            if self.missingness_reason is None:
+                self.missingness_reason = "missing or non-finite topology metric"
+            if self.missingness_reason not in self.warnings:
+                self.warnings.append(self.missingness_reason)
+            if self.run_status == "complete":
+                self.run_status = "failed"
             if self.replicate_count == 1:
                 self.replicate_count = 0
 
@@ -146,12 +165,60 @@ class LevelTRealTopologyResult:
     warnings: list[str]
 
 
+def _is_eligible_topology_row(row: LevelTRealTopologyRow) -> bool:
+    return (
+        row.null_method != "fixture_none"
+        and row.is_valid
+        and row.topology_status == "computed"
+        and not row.warnings
+        and _has_valid_window_bounds(row.window_start_s, row.window_end_s)
+        and all(
+            _is_finite_metric(getattr(row, field_name))
+            for field_name in ("q_net", "q_abs", "f_dress", "defect_density", "topology_quality")
+        )
+    )
+
+
 def _validate_safe_text(text: str) -> None:
     validate_safe_text(text)
 
 
 def _h(text: str) -> int:
     return int(hashlib.sha256(text.encode("utf-8")).hexdigest()[:16], 16)
+
+
+def _finite_window_bound(value: object) -> float | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _is_finite_metric(value: object) -> bool:
+    if value is None:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def _has_valid_window_bounds(start: object, end: object) -> bool:
+    start_s = _finite_window_bound(start)
+    end_s = _finite_window_bound(end)
+    return start_s is not None and end_s is not None and start_s >= 0 and end_s > start_s
+
+
+def _normalized_label(value: object) -> object | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
 
 
 def load_level_m_window_features(m_windows_dir: str, dataset_id: str) -> list[dict]:
@@ -169,6 +236,21 @@ def load_level_m_window_features(m_windows_dir: str, dataset_id: str) -> list[di
 
 
 def compute_fixture_topology_for_window(m_row: dict, index: int = 0) -> LevelTRealTopologyRow:
+    window_start_s = _finite_window_bound(m_row.get("window_start_s"))
+    window_end_s = _finite_window_bound(m_row.get("window_end_s"))
+    if not _has_valid_window_bounds(window_start_s, window_end_s):
+        reason = "synthetic fixture excluded: missing or invalid finite window bounds"
+        return LevelTRealTopologyRow(
+            row_id=str(m_row.get("row_id")), subject_id=str(m_row.get("subject_id")),
+            session_id=m_row.get("session_id") or None, run_id=m_row.get("run_id") or None,
+            window_id=str(m_row.get("window_id")), task_label=_normalized_label(m_row.get("task_label")),
+            q_net=None, q_abs=None, f_dress=None, defect_density=None,
+            n_triangles=0, n_valid_triangles=0, topology_quality=None,
+            null_method="fixture_none", null_seed=0, source_file=str(m_row.get("source_file") or ""),
+            window_start_s=window_start_s, window_end_s=window_end_s,
+            warnings=[reason], topology_status="skipped", missingness_state="unobserved",
+            missingness_reason=reason, is_valid=False, run_status="failed", replicate_count=0,
+        )
     seed_src = f"{m_row.get('row_id')}|{m_row.get('source_file')}|{m_row.get('task_label')}|{m_row.get('window_id')}|{index}"
     hv = _h(seed_src)
     n_triangles = 8 + (hv % 25)
@@ -186,20 +268,21 @@ def compute_fixture_topology_for_window(m_row: dict, index: int = 0) -> LevelTRe
         n_triangles=int(n_triangles), n_valid_triangles=int(n_valid), topology_quality=topo,
         null_method="fixture_none", null_seed=int(_h(str(m_row.get("row_id"))) % (2**31 - 1)),
         source_file=str(m_row.get("source_file")),
-        window_start_s=float(m_row.get("window_start_s") or 0.0),
-        window_end_s=float(m_row.get("window_end_s") or 0.0),
+        window_start_s=window_start_s,
+        window_end_s=window_end_s,
         warnings=[],
     )
 
 
 def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16) -> LevelTRealTopologyRow:
-    """Compute topology telemetry from the ACTUAL EEG signal for one window.
+    """Compute topology telemetry from samples returned for one window.
 
     Unlike `compute_fixture_topology_for_window` (which derives numbers from a hash of
-    row_id/metadata text, independent of signal content), this reads the real per-channel
-    samples for the window and computes topology from them via
+    row_id/metadata text, independent of signal content), this requests per-channel
+    samples from the configured local reader and computes topology from them via
     `eeg_signal_topology.compute_topology_from_channels` (the same real, signal-derived
-    computation already used by the generic multi-dataset Level T pipeline).
+    computation already used by the generic multi-dataset Level T pipeline). It does
+    not authenticate source provenance or establish empirical/biological validity.
 
     If the source file or companion files can't be read (missing file, missing companion
     file like BrainVision .vmrk/.eeg, out-of-range window, unsupported format), returns
@@ -210,8 +293,8 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
 
     row_id = str(m_row.get("row_id"))
     source_file = str(m_row.get("source_file") or "")
-    window_start_s = float(m_row.get("window_start_s") or 0.0)
-    window_end_s = float(m_row.get("window_end_s") or 0.0)
+    window_start_s = _finite_window_bound(m_row.get("window_start_s"))
+    window_end_s = _finite_window_bound(m_row.get("window_end_s"))
     warnings: list[str] = []
 
     def _missing_row(
@@ -256,6 +339,12 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
         return _missing_row(
             f"source file not found: {source_file!r}; topology skipped",
             missingness_state="missing_source_file",
+        )
+
+    if not _has_valid_window_bounds(window_start_s, window_end_s):
+        return _missing_row(
+            "window bounds are missing, non-finite, or not a positive interval",
+            missingness_state="unobserved",
         )
 
     try:
@@ -358,19 +447,17 @@ def build_level_t_rows_from_m_windows(
 def compute_phase_based_topology_for_window(
     m_row: dict, band: str = "alpha", max_channels: int | None = 16,
 ) -> dict:
-    """Real band-specific Hilbert-phase topology for one window.
+    """Signal-reader-derived band-specific Hilbert-phase telemetry for one window.
 
     Unlike `compute_real_topology_for_window` (a channel-mean/correlation-
     threshold heuristic -- see `eeg_signal_topology.py`'s own docstring; it
-    uses no phase or frequency information at all), this bandpass-filters the
-    real per-channel signal to `band` (default alpha, 8-13 Hz -- classically
-    the band most associated with conscious-state EEG differences), extracts
+    uses no phase or frequency information at all), this bandpass-filters
+    reader-returned per-channel samples to `band` (default alpha, 8-13 Hz), extracts
     the analytic (Hilbert) phase via
     `validation.analytic_phase.bandpass_hilbert_phase`, and computes
-    Q/Qabs/f_dress from genuine inter-channel phase relationships via
-    `validation.analytic_phase.channel_phase_gradient_metrics` -- a real,
-    already-tested instrument this repo built (for `pipelines/run_eeg.py`) but
-    never wired into the dataset-report pipeline.
+    Q/Qabs/f_dress from phase-gradient telemetry via
+    `validation.analytic_phase.channel_phase_gradient_metrics`. These values
+    do not establish a biological mechanism or measurement validity.
 
     Additive, not a replacement: returns a plain dict (not a
     `LevelTRealTopologyRow`) so it can be reported alongside the existing
@@ -379,17 +466,20 @@ def compute_phase_based_topology_for_window(
     unreadable/out-of-range/too-few-channels/band-above-Nyquist case, matching
     this module's existing skip-and-report convention.
     """
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = _finite_window_bound(m_row.get("window_start_s"))
+    window_end_s = _finite_window_bound(m_row.get("window_end_s"))
+
+    if not _has_valid_window_bounds(window_start_s, window_end_s):
+        return {"row_id": row_id, "band": band, "status": "skipped", "reason": "window bounds are missing or invalid"}
+
     from data.bids_ingest import get_sample_rate, read_window_signal
     from validation.analytic_phase import (
         DEFAULT_EEG_BANDS,
         bandpass_hilbert_phase,
         channel_phase_gradient_metrics,
     )
-
-    row_id = str(m_row.get("row_id"))
-    source_file = str(m_row.get("source_file") or "")
-    window_start_s = float(m_row.get("window_start_s") or 0.0)
-    window_end_s = float(m_row.get("window_end_s") or 0.0)
 
     if band not in DEFAULT_EEG_BANDS:
         raise ValueError(f"Unknown band {band!r}; choose from {sorted(DEFAULT_EEG_BANDS)}")
@@ -446,26 +536,33 @@ def build_phase_based_topology_report(
     who want to bound compute on very large datasets.
     """
     by_id = {str(m.get("row_id")): m for m in m_rows}
-    candidate_rows = [r for r in rows if r.row_id in by_id]
+    candidate_rows = list(rows)
 
     if sample_size is not None and len(candidate_rows) > sample_size:
         rng = np.random.default_rng(seed)
         idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
         candidate_rows = [candidate_rows[i] for i in sorted(idx)]
 
-    results = [
-        compute_phase_based_topology_for_window(by_id[r.row_id], band=band, max_channels=max_channels)
-        for r in candidate_rows
-    ]
+    results = []
+    for row in candidate_rows:
+        if row.null_method == "fixture_none":
+            results.append({"row_id": row.row_id, "band": band, "status": "skipped", "reason": "synthetic fixture row is not signal-derived"})
+        elif not _is_eligible_topology_row(row):
+            results.append({"row_id": row.row_id, "band": band, "status": "skipped", "reason": "Level T row is invalid or unobserved"})
+        elif row.row_id not in by_id:
+            results.append({"row_id": row.row_id, "band": band, "status": "skipped", "reason": "matching Level M row is missing"})
+        else:
+            results.append(compute_phase_based_topology_for_window(by_id[row.row_id], band=band, max_channels=max_channels))
     computed = [x for x in results if x["status"] == "computed"]
     skipped = [x for x in results if x["status"] != "computed"]
 
-    def _mean(key: str) -> float:
+    def _mean(key: str) -> float | None:
         vals = [x[key] for x in computed if key in x and np.isfinite(x[key])]
-        return float(np.mean(vals)) if vals else float("nan")
+        return float(np.mean(vals)) if vals else None
 
     return {
-        "status": "phase_based_topology_computed",
+        "status": "phase_based_topology_computed" if computed else "not_applicable",
+        "reason": None if computed else "no eligible signal windows were processed",
         "band": band,
         "method": "bandpass_hilbert_phase + channel_phase_gradient_metrics",
         "n_windows_computed": len(computed),
@@ -485,35 +582,35 @@ def compute_connectivity_for_window(
     m_row: dict, methods: tuple[str, ...] = ("plv", "pli", "wpli"),
     max_channels: int | None = 16, compute_granger: bool = False, granger_maxlag: int = 5,
 ) -> dict:
-    """Real connectivity (PLV/PLI/wPLI, optionally directed Granger
-    causality) for one window, from the actual per-channel signal --
+    """Connectivity statistics (PLV/PLI/wPLI, optionally Granger prediction)
+    for one window, from samples returned by the configured signal reader --
     `analysis/connectivity_topology.py`'s instruments (Phase 0/3 of the
     "beyond topology" pass), applied per-dataset-window here for the first
     time (they previously existed only in the separate ITCT script).
 
     Additive report function, not wired into `LevelTRealTopologyRow` --
     keeps the existing q_net/q_abs/f_dress columns and the three published
-    reports untouched. PLI/wPLI matter here specifically because scalp EEG
-    connectivity is prone to zero-lag volume-conduction artifacts that PLV
-    cannot distinguish from genuine coupling; PLI/wPLI are insensitive to
-    exactly that artifact by construction (see their docstrings).
+    reports untouched. The output is software telemetry only; it does not
+    establish causal influence, biological coupling, or source authenticity.
     """
-    from data.bids_ingest import read_window_signal
+    row_id = str(m_row.get("row_id"))
+    source_file = str(m_row.get("source_file") or "")
+    window_start_s = _finite_window_bound(m_row.get("window_start_s"))
+    window_end_s = _finite_window_bound(m_row.get("window_end_s"))
 
+    if not _has_valid_window_bounds(window_start_s, window_end_s):
+        return {"row_id": row_id, "status": "skipped", "reason": "window bounds are missing or invalid"}
+
+    if not source_file or not Path(source_file).exists():
+        return {"row_id": row_id, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
+
+    from data.bids_ingest import read_window_signal
     from analysis.connectivity_topology import (
         compute_granger_causality_matrix,
         compute_pli,
         compute_plv,
         compute_wpli,
     )
-
-    row_id = str(m_row.get("row_id"))
-    source_file = str(m_row.get("source_file") or "")
-    window_start_s = float(m_row.get("window_start_s") or 0.0)
-    window_end_s = float(m_row.get("window_end_s") or 0.0)
-
-    if not source_file or not Path(source_file).exists():
-        return {"row_id": row_id, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
 
     try:
         channels = read_window_signal(
@@ -565,33 +662,40 @@ def build_connectivity_report(
     PLV/PLI/wPLI alone are cheap enough to gate every window by default.
     """
     by_id = {str(m.get("row_id")): m for m in m_rows}
-    candidate_rows = [r for r in rows if r.row_id in by_id]
+    candidate_rows = list(rows)
 
     if sample_size is not None and len(candidate_rows) > sample_size:
         rng = np.random.default_rng(seed)
         idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
         candidate_rows = [candidate_rows[i] for i in sorted(idx)]
 
-    results = [
-        compute_connectivity_for_window(
-            by_id[r.row_id], methods=methods, max_channels=max_channels,
-            compute_granger=compute_granger, granger_maxlag=granger_maxlag,
-        )
-        for r in candidate_rows
-    ]
+    results = []
+    for row in candidate_rows:
+        if row.null_method == "fixture_none":
+            results.append({"row_id": row.row_id, "status": "skipped", "reason": "synthetic fixture row is not signal-derived"})
+        elif not _is_eligible_topology_row(row):
+            results.append({"row_id": row.row_id, "status": "skipped", "reason": "Level T row is invalid or unobserved"})
+        elif row.row_id not in by_id:
+            results.append({"row_id": row.row_id, "status": "skipped", "reason": "matching Level M row is missing"})
+        else:
+            results.append(compute_connectivity_for_window(
+                by_id[row.row_id], methods=methods, max_channels=max_channels,
+                compute_granger=compute_granger, granger_maxlag=granger_maxlag,
+            ))
     computed = [x for x in results if x["status"] == "computed"]
     skipped = [x for x in results if x["status"] != "computed"]
 
-    def _mean(key: str) -> float:
+    def _mean(key: str) -> float | None:
         vals = [x[key] for x in computed if key in x and np.isfinite(x[key])]
-        return float(np.mean(vals)) if vals else float("nan")
+        return float(np.mean(vals)) if vals else None
 
     summary = {f"mean_{m}": _mean(f"mean_{m}") for m in methods}
     if compute_granger:
         summary["mean_n_significant_granger_pairs"] = _mean("n_significant_granger_pairs")
 
     return {
-        "status": "connectivity_computed",
+        "status": "connectivity_computed" if computed else "not_applicable",
+        "reason": None if computed else "no eligible signal windows were processed",
         "methods": list(methods),
         "compute_granger": compute_granger,
         "n_windows_computed": len(computed),
@@ -605,8 +709,12 @@ def build_connectivity_report(
 
 
 def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
-    valid_rows = [r for r in rows if r.is_valid and r.topology_quality is not None]
-    missing_rows = [r for r in rows if not r.is_valid or r.topology_quality is None]
+    fixture_rows = [r for r in rows if r.null_method == "fixture_none"]
+    valid_rows = [r for r in rows if _is_eligible_topology_row(r) and r.topology_quality is not None]
+    missing_rows = [
+        r for r in rows
+        if r.null_method != "fixture_none" and (not _is_eligible_topology_row(r) or r.topology_quality is None)
+    ]
     qs = [r.topology_quality for r in valid_rows]
     n_valid = len(valid_rows)
     n_missing = len(missing_rows)
@@ -615,12 +723,15 @@ def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
 
     quality_passed = (
         n_total > 0
+        and not fixture_rows
         and n_missing == 0
         and all(r.topology_quality >= 0.25 and r.n_valid_triangles > 0 for r in valid_rows)
     )
 
     if n_total == 0:
         status = "empty_dataset"
+    elif fixture_rows:
+        status = "incomplete"
     elif skip_rate > 0.20:
         status = "blocked_high_skip_rate"
     elif n_missing > 0:
@@ -635,6 +746,8 @@ def build_topology_quality_report(rows: list[LevelTRealTopologyRow]) -> dict:
         "n_rows": n_total,
         "n_valid_rows": n_valid,
         "n_missing_rows": n_missing,
+        "n_synthetic_fixture_rows": len(fixture_rows),
+        "synthetic_fixture_row_ids": [r.row_id for r in fixture_rows],
         "skip_rate": round(skip_rate, 4),
         "n_subjects": len({r.subject_id for r in rows}),
         "n_valid_subjects": len({r.subject_id for r in valid_rows}),
@@ -657,31 +770,31 @@ def build_null_placeholder_report(rows: list[LevelTRealTopologyRow]) -> dict:
 def compute_surrogate_gate_for_window(
     m_row: dict, n_surrogates: int = 50, seed: int = 0, max_channels: int | None = 16,
 ) -> dict:
-    """Phase-randomization surrogate gate for one window: is the observed
-    topological charge (q_abs) genuine cross-channel structure, or would a
-    phase-randomized surrogate with the same per-channel power spectrum give
-    a similar value?
+    """Compare the returned-sample topology statistic to a phase-randomized null.
 
-    Reads the real per-channel signal (same source as `compute_real_topology_for_window`),
-    generates `n_surrogates` phase-randomized copies via
+    Reads samples from the configured reader, generates `n_surrogates`
+    phase-randomized copies via
     `validation.nulls.phase_randomize_time` (preserves each channel's power
     spectrum, destroys cross-channel phase relationships), recomputes q_abs on
     each surrogate, and returns `validation.nulls.compute_null_summary` (a
-    z-score of the observed value against the surrogate null distribution)
-    plus row identity. Returns a `{"status": "skipped", ...}` dict (not a
-    raised exception) if the source file can't be read, matching this
-    module's existing skip-and-report convention.
+    z-score of the returned-sample value against the configured surrogate
+    distribution) plus row identity. This is not source authentication,
+    evidence verification, or scientific validation. Returns a skipped result
+    when the source or window cannot be used.
     """
-    from data.bids_ingest import read_window_signal
-    from validation.nulls import compute_null_summary, phase_randomize_time
-
     row_id = str(m_row.get("row_id"))
     source_file = str(m_row.get("source_file") or "")
-    window_start_s = float(m_row.get("window_start_s") or 0.0)
-    window_end_s = float(m_row.get("window_end_s") or 0.0)
+    window_start_s = _finite_window_bound(m_row.get("window_start_s"))
+    window_end_s = _finite_window_bound(m_row.get("window_end_s"))
+
+    if not _has_valid_window_bounds(window_start_s, window_end_s):
+        return {"row_id": row_id, "status": "skipped", "reason": "window bounds are missing or invalid"}
 
     if not source_file or not Path(source_file).exists():
         return {"row_id": row_id, "status": "skipped", "reason": f"source file not found: {source_file!r}"}
+
+    from data.bids_ingest import read_window_signal
+    from validation.nulls import compute_null_summary, phase_randomize_time
 
     try:
         channels = read_window_signal(
@@ -718,30 +831,39 @@ def build_null_gate_report(
     Sampling uses a fixed seeded choice, so results are reproducible.
     """
     by_id = {str(m.get("row_id")): m for m in m_rows}
-    candidate_rows = [r for r in rows if r.row_id in by_id]
+    candidate_rows = list(rows)
 
     if sample_size is not None and len(candidate_rows) > sample_size:
         rng = np.random.default_rng(seed)
         idx = rng.choice(len(candidate_rows), size=sample_size, replace=False)
         candidate_rows = [candidate_rows[i] for i in sorted(idx)]
 
-    gate_results = [
-        compute_surrogate_gate_for_window(by_id[r.row_id], n_surrogates=n_surrogates, seed=seed, max_channels=max_channels)
-        for r in candidate_rows
-    ]
+    gate_results = []
+    for row in candidate_rows:
+        if row.null_method == "fixture_none":
+            gate_results.append({"row_id": row.row_id, "status": "skipped", "reason": "synthetic fixture row is not signal-derived"})
+        elif not _is_eligible_topology_row(row):
+            gate_results.append({"row_id": row.row_id, "status": "skipped", "reason": "Level T row is invalid or unobserved"})
+        elif row.row_id not in by_id:
+            gate_results.append({"row_id": row.row_id, "status": "skipped", "reason": "matching Level M row is missing"})
+        else:
+            gate_results.append(compute_surrogate_gate_for_window(
+                by_id[row.row_id], n_surrogates=n_surrogates, seed=seed, max_channels=max_channels
+            ))
     gated = [g for g in gate_results if g["status"] == "gated"]
     skipped = [g for g in gate_results if g["status"] == "skipped"]
     z_values = [g["z"] for g in gated if g["z"] == g["z"]]  # filter nan
 
     return {
-        "status": "real_nulls_performed",
-        "real_nulls_performed": True,
+        "status": "real_nulls_performed" if gated else "not_applicable",
+        "real_nulls_performed": bool(gated),
+        "reason": None if gated else "no eligible signal windows were gated",
         "method": "phase_randomize_time",
         "n_surrogates_per_window": n_surrogates,
         "n_windows_gated": len(gated),
         "n_windows_skipped": len(skipped),
         "n_windows_total_candidates": len(rows),
-        "mean_abs_z": float(np.mean(np.abs(z_values))) if z_values else float("nan"),
+        "mean_abs_z": float(np.mean(np.abs(z_values))) if z_values else None,
         "n_passed_z_ge_2": sum(1 for z in z_values if abs(z) >= 2.0),
         "seed": seed,
         "sample_size": sample_size,
@@ -767,11 +889,23 @@ def build_group_significance_report(
 
     Fails closed: excludes invalid or unobserved rows from permutation tests
     and blocks if overall window skip rate exceeds `max_skip_rate` or paired
-    subject count falls below `min_paired_subjects`.
+    subject count falls below `min_paired_subjects`. Synthetic fixture rows
+    are not eligible measurements. Ineligible grouping metadata prevents a
+    partial join from being analyzed.
     """
+    if max_skip_rate is not None:
+        try:
+            max_skip_rate = float(max_skip_rate)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("max_skip_rate must be finite and between 0 and 1") from exc
+        if not math.isfinite(max_skip_rate) or not 0.0 <= max_skip_rate <= 1.0:
+            raise ValueError("max_skip_rate must be finite and between 0 and 1")
+    if min_paired_subjects is not None and min_paired_subjects < 0:
+        raise ValueError("min_paired_subjects must be non-negative")
+
     eligible_rows = [
         r for r in rows
-        if r.is_valid and r.topology_status == "computed" and not r.warnings
+        if _is_eligible_topology_row(r)
     ]
     skip_rate = (len(rows) - len(eligible_rows)) / len(rows) if rows else 1.0
 
@@ -798,12 +932,12 @@ def build_group_significance_report(
 
     by_id = {str(m.get("row_id")): m for m in m_rows}
     joined = []
+    missing_group_metadata = 0
     for r in eligible_rows:
         m = by_id.get(r.row_id)
-        if m is None:
-            continue
-        group_val = m.get(group_col)
-        if group_val in (None, ""):
+        group_val = _normalized_label(m.get(group_col)) if m is not None else None
+        if group_val is None:
+            missing_group_metadata += 1
             continue
         row_vals = {}
         for c in value_cols:
@@ -811,6 +945,21 @@ def build_group_significance_report(
             if val is not None:
                 row_vals[c] = val
         joined.append({"subject_id": r.subject_id, "group": group_val, **row_vals})
+
+    if missing_group_metadata:
+        return {
+            "status": "not_applicable",
+            "reason": (
+                f"{missing_group_metadata} eligible Level T rows lack joined {group_col!r} "
+                "group metadata; report not computed"
+            ),
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+            "n_rows_missing_group_metadata": missing_group_metadata,
+            "n_rows_used": 0,
+        }
 
     if not joined:
         return {
@@ -903,6 +1052,7 @@ def build_group_significance_report(
         "n_rows_total": len(rows),
         "n_rows_eligible": len(eligible_rows),
         "n_rows_excluded": len(rows) - len(eligible_rows),
+        "n_rows_used": len(joined),
         "skip_rate": round(skip_rate, 4),
         "n_paired_subjects": len(paired_subjects),
         "metrics": metric_results,
@@ -916,35 +1066,28 @@ def build_ml_decoding_report(
     extra_feature_reports: list[dict] | None = None,
     n_permutations: int = 1000, cv_folds: int = 5, seed: int = 0,
 ) -> dict:
-    """Complementary validity check to `build_group_significance_report`:
-    can any COMBINATION of real features decode `group_col` above chance,
-    with a proper cross-validated permutation-test null (`analysis.ml_decoding`)?
-    Additive, not a replacement for the per-metric univariate tests above.
+    """Summarize a configured classifier evaluation of supplied group labels.
+
+    This is a software evaluation of label separability, not a measurement- or
+    biological-validity test. It is additive to the per-metric group report.
 
     Same 2-group-only, row_id-join convention as `build_group_significance_report`
-    (see its docstring). `value_cols` defaults to this row's own real topology
+    (see its docstring). `value_cols` defaults to this row's own computed topology
     columns (always available, no extra compute); `extra_feature_reports`
     optionally accepts additional per-window `results` lists from other
     reports in this pass (e.g. `connectivity_report["results"]`,
     `phase_based_topology_report["results"]`, `real_level_m_features_report["results"]`
-    keyed by `row_id`) to widen the feature set to the "full real feature set"
+    keyed by `row_id`) to widen the feature set to the configured feature set
     the repo-hardening plan's Phase 6 describes, without this function
     re-running any of that (compute-heavy) work itself.
     """
-    from analysis.ml_decoding import build_decoding_report
-
-    # A real-mode extraction returns an explicit zero row with warnings when
-    # its source file cannot be read.  Those rows are useful for reporting the
-    # missing-data condition, but they are not observations: feeding their
-    # zeros into a classifier can manufacture a perfectly reproducible signal
-    # and needlessly launch a large permutation test.  Keep ML decoding
-    # fail-closed and require signal-derived, non-degenerate topology rows.
+    # Invalid, missing, and synthetic fixture rows are not observations for
+    # this report. Keeping the filter explicit prevents fixture values from
+    # entering a classifier as if they were signal-derived measurements.
     eligible_rows = [
         r for r in rows
         if (
-            r.is_valid
-            and r.topology_status == "computed"
-            and not r.warnings
+            _is_eligible_topology_row(r)
             and r.n_triangles > 0
             and r.n_valid_triangles > 0
             and all(
@@ -974,17 +1117,32 @@ def build_ml_decoding_report(
 
     feature_dicts: list[dict] = []
     labels: list = []
+    missing_group_metadata = 0
     for r in eligible_rows:
         m = by_id.get(r.row_id)
-        if m is None:
-            continue
-        group_val = m.get(group_col)
-        if group_val in (None, ""):
+        group_val = _normalized_label(m.get(group_col)) if m is not None else None
+        if group_val is None:
+            missing_group_metadata += 1
             continue
         feats = {c: getattr(r, c) for c in value_cols}
         feats.update(extra_by_row.get(r.row_id, {}))
         feature_dicts.append(feats)
         labels.append(group_val)
+
+    if missing_group_metadata:
+        return {
+            "status": "not_applicable",
+            "reason": (
+                f"{missing_group_metadata} eligible Level T rows lack joined {group_col!r} "
+                "group metadata; report not computed"
+            ),
+            "group_col": group_col,
+            "n_rows_total": len(rows),
+            "n_rows_eligible": len(eligible_rows),
+            "n_rows_excluded": len(rows) - len(eligible_rows),
+            "n_rows_missing_group_metadata": missing_group_metadata,
+            "n_rows_used": 0,
+        }
 
     if not feature_dicts:
         return {
@@ -1004,10 +1162,16 @@ def build_ml_decoding_report(
             "group_col": group_col,
         }
 
+    from analysis.ml_decoding import build_decoding_report
+
     report = build_decoding_report(
         feature_dicts, labels, seed=seed, n_permutations=n_permutations, cv_folds=cv_folds,
     )
     report["group_col"] = group_col
+    report["n_rows_total"] = len(rows)
+    report["n_rows_eligible"] = len(eligible_rows)
+    report["n_rows_excluded"] = len(rows) - len(eligible_rows)
+    report["n_rows_used"] = len(feature_dicts)
     return report
 
 
@@ -1032,7 +1196,11 @@ def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: l
                     art.append(fv)
                     if fv > 0.5:
                         high_artifact_rows.append(r.row_id)
-    valid_qualities = [r.topology_quality for r in rows if r.is_valid and r.topology_quality is not None]
+    fixture_rows = [r for r in rows if r.null_method == "fixture_none"]
+    valid_qualities = [
+        r.topology_quality for r in rows
+        if _is_eligible_topology_row(r) and r.topology_quality is not None
+    ]
     return {
         "n_rows": len(rows),
         "n_matched_m_rows": sum(1 for r in rows if r.row_id in by_id),
@@ -1040,8 +1208,16 @@ def build_artifact_alignment_report(rows: list[LevelTRealTopologyRow], m_rows: l
         "mean_artifact_score": (sum(art) / len(art)) if art else None,
         "high_artifact_rows": high_artifact_rows,
         "topology_quality_mean": (sum(valid_qualities) / len(valid_qualities)) if valid_qualities else None,
-        "low_topology_quality_rows": [r.row_id for r in rows if r.is_valid and r.topology_quality is not None and r.topology_quality < 0.25],
-        "missing_topology_rows": [r.row_id for r in rows if not r.is_valid or r.topology_quality is None],
+        "low_topology_quality_rows": [
+            r.row_id for r in rows
+            if _is_eligible_topology_row(r) and r.topology_quality is not None and r.topology_quality < 0.25
+        ],
+        "missing_topology_rows": [
+            r.row_id for r in rows
+            if r.null_method != "fixture_none" and (not _is_eligible_topology_row(r) or r.topology_quality is None)
+        ],
+        "n_synthetic_fixture_topology_rows": len(fixture_rows),
+        "synthetic_fixture_topology_rows": [r.row_id for r in fixture_rows],
         "artifact_alignment_warning": "artifact scores partially missing" if missing else "none",
         "artifact_dominance_proxy": ((sum(art) / len(art)) > 0.5) if art else False,
     }
@@ -1064,12 +1240,31 @@ def audit_cohort_missingness(
     - Missing companion files, missing windows, or incomplete cohorts -> 'INCOMPLETE'
     - Empty dataset -> 'EMPTY_DATASET'
 
-    Passes only when all subjects, companion files, conditions, and windows are
-    observed, valid, and paired.
+    Passes only when all included windows are observed and valid, required
+    condition labels are present, and the observed cohort is complete. When
+    exactly two conditions are present, subjects must be paired. Explicit
+    hash-based fixture rows are never eligible for this cohort gate; they are
+    reported separately and prevent a PASS verdict.
     """
+    try:
+        max_skip_rate = float(max_skip_rate)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("max_skip_rate must be finite and between 0 and 1") from exc
+    if not math.isfinite(max_skip_rate) or not 0.0 <= max_skip_rate <= 1.0:
+        raise ValueError("max_skip_rate must be finite and between 0 and 1")
+    if min_paired_subjects < 0 or min_windows_per_subject < 1:
+        raise ValueError("minimum subject/window counts must be non-negative and positive, respectively")
+
     total_t_rows = len(t_rows)
-    valid_t_rows = [r for r in t_rows if r.is_valid and r.q_abs is not None and r.topology_status == "computed"]
-    missing_t_rows = [r for r in t_rows if not r.is_valid or r.q_abs is None or r.topology_status != "computed"]
+    fixture_t_rows = [r for r in t_rows if r.null_method == "fixture_none"]
+    valid_t_rows = [
+        r for r in t_rows
+        if _is_eligible_topology_row(r) and r.q_abs is not None
+    ]
+    missing_t_rows = [
+        r for r in t_rows
+        if r.null_method != "fixture_none" and (not _is_eligible_topology_row(r) or r.q_abs is None)
+    ]
 
     n_valid = len(valid_t_rows)
     n_missing = len(missing_t_rows)
@@ -1079,15 +1274,28 @@ def audit_cohort_missingness(
     missing_records: list[dict] = []
     for r in missing_t_rows:
         reason_key = r.missingness_state or "unobserved"
+        if reason_key == "computed":
+            reason_key = "unobserved"
         missingness_by_reason[reason_key] = missingness_by_reason.get(reason_key, 0) + 1
         missing_records.append({
             "row_id": r.row_id,
             "subject_id": r.subject_id,
             "session_id": r.session_id,
             "run_id": r.run_id,
-            "missingness_state": r.missingness_state,
-            "missingness_reason": r.missingness_reason,
+            "missingness_state": reason_key,
+            "missingness_reason": r.missingness_reason or "row failed eligibility checks",
         })
+    if fixture_t_rows:
+        missingness_by_reason["synthetic_fixture"] = len(fixture_t_rows)
+        for r in fixture_t_rows:
+            missing_records.append({
+                "row_id": r.row_id,
+                "subject_id": r.subject_id,
+                "session_id": r.session_id,
+                "run_id": r.run_id,
+                "missingness_state": "unobserved",
+                "missingness_reason": "hash-based fixture output is not an observed signal window",
+            })
 
     all_subject_ids = sorted({r.subject_id for r in t_rows})
     subject_details: dict[str, dict] = {}
@@ -1099,20 +1307,27 @@ def audit_cohort_missingness(
 
     for sub_id in all_subject_ids:
         sub_rows = [r for r in t_rows if r.subject_id == sub_id]
-        sub_valid = [r for r in sub_rows if r.is_valid and r.q_abs is not None and r.topology_status == "computed"]
-        sub_missing = [r for r in sub_rows if not (r.is_valid and r.q_abs is not None and r.topology_status == "computed")]
+        sub_valid = [
+            r for r in sub_rows
+            if _is_eligible_topology_row(r) and r.q_abs is not None
+        ]
+        sub_fixture = [r for r in sub_rows if r.null_method == "fixture_none"]
+        sub_missing = [
+            r for r in sub_rows
+            if r.null_method != "fixture_none" and (not _is_eligible_topology_row(r) or r.q_abs is None)
+        ]
 
         sub_conditions = set()
         for r in sub_valid:
-            c = r.task_label
-            if not c and r.row_id in m_by_id:
-                c = m_by_id[r.row_id].get(group_col)
+            c = _normalized_label(r.task_label)
+            if c is None and r.row_id in m_by_id:
+                c = _normalized_label(m_by_id[r.row_id].get(group_col))
             if c:
                 sub_conditions.add(str(c))
 
         n_sub_total = len(sub_rows)
         n_sub_valid = len(sub_valid)
-        sub_skip = (len(sub_missing) / n_sub_total) if n_sub_total > 0 else 1.0
+        sub_skip = ((len(sub_missing) + len(sub_fixture)) / n_sub_total) if n_sub_total > 0 else 1.0
 
         if n_sub_valid == n_sub_total and n_sub_valid >= min_windows_per_subject:
             status = "complete"
@@ -1129,16 +1344,20 @@ def audit_cohort_missingness(
             "n_total_windows": n_sub_total,
             "n_valid_windows": n_sub_valid,
             "n_missing_windows": len(sub_missing),
+            "n_synthetic_fixture_windows": len(sub_fixture),
             "skip_rate": round(sub_skip, 4),
             "conditions": sorted(list(sub_conditions)),
         }
 
     joined_valid = []
+    unlabeled_valid_rows = []
     for r in valid_t_rows:
-        cond = r.task_label
-        if not cond and r.row_id in m_by_id:
-            cond = m_by_id[r.row_id].get(group_col)
-        if cond:
+        cond = _normalized_label(r.task_label)
+        if cond is None and r.row_id in m_by_id:
+            cond = _normalized_label(m_by_id[r.row_id].get(group_col))
+        if cond is None:
+            unlabeled_valid_rows.append(r)
+        else:
             joined_valid.append({"subject_id": r.subject_id, "condition": str(cond)})
 
     unique_conditions = sorted({item["condition"] for item in joined_valid})
@@ -1152,9 +1371,12 @@ def audit_cohort_missingness(
         paired_set = subs_c0.intersection(subs_c1)
         paired_subjects = sorted(list(paired_set))
         unpaired_subjects = sorted(list(set(all_subject_ids) - paired_set))
-    else:
+    elif len(unique_conditions) == 1:
         paired_subjects = complete_subjects
         unpaired_subjects = sorted(list(set(all_subject_ids) - set(complete_subjects)))
+    else:
+        paired_subjects = []
+        unpaired_subjects = sorted(all_subject_ids)
 
     missing_expected_subjects = []
     if expected_subjects:
@@ -1168,6 +1390,23 @@ def audit_cohort_missingness(
         verdict = "BLOCKED"
         gate_passed = False
         verdict_reason = f"Window skip rate {skip_rate:.2%} exceeds maximum threshold {max_skip_rate:.2%}."
+    elif fixture_t_rows or unlabeled_valid_rows:
+        verdict = "INCOMPLETE"
+        gate_passed = False
+        reasons = []
+        if fixture_t_rows:
+            reasons.append(f"{len(fixture_t_rows)} synthetic fixture windows are not observed signal windows")
+        if unlabeled_valid_rows:
+            reasons.append(f"{len(unlabeled_valid_rows)} valid windows are missing condition labels")
+        if n_missing:
+            reasons.append(f"{n_missing} windows are missing or invalid")
+        if partial_subjects:
+            reasons.append(f"{len(partial_subjects)} subjects are partial")
+        if unpaired_subjects:
+            reasons.append(f"{len(unpaired_subjects)} subjects are unpaired")
+        if missing_expected_subjects:
+            reasons.append(f"{len(missing_expected_subjects)} expected subjects are absent")
+        verdict_reason = "Cohort incomplete: " + "; ".join(reasons) + "."
     elif len(unique_conditions) == 2 and len(paired_subjects) < min_paired_subjects:
         verdict = "INSUFFICIENT_POWER"
         gate_passed = False
@@ -1191,6 +1430,8 @@ def audit_cohort_missingness(
         "n_total_windows": total_t_rows,
         "n_valid_windows": n_valid,
         "n_missing_windows": n_missing,
+        "n_synthetic_fixture_windows": len(fixture_t_rows),
+        "n_unlabeled_valid_windows": len(unlabeled_valid_rows),
         "skip_rate": round(skip_rate, 4),
         "max_skip_rate": max_skip_rate,
         "missingness_by_reason": missingness_by_reason,
@@ -1297,10 +1538,12 @@ def write_level_t_topology_outputs(
     if ml_decoding_report is not None:
         paths["ml_decoding_report.json"].write_text(json.dumps(ml_decoding_report, indent=2), encoding="utf-8")
     if cohort_missingness_report is not None:
-        paths["cohort_missingness_report.json"].write_text(json.dumps(cohort_missingness_report, indent=2), encoding="utf-8")
+        paths["cohort_missingness_report.json"].write_text(
+            json.dumps(cohort_missingness_report, indent=2, allow_nan=False), encoding="utf-8"
+        )
 
     report_lines = [
-        f"# {dataset_id.upper()} Real/Local Level T Topology Extraction",
+        f"# {dataset_id.upper()} Local Signal-Reader Level T Topology Extraction",
         "## Dataset/stage",
         f"- dataset_id: {dataset_id}",
         "- stage: operational Level T topology telemetry",
@@ -1314,19 +1557,19 @@ def write_level_t_topology_outputs(
         f"- {result.null_placeholder_report}",
     ]
     if null_gate_report is not None:
-        report_lines += ["## Null gate report (real phase-randomization surrogates)", f"- {null_gate_report}"]
+        report_lines += ["## Null gate report (phase-randomization surrogate comparison)", f"- {null_gate_report}"]
     if group_significance_report is not None:
-        report_lines += ["## Group significance report (permutation tests)", f"- {group_significance_report}"]
+        report_lines += ["## Group comparison report (permutation tests)", f"- {group_significance_report}"]
     if phase_based_topology_report is not None:
-        report_lines += ["## Phase-based topology report (real band-specific Hilbert phase)", f"- {phase_based_topology_report}"]
+        report_lines += ["## Phase-based topology report (Hilbert-phase metrics from returned samples)", f"- {phase_based_topology_report}"]
     if connectivity_report is not None:
-        report_lines += ["## Connectivity report (real PLV/PLI/wPLI, optional directed Granger causality)", f"- {connectivity_report}"]
+        report_lines += ["## Connectivity report (PLV/PLI/wPLI, optional Granger prediction statistic)", f"- {connectivity_report}"]
     if spatial_topology_report is not None:
-        report_lines += ["## Spatial topology report (real montage-aware winding number on a genuine 2D phase field)", f"- {spatial_topology_report}"]
+        report_lines += ["## Optional spatial-topology output", f"- {spatial_topology_report}"]
     if microstate_report is not None:
-        report_lines += ["## Microstate report (real pycrostates modified K-means, per-recording not per-window)", f"- {microstate_report}"]
+        report_lines += ["## Optional microstate output", f"- {microstate_report}"]
     if ml_decoding_report is not None:
-        report_lines += ["## ML decoding report (cross-validated logistic regression + permutation-test null, complementary to per-metric group significance)", f"- {ml_decoding_report}"]
+        report_lines += ["## ML group-decoding output (configured classifier evaluation)", f"- {ml_decoding_report}"]
     if cohort_missingness_report is not None:
         report_lines += [
             "## Cohort missingness audit report",
