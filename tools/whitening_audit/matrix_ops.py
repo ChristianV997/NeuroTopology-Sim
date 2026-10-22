@@ -59,18 +59,29 @@ def validate_finite_matrix(X: Sequence[Sequence[float]], name: str = "Matrix") -
 
 
 def validate_square_symmetric(A: Sequence[Sequence[float]], tol: float = 1e-9) -> None:
-    """Ensure matrix is square and symmetric within tolerance."""
+    """Ensure matrix is square and symmetric within relative/local tolerance.
+
+    Tolerance is relative to the local matrix scale (off-diagonal magnitudes and
+    the two diagonal entries). An absolute ``1e-15`` floor is intentionally
+    avoided: it previously accepted fully asymmetric micro-scale covariances
+    (e.g. off-diagonals ``1e-16`` vs ``0``).
+    """
     validate_finite_matrix(A, "Covariance matrix")
     n = len(A)
     for i in range(n):
         if len(A[i]) != n:
             raise InvalidCovarianceError(f"Matrix is not square: {n} rows, row {i} has {len(A[i])} cols.")
         for j in range(i + 1, n):
-            scale = max(abs(A[i][j]), abs(A[j][i]))
-            eff_tol = max(tol * scale, 1e-15)
-            if abs(A[i][j] - A[j][i]) > eff_tol:
+            a_ij = A[i][j]
+            a_ji = A[j][i]
+            diff = abs(a_ij - a_ji)
+            if diff == 0.0:
+                continue
+            scale = max(abs(a_ij), abs(a_ji), abs(A[i][i]), abs(A[j][j]))
+            eff_tol = tol * scale if scale > 0.0 else 0.0
+            if diff > eff_tol:
                 raise InvalidCovarianceError(
-                    f"Matrix is asymmetric: A[{i}][{j}]={A[i][j]} vs A[{j}][{i}]={A[j][i]}."
+                    f"Matrix is asymmetric: A[{i}][{j}]={a_ij} vs A[{j}][{i}]={a_ji}."
                 )
 
 

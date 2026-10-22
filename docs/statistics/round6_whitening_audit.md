@@ -117,7 +117,7 @@ The verifier implements explicit pre-condition checks and raises distinct except
 | **Non-finite entries** | Any entry is `NaN`, `+Inf`, or `-Inf` | `NonFiniteValuesError` |
 | **Dimension mismatch** | $d_{\text{test}} \ne d_{\text{train}}$ during transform | `FeatureDimensionMismatchError` |
 | **Non-SPD without floor** | Covariance minor $\le 0$ without repair | `NonPositiveDefiniteError` |
-| **Asymmetric covariance** | $|A_{ij} - A_{ji}| > 10^{-9}$ | `InvalidCovarianceError` |
+| **Asymmetric covariance** | $|A_{ij}-A_{ji}| > 10^{-9}\cdot\max(|A_{ij}|,|A_{ji}|,|A_{ii}|,|A_{jj}|)$ (no absolute $10^{-15}$ floor) | `InvalidCovarianceError` |
 
 ---
 

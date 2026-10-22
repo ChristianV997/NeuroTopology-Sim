@@ -503,6 +503,21 @@ class TestWhiteningAudit(unittest.TestCase):
         self.assertGreater(rep.relative_correction_norm, 0.0)
         self.assertTrue(rep.is_correction_material)
 
+    def test_micro_scale_asymmetry_not_swallowed_by_absolute_floor(self) -> None:
+        """Regression: absolute 1e-15 symmetry floor hid 100% micro-scale asymmetry.
+
+        Off-diagonals ``1e-16`` vs ``0`` differ by a full relative amount, but
+        ``eff_tol = max(tol * scale, 1e-15)`` previously accepted them as symmetric.
+        """
+        from tools.whitening_audit.matrix_ops import validate_square_symmetric
+        from tools.whitening_audit.types import InvalidCovarianceError
+
+        cov = [[1e-16, 1e-16], [0.0, 1e-16]]
+        with self.assertRaises(InvalidCovarianceError):
+            validate_square_symmetric(cov)
+        with self.assertRaises(InvalidCovarianceError):
+            project_spd_covariance(cov, eigenvalue_floor=1e-20)
+
     def test_jacobi_matches_independent_numpy_oracle_when_available(self) -> None:
         """Compare Jacobi eigenvalues to NumPy eigh on random SPD (skip if NumPy absent)."""
         try:
