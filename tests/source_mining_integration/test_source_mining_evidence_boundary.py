@@ -18,7 +18,7 @@ if str(ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(ROOT))
 
 from tools.evidence_promotion_gate.adapters import load_case_dir
-from tools.evidence_promotion_gate.evaluator import evaluate_case
+from tools.evidence_promotion_gate.evaluator import evaluate_case, evaluate_path
 from tools.public_repo_harvest.schema import CandidateRepo, LicenseCompatibilityRecord, SourceRepo, to_dict
 
 
@@ -90,8 +90,7 @@ def test_current_harvest_license_contract_defaults_fail_closed():
 
 @pytest.mark.parametrize("conflict", ["license_conflict", "cohort_discrepancy"])
 def test_explicit_empirical_declaration_is_refused_when_dataset_metadata_conflicts(tmp_path: Path, conflict: str):
-    # The BLOCK decision here comes from the explicit evidence_class="empirical" refusal.
-    # It does not come from the conflict fields, which the gate ignores (see the xfail below).
+    # The explicit EMPIRICAL refusal stands independently of the metadata blocker.
     packet = {
         "record_type": "SourceSnapshot",
         "schema_version": "dataset-metadata-fixture-v1",
@@ -108,6 +107,13 @@ def test_explicit_empirical_declaration_is_refused_when_dataset_metadata_conflic
     assert result.promotion_decision == "BLOCK_PROMOTION"
     assert result.scientific_pass is False
     assert result.allowed_evidence_class != "empirical"
+    assert "EMPIRICAL_PROMOTION_REFUSED" in result.reason_codes
+    if conflict == "license_conflict":
+        assert "DATASET_LICENSE_EVIDENCE_CONFLICT" in result.reason_codes
+    else:
+        assert "DATASET_LICENSE_EVIDENCE_UNRESOLVED" in result.reason_codes
+        assert "DATASET_COHORT_EVIDENCE_UNRESOLVED" in result.reason_codes
+        assert "DATASET_COHORT_DISCREPANCY" in result.reason_codes
 
 
 @pytest.mark.parametrize("data_mode,kind", [
@@ -160,30 +166,148 @@ def test_integrity_and_hash_chain_are_not_scientific_truth(tmp_path: Path):
     assert result.scientific_eligibility is False
 
 
-def _dataset_packet(evidence_class: str, *, conflict: bool) -> dict:
+def _dataset_packet(evidence_class: str, *, conflict: bool = False, **metadata) -> dict:
     return {
         "record_type": "SourceSnapshot",
         "schema_version": "dataset-metadata-fixture-v1",
         "dataset_id": "ds-fixture-only",
         "license_status": "conflict" if conflict else "compatible",
-        "cohort_status": "unresolved" if conflict else "consistent",
+        "cohort_status": "conflict" if conflict else "consistent",
         "cohort_discrepancy": conflict,
         "evidence_class": evidence_class,
         "data_mode": "observational",
+        "n_tests": 3,
+        "multiplicity_correction": "holm",
+        "null_controls": ["phase_shuffle"],
         "provenance": {"source_id": "ds-fixture-only", "checksum": "a" * 64,
                        "acquisition": "fixture", "dataset_version": "fixture-v1"},
+        **metadata,
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known gap: evaluate_case ignores license_status/cohort_status. Handoff to the evidence-gate owner; remove this marker when the gate reads them.",
+def test_resolved_dataset_metadata_allows_descriptive_review(tmp_path: Path):
+    result = _promotion(
+        _dump_case(tmp_path, "resolved", _dataset_packet("descriptive_empirical"))
+    )
+    assert result.promotion_decision == "ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW"
+    assert result.allowed_evidence_class == "descriptive_empirical"
+    assert result.scientific_eligibility is True
+    assert result.scientific_pass is False
+
+
+@pytest.mark.parametrize(
+    "metadata,reason_code",
+    [
+        ({"license_status": "conflict"}, "DATASET_LICENSE_EVIDENCE_CONFLICT"),
+        ({"license_status": "unknown"}, "DATASET_LICENSE_EVIDENCE_UNRESOLVED"),
+        ({"license_status": "incompatible"}, "DATASET_LICENSE_EVIDENCE_UNRESOLVED"),
+        ({"license_status": None}, "DATASET_LICENSE_EVIDENCE_MISSING"),
+        ({"cohort_status": "conflict"}, "DATASET_COHORT_EVIDENCE_CONFLICT"),
+        ({"cohort_status": "unknown"}, "DATASET_COHORT_EVIDENCE_UNRESOLVED"),
+        ({"cohort_status": "unresolved"}, "DATASET_COHORT_EVIDENCE_UNRESOLVED"),
+        ({"cohort_discrepancy": True}, "DATASET_COHORT_DISCREPANCY"),
+        ({"cohort_discrepancy": None}, "DATASET_COHORT_EVIDENCE_MISSING"),
+        ({"cohort_discrepancy": "false"}, "DATASET_COHORT_EVIDENCE_UNRESOLVED"),
+    ],
+    ids=[
+        "license-conflict", "license-unknown", "license-incompatible", "license-missing",
+        "cohort-conflict", "cohort-unknown", "cohort-unresolved", "cohort-discrepancy",
+        "cohort-discrepancy-missing", "cohort-discrepancy-malformed",
+    ],
 )
-@pytest.mark.parametrize("evidence_class", ["engineering_fact", "descriptive"])
-def test_dataset_conflict_metadata_changes_gate_output(tmp_path: Path, evidence_class: str):
-    # Regression for the metadata-conflict claim. The gate does not read license_status,
-    # cohort_status or cohort_discrepancy (README, "Compatibility assumptions"), so this fails.
-    clean = _promotion(_dump_case(tmp_path, "clean", _dataset_packet(evidence_class, conflict=False)))
-    conflicted = _promotion(_dump_case(tmp_path, "conflicted", _dataset_packet(evidence_class, conflict=True)))
-    assert (conflicted.promotion_decision, tuple(conflicted.reason_codes)) != (
-        clean.promotion_decision, tuple(clean.reason_codes))
+def test_unresolved_dataset_metadata_blocks_descriptive_review(
+    tmp_path: Path, metadata: dict, reason_code: str
+):
+    payload = _dataset_packet("descriptive_empirical")
+    payload.update(metadata)
+    result = _promotion(_dump_case(tmp_path, "unresolved", payload))
+    assert result.promotion_decision == "HOLD_INCONCLUSIVE"
+    assert result.allowed_evidence_class != "descriptive_empirical"
+    assert result.scientific_eligibility is False
+    assert result.scientific_pass is False
+    assert reason_code in result.reason_codes
+
+
+@pytest.mark.parametrize(
+    "metadata,reason_code",
+    [
+        ({"license_status": "compatible"}, "DATASET_COHORT_EVIDENCE_MISSING"),
+        ({"cohort_status": "consistent", "cohort_discrepancy": False}, "DATASET_LICENSE_EVIDENCE_MISSING"),
+        ({"license_status": "compatible", "cohort_discrepancy": False}, "DATASET_COHORT_EVIDENCE_MISSING"),
+        ({"license_status": "compatible", "cohort_status": "consistent"}, "DATASET_COHORT_EVIDENCE_MISSING"),
+    ],
+    ids=["missing-cohort", "missing-license", "missing-cohort-status", "missing-discrepancy-flag"],
+)
+def test_partial_dataset_metadata_is_not_inferred(
+    tmp_path: Path, metadata: dict, reason_code: str
+):
+    payload = _dataset_packet("descriptive_empirical")
+    for key in ("license_status", "cohort_status", "cohort_discrepancy"):
+        if key not in metadata:
+            payload.pop(key)
+    payload.update(metadata)
+    result = _promotion(_dump_case(tmp_path, "partial", payload))
+    assert result.promotion_decision == "HOLD_INCONCLUSIVE"
+    assert result.scientific_eligibility is False
+    assert reason_code in result.reason_codes
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"license_status": None, "cohort_status": None, "cohort_discrepancy": None},
+        {"license_status": "conflict", "cohort_status": "conflict", "cohort_discrepancy": True},
+    ],
+    ids=["missing-dataset-readiness", "conflicting-dataset-readiness"],
+)
+def test_dataset_metadata_does_not_restrict_engineering_only_reporting(
+    tmp_path: Path, metadata: dict
+):
+    result = _promotion(
+        _dump_case(
+            tmp_path,
+            "metadata_only",
+            _dataset_packet("engineering_fact", **metadata),
+        )
+    )
+    assert result.promotion_decision == "ADMISSIBLE_FOR_ENGINEERING_REPORT"
+    assert result.allowed_evidence_class == "engineering_fact"
+    assert result.scientific_pass is False
+    assert not any(code.startswith("DATASET_") for code in result.reason_codes)
+
+
+def test_conflicting_metadata_across_sources_blocks_descriptive_review(tmp_path: Path):
+    case = _dump_case(
+        tmp_path,
+        "multiple_metadata_sources",
+        _dataset_packet("descriptive_empirical"),
+    )
+    path = case / "artifact.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["dataset_metadata"] = {
+        "license_status": "conflict",
+        "cohort_status": "consistent",
+        "cohort_discrepancy": False,
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    result = _promotion(case)
+    assert result.promotion_decision == "HOLD_INCONCLUSIVE"
+    assert "DATASET_LICENSE_EVIDENCE_CONFLICT" in result.reason_codes
+    assert result.scientific_eligibility is False
+
+
+def test_metadata_readiness_is_preserved_by_public_path_and_json_serialization(tmp_path: Path):
+    case = _dump_case(
+        tmp_path,
+        "serialized_conflict",
+        _dataset_packet("descriptive_empirical", conflict=True),
+    )
+    result = evaluate_path(case)[0]
+    payload = result.to_dict()
+    assert payload["promotion_decision"] == "HOLD_INCONCLUSIVE"
+    assert payload["scientific_eligibility"] is False
+    assert payload["scientific_pass"] is False
+    assert "DATASET_LICENSE_EVIDENCE_CONFLICT" in payload["reason_codes"]
+    assert "DATASET_COHORT_EVIDENCE_CONFLICT" in payload["reason_codes"]
+    encoded = json.dumps(payload, allow_nan=False)
+    assert json.loads(encoded)["promotion_decision"] == "HOLD_INCONCLUSIVE"

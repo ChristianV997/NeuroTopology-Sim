@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Iterator
 
 from tools.evidence_promotion_gate.adapters import LoadedCase, claim_payload_from_case
 from tools.evidence_promotion_gate.schema import (
@@ -110,6 +110,97 @@ def _provenance_status(provenance: dict[str, Any] | None) -> str:
     if checksum and len(checksum) != 64:
         return "invalid"
     return "complete"
+
+
+def _dataset_metadata_mappings(payload: Any) -> Iterator[dict[str, Any]]:
+    """Yield explicit dataset metadata objects without inferring values."""
+    if not isinstance(payload, dict):
+        return
+    yield payload
+    fields = payload.get("fields")
+    if isinstance(fields, dict):
+        yield fields
+    for parent in (payload, fields if isinstance(fields, dict) else {}):
+        nested = parent.get("dataset_metadata")
+        if isinstance(nested, dict):
+            yield nested
+
+
+def _declared_metadata_values(artifacts: list[Any], key: str) -> list[Any]:
+    values: list[Any] = []
+    for artifact in artifacts:
+        for mapping in _dataset_metadata_mappings(artifact.payload):
+            if key in mapping:
+                values.append(mapping[key])
+    return values
+
+
+def _dataset_metadata_reasons(artifacts: list[Any]) -> list[Reason]:
+    """Require explicit, mutually consistent metadata for descriptive data claims.
+
+    These fields are declarations, not independent verification of a license,
+    dataset identity, or cohort composition.
+    """
+    reasons: list[Reason] = []
+
+    license_values = _declared_metadata_values(artifacts, "license_status")
+    if not license_values or any(not isinstance(value, str) or not value.strip() for value in license_values):
+        reasons.append(_reason(
+            "DATASET_LICENSE_EVIDENCE_MISSING", "error",
+            "descriptive data claims require an explicit license_status declaration",
+        ))
+    else:
+        licenses = {value.strip().lower() for value in license_values}
+        conflict_tokens = {"conflict", "conflicting", "contradictory", "disputed"}
+        if len(licenses) > 1 or licenses & conflict_tokens:
+            reasons.append(_reason(
+                "DATASET_LICENSE_EVIDENCE_CONFLICT", "error",
+                "license declarations conflict or explicitly report a conflict",
+            ))
+        elif licenses != {"compatible"}:
+            reasons.append(_reason(
+                "DATASET_LICENSE_EVIDENCE_UNRESOLVED", "error",
+                "license status is unknown, incompatible, or requires review",
+            ))
+
+    cohort_values = _declared_metadata_values(artifacts, "cohort_status")
+    if not cohort_values or any(not isinstance(value, str) or not value.strip() for value in cohort_values):
+        reasons.append(_reason(
+            "DATASET_COHORT_EVIDENCE_MISSING", "error",
+            "descriptive data claims require an explicit cohort_status declaration",
+        ))
+    else:
+        cohorts = {value.strip().lower() for value in cohort_values}
+        conflict_tokens = {"conflict", "conflicting", "contradictory", "discrepant", "discrepancy"}
+        if len(cohorts) > 1 or cohorts & conflict_tokens:
+            reasons.append(_reason(
+                "DATASET_COHORT_EVIDENCE_CONFLICT", "error",
+                "cohort declarations conflict or explicitly report a conflict",
+            ))
+        elif cohorts != {"consistent"}:
+            reasons.append(_reason(
+                "DATASET_COHORT_EVIDENCE_UNRESOLVED", "error",
+                "cohort status is unknown or unresolved",
+            ))
+
+    discrepancy_values = _declared_metadata_values(artifacts, "cohort_discrepancy")
+    if not discrepancy_values or any(value is None for value in discrepancy_values):
+        reasons.append(_reason(
+            "DATASET_COHORT_EVIDENCE_MISSING", "error",
+            "descriptive data claims require an explicit cohort_discrepancy boolean",
+        ))
+    elif any(not isinstance(value, bool) for value in discrepancy_values):
+        reasons.append(_reason(
+            "DATASET_COHORT_EVIDENCE_UNRESOLVED", "error",
+            "cohort_discrepancy must be an explicit boolean",
+        ))
+    elif any(discrepancy_values):
+        reasons.append(_reason(
+            "DATASET_COHORT_DISCREPANCY", "error",
+            "a declared cohort discrepancy blocks descriptive data review",
+        ))
+
+    return reasons
 
 
 def evaluate_case(case: LoadedCase) -> PromotionResult:
@@ -242,6 +333,12 @@ def evaluate_case(case: LoadedCase) -> PromotionResult:
                 proxy = True
             if artifact.payload.get("proxy_bayes_factor") not in (None, ""):
                 proxy = True
+
+    if descriptive or declared_empirical:
+        dataset_reasons = _dataset_metadata_reasons(case.artifacts)
+        if dataset_reasons:
+            reasons.extend(dataset_reasons)
+            candidates.append("HOLD_INCONCLUSIVE")
 
     claim_gate_dict: dict[str, Any] | None = None
     for artifact in case.of_kind("claim_gate_result"):
