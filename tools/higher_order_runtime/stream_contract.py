@@ -17,6 +17,7 @@ Design notes
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from numbers import Integral, Real
 from typing import Iterator, List, Optional, Sequence, Tuple
@@ -200,6 +201,14 @@ def _as_real_float64(values: object, *, what: str) -> np.ndarray:
         raise StreamContractError(
             f"{what} must be real-valued; complex input is rejected, not cast"
         )
+    if arr.dtype.kind in "SUMmV" or (
+        arr.dtype.kind == "O"
+        and any(isinstance(item, (str, bytes, np.str_, np.bytes_, np.datetime64, np.timedelta64)) for item in arr.flat)
+    ):
+        raise StreamContractError(
+            f"{what} must be a real numeric array representable as float64; text, bytes, "
+            "and date/time values are rejected, not cast"
+        )
     try:
         return arr.astype(np.float64, copy=False)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -274,7 +283,13 @@ def iter_contract_windows(
       mode never pads: samples past the last full window are dropped when
       ``allow_uneven_final`` is True and raise ``ChunkBoundError`` otherwise.
     * Timestamps, when provided, are sliced with the same indices (no fabrication).
+    * Configuration, signal, and timestamps are validated when this function is
+      called, not lazily on the first ``next()``.
     """
+    if not isinstance(policy, ChunkingPolicy):
+        raise StreamContractError("policy must be a ChunkingPolicy instance")
+    if not isinstance(bounds, StreamBounds):
+        raise StreamContractError("bounds must be a StreamBounds instance")
     if policy.chunk_size > bounds.max_chunk_samples:
         raise ChunkBoundError(
             f"chunk_size {policy.chunk_size} exceeds max_chunk_samples "
@@ -283,6 +298,17 @@ def iter_contract_windows(
     data = validate_signal_shape(signal, max_channels=bounds.max_channels)
     n = data.shape[0]
     ts = None if timestamps is None else validate_timestamps(timestamps, n_samples=n)
+    return _emit_contract_windows(data, ts, policy, bounds)
+
+
+def _emit_contract_windows(
+    data: np.ndarray,
+    ts: Optional[np.ndarray],
+    policy: ChunkingPolicy,
+    bounds: StreamBounds,
+) -> Iterator[Tuple[np.ndarray, Optional[np.ndarray], int, int]]:
+    """Generator body for :func:`iter_contract_windows` (inputs already validated)."""
+    n = data.shape[0]
     stride = policy.effective_stride
     start = 0
     covered = 0
@@ -391,6 +417,7 @@ class StreamSession:
         if not np.all(np.isfinite(block)):
             raise StreamContractError("chunk contains non-finite values")
 
+        next_last_timestamp = self.last_timestamp
         if timestamps is not None:
             ts = validate_timestamps(timestamps, n_samples=block.shape[0])
             if self.last_timestamp is not None and not (ts[0] > self.last_timestamp):
@@ -398,10 +425,32 @@ class StreamSession:
                     "chunk timestamps are not continuous with prior stream state "
                     f"(last={self.last_timestamp}, next_first={float(ts[0])})"
                 )
-            self.last_timestamp = float(ts[-1])
+            next_last_timestamp = float(ts[-1])
 
-        self.cov.update(block)
-        self.summary.update(block)
+        # Finite samples can still overflow the running sums. Update copies, verify
+        # they stay finite, and only then commit, so a rejected chunk leaves the
+        # session exactly as it was.
+        next_cov = copy.deepcopy(self.cov)
+        next_summary = copy.deepcopy(self.summary)
+        with np.errstate(over="ignore", invalid="ignore"):
+            next_cov.update(block)
+            next_summary.update(block)
+        accumulators_finite = (
+            bool(np.isfinite(next_cov._mean).all())
+            and bool(np.isfinite(next_cov._m2).all())
+            and bool(np.isfinite(next_summary._mean).all())
+            and bool(np.isfinite(next_summary._m2).all())
+            and bool(np.isfinite(next_summary.checksum))
+        )
+        if not accumulators_finite:
+            raise StreamContractError(
+                "chunk magnitudes overflow float64 accumulators (non-finite running "
+                "state is not representable); the chunk was rejected"
+            )
+
+        self.cov = next_cov
+        self.summary = next_summary
+        self.last_timestamp = next_last_timestamp
         self.chunks_seen += 1
         self.samples_seen += int(block.shape[0])
 
@@ -506,8 +555,8 @@ def deterministic_accumulator_bytes(n_channels: int, dtype_itemsize: int = 8) ->
     Meaningful bound check: O(C^2) co-moment matrix + O(C) summary vectors.
     Does not claim a measured speed or RSS improvement.
     """
-    if n_channels < 1 or dtype_itemsize < 1:
-        raise StreamContractError("n_channels and dtype_itemsize must be >= 1")
+    n_channels = _positive_integer(n_channels, name="n_channels")
+    dtype_itemsize = _positive_integer(dtype_itemsize, name="dtype_itemsize")
     cov = n_channels * n_channels * dtype_itemsize  # M2
     mean = n_channels * dtype_itemsize
     summary = 4 * n_channels * dtype_itemsize  # mean, m2, min, max

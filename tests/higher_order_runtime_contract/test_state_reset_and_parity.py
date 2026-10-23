@@ -9,7 +9,6 @@ import pytest
 from tools.higher_order_runtime.benchmark import WorkloadConfig, compute_bounded, compute_full, make_signal, verify_equivalence
 from tools.higher_order_runtime.stream_contract import (
     ShapeContractError,
-    StreamBounds,
     StreamContractError,
     StreamSession,
     batch_stream_covariance_parity,

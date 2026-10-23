@@ -12,6 +12,7 @@ from tools.higher_order_runtime.stream_contract import (
     StreamContractError,
     StreamSession,
     batch_stream_covariance_parity,
+    deterministic_accumulator_bytes,
     iter_contract_windows,
 )
 
@@ -241,3 +242,74 @@ def test_session_update_rejects_array_run_id_without_mutating_state(bounds):
 def test_session_rejects_invalid_bounds_object_as_contract_error():
     with pytest.raises(StreamContractError, match="bounds"):
         StreamSession(n_channels=2, bounds=None, run_id="run-a")
+
+
+# --- regression coverage for public-API gaps found on current main (fuzz audit) ---
+
+
+def test_extreme_magnitude_chunk_cannot_poison_accumulators_or_advance_state(bounds):
+    """Finite samples can still overflow the running sums; that must fail closed."""
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    session.update(np.ones((3, 2)), timestamps=np.arange(3.0))
+    before = (
+        session.chunks_seen,
+        session.samples_seen,
+        session.last_timestamp,
+        session.cov.matrix(ddof=0).copy(),
+        session.summary.mean.copy(),
+        session.summary.checksum,
+    )
+
+    with pytest.raises(StreamContractError, match="overflow|non-finite|representable"):
+        session.update(np.full((4, 2), 1.7e308), timestamps=np.arange(10.0, 14.0))
+
+    assert (session.chunks_seen, session.samples_seen, session.last_timestamp) == before[:3]
+    np.testing.assert_array_equal(session.cov.matrix(ddof=0), before[3])
+    np.testing.assert_array_equal(session.summary.mean, before[4])
+    assert session.summary.checksum == before[5]
+    # The session is still usable and finite after the rejected chunk.
+    session.update(np.ones((2, 2)), timestamps=np.array([20.0, 21.0]))
+    assert np.isfinite(session.cov.matrix()).all()
+
+
+@pytest.mark.parametrize("value", [True, False, 2.5, float("inf"), None, "3", 0, -1, [3]])
+def test_accumulator_bytes_rejects_malformed_channel_counts(value):
+    with pytest.raises(StreamContractError):
+        deterministic_accumulator_bytes(value)
+
+
+@pytest.mark.parametrize("value", [True, 1.5, "8", None, 0])
+def test_accumulator_bytes_rejects_malformed_itemsize(value):
+    with pytest.raises(StreamContractError):
+        deterministic_accumulator_bytes(3, value)
+
+
+def test_accumulator_bytes_accepts_numpy_integers_and_is_exact():
+    assert deterministic_accumulator_bytes(np.int64(3)) == 3 * 3 * 8 + 3 * 8 + 4 * 3 * 8
+
+
+@pytest.mark.parametrize(
+    "policy, bounds_value",
+    [
+        (None, "bounds"),
+        ({"chunk_size": 4}, "bounds"),
+        (4, "bounds"),
+        ("policy", None),
+        ("policy", {"max_chunk_samples": 8, "max_channels": 2}),
+    ],
+)
+def test_window_iteration_rejects_wrong_config_types_with_contract_error(
+    policy, bounds_value, bounds
+):
+    resolved_policy = ChunkingPolicy(4) if policy == "policy" else policy
+    resolved_bounds = bounds if bounds_value == "bounds" else bounds_value
+    with pytest.raises(StreamContractError):
+        list(iter_contract_windows(np.ones((8, 2)), resolved_policy, resolved_bounds))
+
+
+def test_window_configuration_errors_surface_at_call_time_not_first_next(bounds):
+    """Bad configuration must fail when requested, not lazily on first iteration."""
+    with pytest.raises(ChunkBoundError):
+        iter_contract_windows(np.ones((8, 2)), ChunkingPolicy(bounds.max_chunk_samples + 1), bounds)
+    with pytest.raises(StreamContractError):
+        iter_contract_windows(np.ones((8, 2)), None, bounds)
