@@ -85,12 +85,12 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited tip
-`fc274148a3539a0b4171cdb91b258fdd509e94a8`. The previous audited tip
-`2c8a80bf9874b9f14205d4bb4e466754fb4589cb` is an ancestor of that commit. Between
-those two tips, main landed batch-3 offline integration, research-plan quality
-eval, forward-model contract, nuisance scenarios, and falsification matrix
-paths. No pinned module path and no writer or grid path changed, so each pin's
-blob is the same at both tips.
+`b51bb9b4bdf63c19894bb407eadcd70f528f7dda`. The previous audited tip
+`fc274148a3539a0b4171cdb91b258fdd509e94a8` is an ancestor of that commit. Between
+those two tips, main landed the provenance-preserving metadata-first BIDS
+adapter (#369) under `data/` and `tests/data_access/bids_adapter/`. No pinned
+module path and no writer or grid path changed, so each pin's blob is the same
+at both tips.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.
