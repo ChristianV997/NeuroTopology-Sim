@@ -1,11 +1,11 @@
 # Round 6 Claim Audit (Batch 3, Grok Chat Agent A)
 
-**Audit date:** 2026-10-16  
+**Audit date:** 2026-10-16 (source notes re-verified 2026-10-23)<br>
 **PR base at review:** `3f3fe8593303184cb88eef056c1322f3d4e57a16`<br>
-**Current `main` at review:** `a65611adcf4490a0d2378cbecb92dd883f4c5f0a`
-**Prior artifact:** `docs/research/batch3/theory_to_measurement_review.md` on open PR #393 (`batch3/grok-chat-a-theory-to-measurement`, HEAD `5634a707`). This document does not overwrite that history.  
+**`main` at 2026-10-23 re-verification:** `2c8a80bf9874b9f14205d4bb4e466754fb4589cb` (the earlier note named `a65611adcf4490a0d2378cbecb92dd883f4c5f0a`, which was `main` at the first review and is no longer current)<br>
+**Prior artifact:** `docs/research/batch3/theory_to_measurement_review.md` on open PR #393 (`batch3/grok-chat-a-theory-to-measurement`, HEAD `5634a707` at first review; `7b9be88e7a2e84a279b7c7204cd284680fbca7ff` on 2026-10-23, and the file is still not on `main`). This document does not overwrite that history.<br>
 **Project status:** HOLD / SYNTHETIC_ONLY. Round 6 proposals are not established.  
-**Retrieval date for all primary sources:** 2026-10-21.
+**Retrieval dates:** 2026-10-21 (first pass); 2026-10-23 (re-verification). On 2026-10-23 publisher, DOI, arXiv, PMC and MNE-docs hosts were not directly reachable from the verifying environment, so those checks used the primary pages' text as returned by search, plus the pinned MNE 1.13.2 source for the MNE statements. Items that could not be confirmed against the primary page are marked *unconfirmed*.
 
 ## Distinctions enforced (updated for Round 6)
 
@@ -24,10 +24,10 @@
 
 | Claim element | Primary source | Version / DOI / commit | Direct support for Round 6 use? | Retrieval |
 |---------------|----------------|------------------------|----------------------------------|-----------|
-| Four-shell concentric-sphere EEG forward model | Næss et al. 2017, “Corrected Four-Sphere Head Model for EEG Signals,” *Front Hum Neurosci* 11:490 | DOI: 10.3389/fnhum.2017.00490; published 2017-10-18 | Yes for corrected analytical formulas of a four-layered concentric sphere (brain/CSF/skull/scalp) and FEM consistency checks; not a realistic head, not empirical EEG validation, and parameter values must be declared | 2026-10-21 |
-| Homogeneous-sphere surface potential / boundary | Næss et al. 2017, “Corrected Four-Sphere Head Model for EEG Signals,” §3.2 (its limiting-case comparison to Nunez & Srinivasan 2006 Eq. 6.7) | [PMC5651266](https://pmc.ncbi.nlm.nih.gov/articles/PMC5651266/) | Yes for the model’s stated homogeneous-limit comparison; the specific ratio “(2l+1)/l” is not established by this citation and requires a separate term-by-term derivation with explicit normalization | 2026-10-16 |
-| MNE CSD / Perrin surface Laplacian | Perrin et al. 1987, *IEEE Trans Biomed Eng* BME-34(4):283–288; MNE-Python 1.13.2 `compute_current_source_density` | DOI: 10.1109/TBME.1987.326089; MNE docs cite Perrin 1987/1989, Cohen 2014, Kayser & Tenke 2015 | Yes for the spherical-spline surface-Laplacian method as implemented in MNE; not identity or parity with this repository’s implementation or with cortical charge | 2026-10-21 |
-| Crouzeix C=2 | Crouzeix & Palencia 2017, *SIAM J Matrix Anal Appl* 38:649–655 (DOI 10.1137/17M1116672); Ransford & Schwenninger 2018, *SIAM J Matrix Anal Appl* 39:342–345 (DOI 10.1137/17M1143757) | Proved bound is \(1+\sqrt{2}\), not \(C=2\); \(C=2\) remains an open conjecture | No. The proved \(1+\sqrt{2}\) bound does not establish \(C=2\), EP2 recovery, EEG measurement, or biological interpretation | 2026-10-21 |
+| Four-shell concentric-sphere EEG forward model | Næss et al. 2017, “Corrected Four-Sphere Head Model for EEG Signals,” *Front Hum Neurosci* 11:490 | DOI: 10.3389/fnhum.2017.00490; published 2017-10-18 | Yes for corrected analytical formulas of a four-layered concentric sphere (brain/CSF/skull/scalp) and FEM consistency checks; not a realistic head, not empirical EEG validation, and parameter values must be declared. The paper reports that the earlier published formulas were wrong and that the corrected ones agree with FEM simulations; it uses the conductivities and radii of Nunez & Srinivasan (2006) in its examples | 2026-10-21; re-checked 2026-10-23 |
+| Homogeneous-sphere surface potential / boundary | Næss et al. 2017, “Corrected Four-Sphere Head Model for EEG Signals,” limiting-case section (comparison to Nunez & Srinivasan 2006 Eq. 6.7; “§3.2” is the preprint numbering) | [PMC5651266](https://pmc.ncbi.nlm.nih.gov/articles/PMC5651266/); the “Limiting case” section with the Eq. 6.7 comparison is confirmed in the bioRxiv preprint (10.1101/124875). Its section number in the published Frontiers version is *unconfirmed* | Yes for the model’s stated homogeneous-limit comparison; the specific ratio “(2l+1)/l” is not established by this citation and requires a separate term-by-term derivation with explicit normalization | 2026-10-16; re-checked 2026-10-23 (search text only) |
+| MNE CSD / Perrin surface Laplacian | Perrin et al. 1987, *IEEE Trans Biomed Eng* BME-34(4):283–288; Perrin et al. 1989 (spherical splines); MNE-Python 1.13.2 `compute_current_source_density` | Perrin 1987 DOI 10.1109/TBME.1987.326089 (title: “Scalp current density mapping: value and estimation from potential data”; end page reported as 283–287 or 283–288 in different reference lists, *unconfirmed*). The spherical-spline paper itself is Perrin et al. 1989, *Electroencephalogr Clin Neurophysiol* 72(2):184–187. The pinned MNE 1.13.2 `compute_current_source_density` docstring cites the bibliography keys PerrinEtAl1987, PerrinEtAl1989, Cohen2014 and KayserTenke2015 (confirmed in the 1.13.2 source; the bibliography entries were not retrieved) | Yes for the spherical-spline surface-Laplacian method as implemented in MNE; not identity or parity with this repository’s implementation or with cortical charge. MNE's output is a numerical spherical-spline surface Laplacian of scalp potentials; agreement with it on a synthetic fixture would be a numerical comparison, not implementation parity, EEG measurement, or biological inference | 2026-10-21; re-checked 2026-10-23 |
+| Crouzeix C=2 | Crouzeix & Palencia 2017, *SIAM J Matrix Anal Appl* 38:649–655 (DOI 10.1137/17M1116672); Ransford & Schwenninger 2018, *SIAM J Matrix Anal Appl* 39:342–345 (DOI 10.1137/17M1143757) | Peer-reviewed bound: \(1+\sqrt{2}\) (Crouzeix & Palencia 2017, vol. 38 no. 2, DOI confirmed). Ransford & Schwenninger 2018 (vol. 39 no. 1, pp. 342–345; DOI *unconfirmed* in re-check) give a short proof of the key lemma and show \(1+\sqrt{2}\) is sharp *within that lemma*, not as a bound on the conjecture. \(C=2\) is the conjectured constant. **Newer preprint, not peer-reviewed in my retrieval:** Lorist & Schwenninger, “A solution to Crouzeix’s conjecture,” arXiv:2608.03841 (submitted 2026-08-04, v2 2026-08-17), claims a proof of \(C=2\); other 2026 preprints cite it. Its argument and refereeing status were *not* verified here, so this audit treats \(C=2\) as “claimed in an unrefereed preprint, not established by the peer-reviewed literature retrieved” and does not call it an open conjecture without qualification | No. Whether or not \(C=2\) holds, it is a statement about matrices and the numerical range; it does not establish EP2 recovery, EEG measurement, or biological interpretation | 2026-10-21; re-checked 2026-10-23 |
 
 No participant data or third-party code was executed. Parameter values for any four-shell model must be taken from the cited source or declared as synthetic; they are not automatically biological.
 
@@ -42,7 +42,7 @@ No participant data or third-party code was executed. Parameter values for any f
 | R6-005 | DMD recovers an exact EP2 on synthetic data | Numerical implementation claim (synthetic) | Prior TTM-003; claim_language.md rule 5 | Synthetic fixture only; classical null of equal complexity must fail | Synthetic only |
 | R6-006 | Surrogate tests and BIDS inventory/preregistration checks are performed | Operational / engineering | Repository contracts | Locked pipeline, finite-JSON reports, no empirical promotion | Engineering |
 | R6-007 | “Origin-invariant” charge-separation terminology identifies a cortical propagating wave | Speculative interpretation | None primary | Source-space vs sensor-space discrepancy under volume conduction, reference, montage, inverse non-uniqueness | Unverified |
-| R6-008 | Crouzeix C=2 licenses EP2 or charge recovery | Speculative interpretation | Crouzeix–Palencia 2017 proves \(1+\sqrt{2}\), not \(C=2\); \(C=2\) is an open conjecture | Peer-reviewed proof of \(C=2\) plus biophysical mapping; currently unavailable | Unverified |
+| R6-008 | Crouzeix C=2 licenses EP2 or charge recovery | Speculative interpretation | Crouzeix–Palencia 2017 proves \(1+\sqrt{2}\); a 2026 arXiv preprint (2608.03841) claims \(C=2\) but is unrefereed and unverified here | A refereed proof of \(C=2\) *and* an independent biophysical mapping; the mapping does not exist regardless of the pure-math status | Unverified |
 
 ## Sensor-space phase winding / derived charge moment vs cortical propagating wave
 
@@ -89,12 +89,13 @@ Any claim that the operator identifies a cortical propagating wave must remain u
 - Numerical parity of the four-shell implementation and MNE CSD on a shared fixture.
 - DMD recovery of an exact EP2 beyond synthetic data.
 - Any mapping from sensor-space phase winding or “origin-invariant” charge to a cortical propagating wave.
-- Biological relevance of Crouzeix C=2.
+- Status of the claimed proof of Crouzeix C=2 (arXiv:2608.03841): unrefereed in this retrieval, argument not checked.
+- Biological relevance of Crouzeix C=2, which is unestablished independent of that status.
 
 ## Explicit non-promotion
 
 This audit does not introduce VALIDATED status. No claim is promoted. Round 6 proposals remain proposals. The project status HOLD / SYNTHETIC_ONLY is preserved. A claim audit is not scientific evidence.
 
 **Changed paths:** `docs/research/batch3/grok_chat_a_round6_claim_audit.md`  
-**Sources:** Næss et al. 2017 (DOI 10.3389/fnhum.2017.00490), Perrin et al. 1987 (DOI 10.1109/TBME.1987.326089), MNE-Python 1.13.2 CSD documentation, Crouzeix & Palencia 2017 (DOI 10.1137/17M1116672), Ransford & Schwenninger 2018 (DOI 10.1137/17M1143757), prior theory-to-measurement review, claim_language.md.<br>
-**Evidence limits:** Public sources only; no dataset downloads; no package installs; no third-party code executed.
+**Sources:** Næss et al. 2017 (DOI 10.3389/fnhum.2017.00490), Perrin et al. 1987 (DOI 10.1109/TBME.1987.326089), MNE-Python 1.13.2 CSD documentation, Crouzeix & Palencia 2017 (DOI 10.1137/17M1116672), Ransford & Schwenninger 2018 (DOI 10.1137/17M1143757, unconfirmed), Lorist & Schwenninger 2026 preprint (arXiv:2608.03841, unrefereed), Perrin et al. 1989, prior theory-to-measurement review, claim_language.md.<br>
+**Evidence limits:** Public sources only; no dataset downloads; no package installs; no third-party code executed. The 2026-10-23 re-verification could not open the primary hosts directly and did not read the Lorist–Schwenninger argument; it is a source-note check, not a mathematical review.
