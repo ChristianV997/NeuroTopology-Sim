@@ -45,6 +45,7 @@ def test_isolated_cli(capsys):
     report = json.loads(out)
     assert report["mode"] == "isolated"
     assert report["config"]["max_workers"] == 1
+    assert report["config"]["targets"] == sorted(TARGETS)
     assert report["num_targets"] == len(TARGETS)
     assert report["evidence_class"] == "performance_only"
     assert rc in (0, 1)
@@ -99,6 +100,9 @@ def test_no_network_execution():
     assert not _string_references_remote_host("https://evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("//evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("notes mentioning openneuro.org in prose")
+    assert _string_references_remote_host(
+        "Dataset source: https://openneuro.org/datasets/ds000001."
+    )
 
     poisoned = dict(report)
     poisoned["notes"] = ["https://openneuro.org/datasets/ds000001"]
@@ -107,6 +111,136 @@ def test_no_network_execution():
     poisoned_protocol_relative = dict(report)
     poisoned_protocol_relative["notes"] = ["//openneuro.org/datasets/ds000001"]
     assert "remote_data_reference" in validate_report(poisoned_protocol_relative)["violations"]
+
+    poisoned_prose = dict(report)
+    poisoned_prose["notes"] = [
+        "Dataset source: (https://openneuro.org/datasets/ds000001)."
+    ]
+    assert "remote_data_reference" in validate_report(poisoned_prose)["violations"]
+
+
+def test_empty_report_is_not_valid():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    empty_report = {
+        **report,
+        "config": {**report["config"], "targets": []},
+        "num_targets": 0,
+        "summary": {},
+        "all_equivalent": None,
+        "all_within_budget": None,
+        "bottleneck_ranking": [],
+        "optimization_candidates": [],
+        "results": [],
+    }
+
+    validation = validate_report(empty_report)
+
+    assert validation["ok"] is False
+    assert "empty_results" in validation["violations"]
+
+
+def test_validator_rejects_unknown_config_target():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"]["targets"] = ["not_a_registered_target"]
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "unknown_target" in validation["violations"]
+
+
+def test_validator_rejects_non_object_config():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"] = []
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "invalid_config" in validation["violations"]
+
+
+def test_validator_rejects_missing_target_selection():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"].pop("targets")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "missing_target_selection" in validation["violations"]
+
+
+def test_validator_rejects_malformed_record_status():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["status"] = "malformed_record"
+    report["summary"]["ok"] -= 1
+    report["summary"]["malformed_record"] = 1
+    report["all_equivalent"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("malformed_record:") for item in validation["violations"])
+
+
+def test_validator_rejects_unknown_record_status():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["status"] = "unrecognized_status"
+    report["summary"]["ok"] -= 1
+    report["summary"]["unrecognized_status"] = 1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any("unknown_status" in item for item in validation["violations"])
+
+
+def test_validator_rejects_success_status_without_matching_checksum():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["deterministic"]["checksum_match"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("success_without_checksum:") for item in validation["violations"])
+
+
+def test_validator_rejects_non_boolean_equivalence_verdict():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["all_equivalent"] = "yes"
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "invalid_equivalence_verdict" in validation["violations"]
+
+
+def test_validator_rejects_non_boolean_budget_measurement():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["deterministic"]["budget"]["within_budget"] = "yes"
+    report["all_within_budget"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("invalid_budget_verdict:") for item in validation["violations"])
 
 
 def test_cli_rejects_unbounded_workers():

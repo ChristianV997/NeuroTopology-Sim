@@ -31,9 +31,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.benchmarks.batch2_pipeline.budgets import ResourceBudgets
-from tools.benchmarks.batch2_pipeline.harness import SCHEMA_VERSION, run_all, run_target
+from tools.benchmarks.batch2_pipeline.harness import (
+    SCHEMA_VERSION,
+    aggregate_complete_boolean,
+    run_all,
+    run_target,
+)
 from tools.benchmarks.batch2_pipeline.reporting import generate
-from tools.benchmarks.batch2_pipeline.schema import EVIDENCE_CLASS
+from tools.benchmarks.batch2_pipeline.schema import (
+    EVIDENCE_CLASS,
+    TARGET_NAMES,
+    TargetStatus,
+)
 from tools.benchmarks.batch2_pipeline.telemetry import dumps, execute_child, json_safe
 from tools.benchmarks.batch2_pipeline.validator import validate_root
 from tools.benchmarks.batch2_pipeline.workloads import TARGETS
@@ -65,28 +74,89 @@ def _write_atomic(path: str, text: str) -> None:
             os.unlink(tmp)
 
 
-_HARD_FAIL_STATUSES = frozenset(
-    {"timeout", "child_crash", "infrastructure_failure", "error", "budget_overrun"}
-)
-
-
 def _cli_exit_code(report: Dict[str, Any]) -> int:
-    """Non-zero when equivalence fails, authoritative budgets fail, or hard child errors.
+    """Return success only for a complete, internally consistent successful report.
 
     Advisory runtime/RSS do not drive ``all_within_budget`` (see budgets.py), so
     they cannot flip this exit code by themselves.
     """
+    if not isinstance(report, dict):
+        return 2
     if report.get("error"):
         return 2
-    if report.get("all_equivalent") is False:
-        return 1
-    if report.get("all_within_budget") is False:
-        return 1
-    summary = report.get("summary") or {}
-    if any(summary.get(status, 0) > 0 for status in _HARD_FAIL_STATUSES):
-        return 1
-    if report.get("num_targets", 0) == 0 and report.get("mode") != "validate":
+    if (
+        report.get("schema") != SCHEMA_VERSION
+        and report.get("schema_version") != SCHEMA_VERSION
+    ):
         return 2
+    if report.get("evidence_class") != EVIDENCE_CLASS or report.get("synthetic") is not True:
+        return 2
+    config = report.get("config")
+    if (
+        not isinstance(config, dict)
+        or type(config.get("max_workers")) is not int
+        or config.get("max_workers") != 1
+    ):
+        return 2
+    if report.get("all_equivalent") is not True:
+        return 1
+    if report.get("all_within_budget") is not True:
+        return 1
+    num_targets = report.get("num_targets")
+    results = report.get("results")
+    summary = report.get("summary")
+    if (
+        type(num_targets) is not int
+        or num_targets <= 0
+        or not isinstance(results, list)
+        or len(results) != num_targets
+        or not isinstance(summary, dict)
+    ):
+        return 2
+
+    known_statuses = {status.value for status in TargetStatus}
+    result_counts: Dict[str, int] = {}
+    result_targets: List[str] = []
+    for record in results:
+        if not isinstance(record, dict):
+            return 1
+        target = record.get("target")
+        if not isinstance(target, str) or target not in TARGET_NAMES:
+            return 1
+        result_targets.append(target)
+        status = record.get("status")
+        if not isinstance(status, str) or status not in known_statuses:
+            return 1
+        result_counts[status] = result_counts.get(status, 0) + 1
+        if status != TargetStatus.OK.value:
+            return 1
+        deterministic = record.get("deterministic")
+        if not isinstance(deterministic, dict) or deterministic.get("checksum_match") is not True:
+            return 1
+        budget = deterministic.get("budget")
+        if not isinstance(budget, dict) or budget.get("within_budget") is not True:
+            return 1
+
+    for status, count in summary.items():
+        if not isinstance(status, str) or status not in known_statuses:
+            return 1
+        if type(count) is not int or count < 0:
+            return 2
+    configured_targets = config.get("targets")
+    if (
+        not isinstance(configured_targets, list)
+        or not configured_targets
+        or any(
+            not isinstance(target, str) or target not in TARGET_NAMES
+            for target in configured_targets
+        )
+        or configured_targets != result_targets
+    ):
+        return 2
+    if summary != result_counts:
+        return 2
+    if sum(result_counts.values()) != num_targets:
+        return 1
     return 0
 
 
@@ -173,11 +243,11 @@ def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
         (r.get("deterministic") or {}).get("checksum_match")
         for r in results
     ]
-    known = [m for m in matches if m is not None]
-    all_equivalent = all(known) if known else None
+    all_equivalent = aggregate_complete_boolean(matches)
     budget_verdicts = [(r.get("deterministic") or {}).get("budget", {}) or {} for r in results]
-    evaluated = [v.get("within_budget") for v in budget_verdicts if v.get("within_budget") is not None]
-    all_within_budget = all(evaluated) if evaluated else None
+    all_within_budget = aggregate_complete_boolean(
+        [v.get("within_budget") for v in budget_verdicts]
+    )
     return json_safe(
         {
             "schema": SCHEMA_VERSION,
@@ -189,6 +259,7 @@ def _run_isolated(args: argparse.Namespace) -> Dict[str, Any]:
                 "size": args.size,
                 "repetitions": args.repetitions,
                 "per_target_timeout_s": args.per_target_timeout_s,
+                "targets": names,
                 "max_workers": 1,
             },
             "budgets": budgets.to_dict(),
@@ -256,7 +327,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"schema={report['schema']} targets={report['num_targets']} "
             f"summary={report['summary']} all_equivalent={report.get('all_equivalent')}"
         )
-        return 0 if report.get("all_equivalent") is not False else 1
+        return _cli_exit_code(report)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seed", type=int, default=0)

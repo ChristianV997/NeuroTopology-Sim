@@ -419,6 +419,15 @@ def collect_optimization_candidates(results: List[Dict[str, Any]]) -> List[Dict[
     return out
 
 
+def aggregate_complete_boolean(values: List[Optional[bool]]) -> Optional[bool]:
+    """Return True only when every value is True; preserve false/unknown states."""
+    if any(value is False for value in values):
+        return False
+    if values and all(value is True for value in values):
+        return True
+    return None
+
+
 def run_all(
     budgets: Optional[ResourceBudgets] = None,
     *,
@@ -429,7 +438,18 @@ def run_all(
 ) -> Dict[str, Any]:
     """Run all (or selected) targets sequentially (bounded, no concurrency)."""
     budgets = budgets or ResourceBudgets()
-    names = sorted(TARGETS.keys()) if targets is None else [t for t in targets if t in TARGETS]
+    if targets is None:
+        names = sorted(TARGETS.keys())
+    else:
+        names = list(targets)
+        unknown = [
+            name for name in names if not isinstance(name, str) or name not in TARGETS
+        ]
+        if unknown:
+            labels = ", ".join(sorted({repr(name) for name in unknown}))
+            raise ValueError(f"unknown target(s): {labels}")
+        if not names:
+            raise ValueError("at least one target must be selected")
     results = [
         run_target(TARGETS[name], budgets, seed=seed, size=size, repetitions=repetitions)
         for name in names
@@ -438,11 +458,11 @@ def run_all(
     for rec in results:
         summary[rec["status"]] = summary.get(rec["status"], 0) + 1
     matches = [r["deterministic"]["checksum_match"] for r in results]
-    known = [m for m in matches if m is not None]
-    all_equivalent = all(known) if known else None
+    all_equivalent = aggregate_complete_boolean(matches)
     budget_verdicts = [(r.get("deterministic") or {}).get("budget", {}) or {} for r in results]
-    evaluated = [v.get("within_budget") for v in budget_verdicts if v.get("within_budget") is not None]
-    all_within_budget = all(evaluated) if evaluated else None
+    all_within_budget = aggregate_complete_boolean(
+        [v.get("within_budget") for v in budget_verdicts]
+    )
     ranking = rank_bottlenecks(results)
     opt = collect_optimization_candidates(results)
     return json_safe(

@@ -2,15 +2,57 @@
 from __future__ import annotations
 
 import json
+import pytest
+import tools.benchmarks.batch2_pipeline.harness as harness
 
 from tools.benchmarks.batch2_pipeline.budgets import ResourceBudgets
 from tools.benchmarks.batch2_pipeline.harness import run_all, run_target
 from tools.benchmarks.batch2_pipeline.schema import TARGET_NAMES
-from tools.benchmarks.batch2_pipeline.workloads import TARGETS
+from tools.benchmarks.batch2_pipeline.workloads import TARGETS, TargetSpec
 
 
 def test_all_targets_registered():
     assert set(TARGETS) == set(TARGET_NAMES)
+
+
+def test_run_all_rejects_unknown_api_target():
+    with pytest.raises(ValueError, match="unknown target"):
+        run_all(
+            ResourceBudgets(max_workers=1),
+            seed=0,
+            size=8,
+            repetitions=1,
+            targets=["not_a_registered_target"],
+        )
+
+
+def test_run_all_rejects_empty_target_selection():
+    with pytest.raises(ValueError, match="at least one target"):
+        run_all(targets=[])
+
+
+def test_run_all_does_not_claim_complete_success_with_unknown_measurements(monkeypatch):
+    base = TARGETS["window_cache_hits"]
+    malformed = TargetSpec(
+        name=base.name,
+        path_family=base.path_family,
+        make_fixture=base.make_fixture,
+        baseline=base.baseline,
+        candidate=lambda fixture: {"feature_count": 0, "worker_count": 1},
+    )
+    monkeypatch.setitem(harness.TARGETS, base.name, malformed)
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=[base.name, "full_recording_reread"],
+    )
+
+    assert report["summary"]["malformed_record"] == 1
+    assert report["all_equivalent"] is None
+    assert report["all_within_budget"] is None
 
 
 def test_deterministic_checksums_stable_across_runs():
