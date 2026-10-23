@@ -5,8 +5,8 @@
 
 schema_version: "2.0"
 access_date: "2026-10-23"
-reviewed_pr_head: "69fb8af983a168ffd7934b9c03f95e5236007362"
-live_main_at_review: "4e91c6f080647280940ded4f90f4ee9278960c4b"
+reviewed_pr_head: "573d1480c14a6f9b0694e501797d4a7455cb7656"
+live_main_at_review: "d78f54128b6fd60c30665c9e9cff307056dbdd82"
 review_scope: "Official upstream release/tag pages, tagged top-level license files, and PyPI JSON for the pinned versions. The GUDHI row also cites https://gudhi.inria.fr/licensing/ and leaves per-module licensing unresolved pending project legal review. Security, vulnerability, maintenance, dependency-safety, and data-access assessments were not performed. Not legal or scientific validation."
 
 sources:

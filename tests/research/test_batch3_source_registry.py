@@ -177,8 +177,8 @@ def test_registry_exists_and_parses():
         data = yaml.safe_load(f)
     assert data["schema_version"] == "2.0"
     assert data["access_date"] == "2026-10-23"
-    assert data["reviewed_pr_head"] == "69fb8af983a168ffd7934b9c03f95e5236007362"
-    assert data["live_main_at_review"] == "4e91c6f080647280940ded4f90f4ee9278960c4b"
+    assert data["reviewed_pr_head"] == "573d1480c14a6f9b0694e501797d4a7455cb7656"
+    assert data["live_main_at_review"] == "d78f54128b6fd60c30665c9e9cff307056dbdd82"
     assert len(data["sources"]) == len(EXPECTED_SOURCE_FACTS)
 
 

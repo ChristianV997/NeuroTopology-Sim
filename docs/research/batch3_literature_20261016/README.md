@@ -1,8 +1,8 @@
 # Batch 3 Literature and Public-Source Registry
 
 - **Review date:** 2026-10-23 (UTC date of the primary-source fetch)
-- **PR head reviewed:** `69fb8af983a168ffd7934b9c03f95e5236007362`
-- **Live `main` at review:** `4e91c6f080647280940ded4f90f4ee9278960c4b`
+- **PR head reviewed:** `573d1480c14a6f9b0694e501797d4a7455cb7656` (merge of the registry correction with live `main`; the commit that records this SHA cannot name itself)
+- **Live `main` at review:** `d78f54128b6fd60c30665c9e9cff307056dbdd82`
 - **Scope:** Official upstream GitHub release/tag pages, tagged top-level license files, and PyPI JSON for the pinned versions. The GUDHI row also cites the upstream licensing page and leaves per-module licensing unresolved.
 - **Data boundary:** No datasets or participant data were accessed, and no listed upstream candidate software was executed in this review.
 - **Not validation:** This registry is not legal validation and not scientific validation.
