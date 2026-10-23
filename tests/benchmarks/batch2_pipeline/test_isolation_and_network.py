@@ -357,6 +357,28 @@ def test_validator_and_cli_reject_worker_count_above_runner_cap():
     assert _cli_exit_code(report) != 0
 
 
+def test_validator_and_cli_reject_missing_worker_count_under_execution_cap():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=None),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    row["telemetry"]["candidate"].pop("worker_count")
+
+    validation = validate_report(report)
+
+    assert report["config"]["max_workers"] == 1
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
 def test_scheme_less_remote_host_with_trailing_dns_dot_is_detected():
     from tools.benchmarks.batch2_pipeline.validator import _string_references_remote_host
 

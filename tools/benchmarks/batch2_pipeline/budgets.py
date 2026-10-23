@@ -159,14 +159,15 @@ def budget_result_is_consistent(
     ):
         return False
     if execution_worker_cap is not None and (
-        type(execution_worker_cap) is not int or execution_worker_cap < 1
+        type(execution_worker_cap) is not int
+        or execution_worker_cap < 1
+        or type(metrics.get("worker_count")) is not int
     ):
         return False
 
     observed_workers = metrics.get("worker_count")
     if (
         execution_worker_cap is not None
-        and observed_workers is not None
         and observed_workers > execution_worker_cap
     ):
         return False
