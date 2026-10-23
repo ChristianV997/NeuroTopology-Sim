@@ -25,7 +25,7 @@ Dispositions use the five labels from the brief. Each candidate gets exactly one
 | 1 | [mne-tools/mne-python](https://github.com/mne-tools/mne-python) | EEG/BIDS handling | Scientific runtime | BSD-3-Clause | 2026-10-15 | integrate behind bounded adapter (existing use) |
 | 2 | [mne-tools/mne-bids](https://github.com/mne-tools/mne-bids) | EEG/BIDS handling | Data standard | BSD-3-Clause | 2026-10-16 | integrate behind bounded adapter |
 | 3 | [NeuroTechX/moabb](https://github.com/NeuroTechX/moabb) | EEG/BIDS (benchmarks) | Data standard | BSD-3-Clause | 2026-10-16 | integrate behind bounded adapter (metadata only) |
-| 4 | [bids-standard/bids-validator](https://github.com/bids-standard/bids-validator) | EEG/BIDS handling | Data standard | MIT | 2026-10-15 | reference only (Node runtime) |
+| 4 | [bids-standard/bids-validator](https://github.com/bids-standard/bids-validator) | EEG/BIDS handling | Data standard | MIT | 2026-10-15 | reference only (Deno runtime) |
 | 5 | [openmeeg/openmeeg](https://github.com/openmeeg/openmeeg) | Forward model | Scientific runtime | CeCILL-B (LICENSE read) | 2026-10-13 | integrate behind bounded adapter, **after license review** |
 | 6 | [simnibs/simnibs](https://github.com/simnibs/simnibs) | Forward model (TMS/TES) | Scientific runtime | GPL-3.0 | 2026-03-03 | reference only |
 | 7 | [mne-tools/mne-connectivity](https://github.com/mne-tools/mne-connectivity) | Signal processing | Scientific runtime | BSD-3-Clause | 2026-10-12 | integrate behind bounded adapter |
@@ -255,7 +255,7 @@ Row-level changes (IDs unchanged):
 | `nibabel` | Newer tag/package 5.4.2 exists (PyPI 2026-03-11); the 5.4.1 release record is kept and flagged. Package license metadata added (MIT expression). `component_license_caveat` added for the COPYING "3rd party code and data" section (NetCDF/SciPy, Sphinx extension, OrderedSet, MNI template, Philips PAR/REC under PDDL). Unsupported "10 Python modules" count removed. | PyPI JSON 5.4.2; raw COPYING at tag 5.4.2 |
 | `datalad` | Package license metadata added; `component_license_caveat` added (COPYING lists parts under Python, BSD-2, BSD-3 licenses; git-annex stays a separate GPL-3.0 tool). | PyPI JSON 1.7.1; raw COPYING at tag 1.7.1 |
 | `neurolib` | GitHub tag v0.7.0 has no PyPI release; PyPI latest is 0.6.2 (2022). Recorded as `package_channel_note` so a tag is not read as an installable version. | PyPI JSON; raw LICENSE at v0.7.0 |
-| `bids-validator` | GitHub 3.0.2 is the Node validator; the PyPI project of the same name (1.14.7.post0) is a different artifact. `package_channel_note` added; no `package_version` recorded. | PyPI JSON |
+| `bids-validator` | GitHub 3.0.2 is the Node validator; the PyPI project of the same name (1.14.7.post0) is a different artifact. `package_channel_note` added; no `package_version` recorded. (Superseded by section 14: tag 3.0.2 is a Deno validator and the matching PyPI package is `bids-validator-deno`.) | PyPI JSON |
 | `giotto-tda` | PyPI license field "GNU AGPLv3" recorded as package metadata. | PyPI JSON 0.6.2 |
 | `neuromaps` | PyPI metadata conflicts with itself (NonCommercial license text vs a BSD classifier). Recorded as `conflicting_pypi_metadata`, not resolved; disposition and `non_commercial_conflict` status unchanged. | PyPI JSON 0.0.7 |
 | `gudhi` | Missing `package_license_evidence_url` added (PyPI JSON). | PyPI JSON 3.13.0 |
@@ -295,3 +295,51 @@ Cross-PR consistency (read-only; no edits outside owned paths):
 Regression tests added for HTTPS evidence URLs, stable ID set, GUDHI literal-tag
 evidence URLs, explicit unresolved language, #375 pin alignment, `base_main_sha`
 format/citation, and neuromaps conflict non-clearance.
+
+## 14. Independent row audit, link resolution, and cross-registry check — 2026-10-23 (Agent B)
+
+Scope: all 23 rows re-read against upstream release/tag records, package metadata, and license files. Nothing was cloned, installed, imported, or executed. This section is evidence bookkeeping and does not certify any package.
+
+How URLs were checked. `github.com/<repo>/blob/<ref>/<path>` evidence URLs were resolved through `raw.githubusercontent.com` at the same ref, and `pypi.org` URLs directly: every one returned HTTP 200 on 2026-10-23 (no URL that could be resolved failed). `api.github.com` release and tag-ref URLs, repository and releases pages on `github.com`, and `gudhi.inria.fr` could not be resolved by that method; the GitHub releases pages for openmed, openresearch, rea, bids-validator, simnibs, openmeeg, and neurolib were read through a web fetch instead. A resolving URL shows only that a file or record exists at that ref.
+
+Defects reproduced and what changed (IDs and dispositions unchanged):
+
+| Row | Finding | Source | Change |
+|---|---|---|---|
+| `bids-validator` | The row called tag 3.0.2 a TypeScript/Node package. The tag's `deno.json` names `@bids/validator` 3.0.2 and its README runs `deno run -ERWN jsr:@bids/validator`. The PyPI project that tracks it is `bids-validator-deno` 3.0.2 (license expression MIT), not the older `bids-validator` 1.14.x. | raw `deno.json` and README at tag 3.0.2; PyPI JSON for `bids-validator-deno` | Runtime, rationale, and channel note corrected to Deno; wrapper package fields added; wrapper contents recorded as not inspected. |
+| `openresearch` | The GitHub releases page marks v0.2.21 (2026-10-23) Latest; the snapshot says v0.2.20 (2026-10-21). | GitHub releases page, read 2026-10-23 | `newer_release_observed` added (not a pin; tag ref and commit unresolved). The v0.2.20 snapshot is unchanged. |
+| `gudhi` | Re-confirmed that bare-tag paths return HTTP 404 and the literal tag `tags/gudhi-release-3.13.0` returns 200; tag and commit `5dbe510b` serve identical `LICENSE` and `CMakeLists.txt`. | raw requests at the tag, the bare tag, and the commit | None needed; a regression now locks the literal-tag form. Per-module licensing stays unresolved. |
+| `neuromaps` | Re-confirmed: the `LICENSE` file at the pinned head is CC BY-NC-SA 4.0 text, PyPI 0.0.7 carries the same text in its license field, and its classifier says BSD. | raw `LICENSE`; PyPI JSON | None; the conflict stays recorded and unresolved. |
+| top level | No machine-readable record of where this inventory differs from the merged #375 registry, or of which URL classes were not resolved. | #375 `configs/research/batch3_source_registry.yaml` at current main | Added `cross_registry_notes` and `link_resolution_scope`. |
+
+Comparison with #375 (read only, not edited, verdicts not copied). Overlapping sources: mne-python, mne-bids, bids-validator, mne-connectivity, gudhi, ripser, datalad, neurolib, rea. Versions agree for all but REA: #375 records `rea-agents-6.5.0` (2026-10-14) while the releases page marks `rea-agents-6.7.0` (2026-10-18) Latest, which this inventory records. #375 names the project `ripser-py`; this inventory's stable id `ripser.py` is kept. Classification differences are not reconciled here: GUDHI is EMULATE in #375 and `integrate_behind_bounded_adapter` here; Ripser is EMULATE there and integrate here. #375 covers 16 sources and this inventory 23; the rest do not overlap.
+
+Per-row summary (release is the recorded GitHub tag; package is the PyPI version where a package record exists):
+
+| Row | Release tag | Package | License status / evidence level | Disposition |
+|---|---|---|---|---|
+| `openmed` | v3.0.0 | - | permissive / license_file_text | `reject_or_defer` |
+| `papergym` | none | - | permissive / github_api_spdx | `reference_only` |
+| `openresearch` | v0.2.20 | - | permissive / license_file_text | `emulate_narrow_pattern` |
+| `rea` | rea-agents-6.7.0 | - | permissive / github_api_spdx | `reject_or_defer` |
+| `autoresearch` | none | - | missing / github_api_spdx | `reference_only` |
+| `mne-python` | v1.13.2 | - | permissive / github_api_spdx | `integrate_behind_bounded_adapter` |
+| `mne-bids` | v0.20.0 | - | permissive / github_api_spdx | `integrate_behind_bounded_adapter` |
+| `moabb` | v1.7.2 | - | permissive / github_api_spdx | `integrate_behind_bounded_adapter` |
+| `bids-validator` | 3.0.2 | 3.0.2 | permissive / github_api_spdx | `reference_only` |
+| `openmeeg` | 2.6.0 | - | permissive_custom_review_required / license_file_text | `integrate_behind_bounded_adapter` |
+| `simnibs` | v4.6.0 | - | copyleft_strong / github_api_spdx | `reference_only` |
+| `neuromaps` | 0.0.7 | 0.0.7 | non_commercial_conflict / license_file_text | `reference_only` |
+| `netneurotools` | 0.3.0 | - | permissive / github_api_spdx | `emulate_narrow_pattern` |
+| `neurolib` | v0.7.0 | 0.6.2 | permissive / github_api_spdx | `reject_or_defer` |
+| `mne-connectivity` | v0.9.0 | - | permissive / github_api_spdx | `integrate_behind_bounded_adapter` |
+| `nibabel` | 5.4.1 | 5.4.2 | permissive / license_file_text | `integrate_behind_bounded_adapter` |
+| `datalad` | 1.7.1 | 1.7.1 | permissive / license_file_text | `reference_only` |
+| `dvc` | 3.67.1 | - | permissive / github_api_spdx | `reference_only` |
+| `pyspi` | v2.0.2 | - | copyleft_strong / github_api_spdx | `reject_or_defer` |
+| `persim` | v0.4.1 | 0.4.1 | permissive / license_file_text | `integrate_behind_bounded_adapter` |
+| `ripser.py` | v0.6.15 | - | permissive / license_file_text | `integrate_behind_bounded_adapter` |
+| `gudhi` | tags/gudhi-release-3.13.0 | 3.13.0 | permissive_custom_review_required / upstream_license_page_and_pypi_metadata | `integrate_behind_bounded_adapter` |
+| `giotto-tda` | v0.6.2 | 0.6.2 | dual_licensed_copyleft / license_file_text | `reject_or_defer` |
+
+Limits. Legal clearance, transitive and per-module licensing, security posture, maintenance quality, compatibility with this repository, data access, and scientific suitability are all outside what a package declaration or license file can show, and none is claimed.
