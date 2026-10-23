@@ -177,3 +177,25 @@ def test_non_numeric_signal_dtypes_are_rejected_not_cast_to_float(values, bounds
     assert session.samples_seen == 0 and session.chunks_seen == 0
     with pytest.raises(StreamContractError, match="numeric"):
         batch_stream_covariance_parity(np.vstack([values, values]), chunk_sizes=[1])
+
+
+def test_object_dtype_with_float_hook_is_rejected_without_running_user_code(bounds):
+    calls = []
+
+    class FloatCoercionTrap:
+        def __float__(self):
+            calls.append("called")
+            return 1.25
+
+    values = np.empty((3, 2), dtype=object)
+    values[:] = FloatCoercionTrap()
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+
+    with pytest.raises(StreamContractError, match="numeric"):
+        validate_signal_shape(values, max_channels=bounds.max_channels)
+    with pytest.raises(StreamContractError, match="numeric"):
+        session.update(values)
+    with pytest.raises(StreamContractError, match="numeric"):
+        batch_stream_covariance_parity(np.vstack([values, values]), chunk_sizes=(2,))
+
+    assert calls == []

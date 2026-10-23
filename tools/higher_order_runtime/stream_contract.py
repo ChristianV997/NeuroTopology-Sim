@@ -62,8 +62,8 @@ def _positive_integer(value: object, *, name: str) -> int:
 
 def _nonempty_string(value: object, *, name: str) -> str:
     """Validate an opaque identifier without echoing the supplied value."""
-    if not isinstance(value, str) or not value:
-        raise StreamContractError(f"{name} must be a non-empty string")
+    if not isinstance(value, str) or not value.strip():
+        raise StreamContractError(f"{name} must be a non-blank string")
     return value
 
 
@@ -201,13 +201,10 @@ def _as_real_float64(values: object, *, what: str) -> np.ndarray:
         raise StreamContractError(
             f"{what} must be real-valued; complex input is rejected, not cast"
         )
-    if arr.dtype.kind in "SUMmV" or (
-        arr.dtype.kind == "O"
-        and any(isinstance(item, (str, bytes, np.str_, np.bytes_, np.datetime64, np.timedelta64)) for item in arr.flat)
-    ):
+    if arr.dtype.kind in "SUMmVO":
         raise StreamContractError(
             f"{what} must be a real numeric array representable as float64; text, bytes, "
-            "and date/time values are rejected, not cast"
+            "date/time, structured, and object-dtype arrays are rejected, not cast"
         )
     try:
         return arr.astype(np.float64, copy=False)
