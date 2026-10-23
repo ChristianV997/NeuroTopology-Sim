@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -405,6 +406,22 @@ def test_write_report_and_cli(tmp_path: Path):
     assert proc_fail.returncode == 1
 
 
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), float("-inf")])
+def test_report_serialization_rejects_nonfinite_values_before_writing(tmp_path: Path, nonfinite: float):
+    from tools.batch3_offline_integration.serialization import canonical_bytes
+
+    invalid = {"nested": [{"metric": nonfinite}]}
+    with pytest.raises(ValueError, match="non-finite"):
+        dumps(invalid)
+    with pytest.raises(ValueError, match="non-finite"):
+        canonical_bytes(invalid)
+
+    destination = tmp_path / "invalid-report.json"
+    with pytest.raises(ValueError, match="non-finite"):
+        write_report(invalid, str(destination))
+    assert not destination.exists()
+
+
 def test_does_not_overlap_batch2_paths():
     # Guard: this package must not import or own Batch 2 MOABB/DANDI lanes.
     report = run_offline_integration(fixture_name="workflow_request.json")
@@ -688,11 +705,13 @@ def test_cli_force_fail_optional_exits_nonzero():
     assert payload["workflow_executed_successfully"] is False
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "mkfifo") or not hasattr(signal, "alarm"),
+    reason="POSIX FIFO and SIGALRM facilities are unavailable on this platform",
+)
 def test_fifo_allowlisted_fixture_name_fails_closed_without_hang(tmp_path: Path, monkeypatch):
     """Regression: FIFO under an allowlisted name must reject before a blocking open."""
     import shutil
-    import signal
-
     from tools.batch3_offline_integration import fixture_producers
     from tools.batch3_offline_integration.fixture_producers import _read_fixture
 

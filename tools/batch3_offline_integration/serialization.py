@@ -10,7 +10,9 @@ from typing import Any, Dict, Optional
 
 def json_safe(value: Any) -> Any:
     if isinstance(value, float):
-        return value if math.isfinite(value) else None
+        if not math.isfinite(value):
+            raise ValueError("non-finite float cannot be serialized as JSON")
+        return value
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, dict):
