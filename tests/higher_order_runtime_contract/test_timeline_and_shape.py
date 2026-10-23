@@ -122,3 +122,29 @@ def test_complex_timestamps_rejected_not_silently_cast():
     ts = np.array([0.0, 1.0, 2.0]) + 1j * np.array([0.0, 5.0, 9.0])
     with pytest.raises(TimelineContractError, match="real-valued"):
         validate_timestamps(ts, n_samples=3)
+
+
+def test_ragged_timestamp_input_raises_contract_error_not_numpy_value_error():
+    with pytest.raises(TimelineContractError, match="timestamps"):
+        validate_timestamps([[0.0], [1.0, 2.0]], n_samples=2)
+
+
+def test_timestamp_gap_is_allowed_when_order_remains_strictly_increasing(bounds):
+    """The contract requires monotonicity, not an invented fixed sampling interval."""
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    session.update(np.zeros((2, 2)), timestamps=np.array([0.0, 0.1]))
+    session.update(np.ones((2, 2)), timestamps=np.array([0.5, 0.6]))
+    assert session.last_timestamp == 0.6
+
+
+def test_rejected_timestamp_chunk_does_not_advance_session_state(bounds):
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    session.update(np.ones((2, 2)), timestamps=np.array([0.0, 0.1]))
+
+    with pytest.raises(TimelineContractError):
+        session.update(np.full((2, 2), 2.0), timestamps=np.array([0.1, 0.2]))
+
+    assert session.samples_seen == 2
+    assert session.chunks_seen == 1
+    assert session.last_timestamp == 0.1
+    assert session.summary.checksum == 4.0

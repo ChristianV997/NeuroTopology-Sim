@@ -176,3 +176,56 @@ def test_batch_parity_rejects_invalid_tolerances(atol, rtol):
         batch_stream_covariance_parity(
             np.arange(12.0).reshape(6, 2), chunk_sizes=(2,), atol=atol, rtol=rtol
         )
+
+
+@pytest.mark.parametrize("allow_uneven_final", [None, 0, 1, "false", np.int64(0)])
+def test_uneven_final_setting_requires_a_boolean(allow_uneven_final):
+    with pytest.raises(StreamContractError, match="allow_uneven_final"):
+        StreamBounds(
+            max_chunk_samples=8,
+            max_channels=2,
+            allow_uneven_final=allow_uneven_final,
+        )
+
+
+def test_uneven_final_setting_accepts_and_normalizes_numpy_boolean():
+    bounds = StreamBounds(
+        max_chunk_samples=8,
+        max_channels=2,
+        allow_uneven_final=np.bool_(False),
+    )
+    assert bounds.allow_uneven_final is False
+
+
+@pytest.mark.parametrize("n_channels", [1.5, True, "2", None])
+def test_session_channel_count_requires_positive_integer(n_channels, bounds):
+    with pytest.raises(StreamContractError):
+        StreamSession(n_channels=n_channels, bounds=bounds, run_id="run-a")
+
+
+def test_session_channel_count_accepts_numpy_integer(bounds):
+    session = StreamSession(n_channels=np.int64(2), bounds=bounds, run_id="run-a")
+    assert session.n_channels == 2
+
+
+@pytest.mark.parametrize("run_id", ["", 1, True, [], None])
+def test_session_run_id_requires_nonempty_string(run_id, bounds):
+    with pytest.raises(StreamContractError, match="run_id"):
+        StreamSession(n_channels=2, bounds=bounds, run_id=run_id)
+
+
+def test_session_reset_rejects_non_string_run_id_without_mutating_state(bounds):
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    session.update(np.ones((3, 2)))
+
+    with pytest.raises(StreamContractError, match="run_id"):
+        session.reset(42)
+
+    assert session.run_id == "run-a"
+    assert session.samples_seen == 3
+    assert session.chunks_seen == 1
+
+
+def test_session_rejects_invalid_bounds_object_as_contract_error():
+    with pytest.raises(StreamContractError, match="bounds"):
+        StreamSession(n_channels=2, bounds=None, run_id="run-a")

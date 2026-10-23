@@ -189,3 +189,33 @@ def test_batch_parity_avoids_overflow_in_finite_tolerance_comparison(monkeypatch
 
     assert results[0][1] is True
     assert np.isfinite(results[0][2])
+
+
+def test_batch_parity_rejects_nonfinite_reference_covariance(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.np.cov",
+        lambda *args, **kwargs: np.array([[np.nan]], dtype=np.float64),
+    )
+
+    with pytest.raises(StreamContractError, match="batch covariance contains non-finite"):
+        batch_stream_covariance_parity(np.arange(8.0).reshape(8, 1), chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_nonfinite_stream_covariance(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.RollingCovariance.matrix",
+        lambda self, ddof=1: np.array([[np.inf]], dtype=np.float64),
+    )
+
+    with pytest.raises(StreamContractError, match="stream covariance contains non-finite"):
+        batch_stream_covariance_parity(np.arange(8.0).reshape(8, 1), chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_unorderable_covariance_reference(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.np.cov",
+        lambda *args, **kwargs: np.array([[object()]], dtype=object),
+    )
+
+    with pytest.raises(StreamContractError, match="batch covariance dtype"):
+        batch_stream_covariance_parity(np.arange(8.0).reshape(8, 1), chunk_sizes=(2,))
