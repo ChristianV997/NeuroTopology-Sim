@@ -129,6 +129,12 @@ def test_ragged_timestamp_input_raises_contract_error_not_numpy_value_error():
         validate_timestamps([[0.0], [1.0, 2.0]], n_samples=2)
 
 
+def test_timestamp_cast_overflow_cannot_return_nonfinite_validated_values():
+    timestamps = np.array([0.0, np.longdouble("1e400")], dtype=np.longdouble)
+    with pytest.raises(TimelineContractError, match="timestamps|float64"):
+        validate_timestamps(timestamps, n_samples=2)
+
+
 def test_timestamp_gap_is_allowed_when_order_remains_strictly_increasing(bounds):
     """The contract requires monotonicity, not an invented fixed sampling interval."""
     session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
