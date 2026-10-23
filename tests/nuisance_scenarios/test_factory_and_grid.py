@@ -96,6 +96,51 @@ def test_factory_with_custom_clean_signal() -> None:
     assert res.diagnostics.realized_snr_db == pytest.approx(10.0, abs=1e-5)
 
 
+def test_factory_does_not_alias_caller_clean_signal_or_coordinates() -> None:
+    """Regression: ScenarioResult must own copies of caller-supplied float64 arrays.
+
+    np.asarray(..., dtype=float64) is a no-op view for float64 inputs, so storing
+    that reference let result mutations rewrite the caller's buffers.
+    """
+    cfg = NuisanceScenarioConfig(
+        noise_exponent=0.5,
+        target_snr_db=0.0,
+        coordinate_jitter_std=0.0,
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+        seed=19,
+    )
+    clean = np.ascontiguousarray(
+        np.vstack(
+            [
+                np.sin(2 * np.pi * 5 * np.linspace(0, 0.5, 50, endpoint=False)),
+                np.cos(2 * np.pi * 5 * np.linspace(0, 0.5, 50, endpoint=False)),
+            ]
+        ),
+        dtype=np.float64,
+    )
+    coords = np.ones((2, 3), dtype=np.float64) * 11.0
+    clean_snap = clean.copy()
+    coords_snap = coords.copy()
+
+    res = NuisanceScenarioFactory.generate(cfg, clean_signal=clean, coordinates=coords)
+
+    assert res.clean_signal is not clean
+    assert res.original_coordinates is not coords
+    assert not np.shares_memory(res.clean_signal, clean)
+    assert not np.shares_memory(res.original_coordinates, coords)
+    assert res.jittered_coordinates is not None
+    assert not np.shares_memory(res.jittered_coordinates, coords)
+
+    res.clean_signal[0, 0] = 12345.0
+    res.original_coordinates[0, 0] = -7.0
+    res.jittered_coordinates[0, 1] = -8.0
+
+    np.testing.assert_array_equal(clean, clean_snap)
+    np.testing.assert_array_equal(coords, coords_snap)
+
+
 def test_factory_with_signal_generator_callable() -> None:
     """Verifies factory accepts a custom signal generator callable."""
     cfg = NuisanceScenarioConfig(

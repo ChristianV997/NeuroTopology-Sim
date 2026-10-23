@@ -143,9 +143,10 @@ class NuisanceScenarioFactory:
         noise_rng = np.random.default_rng(noise_ss)
         jitter_rng = np.random.default_rng(jitter_ss)
 
-        # 1. Resolve clean signal
+        # 1. Resolve clean signal (always own a float64 copy so result mutations
+        # cannot rewrite caller-supplied or generator-returned buffers).
         if clean_signal is not None:
-            clean = np.asarray(clean_signal, dtype=np.float64)
+            clean = np.array(clean_signal, dtype=np.float64, copy=True)
             if clean.ndim != 2:
                 raise ValueError(
                     f"clean_signal must be 2D of shape (n_channels, n_samples), got {clean.shape}"
@@ -158,7 +159,7 @@ class NuisanceScenarioFactory:
             if not np.all(np.isfinite(clean)):
                 raise ValueError("clean_signal contains NaN or infinite values")
         elif signal_generator is not None:
-            clean = np.asarray(
+            clean = np.array(
                 signal_generator(
                     config.n_channels,
                     config.n_samples,
@@ -166,6 +167,7 @@ class NuisanceScenarioFactory:
                     sig_rng,
                 ),
                 dtype=np.float64,
+                copy=True,
             )
             if clean.shape != (config.n_channels, config.n_samples):
                 raise ValueError(
@@ -223,7 +225,9 @@ class NuisanceScenarioFactory:
                 )
             orig_coords = generate_synthetic_spherical_coordinates(config.n_channels, radius=radius)
         elif coordinates is not None:
-            orig_coords = np.asarray(coordinates, dtype=np.float64)
+            # Own a copy: float64 asarray is a view, and ScenarioResult stores
+            # original_coordinates for callers who may mutate the result.
+            orig_coords = np.array(coordinates, dtype=np.float64, copy=True)
             if orig_coords.ndim != 2 or orig_coords.shape != (config.n_channels, 3):
                 raise ValueError(
                     f"coordinates must have shape ({config.n_channels}, 3), got {orig_coords.shape}"
