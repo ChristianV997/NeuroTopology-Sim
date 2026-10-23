@@ -520,3 +520,46 @@ def test_validator_rejects_non_boolean_budget_measurement():
 def test_cli_rejects_unbounded_workers():
     rc = cli.main(["--max-workers", "4", "--size", "4", "--repetitions", "1"])
     assert rc == 2
+
+
+def test_validator_fail_closes_on_non_finite_telemetry_without_raising():
+    """In-memory NaN/Inf must become violations, not a JSON encoder crash."""
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["telemetry"]["candidate"]["runtime_best_s"] = float("nan")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(
+        item.startswith("non_finite:") or item == "non_finite_json_encode" or item.startswith("invalid_telemetry_metric:")
+        for item in validation["violations"]
+    )
+
+
+def test_validator_and_cli_reject_non_finite_report_fields():
+    """CLI must not return success when the validator would reject Inf/NaN."""
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["debug_score"] = float("inf")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("non_finite:") for item in validation["violations"])
+    assert _cli_exit_code(report) != 0
