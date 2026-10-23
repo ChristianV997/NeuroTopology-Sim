@@ -42,6 +42,36 @@ Closed vocabulary:
 `PASS`. `K == 100` is not a PASS. Missing metrics are JSON `null`. JSON never
 contains NaN or Infinity.
 
+### Dataset metadata readiness for descriptive data review
+
+An attempted `descriptive_empirical` review is held as
+`HOLD_INCONCLUSIVE` unless the input explicitly declares all of:
+
+- `license_status: "compatible"`;
+- `cohort_status: "consistent"`;
+- `cohort_discrepancy: false`.
+
+The fields may be top-level or grouped under `dataset_metadata` (including an
+adapter `fields` object). Conflicting, unknown, incompatible, missing, or
+malformed declarations block descriptive review eligibility. If multiple
+artifacts declare these values, contradictory declarations also block review.
+The gate does not infer a license from a URL or identify a cohort from a
+dataset name. `compatible` and `consistent` are caller assertions only—not
+verified license permissions, access authorization, source identity, or cohort
+composition. The gate does not independently validate dataset identity or
+entitlement to use data. An explicit `EMPIRICAL` declaration remains
+`BLOCK_PROMOTION` regardless of these fields.
+
+This requirement is limited to empirical/descriptive evidence-bearing claims.
+Engineering-only metadata reports remain
+`ADMISSIBLE_FOR_ENGINEERING_REPORT` and are not rejected solely because dataset
+license or cohort metadata is absent or unresolved; they are not eligible for
+descriptive scientific review. The serialized `scientific_eligibility` flag is
+true only for `ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW`; it is false for engineering
+reports, holds, and blocks. It means only eligibility for the gate's limited
+descriptive review—not empirical confirmation, legal permission, cohort
+validation, or biological evidence. `scientific_pass` remains `false`.
+
 ## Allowed evidence classes
 
 The gate records `declared_evidence_class` separately from

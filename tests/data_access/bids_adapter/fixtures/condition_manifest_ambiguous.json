@@ -1,0 +1,8 @@
+{
+  "recordings": {
+    "sub-01/eeg/sub-01_task-rest_run-01_eeg.edf": {
+      "condition_label": "resting",
+      "confirmed": false
+    }
+  }
+}
