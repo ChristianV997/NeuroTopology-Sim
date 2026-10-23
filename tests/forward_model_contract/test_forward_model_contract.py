@@ -18,6 +18,7 @@ Verifies:
 
 from __future__ import annotations
 
+import dataclasses
 from fractions import Fraction
 import json
 import math
@@ -42,6 +43,7 @@ from dual_engine.forward_model_contract import (
     CoordinateUnitMismatchError,
     ForwardModelContractError,
     LeadfieldDimensionMismatchError,
+    OrientationType,
     SensorGeometry,
     SourceOutOfBoundsError,
     SourceSpace,
@@ -1528,6 +1530,326 @@ class TestForwardModelNumericalAndGeometryHardening(unittest.TestCase):
                 lowered = text.lower()
                 self.assertNotIn("verified physical effect", lowered)
                 self.assertNotIn("exact spherical boundary-value solution", lowered)
+
+
+_ACCEPTED_MODEL_TYPE_VALUES = ("spherical_3shell", "spherical_1shell")
+_ACCEPTED_FRAME_VALUES = ("head", "mni")
+
+
+class TestForwardModelEnumMemberValidation(unittest.TestCase):
+    """Non-members of the forward-model enums fail closed at validate() and build.
+
+    A plain string is not an enum member, including a string equal to a member
+    value, a case or whitespace variant, or a member of a different enum.
+    OrientationType is not an input field; the orientation mode is the bool
+    ``is_fixed_orientation``. These checks are synthetic-contract hygiene only.
+    """
+
+    def setUp(self) -> None:
+        self.conductor = ConductorModel()
+        self.sensors = make_standard_1020_synthetic_sensors(self.conductor.scalp_radius_m)
+        self.interior = ((0.0, 0.0, 0.02),)
+        self.unit = ((0.0, 0.0, 1.0),)
+        self.electrode = self.sensors.positions_m[0]
+        self.moment = (0.0, 0.0, 1.0e-9)
+
+    def _assert_domain_error(self, exc_type, call, bad, field, accepted) -> None:
+        with self.assertRaises(exc_type) as caught:
+            call()
+        message = str(caught.exception)
+        self.assertNotIsInstance(caught.exception, AttributeError)
+        self.assertIn(field, message)
+        self.assertIn(repr(bad), message)
+        self.assertIn("Accepted values:", message)
+        for token in accepted:
+            self.assertIn(token, message)
+
+    def test_model_type_non_member_rejected_at_validate(self) -> None:
+        """Unsupported model_type values are rejected before any ``.value`` access."""
+        rejected = (
+            "unsupported-string",
+            "spherical_3shell",
+            "SPHERICAL_3SHELL",
+            " spherical_3shell",
+            "spherical_3shell ",
+            "Spherical_3shell",
+            "anatomical_bem",
+            None,
+            1,
+            b"spherical_3shell",
+            CoordinateFrame.HEAD,
+            OrientationType.FREE,
+        )
+        for bad in rejected:
+            with self.subTest(model_type=bad):
+                self._assert_domain_error(
+                    ConductorGeometryError,
+                    lambda bad=bad: ConductorModel(model_type=bad).validate(),
+                    bad,
+                    "model_type",
+                    _ACCEPTED_MODEL_TYPE_VALUES,
+                )
+        with self.subTest(model_type="spherical_1shell"):
+            one_shell = ConductorModel(
+                model_type="spherical_1shell",
+                radii_m=(0.09,),
+                sigmas_sm=(0.33,),
+            )
+            self._assert_domain_error(
+                ConductorGeometryError,
+                one_shell.validate,
+                "spherical_1shell",
+                "model_type",
+                _ACCEPTED_MODEL_TYPE_VALUES,
+            )
+
+    def test_coordinate_frame_non_member_rejected_at_validate(self) -> None:
+        """Sensor and source frames reject non-members, including the string 'head'."""
+        rejected = (
+            "bogus-frame",
+            "head",
+            "mni",
+            "HEAD",
+            "MNI",
+            " head",
+            "head ",
+            "mni ",
+            "unknown",
+            None,
+            1,
+            b"head",
+            ConductorModelType.SPHERICAL_3SHELL,
+            OrientationType.FREE,
+        )
+        for bad in rejected:
+            with self.subTest(owner="sensor", coordinate_frame=bad):
+                sensors = dataclasses.replace(self.sensors, coordinate_frame=bad)
+                self._assert_domain_error(
+                    CoordinateFrameMismatchError,
+                    sensors.validate,
+                    bad,
+                    "sensor_geometry.coordinate_frame",
+                    _ACCEPTED_FRAME_VALUES,
+                )
+            with self.subTest(owner="source", coordinate_frame=bad):
+                sources = SourceSpace(positions_m=self.interior, coordinate_frame=bad)
+                self._assert_domain_error(
+                    CoordinateFrameMismatchError,
+                    sources.validate,
+                    bad,
+                    "source_space.coordinate_frame",
+                    _ACCEPTED_FRAME_VALUES,
+                )
+
+    def test_orientation_flag_non_bool_rejected_at_validate(self) -> None:
+        """OrientationType and strings are not coerced into is_fixed_orientation."""
+        rejected = (
+            "free",
+            "fixed",
+            "FREE",
+            "FIXED",
+            " fixed",
+            "fixed ",
+            "unsupported",
+            "false",
+            "",
+            None,
+            1,
+            0,
+            b"fixed",
+            OrientationType.FREE,
+            OrientationType.FIXED,
+            CoordinateFrame.HEAD,
+        )
+        for bad in rejected:
+            with self.subTest(is_fixed_orientation=bad):
+                sources = SourceSpace(
+                    positions_m=self.interior,
+                    orientations=self.unit,
+                    is_fixed_orientation=bad,
+                )
+                self._assert_domain_error(
+                    ForwardModelContractError,
+                    sources.validate,
+                    bad,
+                    "source_space.is_fixed_orientation",
+                    ("True", "False"),
+                )
+
+    def test_orientation_table_rejects_non_sequence(self) -> None:
+        """A bare string or scalar is not an orientation table."""
+        for bad in ("free", b"free", 5):
+            with self.subTest(orientations=bad):
+                sources = SourceSpace(
+                    positions_m=self.interior,
+                    orientations=bad,
+                    is_fixed_orientation=False,
+                )
+                self._assert_domain_error(
+                    ForwardModelContractError,
+                    sources.validate,
+                    bad,
+                    "source_space.orientations",
+                    ("sequence of length-3 vectors", "None"),
+                )
+
+    def test_build_rejects_non_members_without_attribute_error(self) -> None:
+        """build_synthetic_forward_contract fails in validate(), not on ``.value``."""
+        cases = {
+            "conductor-unsupported": dict(
+                conductor_model=ConductorModel(model_type="unsupported-string"),
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(positions_m=self.interior),
+            ),
+            "conductor-value-string": dict(
+                conductor_model=ConductorModel(model_type="spherical_3shell"),
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(positions_m=self.interior),
+            ),
+            "sensors-bogus": dict(
+                sensor_geometry=dataclasses.replace(self.sensors, coordinate_frame="bogus-frame"),
+                source_space=SourceSpace(positions_m=self.interior),
+            ),
+            "sensors-head-string": dict(
+                sensor_geometry=dataclasses.replace(self.sensors, coordinate_frame="head"),
+                source_space=SourceSpace(positions_m=self.interior),
+            ),
+            "sources-bogus": dict(
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(positions_m=self.interior, coordinate_frame="bogus-frame"),
+            ),
+            "sources-head-string": dict(
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(positions_m=self.interior, coordinate_frame="head"),
+            ),
+            "orientation-string": dict(
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(
+                    positions_m=self.interior,
+                    orientations=self.unit,
+                    is_fixed_orientation="free",
+                ),
+            ),
+            "orientation-enum": dict(
+                sensor_geometry=self.sensors,
+                source_space=SourceSpace(
+                    positions_m=self.interior,
+                    orientations=self.unit,
+                    is_fixed_orientation=OrientationType.FREE,
+                ),
+            ),
+        }
+        for label, kwargs in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(ForwardModelContractError) as caught:
+                    build_synthetic_forward_contract(**kwargs)
+                self.assertNotIsInstance(caught.exception, AttributeError)
+                self.assertIn("Accepted values:", str(caught.exception))
+
+    def test_compute_3shell_rejects_non_member_model_type(self) -> None:
+        """The 3-shell helper does not reach ``model_type.value`` for a non-member."""
+        with self.assertRaises(ConductorGeometryError) as caught:
+            compute_3shell_sphere_potential(
+                self.electrode,
+                self.interior[0],
+                self.moment,
+                ConductorModel(model_type="unsupported-string"),
+            )
+        self.assertIn("model_type", str(caught.exception))
+        self.assertIn(repr("unsupported-string"), str(caught.exception))
+
+    def test_documented_enum_members_still_validate_and_build(self) -> None:
+        """Every passing enum member still validates, and the rejected members stay rejected."""
+        three = ConductorModel(model_type=ConductorModelType.SPHERICAL_3SHELL)
+        one = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_1SHELL,
+            radii_m=(0.09,),
+            sigmas_sm=(0.33,),
+        )
+        for conductor in (three, one):
+            with self.subTest(model_type=conductor.model_type):
+                self.assertIsNone(conductor.validate())
+                built = build_synthetic_forward_contract(
+                    conductor_model=conductor,
+                    sensor_geometry=self.sensors,
+                    source_space=SourceSpace(positions_m=self.interior),
+                )
+                self.assertIs(type(built.conductor_model.model_type), ConductorModelType)
+                self.assertEqual(built.provenance["model_type"], conductor.model_type.value)
+                self.assertEqual(built.status, ContractStatus.SYNTHETIC_ONLY)
+
+        with self.assertRaises(ConductorGeometryError) as anatomical:
+            ConductorModel(model_type=ConductorModelType.ANATOMICAL_BEM).validate()
+        self.assertIn("Anatomical BEM", str(anatomical.exception))
+
+        with self.assertRaises(ConductorGeometryError) as wrong_layers:
+            ConductorModel(
+                model_type=ConductorModelType.SPHERICAL_1SHELL,
+                radii_m=(0.08, 0.085, 0.09),
+                sigmas_sm=(0.33, 0.0042, 0.33),
+            ).validate()
+        self.assertIn("exactly 1 layer", str(wrong_layers.exception))
+
+        for frame in (CoordinateFrame.HEAD, CoordinateFrame.MNI):
+            with self.subTest(coordinate_frame=frame):
+                sensors = dataclasses.replace(self.sensors, coordinate_frame=frame)
+                sources = SourceSpace(positions_m=self.interior, coordinate_frame=frame)
+                self.assertIsNone(sensors.validate())
+                self.assertIsNone(sources.validate())
+                built = build_synthetic_forward_contract(
+                    sensor_geometry=sensors,
+                    source_space=sources,
+                    conductor_model=self.conductor,
+                )
+                self.assertIs(type(built.sensor_geometry.coordinate_frame), CoordinateFrame)
+                self.assertEqual(built.sensor_geometry.coordinate_frame, frame)
+                self.assertEqual(built.source_space.coordinate_frame, frame)
+                self.assertEqual(built.provenance["coordinate_frame"], frame.value)
+
+        for owner, call in (
+            (
+                "sensor",
+                lambda: dataclasses.replace(
+                    self.sensors, coordinate_frame=CoordinateFrame.UNKNOWN
+                ).validate(),
+            ),
+            (
+                "source",
+                lambda: SourceSpace(
+                    positions_m=self.interior, coordinate_frame=CoordinateFrame.UNKNOWN
+                ).validate(),
+            ),
+        ):
+            with self.subTest(owner=owner, coordinate_frame=CoordinateFrame.UNKNOWN):
+                with self.assertRaises(CoordinateFrameMismatchError) as unknown:
+                    call()
+                self.assertIn("UNKNOWN is rejected", str(unknown.exception))
+
+        for fixed, orientations, columns in (
+            (False, None, 3),
+            (True, self.unit, 1),
+        ):
+            with self.subTest(is_fixed_orientation=fixed):
+                sources = SourceSpace(
+                    positions_m=self.interior,
+                    orientations=orientations,
+                    is_fixed_orientation=fixed,
+                )
+                self.assertIsNone(sources.validate())
+                built = build_synthetic_forward_contract(
+                    sensor_geometry=self.sensors,
+                    source_space=sources,
+                )
+                self.assertIs(type(built.source_space.is_fixed_orientation), bool)
+                self.assertEqual(built.source_space.is_fixed_orientation, fixed)
+                self.assertEqual(built.source_space.n_columns, columns)
+
+        free_vectors = SourceSpace(
+            positions_m=self.interior,
+            orientations=((0.0, 0.0, 0.0),),
+            is_fixed_orientation=False,
+        )
+        self.assertIsNone(free_vectors.validate())
 
 
 if __name__ == "__main__":
