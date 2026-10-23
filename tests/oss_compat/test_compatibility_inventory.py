@@ -219,3 +219,136 @@ def test_persim_package_license_evidence_is_separate_from_repository_license_lab
     assert persim["package_license_metadata_status"] == "declared_by_pypi_classifier"
     assert "OSI Approved :: MIT License" in persim["package_license_declaration"]
     assert persim["package_license_evidence_url"] == "https://pypi.org/project/persim/0.4.1/"
+
+
+# --- source-backed field checks (package/version/license/overlap) -------------
+
+_PACKAGE_FIELDS = {
+    "package_version",
+    "package_license_declaration",
+    "package_license_metadata_status",
+    "package_license_evidence_url",
+}
+_PACKAGE_METADATA_STATUSES = {
+    "declared_by_pypi_classifier",
+    "declared_by_pypi_license_expression",
+    "declared_by_pypi_license_field",
+    "conflicting_pypi_metadata",
+    "not_declared",
+}
+_IMPORT_NAMES = {"persim": "persim", "ripser.py": "ripser", "gudhi": "gudhi", "nibabel": "nibabel"}
+
+
+def _candidate(candidate_id: str) -> dict:
+    return next(c for c in _load()["candidates"] if c["id"] == candidate_id)
+
+
+def _cited_repo_paths(candidate: dict) -> list[str]:
+    paths = []
+    for entry in candidate["existing_overlap"]:
+        for token in re.findall(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+\.py", entry):
+            paths.append(token)
+    return paths
+
+
+def test_every_license_claim_has_an_evidence_url():
+    for candidate in _load()["candidates"]:
+        url = candidate["license_evidence_url"]
+        if candidate["license_status"] == "missing":
+            assert url is None, f"{candidate['id']}: a missing license has no license file to cite"
+            continue
+        assert isinstance(url, str) and url.startswith("https://"), candidate["id"]
+
+
+def test_package_fields_are_all_or_nothing_and_use_known_statuses():
+    for candidate in _load()["candidates"]:
+        present = _PACKAGE_FIELDS & set(candidate)
+        if not present:
+            continue
+        cid = candidate["id"]
+        assert present == _PACKAGE_FIELDS, f"{cid}: partial package metadata {sorted(present)}"
+        assert candidate["package_license_metadata_status"] in _PACKAGE_METADATA_STATUSES, cid
+        assert candidate["package_license_evidence_url"].startswith("https://pypi.org/"), cid
+        if candidate["package_license_metadata_status"] == "not_declared":
+            assert candidate["package_license_declaration"] is None, cid
+        else:
+            assert candidate["package_license_declaration"], cid
+
+
+def test_overlap_paths_cited_for_a_library_actually_mention_that_library():
+    for candidate_id, module_name in _IMPORT_NAMES.items():
+        for relative in _cited_repo_paths(_candidate(candidate_id)):
+            source = _ROOT / relative
+            assert source.is_file(), f"{candidate_id}: cited path {relative} does not exist"
+            text = source.read_text(encoding="utf-8")
+            uses_module = re.search(
+                rf"^\s*(?:import|from)\s+{module_name}\b|available\(\s*[\"']{module_name}[\"']",
+                text,
+                re.MULTILINE,
+            )
+            assert uses_module, f"{candidate_id}: cited path {relative} never imports {module_name}"
+
+
+def test_persim_maintenance_signal_matches_its_latest_release():
+    persim = _candidate("persim")
+    assert persim["latest_release"]["tag"] == "v0.4.1"
+    assert "2025-03-12" not in persim["maintenance_signal"]
+    assert "v0.4.1" in persim["maintenance_signal"]
+    assert "2026-10-18" in persim["maintenance_signal"]
+    assert persim["license_evidence_url"].endswith("/LICENSE.txt")
+
+
+def test_bundled_third_party_terms_are_not_collapsed_into_a_single_mit_label():
+    nibabel = _candidate("nibabel")
+    assert nibabel["license_status"] == "permissive"
+    caveat = nibabel["component_license_caveat"]
+    assert "3rd party" in caveat and "PDDL" in caveat and "template" in caveat
+    assert "not been reviewed" in caveat or "not reviewed" in caveat
+    datalad = _candidate("datalad")
+    caveat = datalad["component_license_caveat"]
+    assert "BSD" in caveat and "git-annex" in caveat
+    assert "not been reviewed" in caveat or "not reviewed" in caveat
+
+
+def test_nibabel_package_and_release_channels_are_distinguished():
+    nibabel = _candidate("nibabel")
+    assert nibabel["package_version"] == "5.4.2"
+    assert nibabel["latest_release"]["tag"] == "5.4.1"
+    assert "5.4.2" in nibabel["maintenance_signal"]
+    assert nibabel["package_license_metadata_status"] == "declared_by_pypi_license_expression"
+    assert not any("10 Python modules" in entry for entry in nibabel["existing_overlap"])
+
+
+def test_conflicting_package_metadata_is_recorded_not_resolved():
+    neuromaps = _candidate("neuromaps")
+    assert neuromaps["package_license_metadata_status"] == "conflicting_pypi_metadata"
+    assert "NonCommercial" in neuromaps["package_license_declaration"]
+    assert "BSD" in neuromaps["package_license_declaration"]
+    assert neuromaps["license_status"] == "non_commercial_conflict"
+    assert neuromaps["disposition"] == "reference_only"
+
+
+def test_non_pypi_release_channels_do_not_masquerade_as_package_versions():
+    neurolib = _candidate("neurolib")
+    assert neurolib["latest_release"]["tag"] == "v0.7.0"
+    assert neurolib["package_version"] == "0.6.2"
+    assert "no PyPI release" in neurolib["package_channel_note"]
+    validator = _candidate("bids-validator")
+    assert "package_version" not in validator
+    assert "different artifact" in validator["package_channel_note"]
+
+
+def test_giotto_and_pyspi_license_text_match_primary_declarations():
+    giotto = _candidate("giotto-tda")
+    assert giotto["package_version"] == "0.6.2"
+    assert "AGPL" in giotto["package_license_declaration"]
+    pyspi = _candidate("pyspi")
+    assert "README and API" not in pyspi["license_spdx_or_text"]
+    assert "GPL" in pyspi["license_spdx_or_text"]
+    assert pyspi["license_status"] == "copyleft_strong"
+
+
+def test_scope_note_keeps_security_maintenance_legal_and_science_separate():
+    note = _load()["license_scope_note"]
+    for phrase in ("security posture", "maintenance quality", "compatibility", "legal clearance", "scientific validity"):
+        assert phrase in note

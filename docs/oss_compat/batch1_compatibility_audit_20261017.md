@@ -103,11 +103,15 @@ text disagree or the label is "Other", the LICENSE file was read.
 - **giotto-tda: AGPL-3.0, dual-licensed.** The LICENSE file states AGPL with a
   commercial-licence contact. GitHub reports "Other". Copyleft applies unless a
   commercial licence is obtained.
-- **nibabel, DataLad, Ripser.py: MIT** (COPYING or LICENSE.txt read). GitHub's
-  "Other" label reflects file layout, not a non-MIT license.
+- **nibabel, DataLad, Ripser.py: MIT main license** (COPYING or LICENSE.txt read).
+  GitHub's "Other" label reflects file layout, not a non-MIT license. For nibabel
+  and DataLad the MIT statement covers the project's own code only: both COPYING
+  files also list bundled third-party code or data under other terms (see
+  section 12), so the MIT label is not a component-level clearance.
 - **DataLad runtime:** git-annex (GPL-3.0) is a separate external dependency.
-- **SimNIBS and pyspi: GPL-3.0** (GitHub API and README). External-process use
-  only, with no in-process import.
+- **SimNIBS and pyspi: GPL-3.0** (GitHub API and README; pyspi's README says
+  "or later" in one place and plain GPL elsewhere, so "or later" is not relied
+  on). External-process use only, with no in-process import.
 - **OpenMed models:** the SDK is Apache-2.0, but model artifacts carry per-model
   terms that were not verified. Unresolved.
 - **AutoResearch: no license.** No copy is permitted.
@@ -129,9 +133,12 @@ Already present and not re-proposed as new work:
 - **MOABB** (`dataset_importers/moabb_importer.py`, metadata only).
 - **GUDHI** (`core/topology.py`, `requirements-research.txt`).
 - **Ripser** (`core/topological_filtration.py`, `requirements-base.txt`).
-- **persim** (`dual_engine/spectral_tda.py`, `analysis/connectivity_topology.py`,
-  `tools/tda_reproducibility/equivalence.py`).
-- **nibabel** (`requirements-research.txt`; 10 Python modules import it).
+- **persim** (`requirements-base.txt`, `persim>=0.3.1`; the only code that
+  imports it is the optional path in `tools/tda_reproducibility/equivalence.py`.
+  `dual_engine/spectral_tda.py` and `analysis/connectivity_topology.py` use
+  ripser, not persim).
+- **nibabel** (`requirements-research.txt`, `nibabel>=5.1.0`; imported by several
+  modules, for example `validation/montage_topology.py`).
 - **mne-connectivity** (`requirements-eeg.txt`; in-house Kuramoto and LEiDA
   comparators overlap with it).
 - **Null-control surrogate scaffold** (phase-randomized, channel-shuffled, and
@@ -166,16 +173,13 @@ main is a string match, which is cruder than the classifier in
 
 ## 8. Tests and outputs
 
-- `docs/oss_compat/compatibility_inventory_20261017.json` parsed as valid JSON.
-- Consistency rules were executed with Node.js (`node -e`). The rules mirror the
-  Python test: head-SHA format, canonical URL, vocabularies, the license gate on
-  integration, the copy restriction on restricted licenses, no workflow tools as
-  runtime dependencies, the stale-repository exclusion, existing-dependency
-  overlap, out-of-scope rejection, and the named-lead set. **Result: 23 candidates,
-  all rules pass.**
-- `tests/oss_compat/test_compatibility_inventory.py` (11 tests) was written to the
-  same rules. **It was not executed:** this environment has no Python runtime, and
-  no interpreter was installed. Run `pytest tests/oss_compat -q` before merge.
+- `docs/oss_compat/compatibility_inventory_20261017.json` parses as valid JSON
+  (23 candidates; row IDs unchanged).
+- `tests/oss_compat/test_compatibility_inventory.py` holds 25 pytest tests: the
+  original 15 rules plus 10 source-backed field checks added in section 12.
+  Run `python -m pytest tests/oss_compat -q -o addopts= --override-ini=required_plugins= --confcutdir=.`.
+  These are artifact-consistency checks; they do not install, import, or execute
+  any candidate and are not scientific validation.
 
 ## 9. Changed paths
 
@@ -233,3 +237,32 @@ records are evidence snapshots, not adoption approval, security certification,
 legal clearance, compatibility conclusions, or scientific evidence. The
 initial `head_sha` and `last_commit_utc` values remain explicitly historical
 and require a separate revalidation before they are treated as current.
+
+## 12. Package, version, license, and overlap field revalidation — 2026-10-23
+
+Sources: PyPI JSON metadata (`https://pypi.org/pypi/<name>/json`), LICENSE/COPYING
+text and tag refs fetched read-only from `raw.githubusercontent.com` at pinned
+tags or commits, and in-repo greps. The GitHub REST API was not reachable in this
+session, so GitHub release records (`published_utc`) were not re-read and keep the
+2026-10-22 values. No candidate was cloned, installed, imported, or executed.
+
+Row-level changes (IDs unchanged):
+
+| Row | Change | Evidence |
+|---|---|---|
+| `persim` | `maintenance_signal` said the latest tagged release was 2025-03-12, contradicting `latest_release` v0.4.1 (2026-10-18). Corrected. `existing_overlap` cited two modules that use ripser, not persim; now cites `requirements-base.txt` and the one optional import in `tools/tda_reproducibility/equivalence.py`. License evidence URL added (pinned `LICENSE.txt`, MIT text). | PyPI upload 2026-10-18; repo greps; raw LICENSE.txt at the v0.4.1 commit |
+| `nibabel` | Newer tag/package 5.4.2 exists (PyPI 2026-03-11); the 5.4.1 release record is kept and flagged. Package license metadata added (MIT expression). `component_license_caveat` added for the COPYING "3rd party code and data" section (NetCDF/SciPy, Sphinx extension, OrderedSet, MNI template, Philips PAR/REC under PDDL). Unsupported "10 Python modules" count removed. | PyPI JSON 5.4.2; raw COPYING at tag 5.4.2 |
+| `datalad` | Package license metadata added; `component_license_caveat` added (COPYING lists parts under Python, BSD-2, BSD-3 licenses; git-annex stays a separate GPL-3.0 tool). | PyPI JSON 1.7.1; raw COPYING at tag 1.7.1 |
+| `neurolib` | GitHub tag v0.7.0 has no PyPI release; PyPI latest is 0.6.2 (2022). Recorded as `package_channel_note` so a tag is not read as an installable version. | PyPI JSON; raw LICENSE at v0.7.0 |
+| `bids-validator` | GitHub 3.0.2 is the Node validator; the PyPI project of the same name (1.14.7.post0) is a different artifact. `package_channel_note` added; no `package_version` recorded. | PyPI JSON |
+| `giotto-tda` | PyPI license field "GNU AGPLv3" recorded as package metadata. | PyPI JSON 0.6.2 |
+| `neuromaps` | PyPI metadata conflicts with itself (NonCommercial license text vs a BSD classifier). Recorded as `conflicting_pypi_metadata`, not resolved; disposition and `non_commercial_conflict` status unchanged. | PyPI JSON 0.0.7 |
+| `gudhi` | Missing `package_license_evidence_url` added (PyPI JSON). | PyPI JSON 3.13.0 |
+| `pyspi` | "GPL-3.0 or later (README and API)" overstated the evidence; the API/PyPI say GPL v3 and the README is inconsistent on "or later". | raw README at v2.0.2 |
+| 10 rows | `license_evidence_url` was null for mne-python, mne-bids, moabb, bids-validator, simnibs, netneurotools, neurolib, mne-connectivity, dvc, pyspi; each now cites its LICENSE file at the pinned `head_sha` (headers read; they match the recorded licenses). | raw LICENSE at head_sha |
+
+What these fields do and do not establish. A license field, classifier, or file
+header is a declaration by the project about itself. It is not a transitive
+license scan, a security review, a maintenance judgment, a compatibility
+finding, legal clearance, or evidence of scientific suitability; each of those is
+a separate question this inventory leaves open. Dispositions are unchanged.
