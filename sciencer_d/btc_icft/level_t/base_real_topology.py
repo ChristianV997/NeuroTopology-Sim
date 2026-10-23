@@ -185,10 +185,23 @@ def _has_valid_triangle_counts(n_triangles: object, n_valid_triangles: object) -
 
 
 def _is_eligible_topology_row(row: LevelTRealTopologyRow) -> bool:
+    """Return True only for complete, computed, warning-free observed windows.
+
+    Status / missingness metadata is part of the evidence contract: a row that
+    still carries finite metric fields but reports ``run_status`` other than
+    ``complete``, ``missingness_state`` other than ``computed``, or
+    ``replicate_count <= 0`` must not enter cohort or optional-signal reports
+    as valid evidence.
+    """
     return (
         row.null_method != "fixture_none"
         and row.is_valid
         and row.topology_status == "computed"
+        and row.missingness_state == "computed"
+        and row.run_status == "complete"
+        and isinstance(row.replicate_count, int)
+        and not isinstance(row.replicate_count, bool)
+        and row.replicate_count > 0
         and not row.warnings
         and _has_valid_window_bounds(row.window_start_s, row.window_end_s)
         and _has_valid_triangle_counts(row.n_triangles, row.n_valid_triangles)

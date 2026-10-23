@@ -503,3 +503,52 @@ def test_audit_cohort_missingness_flags_contradictory_subject_ids():
     report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
     assert report["verdict"] == "INCOMPLETE"
     assert report["n_contradictory_label_windows"] == 1
+
+
+def test_failed_or_unobserved_status_rows_cannot_yield_cohort_pass():
+    """Regression: incomplete run/missingness status must not count as valid windows."""
+    from dataclasses import replace
+
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    poisoned = []
+    for idx, row in enumerate(t_rows):
+        if idx % 3 == 0:
+            poisoned.append(replace(row, run_status="failed"))
+        elif idx % 3 == 1:
+            poisoned.append(
+                replace(
+                    row,
+                    missingness_state="unobserved",
+                    missingness_reason="status metadata incomplete",
+                )
+            )
+        else:
+            poisoned.append(replace(row, replicate_count=0))
+
+    report = audit_cohort_missingness(poisoned, m_rows, group_col="task_label", max_skip_rate=1.0)
+
+    assert report["verdict"] != "PASS"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == 0
+    assert report["n_missing_windows"] == len(poisoned)
+    assert len(report["missing_records"]) == len(poisoned)
+    assert all(rec.get("missingness_reason") for rec in report["missing_records"])
+    json.dumps(report, allow_nan=False)
+
+
+def test_whitespace_only_condition_labels_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.task_label = "   "
+    for m_row in m_rows:
+        m_row["task_label"] = ""
+        m_row["state_label"] = "\t"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["conditions_detected"] == []
+    assert report["n_unlabeled_valid_windows"] == len(t_rows)
+    assert "condition labels" in report["verdict_reason"]
+    json.dumps(report, allow_nan=False)

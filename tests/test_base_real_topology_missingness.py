@@ -1063,6 +1063,7 @@ def test_ml_report_ignores_skipped_and_nonfinite_extra_features(monkeypatch):
 
 
 def test_optional_signal_window_computers_fail_closed_on_nonfinite_samples(tmp_path, monkeypatch):
+    pytest.importorskip("scipy")
     from data import bids_ingest
 
     source = tmp_path / "synthetic.edf"
@@ -1089,3 +1090,72 @@ def test_optional_signal_window_computers_fail_closed_on_nonfinite_samples(tmp_p
         assert res["status"] == "skipped"
         assert "non-finite" in res["reason"]
         json.dumps(res, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "status_kwargs",
+    [
+        {"run_status": "failed"},
+        {"run_status": "partial"},
+        {"missingness_state": "unobserved", "missingness_reason": "status-only exclusion"},
+        {"missingness_state": "partial_run", "missingness_reason": "status-only exclusion"},
+        {"missingness_state": "failed_read", "missingness_reason": "status-only exclusion"},
+        {"replicate_count": 0},
+    ],
+    ids=[
+        "failed_run_status",
+        "partial_run_status",
+        "unobserved_missingness",
+        "partial_run_missingness",
+        "failed_read_missingness",
+        "zero_replicate_count",
+    ],
+)
+def test_incomplete_status_metadata_cannot_enter_reports_as_valid_evidence(status_kwargs):
+    """Regression: finite metrics must not override incomplete status/missingness."""
+    from dataclasses import replace
+
+    from sciencer_d.btc_icft.level_t.base_real_topology import _is_eligible_topology_row
+
+    row = replace(_valid_row(0), **status_kwargs)
+    m_row = {
+        "row_id": row.row_id,
+        "subject_id": row.subject_id,
+        "task_label": row.task_label,
+        "state_label": row.task_label,
+        "source_file": "synthetic-missing.edf",
+        "window_start_s": 0.0,
+        "window_end_s": 2.0,
+    }
+
+    assert _is_eligible_topology_row(row) is False
+
+    quality = build_topology_quality_report([row])
+    alignment = build_artifact_alignment_report([row], [{"row_id": row.row_id, "artifact_score": 0.2}])
+    phase = build_phase_based_topology_report([row], [m_row])
+    connectivity = build_connectivity_report([row], [m_row])
+    nulls = build_null_gate_report([row], [m_row])
+    group = build_group_significance_report([row], [m_row], max_skip_rate=0.0)
+    decoding = build_ml_decoding_report([row], [m_row])
+    cohort = audit_cohort_missingness([row], [m_row], max_skip_rate=0.0)
+
+    assert quality["n_valid_rows"] == 0
+    assert quality["n_missing_rows"] == 1
+    assert quality["quality_passed"] is False
+    assert quality["status"] != "pass"
+    assert alignment["topology_quality_mean"] is None
+    assert group["status"] == "blocked_high_skip_rate"
+    assert group["n_rows_eligible"] == 0
+    assert decoding["status"] == "not_applicable"
+    assert phase["results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert connectivity["results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert nulls["gate_results"][0]["reason"] == "Level T row is invalid or unobserved"
+    assert cohort["verdict"] != "PASS"
+    assert cohort["gate_passed"] is False
+    assert cohort["n_valid_windows"] == 0
+    assert cohort["n_missing_windows"] == 1
+    assert any(
+        rec["row_id"] == row.row_id for rec in cohort["missing_records"]
+    ), "exclusions must remain visible in missing_records"
+    for report in (quality, alignment, phase, connectivity, nulls, group, decoding, cohort):
+        json.dumps(report, allow_nan=False)
