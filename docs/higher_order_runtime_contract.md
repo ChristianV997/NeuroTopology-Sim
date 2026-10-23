@@ -44,7 +44,7 @@ other paths and was left untouched.
 | Shape drift | Channel-count changes mid-stream raise `ShapeContractError`. Chunks must be 2-D `(samples, channels)`; a 1-D vector is rejected, never reshaped. Column *identity* / permutation is caller-owned (not fingerprint-checked). |
 | Input dtype | Complex-valued signals, chunks and timestamps raise `StreamContractError` / `TimelineContractError`; they are never cast to real with the imaginary part discarded. |
 | Tumbling alias | `ChunkingPolicy(chunk_size)` (`stride is None`) ≡ `stride == chunk_size`. |
-| Batch ↔ stream parity | Rolling covariance matches `np.cov(..., ddof=1)` within declared `atol`/`rtol` across chunk sizes (engineering parity only). Batch parity applies the same 2-D, real-valued layout rule as stream ingest. |
+| Batch ↔ stream parity | Rolling covariance matches `np.cov(..., ddof=1)` within declared `atol`/`rtol` across chunk sizes (engineering parity only). Batch parity requires a finite 2-D real-valued signal with at least two samples and one channel, non-empty positive-integer chunk sizes, and finite non-negative scalar tolerances. The batch reference and streaming result must be finite float64 matrices with identical `C×C` shapes; NumPy's one-channel scalar reference is normalized to `1×1`. Non-finite covariance results or an unrepresentable absolute difference raise `StreamContractError`; NaNs are never considered equal. |
 | Memory | `deterministic_accumulator_bytes(C)` is an O(C²) accumulator-size check, not an RSS/speed claim. |
 
 ## Declared tolerances
@@ -64,6 +64,8 @@ other paths and was left untouched.
 - Hidden resampling
 - Cross-run accumulator leakage
 - Implicit padding that changes results
+- Non-finite samples/results or shape/dtype mismatches treated as covariance parity
+- Overflowed or otherwise unrepresentable covariance differences
 - Treating contract errors as scientific PASS
 
 ## Run

@@ -18,7 +18,7 @@ Design notes
 from __future__ import annotations
 
 from dataclasses import dataclass
-from numbers import Integral
+from numbers import Integral, Real
 from typing import Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -56,6 +56,25 @@ def _positive_integer(value: object, *, name: str) -> int:
     normalized = int(value)
     if normalized < 1:
         raise StreamContractError(f"{name} must be >= 1")
+    return normalized
+
+
+def _finite_nonnegative_tolerance(value: object, *, name: str) -> float:
+    """Validate one scalar comparison tolerance without accepting bools."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise StreamContractError(
+            f"{name} tolerance must be a finite non-negative real number"
+        )
+    try:
+        normalized = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise StreamContractError(
+            f"{name} tolerance must be a finite non-negative real number"
+        ) from exc
+    if not np.isfinite(normalized) or normalized < 0:
+        raise StreamContractError(
+            f"{name} tolerance must be a finite non-negative real number"
+        )
     return normalized
 
 
@@ -141,12 +160,47 @@ def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray
 
 def _as_real_float64(values: object, *, what: str) -> np.ndarray:
     """Return ``values`` as float64. Complex input is refused, never cast."""
-    arr = np.asarray(values)
+    try:
+        arr = np.asarray(values)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise StreamContractError(f"{what} must be a rectangular numeric array") from exc
     if np.iscomplexobj(arr):
         raise StreamContractError(
             f"{what} must be real-valued; complex input is rejected, not cast"
         )
-    return arr.astype(np.float64, copy=False)
+    try:
+        return arr.astype(np.float64, copy=False)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise StreamContractError(
+            f"{what} must be representable as real float64 values"
+        ) from exc
+
+
+def _contains_non_finite_rows(data: np.ndarray) -> bool:
+    """Scan a signal in bounded row blocks, without an N-by-C boolean temporary."""
+    block_rows = 1024
+    for start in range(0, data.shape[0], block_rows):
+        if not bool(np.isfinite(data[start : start + block_rows]).all()):
+            return True
+    return False
+
+
+def _validated_covariance_matrix(
+    values: np.ndarray, *, expected_shape: Tuple[int, int], what: str
+) -> np.ndarray:
+    """Require a finite float64 covariance with the exact comparable shape."""
+    matrix = np.asarray(values)
+    if matrix.shape != expected_shape:
+        raise StreamContractError(
+            f"{what} covariance shape {matrix.shape} != expected {expected_shape}"
+        )
+    if matrix.dtype != np.dtype(np.float64):
+        raise StreamContractError(
+            f"{what} covariance dtype {matrix.dtype} != expected float64"
+        )
+    if not bool(np.isfinite(matrix).all()):
+        raise StreamContractError(f"{what} covariance contains non-finite values")
+    return matrix
 
 
 def validate_signal_shape(signal: np.ndarray, *, max_channels: int) -> np.ndarray:
@@ -330,27 +384,87 @@ def batch_stream_covariance_parity(
     """Compare streaming covariance vs ``np.cov`` for each chunk size.
 
     Returns ``(chunk_size, equivalent, max_abs_diff)``. Declared tolerances are
-    explicit; this is engineering parity, not a scientific PASS.
+    explicit; this is engineering parity, not a scientific PASS. Invalid,
+    non-finite, or numerically unrepresentable comparisons raise
+    ``StreamContractError`` instead of returning an equivalence verdict.
     """
     data = _as_real_float64(signal, what="signal")
     if data.ndim != 2:
         raise ShapeContractError("signal must be 2-D (samples, channels)")
     if data.shape[0] < 2:
         raise EmptyInputError("covariance parity requires at least 2 samples")
-    reference = np.cov(data, rowvar=False, ddof=1)
-    validated_chunk_sizes = tuple(
-        _positive_integer(chunk_size, name="chunk_size")
-        for chunk_size in chunk_sizes
+    if data.shape[1] == 0:
+        raise EmptyInputError("covariance parity requires at least 1 channel")
+    try:
+        requested_chunk_sizes = tuple(chunk_sizes)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise StreamContractError(
+            "chunk_sizes must be a non-empty sequence of positive integers"
+        ) from exc
+    if not requested_chunk_sizes:
+        raise StreamContractError("chunk_sizes must not be empty")
+    try:
+        validated_chunk_sizes = tuple(
+            _positive_integer(chunk_size, name="chunk_size")
+            for chunk_size in requested_chunk_sizes
+        )
+    except StreamContractError as exc:
+        raise StreamContractError(f"invalid chunk_sizes: {exc}") from exc
+
+    absolute_tolerance = _finite_nonnegative_tolerance(atol, name="atol")
+    relative_tolerance = _finite_nonnegative_tolerance(rtol, name="rtol")
+
+    if _contains_non_finite_rows(data):
+        raise StreamContractError("signal contains non-finite values")
+
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        reference = np.asarray(np.cov(data, rowvar=False, ddof=1))
+    # NumPy returns a scalar for one channel; the streaming contract is always C×C.
+    if reference.ndim == 0 and data.shape[1] == 1:
+        reference = reference.reshape((1, 1))
+    expected_shape = (data.shape[1], data.shape[1])
+    reference = _validated_covariance_matrix(
+        reference, expected_shape=expected_shape, what="batch"
     )
+
     out: List[Tuple[int, bool, float]] = []
     for chunk_size in validated_chunk_sizes:
         acc = RollingCovariance(data.shape[1])
-        for start in range(0, data.shape[0], chunk_size):
-            acc.update(data[start : start + chunk_size])
-        got = acc.matrix(ddof=1)
-        diff = float(np.nanmax(np.abs(got - reference)))
-        ok = bool(np.allclose(got, reference, rtol=rtol, atol=atol, equal_nan=True))
-        out.append((int(chunk_size), ok, diff))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            for start in range(0, data.shape[0], chunk_size):
+                acc.update(data[start : start + chunk_size])
+            got = acc.matrix(ddof=1)
+        got = _validated_covariance_matrix(
+            got, expected_shape=expected_shape, what="stream"
+        )
+
+        with np.errstate(over="ignore", invalid="ignore"):
+            absolute_difference = np.abs(got - reference)
+        if not bool(np.isfinite(absolute_difference).all()):
+            raise StreamContractError(
+                "covariance difference is non-finite or not representable as float64"
+            )
+        max_abs_diff = float(np.max(absolute_difference))
+
+        # Normalize before applying the tolerance formula to avoid overflow in
+        # ``atol + rtol * abs(reference)`` for finite but very large covariances.
+        scale = np.maximum(np.abs(got), np.abs(reference))
+        if absolute_tolerance > 0.0:
+            scale = np.maximum(scale, absolute_tolerance)
+        scale = np.where(scale == 0.0, 1.0, scale)
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            normalized_difference = np.abs(got / scale - reference / scale)
+            normalized_tolerance = (
+                absolute_tolerance / scale
+                + relative_tolerance * (np.abs(reference) / scale)
+            )
+        if not bool(
+            np.isfinite(normalized_difference).all()
+            and np.isfinite(normalized_tolerance).all()
+        ):
+            raise StreamContractError("normalized covariance comparison is non-finite")
+        equivalent = bool(np.all(normalized_difference <= normalized_tolerance))
+        out.append((chunk_size, equivalent, max_abs_diff))
     return out
 
 

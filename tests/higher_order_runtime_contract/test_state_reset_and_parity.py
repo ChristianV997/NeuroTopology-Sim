@@ -1,6 +1,8 @@
 """State reset (no cross-run leakage) and batch/stream numerical parity."""
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -106,3 +108,84 @@ def test_batch_parity_rejects_complex_signal():
     """Regression: complex input must fail closed rather than drop its imaginary part."""
     with pytest.raises(StreamContractError, match="real-valued"):
         batch_stream_covariance_parity(np.full((10, 2), 1.0 + 2.0j), chunk_sizes=(5,))
+
+
+@pytest.mark.parametrize("non_finite", [np.nan, np.inf, -np.inf])
+def test_batch_parity_rejects_non_finite_signal(non_finite):
+    """Non-finite samples cannot produce a parity verdict, even when NaNs align."""
+    signal = np.arange(24.0).reshape(12, 2)
+    signal[3, 1] = non_finite
+
+    with pytest.raises(StreamContractError, match="non-finite"):
+        batch_stream_covariance_parity(signal, chunk_sizes=(2, 5))
+
+
+def test_batch_parity_compares_single_channel_covariance_as_a_matrix():
+    signal = np.arange(12.0).reshape(12, 1)
+
+    results = batch_stream_covariance_parity(signal, chunk_sizes=(1, 5, 12))
+
+    assert all(ok and np.isfinite(diff) for _size, ok, diff in results), results
+
+
+def test_batch_parity_rejects_covariance_shape_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.RollingCovariance.matrix",
+        lambda self, ddof=1: np.zeros((1,), dtype=np.float64),
+    )
+
+    with pytest.raises(StreamContractError, match="shape"):
+        batch_stream_covariance_parity(np.zeros((8, 2)), chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_covariance_dtype_mismatch(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.RollingCovariance.matrix",
+        lambda self, ddof=1: np.zeros((2, 2), dtype=np.float32),
+    )
+
+    with pytest.raises(StreamContractError, match="dtype"):
+        batch_stream_covariance_parity(np.zeros((8, 2)), chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_overflowed_covariance_from_finite_samples():
+    signal = np.array(
+        [[1e308, 0.0], [-1e308, 0.0], [1e308, 1.0], [-1e308, -1.0]]
+    )
+
+    with pytest.raises(StreamContractError, match="covariance.*non-finite"):
+        batch_stream_covariance_parity(signal, chunk_sizes=(1, 2))
+
+
+def test_batch_parity_rejects_unrepresentable_absolute_difference(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.np.cov",
+        lambda *args, **kwargs: np.array([[1.7e308]], dtype=np.float64),
+    )
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.RollingCovariance.matrix",
+        lambda self, ddof=1: np.array([[-1.7e308]], dtype=np.float64),
+    )
+
+    with pytest.raises(StreamContractError, match="difference.*non-finite"):
+        batch_stream_covariance_parity(np.arange(8.0).reshape(8, 1), chunk_sizes=(2,))
+
+
+def test_batch_parity_avoids_overflow_in_finite_tolerance_comparison(monkeypatch):
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.np.cov",
+        lambda *args, **kwargs: np.array([[1e200]], dtype=np.float64),
+    )
+    monkeypatch.setattr(
+        "tools.higher_order_runtime.stream_contract.RollingCovariance.matrix",
+        lambda self, ddof=1: np.array([[1.0000000001e200]], dtype=np.float64),
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        results = batch_stream_covariance_parity(
+            np.arange(8.0).reshape(8, 1), chunk_sizes=(2,), atol=0.0, rtol=1e200
+        )
+
+    assert results[0][1] is True
+    assert np.isfinite(results[0][2])

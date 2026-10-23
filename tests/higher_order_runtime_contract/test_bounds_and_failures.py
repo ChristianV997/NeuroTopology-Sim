@@ -119,3 +119,60 @@ def test_batch_parity_rejects_non_integer_chunk_sizes():
         batch_stream_covariance_parity(
             np.arange(8.0).reshape(4, 2), chunk_sizes=(2.5,)
         )
+
+
+def test_batch_parity_rejects_zero_channel_array():
+    with pytest.raises(EmptyInputError, match="channel"):
+        batch_stream_covariance_parity(np.empty((4, 0)), chunk_sizes=(2,))
+
+
+@pytest.mark.parametrize("signal", [np.empty((0, 2)), np.ones((1, 2))])
+def test_batch_parity_rejects_too_few_samples(signal):
+    with pytest.raises(EmptyInputError, match="at least 2 samples"):
+        batch_stream_covariance_parity(signal, chunk_sizes=(1,))
+
+
+def test_batch_parity_rejects_three_dimensional_signal():
+    with pytest.raises(StreamContractError, match="2-D"):
+        batch_stream_covariance_parity(np.zeros((4, 2, 1)), chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_non_numeric_signal_dtype():
+    signal = np.full((4, 2), "not-numeric")
+    with pytest.raises(StreamContractError, match="float64"):
+        batch_stream_covariance_parity(signal, chunk_sizes=(2,))
+
+
+def test_batch_parity_rejects_ragged_signal_array():
+    with pytest.raises(StreamContractError, match="signal"):
+        batch_stream_covariance_parity([[1.0, 2.0], [3.0]], chunk_sizes=(1,))
+
+
+@pytest.mark.parametrize("signal", [
+    np.arange(24, dtype=np.int64).reshape(12, 2),
+    np.arange(24, dtype=np.float32).reshape(12, 2),
+])
+def test_batch_parity_canonicalizes_real_numeric_input_dtype(signal):
+    results = batch_stream_covariance_parity(signal, chunk_sizes=(1, 5, 12))
+    assert all(ok and np.isfinite(diff) for _size, ok, diff in results), results
+
+
+@pytest.mark.parametrize("chunk_sizes", [(), None])
+def test_batch_parity_rejects_empty_or_missing_chunk_sizes(chunk_sizes):
+    with pytest.raises(StreamContractError, match="chunk_sizes"):
+        batch_stream_covariance_parity(np.arange(12.0).reshape(6, 2), chunk_sizes=chunk_sizes)
+
+
+@pytest.mark.parametrize("atol,rtol", [
+    (-1.0, 0.0),
+    (0.0, -1.0),
+    (np.nan, 0.0),
+    (0.0, np.inf),
+    ("1e-8", 0.0),
+    (True, 0.0),
+])
+def test_batch_parity_rejects_invalid_tolerances(atol, rtol):
+    with pytest.raises(StreamContractError, match="tolerance"):
+        batch_stream_covariance_parity(
+            np.arange(12.0).reshape(6, 2), chunk_sizes=(2,), atol=atol, rtol=rtol
+        )
