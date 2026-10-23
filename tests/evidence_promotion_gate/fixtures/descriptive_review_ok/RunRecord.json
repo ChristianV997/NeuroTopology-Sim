@@ -6,6 +6,9 @@
     "value": 0.15
   },
   "evidence_class": "descriptive_empirical",
+  "license_status": "compatible",
+  "cohort_status": "consistent",
+  "cohort_discrepancy": false,
   "labels_verified": true,
   "multiplicity_correction": "not_needed_single_test",
   "n_tests": 1,
