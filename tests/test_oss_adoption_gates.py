@@ -216,6 +216,73 @@ def test_conflicting_duplicate_license_observations_require_review():
     assert plan.external_tool_record_candidates == []
 
 
+def _sparse_observation(source: str, **overrides):
+    """Keyword-less observation → leverage_category reject_or_defer."""
+    candidate = make_document_ingestion_candidate(overrides.pop("repo_full_name", "acme/widget"))
+    candidate.description = "a utility library"
+    candidate.topics = []
+    candidate.name = "widget"
+    candidate.observed_categories = []
+    candidate.source = source
+    for name, value in overrides.items():
+        setattr(candidate, name, value)
+    candidate.candidate_id = candidate.recompute_id()
+    return candidate
+
+
+def test_license_conflict_on_reject_or_defer_category_still_requires_review():
+    """Unresolved license evidence outranks category-based reject/defer.
+
+    Sparse duplicates with conflicting SPDX labels must not be ranked away as
+    reject/defer; the planner must still enqueue license review.
+    """
+    first = _sparse_observation(
+        "github_manual_seed",
+        license_spdx="MIT",
+        license_name="MIT",
+        source_snapshot_date="2026-01-01",
+    )
+    second = _sparse_observation(
+        "github_metadata",
+        license_spdx="GPL-3.0",
+        license_name="GPL",
+        source_snapshot_date="2026-01-02",
+    )
+    batch = build_opportunities_from_candidates([first, second])
+
+    assert batch.metadata.get("license_conflicts") == 1
+    assert len(batch.opportunities_ranked) == 1
+    primary = batch.opportunities_ranked[0]
+    assert primary["leverage_category"] == "reject_or_defer"
+    assert primary["recommended_action"] == "license_review_required"
+    assert primary["license_review"]["metadata"]["license_observation_status"] == "conflict"
+    assert primary["recommended_action"] != "reject"
+    assert "microsoft/markitdown" not in batch.top_immediate_adapters
+    assert "acme/widget" not in batch.top_immediate_adapters
+
+    plan = plan_oss_integrations_from_opportunities(batch)
+    assert [item["repo_full_name"] for item in plan.license_review_queue] == ["acme/widget"]
+    assert plan.immediate_adapter_candidates == []
+    assert plan.external_tool_record_candidates == []
+    assert plan.rejected_candidates  # duplicate observation only
+
+
+def test_unknown_license_on_reject_or_defer_category_requires_review_not_silent_reject():
+    candidate = _sparse_observation(
+        "github_manual_seed",
+        license_spdx="unknown",
+        license_name="unknown",
+    )
+    result = score_opportunity(candidate, _review(candidate))
+    assert result["leverage_category"] == "reject_or_defer"
+    assert result["recommended_action"] == "license_review_required"
+
+    batch = build_opportunities_from_candidates([candidate])
+    assert batch.opportunities_ranked[0]["recommended_action"] == "license_review_required"
+    plan = plan_oss_integrations_from_opportunities(batch)
+    assert [item["repo_full_name"] for item in plan.license_review_queue] == ["acme/widget"]
+
+
 def test_conflicting_license_result_is_independent_of_input_order():
     first = make_document_ingestion_candidate()
     second = _observation("github_manual_seed", license_spdx="AGPL-3.0", license_name="GNU AGPLv3")
