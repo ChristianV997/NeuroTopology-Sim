@@ -1,7 +1,7 @@
 # Batch 3 metadata audit — independent EEG replication candidates
 
 Research date: 2026-10-16.
-Live main SHA checked: `a65611adcf4490a0d2378cbecb92dd883f4c5f0a` (refreshed 2026-10-22; original base `3f3fe8593303184cb88eef056c1322f3d4e57a16`).
+Live main SHA checked at package sync: `a65611adcf4490a0d2378cbecb92dd883f4c5f0a`. Primary raw license/DOI metadata re-fetched 2026-10-23 against OpenNeuroDatasets public files (no participant payloads). Original base `3f3fe8593303184cb88eef056c1322f3d4e57a16`.
 Prior package: open PR #394 on `batch3/grok-chat-b-replication-dataset-feasibility` owns `docs/research/batch3/replication_dataset_feasibility.md` and `reports/batch3/grok_chat_b/dataset_candidates.json`. This note uses distinct paths.
 Status: HOLD / SYNTHETIC_ONLY. No scientific PASS. No participant data downloaded or analyzed.
 
@@ -21,9 +21,10 @@ All source statements in this audit are strictly classified into two categories:
 
 - Version/DOI: v1.0.0, `10.18112/openneuro.ds005620.v1.0.0` (DOI URL: `https://doi.org/10.18112/openneuro.ds005620.v1.0.0`, source: `https://openneuro.org/datasets/ds005620/versions/1.0.0`, retrieved 2026-10-16).
 - License conflict, preserved:
-  - `dataset_description.json` states `"CC0"` (`https://openneuro.org/datasets/ds005620/versions/1.0.0`) [author-supplied].
-  - NEMAR catalog states `"CC0"` (`https://nemar.org/dataexplorer/detail?dataset_id=on005620`) [author-supplied].
-  - OpenNeuroDatasets GitHub README states `"This dataset is licensed under CC-BY-4.0."` (`https://github.com/OpenNeuroDatasets/ds005620/blob/master/README`) [author-supplied].
+  - `dataset_description.json` states `"CC0"` (`https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/dataset_description.json`, retrieved 2026-10-23) [author-supplied].
+  - NEMAR catalog states `"CC0"` (`https://nemar.org/dataexplorer/detail?dataset_id=on005620`, retrieved 2026-10-16; not re-fetched in the 2026-10-23 raw-file pass) [author-supplied].
+  - OpenNeuroDatasets `README.txt` states `"This dataset is licensed under CC-BY-4.0."` (`https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/README.txt`, retrieved 2026-10-23) [author-supplied].
+  - Bare `README` / `blob/master/README` return HTTP 404; the conflicting statement lives in `README.txt`.
   - Contradiction is preserved fail-closed [independently verified]; no permission or waiver is inferred.
 - Catalog n: NEMAR states 21 participants [author-supplied]. `participants.tsv` has a header plus 21 data rows and columns `excluded` and `bad_after_preprocessing` [independently verified]. This audit does not claim which rows were excluded, nor does it infer completer N.
 - Tasks: awake, sed, sed2.
@@ -43,7 +44,7 @@ All source statements in this audit are strictly classified into two categories:
 
 ### ds008836 — construct generalization with autonomic covariates
 
-- Version/DOI: v1.0.1, `10.18112/openneuro.ds008836.v1.0.1` (DOI URL: `https://doi.org/10.18112/openneuro.ds008836.v1.0.1`, source: `https://openneuro.org/datasets/ds008836/versions/1.0.1`, retrieved 2026-10-16) [independently verified].
+- Version/DOI: v1.0.2, `10.18112/openneuro.ds008836.v1.0.2` (DOI URL: `https://doi.org/10.18112/openneuro.ds008836.v1.0.2`, source: `https://openneuro.org/datasets/ds008836/versions/1.0.2`, retrieved 2026-10-23 from public `dataset_description.json` DatasetDOI; earlier pins v1.0.0/v1.0.1 noted without claim upgrade) [independently verified].
 - License: `dataset_description.json` and catalog state `"CC0"` [author-supplied].
 - Catalog n: 39 participants, 2 sessions [author-supplied].
 - Hardware: `task-meditation_eeg.json` states 500 Hz, Brain Products, reference FCz. README states 64-channel EEG plus ECG, respiration, EMG, and electrodermal activity. Catalog modality list shows EEG only. Conflict preserved.
