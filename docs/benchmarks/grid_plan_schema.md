@@ -85,12 +85,14 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited tip
-`b51bb9b4bdf63c19894bb407eadcd70f528f7dda`. The previous audited tip
-`fc274148a3539a0b4171cdb91b258fdd509e94a8` is an ancestor of that commit. Between
-those two tips, main landed the provenance-preserving metadata-first BIDS
-adapter (#369) under `data/` and `tests/data_access/bids_adapter/`. No pinned
-module path and no writer or grid path changed, so each pin's blob is the same
-at both tips.
+`57b7e43d42678822e9eec03679891c1770040327`. The previous audited tip
+`b51bb9b4bdf63c19894bb407eadcd70f528f7dda` is an ancestor of that commit, and
+`fc274148a3539a0b4171cdb91b258fdd509e94a8` is an ancestor of both. Between `b51bb9b4` and
+`57b7e43d`, 54 commits landed on main. They add documentation, research and
+falsification fixtures, the higher-order runtime stream contract, source-mining
+evidence-boundary tests, and evidence-promotion-gate changes. No pinned module
+path and no writer or grid path changed, so each pin's blob is the same at the
+previous tip, at its pin, and at the current tip.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.
