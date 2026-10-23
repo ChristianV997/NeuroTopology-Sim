@@ -1,0 +1,21 @@
+{
+  "schema_version": "NTS.ResearchPlanEvalLabels.v1",
+  "adjudication": {
+    "status": "synthetic_author_expectation",
+    "independent": false,
+    "adjudicator": "single fixture author",
+    "method": "expected overall status and non-passing dimensions written from docs/research/research_plan_quality_rubric.md rules before any harness run"
+  },
+  "labels": {
+    "fx-v1-P01": {"expected_overall_status": "READY_FOR_EXECUTION", "expected_non_passing_dimensions": []},
+    "fx-v1-P02": {"expected_overall_status": "READY_FOR_EXECUTION", "expected_non_passing_dimensions": []},
+    "fx-v1-P03": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["source_quality_provenance"]},
+    "fx-v1-P04": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["claim_calibration"]},
+    "fx-v1-P05": {"expected_overall_status": "NEEDS_REVISION", "expected_non_passing_dimensions": ["null_model_specification"]},
+    "fx-v1-P06": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["leakage_prevention"]},
+    "fx-v1-P07": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["pairing_sample_size_adequacy"]},
+    "fx-v1-P08": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["pairing_sample_size_adequacy"]},
+    "fx-v1-P09": {"expected_overall_status": "BLOCKED", "expected_non_passing_dimensions": ["evidence_separation"]},
+    "fx-v1-P10": {"expected_overall_status": "READY_FOR_EXECUTION", "expected_non_passing_dimensions": []}
+  }
+}
