@@ -1,6 +1,9 @@
 import cmath
 import math
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 
 def model(omega, delta, gamma, g):
@@ -198,6 +201,42 @@ def max_entry_error(a, b):
 
 
 class OracleTests(unittest.TestCase):
+    def test_oracle_import_firewall(self):
+        """Loading this oracle must not import production or numerical engines."""
+        oracle_path = Path(__file__).resolve()
+        script = r"""
+import importlib.abc
+import importlib.util
+import sys
+
+blocked = ("neurotopology_sim", "dmd_crouzeix", "numpy", "scipy")
+
+class ImportFirewall(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if any(fullname == name or fullname.startswith(name + ".") for name in blocked):
+            raise AssertionError("oracle imported forbidden module: " + fullname)
+        return None
+
+sys.meta_path.insert(0, ImportFirewall())
+spec = importlib.util.spec_from_file_location("isolated_dmd_ep2_oracle", sys.argv[1])
+if spec is None or spec.loader is None:
+    raise AssertionError("could not load oracle source")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+"""
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(oracle_path)],
+            cwd=str(oracle_path.parents[2]),
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        self.assertEqual(
+            result.returncode,
+            0,
+            msg=f"oracle import firewall failed: {result.stdout}\n{result.stderr}",
+        )
+
     def test_splitting_sweep_and_ep(self):
         self.assertAlmostEqual(2 * math.sqrt(discriminant(1.2, .4)), 2.2627416997969525)
         self.assertAlmostEqual(2 * math.sqrt(discriminant(1.2, 1.0)), 1.32664991614216)

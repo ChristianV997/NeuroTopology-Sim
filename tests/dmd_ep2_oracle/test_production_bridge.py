@@ -21,6 +21,8 @@ import importlib.util
 import os
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 def _load_oracle_helpers():
@@ -52,6 +54,65 @@ def _load_production():
     return dmd
 
 
+def _expected_production_source():
+    return (
+        Path(__file__).resolve().parents[2]
+        / "neurotopology_sim"
+        / "experimental"
+        / "dynamics"
+        / "dmd_crouzeix.py"
+    )
+
+
+def _assert_checkout_production_source(dmd):
+    checkout_root = Path(__file__).resolve().parents[2]
+    expected = _expected_production_source().resolve()
+    raw_path = getattr(dmd, "__file__", None)
+    if not raw_path:
+        raise AssertionError("production module has no source file path")
+    actual = Path(raw_path).resolve()
+    try:
+        actual.relative_to(checkout_root)
+    except ValueError as exc:
+        raise AssertionError(
+            f"production source is outside this checkout: {actual}"
+        ) from exc
+    if actual != expected:
+        raise AssertionError(
+            "production source is not this checkout's dmd_crouzeix.py: "
+            f"expected {expected}, got {actual}"
+        )
+    expected_name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+    if getattr(dmd, "__name__", None) != expected_name:
+        raise AssertionError(
+            f"unexpected production module name: {getattr(dmd, '__name__', None)!r}"
+        )
+    return actual
+
+
+def _load_production_for_suite(require, loader=None, source_path=None):
+    """Skip only when the leaf file is absent; never disguise import faults."""
+    source_path = Path(source_path or _expected_production_source())
+    if not source_path.is_file():
+        message = f"production leaf is absent at {source_path}"
+        if require:
+            raise AssertionError(message)
+        raise unittest.SkipTest(
+            f"ORACLE_ONLY: {message}; re-run with DMD_EP2_REQUIRE_PRODUCTION=1 "
+            "against a tree that contains the merged dmd_crouzeix leaf"
+        )
+
+    try:
+        dmd = (loader or _load_production)()
+    except Exception as exc:
+        raise AssertionError(
+            "production leaf exists, but importing it failed; this is not "
+            f"ORACLE_ONLY (check dependencies/runtime): {type(exc).__name__}: {exc}"
+        ) from exc
+    _assert_checkout_production_source(dmd)
+    return dmd
+
+
 class ProductionImportBridgeTests(unittest.TestCase):
     """Cross-check oracle fixtures against the real production leaf."""
 
@@ -64,26 +125,7 @@ class ProductionImportBridgeTests(unittest.TestCase):
             "yes",
             "YES",
         }
-        try:
-            cls.dmd = _load_production()
-        except Exception as exc:
-            if require:
-                raise AssertionError(
-                    "production-import run requires "
-                    "neurotopology_sim.experimental.dynamics.dmd_crouzeix; "
-                    f"import failed: {exc}"
-                ) from exc
-            raise unittest.SkipTest(
-                f"ORACLE_ONLY: production leaf absent ({exc}); "
-                "re-run with DMD_EP2_REQUIRE_PRODUCTION=1 against a tree "
-                "that contains the merged dmd_crouzeix leaf"
-            ) from exc
-        # Leaf present: must proceed (no silent skip).
-        if cls.dmd is None:
-            raise AssertionError("production leaf imported as None")
-        path = getattr(cls.dmd, "__file__", "")
-        if "dmd_crouzeix.py" not in str(path):
-            raise AssertionError(f"unexpected production module path: {path!r}")
+        cls.dmd = _load_production_for_suite(require)
 
     def test_ep2_hamiltonian_matches_oracle_and_nilpotency(self):
         import numpy as np
@@ -117,19 +159,9 @@ class ProductionImportBridgeTests(unittest.TestCase):
 
     def test_bridge_loaded_real_production_module(self):
         """Hard-import proof: resolved module path is the production leaf file."""
-        path = Path(self.dmd.__file__).resolve()
-        normalized = str(path).replace("\\", "/")
-        self.assertTrue(
-            normalized.endswith(
-                "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
-            ),
-            msg=f"resolved path is not the production leaf: {normalized!r}",
-        )
+        path = _assert_checkout_production_source(self.dmd)
+        self.assertEqual(path, _expected_production_source().resolve())
         self.assertEqual(path.name, "dmd_crouzeix.py")
-        self.assertIn("neurotopology_sim", path.parts)
-        self.assertIn("experimental", path.parts)
-        self.assertIn("dynamics", path.parts)
-        self.assertEqual(self.dmd.__name__, "neurotopology_sim.experimental.dynamics.dmd_crouzeix")
 
     def test_production_finite_and_shape_validation(self):
         """Bridge surfaces production fail-closed contracts (synthetic only)."""
@@ -145,6 +177,85 @@ class ProductionImportBridgeTests(unittest.TestCase):
         bad = np.array([[np.nan + 0j, 0j], [0j, 1 + 0j]], dtype=np.complex128)
         with self.assertRaises(Err):
             self.dmd.diagnose_ep2(bad)
+
+
+class ProductionBridgePolicyTests(unittest.TestCase):
+    """The optional oracle-only mode must not hide bridge import defects."""
+
+    def test_missing_dependency_is_not_reported_as_missing_production_leaf(self):
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "neurotopology_sim"
+            / "experimental"
+            / "dynamics"
+            / "dmd_crouzeix.py"
+        )
+        self.assertTrue(source.is_file(), "the checkout contains the production leaf")
+        missing_numpy = ModuleNotFoundError("No module named 'numpy'", name="numpy")
+        with patch.dict(os.environ, {"DMD_EP2_REQUIRE_PRODUCTION": ""}):
+            with patch(__name__ + "._load_production", side_effect=missing_numpy):
+                try:
+                    ProductionImportBridgeTests.setUpClass()
+                except unittest.SkipTest as exc:
+                    self.fail(
+                        "a present production leaf with a missing dependency was "
+                        f"misclassified as ORACLE_ONLY: {exc}"
+                    )
+                except AssertionError as exc:
+                    self.assertIn("production leaf", str(exc).lower())
+                else:
+                    self.fail("production import failure must not be accepted")
+
+    def test_rejects_same_suffix_module_from_another_checkout(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        copied_path = (
+            repo_root
+            / "unrelated-checkout"
+            / "neurotopology_sim"
+            / "experimental"
+            / "dynamics"
+            / "dmd_crouzeix.py"
+        )
+        copied_module = SimpleNamespace(
+            __file__=str(copied_path),
+            __name__="neurotopology_sim.experimental.dynamics.dmd_crouzeix",
+        )
+        had_previous = hasattr(ProductionImportBridgeTests, "dmd")
+        previous = getattr(ProductionImportBridgeTests, "dmd", None)
+        try:
+            with patch.dict(os.environ, {"DMD_EP2_REQUIRE_PRODUCTION": "1"}):
+                with patch(__name__ + "._load_production", return_value=copied_module):
+                    try:
+                        ProductionImportBridgeTests.setUpClass()
+                    except AssertionError as exc:
+                        self.assertIn("checkout", str(exc).lower())
+                    else:
+                        self.fail(
+                            "a module from another checkout passed the suffix-only "
+                            "production path check"
+                        )
+        finally:
+            if had_previous:
+                ProductionImportBridgeTests.dmd = previous
+            elif hasattr(ProductionImportBridgeTests, "dmd"):
+                del ProductionImportBridgeTests.dmd
+
+    def test_oracle_only_skip_is_limited_to_an_absent_leaf(self):
+        missing_source = _expected_production_source().with_name(
+            "missing_dmd_crouzeix.py"
+        )
+
+        def unexpected_load():
+            self.fail("loader must not run when the source file is absent")
+
+        with self.assertRaisesRegex(unittest.SkipTest, "ORACLE_ONLY: production leaf is absent"):
+            _load_production_for_suite(
+                False, loader=unexpected_load, source_path=missing_source
+            )
+        with self.assertRaisesRegex(AssertionError, "production leaf is absent"):
+            _load_production_for_suite(
+                True, loader=unexpected_load, source_path=missing_source
+            )
 
 
 if __name__ == "__main__":
