@@ -35,12 +35,12 @@ other paths and was left untouched.
 
 | Topic | Behavior |
 | --- | --- |
-| Chunk/stride configuration | `chunk_size`, explicit `stride`, `max_chunk_samples`, and `max_channels` require positive Python/NumPy integers. Booleans and floats are rejected at configuration time with `StreamContractError`, rather than failing later during slicing. Supported window sizes include `1`, short, uneven final, and exact divisors. `chunk_size > max_chunk_samples` raises `ChunkBoundError` (no silent clamp). |
+| Chunk/stride configuration | `chunk_size`, explicit `stride`, `max_chunk_samples`, `max_channels`, and session `n_channels` require positive Python/NumPy integers. Booleans and floats are rejected at configuration time with `StreamContractError`, rather than failing later during slicing. `allow_uneven_final` requires a Python/NumPy boolean and is normalized to `bool`. Supported window sizes include `1`, short, uneven final, and exact divisors. `chunk_size > max_chunk_samples` raises `ChunkBoundError` (no silent clamp). |
 | Ordering | Windows are emitted in increasing sample index order. |
-| Timestamps | Optional. When present: finite, length-matched, strictly monotonic. Never fabricated, resampled, or interpolated. |
+| Timestamps | Optional. When present: a rectangular, real numeric vector that is finite both before and after float64 normalization, length-matched, and strictly increasing after normalization. Ragged input, cast overflow, and distinct values that collapse to the same float64 timestamp are rejected with `TimelineContractError`. Gaps are allowed; no fixed cadence is inferred. Never fabricated, resampled, or interpolated. |
 | Warm-up / overlap | Default tumbling (`stride = chunk_size`). Overlap mode uses explicit `stride < chunk_size`; warm-up = `chunk_size - stride`. |
 | End-of-stream | Non-overlap: uneven final allowed iff `allow_uneven_final`. Overlap: partial final window is **not** padded; samples past the last full window are dropped when `allow_uneven_final`, otherwise `ChunkBoundError` is raised. Spectral segments already drop incomplete tails (no implicit zero-pad). |
-| State reset | `StreamSession.reset(run_id)` clears accumulators. Updating with a different `run_id` without reset fails closed. |
+| State reset | Session bounds must be a `StreamBounds` instance, and `run_id` must be a non-empty string. `StreamSession.reset(run_id)` validates before clearing accumulators. Updating with a malformed or different `run_id` without reset fails closed and does not advance session state. |
 | Shape drift | Channel-count changes mid-stream raise `ShapeContractError`. Chunks must be 2-D `(samples, channels)`; a 1-D vector is rejected, never reshaped. Column *identity* / permutation is caller-owned (not fingerprint-checked). |
 | Input dtype | Complex-valued signals, chunks and timestamps raise `StreamContractError` / `TimelineContractError`; they are never cast to real with the imaginary part discarded. |
 | Tumbling alias | `ChunkingPolicy(chunk_size)` (`stride is None`) ≡ `stride == chunk_size`. |

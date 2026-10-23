@@ -59,6 +59,13 @@ def _positive_integer(value: object, *, name: str) -> int:
     return normalized
 
 
+def _nonempty_string(value: object, *, name: str) -> str:
+    """Validate an opaque identifier without echoing the supplied value."""
+    if not isinstance(value, str) or not value:
+        raise StreamContractError(f"{name} must be a non-empty string")
+    return value
+
+
 def _finite_nonnegative_tolerance(value: object, *, name: str) -> float:
     """Validate one scalar comparison tolerance without accepting bools."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
@@ -97,6 +104,9 @@ class StreamBounds:
             "max_channels",
             _positive_integer(self.max_channels, name="max_channels"),
         )
+        if not isinstance(self.allow_uneven_final, (bool, np.bool_)):
+            raise StreamContractError("allow_uneven_final must be a boolean")
+        object.__setattr__(self, "allow_uneven_final", bool(self.allow_uneven_final))
 
 
 @dataclass(frozen=True)
@@ -133,7 +143,12 @@ class ChunkingPolicy:
 
 def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray:
     """Validate optional timestamps: finite, length-matched, strictly increasing."""
-    ts = np.asarray(timestamps)
+    try:
+        ts = np.asarray(timestamps)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TimelineContractError(
+            "timestamps must be a rectangular numeric array"
+        ) from exc
     if ts.ndim != 1:
         raise TimelineContractError("timestamps must be a 1-D array")
     if ts.shape[0] != n_samples:
@@ -148,14 +163,31 @@ def validate_timestamps(timestamps: np.ndarray, *, n_samples: int) -> np.ndarray
         raise TimelineContractError(
             "timestamps must be real-valued; complex input is rejected, not cast"
         )
-    if not np.all(np.isfinite(ts)):
+    try:
+        finite_input = bool(np.all(np.isfinite(ts)))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TimelineContractError("timestamps must be numeric") from exc
+    if not finite_input:
         raise TimelineContractError("timestamps contain non-finite values")
-    if ts.shape[0] >= 2 and not np.all(np.diff(ts.astype(np.float64)) > 0):
+    try:
+        with np.errstate(over="ignore", invalid="ignore"):
+            normalized = ts.astype(np.float64, copy=False)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise TimelineContractError(
+            "timestamps must be representable as finite float64 values"
+        ) from exc
+    if not bool(np.all(np.isfinite(normalized))):
+        raise TimelineContractError(
+            "timestamps must be representable as finite float64 values"
+        )
+    if normalized.shape[0] >= 2 and not bool(
+        np.all(normalized[1:] > normalized[:-1])
+    ):
         raise TimelineContractError(
             "timestamps must be strictly monotonic increasing "
             "(repeated or reversed samples are rejected)"
         )
-    return ts.astype(np.float64, copy=False)
+    return normalized
 
 
 def _as_real_float64(values: object, *, what: str) -> np.ndarray:
@@ -306,23 +338,22 @@ class StreamSession:
     last_timestamp: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if self.n_channels < 1:
-            raise StreamContractError("n_channels must be >= 1")
+        if not isinstance(self.bounds, StreamBounds):
+            raise StreamContractError("bounds must be a StreamBounds instance")
+        self.n_channels = _positive_integer(self.n_channels, name="n_channels")
         if self.n_channels > self.bounds.max_channels:
             raise ChunkBoundError(
                 f"n_channels {self.n_channels} exceeds max_channels "
                 f"{self.bounds.max_channels}"
             )
-        if not self.run_id:
-            raise StreamContractError("run_id must be non-empty")
+        self.run_id = _nonempty_string(self.run_id, name="run_id")
         self.cov = RollingCovariance(self.n_channels)
         self.summary = IncrementalSummary(self.n_channels)
 
     def reset(self, run_id: str) -> None:
         """Clear accumulators for an independent subject/run (no cross-run leakage)."""
-        if not run_id:
-            raise StreamContractError("run_id must be non-empty")
-        self.run_id = run_id
+        validated_run_id = _nonempty_string(run_id, name="run_id")
+        self.run_id = validated_run_id
         self.cov = RollingCovariance(self.n_channels)
         self.summary = IncrementalSummary(self.n_channels)
         self.chunks_seen = 0
@@ -337,11 +368,12 @@ class StreamSession:
         timestamps: Optional[np.ndarray] = None,
     ) -> None:
         """Ingest one chunk; reject oversize, shape drift, and timeline breaks."""
-        if run_id is not None and run_id != self.run_id:
-            raise StreamContractError(
-                f"run_id mismatch: session={self.run_id!r} chunk={run_id!r}; "
-                "call reset() between independent subjects/runs"
-            )
+        if run_id is not None:
+            supplied_run_id = _nonempty_string(run_id, name="run_id")
+            if supplied_run_id != self.run_id:
+                raise StreamContractError(
+                    "run_id mismatch; call reset() between independent subjects/runs"
+                )
         block = _as_real_float64(chunk, what="chunk")
         if block.ndim != 2:
             raise ShapeContractError("chunk must be 2-D (samples, channels)")
