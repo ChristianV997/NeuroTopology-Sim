@@ -1551,6 +1551,161 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "implementation_roots": ("reports/batch3/grok_chat_a/claim_matrix.json",),
         "candidate_test_roots": ("tests/research/batch3/test_claim_matrix.py",),
     },
+    # Declarative research artifacts are admitted only when their dedicated
+    # tests validate the exact checked-in schema/contract. These remain
+    # synthetic/review artifacts and do not count as scientific evidence.
+    "oss_compatibility_inventory_artifact": {
+        "triggers": (
+            "docs/oss_compat/compatibility_inventory_20261017.json",
+            "tests/oss_compat/test_compatibility_inventory.py",
+        ),
+        "implementation": "docs/oss_compat/compatibility_inventory_20261017.json",
+        "tests": ("tests/oss_compat/test_compatibility_inventory.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "docs/oss_compat/compatibility_inventory_20261017.json",
+                "test": "tests/oss_compat/test_compatibility_inventory.py",
+            },
+        ),
+        "implementation_roots": (
+            "docs/oss_compat/compatibility_inventory_20261017.json",
+        ),
+        "candidate_test_roots": ("tests/oss_compat/test_compatibility_inventory.py",),
+    },
+    "batch3_dataset_feasibility_artifact": {
+        "triggers": (
+            "docs/research/batch3/replication_dataset_feasibility.md",
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
+            "tests/research/batch3/test_replication_dataset_feasibility.py",
+        ),
+        "implementation": "reports/batch3/grok_chat_b/dataset_candidates.json",
+        "tests": ("tests/research/batch3/test_replication_dataset_feasibility.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "test": "tests/research/batch3/test_replication_dataset_feasibility.py",
+            },
+        ),
+        "support_files": {
+            "docs/research/batch3/replication_dataset_feasibility.md": (
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+            ),
+        },
+        "implementation_roots": (
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
+        ),
+        "candidate_test_roots": (
+            "tests/research/batch3/test_replication_dataset_feasibility.py",
+        ),
+    },
+    "batch3_metadata_audit_artifact": {
+        "triggers": (
+            "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+            "tests/research/batch3/test_dataset_metadata_audit.py",
+        ),
+        "implementation": "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+        "tests": ("tests/research/batch3/test_dataset_metadata_audit.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "test": "tests/research/batch3/test_dataset_metadata_audit.py",
+            },
+        ),
+        "support_files": {
+            "docs/research/batch3/grok_chat_b_dataset_feasibility.md": (
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+            ),
+        },
+        "implementation_roots": (
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+        ),
+        "candidate_test_roots": (
+            "tests/research/batch3/test_dataset_metadata_audit.py",
+        ),
+    },
+    "oss_adoption_gates": {
+        "triggers": (
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        ),
+        "implementation": "oss_opportunities/opportunity_batch.py",
+        "tests": ("tests/test_oss_adoption_gates.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/test_oss_adoption_gates.py",
+            }
+            for implementation in (
+                "oss_opportunities/opportunity_batch.py",
+                "oss_opportunities/scoring.py",
+                "oss_opportunities/validation.py",
+            )
+        ),
+        "implementation_roots": (
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+        ),
+        "candidate_test_roots": ("tests/test_oss_adoption_gates.py",),
+    },
+    "whitening_audit": {
+        "triggers": (
+            "scripts/audit_round6_whitening.py",
+            "tools/whitening_audit/audit_reporter.py",
+            "tools/whitening_audit/leakage_detector.py",
+            "tools/whitening_audit/matrix_ops.py",
+            "tools/whitening_audit/synthetic_data.py",
+            "tools/whitening_audit/types.py",
+            "tools/whitening_audit/whitening_verifier.py",
+            "tools/whitening_audit/__init__.py",
+            "tests/whitening_audit/__init__.py",
+            "tests/whitening_audit/test_whitening_audit.py",
+        ),
+        "implementation": "tools/whitening_audit/whitening_verifier.py",
+        "tests": ("tests/whitening_audit/test_whitening_audit.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/whitening_audit/test_whitening_audit.py",
+            }
+            for implementation in (
+                "scripts/audit_round6_whitening.py",
+                "tools/whitening_audit/audit_reporter.py",
+                "tools/whitening_audit/leakage_detector.py",
+                "tools/whitening_audit/matrix_ops.py",
+                "tools/whitening_audit/synthetic_data.py",
+                "tools/whitening_audit/types.py",
+                "tools/whitening_audit/whitening_verifier.py",
+            )
+        ),
+        # These are exact support paths for one suite, not a package-wide
+        # initializer rule. Importing the tools package executes its exports.
+        "support_files": {
+            "tools/whitening_audit/__init__.py": (
+                "tests/whitening_audit/test_whitening_audit.py",
+            ),
+            "tests/whitening_audit/__init__.py": (
+                "tests/whitening_audit/test_whitening_audit.py",
+            ),
+        },
+        "implementation_roots": (
+            "scripts/audit_round6_whitening.py",
+            "tools/whitening_audit/audit_reporter.py",
+            "tools/whitening_audit/leakage_detector.py",
+            "tools/whitening_audit/matrix_ops.py",
+            "tools/whitening_audit/synthetic_data.py",
+            "tools/whitening_audit/types.py",
+            "tools/whitening_audit/whitening_verifier.py",
+            "tools/whitening_audit/__init__.py",
+        ),
+        "candidate_test_roots": (
+            "tests/whitening_audit/test_whitening_audit.py",
+            "tests/whitening_audit/__init__.py",
+        ),
+    },
     "batch3_falsification_matrix_artifact": {
         "triggers": (
             "configs/scientific_falsification/batch3_falsification_matrix.yaml",
@@ -2057,6 +2212,11 @@ COMPONENT_OWNER_PRS = {
     "release_readiness_security": (370,),
     "source_mining_evidence_boundary": (382,),
     "batch3_claim_matrix_artifact": (393,),
+    "oss_compatibility_inventory_artifact": (406,),
+    "batch3_dataset_feasibility_artifact": (394,),
+    "batch3_metadata_audit_artifact": (411,),
+    "oss_adoption_gates": (386,),
+    "whitening_audit": (407,),
     "batch3_falsification_matrix_artifact": (376,),
     "batch3_offline_integration": (381,),
     "measurement_hypothesis_contract": (384,),
@@ -2143,6 +2303,9 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "configs/scientific_falsification/batch3_falsification_matrix.yaml",
     "tests/scientific_falsification/test_batch3_falsification_matrix.py",  # PR #376
     "configs/research/batch3_source_registry.yaml",
+    "docs/oss_compat/compatibility_inventory_20261017.json",
+    "reports/batch3/grok_chat_b/dataset_candidates.json",
+    "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
     "tests/research/test_batch3_source_registry.py",  # PR #375
     "sciencer_d/btc_icft/level_t/base_real_topology.py",
     "tests/test_base_real_topology_missingness.py",

@@ -2605,14 +2605,85 @@ def test_fixture():
             helper.COMPONENTS["dandi_nwb_bounded"]["implementation_roots"],
         )
 
-    def test_report_only_replication_suites_remain_unmapped_and_fail_closed(self):
+    def test_replication_artifact_contracts_are_mapped_without_report_only_fanout(self):
         helper = _helper()
         paths = {
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
             "tests/research/batch3/test_replication_dataset_feasibility.py",
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
             "tests/research/batch3/test_dataset_metadata_audit.py",
         }
-        self.assertEqual(helper.select_components(paths), [])
-        self.assertEqual(helper._unmapped_candidate_paths(paths), sorted(paths))
+        self.assertEqual(
+            helper.select_components(paths),
+            ["batch3_dataset_feasibility_artifact", "batch3_metadata_audit_artifact"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(paths), [])
+        for component, support_path in (
+            (
+                "batch3_dataset_feasibility_artifact",
+                "docs/research/batch3/replication_dataset_feasibility.md",
+            ),
+            (
+                "batch3_metadata_audit_artifact",
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            ),
+            ("whitening_audit", "tools/whitening_audit/__init__.py"),
+            ("whitening_audit", "tests/whitening_audit/__init__.py"),
+        ):
+            spec = helper.COMPONENTS[component]
+            self.assertIn(support_path, spec["support_files"])
+            self.assertEqual(helper.select_components({support_path}), [component])
+            self.assertEqual(helper._unmapped_candidate_paths({support_path}), [])
+        sibling = "tests/research/batch3/test_claim_matrix_supplement.py"
+        self.assertEqual(helper.select_components({sibling}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({sibling}), [sibling])
+
+    def test_artifact_contract_pairs_require_the_real_artifact_and_exact_test(self):
+        helper = _helper()
+        cases = (
+            (
+                "oss_compatibility_inventory_artifact",
+                "docs/oss_compat/compatibility_inventory_20261017.json",
+                "tests/oss_compat/test_compatibility_inventory.py",
+                None,
+            ),
+            (
+                "batch3_dataset_feasibility_artifact",
+                "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+                "docs/research/batch3/replication_dataset_feasibility.md",
+            ),
+            (
+                "batch3_metadata_audit_artifact",
+                "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            ),
+        )
+        for component, artifact, test_path, support_path in cases:
+            with self.subTest(component=component):
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    _write(root, artifact, "{}\n")
+                    _write(root, test_path, "def test_artifact_contract(): pass\n")
+                    changed = {artifact, test_path}
+                    if support_path:
+                        _write(root, support_path, "# documented artifact contract\n")
+                        changed.add(support_path)
+                    ready = helper.inspect_component(component, root, changed)
+                    self.assertEqual(ready["status"], "READY_TO_RUN")
+                    self.assertEqual(ready["tests_to_run"], [test_path])
+
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    _write(root, artifact, "{}\n")
+                    changed = {artifact}
+                    if support_path:
+                        _write(root, support_path, "# documented artifact contract\n")
+                        changed.add(support_path)
+                    blocked = helper.inspect_component(component, root, changed)
+                    self.assertEqual(blocked["status"], "BLOCKED")
+                    self.assertEqual(blocked["missing_required_tests"], [test_path])
 
     def test_workflow_benchmark_contract_runs_in_core_without_self_selecting(self):
         helper = _helper()
@@ -2658,13 +2729,24 @@ def test_fixture():
             [item["test_file"] for item in component["executions"]],
             ["tests/docker_context/test_build_context_policy.py"],
         )
-        for test_path in (
-            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
-            "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
-            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-        ):
-            self.assertIn(test_path, helper._unmapped_candidate_paths({test_path}))
-
+        # The selector's research artifact contracts are narrow; unrelated
+        # sibling reports do not inherit those mappings.
+        self.assertEqual(
+            helper.select_components({"docs/oss_compat/compatibility_inventory_20261017.json"}),
+            ["oss_compatibility_inventory_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"docs/research/batch3/replication_dataset_feasibility.md"}),
+            ["batch3_dataset_feasibility_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"docs/research/batch3/grok_chat_b_dataset_feasibility.md"}),
+            ["batch3_metadata_audit_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"tests/research/batch3/test_claim_matrix_supplement.py"}),
+            [],
+        )
         source_mining_path = (
             "tests/source_mining_integration/test_source_mining_evidence_boundary.py"
         )
@@ -2913,10 +2995,6 @@ def test_fixture():
     def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
         helper = _helper()
         current_open_pr_gaps = (
-            (411, "tests/research/batch3/test_dataset_metadata_audit.py"),
-            (406, "tests/oss_compat/test_compatibility_inventory.py"),
-            (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
-            (386, "oss_opportunities/opportunity_batch.py"),
             # PR #400's standalone mathematical oracle does not exercise the
             # registered production DMD implementation; do not relabel it as
             # production coverage merely because the same PR adds a bridge test.
@@ -2931,8 +3009,6 @@ def test_fixture():
     def test_report_only_candidate_tests_remain_unmapped(self):
         helper = _helper()
         report_only_paths = (
-            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
             "tests/research/batch3/test_claim_matrix_supplement.py",  # unregistered sibling
             "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 standalone oracle
         )
@@ -2995,6 +3071,53 @@ def test_fixture():
                 375,
                 {
                     ("configs/research/batch3_source_registry.yaml", "tests/research/test_batch3_source_registry.py"),
+                },
+            ),
+            "oss_adoption_gates": (
+                386,
+                {
+                    ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+                },
+            ),
+            "oss_compatibility_inventory_artifact": (
+                406,
+                {
+                    (
+                        "docs/oss_compat/compatibility_inventory_20261017.json",
+                        "tests/oss_compat/test_compatibility_inventory.py",
+                    ),
+                },
+            ),
+            "batch3_dataset_feasibility_artifact": (
+                394,
+                {
+                    (
+                        "reports/batch3/grok_chat_b/dataset_candidates.json",
+                        "tests/research/batch3/test_replication_dataset_feasibility.py",
+                    ),
+                },
+            ),
+            "batch3_metadata_audit_artifact": (
+                411,
+                {
+                    (
+                        "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                        "tests/research/batch3/test_dataset_metadata_audit.py",
+                    ),
+                },
+            ),
+            "whitening_audit": (
+                407,
+                {
+                    ("scripts/audit_round6_whitening.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/audit_reporter.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/leakage_detector.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/matrix_ops.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/synthetic_data.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/types.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/whitening_verifier.py", "tests/whitening_audit/test_whitening_audit.py"),
                 },
             ),
             "research_plan_quality_eval": (
@@ -3174,6 +3297,42 @@ def test_fixture():
                 "docs/research/batch3/theory_to_measurement_review.md",
                 "reports/batch3/grok_chat_a/claim_matrix.json",
                 "tests/research/batch3/test_claim_matrix.py",
+            },
+            "oss_adoption_gates": {
+                "docs/oss_opportunity_candidate_review_20261016.md",
+                "docs/oss_opportunity_pipeline.md",
+                "oss_opportunities/opportunity_batch.py",
+                "oss_opportunities/scoring.py",
+                "oss_opportunities/validation.py",
+                "tests/test_oss_adoption_gates.py",
+            },
+            "oss_compatibility_inventory_artifact": {
+                "docs/oss_compat/batch1_compatibility_audit_20261017.md",
+                "docs/oss_compat/compatibility_inventory_20261017.json",
+                "tests/oss_compat/test_compatibility_inventory.py",
+            },
+            "batch3_dataset_feasibility_artifact": {
+                "docs/research/batch3/replication_dataset_feasibility.md",
+                "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+            },
+            "batch3_metadata_audit_artifact": {
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+                "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+            },
+            "whitening_audit": {
+                "docs/statistics/round6_whitening_audit.md",
+                "scripts/audit_round6_whitening.py",
+                "tests/whitening_audit/__init__.py",
+                "tests/whitening_audit/test_whitening_audit.py",
+                "tools/whitening_audit/__init__.py",
+                "tools/whitening_audit/audit_reporter.py",
+                "tools/whitening_audit/leakage_detector.py",
+                "tools/whitening_audit/matrix_ops.py",
+                "tools/whitening_audit/synthetic_data.py",
+                "tools/whitening_audit/types.py",
+                "tools/whitening_audit/whitening_verifier.py",
             },
             "batch3_falsification_matrix_artifact": {
                 "configs/scientific_falsification/batch3_falsification_matrix.yaml",
