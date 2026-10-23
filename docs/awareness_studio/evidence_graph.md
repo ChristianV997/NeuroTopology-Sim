@@ -83,27 +83,34 @@ Linkages express directed epistemic and causal relationships:
 
 ## 4. Evidence Classification & Safety Gating
 
-The projection segregates evidence into 4 non-interchangeable tiers:
+The projection recognizes four evidence labels. They describe declared input
+metadata; they are not independent evidence grades or adjudications:
 
-1. **`synthetic`**: Output of mathematical simulations, surrogate models, or generative baselines. Tagged with `SYNTHETIC_ONLY`. Can never claim biological proof.
-2. **`proxy`**: Heuristic proxy metrics (e.g. proxy Bayes factors, surrogate statistical distances). Tagged with `PROXY_METRIC`. Cannot serve as formal evidence.
-3. **`empirical`**: Real-world biological or observational time series without preregistered held-out data lock.
-4. **`formal`**: Held-out locked, preregistered empirical executions with signed human review.
+1. **`synthetic`**: A record declares synthetic mode or synthetic origin. Tagged with `SYNTHETIC_ONLY`; this label cannot support biological proof.
+2. **`proxy`**: A record declares a proxy metric or proxy data type. Tagged with `PROXY_METRIC`; it is not formal evidence.
+3. **`empirical`**: A record declares empirical mode/type/class. This loader does not verify that the source is real-world data.
+4. **`formal`**: A record declares formal evidence and both preregistration and a locked held-out split. Missing either declaration downgrades the label to `empirical`; the loader does not independently verify these declarations or human review.
+
+Missing or unrecognized evidence signals classify as `unknown`.
 
 ### Projection Admission Boundary
 
-The loader is intentionally not an evidence adjudicator. A `source_snapshot` is
-classified as `empirical` only when it preserves an upstream
-`T1_verified_primary` or `T2_verified_secondary` tier together with
-`verification_status: verified`; unverified, disputed, retracted, or
-metadata-only sources remain `unknown` or `REVIEW_REQUIRED`.
+The loader is intentionally not an evidence adjudicator. A source with no
+recognized evidence signal remains `unknown`. Positive source statuses
+(`active`, `proposed`, `provisional`, or `supported`) become `REVIEW_REQUIRED`
+when the evidence class is unknown, or when an empirical/formal label lacks
+a declared verification marker
+(`verification_status: verified`, `peer_review_status: peer_reviewed`,
+`review_status: reviewed_accepted`, or both preregistration and locked-split
+flags). Recognized negative and terminal statuses are preserved; an
+unrecognized status becomes `REVIEW_REQUIRED`. These rules project declared
+fields only and do not verify a source, registration, or reviewer independently.
 
 Likewise, a literal validation `verdict: PASS` is recorded as
-`REVIEW_REQUIRED` and does not create a `supports` edge. Provenance, artifact
-lineage, labels, nulls, multiplicity, split integrity, and human review must
-be independently adjudicated by an upstream gate before a reviewed evidence
-record is allowed to support a hypothesis. This prevents self-attested
-metadata from becoming scientific support through graph ingestion.
+`REVIEW_REQUIRED` and does not create a `supports` edge. The projection does
+not adjudicate provenance, artifact lineage, labels, nulls, multiplicity, or
+split integrity; those require independent review before any scientific
+interpretation. A metadata declaration alone is not scientific support.
 
 ### Safety States
 - `PROVISIONAL`: Initial state for proposed hypotheses and unreviewed claims.
@@ -151,5 +158,5 @@ python scripts/build_awareness_evidence_graph.py \
 
 1. **No Clinical Claims**: The evidence graph projection models topological and dynamical simulations and literature claims. It makes no medical, therapeutic, or diagnostic claims.
 2. **No Ontology Promotion**: Graph nodes represent computational representations, not metaphysical truth or physical ontologies.
-3. **No Proof Framing**: Mathematical and empirical findings are reported with confidence bounds and falsification thresholds; no theory-of-everything or definitive consciousness solution is asserted.
+3. **No Proof Framing**: The projection does not establish confidence bounds, falsification thresholds, or scientific confirmation. It makes no theory-of-everything or definitive consciousness claim.
 4. **Offline and Solver-Free**: The subsystem uses Python standard library only; no torch, scipy, or external solvers are imported.

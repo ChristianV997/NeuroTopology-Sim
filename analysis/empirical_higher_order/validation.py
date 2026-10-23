@@ -155,9 +155,19 @@ def validate_manifest(path: str | Path) -> ValidationResult:
     if dataset_path is None or not dataset_path.is_file():
         reasons.append("dataset_path must identify an existing local dataset artifact")
         incomplete = True
-    elif not manifest.get("dataset_checksum") or str(manifest["dataset_checksum"]).lower() != sha256_file(dataset_path):
-        reasons.append("dataset checksum does not match the declared SHA-256")
-        invalid = True
+    else:
+        try:
+            dataset_checksum = sha256_file(dataset_path)
+        except OSError as exc:
+            reasons.append(f"dataset checksum cannot be read: {exc}")
+            invalid = True
+        else:
+            if (
+                not manifest.get("dataset_checksum")
+                or str(manifest["dataset_checksum"]).lower() != dataset_checksum
+            ):
+                reasons.append("dataset checksum does not match the declared SHA-256")
+                invalid = True
     by_pair: dict[str, dict[str, set[str]]] = {}
     identities: set[tuple[str, str, str]] = set()
     for index, raw in enumerate(recordings):

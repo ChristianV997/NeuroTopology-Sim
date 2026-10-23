@@ -216,6 +216,7 @@ def test_source_claiming_empirical_without_verification_is_flagged():
     node = graph.get_node("src-unverified-empirical")
     assert node is not None
     assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -236,6 +237,9 @@ def test_source_claiming_empirical_with_verification_is_not_flagged():
         ]
     }
     graph = load_from_dict(manifest)
+    node = graph.get_node("src-verified-empirical")
+    assert node is not None
+    assert node.status == NodeStatus.ACTIVE.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -249,6 +253,9 @@ def test_source_claiming_formal_without_verification_is_flagged():
         ]
     }
     graph = load_from_dict(manifest)
+    node = graph.get_node("src-unverified-formal")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -358,6 +365,24 @@ def test_unverified_positive_source_status_is_downgraded_without_evidence_signal
 
     node = graph.get_node("src-positive")
     assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_unrecognized_source_status_cannot_claim_empirical_verification():
+    graph = load_from_dict({
+        "sources": [
+            {
+                "source_id": "src-unrecognized-status",
+                "title": "Unrecognized Status Source",
+                "data_mode": "empirical",
+                "status": "verified",
+            },
+        ],
+    })
+
+    node = graph.get_node("src-unrecognized-status")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
     assert node.status == NodeStatus.REVIEW_REQUIRED.value
 
 

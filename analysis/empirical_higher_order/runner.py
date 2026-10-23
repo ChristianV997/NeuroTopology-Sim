@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -10,16 +11,6 @@ import numpy as np
 
 from .schema import EVIDENCE_CLASS, FEATURE_FAMILIES, finite_json
 from .validation import ReadinessState, ValidationResult, _load_array, validate_manifest
-
-
-def _logistic_fit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    x = np.column_stack([np.ones(len(x)), x])
-    weights = np.zeros(x.shape[1])
-    for _ in range(80):
-        logits = np.clip(x @ weights, -30, 30)
-        prob = 1.0 / (1.0 + np.exp(-logits))
-        weights -= 0.08 * (x.T @ (prob - y)) / max(len(x), 1)
-    return weights
 
 
 def _predict(x: np.ndarray, weights: np.ndarray) -> np.ndarray:
@@ -36,9 +27,15 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, Any]:
     auroc = None
     auprc = None
     if len(unique) == 2:
-        positives = p[y == 1]
-        negatives = p[y == 0]
-        auroc = float(np.mean(positives[:, None] > negatives[None, :]) + 0.5 * np.mean(positives[:, None] == negatives[None, :]))
+        positive_count = int(np.sum(y == 1))
+        negative_count = int(np.sum(y == 0))
+        _, inverse, counts = np.unique(p, return_inverse=True, return_counts=True)
+        average_ranks = np.cumsum(counts) - (counts - 1) / 2.0
+        positive_rank_sum = float(np.sum(average_ranks[inverse[y == 1]]))
+        auroc = float(
+            (positive_rank_sum - positive_count * (positive_count + 1) / 2)
+            / (positive_count * negative_count)
+        )
         order = np.argsort(-p)
         sorted_y = y[order]
         cumulative = np.cumsum(sorted_y)
@@ -48,7 +45,7 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, Any]:
     return {"rows": int(len(y)), "log_loss": log_loss, "brier_score": brier, "auroc": auroc, "auprc": auprc, "calibration_error": calibration}
 
 
-def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray], np.ndarray]:
+def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, dict[str, np.ndarray], np.ndarray]:
     paths = record["paths"]
     arrays: dict[str, np.ndarray] = {}
     for family in FEATURE_FAMILIES[:-1]:
@@ -68,7 +65,7 @@ def _load_recording(record: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, dic
         raise ValueError("target must contain finite binary labels")
     if np.any(timestamps[1:] < timestamps[:-1]):
         raise ValueError("timestamps are not monotonic")
-    return np.column_stack([arrays["psd"]]), target.astype(float), arrays, timestamps
+    return target, arrays, timestamps
 
 
 def _feature_matrix(arrays: dict[str, np.ndarray], feature_set: str) -> np.ndarray:
@@ -76,27 +73,81 @@ def _feature_matrix(arrays: dict[str, np.ndarray], feature_set: str) -> np.ndarr
     return np.column_stack([arrays[name] for name in selected])
 
 
-def _score_feature_set(rows: list[tuple[str, np.ndarray, np.ndarray, float]], feature_set: str) -> dict[str, Any]:
+def _record_design(record: dict[str, Any], feature_set: str) -> tuple[np.ndarray, np.ndarray]:
+    target, arrays, _ = _load_recording(record)
+    return _feature_matrix(arrays, feature_set), target
+
+
+def _iter_record_design(
+    rows: list[tuple[str, dict[str, Any], float]], feature_set: str
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    for _, record, _ in rows:
+        matrix, target = _record_design(record, feature_set)
+        yield matrix, target
+        del matrix, target
+
+
+def _score_feature_set(rows: list[tuple[str, dict[str, Any], float]], feature_set: str) -> dict[str, Any]:
     if len(rows) < 2:
         return {"feature_family": feature_set, "status": "INSUFFICIENT_DATA", "subject_held_out": _metrics(np.array([]), np.array([])), "forward_time": _metrics(np.array([]), np.array([]))}
     subjects = sorted({item[0] for item in rows})
     held_out = subjects[-1]
     train = [item for item in rows if item[0] != held_out]
     test = [item for item in rows if item[0] == held_out]
-    def evaluate(train_rows: list[tuple[str, np.ndarray, np.ndarray, float]], test_rows: list[tuple[str, np.ndarray, np.ndarray, float]]) -> dict[str, Any]:
+    def evaluate(
+        train_rows: list[tuple[str, dict[str, Any], float]],
+        test_rows: list[tuple[str, dict[str, Any], float]],
+    ) -> dict[str, Any]:
         if not train_rows or not test_rows:
             return _metrics(np.array([]), np.array([]))
-        x_train = np.vstack([_feature_matrix(item[1], feature_set) for item in train_rows])
-        y_train = np.concatenate([item[2] for item in train_rows])
-        x_test = np.vstack([_feature_matrix(item[1], feature_set) for item in test_rows])
-        y_test = np.concatenate([item[2] for item in test_rows])
-        mean = x_train.mean(axis=0); scale = x_train.std(axis=0); scale[scale < 1e-12] = 1.0
-        return _metrics(y_test, _predict((x_test - mean) / scale, _logistic_fit((x_train - mean) / scale, y_train)))
+        feature_sum = None
+        row_count = 0
+        for matrix, target in _iter_record_design(train_rows, feature_set):
+            if feature_sum is None:
+                feature_sum = np.zeros(matrix.shape[1], dtype=float)
+            feature_sum += matrix.sum(axis=0)
+            row_count += len(target)
+            del matrix, target
+        if feature_sum is None or row_count == 0:
+            return _metrics(np.array([]), np.array([]))
+
+        mean = feature_sum / row_count
+        squared_deviation = np.zeros_like(mean)
+        for matrix, target in _iter_record_design(train_rows, feature_set):
+            centered = matrix - mean
+            squared_deviation += np.square(centered).sum(axis=0)
+            del matrix, target, centered
+        scale = np.sqrt(squared_deviation / row_count)
+        scale[scale < 1e-12] = 1.0
+
+        weights = np.zeros(len(mean) + 1, dtype=float)
+        for _ in range(80):
+            gradient = np.zeros_like(weights)
+            fit_row_count = 0
+            for matrix, target in _iter_record_design(train_rows, feature_set):
+                normalized = (matrix - mean) / scale
+                design = np.column_stack([np.ones(len(normalized)), normalized])
+                logits = np.clip(design @ weights, -30, 30)
+                probabilities = 1.0 / (1.0 + np.exp(-logits))
+                gradient += design.T @ (probabilities - target)
+                fit_row_count += len(target)
+                del matrix, target, normalized, design, logits, probabilities
+            weights -= 0.08 * gradient / max(fit_row_count, 1)
+
+        target_parts = []
+        prediction_parts = []
+        for matrix, target in _iter_record_design(test_rows, feature_set):
+            prediction_parts.append(_predict((matrix - mean) / scale, weights))
+            target_parts.append(np.asarray(target, dtype=float).copy())
+            del matrix, target
+        y_test = np.concatenate(target_parts)
+        p_test = np.concatenate(prediction_parts)
+        return _metrics(y_test, p_test)
     subject_metrics = evaluate(train, test)
-    ordered = sorted(rows, key=lambda item: item[3])
-    cutoff = ordered[max(1, len(ordered) // 2) - 1][3]
-    forward_train = [item for item in ordered if item[3] <= cutoff]
-    forward_test = [item for item in ordered if item[3] > cutoff]
+    ordered = sorted(rows, key=lambda item: item[2])
+    cutoff = ordered[max(1, len(ordered) // 2) - 1][2]
+    forward_train = [item for item in ordered if item[2] <= cutoff]
+    forward_test = [item for item in ordered if item[2] > cutoff]
     return {"feature_family": feature_set, "status": "VALIDATED", "subject_held_out": subject_metrics,
             "subject_split": {"train_subjects": sorted({item[0] for item in train}), "test_subjects": [held_out],
                                "overlap": sorted({item[0] for item in train}.intersection({held_out}))},
@@ -113,7 +164,12 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
         "split_strategies": {"subject_held_out": "last subject held out; training-only normalization", "forward_time": "past timestamps train; future timestamps test"},
         "null_controls": ["label_permutation", "circular_time_shift", "block_shuffle", "matched_variance_surrogate", "matched_autocorrelation_surrogate_when_available"],
         "missingness": {},
-        "bounded_memory": {"processing_unit": "one subject/session/run", "max_recordings_loaded": 1},
+        "bounded_memory": {
+            "processing_unit": "one subject/session/run",
+            "max_recordings_loaded": 1,
+            "feature_arrays_retained_between_recordings": 0,
+            "metric_vectors_retained_for_scoring": True,
+        },
         "formal_bayes_factor": None,
         "scientific_pass": False,
         "evidence_class": EVIDENCE_CLASS,
@@ -123,7 +179,7 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
         return base
     if not validation.ok:
         return base
-    rows: list[tuple[str, dict[str, np.ndarray], np.ndarray, float]] = []
+    rows: list[tuple[str, dict[str, Any], float]] = []
     missing_resp = 0
     try:
         for record in validation.recordings:
@@ -131,7 +187,7 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
             physiology = raw.get("physiology") if isinstance(raw.get("physiology"), dict) else {}
             if not physiology.get("respiration"):
                 missing_resp += 1
-            _, target, arrays, timestamps = _load_recording(record)
+            target, arrays, timestamps = _load_recording(record)
             target_times = raw.get("target_timestamps")
             if not isinstance(target_times, (list, tuple)):
                 raise ValueError("TEMPORAL_LINEAGE_REQUIRED: explicit target_timestamps are required for forecasting")
@@ -142,7 +198,8 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
                 raise ValueError("TEMPORAL_LINEAGE_INVALID: target_timestamps are not monotonic")
             if np.any(timestamps > target_times_array):
                 raise ValueError("LEAKAGE_DETECTED: feature timestamp occurs after target timestamp")
-            rows.append((str(raw["subject_id"]), arrays, target, float(np.min(timestamps))))
+            rows.append((str(raw["subject_id"]), record, float(np.min(timestamps))))
+            del target, arrays, timestamps, target_times_array
     except (OSError, ValueError, KeyError) as exc:
         base["status"] = "INCONCLUSIVE"
         base["validation"]["reasons"].append(str(exc))
@@ -151,7 +208,12 @@ def run_empirical(manifest_path: str | Path) -> dict[str, Any]:
     names = ["psd", "psd_plus_pairwise_fc", "psd_plus_triadic_fc", "psd_plus_directed_hypergraph"]
     previous_loss = None
     for name in names:
-        result = _score_feature_set(rows, name)
+        try:
+            result = _score_feature_set(rows, name)
+        except (OSError, ValueError, KeyError) as exc:
+            base["status"] = ReadinessState.INCONCLUSIVE.value
+            base["validation"]["reasons"].append(str(exc))
+            return base
         loss = result["subject_held_out"]["log_loss"]
         result["incremental_gain"] = None if previous_loss is None or loss is None else float(previous_loss - loss)
         # A local proper-score improvement is a benchmark observation, not

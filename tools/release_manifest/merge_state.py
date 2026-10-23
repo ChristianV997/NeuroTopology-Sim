@@ -162,6 +162,8 @@ def classify_release_state(
     """
     if merge_state not in MERGE_STATES:
         raise ValueError(f"unrecognized merge state: {merge_state!r}")
+    if ctx.worst_ci_state not in CHECK_STATES:
+        raise ValueError(f"unrecognized CI state: {ctx.worst_ci_state!r}")
 
     blockers: list[str] = []
     if not ctx.commit_resolves:
@@ -179,6 +181,12 @@ def classify_release_state(
     if ctx.worst_ci_state == "infrastructure_blocked":
         blockers.append("release blocked because CI infrastructure is unavailable")
         return "blocked_by_infrastructure", blockers
+
+    if ctx.worst_ci_state != "passing":
+        blockers.append(
+            f"release requires passing CI; worst CI state is {ctx.worst_ci_state!r}"
+        )
+        return "inconclusive", blockers
 
     if ctx.dependency_blockers:
         blockers.append(f"release blocked by unmet dependencies: {list(ctx.dependency_blockers)}")

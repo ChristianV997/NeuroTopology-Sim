@@ -1,3 +1,5 @@
+import pytest
+
 from tools.release_manifest.merge_state import MergeStateContext, classify_merge_state, classify_release_state
 from tools.release_manifest.models import PRSnapshot
 
@@ -103,11 +105,15 @@ def test_merged_into_main_outranks_duplicate():
 
 
 def test_invalid_ci_state_raises():
-    import pytest
-
     ctx = MergeStateContext(commit_resolves=True, worst_ci_state="not-a-real-state")
     with pytest.raises(ValueError):
         classify_merge_state(ctx)
+    with pytest.raises(ValueError):
+        classify_release_state(
+            ctx,
+            merge_state="open_unintegrated",
+            scientific_gate_value="insufficient_data",
+        )
 
 
 def test_release_state_is_independent_from_technical_merge_state():
@@ -132,5 +138,23 @@ def test_merged_commit_without_independent_evidence_is_release_inconclusive():
         scientific_gate_value="insufficient_data",
     )
     assert merge_state == "merged_into_main"
+    assert release_state == "inconclusive"
+    assert blockers
+
+
+@pytest.mark.parametrize("ci_state", ["unavailable", "pending", "skipped"])
+def test_release_is_not_ready_until_required_ci_is_passing(ci_state):
+    ctx = MergeStateContext(
+        commit_resolves=True,
+        is_ancestor_of_target=True,
+        worst_ci_state=ci_state,
+    )
+
+    release_state, blockers = classify_release_state(
+        ctx,
+        merge_state="merged_into_main",
+        scientific_gate_value="pass",
+    )
+
     assert release_state == "inconclusive"
     assert blockers

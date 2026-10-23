@@ -11,8 +11,12 @@ Every feature block must provide a finite, row-aligned, monotonic
 non-decreasing `feature_times` vector. Its timestamp may equal, but may never
 exceed, the corresponding target timestamp. Missing, unknown, mismatched,
 non-finite, non-monotonic, or future feature times fail closed before model
-fitting. The exact vectors are included in the dataset checksum so the report
-identity binds the causal forecasting boundary.
+fitting. The dataset checksum binds all feature/target arrays, feature-time
+lineage, controls, prediction horizon, target definition, provenance, source
+mode, and adjudication metadata. The report checksum is the SHA-256 of the
+complete serialized report (including that dataset checksum, split, results,
+null summaries, and adjudication fields), so resume/cache identity changes
+when report-affecting inputs or outputs change.
 
 ## Evidence status
 
@@ -27,6 +31,10 @@ are audit inputs, not authority: caller-supplied formal evidence, Bayes-factor,
 or PASS metadata is recorded as ignored. An external independently validated
 adjudication path is required before any stronger scientific claim can be
 considered.
+
+AUROC is computed from average ranks, so tied prediction scores receive equal
+rank contribution. This is a benchmark metric only and does not change the
+evidence-status boundary.
 
 ## Limitations
 

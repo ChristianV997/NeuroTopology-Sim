@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Mapping, Optional, Sequence
 
@@ -121,7 +121,9 @@ class BenchmarkDataset:
 
     def checksum(self) -> str:
         feature_times = self.feature_times if isinstance(self.feature_times, Mapping) else {}
+        controls = self.controls if isinstance(self.controls, Mapping) else {}
         payload = {
+            "schema_version": SCHEMA_VERSION,
             "target": np.asarray(self.target).tolist(),
             "subjects": np.asarray(self.subjects).tolist(),
             "sessions": np.asarray(self.sessions).tolist(),
@@ -130,6 +132,12 @@ class BenchmarkDataset:
             # Bind each output to the exact feature-time lineage used to
             # establish the causal forecasting boundary.
             "feature_times": {k: np.asarray(feature_times[k], dtype=float).tolist() for k in sorted(feature_times)},
+            "controls": {k: np.asarray(controls[k], dtype=float).tolist() for k in sorted(controls)},
+            "prediction_horizon": self.prediction_horizon,
+            "target_definition": self.target_definition,
+            "provenance": self.provenance,
+            "synthetic": self.synthetic,
+            "adjudication_metadata": self.adjudication_metadata,
         }
         return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
@@ -175,6 +183,7 @@ class BenchmarkReport:
     scientific_pass: bool = False
     evidence_class: str = "forecast_benchmark"
     adjudication: Mapping[str, Any] = field(default_factory=dict)
+    dataset_checksum: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -197,6 +206,7 @@ class BenchmarkReport:
             "scientific_pass": False,
             "evidence_class": "forecast_benchmark",
             "adjudication": dict(self.adjudication),
+            "dataset_checksum": self.dataset_checksum,
         }
         return _finite(data)
 
@@ -205,6 +215,10 @@ class BenchmarkReport:
 
 
 def _finite(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _finite(value.tolist())
+    if isinstance(value, np.generic):
+        return _finite(value.item())
     if isinstance(value, Mapping):
         return {str(k): _finite(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -228,11 +242,18 @@ def _safe_dataset_checksum(dataset: BenchmarkDataset) -> str:
         return ""
 
 
+def _with_report_checksum(report: BenchmarkReport) -> BenchmarkReport:
+    payload = report.to_dict()
+    payload.pop("checksum", None)
+    checksum = hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+    return replace(report, checksum=checksum)
+
+
 def _failure_report(dataset: BenchmarkDataset, status: ForecastStatus, message: str) -> BenchmarkReport:
-    return BenchmarkReport(
+    report = BenchmarkReport(
         SCHEMA_VERSION, status.value, {**dataset.provenance, "message": message}, {},
         float(dataset.prediction_horizon), dataset.target_definition, "deterministic_logistic",
-        (), {}, {}, _safe_dataset_checksum(dataset) if len(np.asarray(dataset.target)) else "", bool(dataset.synthetic),
+        (), {}, {}, "", bool(dataset.synthetic),
         adjudication={
             "status": "BLOCKED",
             "external_independent_adjudication_required": True,
@@ -240,7 +261,9 @@ def _failure_report(dataset: BenchmarkDataset, status: ForecastStatus, message: 
             "scientific_pass_emitted": False,
             "reason": message,
         },
+        dataset_checksum=_safe_dataset_checksum(dataset) if len(np.asarray(dataset.target)) else "",
     )
+    return _with_report_checksum(report)
 
 
 def _metadata_is_missing(value: Any) -> bool:
@@ -374,11 +397,16 @@ def _auroc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
     y = np.asarray(y, dtype=int)
     if len(np.unique(y)) < 2:
         return None
-    order = np.argsort(np.asarray(p), kind="mergesort")
-    ranks = np.empty(len(order), dtype=float)
-    ranks[order] = np.arange(1, len(order) + 1)
+    scores = np.asarray(p, dtype=float)
+    _, inverse, counts = np.unique(scores, return_inverse=True, return_counts=True)
+    average_ranks = np.cumsum(counts) - (counts - 1) / 2.0
     positives = y == 1
-    return float((ranks[positives].sum() - positives.sum() * (positives.sum() + 1) / 2) / (positives.sum() * (len(y) - positives.sum())))
+    positive_count = int(positives.sum())
+    positive_rank_sum = float(average_ranks[inverse[positives]].sum())
+    return float(
+        (positive_rank_sum - positive_count * (positive_count + 1) / 2)
+        / (positive_count * (len(y) - positive_count))
+    )
 
 
 def _auprc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
@@ -536,14 +564,15 @@ def run_benchmark(
         overall = ForecastStatus.NO_INCREMENTAL_GAIN.value
     split_data = split.to_dict()
     split_data["nested_validation"] = True
-    report_checksum = hashlib.sha256(_canonical_json({"dataset": dataset.checksum(), "results": [r.to_dict() for r in results]}).encode()).hexdigest()
     missingness = {r.feature_family: r.missingness for r in results}
-    return BenchmarkReport(
+    report = BenchmarkReport(
         SCHEMA_VERSION, overall, dataset.provenance, split_data, float(dataset.prediction_horizon),
         dataset.target_definition, "deterministic_logistic", tuple(results), nulls, missingness,
-        report_checksum, bool(dataset.synthetic),
+        "", bool(dataset.synthetic),
         adjudication=adjudication,
+        dataset_checksum=dataset.checksum(),
     )
+    return _with_report_checksum(report)
 
 
 def null_target(target: np.ndarray, kind: str, seed: int = 0) -> np.ndarray:

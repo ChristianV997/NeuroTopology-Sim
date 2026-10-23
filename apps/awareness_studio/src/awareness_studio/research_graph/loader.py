@@ -30,6 +30,7 @@ _UNVERIFIED_SOURCE_STATUSES = frozenset({
     NodeStatus.PROVISIONAL.value,
     NodeStatus.SUPPORTED.value,
 })
+_KNOWN_SOURCE_STATUSES = frozenset(status.value for status in NodeStatus)
 
 
 def _classify_evidence(data: Mapping[str, Any]) -> str:
@@ -55,9 +56,25 @@ def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
     """Expose missing verification without softening a declared negative or terminal status."""
     raw = source.get("status")
     declared = NodeStatus.ACTIVE.value if raw is None or not str(raw).strip() else str(raw)
-    if evidence_class == EvidenceClass.UNKNOWN.value and declared.strip().lower() in _UNVERIFIED_SOURCE_STATUSES:
+    normalized_status = declared.strip().lower()
+    if normalized_status not in _KNOWN_SOURCE_STATUSES:
         return NodeStatus.REVIEW_REQUIRED.value
-    return declared
+    verified = (
+        source.get("verification_status") == "verified"
+        or source.get("peer_review_status") == "peer_reviewed"
+        or source.get("review_status") == "reviewed_accepted"
+        or (source.get("preregistered", False) and source.get("held_out_split_locked", False))
+    )
+    unverified_claim = evidence_class in {
+        EvidenceClass.EMPIRICAL.value,
+        EvidenceClass.FORMAL.value,
+    } and not verified
+    if (
+        normalized_status in _UNVERIFIED_SOURCE_STATUSES
+        and (evidence_class == EvidenceClass.UNKNOWN.value or unverified_claim)
+    ):
+        return NodeStatus.REVIEW_REQUIRED.value
+    return normalized_status
 
 
 def load_from_dict(

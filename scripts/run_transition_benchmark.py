@@ -25,16 +25,19 @@ def _synthetic_demo(seed: int) -> BenchmarkDataset:
     hyper = rng.normal(size=(n, 3))
     logits = 1.8 * triadic[:, 0] - 1.2 * triadic[:, 1] + 0.2 * rng.normal(size=n)
     target = (logits > 0).astype(int)
+    features = {"psd": psd, "pairwise_fc": pairwise, "triadic_fc": triadic, "directed_hypergraph": hyper}
+    timestamps = np.arange(n, dtype=float)
     return BenchmarkDataset(
-        features={"psd": psd, "pairwise_fc": pairwise, "triadic_fc": triadic, "directed_hypergraph": hyper},
+        features=features,
         target=target,
         subjects=np.repeat(np.arange(6), 8),
         sessions=np.tile(np.arange(8), 6),
-        timestamps=np.arange(n, dtype=float),
+        timestamps=timestamps,
         prediction_horizon=1.0,
         target_definition="declared transition at t+Delta_t",
         provenance={"dataset_id": "synthetic-transition-demo", "source": "local deterministic fixture", "complete": False},
         controls={"arousal": rng.normal(size=n), "sampling_rate": np.full(n, 100.0), "window_length": np.full(n, 2.0)},
+        feature_times={name: timestamps.copy() for name in features},
         synthetic=True,
     )
 

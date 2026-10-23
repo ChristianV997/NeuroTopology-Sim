@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import weakref
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from analysis.empirical_higher_order import runner as runner_module
+from analysis.empirical_higher_order import validation as validation_module
 from analysis.empirical_higher_order.runner import run_empirical
 from analysis.empirical_higher_order.schema import finite_json
 from analysis.empirical_higher_order.validation import ReadinessState, validate_manifest
@@ -91,9 +94,60 @@ def test_synthetic_input_never_forecasts(tmp_path):
     assert validate_manifest(_manifest(tmp_path, synthetic=True)).status is ReadinessState.SYNTHETIC_DEMO_ONLY
 
 
-def test_bounded_memory_contract(tmp_path):
+def test_bounded_memory_contract(tmp_path, monkeypatch):
+    loaded_feature_arrays = []
+    max_live_previous_feature_arrays = 0
+    original_load_recording = runner_module._load_recording
+
+    def tracked_load_recording(record):
+        nonlocal loaded_feature_arrays, max_live_previous_feature_arrays
+        loaded_feature_arrays = [reference for reference in loaded_feature_arrays if reference() is not None]
+        max_live_previous_feature_arrays = max(
+            max_live_previous_feature_arrays, len(loaded_feature_arrays)
+        )
+        result = original_load_recording(record)
+        arrays = result[2] if len(result) == 4 else result[1]
+        loaded_feature_arrays.extend(weakref.ref(array) for array in arrays.values())
+        return result
+
+    monkeypatch.setattr(runner_module, "_load_recording", tracked_load_recording)
     report = run_empirical(_manifest(tmp_path, subjects=3))
+    assert max_live_previous_feature_arrays == 0
     assert report["bounded_memory"]["max_recordings_loaded"] == 1
+    assert report["bounded_memory"]["feature_arrays_retained_between_recordings"] == 0
+
+
+def test_auc_metrics_use_linear_size_rank_arrays_and_preserve_ties(monkeypatch):
+    original_mean = runner_module.np.mean
+
+    def reject_pairwise_mean(values, *args, **kwargs):
+        assert np.asarray(values).ndim <= 1, "AUROC must not allocate pairwise score matrices"
+        return original_mean(values, *args, **kwargs)
+
+    monkeypatch.setattr(runner_module.np, "mean", reject_pairwise_mean)
+    metrics = runner_module._metrics(
+        np.array([0, 0, 1, 1]),
+        np.array([0.1, 0.4, 0.4, 0.8]),
+    )
+
+    assert metrics["auroc"] == pytest.approx(0.875)
+
+
+def test_unreadable_dataset_checksum_is_reported_not_raised(tmp_path, monkeypatch):
+    path = _manifest(tmp_path)
+    dataset_path = (tmp_path / "dataset.bin").resolve()
+    original_sha256_file = validation_module.sha256_file
+
+    def fail_dataset_hash(candidate):
+        if candidate.resolve() == dataset_path:
+            raise OSError("permission denied")
+        return original_sha256_file(candidate)
+
+    monkeypatch.setattr(validation_module, "sha256_file", fail_dataset_hash)
+    result = validate_manifest(path)
+
+    assert result.status is ReadinessState.INCONCLUSIVE
+    assert any("dataset checksum cannot be read" in reason for reason in result.reasons)
 
 
 def test_subject_split_has_no_train_test_overlap(tmp_path):
