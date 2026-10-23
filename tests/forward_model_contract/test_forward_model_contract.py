@@ -18,6 +18,7 @@ Verifies:
 
 from __future__ import annotations
 
+from fractions import Fraction
 import json
 import math
 from pathlib import Path
@@ -40,14 +41,11 @@ from dual_engine.forward_model_contract import (
     CoordinateFrameMismatchError,
     CoordinateUnitMismatchError,
     ForwardModelContractError,
-    ForwardModelContractResult,
-    ForwardUncertainty,
     LeadfieldDimensionMismatchError,
     SensorGeometry,
     SourceOutOfBoundsError,
     SourceSpace,
     UncertaintyStatus,
-    apply_affine_transform,
     apply_average_reference,
     apply_channel_reference,
     audit_mne_forward_solution,
@@ -60,8 +58,71 @@ from dual_engine.forward_model_contract import (
     make_synthetic_source_grid,
     validate_affine_transform,
     verify_average_reference_invariant,
-    verify_channel_reference_invariant,
 )
+
+
+def _surface_point(direction, radius=0.09):
+    """Scale ``direction`` onto the sphere of ``radius`` metres (exactly on the outer surface)."""
+    norm = math.sqrt(sum(c * c for c in direction))
+    return tuple(radius * c / norm for c in direction)
+
+
+def _exact_shell_coefficient(n, radii, sigmas):
+    """Independent oracle for the multi-shell coefficient c_n.
+
+    Evaluates the classic transfer-matrix product in exact rational arithmetic (integer
+    powers of Fractions are exact), so it carries no cancellation error. Used only to
+    check the floating-point implementation; it is a numerical oracle, not a physical one.
+    """
+    radii = [Fraction(r) for r in radii]
+    sigmas = [Fraction(s) for s in sigmas]
+    if len(radii) == 1:
+        return Fraction(1)
+    r_scalp = radii[-1]
+    m = [[Fraction(1), Fraction(0)], [Fraction(0), Fraction(1)]]
+    for k in range(len(radii) - 1):
+        ratio = sigmas[k] / sigmas[k + 1]
+        c = Fraction(1, 2 * n + 1)
+        r_over_big = (radii[k] / r_scalp) ** (2 * n + 1)
+        big_over_r = (r_scalp / radii[k]) ** (2 * n + 1)
+        t = [
+            [c * ((n + 1) + n * ratio), c * (n + 1) * (1 - ratio) * big_over_r],
+            [c * n * (1 - ratio) * r_over_big, c * (n + (n + 1) * ratio)],
+        ]
+        m = [
+            [t[0][0] * m[0][0] + t[0][1] * m[1][0], t[0][0] * m[0][1] + t[0][1] * m[1][1]],
+            [t[1][0] * m[0][0] + t[1][1] * m[1][0], t[1][0] * m[0][1] + t[1][1] * m[1][1]],
+        ]
+    den = n * m[0][0] - (n + 1) * m[1][0]
+    a1 = ((n + 1) * m[1][1] - n * m[0][1]) / den
+    return Fraction(n, n + 1) * (m[0][0] * a1 + m[0][1]) * (sigmas[-1] / sigmas[0])
+
+
+def _oracle_potential(electrode, source, moment, radii, sigmas, n_max_terms=60):
+    """Series potential using exact-rational c_n (same truncation rule as the module)."""
+    re_norm = math.sqrt(sum(c * c for c in electrode))
+    rs_norm = math.sqrt(sum(c * c for c in source))
+    re_hat = [c / re_norm for c in electrode]
+    rs_hat = [c / rs_norm for c in source]
+    cos_th = max(-1.0, min(1.0, sum(a * b for a, b in zip(re_hat, rs_hat))))
+    qr = sum(q * c for q, c in zip(moment, rs_hat))
+    qt = sum(q * c for q, c in zip(moment, re_hat)) - cos_th * qr
+    a = rs_norm / radii[-1]
+    c1 = float(_exact_shell_coefficient(1, radii, sigmas))
+    sum_r = 3.0 * c1 * cos_th * qr
+    sum_t = -1.5 * c1 * qt
+    p0, p1, an = 1.0, cos_th, 1.0
+    for n in range(2, n_max_terms + 1):
+        p2 = ((2 * n - 1) * cos_th * p1 - (n - 1) * p0) / n
+        pn_prime = n * (p0 - cos_th * p1) / (1.0 - cos_th * cos_th)
+        an *= a
+        cn = float(_exact_shell_coefficient(n, radii, sigmas))
+        sum_r += (2 * n + 1) / n * an * cn * p2 * qr
+        sum_t -= (2 * n + 1) / (n * (n + 1)) * an * cn * pn_prime * qt
+        p0, p1 = p1, p2
+        if an < 1e-15:
+            break
+    return (sum_r + sum_t) / (4.0 * math.pi * sigmas[-1] * radii[-1] ** 2)
 
 
 class TestForwardModelContract(unittest.TestCase):
@@ -203,7 +264,7 @@ class TestForwardModelContract(unittest.TestCase):
 
     def test_3shell_sphere_dipole_linearity(self) -> None:
         """3-shell concentric sphere potential must satisfy exact superposition."""
-        re = (0.0, 0.06, 0.067)
+        re = _surface_point((0.0, 0.06, 0.067))
         rs = (-0.02, 0.01, 0.035)
         q1 = (1.0e-9, 0.0, 0.0)
         q2 = (0.0, 2.0e-9, 0.5e-9)
@@ -460,7 +521,7 @@ class TestForwardModelContract(unittest.TestCase):
 
     def test_multishell_inner_layer_physical_effect(self) -> None:
         """Altering skull conductivity must exert a measurable physical effect on potential."""
-        re = (0.0, 0.06, 0.067)
+        re = _surface_point((0.0, 0.06, 0.067))
         rs = (-0.02, 0.01, 0.035)
         q = (1.0e-9, -0.5e-9, 2.0e-9)
 
@@ -484,7 +545,7 @@ class TestForwardModelContract(unittest.TestCase):
 
     def test_multishell_brain_radius_physical_effect(self) -> None:
         """Altering brain radius (skull thickness) must exert a measurable physical effect."""
-        re = (0.0, 0.06, 0.067)
+        re = _surface_point((0.0, 0.06, 0.067))
         rs = (-0.01, 0.01, 0.02)
         q = (1.0e-9, 0.0, 1.0e-9)
 
@@ -1047,6 +1108,426 @@ class TestForwardModelContract(unittest.TestCase):
         }
         with self.assertRaises(ForwardModelContractError):
             audit_mne_forward_solution(valid_fwd, info=bad_info)
+
+
+class TestForwardModelNumericalAndGeometryHardening(unittest.TestCase):
+    """Regressions for numeric-type, geometry, stability, and fabrication defects.
+
+    Each test failed against the previous revision of the contract. They check
+    engineering behaviour (stable error types, fail-closed geometry, numerical
+    stability against an exact-rational oracle); none of them is evidence that the
+    spherical model is physically valid for real heads.
+    """
+
+    def setUp(self) -> None:
+        self.conductor = ConductorModel()
+        self.sensors = make_standard_1020_synthetic_sensors(self.conductor.scalp_radius_m)
+        self.electrode = (0.0, 0.0, 0.09)
+        self.source = (0.02, 0.01, 0.03)
+        self.moment = (1.0e-9, 0.0, 0.0)
+        self.identity = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+
+    # -- numeric types ---------------------------------------------------------
+
+    def test_numeric_strings_and_non_vectors_rejected_with_contract_errors(self) -> None:
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(sigmas_sm=("0.33", 0.0042, 0.33)).validate()
+        with self.assertRaises(ConductorGeometryError):
+            ConductorModel(radii_m=("0.08", 0.085, 0.09)).validate()
+        with self.assertRaises(ConductorGeometryError):
+            compute_homogeneous_sphere_potential(
+                self.electrode, self.source, self.moment, 0.09, "0.33"
+            )
+        with self.assertRaises(ForwardModelContractError):
+            compute_concentric_spheres_potential(
+                self.electrode, self.source, ("1.0", 0.0, 0.0), self.conductor
+            )
+        for bad in ("123", 5, None, 1.5):
+            with self.subTest(vector=bad):
+                with self.assertRaises(ForwardModelContractError):
+                    compute_homogeneous_sphere_potential(bad, self.source, self.moment)
+
+    def test_n_max_terms_must_be_positive_integer(self) -> None:
+        for bad in (0, -3, True, 2.5, "9"):
+            with self.subTest(n_max_terms=bad):
+                with self.assertRaises(ForwardModelContractError):
+                    compute_concentric_spheres_potential(
+                        self.electrode, self.source, self.moment, self.conductor, n_max_terms=bad
+                    )
+                with self.assertRaises(ForwardModelContractError):
+                    compute_homogeneous_sphere_potential(
+                        self.electrode, self.source, self.moment, n_max_terms=bad
+                    )
+        dipole_only = compute_concentric_spheres_potential(
+            self.electrode, self.source, self.moment, self.conductor, n_max_terms=1
+        )
+        self.assertTrue(math.isfinite(dipole_only))
+
+    # -- geometry of the public potential functions ----------------------------
+
+    def test_public_potential_requires_source_in_innermost_shell(self) -> None:
+        brain_r = self.conductor.brain_radius_m
+        for radius in (0.083, brain_r):  # skull compartment; exactly on the brain boundary
+            with self.subTest(source_radius=radius):
+                with self.assertRaises(SourceOutOfBoundsError):
+                    compute_concentric_spheres_potential(
+                        self.electrode, (radius, 0.0, 0.0), self.moment, self.conductor
+                    )
+        inside = compute_concentric_spheres_potential(
+            self.electrode, (0.0799, 0.0, 0.0), self.moment, self.conductor
+        )
+        self.assertTrue(math.isfinite(inside))
+
+    def test_public_potential_requires_electrode_on_outer_surface(self) -> None:
+        engines = (
+            ("homogeneous", lambda e: compute_homogeneous_sphere_potential(e, self.source, self.moment)),
+            (
+                "concentric",
+                lambda e: compute_concentric_spheres_potential(e, self.source, self.moment, self.conductor),
+            ),
+        )
+        for name, evaluate in engines:
+            with self.subTest(engine=name, case="inside the head"):
+                with self.assertRaises(ConductorGeometryError):
+                    evaluate((0.0, 0.0, 0.05))
+            with self.subTest(engine=name, case="outside the head"):
+                with self.assertRaises(ConductorGeometryError):
+                    evaluate((0.0, 0.0, 0.15))
+            with self.subTest(engine=name, case="millimetres"):
+                with self.assertRaises(CoordinateUnitMismatchError):
+                    evaluate((0.0, 0.0, 90.0))
+            with self.subTest(engine=name, case="within placement tolerance"):
+                self.assertTrue(math.isfinite(evaluate((0.0, 0.0, 0.09 + 5.0e-7))))
+
+    def test_builder_requires_sensors_on_scalp_relative_to_conductor_origin(self) -> None:
+        sources = make_synthetic_source_grid(n_sources=4)
+        with self.assertRaises(ConductorGeometryError):
+            build_synthetic_forward_contract(
+                sensor_geometry=make_standard_1020_synthetic_sensors(0.12), source_space=sources
+            )
+
+        shift = (0.01, -0.015, 0.02)
+
+        def moved(points):
+            return tuple(tuple(c + s for c, s in zip(p, shift)) for p in points)
+
+        shifted_conductor = ConductorModel(origin_m=shift)
+        shifted_sources = SourceSpace(positions_m=moved(sources.positions_m))
+        with self.assertRaises(ConductorGeometryError):  # montage still centred on (0, 0, 0)
+            build_synthetic_forward_contract(
+                conductor_model=shifted_conductor,
+                sensor_geometry=self.sensors,
+                source_space=shifted_sources,
+            )
+
+        shifted_sensors = SensorGeometry(
+            channel_names=self.sensors.channel_names, positions_m=moved(self.sensors.positions_m)
+        )
+        base = build_synthetic_forward_contract(sensor_geometry=self.sensors, source_space=sources)
+        relocated = build_synthetic_forward_contract(
+            conductor_model=shifted_conductor,
+            sensor_geometry=shifted_sensors,
+            source_space=shifted_sources,
+        )
+        for row_a, row_b in zip(base.leadfield, relocated.leadfield):
+            for a, b in zip(row_a, row_b):
+                self.assertAlmostEqual(a, b, delta=1e-9)
+
+    # -- numerical stability and internal consistency --------------------------
+
+    def test_multishell_potential_matches_exact_rational_oracle(self) -> None:
+        sigmas = (0.33, 0.0042, 0.33)
+        cases = (
+            ((0.080, 0.085, 0.090), 0.8),
+            ((0.070, 0.085, 0.090), 0.8),
+            ((0.060, 0.080, 0.090), 0.9),
+            ((0.050, 0.075, 0.090), 0.9),
+            ((0.045, 0.070, 0.090), 0.95),
+        )
+        electrode = _surface_point((0.3, 0.5, 0.8))
+        moment = (1.0e-9, -2.0e-9, 3.0e-9)
+        for radii, fraction in cases:
+            with self.subTest(radii=radii, source_fraction=fraction):
+                conductor = ConductorModel(radii_m=radii, sigmas_sm=sigmas)
+                source = tuple(fraction * radii[0] * c for c in (0.48, -0.6, 0.64))
+                expected = _oracle_potential(electrode, source, moment, radii, sigmas)
+                actual = compute_concentric_spheres_potential(electrode, source, moment, conductor)
+                self.assertAlmostEqual(actual / expected, 1.0, delta=1e-9)
+
+    def test_single_shell_and_equal_conductivity_shells_reduce_to_homogeneous_sphere(self) -> None:
+        electrode = _surface_point((0.3, 0.5, 0.8))
+        source = (0.01, -0.02, 0.03)  # inside the 50 mm brain of the equal-shell model below
+        moment = (1.0e-9, -2.0e-9, 3.0e-9)
+        homogeneous = compute_homogeneous_sphere_potential(
+            electrode, source, moment, sphere_radius_m=0.09, conductivity_sm=0.33
+        )
+        one_shell = ConductorModel(
+            model_type=ConductorModelType.SPHERICAL_1SHELL, radii_m=(0.09,), sigmas_sm=(0.33,)
+        )
+        equal_shells = ConductorModel(radii_m=(0.05, 0.08, 0.09), sigmas_sm=(0.33, 0.33, 0.33))
+        for label, conductor in (("1-shell", one_shell), ("3 equal shells", equal_shells)):
+            with self.subTest(model=label):
+                value = compute_concentric_spheres_potential(electrode, source, moment, conductor)
+                self.assertAlmostEqual(value / homogeneous, 1.0, delta=1e-12)
+
+    def test_small_inner_radius_gives_finite_continuous_potential_not_silent_zero(self) -> None:
+        z_electrode = (0.0, 0.0, 0.09)
+        z_moment = (0.0, 0.0, 1.0)
+        centre = {}
+        for brain in (1.0e-4, 1.0e-6):
+            conductor = ConductorModel(radii_m=(brain, 0.085, 0.09))
+            centre[brain] = compute_concentric_spheres_potential(
+                z_electrode, (0.0, 0.0, 0.0), z_moment, conductor
+            )
+            self.assertGreater(centre[brain], 1.0)  # previously exactly 0.0 for brain = 1e-6
+        self.assertAlmostEqual(centre[1.0e-6] / centre[1.0e-4], 1.0, delta=1e-3)
+        for brain in (1.0e-3, 1.0e-4, 1.0e-6):
+            with self.subTest(brain_radius=brain):
+                conductor = ConductorModel(radii_m=(brain, 0.085, 0.09))
+                reference = compute_concentric_spheres_potential(
+                    z_electrode, (0.0, 0.0, 0.0), z_moment, conductor
+                )
+                offset = compute_concentric_spheres_potential(
+                    z_electrode, (0.0, 0.0, 0.5 * brain), z_moment, conductor
+                )
+                self.assertTrue(math.isfinite(offset))
+                self.assertAlmostEqual(offset / reference, 1.0, delta=0.05)
+
+    def test_non_finite_potential_output_rejected(self) -> None:
+        huge = (1.7e308, 0.0, 0.0)
+        with self.assertRaises(ForwardModelContractError):
+            compute_homogeneous_sphere_potential(self.electrode, self.source, huge)
+        with self.assertRaises(ForwardModelContractError):
+            compute_concentric_spheres_potential(self.electrode, self.source, huge, self.conductor)
+        contract = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors, source_space=make_synthetic_source_grid(n_sources=2)
+        )
+        n_col = contract.source_space.n_columns
+        with self.assertRaises(ForwardModelContractError):
+            contract.simulate_scalp_potentials([1.0e308] * n_col)
+        finite = contract.simulate_scalp_potentials([1.0e3] * n_col)
+        self.assertTrue(all(math.isfinite(x) for row in finite for x in row))
+
+    # -- fabrication and silent substitution -----------------------------------
+
+    def test_coordinate_transform_validates_fixed_orientations_before_normalising(self) -> None:
+        for bad in ((0.0, 0.0, 0.0), (3.0, 0.0, 0.0), (float("nan"), 0.0, 0.0)):
+            with self.subTest(orientation=bad):
+                mni = SourceSpace(
+                    positions_m=((0.02, 0.0, 0.0),),
+                    orientations=(bad,),
+                    is_fixed_orientation=True,
+                    coordinate_frame=CoordinateFrame.MNI,
+                )
+                with self.assertRaises(ForwardModelContractError):
+                    build_synthetic_forward_contract(
+                        sensor_geometry=self.sensors, source_space=mni, coord_transform=self.identity
+                    )
+
+        quarter_turn = (
+            (0.0, -1.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+        mni = SourceSpace(
+            positions_m=((0.02, 0.0, 0.0),),
+            orientations=((1.0, 0.0, 0.0),),
+            is_fixed_orientation=True,
+            coordinate_frame=CoordinateFrame.MNI,
+        )
+        result = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors, source_space=mni, coord_transform=quarter_turn
+        )
+        self.assertEqual(result.source_space.coordinate_frame, CoordinateFrame.HEAD)
+        orientation = result.source_space.orientations[0]
+        self.assertAlmostEqual(orientation[0], 0.0, delta=1e-12)
+        self.assertAlmostEqual(orientation[1], 1.0, delta=1e-12)
+
+        free = SourceSpace(
+            positions_m=((0.02, 0.0, 0.0),),
+            orientations=((0.0, 0.0, 0.0),),
+            is_fixed_orientation=False,
+            coordinate_frame=CoordinateFrame.MNI,
+        )
+        free_result = build_synthetic_forward_contract(
+            sensor_geometry=self.sensors, source_space=free, coord_transform=self.identity
+        )
+        self.assertNotEqual(free_result.source_space.orientations, ((0.0, 0.0, 1.0),))
+
+    def _audit_fixture(self):
+        return {
+            "coord_frame": 4,
+            "source_ori": 2,
+            "nsource": 1,
+            "sol": {
+                "data": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [1.0, 0.0, 1.0]],
+                "row_names": ["A", "B", "C", "D"],
+            },
+            "src": [{"rr": [[0.01, 0.0, 0.0]], "inuse": [1]}],
+        }
+
+    def test_audit_aligns_sensor_positions_by_channel_name(self) -> None:
+        chs = [
+            {"ch_name": name, "loc": [x, 0.0, 0.09, 0.0, 0.0, 0.0]}
+            for name, x in (("D", 0.04), ("C", 0.03), ("B", 0.02), ("A", 0.01))
+        ]
+        result = audit_mne_forward_solution(
+            self._audit_fixture(), info={"chs": chs}, expected_conductor=ConductorModel()
+        )
+        by_name = {
+            name: pos[0]
+            for name, pos in zip(
+                result.sensor_geometry.channel_names, result.sensor_geometry.positions_m
+            )
+        }
+        self.assertEqual(by_name, {"A": 0.01, "B": 0.02, "C": 0.03, "D": 0.04})
+        self.assertEqual(result.provenance["sensor_positions"], "info_chs")
+        self.assertEqual(result.provenance["source_positions"], "mne_src")
+        self.assertEqual(result.warnings, ())
+
+    def test_audit_flags_placeholder_geometry_instead_of_presenting_it_as_measured(self) -> None:
+        fwd = self._audit_fixture()
+        no_info = audit_mne_forward_solution(fwd)
+        self.assertEqual(no_info.provenance["sensor_positions"], "placeholder")
+        self.assertTrue(
+            any("sensor" in w.lower() and "placeholder" in w.lower() for w in no_info.warnings)
+        )
+
+        chs = [{"ch_name": n, "loc": [0.01, 0.0, 0.09, 0.0, 0.0, 0.0]} for n in ("A", "B")]
+        partial = audit_mne_forward_solution(fwd, info={"chs": chs})
+        self.assertEqual(partial.provenance["sensor_positions"], "placeholder")
+        self.assertEqual(
+            len(partial.sensor_geometry.positions_m), len(partial.sensor_geometry.channel_names)
+        )
+        self.assertTrue(any("C" in w and "D" in w for w in partial.warnings))
+
+        without_vertices = dict(fwd, src=[])
+        r = audit_mne_forward_solution(without_vertices)
+        self.assertEqual(r.provenance["source_positions"], "placeholder")
+        self.assertTrue(
+            any("source" in w.lower() and "placeholder" in w.lower() for w in r.warnings)
+        )
+
+    def test_audit_labels_default_conductor_as_placeholder(self) -> None:
+        fwd = self._audit_fixture()
+        default = audit_mne_forward_solution(fwd)
+        self.assertEqual(default.provenance["conductor_model"], "default_placeholder")
+        self.assertTrue(
+            any("conductor" in w.lower() and "placeholder" in w.lower() for w in default.warnings)
+        )
+        expected = ConductorModel(radii_m=(0.07, 0.08, 0.09))
+        given = audit_mne_forward_solution(fwd, expected_conductor=expected)
+        self.assertEqual(given.provenance["conductor_model"], "expected_conductor")
+        self.assertEqual(given.conductor_model, expected)
+        self.assertFalse(any("conductor" in w.lower() for w in given.warnings))
+
+    # -- stable error types for malformed leadfield matrices -------------------
+
+    def test_leadfield_helpers_reject_ragged_and_non_finite_matrices(self) -> None:
+        helpers = (
+            ("apply_average_reference", apply_average_reference),
+            ("verify_average_reference_invariant", verify_average_reference_invariant),
+            ("compute_leadfield_diagnostics", lambda m: compute_leadfield_diagnostics(m, False, 1)),
+            ("apply_channel_reference", lambda m: apply_channel_reference(m, ("a", "b"), "a")),
+        )
+        malformed = (
+            ("ragged short", [[1.0, 2.0], [3.0]]),
+            ("ragged long", [[1.0, 2.0], [3.0, 4.0, 5.0]]),
+            ("empty rows", [[], []]),
+        )
+        for name, helper in helpers:
+            for label, matrix in malformed:
+                with self.subTest(helper=name, case=label):
+                    with self.assertRaises(LeadfieldDimensionMismatchError):
+                        helper(matrix)
+            for bad in (float("nan"), float("inf")):
+                with self.subTest(helper=name, value=bad):
+                    with self.assertRaises(ForwardModelContractError):
+                        helper([[bad, 1.0], [1.0, 1.0]])
+        with self.assertRaises(LeadfieldDimensionMismatchError):
+            apply_channel_reference([[1.0], [2.0]], ("a", "b", "c"), "a")
+
+    # -- malformed-argument fuzz findings ---------------------------------------
+
+    def test_malformed_container_arguments_raise_contract_errors(self) -> None:
+        import dual_engine.forward_model_contract as fmc
+
+        matrix = [[1.0, 2.0], [3.0, 4.0]]
+        cases = {
+            "average_reference_scalar": lambda: fmc.apply_average_reference(5),
+            "verify_average_scalar": lambda: fmc.verify_average_reference_invariant(5),
+            "channel_ref_names_none": lambda: fmc.apply_channel_reference(matrix, None, "a"),
+            "channel_ref_names_scalar": lambda: fmc.apply_channel_reference(matrix, 5, "a"),
+            "verify_channel_names_none": lambda: fmc.verify_channel_reference_invariant(matrix, None, "a"),
+            "verify_average_bad_tolerance": lambda: fmc.verify_average_reference_invariant(matrix, (1.0,)),
+            "verify_average_nan_tolerance": lambda: fmc.verify_average_reference_invariant(matrix, float("nan")),
+            "verify_average_negative_tolerance": lambda: fmc.verify_average_reference_invariant(matrix, -1.0),
+            "verify_channel_bad_tolerance": lambda: fmc.verify_channel_reference_invariant(matrix, ("a", "b"), "a", b"x"),
+            "sources_validate_string_radii_conductor": lambda: fmc.SourceSpace(
+                positions_m=((0.01, 0.0, 0.0),), orientations=None, is_fixed_orientation=False,
+                coordinate_frame=fmc.CoordinateFrame.HEAD,
+            ).validate(fmc.ConductorModel(radii_m=("0.08", "0.085", "0.09"))),
+            "audit_row_names_scalar": lambda: fmc.audit_mne_forward_solution(
+                {"coord_frame": 4, "sol": {"data": [[1.0, 2.0, 3.0]], "row_names": 5}, "nsource": 1, "source_ori": 2, "src": []},
+                None,
+                None,
+            ),
+            "audit_inuse_longer_than_rr": lambda: fmc.audit_mne_forward_solution(
+                {
+                    "coord_frame": 4,
+                    "sol": {"data": [[1.0]], "row_names": ["a"]},
+                    "nsource": 1,
+                    "source_ori": 1,
+                    "src": [{"rr": [[0.01, 0.0, 0.0]], "inuse": [1, 1]}],
+                },
+                None,
+                None,
+            ),
+            "audit_nsource_string": lambda: fmc.audit_mne_forward_solution(
+                {"coord_frame": 4, "sol": {"data": [[1.0]], "row_names": ["a"]}, "nsource": "x", "source_ori": 1, "src": []},
+                None,
+                None,
+            ),
+            "affine_none": lambda: fmc.validate_affine_transform(None),
+            "affine_scalar_rows": lambda: fmc.validate_affine_transform([1, 2, 3, 4]),
+            "source_grid_huge_count": lambda: fmc.make_synthetic_source_grid(2 ** 70),
+            "series_terms_unbounded": lambda: fmc.compute_homogeneous_sphere_potential(
+                (0.0, 0.0, 0.09), (0.0, 0.0, 0.02), (0.0, 0.0, 1e-8), 0.09, 0.33, 10 ** 9
+            ),
+            "audit_scalar_leadfield": lambda: fmc.audit_mne_forward_solution(
+                {"coord_frame": 4, "sol": {"data": 5, "row_names": ["a"]}, "nsource": 1, "source_ori": 2, "src": []},
+                None,
+                None,
+            ),
+        }
+        for label, call in cases.items():
+            with self.subTest(case=label):
+                with self.assertRaises(ForwardModelContractError):
+                    call()
+
+    def test_leadfield_diagnostics_overflowing_magnitudes_fail_closed(self) -> None:
+        import dual_engine.forward_model_contract as fmc
+
+        huge = [[1e308, 1e308, 1e308], [-1e308, 1e308, 1e308], [1e308, -1e308, 1e308]]
+        with self.assertRaises(ForwardModelContractError):
+            fmc.compute_leadfield_diagnostics(huge, False, 3)
+
+    # -- claims -----------------------------------------------------------------
+
+    def test_docs_and_source_do_not_claim_physical_verification(self) -> None:
+        module_source = (_REPO_ROOT / "dual_engine" / "forward_model_contract.py").read_text(encoding="utf-8")
+        docs = (_REPO_ROOT / "docs" / "forward_model_contract.md").read_text(encoding="utf-8")
+        for text, label in ((module_source, "module"), (docs, "docs")):
+            with self.subTest(text=label):
+                lowered = text.lower()
+                self.assertNotIn("verified physical effect", lowered)
+                self.assertNotIn("exact spherical boundary-value solution", lowered)
 
 
 if __name__ == "__main__":

@@ -23,12 +23,12 @@ SCIENTIFIC AND ENGINEERING GUARDRAILS:
 
 from __future__ import annotations
 
-import copy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 import json
 import math
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+import numbers
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 # -----------------------------------------------------------------------------
 # Unit and Framing Constants
@@ -43,6 +43,19 @@ CANONICAL_ANGLE_UNIT: str = "rad"
 MAX_PLAUSIBLE_SCALP_RADIUS_M: float = 0.20
 MIN_PLAUSIBLE_SCALP_RADIUS_M: float = 0.04
 MILLIMETER_THRESHOLD_M: float = 1.0  # Coordinates > 1.0m indicate millimeter units
+
+# The analytic engines evaluate the potential *on the outer conductor surface*, so an
+# electrode must sit on that surface (distance from the conductor origin equals the outer
+# radius). The tolerance is a placement tolerance for the synthetic fixture, not a claim
+# about electrode localisation accuracy.
+ELECTRODE_SURFACE_TOLERANCE_M: float = 1.0e-6
+
+# Default Legendre-series length shared by the homogeneous and concentric engines so that a
+# one-shell concentric model reproduces the homogeneous engine. The truncation error scales
+# roughly as (r_source / r_outer) ** n_max_terms; it is a numerical cutoff, not a physical claim.
+DEFAULT_SERIES_TERMS: int = 60
+MAX_SERIES_TERMS: int = 10_000
+MAX_SYNTHETIC_SOURCES: int = 100_000
 
 DEFAULT_SCALP_RADIUS_M: float = 0.090
 DEFAULT_SKULL_RADIUS_M: float = 0.085
@@ -100,12 +113,18 @@ def _require_finite(
     *,
     exc_cls: type = ForwardModelContractError,
 ) -> float:
-    """Return ``value`` as float or raise ``exc_cls`` when non-finite or boolean."""
-    if isinstance(value, bool):
-        raise exc_cls(f"{label} must be a finite real number (not bool); got {value!r}.")
+    """Return ``value`` as float or raise ``exc_cls`` when non-finite, boolean, or not a real number.
+
+    Numeric strings (``"0.33"``) and ``None`` are rejected rather than coerced: a coerced
+    string validates here and then fails later in unrelated arithmetic with a bare ``TypeError``.
+    """
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise exc_cls(
+            f"{label} must be a finite real number (not bool, str, or None); got {value!r}."
+        )
     try:
         number = float(value)
-    except (TypeError, ValueError) as exc:
+    except (OverflowError, ValueError) as exc:
         raise exc_cls(f"{label} must be a finite real number; got {value!r}.") from exc
     if not math.isfinite(number):
         raise exc_cls(f"{label} must be finite; got {number!r}.")
@@ -119,13 +138,138 @@ def _require_finite_vec3(
     exc_cls: type = ForwardModelContractError,
 ) -> Tuple[float, float, float]:
     """Validate a length-3 finite Cartesian vector."""
-    if len(vec) != 3:
-        raise exc_cls(f"{label} must be a length-3 vector; got length {len(vec)}.")
+    try:
+        length = len(vec)
+    except TypeError as exc:
+        raise exc_cls(f"{label} must be a length-3 vector; got {vec!r}.") from exc
+    if length != 3:
+        raise exc_cls(f"{label} must be a length-3 vector; got length {length}.")
     return (
         _require_finite(vec[0], f"{label}[0]", exc_cls=exc_cls),
         _require_finite(vec[1], f"{label}[1]", exc_cls=exc_cls),
         _require_finite(vec[2], f"{label}[2]", exc_cls=exc_cls),
     )
+
+
+def _require_unit_orientations(
+    orientations: Optional[Sequence[Sequence[float]]],
+    expected_count: int,
+) -> None:
+    """Fail closed unless there is exactly one finite, unit-norm orientation per source."""
+    if orientations is None:
+        raise ForwardModelContractError(
+            "Fixed orientation requested but no orientation vectors provided."
+        )
+    if len(orientations) != expected_count:
+        raise ForwardModelContractError(
+            f"Orientation count ({len(orientations)}) does not match "
+            f"source count ({expected_count})."
+        )
+    for i, ori in enumerate(orientations):
+        finite_ori = _require_finite_vec3(ori, f"Fixed orientation vector at index {i}")
+        norm = math.hypot(*finite_ori)
+        if not math.isfinite(norm) or abs(norm - 1.0) > 1e-4:
+            raise ForwardModelContractError(
+                f"Fixed orientation vector at index {i} must be unit norm; got {norm}."
+            )
+
+
+def _require_leadfield_matrix(
+    leadfield: Sequence[Sequence[float]],
+    label: str = "Leadfield",
+) -> List[List[float]]:
+    """Return a rectangular, finite copy of ``leadfield`` or raise a contract error.
+
+    Ragged or empty-row matrices raise ``LeadfieldDimensionMismatchError`` (never a bare
+    ``IndexError`` and never a silent truncation); non-finite entries raise
+    ``ForwardModelContractError``.
+    """
+    try:
+        rows = [list(row) for row in leadfield]
+    except TypeError as exc:
+        raise LeadfieldDimensionMismatchError(f"{label} must be a matrix (sequence of rows).") from exc
+    if not rows:
+        raise LeadfieldDimensionMismatchError(f"{label} has zero rows.")
+    n_cols = len(rows[0])
+    if n_cols == 0:
+        raise LeadfieldDimensionMismatchError(f"{label} has zero columns.")
+    for r_idx, row in enumerate(rows):
+        if len(row) != n_cols:
+            raise LeadfieldDimensionMismatchError(
+                f"{label} is ragged: row {r_idx} has {len(row)} columns, expected {n_cols}."
+            )
+    return [
+        [_require_finite(x, f"{label}[{r_idx}][{c_idx}]") for c_idx, x in enumerate(row)]
+        for r_idx, row in enumerate(rows)
+    ]
+
+
+def _require_series_terms(n_max_terms: Any) -> int:
+    """Validate the Legendre series length (a positive integer, not a bool)."""
+    if (
+        isinstance(n_max_terms, bool)
+        or not isinstance(n_max_terms, numbers.Integral)
+        or n_max_terms < 1
+    ):
+        raise ForwardModelContractError(f"n_max_terms must be a positive integer; got {n_max_terms!r}.")
+    if n_max_terms > MAX_SERIES_TERMS:
+        raise ForwardModelContractError(
+            f"n_max_terms={n_max_terms} exceeds MAX_SERIES_TERMS={MAX_SERIES_TERMS}."
+        )
+    return int(n_max_terms)
+
+
+def _require_tolerance(tolerance: Any) -> float:
+    """Validate a non-negative finite comparison tolerance."""
+    value = _require_finite(tolerance, "tolerance")
+    if value < 0.0:
+        raise ForwardModelContractError(f"tolerance must be non-negative; got {tolerance!r}.")
+    return value
+
+
+def _require_channel_names(channel_names: Any) -> Tuple[str, ...]:
+    """Return channel names as a tuple, or raise a contract error for non-sequences."""
+    if isinstance(channel_names, (str, bytes)) or channel_names is None:
+        raise ChannelOrderMismatchError(f"channel_names must be a sequence of names; got {channel_names!r}.")
+    try:
+        return tuple(channel_names)
+    except TypeError as exc:
+        raise ChannelOrderMismatchError(
+            f"channel_names must be a sequence of names; got {channel_names!r}."
+        ) from exc
+
+
+def _require_electrode_on_surface(distance_m: float, surface_radius_m: float) -> None:
+    """Require an electrode to lie on the outer conductor surface.
+
+    The analytic engines return the *surface* potential, which depends only on the electrode
+    direction. An electrode at any other radius (or in millimetres) would silently receive the
+    surface value, so it is rejected instead.
+    """
+    if not math.isfinite(distance_m) or distance_m <= 0.0:
+        raise ConductorGeometryError(
+            f"Electrode position norm must be strictly positive and finite; got {distance_m!r}."
+        )
+    if distance_m > MILLIMETER_THRESHOLD_M:
+        raise CoordinateUnitMismatchError(
+            f"Electrode distance {distance_m:.2f}m from the conductor origin > 1.0m; "
+            "positions must be in meters (m), not millimeters (mm)."
+        )
+    if abs(distance_m - surface_radius_m) > ELECTRODE_SURFACE_TOLERANCE_M:
+        raise ConductorGeometryError(
+            f"Electrode must lie on the outer conductor surface (radius {surface_radius_m}m, "
+            f"tolerance {ELECTRODE_SURFACE_TOLERANCE_M}m); got distance {distance_m!r}m "
+            "from the conductor origin."
+        )
+
+
+def _require_finite_potential(value: float, what: str) -> float:
+    """Return ``value`` or raise when the computed potential is not finite."""
+    if not math.isfinite(value):
+        raise ForwardModelContractError(
+            f"{what} is not finite ({value!r}); the inputs overflow or underflow float64."
+        )
+    return value
 
 
 # -----------------------------------------------------------------------------
@@ -317,6 +461,8 @@ class SourceSpace:
         if self.coordinate_frame == CoordinateFrame.UNKNOWN:
             raise CoordinateFrameMismatchError("Coordinate frame UNKNOWN is rejected; must be HEAD or MNI.")
 
+        if conductor is not None:
+            conductor.validate()
         brain_r = conductor.brain_radius_m if conductor is not None else DEFAULT_BRAIN_RADIUS_M
         origin = (
             _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
@@ -348,22 +494,7 @@ class SourceSpace:
                 )
 
         if self.is_fixed_orientation:
-            if self.orientations is None:
-                raise ForwardModelContractError(
-                    "Fixed orientation requested but no orientation vectors provided."
-                )
-            if len(self.orientations) != len(self.positions_m):
-                raise ForwardModelContractError(
-                    f"Orientation count ({len(self.orientations)}) does not match "
-                    f"source count ({len(self.positions_m)})."
-                )
-            for i, ori in enumerate(self.orientations):
-                finite_ori = _require_finite_vec3(ori, f"Fixed orientation vector at index {i}")
-                norm = math.sqrt(sum(o * o for o in finite_ori))
-                if not math.isfinite(norm) or abs(norm - 1.0) > 1e-4:
-                    raise ForwardModelContractError(
-                        f"Fixed orientation vector at index {i} must be unit norm; got {norm}."
-                    )
+            _require_unit_orientations(self.orientations, len(self.positions_m))
 
     @property
     def n_sources(self) -> int:
@@ -493,7 +624,9 @@ class ForwardModelContractResult:
                 row = self.leadfield[i]
                 for j in range(n_col):
                     row_sum += row[j] * finite_q[j]
-                v_t[i] = row_sum
+                v_t[i] = _require_finite_potential(
+                    row_sum, f"Simulated potential at step {t_idx}, channel {i}"
+                )
             out_potentials.append(v_t)
 
         return out_potentials
@@ -541,12 +674,17 @@ def compute_homogeneous_sphere_potential(
     dipole_moment_am: Tuple[float, float, float],
     sphere_radius_m: float = DEFAULT_SCALP_RADIUS_M,
     conductivity_sm: float = DEFAULT_SCALP_SIGMA,
-    n_max_terms: int = 50,
+    n_max_terms: int = DEFAULT_SERIES_TERMS,
 ) -> float:
-    """Analytic potential at sphere surface due to a current dipole in a homogeneous sphere.
+    """Series potential at the sphere surface due to a current dipole in a homogeneous sphere.
 
-    Uses the standard Legendre series expansion (Nunez & Srinivasan 2006, Frank 1952).
-    Linear in dipole_moment_am, unconditionally convergent for r_source < sphere_radius.
+    Uses the standard Legendre series expansion (Nunez & Srinivasan 2006, Frank 1952),
+    truncated at ``n_max_terms`` (the truncation error scales roughly as
+    ``(r_source / sphere_radius) ** n_max_terms``). Linear in ``dipole_moment_am``.
+
+    Contract: the electrode must lie on the sphere surface (``|electrode| == sphere_radius_m``
+    within ``ELECTRODE_SURFACE_TOLERANCE_M``), the source must lie strictly inside it, and the
+    returned potential is always finite (otherwise ``ForwardModelContractError``).
     """
     electrode_pos_m = _require_finite_vec3(electrode_pos_m, "electrode_pos_m")
     source_pos_m = _require_finite_vec3(source_pos_m, "source_pos_m")
@@ -561,18 +699,19 @@ def compute_homogeneous_sphere_potential(
         raise ConductorGeometryError(f"conductivity_sm must be positive; got {conductivity_sm}.")
     if sphere_radius_m <= 0.0:
         raise ConductorGeometryError(f"sphere_radius_m must be positive; got {sphere_radius_m}.")
+    n_max_terms = _require_series_terms(n_max_terms)
 
-    rs = math.sqrt(sum(p * p for p in source_pos_m))
-    re = math.sqrt(sum(p * p for p in electrode_pos_m))
-    if not math.isfinite(re) or re <= 0.0:
-        raise ConductorGeometryError(
-            f"Electrode position norm must be strictly positive and finite; got {re!r}."
-        )
+    rs = math.hypot(*source_pos_m)
+    re = math.hypot(*electrode_pos_m)
+    _require_electrode_on_surface(re, sphere_radius_m)
 
-    # Center dipole limit (analytic exact)
+    # Center dipole limit (closed form)
     if rs < 1e-12:
         re_dot_q = sum(electrode_pos_m[i] * dipole_moment_am[i] for i in range(3))
-        return 3.0 * re_dot_q / (4.0 * math.pi * conductivity_sm * (sphere_radius_m ** 3))
+        return _require_finite_potential(
+            3.0 * re_dot_q / (4.0 * math.pi * conductivity_sm * (sphere_radius_m ** 3)),
+            "Homogeneous-sphere potential",
+        )
 
     a = rs / sphere_radius_m
     if a >= 1.0:
@@ -616,7 +755,48 @@ def compute_homogeneous_sphere_potential(
             break
 
     v = (sum_r + sum_t) / (4.0 * math.pi * conductivity_sm * (sphere_radius_m ** 2))
-    return v
+    return _require_finite_potential(v, "Homogeneous-sphere potential")
+
+
+def _concentric_shell_coefficient(
+    n: int,
+    radii: Sequence[float],
+    sigmas: Sequence[float],
+) -> float:
+    """Order-``n`` outer-surface coefficient ``c_n`` of a concentric multi-shell conductor.
+
+    ``c_n`` is the factor by which a homogeneous sphere (conductivity ``sigmas[-1]``,
+    radius ``radii[-1]``) is modified by the inner shells, for a source in the innermost
+    shell. It is exactly 1 for a single shell and for equal conductivities.
+
+    Inside shell ``j`` the potential of order ``n`` is ``B r^-(n+1) (1 + v (r / r_j)^(2n+1))``
+    with ``v = A r_j^(2n+1) / B``. The recursion starts from the no-flux condition at the
+    scalp (``v = (n + 1) / n``) and walks inward through each interface, using continuity of
+    the potential and of ``sigma * dV/dr``. Every factor applied on the way is a power of
+    ``r_j / r_{j+1} < 1`` and every ``v + 1`` is positive, so no intermediate quantity grows.
+    The classic outward transfer-matrix product multiplies powers of ``r_scalp / r_j`` and
+    cancels terms of order ``(r_scalp / r_1) ** (2 n + 1)``, which destroys all precision for
+    small inner radii (it returned exactly 0.0 or ~1e9 V for a few-millimetre brain).
+    """
+    n_layers = len(radii)
+    if n_layers == 1:
+        return 1.0
+    v_outer = (n + 1.0) / n  # no-flux boundary at the scalp surface
+    factor = 1.0
+    for j in range(n_layers - 2, -1, -1):
+        # value of v at the inner boundary of layer j + 1 (= the interface at radii[j])
+        v_inner = v_outer * (radii[j] / radii[j + 1]) ** (2 * n + 1)
+        h_outer = (n * v_inner - (n + 1.0)) / (v_inner + 1.0)
+        h = (sigmas[j + 1] / sigmas[j]) * h_outer
+        v_outer = (n + 1.0 + h) / (n - h)  # v at the outer boundary of layer j
+        factor *= (v_outer + 1.0) / (v_inner + 1.0)
+    coefficient = factor * (sigmas[-1] / sigmas[0])
+    if not math.isfinite(coefficient):
+        raise ConductorGeometryError(
+            f"Multi-shell coefficient for order {n} is not finite for radii={tuple(radii)} "
+            f"and sigmas={tuple(sigmas)}."
+        )
+    return coefficient
 
 
 def compute_concentric_spheres_potential(
@@ -624,16 +804,29 @@ def compute_concentric_spheres_potential(
     source_pos_m: Tuple[float, float, float],
     dipole_moment_am: Tuple[float, float, float],
     conductor: ConductorModel,
-    n_max_terms: int = 60,
+    n_max_terms: int = DEFAULT_SERIES_TERMS,
 ) -> float:
-    """Compute surface potential for an arbitrary concentric spherical conductor model.
+    """Series surface potential for a concentric spherical conductor with a source in the core.
 
-    Evaluates the exact spherical boundary-value solution across all conductor layers
-    using radial transfer matrices. Handles single-shell and multi-shell models,
-    guaranteeing that every declared layer radius and conductivity exerts a verified
-    physical effect on the surface potential.
+    Evaluates the analytic spherical boundary-value series across all conductor layers.
+    The per-order layer coefficients come from :func:`_concentric_shell_coefficient`, an
+    inward recursion that stays well conditioned for any admissible radii and conductivities.
+    The series is truncated at ``n_max_terms``; the truncation error scales roughly as
+    ``(r_source / r_outer) ** n_max_terms``.
+
+    Contract (all violations raise ``ForwardModelContractError`` subclasses):
+
+    * the electrode lies on the outer surface, measured from ``conductor.origin_m``
+      (``ELECTRODE_SURFACE_TOLERANCE_M``);
+    * the source lies strictly inside the innermost (brain) shell, which is the only
+      compartment this formula is derived for;
+    * the returned potential is finite.
+
+    Layer-by-layer sensitivity to radii and conductivities is a regression check on this
+    implementation. It is not validation against measured data or a numerical head model.
     """
     conductor.validate()
+    n_max_terms = _require_series_terms(n_max_terms)
     electrode_pos_m = _require_finite_vec3(electrode_pos_m, "electrode_pos_m")
     source_pos_m = _require_finite_vec3(source_pos_m, "source_pos_m")
     dipole_moment_am = _require_finite_vec3(dipole_moment_am, "dipole_moment_am")
@@ -650,60 +843,29 @@ def compute_concentric_spheres_potential(
     )
     radii = conductor.radii_m
     sigmas = conductor.sigmas_sm
-    K = len(radii)
     r_scalp = radii[-1]
     sigma_scalp = sigmas[-1]
 
-    rs = math.sqrt(sum(p * p for p in source_pos_m))
-    re = math.sqrt(sum(p * p for p in electrode_pos_m))
-    if not math.isfinite(re) or re <= 0.0:
-        raise ConductorGeometryError(
-            f"Electrode position norm must be strictly positive and finite; got {re!r}."
+    rs = math.hypot(*source_pos_m)
+    re = math.hypot(*electrode_pos_m)
+    _require_electrode_on_surface(re, r_scalp)
+    if rs >= radii[0]:
+        raise SourceOutOfBoundsError(
+            f"Source radius {rs:.4f}m from the conductor origin must be strictly inside the "
+            f"innermost shell radius {radii[0]:.4f}m."
         )
 
-    def _get_cn(n: int) -> float:
-        if K == 1:
-            return 1.0
-        # Scaled transfer matrix product to prevent numerical overflow/underflow
-        M = [[1.0, 0.0], [0.0, 1.0]]
-        for k in range(K - 1):
-            rk = radii[k]
-            sin = sigmas[k]
-            sout = sigmas[k + 1]
-            ratio = sin / sout
-            c = 1.0 / (2 * n + 1)
-            r_over_R = (rk / r_scalp) ** (2 * n + 1)
-            R_over_r = (r_scalp / rk) ** (2 * n + 1)
-            t11 = c * ((n + 1) + n * ratio)
-            t12 = c * (n + 1) * (1.0 - ratio) * R_over_r
-            t21 = c * n * (1.0 - ratio) * r_over_R
-            t22 = c * (n + (n + 1) * ratio)
-            Tk = [[t11, t12], [t21, t22]]
-            M = [
-                [Tk[0][0] * M[0][0] + Tk[0][1] * M[1][0], Tk[0][0] * M[0][1] + Tk[0][1] * M[1][1]],
-                [Tk[1][0] * M[0][0] + Tk[1][1] * M[1][0], Tk[1][0] * M[0][1] + Tk[1][1] * M[1][1]],
-            ]
-        m11, m12, m21, m22 = M[0][0], M[0][1], M[1][0], M[1][1]
-        den = n * m11 - (n + 1) * m21
-        if abs(den) < 1e-30:
-            return 0.0
-        num = (n + 1) * m22 - n * m12
-        A1_hat = num / den
-        AK_hat = m11 * A1_hat + m12
-        return (n / (n + 1)) * AK_hat * (sigmas[-1] / sigmas[0])
+    c1 = _concentric_shell_coefficient(1, radii, sigmas)
 
-    c1 = _get_cn(1)
-
-    # Center dipole limit (exact analytic expression)
+    # Center dipole limit (closed form)
     if rs < 1e-12:
         re_dot_q = sum(electrode_pos_m[i] * dipole_moment_am[i] for i in range(3))
-        return c1 * 3.0 * re_dot_q / (4.0 * math.pi * sigma_scalp * (r_scalp ** 3))
+        return _require_finite_potential(
+            c1 * 3.0 * re_dot_q / (4.0 * math.pi * sigma_scalp * (r_scalp ** 3)),
+            "Concentric-sphere potential",
+        )
 
     a = rs / r_scalp
-    if a >= 1.0:
-        raise SourceOutOfBoundsError(
-            f"Source radius {rs:.4f}m must be strictly inside scalp radius {r_scalp:.4f}m."
-        )
 
     re_hat = [electrode_pos_m[i] / re for i in range(3)]
     rs_hat = [source_pos_m[i] / rs for i in range(3)]
@@ -730,7 +892,7 @@ def compute_concentric_spheres_potential(
             pn_prime = n * (p0 - cos_th * p1) / one_minus_x2
 
         an *= a
-        cn = _get_cn(n)
+        cn = _concentric_shell_coefficient(n, radii, sigmas)
         coeff_r = (2 * n + 1) / n
         coeff_t = (2 * n + 1) / (n * (n + 1))
         sum_r += coeff_r * an * cn * p2 * qr
@@ -741,7 +903,7 @@ def compute_concentric_spheres_potential(
             break
 
     v = (sum_r + sum_t) / (4.0 * math.pi * sigma_scalp * (r_scalp ** 2))
-    return v
+    return _require_finite_potential(v, "Concentric-sphere potential")
 
 
 def compute_3shell_sphere_potential(
@@ -752,9 +914,9 @@ def compute_3shell_sphere_potential(
 ) -> float:
     """Compute surface potential for a 3-shell concentric sphere conductor model.
 
-    Evaluates the full physical multi-shell transfer matrix across all 3 layers
-    (brain, skull, scalp), ensuring every layer radius and conductivity exerts
-    a verified physical effect on surface potentials.
+    Delegates to :func:`compute_concentric_spheres_potential` for a model with exactly three
+    layers (brain, skull, scalp); every layer radius and conductivity enters the result, which
+    the tests check as a sensitivity property of this synthetic implementation.
     """
     conductor.validate()
     if len(conductor.radii_m) != 3 or conductor.model_type != ConductorModelType.SPHERICAL_3SHELL:
@@ -783,18 +945,22 @@ def apply_channel_reference(
 
     The row corresponding to reference_channel will be identically zero.
     """
+    channel_names = _require_channel_names(channel_names)
     if reference_channel not in channel_names:
         raise ChannelOrderMismatchError(
             f"Reference channel '{reference_channel}' not found in channel names."
         )
+    matrix = _require_leadfield_matrix(leadfield)
+    if len(channel_names) != len(matrix):
+        raise LeadfieldDimensionMismatchError(
+            f"Channel count ({len(channel_names)}) does not match leadfield rows ({len(matrix)})."
+        )
     ref_idx = list(channel_names).index(reference_channel)
-    ref_row = leadfield[ref_idx]
-    n_ch = len(leadfield)
+    ref_row = matrix[ref_idx]
     n_col = len(ref_row)
 
     projected: List[List[float]] = []
-    for i in range(n_ch):
-        row = leadfield[i]
+    for row in matrix:
         projected.append([row[j] - ref_row[j] for j in range(n_col)])
 
     return projected
@@ -807,11 +973,18 @@ def verify_channel_reference_invariant(
     tolerance: float = 1e-12,
 ) -> Tuple[bool, float]:
     """Verify that the reference channel row is identically zero within tolerance."""
+    tolerance = _require_tolerance(tolerance)
+    channel_names = _require_channel_names(channel_names)
     if reference_channel not in channel_names:
         return False, float("inf")
+    matrix = _require_leadfield_matrix(leadfield)
+    if len(channel_names) != len(matrix):
+        raise LeadfieldDimensionMismatchError(
+            f"Channel count ({len(channel_names)}) does not match leadfield rows ({len(matrix)})."
+        )
     ref_idx = list(channel_names).index(reference_channel)
-    ref_row = leadfield[ref_idx]
-    max_err = max(abs(x) for x in ref_row) if ref_row else 0.0
+    ref_row = matrix[ref_idx]
+    max_err = max(abs(x) for x in ref_row)
     return max_err <= tolerance, max_err
 
 
@@ -819,10 +992,12 @@ def validate_affine_transform(
     transform: Sequence[Sequence[float]],
 ) -> None:
     """Validate 4x4 homogeneous affine coordinate transformation matrix."""
-    if len(transform) != 4 or any(len(r) != 4 for r in transform):
-        raise CoordinateFrameMismatchError(
-            f"Coordinate transform must be 4x4 matrix; got shape ({len(transform)}, ...)."
-        )
+    try:
+        shape_ok = len(transform) == 4 and all(len(r) == 4 for r in transform)
+    except TypeError:
+        shape_ok = False
+    if not shape_ok:
+        raise CoordinateFrameMismatchError("Coordinate transform must be a 4x4 matrix of numbers.")
     m = [
         [
             _require_finite(
@@ -877,14 +1052,18 @@ def apply_average_reference(
 
     Each column of the resulting matrix sums exactly to zero.
     """
-    n_rows = len(leadfield)
-    if n_rows == 0:
-        return []
-    n_cols = len(leadfield[0])
+    try:
+        if len(leadfield) == 0:
+            return []
+    except TypeError:
+        pass
+    matrix = _require_leadfield_matrix(leadfield)
+    n_rows = len(matrix)
+    n_cols = len(matrix[0])
 
     # Compute column means
     col_means = [0.0] * n_cols
-    for row in leadfield:
+    for row in matrix:
         for j in range(n_cols):
             col_means[j] += row[j]
     for j in range(n_cols):
@@ -892,7 +1071,7 @@ def apply_average_reference(
 
     # Subtract column mean from each element
     projected: List[List[float]] = []
-    for row in leadfield:
+    for row in matrix:
         projected.append([row[j] - col_means[j] for j in range(n_cols)])
 
     return projected
@@ -903,14 +1082,19 @@ def verify_average_reference_invariant(
     tolerance: float = 1e-10,
 ) -> Tuple[bool, float]:
     """Verify that every column of the leadfield sums to zero within tolerance."""
-    n_rows = len(leadfield)
-    if n_rows == 0:
-        return True, 0.0
-    n_cols = len(leadfield[0])
+    tolerance = _require_tolerance(tolerance)
+    try:
+        if len(leadfield) == 0:
+            return True, 0.0
+    except TypeError:
+        pass
+    matrix = _require_leadfield_matrix(leadfield)
+    n_rows = len(matrix)
+    n_cols = len(matrix[0])
 
     max_col_error = 0.0
     for j in range(n_cols):
-        col_sum = sum(leadfield[i][j] for i in range(n_rows))
+        col_sum = sum(matrix[i][j] for i in range(n_rows))
         max_col_error = max(max_col_error, abs(col_sum))
 
     return max_col_error <= tolerance, max_col_error
@@ -970,10 +1154,13 @@ def compute_leadfield_diagnostics(
     reference_channel: Optional[str] = None,
     channel_names: Optional[Sequence[str]] = None,
 ) -> LeadfieldDiagnostics:
-    """Compute comprehensive numerical diagnostics for a leadfield matrix."""
+    """Compute comprehensive numerical diagnostics for a leadfield matrix.
+
+    The matrix must be rectangular and finite; otherwise a ``ForwardModelContractError``
+    subclass is raised (never a bare ``IndexError`` or a silent truncation).
+    """
+    leadfield = _require_leadfield_matrix(leadfield)
     n_ch = len(leadfield)
-    if n_ch == 0:
-        raise LeadfieldDimensionMismatchError("Leadfield has zero rows.")
     n_col = len(leadfield[0])
 
     # Check zero-sum column invariant
@@ -991,6 +1178,10 @@ def compute_leadfield_diagnostics(
 
     # Channel Frobenius norms
     channel_norms = tuple(math.sqrt(sum(x * x for x in row)) for row in leadfield)
+    if not all(math.isfinite(n) for n in channel_norms):
+        raise ForwardModelContractError(
+            "Leadfield magnitudes overflow double precision; rescale (units must be V/(A*m))."
+        )
     # If channel referenced, evaluate min_norm across active non-reference channels
     if is_ch_ref and reference_channel is not None and channel_names is not None:
         ref_idx = list(channel_names).index(reference_channel)
@@ -1031,7 +1222,7 @@ def compute_leadfield_diagnostics(
     # Average off-diagonal correlation of normalized columns
     crosstalk = 0.0
     if n_col > 1:
-        col_norms = [math.sqrt(sum(leadfield[r][c] ** 2 for r in range(n_ch))) for c in range(n_col)]
+        col_norms = [math.sqrt(sum(leadfield[r][c] * leadfield[r][c] for r in range(n_ch))) for c in range(n_col)]
         n_pairs = 0
         corr_sum = 0.0
         # Sample up to 20 columns to keep O(1) computation
@@ -1145,6 +1336,10 @@ def make_synthetic_source_grid(
         raise ForwardModelContractError(
             f"n_sources must be a positive integer; got {n_sources!r}."
         )
+    if n_sources > MAX_SYNTHETIC_SOURCES:
+        raise ForwardModelContractError(
+            f"n_sources={n_sources} exceeds MAX_SYNTHETIC_SOURCES={MAX_SYNTHETIC_SOURCES}."
+        )
     max_radius_m = _require_finite(max_radius_m, "Source grid max_radius_m")
     if max_radius_m <= 0.0:
         raise ForwardModelContractError(
@@ -1197,6 +1392,22 @@ def make_synthetic_source_grid(
 # High-Level Contract Builders and Auditors
 # -----------------------------------------------------------------------------
 
+def _require_sensors_on_scalp(sensors: SensorGeometry, conductor: ConductorModel) -> None:
+    """Require every channel to lie on the outer conductor surface, measured from its origin.
+
+    ``SensorGeometry.validate`` is origin-agnostic and only bounds the absolute distance to a
+    plausible head size. The forward engines are origin-relative surface evaluations, so a
+    montage that is not on the (possibly shifted) scalp sphere is rejected here.
+    """
+    origin = _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
+    for name, pos in zip(sensors.channel_names, sensors.positions_m):
+        distance = math.hypot(pos[0] - origin[0], pos[1] - origin[1], pos[2] - origin[2])
+        try:
+            _require_electrode_on_surface(distance, conductor.scalp_radius_m)
+        except ForwardModelContractError as exc:
+            raise type(exc)(f"Channel '{name}': {exc}") from exc
+
+
 def build_synthetic_forward_contract(
     sensor_geometry: Optional[SensorGeometry] = None,
     source_space: Optional[SourceSpace] = None,
@@ -1214,6 +1425,7 @@ def build_synthetic_forward_contract(
 
     sensors = sensor_geometry or make_standard_1020_synthetic_sensors(conductor.scalp_radius_m)
     sensors.validate()
+    _require_sensors_on_scalp(sensors, conductor)
 
     sources = source_space or make_synthetic_source_grid(16, is_fixed_orientation=False)
 
@@ -1226,15 +1438,33 @@ def build_synthetic_forward_contract(
                 "transform matrix was provided. Cross-frame projection without explicit alignment is rejected fail-closed."
             )
         validate_affine_transform(coord_transform)
+        # Validate before transforming: an invalid orientation must fail closed here exactly as
+        # it does without a transform, never be renormalised or replaced by an invented direction.
+        for i, pos in enumerate(sources.positions_m):
+            _require_finite_vec3(pos, f"Source index {i} position")
+        if sources.is_fixed_orientation:
+            _require_unit_orientations(sources.orientations, len(sources.positions_m))
+        elif sources.orientations is not None:
+            for i, ori in enumerate(sources.orientations):
+                _require_finite_vec3(ori, f"Orientation vector at index {i}")
         trans_pos = apply_affine_transform(sources.positions_m, coord_transform, is_vector=False)
         trans_ori = None
         if sources.orientations is not None:
             raw_ori = apply_affine_transform(sources.orientations, coord_transform, is_vector=True)
-            norm_ori = []
-            for o in raw_ori:
-                n = math.sqrt(sum(x * x for x in o))
-                norm_ori.append((o[0] / n, o[1] / n, o[2] / n) if n > 1e-12 else (0.0, 0.0, 1.0))
-            trans_ori = tuple(norm_ori)
+            if sources.is_fixed_orientation:
+                norm_ori = []
+                for i, o in enumerate(raw_ori):
+                    n = math.hypot(*o)
+                    if not math.isfinite(n) or n <= 1e-12:
+                        raise ForwardModelContractError(
+                            f"Fixed orientation vector at index {i} degenerates under the "
+                            f"coordinate transform (norm {n!r})."
+                        )
+                    norm_ori.append((o[0] / n, o[1] / n, o[2] / n))
+                trans_ori = tuple(norm_ori)
+            else:
+                # Not used by the free-orientation engine: transformed linearly and otherwise unchanged.
+                trans_ori = raw_ori
         sources = SourceSpace(
             positions_m=trans_pos,
             orientations=trans_ori,
@@ -1386,16 +1616,22 @@ def audit_mne_forward_solution(
         raise ForwardModelContractError("MNE forward solution missing 'data' or 'row_names'.")
 
     # Convert to pure Python list-of-lists with finite validation
-    leadfield_list: List[List[float]] = [
-        [_require_finite(x, f"MNE leadfield[{r_idx}][{c_idx}]") for c_idx, x in enumerate(row)]
-        for r_idx, row in enumerate(leadfield_data)
-    ]
+    try:
+        leadfield_list: List[List[float]] = [
+            [_require_finite(x, f"MNE leadfield[{r_idx}][{c_idx}]") for c_idx, x in enumerate(row)]
+            for r_idx, row in enumerate(leadfield_data)
+        ]
+    except TypeError as exc:
+        raise LeadfieldDimensionMismatchError("MNE leadfield data must be a matrix (sequence of rows).") from exc
     if not leadfield_list or not leadfield_list[0]:
         raise ForwardModelContractError("MNE forward solution leadfield data must be non-empty.")
     n_cols_first = len(leadfield_list[0])
     if any(len(row) != n_cols_first for row in leadfield_list):
         raise LeadfieldDimensionMismatchError("MNE leadfield rows have inconsistent column counts.")
-    ch_names_tuple = tuple(str(ch) for ch in row_names)
+    try:
+        ch_names_tuple = tuple(str(ch) for ch in row_names)
+    except TypeError as exc:
+        raise ChannelOrderMismatchError("MNE row_names must be a sequence of channel names.") from exc
 
     # 3. Channel Order Verification against Info
     if info is not None:
@@ -1417,21 +1653,31 @@ def audit_mne_forward_solution(
     is_fixed = (fwd.get("source_ori") == 1) if isinstance(fwd, dict) else (getattr(fwd, "source_ori", None) == 1)
 
     positions: List[Tuple[float, float, float]] = []
-    if src is not None:
-        for s in src:
-            rr = s.get("rr") if isinstance(s, dict) else getattr(s, "rr", None)
-            inuse = s.get("inuse") if isinstance(s, dict) else getattr(s, "inuse", None)
-            if rr is not None and inuse is not None:
-                for idx, active in enumerate(inuse):
-                    if active:
-                        p = _require_finite_vec3(rr[idx], f"MNE source vertex[{idx}]")
-                        norm = math.sqrt(sum(x * x for x in p))
-                        if norm > MILLIMETER_THRESHOLD_M:
-                            raise CoordinateUnitMismatchError(
-                                f"MNE source vertex norm {norm:.2f}m > 1.0m; units must be meters."
-                            )
-                        positions.append(p)
+    try:
+        if src is not None:
+            for s in src:
+                rr = s.get("rr") if isinstance(s, dict) else getattr(s, "rr", None)
+                inuse = s.get("inuse") if isinstance(s, dict) else getattr(s, "inuse", None)
+                if rr is not None and inuse is not None:
+                    for idx, active in enumerate(inuse):
+                        if active:
+                            p = _require_finite_vec3(rr[idx], f"MNE source vertex[{idx}]")
+                            norm = math.sqrt(sum(x * x for x in p))
+                            if norm > MILLIMETER_THRESHOLD_M:
+                                raise CoordinateUnitMismatchError(
+                                    f"MNE source vertex norm {norm:.2f}m > 1.0m; units must be meters."
+                                )
+                            positions.append(p)
 
+    except (TypeError, IndexError, AttributeError, KeyError) as exc:
+        raise LeadfieldDimensionMismatchError(
+            "MNE source space is malformed (rr/inuse must be index-aligned sequences)."
+        ) from exc
+
+    if n_sources is not None and (
+        isinstance(n_sources, bool) or not isinstance(n_sources, numbers.Integral) or n_sources < 0
+    ):
+        raise LeadfieldDimensionMismatchError(f"MNE nsource must be a non-negative integer; got {n_sources!r}.")
     if n_sources is None:
         n_sources = len(positions) if positions else (len(leadfield_list[0]) // (1 if is_fixed else 3))
 
@@ -1442,26 +1688,43 @@ def audit_mne_forward_solution(
             f"expected ({expected_cols}) for {n_sources} sources (fixed={is_fixed})."
         )
 
-    # 5. Extract Sensor Positions from Info if available
-    sensor_positions: List[Tuple[float, float, float]] = []
+    # 5. Extract Sensor Positions from Info, matched to leadfield rows BY CHANNEL NAME
+    loc_by_name: Dict[str, Tuple[float, float, float]] = {}
     if info is not None:
         chs = info.get("chs") if isinstance(info, dict) else getattr(info, "chs", None)
         if chs is not None:
             for ch in chs:
-                if ch.get("ch_name") in ch_names_tuple:
+                ch_name = ch.get("ch_name")
+                if ch_name in ch_names_tuple:
                     loc = ch.get("loc")
                     if loc is not None and len(loc) >= 3:
-                        p = _require_finite_vec3(loc[:3], f"Sensor '{ch.get('ch_name')}' loc")
-                        norm = math.sqrt(sum(x * x for x in p))
+                        p = _require_finite_vec3(loc[:3], f"Sensor '{ch_name}' loc")
+                        norm = math.hypot(*p)
                         if norm > MILLIMETER_THRESHOLD_M:
                             raise CoordinateUnitMismatchError(
-                                f"Sensor '{ch.get('ch_name')}' loc norm {norm:.2f}m > 1.0m; units must be meters."
+                                f"Sensor '{ch_name}' loc norm {norm:.2f}m > 1.0m; units must be meters."
                             )
-                        sensor_positions.append(p)
+                        loc_by_name[ch_name] = p
 
-    if not sensor_positions:
-        # Fallback dummy positions on default scalp sphere for structure completion
+    missing_locs = [name for name in ch_names_tuple if name not in loc_by_name]
+    if not missing_locs:
+        sensor_positions = [loc_by_name[name] for name in ch_names_tuple]
+        sensor_positions_source = "info_chs"
+    else:
+        # Structure completion only: identical positions on the default scalp sphere. They are
+        # NOT electrode locations, so the result says so instead of presenting them as measured.
         sensor_positions = [(0.0, 0.0, DEFAULT_SCALP_RADIUS_M)] * len(ch_names_tuple)
+        sensor_positions_source = "placeholder"
+        if len(missing_locs) == len(ch_names_tuple):
+            warnings.append(
+                "Sensor positions unavailable (no usable info['chs'] loc): SensorGeometry carries "
+                "identical PLACEHOLDER positions that are not electrode locations."
+            )
+        else:
+            warnings.append(
+                f"Sensor positions unavailable for channel(s) {missing_locs}: SensorGeometry "
+                "carries identical PLACEHOLDER positions for all channels; they are not electrode locations."
+            )
 
     sensor_geom = SensorGeometry(
         channel_names=ch_names_tuple,
@@ -1469,8 +1732,20 @@ def audit_mne_forward_solution(
         coordinate_frame=CoordinateFrame.HEAD,
     )
 
-    if not positions:
+    if positions:
+        source_positions_source = "mne_src"
+        if len(positions) != n_sources:
+            warnings.append(
+                f"Active source vertices ({len(positions)}) differ from nsource ({n_sources}); "
+                "source positions may not correspond to leadfield columns."
+            )
+    else:
         positions = [(0.0, 0.0, 0.0)] * n_sources
+        source_positions_source = "placeholder"
+        warnings.append(
+            "Source vertex positions unavailable (no usable fwd['src'] rr/inuse): all sources "
+            "are PLACEHOLDERS at the origin, not source locations."
+        )
 
     src_space = SourceSpace(
         positions_m=tuple(positions),
@@ -1479,7 +1754,16 @@ def audit_mne_forward_solution(
         coordinate_frame=CoordinateFrame.HEAD,
     )
 
-    conductor = expected_conductor or ConductorModel()
+    if expected_conductor is not None:
+        conductor = expected_conductor
+        conductor_source = "expected_conductor"
+    else:
+        conductor = ConductorModel()
+        conductor_source = "default_placeholder"
+        warnings.append(
+            "No expected_conductor supplied: conductor_model is the default 3-shell PLACEHOLDER, "
+            "not the model that produced the audited forward solution."
+        )
 
     diagnostics = compute_leadfield_diagnostics(
         leadfield=leadfield_list,
@@ -1490,6 +1774,9 @@ def audit_mne_forward_solution(
 
     provenance = {
         "engine": "mne_forward_audit",
+        "sensor_positions": sensor_positions_source,
+        "source_positions": source_positions_source,
+        "conductor_model": conductor_source,
         "units": {
             "length": CANONICAL_LENGTH_UNIT,
             "potential": CANONICAL_POTENTIAL_UNIT,
