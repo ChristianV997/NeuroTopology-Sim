@@ -2342,12 +2342,12 @@ def test_fixture():
                 "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
             ),
             "measurement_hypothesis_contract": (
-                384,
+                384, 357,
                 "shared/measurement_hypothesis/validate.py",
                 "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
             ),
             "batch2_pipeline_benchmark": (
-                371,
+                371, 445,
                 "tools/benchmarks/batch2_pipeline/harness.py",
                 "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
             ),
@@ -3186,8 +3186,13 @@ def test_fixture():
                 {
                     ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
                     ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
                     ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
                     ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+                    ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
                 },
             ),
             "oss_compatibility_inventory_artifact": (
@@ -3299,12 +3304,48 @@ def test_fixture():
                     for pair in spec["candidate_pairs"]
                 }
                 self.assertTrue(expected.issubset(pairs))
-                self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (owner_pr,))
+                self.assertIn(owner_pr, helper.COMPONENT_OWNER_PRS[component])
                 for implementation, test_path in expected:
                     self.assertEqual(helper.select_components({implementation}), [component])
                     self.assertEqual(helper.select_components({test_path}), [component])
                     self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
                     self.assertEqual(helper._unmapped_candidate_paths({test_path}), [])
+
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["batch3_falsification_matrix_artifact"],
+            (376, 444),
+        )
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["batch2_pipeline_benchmark"],
+            (371, 445),
+        )
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],
+            (384, 357),
+        )
+        falsification_followup = {
+            "docs/scientific_falsification/batch3_adversarial_review.md",
+            "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+        }
+        self.assertEqual(
+            helper.select_components(falsification_followup),
+            ["batch3_falsification_matrix_artifact"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(falsification_followup), [])
+        benchmark_followup = {
+            "scripts/benchmark_batch2_pipeline.py",
+            "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+            "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+            "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+            "tools/benchmarks/batch2_pipeline/budgets.py",
+            "tools/benchmarks/batch2_pipeline/harness.py",
+            "tools/benchmarks/batch2_pipeline/validator.py",
+        }
+        self.assertEqual(
+            helper.select_components(benchmark_followup),
+            ["batch2_pipeline_benchmark"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(benchmark_followup), [])
 
         exact_candidate_diffs = {
             "bids_adapter": {
@@ -3449,11 +3490,157 @@ def test_fixture():
                 "docs/scientific_falsification/batch3_adversarial_review.md",
                 "tests/scientific_falsification/test_batch3_falsification_matrix.py",
             },
+            "batch2_pipeline_benchmark": {
+                "scripts/benchmark_batch2_pipeline.py",
+                "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                "tools/benchmarks/batch2_pipeline/budgets.py",
+                "tools/benchmarks/batch2_pipeline/harness.py",
+                "tools/benchmarks/batch2_pipeline/validator.py",
+            },
         }
         for component, paths in exact_candidate_diffs.items():
             with self.subTest(exact_candidate_diff=component):
                 self.assertEqual(helper.select_components(paths), [component])
                 self.assertEqual(helper._unmapped_candidate_paths(paths), [])
+
+    def test_oss_adoption_mapping_runs_the_verified_owner_suite(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        spec = helper.COMPONENTS[component]
+        tests = (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+        )
+        self.assertEqual(spec["tests"], tests)
+        self.assertEqual(spec["suite_companion_tests"], ("tests/test_oss_license_review.py",))
+        expected_pairs = {
+            ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
+            ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+            ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
+        }
+        pairs = {(item["implementation"], item["test"]) for item in spec["candidate_pairs"]}
+        self.assertEqual(pairs, expected_pairs)
+
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in (*changed, *tests, "oss_opportunities/license_review.py"):
+                _write(root, path, "# offline fixture\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertCountEqual(result["tests_to_run"], tests)
+        self.assertEqual(len(result["tests_to_run"]), len(tests))
+        self.assertEqual(result["missing_required_tests"], [])
+
+    def test_oss_adoption_mapping_blocks_when_suite_companion_is_missing(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["oss_adoption_gates"]
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        companion = "tests/test_oss_license_review.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                if path != companion:
+                    _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/license_review.py", "# offline fixture\n")
+            result = helper.inspect_component("oss_adoption_gates", root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn(companion, result["missing_required_tests"])
+
+    def test_oss_adoption_mapping_rejects_unregistered_suite_companion(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        spec = helper.COMPONENTS[component]
+        invalid_spec = dict(spec)
+        invalid_spec["suite_companion_tests"] = ("tests/not_registered.py",)
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/license_review.py", "# offline fixture\n")
+            with patch.dict(helper.COMPONENTS, {component: invalid_spec}):
+                result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(
+            result["invalid_suite_companion_tests"],
+            ["tests/not_registered.py"],
+        )
+
+    def test_oss_adoption_suite_companion_requires_its_paired_implementation(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["oss_adoption_gates"]
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/repository_candidate.py", "# offline fixture\n")
+            _write(root, "oss_opportunities/scoring.py", "# offline fixture\n")
+            _write(root, "oss_opportunities/validation.py", "# offline fixture\n")
+            result = helper.inspect_component("oss_adoption_gates", root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn(
+            "oss_opportunities/license_review.py",
+            result["missing_implementations"],
+        )
+
+    def test_pr357_claim_gate_pair_does_not_hide_unmapped_candidate_paths(self):
+        helper = _helper()
+        implementation = "tools/research_claim_gate/gate.py"
+        test_path = "tests/research_claim_gate/test_claim_gate.py"
+        unmapped_implementation = "analysis/empirical_higher_order/runner.py"
+        changed = {implementation, test_path, unmapped_implementation}
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],
+            (384, 357),
+        )
+        self.assertEqual(helper.select_components(changed), ["measurement_hypothesis_contract"])
+        unmapped = helper._unmapped_candidate_paths(changed)
+        self.assertIn(unmapped_implementation, unmapped)
+        self.assertNotIn(implementation, unmapped)
+        self.assertNotIn(test_path, unmapped)
 
         # A changed source that declares multiple required tests is blocked
         # when its candidate checkout contains only one companion test.

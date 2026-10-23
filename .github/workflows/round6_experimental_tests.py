@@ -1102,6 +1102,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "triggers": (
             "shared/measurement_hypothesis/",
             "tools/research_claim_gate/gate.py",
+            "tests/research_claim_gate/test_claim_gate.py",
             "tests/measurement_hypothesis/",
         ),
         "tests": (
@@ -1114,6 +1115,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/measurement_hypothesis/test_namespace_and_renaming.py",
             "tests/measurement_hypothesis/test_provenance_and_sources.py",
             "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            "tests/research_claim_gate/test_claim_gate.py",
         ),
         "candidate_pairs": tuple(
             {"implementation": implementation, "test": test}
@@ -1142,6 +1144,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {
                 "implementation": "tools/research_claim_gate/gate.py",
                 "test": "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            },
+            {
+                "implementation": "tools/research_claim_gate/gate.py",
+                "test": "tests/research_claim_gate/test_claim_gate.py",
             },
         ),
         "support_files": {
@@ -1184,7 +1190,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "shared/measurement_hypothesis/",
             "tools/research_claim_gate/gate.py",
         ),
-        "candidate_test_roots": ("tests/measurement_hypothesis/",),
+        "candidate_test_roots": (
+            "tests/measurement_hypothesis/",
+            "tests/research_claim_gate/test_claim_gate.py",
+        ),
     },
     "dandi_nwb_bounded": {
         "triggers": (
@@ -1643,32 +1652,58 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "oss_adoption_gates": {
         "triggers": (
             "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/license_review.py",
             "oss_opportunities/repository_candidate.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
+            "tests/test_oss_license_review.py",
             "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
         ),
         "implementation": "oss_opportunities/opportunity_batch.py",
-        "tests": ("tests/test_oss_adoption_gates.py",),
+        "tests": (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+        ),
         "candidate_pairs": tuple(
             {
                 "implementation": implementation,
-                "test": "tests/test_oss_adoption_gates.py",
+                "test": test,
             }
-            for implementation in (
-                "oss_opportunities/opportunity_batch.py",
-                "oss_opportunities/repository_candidate.py",
-                "oss_opportunities/scoring.py",
-                "oss_opportunities/validation.py",
+            for implementation, test in (
+                ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
+                ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+                ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
             )
         ),
+        # The owner-requested suite includes a license-review regression as a
+        # component-level companion, not as a false pair to a changed file.
+        "suite_companion_tests": ("tests/test_oss_license_review.py",),
         "implementation_roots": (
             "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/license_review.py",
             "oss_opportunities/repository_candidate.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
         ),
-        "candidate_test_roots": ("tests/test_oss_adoption_gates.py",),
+        "candidate_test_roots": (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+        ),
     },
     "whitening_audit": {
         "triggers": (
@@ -2223,7 +2258,7 @@ COMPONENT_OWNER_PRS = {
     "finite_chain_audit": (397,),
     "winding_charge_audit": (399,),
     "dmd_crouzeix": (415, 420, 400),
-    "batch2_pipeline_benchmark": (371,),
+    "batch2_pipeline_benchmark": (371, 445),
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
@@ -2236,9 +2271,9 @@ COMPONENT_OWNER_PRS = {
     "batch3_metadata_audit_artifact": (411,),
     "oss_adoption_gates": (386,),
     "whitening_audit": (407,),
-    "batch3_falsification_matrix_artifact": (376,),
+    "batch3_falsification_matrix_artifact": (376, 444),
     "batch3_offline_integration": (381,),
-    "measurement_hypothesis_contract": (384,),
+    "measurement_hypothesis_contract": (384, 357),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
@@ -3120,6 +3155,56 @@ def inspect_component(
         pair["test"] for pair in selected_pairs
         if not (root / pair["test"]).is_file()
     } | {pair["test"] for pair in unavailable_companion_pairs})
+    raw_suite_companion_tests = spec.get("suite_companion_tests", ())
+    invalid_suite_companion_tests = []
+    suite_companion_tests = []
+    if not isinstance(raw_suite_companion_tests, (tuple, list)):
+        invalid_suite_companion_tests.append("<mapping>")
+    else:
+        candidate_test_paths = {
+            normalize_repo_path(pair["test"]).casefold() for pair in pairs
+        }
+        seen_companion_tests = set()
+        for test_path in raw_suite_companion_tests:
+            if not isinstance(test_path, str):
+                invalid_suite_companion_tests.append(str(test_path))
+                continue
+            normalized_test_path = normalize_repo_path(test_path)
+            casefolded_test_path = normalized_test_path.casefold()
+            if (
+                normalized_test_path not in spec.get("tests", ())
+                or casefolded_test_path not in candidate_test_paths
+                or casefolded_test_path in seen_companion_tests
+            ):
+                invalid_suite_companion_tests.append(normalized_test_path)
+                continue
+            suite_companion_tests.append(normalized_test_path)
+            seen_companion_tests.add(casefolded_test_path)
+    selected_suite_companion_tests = list(suite_companion_tests) if selected_pairs else []
+    selected_pair_ids = {
+        (pair["implementation"], pair["test"]) for pair in selected_pairs
+    }
+    companion_test_ids = {
+        test_path.casefold() for test_path in selected_suite_companion_tests
+    }
+    # A component-level companion test is still an exact implementation/test
+    # pair: require its source in the checked-out tree before it can run.
+    selected_pairs.extend(
+        pair for pair in pairs
+        if normalize_repo_path(pair["test"]).casefold() in companion_test_ids
+        and (pair["implementation"], pair["test"]) not in selected_pair_ids
+    )
+    missing_implementations = sorted({
+        pair["implementation"] for pair in selected_pairs
+        if not (root / pair["implementation"]).is_file()
+    })
+    missing_suite_companion_tests = sorted(
+        test_path for test_path in selected_suite_companion_tests
+        if not (root / test_path).is_file()
+    )
+    missing_required_tests = sorted(
+        set(missing_required_tests) | set(missing_suite_companion_tests)
+    )
     tests = [path for path in spec["tests"] if (root / path).is_file()]
     test_markers = {
         normalize_repo_path(path): marker
@@ -3218,6 +3303,7 @@ def inspect_component(
     tests_to_run = list(dict.fromkeys([
         *pair_tests,
         *(path for path in changed_reference_tests if (root / path).is_file()),
+        *(path for path in selected_suite_companion_tests if (root / path).is_file()),
     ]))
     active_support_files = {
         support_path: mapped_tests
@@ -3300,6 +3386,8 @@ def inspect_component(
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if invalid_test_markers:
         blockers.append("candidate test marker mapping is invalid or unpaired")
+    if invalid_suite_companion_tests:
+        blockers.append("component suite companion test mapping is invalid")
     if invalid_environment_overrides:
         blockers.append("candidate environment override mapping is invalid")
     if invalid_independent_reference_tests:
@@ -3315,7 +3403,8 @@ def inspect_component(
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        } | set(selected_support_files) | set(selected_package_initializers) | set(changed_reference_tests)),
+        } | set(selected_support_files) | set(selected_package_initializers)
+          | set(changed_reference_tests) | set(selected_suite_companion_tests)),
         "selected_support_files": selected_support_files,
         "selected_package_initializers": selected_package_initializers,
         "required_pairs": selected_pairs,
@@ -3324,6 +3413,9 @@ def inspect_component(
         "implementations": implementations,
         "missing_implementations": missing_implementations,
         "missing_required_tests": missing_required_tests,
+        "suite_companion_tests": selected_suite_companion_tests,
+        "missing_suite_companion_tests": missing_suite_companion_tests,
+        "invalid_suite_companion_tests": sorted(set(invalid_suite_companion_tests)),
         "missing_support_files": missing_support_files,
         "missing_package_initializers": missing_package_initializers,
         "invalid_support_test_mappings": invalid_support_test_mappings,
