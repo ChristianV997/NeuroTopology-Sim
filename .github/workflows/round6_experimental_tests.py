@@ -1627,6 +1627,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "oss_adoption_gates": {
         "triggers": (
             "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
             "tests/test_oss_adoption_gates.py",
@@ -1640,12 +1641,14 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             }
             for implementation in (
                 "oss_opportunities/opportunity_batch.py",
+                "oss_opportunities/repository_candidate.py",
                 "oss_opportunities/scoring.py",
                 "oss_opportunities/validation.py",
             )
         ),
         "implementation_roots": (
             "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
         ),

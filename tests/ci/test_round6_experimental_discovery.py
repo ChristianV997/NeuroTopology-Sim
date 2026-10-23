@@ -3077,6 +3077,7 @@ def test_fixture():
                 386,
                 {
                     ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
                     ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
                     ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
                 },
@@ -3302,6 +3303,7 @@ def test_fixture():
                 "docs/oss_opportunity_candidate_review_20261016.md",
                 "docs/oss_opportunity_pipeline.md",
                 "oss_opportunities/opportunity_batch.py",
+                "oss_opportunities/repository_candidate.py",
                 "oss_opportunities/scoring.py",
                 "oss_opportunities/validation.py",
                 "tests/test_oss_adoption_gates.py",
