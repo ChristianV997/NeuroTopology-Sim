@@ -1,0 +1,87 @@
+{
+  "schema_version": "NTS.ResearchPlanEvalManifest.v1",
+  "fixture_set_id": "research-plan-rubric-eval-synthetic",
+  "fixture_set_version": "v1",
+  "synthetic": true,
+  "rubric": {
+    "dimension_count": 20,
+    "dimensions_sha256": "8744d6c010cb1c3b7448b9d73a26a6a0f785c13ff5e0f4bb3765a20b4cc07e12",
+    "source_sha256": "438412b5524eec80b3cd5815fb1a5f61782f7efdaaf3c3437a6c89ce2efc3ac3"
+  },
+  "labels": {
+    "file": "labels.json",
+    "sha256": "b44346914ca7f70357bfb439e64bd5c36e83de5b5a08a27dc22eb4e1e4d4f97f"
+  },
+  "records": [
+    {
+      "fixture_id": "fx-v1-P01",
+      "group_id": "src-A/attention-eeg/sustained-attention",
+      "split": "development",
+      "plan_file": "plans/P01.json",
+      "plan_sha256": "5369a8fab360353d8eb640b70f940f1cd7efb7d6490d7006825c44a002e2a428"
+    },
+    {
+      "fixture_id": "fx-v1-P02",
+      "group_id": "src-A/attention-eeg/sustained-attention",
+      "split": "development",
+      "plan_file": "plans/P02.json",
+      "plan_sha256": "e30e64b34650c1e3ea4eee007a70630f2d720aa16f09386aa9f25f2979c9d005"
+    },
+    {
+      "fixture_id": "fx-v1-P03",
+      "group_id": "src-B/anesthesia/recovery-timecourse",
+      "split": "development",
+      "plan_file": "plans/P03.json",
+      "plan_sha256": "03286f35dfc7ab4a37888c1046ce17d9808db2f502f9b8f510c6cf827f2e559c"
+    },
+    {
+      "fixture_id": "fx-v1-P04",
+      "group_id": "src-C/meditation/eeg-states",
+      "split": "development",
+      "plan_file": "plans/P04.json",
+      "plan_sha256": "272905b6c53a5549d25d713272d1f8f62581a7c1c22fd77d8cd52d281dd5c49f"
+    },
+    {
+      "fixture_id": "fx-v1-P05",
+      "group_id": "src-D/fmri/imagery-coupling",
+      "split": "development",
+      "plan_file": "plans/P05.json",
+      "plan_sha256": "6b39fbbfadf00a43e0676114f37e4f4a299a56f41e0f5b7b80ed4880024baa23"
+    },
+    {
+      "fixture_id": "fx-v1-P06",
+      "group_id": "src-E/sleep/spindles",
+      "split": "locked_internal_validation",
+      "plan_file": "plans/P06.json",
+      "plan_sha256": "30de65999de36a55d4fadd43b9ee7ef6aca6101b7419581ce8237c835cd3786b"
+    },
+    {
+      "fixture_id": "fx-v1-P07",
+      "group_id": "src-F/working-memory/fmri-coupling",
+      "split": "locked_internal_validation",
+      "plan_file": "plans/P07.json",
+      "plan_sha256": "da4c3571d94926fafb3cef649d4e002bb0921dd48d38cd19208d475b66cc0fc0"
+    },
+    {
+      "fixture_id": "fx-v1-P08",
+      "group_id": "src-F/working-memory/fmri-coupling",
+      "split": "locked_internal_validation",
+      "plan_file": "plans/P08.json",
+      "plan_sha256": "4eab2dde5db99e7c8d9c7622ab0b717546e65cf0596bb0c405bcbde58084d131"
+    },
+    {
+      "fixture_id": "fx-v1-P09",
+      "group_id": "src-G/speech/lateralisation",
+      "split": "locked_internal_validation",
+      "plan_file": "plans/P09.json",
+      "plan_sha256": "8b606629b8061ec1b791511633f6ce92a8ca9ef4ea4abfdfde9c6d3c77287924"
+    },
+    {
+      "fixture_id": "fx-v1-P10",
+      "group_id": "src-H/vision/crowding",
+      "split": "locked_internal_validation",
+      "plan_file": "plans/P10.json",
+      "plan_sha256": "777de001cefa8e840226de75a2f400e1e56611ec9c4804e025832a028d5ef5ba"
+    }
+  ]
+}
