@@ -1,10 +1,11 @@
 # Batch 3 Literature and Public-Source Registry
 
-- **Review date:** 2026-10-21
+- **Review date:** 2026-10-23 (UTC date of the primary-source fetch)
 - **PR head reviewed:** `69fb8af983a168ffd7934b9c03f95e5236007362`
 - **Live `main` at review:** `4e91c6f080647280940ded4f90f4ee9278960c4b`
-- **Scope:** Official upstream GitHub release/tag pages and top-level license artifacts for the listed software only.
+- **Scope:** Official upstream GitHub release/tag pages, tagged top-level license files, and PyPI JSON for the pinned versions. The GUDHI row also cites the upstream licensing page and leaves per-module licensing unresolved.
 - **Data boundary:** No datasets or participant data were accessed, and no listed upstream candidate software was executed in this review.
+- **Not validation:** This registry is not legal validation and not scientific validation.
 
 ## Separation of Claims
 
@@ -21,7 +22,8 @@ See `configs/research/batch3_source_registry.yaml` for the full structured regis
 - MNE-Python, MNE-BIDS, MNE-Connectivity — candidates for separate adapter and fixture review; integration is not verified.
 
 ### EMULATE (compatibility recommendations)
-- PyBIDS, PyNWB, GUDHI, Ripser.py — possible limited emulation or optional capability probes; no parity or dependency assessment was performed.
+- PyBIDS, PyNWB, GUDHI, Ripser.py — possible limited emulation or optional capability probes; no parity assessment was performed.
+- GUDHI top-level `LICENSE` at `tags/gudhi-release-3.13.0` is MIT. Upstream https://gudhi.inria.fr/licensing/ states modules depending on CGAL/Miniball/PyKeOps are under GPLv3 or LGPL and that a GPL dependency is effectively GPL-3.0 for users of those modules. Per-module licensing requires project legal review and is unresolved. That is not a legal-compatibility conclusion.
 
 ### REFERENCE_ONLY (compatibility recommendations)
 - BIDS Validator, DANDI CLI, Nilearn, DataLad, OpenLineage, neurolib, LangGraph.
@@ -44,6 +46,8 @@ The topics below are catalog labels only. Each has status `not assessed`; `REFER
 ## License and Risk Summary
 
 - License descriptors are bounded transcriptions of the linked upstream root license at the reviewed tag; they do not inventory every dependency or determine legal compatibility. PyNWB's tagged license contains three BSD-style conditions plus an additional custom Enhancement clause, recorded explicitly rather than reduced to plain BSD-3-Clause.
+- GUDHI: top-level LICENSE is MIT. Upstream https://gudhi.inria.fr/licensing/ states modules depending on CGAL/Miniball/PyKeOps are under GPLv3 or LGPL and that a GPL dependency is effectively GPL-3.0 for users of those modules. Per-module licensing requires project legal review; unresolved.
+- Pins kept, and not described as latest: DANDI CLI `0.75.0`, REA `rea-agents-6.5.0`, and LangGraph `1.2.15`. Newer tags exist as of the access date; not reviewed. neurolib `v0.7.0` is the GitHub tag; PyPI latest is 0.6.2.
 - Security, known vulnerabilities/CVEs, maintenance/support, dependencies, and data-access behavior are **not assessed**; no “low risk,” “active,” or “no known CVE” conclusion is made.
 - `REJECT` for The Virtual Brain is a compatibility recommendation pending legal review, not legal advice or a finding about license compatibility.
 - Any future integration requires a separate engineering, security, provenance, and legal review. No upstream candidate source was copied or executed for this registry.

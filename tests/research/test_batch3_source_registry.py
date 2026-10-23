@@ -176,7 +176,7 @@ def test_registry_exists_and_parses():
     with REGISTRY.open() as f:
         data = yaml.safe_load(f)
     assert data["schema_version"] == "2.0"
-    assert data["access_date"] == "2026-10-21"
+    assert data["access_date"] == "2026-10-23"
     assert data["reviewed_pr_head"] == "69fb8af983a168ffd7934b9c03f95e5236007362"
     assert data["live_main_at_review"] == "4e91c6f080647280940ded4f90f4ee9278960c4b"
     assert len(data["sources"]) == len(EXPECTED_SOURCE_FACTS)
@@ -222,6 +222,81 @@ def test_source_version_release_and_license_match_reviewed_upstream_artifact(sou
         source["license_source_url"],
     )
     assert actual == expected, f"{source_id} source, release, or license evidence drifted"
+
+
+def test_gudhi_license_scope_contains_gpl_and_project_legal_review():
+    with REGISTRY.open() as f:
+        data = yaml.safe_load(f)
+    gudhi = next(source for source in data["sources"] if source["id"] == "gudhi")
+    scope = gudhi["license_scope"]
+    assert "GPL" in scope, scope
+    assert "project legal review" in scope, scope
+
+
+def test_unresolved_status_does_not_infer_security_or_legal_conclusions():
+    """An unresolved license review stays unresolved.
+
+    It must not be rewritten into a legal-compatibility verdict or a
+    security/maintenance finding.
+    """
+    with REGISTRY.open() as f:
+        data = yaml.safe_load(f)
+    unresolved = [
+        source
+        for source in data["sources"]
+        if "unresolved" in json.dumps(source).lower()
+    ]
+    assert [source["id"] for source in unresolved] == ["gudhi"], [source["id"] for source in unresolved]
+    gudhi = unresolved[0]
+    assert gudhi["license"] == "MIT"
+    assert "https://gudhi.inria.fr/licensing/" in gudhi["license_scope"]
+    assert set(gudhi["risk_assessment"].values()) == {"not assessed"}
+    assert gudhi["classification_kind"] == "compatibility_recommendation"
+    blob = json.dumps(gudhi).lower()
+    for phrase in ("legally compatible", "no known cve", "low risk", "actively maintained"):
+        assert phrase not in blob
+
+
+def test_license_metadata_does_not_infer_security_maintenance_or_legal_conclusions():
+    with REGISTRY.open() as f:
+        data = yaml.safe_load(f)
+    banned = (
+        "low risk",
+        "no known cve",
+        "no known vulnerabilities",
+        "actively maintained",
+        "healthy",
+        "legally compatible",
+        "license compatible",
+        "dependency-safe",
+        "no cves",
+    )
+    for source in data["sources"]:
+        assert set(source["risk_assessment"].values()) == {"not assessed"}
+        blob = json.dumps(
+            {
+                "license": source["license"],
+                "license_scope": source["license_scope"],
+                "risk_assessment": source["risk_assessment"],
+                "recommendation_notes": source["recommendation_notes"],
+            }
+        ).lower()
+        for phrase in banned:
+            assert phrase not in blob, f"{source['id']} infers {phrase!r} from license metadata"
+        assert source["version_source_url"].startswith("https://")
+        assert source["version_tag"] in source["version_source_url"] or (
+            source["version_tag"].replace("/", "%2F") in source["version_source_url"]
+        )
+
+
+def test_version_tags_are_exact_pins():
+    with REGISTRY.open() as f:
+        data = yaml.safe_load(f)
+    for source in data["sources"]:
+        tag = source["version_tag"]
+        assert not tag.endswith(".x"), tag
+        assert ".x" not in tag.split("/")[-1], tag
+        assert tag != "latest"
 
 
 def test_pynwb_license_descriptor_includes_custom_enhancement_clause():

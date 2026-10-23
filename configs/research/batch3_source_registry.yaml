@@ -1,12 +1,13 @@
-# Batch 3 source registry, revised 2026-10-21.
+# Batch 3 source registry, revised 2026-10-23.
 # Release and license fields point to the exact upstream artifacts reviewed.
 # Compatibility classifications are recommendations, not verified integration facts.
+# This registry is not legal or scientific validation.
 
 schema_version: "2.0"
-access_date: "2026-10-21"
+access_date: "2026-10-23"
 reviewed_pr_head: "69fb8af983a168ffd7934b9c03f95e5236007362"
 live_main_at_review: "4e91c6f080647280940ded4f90f4ee9278960c4b"
-review_scope: "Official upstream release/tag and top-level license artifact only; security, vulnerability, maintenance, dependency, and data-access assessments were not performed."
+review_scope: "Official upstream release/tag pages, tagged top-level license files, and PyPI JSON for the pinned versions. The GUDHI row also cites https://gudhi.inria.fr/licensing/ and leaves per-module licensing unresolved pending project legal review. Security, vulnerability, maintenance, dependency-safety, and data-access assessments were not performed. Not legal or scientific validation."
 
 sources:
   - id: mne-python
@@ -111,7 +112,7 @@ sources:
     classification: "REFERENCE_ONLY"
     classification_kind: "compatibility_recommendation"
     adapter_boundary: "Proposed boundary: no direct integration; any future acquisition command requires explicit user authorization and a separately reviewed data-access path."
-    recommendation_notes: "Network behavior, credentials, and data-access requirements were not assessed in this review."
+    recommendation_notes: "Network behavior, credentials, and data-access requirements were not assessed in this review. Newer tags exist as of access date; not reviewed."
     risk_assessment:
       security: "not assessed"
       known_vulnerabilities: "not assessed"
@@ -194,12 +195,12 @@ sources:
     version_source_url: "https://github.com/GUDHI/gudhi-devel/releases/tag/tags%2Fgudhi-release-3.13.0"
     license: "MIT"
     license_source_url: "https://github.com/GUDHI/gudhi-devel/blob/tags/gudhi-release-3.13.0/LICENSE"
-    license_scope: "top-level project license only; third-party license inventory and legal compatibility not assessed"
+    license_scope: "top-level LICENSE is MIT; upstream https://gudhi.inria.fr/licensing/ states modules depending on CGAL/Miniball/PyKeOps are under GPLv3 or LGPL and that a GPL dependency is effectively GPL-3.0 for users of those modules; per-module licensing requires project legal review; legal compatibility not assessed; unresolved"
     evidence_class: "software_tool"
     classification: "EMULATE"
     classification_kind: "compatibility_recommendation"
     adapter_boundary: "Proposed boundary: do not vendor; any lightweight descriptor implementation requires independent tests and equivalence claims must remain scoped."
-    recommendation_notes: "No native-build, dependency, or compatibility review was performed."
+    recommendation_notes: "No native-build review was performed. Per-module licensing is unresolved and requires project legal review."
     risk_assessment:
       security: "not assessed"
       known_vulnerabilities: "not assessed"
@@ -309,7 +310,7 @@ sources:
     classification: "REFERENCE_ONLY"
     classification_kind: "compatibility_recommendation"
     adapter_boundary: "Proposed boundary: reference synthetic model patterns only; do not treat synthetic output as empirical evidence."
-    recommendation_notes: "This is not a scientific validation or maintenance assessment."
+    recommendation_notes: "This is not a scientific validation or maintenance assessment. GitHub tag; PyPI latest is 0.6.2."
     risk_assessment:
       security: "not assessed"
       known_vulnerabilities: "not assessed"
@@ -331,7 +332,7 @@ sources:
     classification: "REJECT"
     classification_kind: "compatibility_recommendation"
     adapter_boundary: "No integration proposed; this registry records only public release and root-license metadata."
-    recommendation_notes: "Out-of-scope for scientific-method integration; no reverse-engineering workflow was run."
+    recommendation_notes: "Out-of-scope for scientific-method integration; no reverse-engineering workflow was run. Newer tags exist as of access date; not reviewed."
     risk_assessment:
       security: "not assessed"
       known_vulnerabilities: "not assessed"
@@ -353,7 +354,7 @@ sources:
     classification: "REFERENCE_ONLY"
     classification_kind: "compatibility_recommendation"
     adapter_boundary: "Proposed boundary: reference orchestration concepts only; do not add LLM orchestration dependencies in this change."
-    recommendation_notes: "Offline/deterministic fit is a local recommendation; no compatibility or security assessment was performed."
+    recommendation_notes: "Offline/deterministic fit is a local recommendation; no compatibility or security assessment was performed. Newer tags exist as of access date; not reviewed."
     risk_assessment:
       security: "not assessed"
       known_vulnerabilities: "not assessed"
