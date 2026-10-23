@@ -225,6 +225,9 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIsNotNone(validation)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ inputs.tested_checkout_sha }}", validation.group(1))
         self.assertIn("^[0-9a-f]{40}$", validation.group(1))
+        self.assertIn("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}", validation.group(1))
+        self.assertIn('"$GITHUB_REF" == "refs/heads/${DEFAULT_BRANCH}"', validation.group(1))
+        self.assertIn("persist-credentials: false", workflow.split("- name: Validate manual candidate checkout SHA", 1)[0])
 
         checkout = re.search(
             r"(?ms)^      - name: Checkout exact candidate tree for dispatch\n"
@@ -233,7 +236,10 @@ class Round6DiscoveryTests(unittest.TestCase):
         )
         self.assertIsNotNone(checkout)
         checkout_step = checkout.group(1)
-        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' }}", checkout_step)
+        self.assertIn(
+            "if: ${{ github.event_name == 'workflow_dispatch' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}",
+            checkout_step,
+        )
         self.assertIn("uses: actions/checkout@v7", checkout_step)
         self.assertIn("ref: ${{ inputs.tested_checkout_sha }}", checkout_step)
         self.assertIn("path: candidate-source", checkout_step)
@@ -249,6 +255,10 @@ class Round6DiscoveryTests(unittest.TestCase):
             workflow,
         )
         self.assertIsNotNone(candidate_step)
+        self.assertIn(
+            "github.event_name != 'workflow_dispatch' || github.ref != format('refs/heads/{0}', github.event.repository.default_branch)",
+            candidate_step.group(1),
+        )
         self.assertIn(
             "TESTED_CHECKOUT_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.tested_checkout_sha || github.sha }}",
             candidate_step.group(1),
