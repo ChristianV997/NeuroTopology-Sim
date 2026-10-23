@@ -323,7 +323,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "d78f54128b6fd60c30665c9e9cff307056dbdd82")
+        self.assertEqual(AUDITED_MAIN_SHA, "2c8a80bf9874b9f14205d4bb4e466754fb4589cb")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -1850,21 +1850,28 @@ class GridPlanTests(unittest.TestCase):
         self.assertIn("substitute_module_rejected", substitute_reasons)
         self.assertIn("dependency_not_merged_on_main", substitute_reasons)
 
-    def test_audited_main_sha_equals_live_main_d78f5412(self):
-        """The audited constant equals resolved origin/main; the previous tip remains its ancestor.
+    def test_audited_main_sha_equals_live_main(self):
+        """The audited constant equals resolved origin/main; the previous audited tip remains its ancestor.
 
         A frozen historical SHA that is only an ancestor must not pass. Stale-main
         detection compares the constant to the live tip from git, not to a hardcoded
         string that once was tip.
         """
 
-        previous = "52e9a7cb5ed9c16000fc8a07c5c759649133f338"
+        previous = "d78f54128b6fd60c30665c9e9cff307056dbdd82"
         live = _require_audited_main_ancestor(self)
         self.assertEqual(AUDITED_MAIN_SHA, live)
         self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, live)
-        self.assertEqual(live, "d78f54128b6fd60c30665c9e9cff307056dbdd82")
+        self.assertEqual(live, "2c8a80bf9874b9f14205d4bb4e466754fb4589cb")
         ancestor = _git_cwd("merge-base", "--is-ancestor", previous, AUDITED_MAIN_SHA)
         self.assertEqual(ancestor.returncode, 0, ancestor.stderr)
+
+    def test_schema_doc_names_the_live_audited_tip(self):
+        """The schema doc quotes the live audited tip the constant pins, not a stale one."""
+
+        doc = (_REPO_ROOT / "docs" / "benchmarks" / "grid_plan_schema.md").read_text(encoding="utf-8")
+        self.assertIn("2c8a80bf9874b9f14205d4bb4e466754fb4589cb", doc)
+        self.assertIn(AUDITED_MAIN_SHA, doc)
 
     def test_audited_main_sha_is_an_ancestor_or_the_test_fails(self):
         main_sha = _require_audited_main_ancestor(self)
@@ -2434,7 +2441,7 @@ class GridPlanTests(unittest.TestCase):
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
         self.assertEqual(
             grid_plan_module.AUDITED_MAIN_SHA,
-            "d78f54128b6fd60c30665c9e9cff307056dbdd82",
+            "2c8a80bf9874b9f14205d4bb4e466754fb4589cb",
         )
         self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
@@ -2517,7 +2524,7 @@ class GridPlanTests(unittest.TestCase):
 
         roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
-        audited = "d78f54128b6fd60c30665c9e9cff307056dbdd82"
+        audited = "2c8a80bf9874b9f14205d4bb4e466754fb4589cb"
         roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
@@ -2655,7 +2662,7 @@ class GridPlanTests(unittest.TestCase):
     def test_old_surrogate_pin_blob_drifts_against_live_main(self):
         """The #417 pin blob is not the nulls.py blob on live main, so the pin fails closed."""
 
-        audited = "d78f54128b6fd60c30665c9e9cff307056dbdd82"
+        audited = "2c8a80bf9874b9f14205d4bb4e466754fb4589cb"
         old_pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
         old_blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
         current_blob = "a951050961119bc403012884c1a18d8e820d8f20"
