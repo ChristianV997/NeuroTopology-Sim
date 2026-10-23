@@ -121,14 +121,14 @@ def _require_finite(
     """
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise exc_cls(
-            f"{label} must be a finite real number (not bool, str, or None); got {value!r}."
+            f"{label} must be a finite real number (not bool, str, or None)."
         )
     try:
         number = float(value)
-    except (OverflowError, ValueError) as exc:
-        raise exc_cls(f"{label} must be a finite real number; got {value!r}.") from exc
+    except Exception:
+        raise exc_cls(f"{label} must be representable as a finite real number.") from None
     if not math.isfinite(number):
-        raise exc_cls(f"{label} must be finite; got {number!r}.")
+        raise exc_cls(f"{label} must be finite.")
     return number
 
 
@@ -141,14 +141,18 @@ def _require_finite_vec3(
     """Validate a length-3 finite Cartesian vector."""
     try:
         length = len(vec)
-    except TypeError as exc:
-        raise exc_cls(f"{label} must be a length-3 vector; got {vec!r}.") from exc
+    except Exception:
+        raise exc_cls(f"{label} must be a length-3 vector.") from None
     if length != 3:
         raise exc_cls(f"{label} must be a length-3 vector; got length {length}.")
+    try:
+        components = vec[0], vec[1], vec[2]
+    except Exception:
+        raise exc_cls(f"{label} must provide three readable components.") from None
     return (
-        _require_finite(vec[0], f"{label}[0]", exc_cls=exc_cls),
-        _require_finite(vec[1], f"{label}[1]", exc_cls=exc_cls),
-        _require_finite(vec[2], f"{label}[2]", exc_cls=exc_cls),
+        _require_finite(components[0], f"{label}[0]", exc_cls=exc_cls),
+        _require_finite(components[1], f"{label}[1]", exc_cls=exc_cls),
+        _require_finite(components[2], f"{label}[2]", exc_cls=exc_cls),
     )
 
 

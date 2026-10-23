@@ -1572,7 +1572,18 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
             def __repr__(self) -> str:
                 raise RuntimeError("synthetic repr probe")
 
+            def __len__(self) -> int:
+                raise RuntimeError("synthetic length probe")
+
+        class UncoercibleReal(float):
+            def __float__(self) -> float:
+                raise RuntimeError("synthetic numeric-conversion probe")
+
+            def __repr__(self) -> str:
+                raise RuntimeError("synthetic numeric-repr probe")
+
         bad = Unprintable()
+        bad_real = UncoercibleReal(0.0)
         cases = (
             (ConductorGeometryError, lambda: ConductorModel(model_type=bad).validate()),
             (
@@ -1595,8 +1606,32 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 ForwardModelContractError,
                 lambda: SourceSpace(
                     positions_m=self.interior,
+                    orientations=((bad_real, 0.0, 1.0),),
+                    is_fixed_orientation=True,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: SourceSpace(
+                    positions_m=self.interior,
                     orientations=bad,
                     is_fixed_orientation=False,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=((bad, 0.0, 1.0),),
+                    is_fixed_orientation=True,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=(bad,),
+                    is_fixed_orientation=True,
                 ).validate(),
             ),
             (
@@ -1648,6 +1683,33 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                         positions_m=self.interior, is_fixed_orientation=value
                     ),
                 ),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=((value, 0.0, 1.0),),
+                    is_fixed_orientation=True,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: build_synthetic_forward_contract(
+                    sensor_geometry=self.sensors,
+                    source_space=SourceSpace(
+                        positions_m=self.interior,
+                        orientations=((value, 0.0, 1.0),),
+                        is_fixed_orientation=True,
+                    ),
+                ),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=(value,),
+                    is_fixed_orientation=True,
+                ).validate(),
             ),
         )
         for expected_error, call in cases:

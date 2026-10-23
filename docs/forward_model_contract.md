@@ -193,7 +193,7 @@ No production caller and no `from_dict` round-trip in this repository passes tho
 
 `None`, `int`, `bytes`, and a member of a different enum (`CoordinateFrame` passed as `model_type`, `ConductorModelType` or `OrientationType` passed as `coordinate_frame`) are non-members and fail the same way. Synthetic fixtures and analytic oracles are not measured EEG, validated physics, or scientific evidence.
 
-This boundary performs no implicit NumPy conversion: a top-level `numpy.ndarray` orientation table and `numpy.bool_` orientation flag are intentionally rejected. Convert these explicitly to a Python sequence and built-in `bool` before constructing `SourceSpace`. Validation errors identify the field and accepted domain but do not format or echo rejected input objects; custom representations can be unsafe or disclose caller data.
+This boundary performs no implicit NumPy conversion: a top-level `numpy.ndarray` orientation table and `numpy.bool_` orientation flag are intentionally rejected. Convert these explicitly to a Python sequence and built-in `bool` before constructing `SourceSpace`. Enum, bool, and orientation-shape/component validation errors identify the field or component index and accepted domain without calling or echoing rejected input representations; custom representations can be unsafe or disclose caller data.
 
 ---
 
