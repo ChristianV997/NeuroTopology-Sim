@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import socket
 from pathlib import Path
 
@@ -486,7 +487,6 @@ def evaluate(doc: dict) -> dict:
                 issues.append(f"resumability_policy.{res_key} must be true")
 
     phrases_list = _string_list(doc.get("forbidden_phrases"), "forbidden_phrases", issues)
-    phrases = " ".join(phrases_list or ()).lower()
     for token in (
         "consciousness",
         "equanimity",
@@ -495,7 +495,10 @@ def evaluate(doc: dict) -> dict:
         "bayes",
         "scientific pass",
     ):
-        if token not in phrases:
+        marker_pattern = rf"\b{re.escape(token)}\b"
+        if phrases_list is None or not any(
+            re.search(marker_pattern, phrase, flags=re.IGNORECASE) for phrase in phrases_list
+        ):
             issues.append(f"missing forbidden phrase family: {token}")
 
     return {
@@ -854,6 +857,15 @@ def test_claim_rows_require_core_fields_and_reject_extra_status_fields() -> None
     assert report["scientific_pass"] is False
 
 
+def test_claim_text_must_not_be_empty_or_whitespace() -> None:
+    for text in ("", " \t\n"):
+        doc = load_matrix()
+        doc["claims"][0]["text"] = text
+        report = evaluate(doc)
+        assert report["complete"] is False
+        assert report["scientific_pass"] is False
+
+
 def test_downgrade_policy_accepts_declared_scalar_vocabulary() -> None:
     doc = load_matrix()
     policies = [
@@ -885,7 +897,12 @@ def test_explicit_nulls_and_invalid_nested_types_fail_closed() -> None:
 
 
 def test_incomplete_or_failed_execution_status_cannot_be_smuggled_into_matrix() -> None:
-    for key, value in (("status", "FAILED"), ("run_status", "INCOMPLETE"), ("execution_state", "ABORTED")):
+    for key, value in (
+        ("status", "FAILED"),
+        ("status", "VALIDATED"),
+        ("run_status", "INCOMPLETE"),
+        ("execution_state", "ABORTED"),
+    ):
         doc = load_matrix()
         doc[key] = value
         assert evaluate(doc)["complete"] is False
@@ -899,6 +916,28 @@ def test_required_disclaimer_families_cannot_be_removed_from_declaration() -> No
     report = evaluate(doc)
     assert report["complete"] is False
     assert report["scientific_pass"] is False
+
+
+def test_required_disclaimer_families_reject_substring_lookalikes() -> None:
+    """A word embedded in an unrelated token is not a disclaimer marker."""
+    cases = (
+        ("consciousness", "unconsciousness"),
+        ("equanimity", "inequanimity"),
+        ("quantum", "quantumization"),
+        ("topological charge", "topological charger"),
+        ("bayes", "bayesian"),
+        ("scientific pass", "scientific passport"),
+    )
+    for marker, lookalike in cases:
+        doc = load_matrix()
+        doc["forbidden_phrases"] = [
+            phrase for phrase in doc["forbidden_phrases"] if marker not in phrase.lower()
+        ]
+        doc["forbidden_phrases"].append(lookalike)
+
+        report = evaluate(doc)
+        assert report["complete"] is False, marker
+        assert any(f"missing forbidden phrase family: {marker}" in issue for issue in report["issues"])
 
 
 def test_duplicate_yaml_mapping_keys_are_rejected(tmp_path: Path) -> None:
@@ -923,6 +962,11 @@ def test_required_disclaimers_remain_in_adversarial_review_document() -> None:
         "does not validate actual execution histories",
     ):
         assert phrase in text
+
+
+def test_adversarial_review_does_not_label_a_pinned_sha_as_current_main() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert re.search(r"\bcurrent main\s+`?[0-9a-f]{40}", text, re.IGNORECASE) is None
 
 
 def test_complete_matrix_never_implies_scientific_success() -> None:

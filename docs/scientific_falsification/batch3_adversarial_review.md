@@ -7,7 +7,7 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
-This follow-up audits the merged matrix evaluator at current main `57b7e43d42678822e9eec03679891c1770040327`. The YAML matrix is read-only input to this evaluator; this change owns only this document and the test-side evaluator.
+This follow-up audits the merged matrix evaluator. The YAML matrix is read-only input to this evaluator; this change owns only this document and the test-side evaluator.
 
 Paths changed by this follow-up:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
@@ -48,7 +48,7 @@ The matrix declares an intended deterministic campaign state graph:
 
 These are declarations checked in a static matrix document—not observations of execution. The evaluator does not validate actual execution histories: it does not consume campaign event histories, enforce runtime transitions, inspect checkpoint or artifact manifests, or verify hashes. It cannot establish that a runner followed the declared graph or resumability rules. A structurally complete result means only that this versioned declaration has the expected keys, values, and protocol vocabulary; it is not scientific PASS, empirical support, validated power, or theory confirmation.
 
-The evaluator rejects duplicate YAML mapping keys, duplicate list declarations, missing or unsupported fields, malformed values, and unsupported status/outcome vocabulary. These checks protect the integrity of the declaration only; they do not validate the truth of its claims or the scientific adequacy of its proposed thresholds.
+The evaluator rejects duplicate YAML mapping keys, duplicate list declarations, missing or unsupported fields, malformed values, and unsupported status/outcome vocabulary. Required disclaimer families must appear as whole words within an individual phrase entry; substring lookalikes do not satisfy the declaration. These checks protect the integrity of the declaration only; they do not validate the truth of its claims or the scientific adequacy of its proposed thresholds.
 
 ## Claims reviewed
 
