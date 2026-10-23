@@ -18,6 +18,7 @@ Verifies:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import dataclasses
 from fractions import Fraction
 import json
@@ -62,6 +63,7 @@ from dual_engine.forward_model_contract import (
     make_synthetic_source_grid,
     validate_affine_transform,
     verify_average_reference_invariant,
+    verify_channel_reference_invariant,
 )
 
 
@@ -2021,6 +2023,313 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
             is_fixed_orientation=False,
         )
         self.assertIsNone(free_vectors.validate())
+
+
+class _HostileRepr:
+    """Each conversion a validator might attempt raises, so any unsafe call fails loudly."""
+
+    def __repr__(self) -> str:
+        raise RuntimeError("SYNTHETIC-HOSTILE repr probe")
+
+    def __str__(self) -> str:
+        raise RuntimeError("SYNTHETIC-HOSTILE str probe")
+
+    def __format__(self, spec: str) -> str:
+        raise RuntimeError("SYNTHETIC-HOSTILE format probe")
+
+    def __len__(self) -> int:
+        raise RuntimeError("SYNTHETIC-HOSTILE len probe")
+
+    def __iter__(self):
+        raise RuntimeError("SYNTHETIC-HOSTILE iter probe")
+
+    def __getitem__(self, key):
+        raise RuntimeError("SYNTHETIC-HOSTILE index probe")
+
+    def __bool__(self) -> bool:
+        raise RuntimeError("SYNTHETIC-HOSTILE bool probe")
+
+    def __float__(self) -> float:
+        raise RuntimeError("SYNTHETIC-HOSTILE float probe")
+
+    def __hash__(self) -> int:
+        return id(self)
+
+
+class _EchoRepr:
+    """Attacker-controlled text that must never be echoed into a contract error."""
+
+    MARKER = "SYNTHETIC-ECHO-MARKER"
+
+    def __repr__(self) -> str:
+        return self.MARKER
+
+    def __str__(self) -> str:
+        return self.MARKER
+
+    def __format__(self, spec: str) -> str:
+        return self.MARKER
+
+
+class _EchoFloat(float):
+    def __repr__(self) -> str:
+        return "SYNTHETIC-ECHO-MARKER"
+
+
+class _BadLenSequence(Sequence):
+    def __len__(self) -> int:
+        raise RuntimeError("SYNTHETIC-LEN-MARKER")
+
+    def __getitem__(self, index):
+        return (0.0, 0.0, 1.0)
+
+
+class _BadIterSequence(Sequence):
+    def __len__(self) -> int:
+        return 1
+
+    def __getitem__(self, index):
+        raise RuntimeError("SYNTHETIC-INDEX-MARKER")
+
+    def __iter__(self):
+        raise RuntimeError("SYNTHETIC-INDEX-MARKER")
+
+
+HOSTILE_MARKERS = (
+    "SYNTHETIC-HOSTILE",
+    "SYNTHETIC-ECHO-MARKER",
+    "SYNTHETIC-LEN-MARKER",
+    "SYNTHETIC-INDEX-MARKER",
+)
+
+
+class TestForwardModelHostileInputSanitization(unittest.TestCase):
+    """Hostile caller values fail as field-specific contract errors.
+
+    The contract error must not run the caller's ``__repr__``, ``__format__``, ``__len__``,
+    iteration, indexing or truth conversion, and must not echo attacker text. A raw
+    RuntimeError, TypeError or ValueError escaping a validator fails these tests, as does a
+    message that lacks the field name.
+    """
+
+    def setUp(self) -> None:
+        self.conductor = ConductorModel()
+        self.sensors = make_standard_1020_synthetic_sensors(self.conductor.scalp_radius_m)
+        self.interior = ((0.0, 0.0, 0.02),)
+        self.unit = ((0.0, 0.0, 1.0),)
+        self.identity = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+
+    def _assert_sanitized_contract_error(self, call, field: str) -> None:
+        with self.assertRaises(ForwardModelContractError) as caught:
+            call()
+        message = str(caught.exception)
+        self.assertIn(field, message)
+        for marker in HOSTILE_MARKERS:
+            self.assertNotIn(marker, message)
+
+    def test_n_sources_hostile_values_fail_closed_without_repr(self) -> None:
+        for value in (_HostileRepr(), _EchoRepr()):
+            with self.subTest(value=type(value).__name__):
+                self._assert_sanitized_contract_error(
+                    lambda v=value: make_synthetic_source_grid(v), "n_sources"
+                )
+
+    def test_n_max_terms_hostile_values_fail_closed_without_repr(self) -> None:
+        for value in (_HostileRepr(), _EchoRepr()):
+            with self.subTest(value=type(value).__name__):
+                self._assert_sanitized_contract_error(
+                    lambda v=value: compute_homogeneous_sphere_potential(
+                        self.interior[0],
+                        (0.0, 0.0, 0.01),
+                        (0.0, 0.0, 1e-9),
+                        n_max_terms=v,
+                    ),
+                    "n_max_terms",
+                )
+
+    def test_negative_tolerance_is_not_echoed(self) -> None:
+        self._assert_sanitized_contract_error(
+            lambda: verify_channel_reference_invariant(
+                [[0.0]], ("Fp1",), "Fp1", tolerance=_EchoFloat(-1.0)
+            ),
+            "tolerance",
+        )
+
+    def test_channel_name_arguments_fail_closed(self) -> None:
+        leadfield = [[0.0, 1.0]]
+        for names, field in (
+            (_HostileRepr(), "channel_names"),
+            (_EchoRepr(), "channel_names"),
+            (("Fp1", 2), "channel_names"),
+        ):
+            with self.subTest(names=type(names).__name__):
+                self._assert_sanitized_contract_error(
+                    lambda n=names: apply_channel_reference(leadfield, n, "Fp1"), field
+                )
+
+    def test_leadfield_rows_that_fail_iteration_are_contract_errors(self) -> None:
+        self._assert_sanitized_contract_error(
+            lambda: compute_leadfield_diagnostics(
+                [_HostileRepr()], is_fixed_orientation=False, n_sources=1
+            ),
+            "Leadfield",
+        )
+
+    def test_hostile_is_fixed_orientation_is_not_truth_tested_by_grid_builder(self) -> None:
+        self._assert_sanitized_contract_error(
+            lambda: make_synthetic_source_grid(4, is_fixed_orientation=_HostileRepr()),
+            "is_fixed_orientation",
+        )
+
+    def test_container_methods_on_geometry_fields_are_guarded(self) -> None:
+        self._assert_sanitized_contract_error(
+            lambda: ConductorModel(radii_m=_BadLenSequence()).validate(), "radii_m"
+        )
+        self._assert_sanitized_contract_error(
+            lambda: SourceSpace(positions_m=_BadLenSequence()).validate(), "positions_m"
+        )
+        for is_fixed in (True, False):
+            with self.subTest(is_fixed=is_fixed):
+                self._assert_sanitized_contract_error(
+                    lambda f=is_fixed: SourceSpace(
+                        positions_m=self.interior,
+                        orientations=_BadLenSequence(),
+                        is_fixed_orientation=f,
+                    ).validate(),
+                    "orientations",
+                )
+                self._assert_sanitized_contract_error(
+                    lambda f=is_fixed: SourceSpace(
+                        positions_m=self.interior,
+                        orientations=_BadIterSequence(),
+                        is_fixed_orientation=f,
+                    ).validate(),
+                    "orientations",
+                )
+
+    def test_non_sequence_geometry_shapes_are_contract_errors(self) -> None:
+        cases = (
+            (lambda: ConductorModel(radii_m=5).validate(), "radii_m"),
+            (lambda: ConductorModel(radii_m=None).validate(), "radii_m"),
+            (lambda: ConductorModel(sigmas_sm=None).validate(), "sigmas_sm"),
+            (
+                lambda: dataclasses.replace(self.sensors, channel_names=None, positions_m=()).validate(),
+                "channel_names",
+            ),
+            (lambda: dataclasses.replace(self.sensors, positions_m=5).validate(), "positions_m"),
+            (lambda: SourceSpace(positions_m=5).validate(), "positions_m"),
+            (
+                lambda: SourceSpace(positions_m=np.array([[0.0, 0.0, 0.02]] * 3)).validate(),
+                "positions_m",
+            ),
+            (
+                lambda: build_synthetic_forward_contract(
+                    sensor_geometry=self.sensors, source_space=SourceSpace(positions_m=5)
+                ),
+                "positions_m",
+            ),
+        )
+        for call, field in cases:
+            with self.subTest(field=field):
+                self._assert_sanitized_contract_error(call, field)
+
+    def test_channel_name_entries_must_be_plain_strings(self) -> None:
+        names = list(self.sensors.channel_names)
+        bad_names = (
+            tuple([[names[0]]] + names[1:]),
+            tuple([_HostileRepr()] + names[1:]),
+            tuple([1] + names[1:]),
+        )
+        for bad in bad_names:
+            with self.subTest(entry=type(bad[0]).__name__):
+                self._assert_sanitized_contract_error(
+                    lambda b=bad: dataclasses.replace(self.sensors, channel_names=b).validate(),
+                    "channel_names",
+                )
+
+    def test_reference_channel_must_be_text_and_is_never_formatted(self) -> None:
+        for value in (_HostileRepr(), _EchoRepr()):
+            with self.subTest(value=type(value).__name__):
+                self._assert_sanitized_contract_error(
+                    lambda v=value: dataclasses.replace(self.sensors, reference_channel=v).validate(),
+                    "reference_channel",
+                )
+                self._assert_sanitized_contract_error(
+                    lambda v=value: build_synthetic_forward_contract(
+                        sensor_geometry=self.sensors, reference_channel=v, apply_avg_ref=True
+                    ),
+                    "reference_channel",
+                )
+
+    def test_free_mode_orientation_table_is_validated_like_fixed_mode(self) -> None:
+        malformed = (
+            ((1.0, 2.0),),
+            ((math.nan, 0.0, 0.0),),
+            ((0.0, 0.0, 1.0), (0.0, 1.0, 0.0)),
+        )
+        for orientations in malformed:
+            with self.subTest(orientations=orientations):
+                source = SourceSpace(
+                    positions_m=self.interior,
+                    orientations=orientations,
+                    is_fixed_orientation=False,
+                )
+                with self.assertRaises(ForwardModelContractError):
+                    source.validate()
+                with self.assertRaises(ForwardModelContractError):
+                    build_synthetic_forward_contract(
+                        sensor_geometry=self.sensors, source_space=source
+                    )
+
+    def test_free_mode_non_unit_vectors_remain_accepted(self) -> None:
+        source = SourceSpace(
+            positions_m=self.interior,
+            orientations=((0.0, 0.0, 2.0),),
+            is_fixed_orientation=False,
+        )
+        self.assertIsNone(source.validate())
+        built = build_synthetic_forward_contract(sensor_geometry=self.sensors, source_space=source)
+        self.assertEqual(built.source_space.n_columns, 3)
+
+    def test_documented_no_coercion_inputs_remain_accepted_or_rejected(self) -> None:
+        conductor = ConductorModel(radii_m=[0.07, 0.08, 0.09], sigmas_sm=[0.33, 0.01, 0.43])
+        self.assertIsNone(conductor.validate())
+        self.assertIsInstance(
+            compute_homogeneous_sphere_potential(
+                self.sensors.positions_m[0],
+                self.interior[0],
+                (0.0, 0.0, 1e-9),
+                sphere_radius_m=self.conductor.scalp_radius_m,
+                n_max_terms=np.int64(8),
+            ),
+            float,
+        )
+        numpy_components = SourceSpace(
+            positions_m=self.interior,
+            orientations=((np.float64(0.0), np.float64(0.0), np.float64(1.0)),),
+            is_fixed_orientation=True,
+        )
+        self.assertIsNone(numpy_components.validate())
+        self.assertIsNone(
+            SourceSpace(positions_m=[[0.0, 0.0, 0.02]], is_fixed_orientation=False).validate()
+        )
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(
+                positions_m=self.interior,
+                orientations=np.array([[0.0, 0.0, 1.0]]),
+                is_fixed_orientation=True,
+            ).validate()
+        with self.assertRaises(ForwardModelContractError):
+            SourceSpace(
+                positions_m=self.interior,
+                orientations=self.unit,
+                is_fixed_orientation=np.bool_(True),
+            ).validate()
 
 
 if __name__ == "__main__":
