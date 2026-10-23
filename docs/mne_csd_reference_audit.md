@@ -61,7 +61,7 @@ arithmetic as the reference, on synthetic inputs.
 |---|---|---|
 | Version 1.13.2, sdist SHA-256 `729829e3…5521` | PyPI JSON https://pypi.org/pypi/mne/1.13.2/json | **Re-verified** this session (digest matches) |
 | Source file hashes `bcb8b47e…`, `a77c8b02…` | the sdist itself | **Re-verified** from a fresh extraction |
-| Tag commit `bf67729b…` | `git ls-remote` on mne-tools/mne-python, recorded 2026-10-17 | **Not re-verified**: that repository is outside this session's access |
+| Tag commit `bf67729b…` | `git ls-remote` on mne-tools/mne-python, verified against the live `v1.13.2` tag on 2026-10-23 | Resolves to `bf67729b805865b5bb0f2f97621e416278efd1b2` |
 | Sphere `(x, y, z, r)` with `r` in metres; `"auto"` allowed | sdist docstring, `mne/preprocessing/_csd.py` lines 66-130 | **Re-verified**. The reference refuses `"auto"`, which is stricter |
 | `lambda2` in `[0, 1)`, default 1e-5 | sdist `_csd.py` lines 127 and docstring | **Re-verified** |
 | `stiffness < 0` refused | sdist `_csd.py` lines 129-131 | **Re-verified** |

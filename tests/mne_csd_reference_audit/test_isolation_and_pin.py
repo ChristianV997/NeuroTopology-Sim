@@ -196,6 +196,12 @@ def test_skip_guard_ignores_plain_test_code(sample):
     assert _skip_violations(sample) == [], sample
 
 
+def test_pin_provenance_claims_are_currently_verified():
+    source = (REPO_ROOT / "tools" / "mne_csd_reference_audit" / "pin.py").read_text(encoding="utf-8")
+    assert "NOT re-verified" not in source
+    assert "verified against the live tag" in source
+
+
 def test_pin_is_internally_consistent():
     assert pin.MNE_TAG == f"v{pin.MNE_VERSION}"
     assert re.fullmatch(r"[0-9a-f]{40}", pin.MNE_TAG_COMMIT)
