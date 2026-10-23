@@ -226,20 +226,24 @@ These gates are part of the scouting workflow. They are checks on which
 candidates may be recommended for adoption. They do not perform any
 integration, and they make no claim about repository quality.
 
-- **Ambiguous source identity** (`oss_opportunities.validation`). A candidate
-  is rejected with an "ambiguous source identity" error when `repo_full_name`
-  is not `owner/name`, when `owner` disagrees with `repo_full_name`, or when a
-  non-empty `repo_url` does not point at `https://github.com/<repo_full_name>`
-  (case-insensitive, trailing slash ignored). `build_opportunities_from_candidates`
-  raises on any invalid candidate, so a batch never silently mixes in an
-  ambiguous record.
+- **Malformed evidence and source identity** (`oss_opportunities.validation`).
+  Candidate validation rejects non-string source/identity and provenance
+  fields, malformed metadata/list fields, invalid count inputs, and a
+  `candidate_id` that does not match its repository/source/snapshot identity.
+  An ambiguous `repo_full_name`, mismatched owner, or non-empty `repo_url`
+  pointing elsewhere is rejected. `build_opportunities_from_candidates`
+  raises on any invalid candidate, so a batch never silently includes a
+  malformed record.
 - **Duplicate candidates** (`oss_opportunities.opportunity_batch`). Observations
-  of the same repository (case-insensitive `repo_full_name`) from different
-  sources or snapshots are ranked once. The highest-scoring observation is
-  primary. Each other observation is kept in `opportunities_rejected` with
-  `reason` `duplicate_of:<primary id>` and a `duplicate_of` field. They are
-  excluded from `top_rejections`. The batch metadata records
-  `duplicate_observations`.
+  of the same repository (`casefold()`-normalized `repo_full_name`) are ranked
+  once. License labels are compared case-insensitively after trimming only;
+  the code does not parse SPDX expressions or infer equivalence. Conflicting
+  observed labels are retained as a sorted conflict record and force the
+  combined review to `missing_high` / `license_review_required` regardless of
+  score or input order. Case-only spelling differences do not create a
+  conflict. Each duplicate observation remains in `opportunities_rejected`
+  with a `duplicate_of` reason, and the batch records duplicate/conflict
+  counts.
 - **Unresolved license** (`oss_opportunities.scoring`). An empty or unknown
   license (`missing_high`) and an unmatched license string
   (`proprietary_or_unknown_high`) both recommend `license_review_required`.
@@ -258,8 +262,10 @@ integration, and they make no claim about repository quality.
   `credential_required_execution` remains in `blocked_actions` regardless.
 
 Offline tests: `tests/test_oss_adoption_gates.py`. Candidate-level review of
-named external projects, with canonical sources and revisions:
-`docs/oss_opportunity_candidate_review_20261016.md`.
+named external projects is maintained separately in the canonical inventory
+`docs/oss_compat/compatibility_inventory_20261017.json` (PR #406). The
+adoption-gates note references stable row IDs but does not duplicate upstream
+version/license evidence: `docs/oss_opportunity_candidate_review_20261016.md`.
 
 ## CLI usage
 
@@ -296,11 +302,14 @@ pattern), an invalid Trendshift timeframe / starmap category, or a missing
 ## Limitations
 
 - Scoring is a documented, additive heuristic -- not a scientific or
-  legal judgment of repository quality, correctness, or license safety.
+  judgment of repository quality, correctness, compatibility, security,
+  legal clearance, or scientific validity.
 - `classify_license_risk` is an offline string match against a fixed list
-  -- it does not fetch or parse an actual `LICENSE` file, and
-  `review_status` defaults to `"heuristic_unreviewed"`; only a
-  human-set `"human_reviewed"` value means an actual person looked at it.
+  -- it does not fetch or parse an actual `LICENSE` file. `review_status`
+  must be one of `heuristic_unreviewed` or `human_reviewed`; the latter is
+  caller-supplied metadata, not an authorization, security certification, or
+  legal conclusion. Package declarations and transitive/component licenses
+  require separately scoped evidence.
 - `infer_leverage_category`'s keyword matching is a simple substring
   overlap over `description`/`topics`/`name` -- it can misclassify a
   repository whose README doesn't use the expected vocabulary.

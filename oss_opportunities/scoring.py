@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from oss_opportunities.license_review import RepositoryLicenseReviewV1
+from oss_opportunities.license_review import RepositoryLicenseReviewV1, classify_license_risk
 from oss_opportunities.repository_candidate import OpenSourceRepositoryCandidateV1
-from oss_opportunities.validation import REQUIRED_BLOCKED_ACTIONS
+from oss_opportunities.validation import OssOpportunityValidationError, REQUIRED_BLOCKED_ACTIONS
 
 # ── keyword -> leverage_category hints (topics/description substring
 # match only, never a claim about what the repository actually does) ────
@@ -91,6 +91,28 @@ def score_opportunity(
     """Return a plain dict with every field
     `oss_opportunities.opportunity_batch.build_opportunities_from_candidates`
     needs to construct an `OpenSourceIntegrationOpportunityV1`."""
+    if not isinstance(candidate, OpenSourceRepositoryCandidateV1):
+        raise OssOpportunityValidationError("candidate must be an OpenSourceRepositoryCandidateV1")
+    candidate_errors = candidate.validate()
+    if candidate_errors:
+        raise OssOpportunityValidationError(f"candidate failed validation: {'; '.join(candidate_errors)}")
+    if not isinstance(license_review, RepositoryLicenseReviewV1):
+        raise OssOpportunityValidationError("license_review must be a RepositoryLicenseReviewV1")
+    review_errors = license_review.validate()
+    if review_errors:
+        raise OssOpportunityValidationError(f"license review failed validation: {'; '.join(review_errors)}")
+
+    def normalize_evidence(value: str | None) -> str:
+        return (value or "unknown").strip().casefold()
+
+    if normalize_evidence(license_review.repo_full_name) != normalize_evidence(candidate.repo_full_name):
+        raise OssOpportunityValidationError("license review does not match candidate repository")
+    if normalize_evidence(license_review.license_spdx) != normalize_evidence(candidate.license_spdx):
+        raise OssOpportunityValidationError("license review does not match candidate license evidence")
+    derived_risk = classify_license_risk(license_review.license_spdx)
+    if license_review.license_risk != derived_risk:
+        raise OssOpportunityValidationError("license review risk does not match its license evidence")
+
     leverage_category = infer_leverage_category(candidate)
     language = (candidate.primary_language or "").strip().lower()
     is_non_python_core = language in _NON_PYTHON_CORE_LANGUAGES
@@ -170,6 +192,8 @@ def score_opportunity(
 
     if blocked:
         recommended_action = "reject" if total_score < 0 else "defer"
+    elif license_review.commercial_core_policy in ("blocked_pending_review", "blocked"):
+        recommended_action = "license_review_required"
     elif license_review.license_risk in ("missing_high", "proprietary_or_unknown_high"):
         # Unresolved license: an empty/unknown string, or an unmatched license
         # string. Adoption of any kind waits for a license review.

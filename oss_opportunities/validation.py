@@ -15,6 +15,8 @@ other validation module in this repository family (see
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -40,6 +42,20 @@ ALLOWED_SOURCE: frozenset[str] = frozenset(
     }
 )
 
+
+def candidate_observation_id(
+    *, repo_full_name: str, source: str, source_timeframe: str, source_snapshot_date: str
+) -> str:
+    """Return the stable identifier for one source/snapshot observation."""
+    basis = {
+        "repo_full_name": repo_full_name,
+        "source": source,
+        "source_timeframe": source_timeframe,
+        "source_snapshot_date": source_snapshot_date,
+    }
+    canonical = json.dumps(basis, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
 # ── RepositoryLicenseReviewV1 vocabulary ────────────────────────────────
 
 ALLOWED_LICENSE_RISK: frozenset[str] = frozenset(
@@ -51,6 +67,10 @@ ALLOWED_LICENSE_RISK: frozenset[str] = frozenset(
         "proprietary_or_unknown_high",
         "missing_high",
     }
+)
+
+ALLOWED_LICENSE_REVIEW_STATUS: frozenset[str] = frozenset(
+    {"heuristic_unreviewed", "human_reviewed"}
 )
 
 ALLOWED_COMMERCIAL_CORE_POLICY: frozenset[str] = frozenset(
@@ -196,29 +216,68 @@ def validate_repository_candidate(record: Any) -> list[str]:
     """Return a list of error strings (empty = valid). Never raises."""
     errors: list[str] = []
 
-    if not getattr(record, "candidate_id", None):
+    candidate_id = getattr(record, "candidate_id", None)
+    if not isinstance(candidate_id, str) or not candidate_id.strip():
         errors.append("candidate_id is required")
 
-    if not getattr(record, "repo_full_name", None):
+    repo_full_name = getattr(record, "repo_full_name", None)
+    if not isinstance(repo_full_name, str) or not repo_full_name.strip():
         errors.append("repo_full_name is required")
 
-    # Rule 1.
-    if not getattr(record, "limitations", None):
+    limitations = getattr(record, "limitations", None)
+    if not isinstance(limitations, list) or not limitations:
         errors.append("limitations must be a non-empty list (rule 1)")
+    elif any(not isinstance(item, str) or not item.strip() for item in limitations):
+        errors.append("limitations must contain only non-empty strings")
 
-    # Rule 2.
-    if not getattr(record, "provenance", None):
+    provenance = getattr(record, "provenance", None)
+    if not isinstance(provenance, str) or not provenance.strip():
         errors.append("provenance is required (rule 2)")
 
-    # Rule 3.
     source = getattr(record, "source", None)
-    if source not in ALLOWED_SOURCE:
-        errors.append(f"source '{source}' must be one of {sorted(ALLOWED_SOURCE)} -- source must be explicit (rule 3)")
+    if not isinstance(source, str):
+        errors.append("source must be a string")
+    elif source not in ALLOWED_SOURCE:
+        errors.append(f"source must be one of {sorted(ALLOWED_SOURCE)} -- source must be explicit (rule 3)")
+
+    metadata = getattr(record, "metadata", None)
+    if not isinstance(metadata, dict):
+        errors.append("metadata must be a mapping")
+        metadata = {}
+
+    for field_name in (
+        "name", "description", "license_spdx", "license_name", "license_url",
+        "source_timeframe", "source_snapshot_date", "primary_language",
+        "latest_activity_status", "homepage_url",
+    ):
+        value = getattr(record, field_name, None)
+        optional = field_name in ("license_url", "license_spdx", "license_name")
+        if value is None and optional:
+            continue
+        if not isinstance(value, str):
+            errors.append(f"{field_name} must be a string")
+
+    for field_name in ("topics", "observed_categories"):
+        value = getattr(record, field_name, None)
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            errors.append(f"{field_name} must be a list of strings")
+
+    for field_name in ("source_rank", "stars", "star_gain", "fork_count"):
+        value = getattr(record, field_name, None)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            errors.append(f"{field_name} must be a non-negative integer or None")
+        elif value is not None and value < 0:
+            errors.append(f"{field_name} must be a non-negative integer or None")
+
+    if "requires_credentials" in metadata and not isinstance(metadata["requires_credentials"], bool):
+        errors.append("metadata.requires_credentials must be a boolean")
+    adapter_docs_url = metadata.get("adapter_docs_url")
+    if adapter_docs_url is not None and not isinstance(adapter_docs_url, str):
+        errors.append("metadata.adapter_docs_url must be a string")
 
     # Rule 13: Trendshift Signal raw payload must never be embedded for
     # redistribution.
     if source == "trendshift_signal":
-        metadata = getattr(record, "metadata", None) or {}
         if metadata.get("redistributes_raw_signal_data"):
             errors.append(
                 "source='trendshift_signal' must not set metadata.redistributes_raw_signal_data=true "
@@ -235,34 +294,52 @@ def validate_repository_candidate(record: Any) -> list[str]:
         errors.append("OpenSourceRepositoryCandidateV1 must not carry its own claim_scope/evidence_level/evidence_ready field")
 
     for field_name in ("name", "description", "provenance"):
-        _scan_banned_phrases(getattr(record, field_name, None) or "", field_name, errors)
+        value = getattr(record, field_name, None)
+        if isinstance(value, str):
+            _scan_banned_phrases(value, field_name, errors)
     for field_name in ("limitations", "observed_categories", "topics"):
-        _scan_banned_phrases(getattr(record, field_name, None) or [], field_name, errors)
-    _scan_banned_phrases(getattr(record, "metadata", None) or {}, "metadata", errors)
+        value = getattr(record, field_name, None)
+        if isinstance(value, list):
+            _scan_banned_phrases(value, field_name, errors)
+    _scan_banned_phrases(metadata, "metadata", errors)
 
     # Ambiguous source identity: one name must mean exactly one repository.
     # Each check runs only when the field is present; a missing
     # repo_full_name is already reported above. A non-string identity field
     # is reported as an error, never raised: this function does not raise.
-    repo_full_name = getattr(record, "repo_full_name", None) or ""
-    owner = getattr(record, "owner", None) or ""
-    repo_url = getattr(record, "repo_url", None) or ""
+    repo_full_name = getattr(record, "repo_full_name", None)
+    owner = getattr(record, "owner", None)
+    repo_url = getattr(record, "repo_url", None)
+    owner = "" if owner is None else owner
+    repo_url = "" if repo_url is None else repo_url
     identity_fields = (("repo_full_name", repo_full_name), ("owner", owner), ("repo_url", repo_url))
     non_string = [name for name, value in identity_fields if not isinstance(value, str)]
     if non_string:
         errors.extend(f"{name} must be a string" for name in non_string)
     else:
         if repo_full_name and not _REPO_FULL_NAME_RE.match(repo_full_name):
-            errors.append(f"repo_full_name {repo_full_name!r} must be 'owner/name' (ambiguous source identity)")
+            errors.append("repo_full_name must be 'owner/name' (ambiguous source identity)")
         if owner and "/" in repo_full_name and owner.lower() != repo_full_name.split("/", 1)[0].lower():
-            errors.append(f"owner {owner!r} does not match repo_full_name {repo_full_name!r} (ambiguous source identity)")
+            errors.append("owner does not match repo_full_name (ambiguous source identity)")
         repo_url = repo_url.strip().rstrip("/")
         if repo_url and repo_full_name:
             expected_url = f"https://github.com/{repo_full_name}"
             if repo_url.lower() != expected_url.lower():
                 errors.append(
-                    f"repo_url {repo_url!r} does not point to repo_full_name {repo_full_name!r} (ambiguous source identity)"
+                    "repo_url does not point to repo_full_name (ambiguous source identity)"
                 )
+
+    source_timeframe = getattr(record, "source_timeframe", None)
+    source_snapshot_date = getattr(record, "source_snapshot_date", None)
+    if all(isinstance(value, str) for value in (repo_full_name, source, source_timeframe, source_snapshot_date)):
+        expected_id = candidate_observation_id(
+            repo_full_name=repo_full_name,
+            source=source,
+            source_timeframe=source_timeframe,
+            source_snapshot_date=source_snapshot_date,
+        )
+        if isinstance(candidate_id, str) and candidate_id != expected_id:
+            errors.append("candidate_id does not match observation identity")
 
     return errors
 
@@ -273,62 +350,93 @@ def validate_repository_candidate(record: Any) -> list[str]:
 def validate_license_review(record: Any) -> list[str]:
     errors: list[str] = []
 
-    if not getattr(record, "license_review_id", None):
+    license_review_id = getattr(record, "license_review_id", None)
+    if not isinstance(license_review_id, str) or not license_review_id.strip():
         errors.append("license_review_id is required")
-    if not getattr(record, "repo_full_name", None):
+    repo_full_name = getattr(record, "repo_full_name", None)
+    if not isinstance(repo_full_name, str) or not repo_full_name.strip():
         errors.append("repo_full_name is required")
 
-    if not getattr(record, "limitations", None):
+    limitations = getattr(record, "limitations", None)
+    if not isinstance(limitations, list) or not limitations:
         errors.append("limitations must be a non-empty list (rule 1)")
-    if not getattr(record, "provenance", None):
+    elif any(not isinstance(item, str) or not item.strip() for item in limitations):
+        errors.append("limitations must contain only non-empty strings")
+    provenance = getattr(record, "provenance", None)
+    if not isinstance(provenance, str) or not provenance.strip():
         errors.append("provenance is required (rule 2)")
 
     # Rule 4: license risk must be explicit; unknown/missing licenses
     # become high risk.
     license_risk = getattr(record, "license_risk", None)
-    if license_risk not in ALLOWED_LICENSE_RISK:
-        errors.append(f"license_risk '{license_risk}' must be one of {sorted(ALLOWED_LICENSE_RISK)} (rule 4)")
+    if not isinstance(license_risk, str) or license_risk not in ALLOWED_LICENSE_RISK:
+        errors.append(f"license_risk must be one of {sorted(ALLOWED_LICENSE_RISK)} (rule 4)")
 
     license_spdx = getattr(record, "license_spdx", None)
-    if (not license_spdx or str(license_spdx).strip().lower() in ("unknown", "")) and license_risk not in (
+    if license_spdx is not None and not isinstance(license_spdx, str):
+        errors.append("license_spdx must be a string or None")
+    license_name = getattr(record, "license_name", None)
+    if license_name is not None and not isinstance(license_name, str):
+        errors.append("license_name must be a string or None")
+    if (not license_spdx or (isinstance(license_spdx, str) and license_spdx.strip().lower() in ("unknown", ""))) and license_risk not in (
         "missing_high",
         "proprietary_or_unknown_high",
     ):
         errors.append(
-            f"license_spdx {license_spdx!r} is missing/unknown -- license_risk must be 'missing_high' or "
+            "license_spdx is missing/unknown -- license_risk must be 'missing_high' or "
             "'proprietary_or_unknown_high' (rule 4)"
         )
 
     commercial_core_policy = getattr(record, "commercial_core_policy", None)
-    if commercial_core_policy not in ALLOWED_COMMERCIAL_CORE_POLICY:
+    if not isinstance(commercial_core_policy, str) or commercial_core_policy not in ALLOWED_COMMERCIAL_CORE_POLICY:
         errors.append(
-            f"commercial_core_policy '{commercial_core_policy}' must be one of "
+            "commercial_core_policy must be one of "
             f"{sorted(ALLOWED_COMMERCIAL_CORE_POLICY)}"
         )
 
     # Rule 8: GPL/AGPL/fair-code/proprietary/unknown licenses cannot be
     # commercial-core copy candidates. Fail closed -- only permissive_low
     # may ever carry a copy-permitting policy.
-    if commercial_core_policy in _COMMERCIAL_CORE_COPY_POLICIES and license_risk not in _COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK:
+    if (
+        isinstance(commercial_core_policy, str)
+        and commercial_core_policy in _COMMERCIAL_CORE_COPY_POLICIES
+        and isinstance(license_risk, str)
+        and license_risk not in _COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK
+    ):
         errors.append(
-            f"license_risk '{license_risk}' cannot use commercial_core_policy "
-            f"'{commercial_core_policy}' (rule 8, fail closed)"
+            "license risk cannot use the selected copy-permitting commercial policy "
+            "(rule 8, fail closed)"
         )
 
-    if not getattr(record, "allowed_use_modes", None):
+    allowed_use_modes = getattr(record, "allowed_use_modes", None)
+    if not isinstance(allowed_use_modes, list) or not allowed_use_modes:
         errors.append("allowed_use_modes must be a non-empty list")
-    if not getattr(record, "blocked_use_modes", None):
+    elif any(not isinstance(item, str) or not item.strip() for item in allowed_use_modes):
+        errors.append("allowed_use_modes must contain only non-empty strings")
+    blocked_use_modes = getattr(record, "blocked_use_modes", None)
+    if not isinstance(blocked_use_modes, list) or not blocked_use_modes:
         errors.append("blocked_use_modes must be a non-empty list")
+    elif any(not isinstance(item, str) or not item.strip() for item in blocked_use_modes):
+        errors.append("blocked_use_modes must contain only non-empty strings")
 
     review_status = getattr(record, "review_status", None)
-    if not review_status:
-        errors.append("review_status is required")
+    if not isinstance(review_status, str) or review_status not in ALLOWED_LICENSE_REVIEW_STATUS:
+        errors.append(f"review_status must be one of {sorted(ALLOWED_LICENSE_REVIEW_STATUS)}")
+
+    metadata = getattr(record, "metadata", None)
+    if not isinstance(metadata, dict):
+        errors.append("metadata must be a mapping")
+        metadata = {}
 
     for field_name in ("license_name", "provenance", "commercial_core_policy"):
-        _scan_banned_phrases(getattr(record, field_name, None) or "", field_name, errors)
+        value = getattr(record, field_name, None)
+        if isinstance(value, str):
+            _scan_banned_phrases(value, field_name, errors)
     for field_name in ("limitations", "allowed_use_modes", "blocked_use_modes"):
-        _scan_banned_phrases(getattr(record, field_name, None) or [], field_name, errors)
-    _scan_banned_phrases(getattr(record, "metadata", None) or {}, "metadata", errors)
+        value = getattr(record, field_name, None)
+        if isinstance(value, list):
+            _scan_banned_phrases(value, field_name, errors)
+    _scan_banned_phrases(metadata, "metadata", errors)
 
     return errors
 
