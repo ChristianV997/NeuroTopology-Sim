@@ -183,15 +183,17 @@ No production caller and no `from_dict` round-trip in this repository passes tho
 
 | Field | What passes `validate()` | Existing rejection that still runs | Error |
 | :--- | :--- | :--- | :--- |
-| `ConductorModel.model_type` | `ConductorModelType.SPHERICAL_3SHELL` (`spherical_3shell`), `ConductorModelType.SPHERICAL_1SHELL` (`spherical_1shell`) | `ConductorModelType.ANATOMICAL_BEM` | `ConductorGeometryError`. The message names `model_type`, the rejected value, and the accepted values `spherical_3shell, spherical_1shell`. The anatomical member keeps the message that anatomical BEM is not supported. |
-| `SensorGeometry.coordinate_frame` | `CoordinateFrame.HEAD` (`head`), `CoordinateFrame.MNI` (`mni`) | `CoordinateFrame.UNKNOWN` | `CoordinateFrameMismatchError`. The message names `sensor_geometry.coordinate_frame`, the rejected value, and the accepted values `head, mni`. The `UNKNOWN` member keeps the message that UNKNOWN is rejected and the frame must be HEAD or MNI. |
+| `ConductorModel.model_type` | `ConductorModelType.SPHERICAL_3SHELL` (`spherical_3shell`), `ConductorModelType.SPHERICAL_1SHELL` (`spherical_1shell`) | `ConductorModelType.ANATOMICAL_BEM` | `ConductorGeometryError`. The message names `model_type` and the accepted values `spherical_3shell, spherical_1shell`; it does not echo the rejected input. The anatomical member keeps the message that anatomical BEM is not supported. |
+| `SensorGeometry.coordinate_frame` | `CoordinateFrame.HEAD` (`head`), `CoordinateFrame.MNI` (`mni`) | `CoordinateFrame.UNKNOWN` | `CoordinateFrameMismatchError`. The message names `sensor_geometry.coordinate_frame` and the accepted values `head, mni`; it does not echo the rejected input. The `UNKNOWN` member keeps the message that UNKNOWN is rejected and the frame must be HEAD or MNI. |
 | `SourceSpace.coordinate_frame` | `CoordinateFrame.HEAD`, `CoordinateFrame.MNI` | `CoordinateFrame.UNKNOWN` | `CoordinateFrameMismatchError`, same rule, field name `source_space.coordinate_frame`. |
-| `SourceSpace.is_fixed_orientation` | `True` (fixed, one column per source) or `False` (free, three columns per source) | — | `ForwardModelContractError`. Accepted values are `True, False`. |
-| `SourceSpace.orientations` | `None`, or a sequence of length-3 vectors. Free mode does not require unit length. Fixed mode still requires one unit vector per source | a `str`, `bytes`, or other non-sequence | `ForwardModelContractError`. |
+| `SourceSpace.is_fixed_orientation` | Built-in `True` (fixed, one column per source) or `False` (free, three columns per source) | — | `ForwardModelContractError`. Accepted values are `True, False`; `numpy.bool_` is not coerced. |
+| `SourceSpace.orientations` | `None`, or a Python sequence of length-3 vectors. Free mode does not require unit length. Fixed mode still requires one unit vector per source | a `str`, `bytes`, or other non-sequence, including a top-level `numpy.ndarray` | `ForwardModelContractError`. |
 
 `OrientationType` (`free`, `fixed`) documents those two modes. It is not a field on `SourceSpace`, and neither member is accepted in place of the bool. A truthy string such as `"free"` used to be treated as fixed orientation and could build a one-column leadfield; that path now fails in `validate()`.
 
 `None`, `int`, `bytes`, and a member of a different enum (`CoordinateFrame` passed as `model_type`, `ConductorModelType` or `OrientationType` passed as `coordinate_frame`) are non-members and fail the same way. Synthetic fixtures and analytic oracles are not measured EEG, validated physics, or scientific evidence.
+
+This boundary performs no implicit NumPy conversion: a top-level `numpy.ndarray` orientation table and `numpy.bool_` orientation flag are intentionally rejected. Convert these explicitly to a Python sequence and built-in `bool` before constructing `SourceSpace`. Validation errors identify the field and accepted domain but do not format or echo rejected input objects; custom representations can be unsafe or disclose caller data.
 
 ---
 

@@ -340,7 +340,7 @@ def _require_enum_member(
         return
     accepted_text = ", ".join(accepted)
     raise exc_cls(
-        f"{field} must be a {enum_cls.__name__} member; got {value!r}. "
+        f"{field} must be a {enum_cls.__name__} member. "
         f"Accepted values: {accepted_text}."
     )
 
@@ -377,7 +377,7 @@ def _require_fixed_orientation_flag(value: Any) -> None:
         return
     raise ForwardModelContractError(
         "source_space.is_fixed_orientation must be a bool; "
-        f"got {value!r}. Accepted values: True, False."
+        "Accepted values: True, False."
     )
 
 
@@ -385,10 +385,12 @@ def _require_orientation_table(orientations: Any) -> None:
     """Reject a bare string or scalar stored where orientation vectors belong."""
     if orientations is None:
         return
-    if isinstance(orientations, (str, bytes, bytearray)) or not isinstance(orientations, AbcSequence):
+    if isinstance(orientations, (str, bytes, bytearray)) or not isinstance(
+        orientations, AbcSequence
+    ):
         raise ForwardModelContractError(
             "source_space.orientations must be a sequence of length-3 vectors or None; "
-            f"got {orientations!r}. Accepted values: a sequence of length-3 vectors, None."
+            "Accepted values: a sequence of length-3 vectors, None."
         )
 
 

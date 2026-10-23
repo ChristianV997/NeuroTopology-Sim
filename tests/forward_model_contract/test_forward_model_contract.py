@@ -26,6 +26,8 @@ from pathlib import Path
 import sys
 import unittest
 
+import numpy as np
+
 # Ensure repo root is on sys.path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -1553,16 +1555,106 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
         self.electrode = self.sensors.positions_m[0]
         self.moment = (0.0, 0.0, 1.0e-9)
 
-    def _assert_domain_error(self, exc_type, call, bad, field, accepted) -> None:
+    def _assert_domain_error(self, exc_type, call, field, accepted) -> None:
         with self.assertRaises(exc_type) as caught:
             call()
         message = str(caught.exception)
         self.assertNotIsInstance(caught.exception, AttributeError)
         self.assertIn(field, message)
-        self.assertIn(repr(bad), message)
         self.assertIn("Accepted values:", message)
         for token in accepted:
             self.assertIn(token, message)
+
+    def test_invalid_values_with_unprintable_repr_fail_as_contract_errors(self) -> None:
+        """A hostile input representation cannot replace the contract exception."""
+
+        class Unprintable:
+            def __repr__(self) -> str:
+                raise RuntimeError("synthetic repr probe")
+
+        bad = Unprintable()
+        cases = (
+            (ConductorGeometryError, lambda: ConductorModel(model_type=bad).validate()),
+            (
+                CoordinateFrameMismatchError,
+                lambda: dataclasses.replace(self.sensors, coordinate_frame=bad).validate(),
+            ),
+            (
+                CoordinateFrameMismatchError,
+                lambda: SourceSpace(positions_m=self.interior, coordinate_frame=bad).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=self.unit,
+                    is_fixed_orientation=bad,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=bad,
+                    is_fixed_orientation=False,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda: build_synthetic_forward_contract(
+                    sensor_geometry=self.sensors,
+                    source_space=SourceSpace(
+                        positions_m=self.interior, is_fixed_orientation=bad
+                    ),
+                ),
+            ),
+        )
+        for expected_error, call in cases:
+            with self.subTest(expected_error=expected_error.__name__):
+                with self.assertRaises(expected_error):
+                    call()
+
+    def test_invalid_values_are_not_echoed_in_contract_errors(self) -> None:
+        """Error text names the contract field but never formats rejected input."""
+        marker = "SYNTHETIC-DO-NOT-ECHO"
+        cases = (
+            (
+                ConductorGeometryError,
+                lambda value: ConductorModel(model_type=value).validate(),
+            ),
+            (
+                CoordinateFrameMismatchError,
+                lambda value: dataclasses.replace(self.sensors, coordinate_frame=value).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: SourceSpace(
+                    positions_m=self.interior, is_fixed_orientation=value
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: SourceSpace(
+                    positions_m=self.interior,
+                    orientations=value,
+                    is_fixed_orientation=False,
+                ).validate(),
+            ),
+            (
+                ForwardModelContractError,
+                lambda value: build_synthetic_forward_contract(
+                    sensor_geometry=self.sensors,
+                    source_space=SourceSpace(
+                        positions_m=self.interior, is_fixed_orientation=value
+                    ),
+                ),
+            ),
+        )
+        for expected_error, call in cases:
+            with self.subTest(expected_error=expected_error.__name__):
+                with self.assertRaises(expected_error) as caught:
+                    call(marker)
+                self.assertNotIn(marker, str(caught.exception))
 
     def test_model_type_non_member_rejected_at_validate(self) -> None:
         """Unsupported model_type values are rejected before any ``.value`` access."""
@@ -1585,7 +1677,6 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 self._assert_domain_error(
                     ConductorGeometryError,
                     lambda bad=bad: ConductorModel(model_type=bad).validate(),
-                    bad,
                     "model_type",
                     _ACCEPTED_MODEL_TYPE_VALUES,
                 )
@@ -1598,7 +1689,6 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
             self._assert_domain_error(
                 ConductorGeometryError,
                 one_shell.validate,
-                "spherical_1shell",
                 "model_type",
                 _ACCEPTED_MODEL_TYPE_VALUES,
             )
@@ -1627,7 +1717,6 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 self._assert_domain_error(
                     CoordinateFrameMismatchError,
                     sensors.validate,
-                    bad,
                     "sensor_geometry.coordinate_frame",
                     _ACCEPTED_FRAME_VALUES,
                 )
@@ -1636,7 +1725,6 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 self._assert_domain_error(
                     CoordinateFrameMismatchError,
                     sources.validate,
-                    bad,
                     "source_space.coordinate_frame",
                     _ACCEPTED_FRAME_VALUES,
                 )
@@ -1671,7 +1759,6 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 self._assert_domain_error(
                     ForwardModelContractError,
                     sources.validate,
-                    bad,
                     "source_space.is_fixed_orientation",
                     ("True", "False"),
                 )
@@ -1688,10 +1775,31 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 self._assert_domain_error(
                     ForwardModelContractError,
                     sources.validate,
-                    bad,
                     "source_space.orientations",
                     ("sequence of length-3 vectors", "None"),
                 )
+
+    def test_numpy_orientation_inputs_are_explicitly_not_coerced(self) -> None:
+        """The API requires Python Sequence/bool values, not NumPy container scalars."""
+        array_source = SourceSpace(
+            positions_m=self.interior,
+            orientations=np.asarray(self.unit, dtype=float),
+            is_fixed_orientation=True,
+        )
+        with self.assertRaises(ForwardModelContractError) as array_error:
+            array_source.validate()
+        self.assertIn("source_space.orientations", str(array_error.exception))
+        self.assertIn("sequence of length-3 vectors", str(array_error.exception))
+
+        numpy_bool_source = SourceSpace(
+            positions_m=self.interior,
+            orientations=self.unit,
+            is_fixed_orientation=np.bool_(True),
+        )
+        with self.assertRaises(ForwardModelContractError) as bool_error:
+            numpy_bool_source.validate()
+        self.assertIn("source_space.is_fixed_orientation", str(bool_error.exception))
+        self.assertIn("True, False", str(bool_error.exception))
 
     def test_build_rejects_non_members_without_attribute_error(self) -> None:
         """build_synthetic_forward_contract fails in validate(), not on ``.value``."""
@@ -1756,7 +1864,8 @@ class TestForwardModelEnumMemberValidation(unittest.TestCase):
                 ConductorModel(model_type="unsupported-string"),
             )
         self.assertIn("model_type", str(caught.exception))
-        self.assertIn(repr("unsupported-string"), str(caught.exception))
+        self.assertIn("spherical_3shell", str(caught.exception))
+        self.assertNotIn("unsupported-string", str(caught.exception))
 
     def test_documented_enum_members_still_validate_and_build(self) -> None:
         """Every passing enum member still validates, and the rejected members stay rejected."""
