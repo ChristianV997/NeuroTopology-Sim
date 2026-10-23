@@ -15,6 +15,10 @@ on:
         description: Full head commit SHA for candidate-path discovery
         required: true
         type: string
+      tested_checkout_sha:
+        description: Exact candidate commit to check out for manual discovery canaries
+        required: true
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -61,6 +65,26 @@ jobs:
         id: install_base
         run: python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-base.txt
 
+      - name: Validate manual candidate checkout SHA
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          TESTED_CHECKOUT_SHA: ${{ inputs.tested_checkout_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TESTED_CHECKOUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Manual candidate canary requires a full tested-checkout SHA"
+            exit 2
+          fi
+
+      - name: Checkout exact candidate tree for dispatch
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tested_checkout_sha }}
+          path: candidate-source
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Run core tests in isolated batches
         # Do not include research-profile tests here. test_topology.py has a
         # module-level cripser gate and belongs to the explicit research job.
@@ -88,17 +112,23 @@ jobs:
         env:
           DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
           DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
-          TESTED_CHECKOUT_SHA: ${{ github.sha }}
+          TESTED_CHECKOUT_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.tested_checkout_sha || github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EVENT_NAME: ${{ github.event_name }}
-        run: >-
-          python .github/workflows/round6_experimental_tests.py
-          --diff-base "$DIFF_BASE_SHA"
-          --diff-head "$DIFF_HEAD_SHA"
-          --tested-checkout "$TESTED_CHECKOUT_SHA"
-          --workflow-sha "$WORKFLOW_SHA"
-          --event-name "$EVENT_NAME"
-          --report outputs/round6_experimental_ci_report.json
+        run: |
+          set -euo pipefail
+          candidate_root="."
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            candidate_root="candidate-source"
+          fi
+          python .github/workflows/round6_experimental_tests.py \
+            --diff-base "$DIFF_BASE_SHA" \
+            --diff-head "$DIFF_HEAD_SHA" \
+            --tested-checkout "$TESTED_CHECKOUT_SHA" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event-name "$EVENT_NAME" \
+            --root "$candidate_root" \
+            --report outputs/round6_experimental_ci_report.json
 
       - name: Smoke-test synthetic mode
         run: python main.py --mode synthetic
@@ -129,6 +159,8 @@ jobs:
             outputs/required_core_test_report.json
             outputs/round6_experimental_ci_report.json
             outputs/round6-experimental-logs/**
+            candidate-source/outputs/round6_experimental_ci_report.json
+            candidate-source/outputs/round6-experimental-logs/**
             test-results-core-failure.txt
           if-no-files-found: warn
 

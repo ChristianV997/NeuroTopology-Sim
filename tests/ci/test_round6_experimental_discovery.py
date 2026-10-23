@@ -193,12 +193,71 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("diff_base_sha:\n        description:", workflow)
         self.assertIn("diff_head_sha:\n        description:", workflow)
         self.assertIn("required: true\n        type: string", workflow)
-        self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
+        self.assertIn(
+            "TESTED_CHECKOUT_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.tested_checkout_sha || github.sha }}",
+            workflow,
+        )
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
         helper_source = HELPER_PATH.read_text(encoding="utf-8")
         self.assertIn(
             "candidate diff head is not an ancestor of the tested checkout",
             helper_source,
+        )
+
+    def test_required_checks_dispatch_checks_out_the_exact_candidate_tree(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        dispatch = re.search(
+            r"(?ms)^  workflow_dispatch:\n    inputs:\n(.*?)(?=^\S|\Z)", workflow
+        )
+        self.assertIsNotNone(dispatch)
+        tested_input = re.search(
+            r"(?ms)^      tested_checkout_sha:\n(.*?)(?=^      [^ ]|\Z)",
+            dispatch.group(1),
+        )
+        self.assertIsNotNone(tested_input)
+        self.assertRegex(tested_input.group(1), r"(?m)^        required: true$")
+
+        validation = re.search(
+            r"(?ms)^      - name: Validate manual candidate checkout SHA\n"
+            r"(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(validation)
+        self.assertIn("TESTED_CHECKOUT_SHA: ${{ inputs.tested_checkout_sha }}", validation.group(1))
+        self.assertIn("^[0-9a-f]{40}$", validation.group(1))
+
+        checkout = re.search(
+            r"(?ms)^      - name: Checkout exact candidate tree for dispatch\n"
+            r"(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(checkout)
+        checkout_step = checkout.group(1)
+        self.assertIn("if: ${{ github.event_name == 'workflow_dispatch' }}", checkout_step)
+        self.assertIn("uses: actions/checkout@v7", checkout_step)
+        self.assertIn("ref: ${{ inputs.tested_checkout_sha }}", checkout_step)
+        self.assertIn("path: candidate-source", checkout_step)
+        self.assertIn("persist-credentials: false", checkout_step)
+        self.assertLess(
+            workflow.index("Validate manual candidate checkout SHA"),
+            workflow.index("Checkout exact candidate tree for dispatch"),
+        )
+
+        candidate_step = re.search(
+            r"(?ms)^      - name: Discover and run changed Round 6 candidate suites\n"
+            r"(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(candidate_step)
+        self.assertIn(
+            "TESTED_CHECKOUT_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.tested_checkout_sha || github.sha }}",
+            candidate_step.group(1),
+        )
+        self.assertIn('candidate_root="candidate-source"', candidate_step.group(1))
+        self.assertIn('--root "$candidate_root"', candidate_step.group(1))
+        self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", candidate_step.group(1))
+        self.assertIn(
+            "candidate-source/outputs/round6_experimental_ci_report.json", workflow
         )
 
     def test_optional_eeg_profile_discovers_only_changed_mne_candidate_paths(self):
