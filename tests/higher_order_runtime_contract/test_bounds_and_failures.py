@@ -226,6 +226,18 @@ def test_session_reset_rejects_non_string_run_id_without_mutating_state(bounds):
     assert session.chunks_seen == 1
 
 
+def test_session_update_rejects_array_run_id_without_mutating_state(bounds):
+    session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
+    chunk = np.ones((3, 2))
+
+    with pytest.raises(StreamContractError, match="run_id"):
+        session.update(chunk, run_id=np.array(["run-a"]))
+
+    assert session.run_id == "run-a"
+    assert session.samples_seen == 0
+    assert session.chunks_seen == 0
+
+
 def test_session_rejects_invalid_bounds_object_as_contract_error():
     with pytest.raises(StreamContractError, match="bounds"):
         StreamSession(n_channels=2, bounds=None, run_id="run-a")
