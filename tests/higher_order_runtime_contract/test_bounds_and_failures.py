@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from tools.higher_order_runtime.planner import PlanRequest, plan_chunk
 from tools.higher_order_runtime.stream_contract import (
     ChunkBoundError,
     ChunkingPolicy,
@@ -286,6 +287,56 @@ def test_accumulator_bytes_rejects_malformed_itemsize(value):
 
 def test_accumulator_bytes_accepts_numpy_integers_and_is_exact():
     assert deterministic_accumulator_bytes(np.int64(3)) == 3 * 3 * 8 + 3 * 8 + 4 * 3 * 8
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("n_samples", True),
+        ("n_channels", 1.5),
+        ("dtype_itemsize", 8.5),
+        ("target_budget_bytes", 1024.5),
+        ("min_chunk", False),
+        ("max_chunk", 8.5),
+        ("op_multiplier", True),
+        ("target_budget_bytes", 10**400),
+    ],
+)
+def test_memory_planner_rejects_noninteger_and_unrepresentable_counters(field, value):
+    """Planner inputs are integer counters; malformed values must not be truncated."""
+    request_values = {
+        "n_samples": 64,
+        "n_channels": 4,
+        "dtype_itemsize": 8,
+        "target_budget_bytes": 1024 * 1024,
+        "min_chunk": 1,
+        "max_chunk": 32,
+        "op_multiplier": 3,
+        "surrogates": True,
+    }
+    request_values[field] = value
+
+    with pytest.raises(ValueError, match=field):
+        plan_chunk(PlanRequest(**request_values))
+
+
+def test_memory_planner_rejects_non_boolean_surrogates_flag():
+    request = PlanRequest(64, 4, 8, 1024 * 1024, 1, 32, surrogates=1)
+
+    with pytest.raises(ValueError, match="surrogates"):
+        plan_chunk(request)
+
+
+def test_memory_planner_accepts_numpy_integer_counters():
+    request = PlanRequest(
+        np.int64(64), np.int64(4), np.int64(8), np.int64(1_000_000),
+        np.int64(1), np.int64(32),
+    )
+
+    plan = plan_chunk(request)
+
+    assert type(plan.estimated_working_set_bytes) is int
+    assert type(plan.bytes_per_row) is int
 
 
 @pytest.mark.parametrize(

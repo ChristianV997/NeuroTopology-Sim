@@ -47,7 +47,7 @@ other paths and was left untouched.
 | Configuration types | `iter_contract_windows` requires a `ChunkingPolicy` and a `StreamBounds` and validates configuration, signal, and timestamps when called (not on the first `next()`). `deterministic_accumulator_bytes` requires positive integers for both arguments (bools and floats rejected). |
 | Tumbling alias | `ChunkingPolicy(chunk_size)` (`stride is None`) ≡ `stride == chunk_size`. |
 | Batch ↔ stream parity | Rolling covariance matches `np.cov(..., ddof=1)` within declared `atol`/`rtol` across chunk sizes (engineering parity only). Batch parity requires a finite 2-D real-valued signal with at least two samples and one channel, non-empty positive-integer chunk sizes, and finite non-negative scalar tolerances. The batch reference and streaming result must be finite float64 matrices with identical `C×C` shapes; NumPy's one-channel scalar reference is normalized to `1×1`. Non-finite covariance results or an unrepresentable absolute difference raise `StreamContractError`; NaNs are never considered equal. |
-| Memory | `deterministic_accumulator_bytes(C)` is an O(C²) accumulator-size check, not an RSS/speed claim. |
+| Memory | `deterministic_accumulator_bytes(C)` is an O(C²) accumulator-size check, not an RSS/speed claim. `PlanRequest` counters must be positive Python/NumPy integers no larger than the platform index range; booleans and fractional values are rejected, and `surrogates` must be a Python boolean. The planner normalizes accepted integer scalars before arithmetic so fixed-width integer multiplication cannot wrap its byte estimate. |
 
 ## Declared tolerances
 
