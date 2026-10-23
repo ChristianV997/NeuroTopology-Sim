@@ -201,6 +201,43 @@ class Round6DiscoveryTests(unittest.TestCase):
             helper_source,
         )
 
+    def test_no_cache_jobs_do_not_call_unavailable_pip_cache_commands(self):
+        for workflow_name in ("ci.yml", "required-checks.yml"):
+            workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow_name):
+                self.assertRegex(workflow, r"(?m)^\s+PIP_NO_CACHE_DIR: \"1\"$")
+                self.assertNotRegex(workflow, r"(?m)^\s+python -m pip cache\b")
+
+    def test_quoted_candidate_paths_cannot_become_not_applicable(self):
+        helper = _helper()
+        candidate_path = "tools/higher_order_runtime/review_λ.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root, with_candidate=False)
+            _git(root, "config", "core.quotePath", "true")
+            _write(root, candidate_path, "# unregistered candidate fixture\n")
+            head = _commit(root, "quoted candidate path fixture")
+            raw_name = _git(root, "diff", "--name-only", f"{base}...{head}")
+            report_path = root / "outputs/report.json"
+            with redirect_stdout(io.StringIO()):
+                result = helper.run(
+                    root,
+                    base,
+                    head,
+                    report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=head,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(raw_name.startswith('"'), raw_name)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["changed_paths"], [candidate_path])
+        self.assertEqual(report["unmapped_candidate_paths"], [candidate_path])
+
     def test_required_checks_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
@@ -652,6 +689,24 @@ class Round6DiscoveryTests(unittest.TestCase):
                 "failures": 0, "errors": 0, "timeouts": 0,
             })
             json.dumps(evidence, sort_keys=True, allow_nan=False)
+
+            for outcome, expected_status in (
+                ("failure", "FAIL"),
+                ("cancelled", "BLOCKED"),
+                ("skipped", "BLOCKED"),
+                ("unknown", "BLOCKED"),
+            ):
+                with self.subTest(execution_outcome=outcome):
+                    non_success = helper.docker_engine_candidate_evidence(
+                        root,
+                        telemetry_path,
+                        junit_path,
+                        **{**metadata, "execution_outcome": outcome},
+                    )
+                    self.assertEqual(non_success["status"], expected_status)
+                    self.assertIn(outcome, non_success["failure_reason"])
+                    self.assertEqual(non_success["counts"]["collected"], 1)
+                    json.dumps(non_success, sort_keys=True, allow_nan=False)
 
             junit_path.write_text(
                 '<testsuite tests="1" skipped="1" failures="0" errors="0">'

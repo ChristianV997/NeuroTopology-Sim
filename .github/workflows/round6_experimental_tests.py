@@ -3690,14 +3690,18 @@ def collect_changed_paths(base: str, head: str, root: Path) -> set[str]:
     if not re.fullmatch(r"[0-9a-f]{40}", base) or not re.fullmatch(r"[0-9a-f]{40}", head):
         raise ValueError("base and head must be full commit SHAs")
     result = subprocess.run(
-        ["git", "diff", "--name-only", f"{base}...{head}"],
+        ["git", "diff", "--name-only", "-z", f"{base}...{head}"],
         cwd=root,
         check=True,
         capture_output=True,
-        text=True,
+        text=False,
         timeout=30,
     )
-    return {normalize_repo_path(line) for line in result.stdout.splitlines() if line.strip()}
+    return {
+        normalize_repo_path(os.fsdecode(path))
+        for path in result.stdout.split(b"\0")
+        if path
+    }
 
 
 def verify_candidate_source_identity(
@@ -4067,7 +4071,14 @@ def docker_engine_candidate_evidence(
             "errors": 0,
             "timeouts": 0,
         }
-        evidence["status"] = "PASS"
+        if execution_outcome == "success":
+            evidence["status"] = "PASS"
+        else:
+            evidence["status"] = "FAIL" if execution_outcome == "failure" else "BLOCKED"
+            evidence["failure_reason"] = (
+                "Docker test step did not succeed despite valid-looking reports: "
+                f"{execution_outcome}"
+            )
         return evidence
 
     evidence["failure_reason"] = reason
@@ -4123,10 +4134,15 @@ def docker_engine_candidate_evidence(
         type(evidence["counts"][key]) is int and evidence["counts"][key] > 0
         for key in ("skipped", "failures", "errors", "timeouts")
     )
-    if known_test_failure:
+    if known_test_failure or execution_outcome == "failure":
         evidence["status"] = "FAIL"
     else:
         evidence["status"] = "BLOCKED"
+        if execution_outcome != "success":
+            evidence["failure_reason"] = (
+                f"Docker test step did not succeed: {execution_outcome}; "
+                f"artifact validation: {reason}"
+            )
     return evidence
 
 

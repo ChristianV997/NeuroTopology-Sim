@@ -53,7 +53,6 @@ jobs:
       - name: Clean package temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
   dependency-inventory:
@@ -171,14 +170,12 @@ jobs:
             echo "## runner diagnostics"
             date -u
             df -h
-            python -m pip cache info || true
             du -sh "$RUNNER_TEMP" . 2>/dev/null || true
           } | tee core-failure.txt
 
       - name: Clean package temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
       - name: Upload core test report
@@ -305,14 +302,12 @@ jobs:
             echo "## runner diagnostics"
             date -u
             df -h
-            python -m pip cache info || true
             du -sh "$RUNNER_TEMP" . 2>/dev/null || true
           } | tee eeg-failure.txt
 
       - name: Clean package temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
       - name: Upload EEG test report

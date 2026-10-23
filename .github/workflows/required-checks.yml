@@ -110,14 +110,12 @@ jobs:
             echo "## runner diagnostics"
             date -u
             df -h
-            python -m pip cache info || true
             du -sh "$RUNNER_TEMP" . 2>/dev/null || true
           } | tee test-results-core-failure.txt
 
       - name: Clean package temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
       - name: Upload core diagnostics
@@ -290,7 +288,6 @@ jobs:
       - name: Clean Docker-context temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
       - name: Upload Docker-context diagnostics
@@ -360,14 +357,12 @@ jobs:
             echo "## runner diagnostics"
             date -u
             df -h
-            python -m pip cache info || true
             du -sh "$RUNNER_TEMP" . 2>/dev/null || true
           } | tee awareness-failure.txt
 
       - name: Clean package temporary files
         if: always()
         run: |
-          python -m pip cache purge || true
           if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then rm -rf -- "$TMPDIR"; fi
 
       - name: Upload Awareness diagnostics
