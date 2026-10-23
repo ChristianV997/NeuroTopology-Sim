@@ -1515,11 +1515,19 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "level_t_missingness": {
         "triggers": (
             "sciencer_d/btc_icft/level_t/base_real_topology.py",
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),
         "implementation": "sciencer_d/btc_icft/level_t/base_real_topology.py",
         "tests": (
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),
@@ -1529,6 +1537,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "test": test_path,
             }
             for test_path in (
+                "tests/btc_icft/test_ds001787_t_real_topology.py",
+                "tests/btc_icft/test_ds003816_t_real_topology.py",
+                "tests/btc_icft/test_ds003969_t_real_topology.py",
+                "tests/btc_icft/test_ds005620_t_real_topology.py",
                 "tests/test_base_real_topology_missingness.py",
                 "tests/test_cohort_missingness.py",
             )
@@ -1537,6 +1549,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "sciencer_d/btc_icft/level_t/base_real_topology.py",
         ),
         "candidate_test_roots": (
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),

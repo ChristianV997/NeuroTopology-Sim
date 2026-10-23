@@ -3293,6 +3293,10 @@ def test_fixture():
             "level_t_missingness": (
                 373,
                 {
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds001787_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds003816_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds003969_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds005620_t_real_topology.py"),
                     ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_base_real_topology_missingness.py"),
                     ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_cohort_missingness.py"),
                 },
@@ -3428,6 +3432,15 @@ def test_fixture():
                 self.assertTrue(expected.issubset(pairs))
                 self.assertIn(owner_pr, helper.COMPONENT_OWNER_PRS[component])
                 for implementation, test_path in expected:
+                    self.assertIn(test_path, spec["tests"])
+                    self.assertTrue(
+                        any(
+                            test_path == root
+                            or (root.endswith("/") and test_path.startswith(root))
+                            for root in spec["candidate_test_roots"]
+                        ),
+                        f"{test_path} is not under a registered candidate test root",
+                    )
                     self.assertEqual(helper.select_components({implementation}), [component])
                     self.assertEqual(helper.select_components({test_path}), [component])
                     self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
@@ -3489,6 +3502,10 @@ def test_fixture():
             },
             "level_t_missingness": {
                 "sciencer_d/btc_icft/level_t/base_real_topology.py",
+                "tests/btc_icft/test_ds001787_t_real_topology.py",
+                "tests/btc_icft/test_ds003816_t_real_topology.py",
+                "tests/btc_icft/test_ds003969_t_real_topology.py",
+                "tests/btc_icft/test_ds005620_t_real_topology.py",
                 "tests/test_base_real_topology_missingness.py",
                 "tests/test_cohort_missingness.py",
             },
@@ -3770,10 +3787,11 @@ def test_fixture():
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             implementation = "sciencer_d/btc_icft/level_t/base_real_topology.py"
-            first_test = "tests/test_base_real_topology_missingness.py"
             missing_test = "tests/test_cohort_missingness.py"
             _write(root, implementation, "# source fixture\n")
-            _write(root, first_test, "def test_fixture(): pass\n")
+            for test_path in helper.COMPONENTS["level_t_missingness"]["tests"]:
+                if test_path != missing_test:
+                    _write(root, test_path, "def test_fixture(): pass\n")
             result = helper.inspect_component(
                 "level_t_missingness", root, {implementation}
             )
