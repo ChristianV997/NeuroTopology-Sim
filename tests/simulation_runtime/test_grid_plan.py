@@ -323,7 +323,7 @@ class GridPlanTests(unittest.TestCase):
         self.assertEqual(NONBLOCKING_GATE_IDS, ("dmd_crouzeix",))
         self.assertEqual(GATE_INTEGRATION_STATE["ci_discovery"], "BLOCKED")
         self.assertEqual(GATE_INTEGRATION_STATE["dmd_crouzeix"], "NONBLOCKING")
-        self.assertEqual(AUDITED_MAIN_SHA, "b51bb9b4bdf63c19894bb407eadcd70f528f7dda")
+        self.assertEqual(AUDITED_MAIN_SHA, "57b7e43d42678822e9eec03679891c1770040327")
 
     def test_admissible_decisions_are_read_from_evidence_schema(self):
         self.assertTrue(ADMISSIBLE_GATE_DECISIONS)
@@ -1858,18 +1858,49 @@ class GridPlanTests(unittest.TestCase):
         string that once was tip.
         """
 
-        previous = "fc274148a3539a0b4171cdb91b258fdd509e94a8"
+        previous = "b51bb9b4bdf63c19894bb407eadcd70f528f7dda"
         live = _require_audited_main_ancestor(self)
         self.assertEqual(AUDITED_MAIN_SHA, live)
         self.assertEqual(grid_plan_module.AUDITED_MAIN_SHA, live)
-        self.assertEqual(live, "b51bb9b4bdf63c19894bb407eadcd70f528f7dda")
+        self.assertEqual(live, "57b7e43d42678822e9eec03679891c1770040327")
         ancestor = _git_cwd("merge-base", "--is-ancestor", previous, AUDITED_MAIN_SHA)
         self.assertEqual(ancestor.returncode, 0, ancestor.stderr)
+
+    def test_no_merged_pin_changed_between_previous_and_current_audited_tip(self):
+        """Re-auditing the tip must not hide a moved pin.
+
+        Every merged pin is an ancestor of the audited tip, and the module blob
+        at the previous audited tip, at the pin, and at the audited tip all equal
+        the recorded ``implementation_blob_sha``. A pin whose module changed in
+        between would make this fail instead of silently riding a constant bump.
+        """
+
+        previous = "b51bb9b4bdf63c19894bb407eadcd70f528f7dda"
+        live = _require_audited_main_ancestor(self)
+        self.assertEqual(live, AUDITED_MAIN_SHA)
+        ancestor = _git_cwd("merge-base", "--is-ancestor", previous, AUDITED_MAIN_SHA)
+        self.assertEqual(ancestor.returncode, 0, ancestor.stderr)
+        checked = 0
+        for gate_id, row in grid_plan_module.GATE_CONTRACT.items():
+            pin = row.get("pinned_commit")
+            if not pin:
+                continue
+            path = row["required_module_path"]
+            pin_ancestor = _git_cwd("merge-base", "--is-ancestor", pin, AUDITED_MAIN_SHA)
+            self.assertEqual(pin_ancestor.returncode, 0, gate_id)
+            recorded = row["implementation_blob_sha"]
+            with self.subTest(gate=gate_id):
+                self.assertEqual(grid_plan_module._blob_sha(pin, path), recorded)
+                self.assertEqual(grid_plan_module._blob_sha(previous, path), recorded)
+                self.assertEqual(grid_plan_module._blob_sha(AUDITED_MAIN_SHA, path), recorded)
+            checked += 1
+        self.assertEqual(checked, 6)
 
     def test_schema_doc_names_the_live_audited_tip(self):
         """The schema doc quotes the live audited tip the constant pins, not a stale one."""
 
         doc = (_REPO_ROOT / "docs" / "benchmarks" / "grid_plan_schema.md").read_text(encoding="utf-8")
+        self.assertIn("57b7e43d42678822e9eec03679891c1770040327", doc)
         self.assertIn("b51bb9b4bdf63c19894bb407eadcd70f528f7dda", doc)
         self.assertIn(AUDITED_MAIN_SHA, doc)
 
@@ -2441,7 +2472,7 @@ class GridPlanTests(unittest.TestCase):
         winding_added_blob = "da04a1b4122609887accc6b959f3391958e47490"
         self.assertEqual(
             grid_plan_module.AUDITED_MAIN_SHA,
-            "b51bb9b4bdf63c19894bb407eadcd70f528f7dda",
+            "57b7e43d42678822e9eec03679891c1770040327",
         )
         self.assertNotEqual(grid_plan_module.AUDITED_MAIN_SHA, four_pin)
         four = grid_plan_module.GATE_CONTRACT["four_sphere_forward_model"]
@@ -2524,7 +2555,7 @@ class GridPlanTests(unittest.TestCase):
 
         roc_pin = "9f10956d521e96f961f29c24f033374c3c20e065"
         roc_blob = "09e6e0c182fa47693954ebee1b5194c3f0a5d0b0"
-        audited = "b51bb9b4bdf63c19894bb407eadcd70f528f7dda"
+        audited = "57b7e43d42678822e9eec03679891c1770040327"
         roc = grid_plan_module.GATE_CONTRACT["roc_metrics"]
         self.assertEqual(roc["pinned_commit"], roc_pin)
         self.assertEqual(roc["merged_pr"], 426)
@@ -2662,7 +2693,7 @@ class GridPlanTests(unittest.TestCase):
     def test_old_surrogate_pin_blob_drifts_against_live_main(self):
         """The #417 pin blob is not the nulls.py blob on live main, so the pin fails closed."""
 
-        audited = "b51bb9b4bdf63c19894bb407eadcd70f528f7dda"
+        audited = "57b7e43d42678822e9eec03679891c1770040327"
         old_pin = "20222fdeba68ca5746609ce4305c7259b3266e95"
         old_blob = "8dfe299692d5cb056ddeff9506cfe392b08115f2"
         current_blob = "a951050961119bc403012884c1a18d8e820d8f20"
