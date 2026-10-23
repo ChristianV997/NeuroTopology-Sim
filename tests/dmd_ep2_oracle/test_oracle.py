@@ -281,18 +281,20 @@ def _matrix_eigenvalues_2x2(a, center, radius):
         exact_recovery = abs(determinant_scaled) <= determinant_roundoff
         if abs(first) < abs(second) and second != 0:
             large_scaled = second / matrix_scale
-            first = (
-                _exact_determinant_quotient(a, second)
-                if exact_recovery
-                else (determinant_scaled / large_scaled) * matrix_scale
-            )
+            if exact_recovery:
+                first = _exact_determinant_quotient(a, second)
+            else:
+                first = (determinant_scaled / large_scaled) * matrix_scale
+                if first == 0j:
+                    first = _exact_determinant_quotient(a, second)
         elif abs(second) < abs(first) and first != 0:
             large_scaled = first / matrix_scale
-            second = (
-                _exact_determinant_quotient(a, first)
-                if exact_recovery
-                else (determinant_scaled / large_scaled) * matrix_scale
-            )
+            if exact_recovery:
+                second = _exact_determinant_quotient(a, first)
+            else:
+                second = (determinant_scaled / large_scaled) * matrix_scale
+                if second == 0j:
+                    second = _exact_determinant_quotient(a, first)
     _require_finite_scalar(first, name='first matrix eigenvalue')
     _require_finite_scalar(second, name='second matrix eigenvalue')
     return first, second
@@ -476,6 +478,13 @@ spec.loader.exec_module(module)
             (1e308 + 0j, 1.9880958645724236e-8 + 0j),
             (1.9880958645724236e-8 + 0j, 5e-324 + 0j),
         )
+        with self.assertRaisesRegex(ValueError, 'underflows floating-point range'):
+            principal_matrix_log(matrix)
+
+    def test_matrix_log_subnormal_determinant_is_not_called_singular(self):
+        """A nonzero exact determinant may underflow only after root recovery."""
+        unit = math.ulp(0.0)
+        matrix = ((100 * unit, 99 * unit), (101 * unit, 100 * unit))
         with self.assertRaisesRegex(ValueError, 'underflows floating-point range'):
             principal_matrix_log(matrix)
 
