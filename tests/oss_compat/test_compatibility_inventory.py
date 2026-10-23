@@ -352,3 +352,133 @@ def test_scope_note_keeps_security_maintenance_legal_and_science_separate():
     note = _load()["license_scope_note"]
     for phrase in ("security posture", "maintenance quality", "compatibility", "legal clearance", "scientific validity"):
         assert phrase in note
+
+
+# --- provenance / schema regressions (2026-10-23 adversarial pass) ------------
+
+_STABLE_ROW_IDS = {
+    "openmed",
+    "papergym",
+    "openresearch",
+    "rea",
+    "autoresearch",
+    "mne-python",
+    "mne-bids",
+    "moabb",
+    "bids-validator",
+    "openmeeg",
+    "simnibs",
+    "neuromaps",
+    "netneurotools",
+    "neurolib",
+    "mne-connectivity",
+    "nibabel",
+    "datalad",
+    "dvc",
+    "pyspi",
+    "persim",
+    "ripser.py",
+    "gudhi",
+    "giotto-tda",
+}
+_ADOPTION_GATE_STABLE_IDS = {"openmed", "papergym", "openresearch", "rea", "autoresearch", "gudhi"}
+_OVERCLAIM_PHRASES = (
+    "legal clearance",
+    "legally cleared",
+    "blanket package clearance",
+    "component clearance",
+    "scientifically validated",
+    "security cleared",
+)
+
+
+def test_evidence_urls_are_nonempty_https_strings():
+    """Empty lists, nulls, or non-HTTPS evidence URLs are schema defects."""
+    for candidate in _load()["candidates"]:
+        cid = candidate["id"]
+        urls = candidate["evidence_urls"]
+        assert isinstance(urls, list) and urls, f"{cid}: evidence_urls must be a non-empty list"
+        for url in urls:
+            assert isinstance(url, str) and url.startswith("https://"), f"{cid}: bad evidence URL {url!r}"
+            assert url.strip() == url and " " not in url, f"{cid}: whitespace in evidence URL"
+
+
+def test_stable_row_ids_are_preserved_for_downstream_gates():
+    """#386 documents named-lead IDs plus gudhi; the full 23-row set must stay stable."""
+    ids = {c["id"] for c in _load()["candidates"]}
+    assert ids == _STABLE_ROW_IDS
+    assert _ADOPTION_GATE_STABLE_IDS <= ids
+    assert len(_load()["candidates"]) == 23
+
+
+def test_gudhi_release_evidence_urls_use_literal_upstream_tag_name():
+    """The upstream tag literal is tags/gudhi-release-3.13.0; bare gudhi-release-3.13.0 404s."""
+    gudhi = _candidate("gudhi")
+    release = gudhi["latest_release"]
+    assert release["tag"] == "tags/gudhi-release-3.13.0"
+    assert release["release_api_url"].endswith("/releases/tags/tags/gudhi-release-3.13.0")
+    assert release["tag_ref_api_url"].endswith("/git/ref/tags/tags/gudhi-release-3.13.0")
+    evidence = set(gudhi["evidence_urls"])
+    assert release["release_api_url"] in evidence
+    assert release["tag_ref_api_url"] in evidence
+    assert not any(
+        url.endswith("/releases/tags/gudhi-release-3.13.0") or url.endswith("/git/ref/tags/gudhi-release-3.13.0")
+        for url in evidence
+    ), "evidence_urls must not cite the 404 bare-tag API paths"
+
+
+def test_gudhi_component_licensing_remains_explicitly_unresolved():
+    """Repository MIT must not be collapsed into package/component clearance (#375 alignment)."""
+    gudhi = _candidate("gudhi")
+    caveat = gudhi["component_license_caveat"].lower()
+    spdx = gudhi["license_spdx_or_text"].lower()
+    assert "unresolved" in caveat or "unresolved" in spdx
+    assert "not assessed" in caveat or "not assessed" in spdx or "legal compatibility not assessed" in caveat
+    assert gudhi["license_status"] == "permissive_custom_review_required"
+    assert gudhi["disposition"] == "integrate_behind_bounded_adapter"
+    assert "module_specific_dependency_scope_review" in gudhi["adoption_prerequisites"]
+    joined = " ".join(
+        str(gudhi.get(key, ""))
+        for key in (
+            "disposition_rationale",
+            "license_spdx_or_text",
+            "component_license_caveat",
+            "security_privacy_notes",
+            "maintenance_signal",
+        )
+    ).lower()
+    for phrase in _OVERCLAIM_PHRASES:
+        assert phrase not in joined, f"gudhi overclaims with {phrase!r}"
+
+
+def test_gudhi_release_pin_matches_merged_batch3_registry_tag():
+    """Keep the #375 pin (tags/gudhi-release-3.13.0 / 3.13.0); do not silently retarget."""
+    gudhi = _candidate("gudhi")
+    assert gudhi["package_version"] == "3.13.0"
+    assert gudhi["latest_release"]["tag"] == "tags/gudhi-release-3.13.0"
+    assert gudhi["latest_release"]["published_utc"] == "2026-07-02"
+    assert gudhi["latest_release"]["commit_sha"] == "5dbe510bed5d8d700ec7243fd915769fb67964a2"
+
+
+def test_inventory_base_main_sha_is_full_hex_and_cited_in_audit():
+    data = _load()
+    sha = data["base_main_sha"]
+    assert re.fullmatch(r"[0-9a-f]{40}", sha)
+    audit = (_ROOT / "docs" / "oss_compat" / "batch1_compatibility_audit_20261017.md").read_text(encoding="utf-8")
+    assert sha in audit
+
+
+def test_neuromaps_conflict_is_not_silently_cleared():
+    neuromaps = _candidate("neuromaps")
+    assert neuromaps["package_license_metadata_status"] == "conflicting_pypi_metadata"
+    assert neuromaps["license_status"] == "non_commercial_conflict"
+    assert neuromaps["disposition"] == "reference_only"
+    declaration = neuromaps["package_license_declaration"].lower()
+    assert "noncommercial" in declaration or "non-commercial" in declaration
+    assert "bsd" in declaration
+    joined = " ".join(
+        str(neuromaps.get(key, ""))
+        for key in ("disposition_rationale", "license_spdx_or_text", "package_license_declaration")
+    ).lower()
+    for phrase in ("legal clearance", "resolved in favor", "bsd-cleared", "scientifically validated"):
+        assert phrase not in joined
