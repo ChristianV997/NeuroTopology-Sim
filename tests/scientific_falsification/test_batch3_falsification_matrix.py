@@ -309,7 +309,6 @@ def evaluate(doc: dict) -> dict:
             for key in (
                 "required_baselines",
                 "required_controls",
-                "downgrade_if_missing_baseline",
                 "forbidden_interpretations",
                 "required_instruments",
                 "required_fields",
@@ -318,6 +317,16 @@ def evaluate(doc: dict) -> dict:
             ):
                 if key in item:
                     _string_list(item[key], f"claim {cid!r}.{key}", issues)
+            if "downgrade_if_missing_baseline" in item:
+                downgrade = item["downgrade_if_missing_baseline"]
+                if isinstance(downgrade, str) and downgrade.strip():
+                    pass
+                elif isinstance(downgrade, list):
+                    _string_list(downgrade, f"claim {cid!r}.downgrade_if_missing_baseline", issues)
+                else:
+                    issues.append(
+                        f"claim {cid!r}.downgrade_if_missing_baseline must be a non-empty string or string list"
+                    )
             if "minimum_paired_subjects" in item:
                 value = _strict_int(item["minimum_paired_subjects"])
                 if value is None or value < 1:
@@ -843,6 +852,19 @@ def test_claim_rows_require_core_fields_and_reject_extra_status_fields() -> None
     report = evaluate(doc)
     assert report["complete"] is False
     assert report["scientific_pass"] is False
+
+
+def test_downgrade_policy_accepts_declared_scalar_vocabulary() -> None:
+    doc = load_matrix()
+    policies = [
+        item["downgrade_if_missing_baseline"]
+        for item in doc["claims"]
+        if "downgrade_if_missing_baseline" in item
+    ]
+    assert all(isinstance(policy, str) for policy in policies)
+    assert set(policies) == {"proxy_inference", "unsupported_claim"}
+    report = evaluate(doc)
+    assert report["complete"] is True, report["issues"]
 
 
 def test_explicit_nulls_and_invalid_nested_types_fail_closed() -> None:
