@@ -85,8 +85,13 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited tip
-`d78f54128b6fd60c30665c9e9cff307056dbdd82`. The previous audited tip
-`52e9a7cb5ed9c16000fc8a07c5c759649133f338` is an ancestor of that commit.
+`2c8a80bf9874b9f14205d4bb4e466754fb4589cb`. The previous audited tip
+`d78f54128b6fd60c30665c9e9cff307056dbdd82` is an ancestor of that commit. Between
+those two tips, main changed only three batch-3 source-registry files
+(`configs/research/batch3_source_registry.yaml`,
+`docs/research/batch3_literature_20261016/README.md`,
+`tests/research/test_batch3_source_registry.py`). No pinned module path and no
+writer or grid path changed, so each pin's blob is the same at both tips.
 `four_sphere_forward_model`,
 `planar_geometry`, `winding`, `hodge`, `surrogate_null`, and `roc_metrics`
 are pinned to landed commits and stay `promotion_report_missing`.
