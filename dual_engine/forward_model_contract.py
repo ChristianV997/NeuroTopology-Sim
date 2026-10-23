@@ -23,6 +23,7 @@ SCIENTIFIC AND ENGINEERING GUARDRAILS:
 
 from __future__ import annotations
 
+from collections.abc import Sequence as AbcSequence
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 import json
@@ -310,6 +311,98 @@ class UncertaintyStatus(str, Enum):
     ESTIMATED = "ESTIMATED"      # Quantified confidence bounds (e.g. from stochastic variations)
 
 
+# Values that can pass validate(). ANATOMICAL_BEM and UNKNOWN remain members so the
+# existing rejection rules still run, but they are not accepted inputs.
+_PASSING_CONDUCTOR_MODEL_VALUES: Tuple[str, ...] = (
+    ConductorModelType.SPHERICAL_3SHELL.value,
+    ConductorModelType.SPHERICAL_1SHELL.value,
+)
+_PASSING_COORDINATE_FRAME_VALUES: Tuple[str, ...] = (
+    CoordinateFrame.HEAD.value,
+    CoordinateFrame.MNI.value,
+)
+
+
+def _require_enum_member(
+    value: Any,
+    enum_cls: type,
+    field: str,
+    exc_cls: type,
+    accepted: Sequence[str],
+) -> None:
+    """Reject anything that is not an instance of ``enum_cls``.
+
+    Plain strings are not coerced, including a string equal to a member value.
+    ``str`` enums compare equal to those strings, so a later ``==`` check would
+    otherwise accept them and then fail on ``.value``.
+    """
+    if isinstance(value, enum_cls):
+        return
+    accepted_text = ", ".join(accepted)
+    raise exc_cls(
+        f"{field} must be a {enum_cls.__name__} member; got {value!r}. "
+        f"Accepted values: {accepted_text}."
+    )
+
+
+def _require_model_type_member(value: Any) -> None:
+    """Require a ConductorModelType member. ANATOMICAL_BEM is rejected by the caller."""
+    _require_enum_member(
+        value,
+        ConductorModelType,
+        "model_type",
+        ConductorGeometryError,
+        _PASSING_CONDUCTOR_MODEL_VALUES,
+    )
+
+
+def _require_coordinate_frame_member(value: Any, field: str) -> None:
+    """Require HEAD or MNI. UNKNOWN stays a member and keeps its rejection."""
+    _require_enum_member(
+        value,
+        CoordinateFrame,
+        field,
+        CoordinateFrameMismatchError,
+        _PASSING_COORDINATE_FRAME_VALUES,
+    )
+    if value == CoordinateFrame.UNKNOWN:
+        raise CoordinateFrameMismatchError(
+            "Coordinate frame UNKNOWN is rejected; must be HEAD or MNI."
+        )
+
+
+def _require_fixed_orientation_flag(value: Any) -> None:
+    """Require a real bool. OrientationType and strings are not coerced."""
+    if isinstance(value, bool):
+        return
+    raise ForwardModelContractError(
+        "source_space.is_fixed_orientation must be a bool; "
+        f"got {value!r}. Accepted values: True, False."
+    )
+
+
+def _require_orientation_table(orientations: Any) -> None:
+    """Reject a bare string or scalar stored where orientation vectors belong."""
+    if orientations is None:
+        return
+    if isinstance(orientations, (str, bytes, bytearray)) or not isinstance(orientations, AbcSequence):
+        raise ForwardModelContractError(
+            "source_space.orientations must be a sequence of length-3 vectors or None; "
+            f"got {orientations!r}. Accepted values: a sequence of length-3 vectors, None."
+        )
+
+
+def _require_source_space_labels(
+    coordinate_frame: Any,
+    is_fixed_orientation: Any,
+    orientations: Any,
+) -> None:
+    """Label checks shared by SourceSpace.validate and the forward builder."""
+    _require_coordinate_frame_member(coordinate_frame, "source_space.coordinate_frame")
+    _require_fixed_orientation_flag(is_fixed_orientation)
+    _require_orientation_table(orientations)
+
+
 # -----------------------------------------------------------------------------
 # Data Models
 # -----------------------------------------------------------------------------
@@ -324,6 +417,7 @@ class ConductorModel:
 
     def validate(self) -> None:
         """Validate spherical conductor model physical consistency."""
+        _require_model_type_member(self.model_type)
         if self.model_type == ConductorModelType.ANATOMICAL_BEM:
             raise ConductorGeometryError(
                 "Anatomical BEM conductor models are not supported in synthetic forward contract; "
@@ -404,6 +498,9 @@ class SensorGeometry:
 
     def validate(self) -> None:
         """Validate sensor montage consistency and coordinate scaling."""
+        _require_coordinate_frame_member(
+            self.coordinate_frame, "sensor_geometry.coordinate_frame"
+        )
         if len(self.channel_names) != len(self.positions_m):
             raise LeadfieldDimensionMismatchError(
                 f"Channel count ({len(self.channel_names)}) does not match "
@@ -415,8 +512,6 @@ class SensorGeometry:
             )
         if len(set(self.channel_names)) != len(self.channel_names):
             raise ForwardModelContractError("Duplicate channel names detected in sensor montage.")
-        if self.coordinate_frame == CoordinateFrame.UNKNOWN:
-            raise CoordinateFrameMismatchError("Coordinate frame UNKNOWN is rejected; must be HEAD or MNI.")
         if self.reference_channel is not None and self.reference_channel not in self.channel_names:
             raise ForwardModelContractError(
                 f"Declared reference channel '{self.reference_channel}' is not present in channel names: "
@@ -458,8 +553,9 @@ class SourceSpace:
         """Validate dipole positions and orientation unit vectors."""
         if not self.positions_m:
             raise ForwardModelContractError("Source space must contain at least one source location.")
-        if self.coordinate_frame == CoordinateFrame.UNKNOWN:
-            raise CoordinateFrameMismatchError("Coordinate frame UNKNOWN is rejected; must be HEAD or MNI.")
+        _require_source_space_labels(
+            self.coordinate_frame, self.is_fixed_orientation, self.orientations
+        )
 
         if conductor is not None:
             conductor.validate()
@@ -1428,6 +1524,13 @@ def build_synthetic_forward_contract(
     _require_sensors_on_scalp(sensors, conductor)
 
     sources = source_space or make_synthetic_source_grid(16, is_fixed_orientation=False)
+
+    # Same label checks as SourceSpace.validate, before any `.value` access or
+    # truthiness test on the orientation flag. Containment against the conductor
+    # stays after an optional cross-frame transform.
+    _require_source_space_labels(
+        sources.coordinate_frame, sources.is_fixed_orientation, sources.orientations
+    )
 
     # 1. Coordinate Frame Compatibility & Explicit Transform Check
     if sensors.coordinate_frame != sources.coordinate_frame:

@@ -23,8 +23,8 @@ The contract defines a rigorous, type-safe interface around synthetic forward so
 2. **No Biological Truth Claims**: Synthetic forward solutions and resulting inverse projections (e.g., eLORETA) do not constitute biological ground truth, direct cortical recordings, or causal neurophysiological evidence.
 3. **No Consciousness Claims**: No topology, phase winding, or source-space metric computed over synthetic forward models validates or proves theories of consciousness.
 4. **No Clinical Claims**: Outputs from this forward contract are unsuitable for clinical diagnostics, presurgical localization, or treatment planning.
-5. **Fail-Closed Geometry and Numerics**: Ambiguous units (e.g. coordinates in millimeters instead of meters), mismatched coordinate frames, permuted channel lists, sources placed outside the brain conductor shell, electrodes that are not on the outer conductor surface, non-finite radii/conductivities/coordinates/moments, numeric strings or `None` in numeric fields, ragged or non-finite leadfield matrices, invalid fixed orientations (before or after a coordinate transform), and any computation whose result would not be finite fail closed immediately with `ForwardModelContractError` subclasses. They never surface as a bare `TypeError`, `IndexError`, `OverflowError`, or a silent `NaN`, `inf`, or `0.0`.
-6. **Synthetic Contract ≠ Validated Physics / Measured EEG**: Analytic concentric-sphere leadfields and closed-form oracles in this module are **unit-verification fixtures**. They are not a validated physical head model, not a claim of agreement with measured scalp EEG, and not evidence that an inverse solution recovers biological sources.
+5. **Fail-Closed Geometry and Numerics**: Ambiguous units (e.g. coordinates in millimeters instead of meters), mismatched coordinate frames, permuted channel lists, sources placed outside the brain conductor shell, electrodes that are not on the outer conductor surface, non-finite radii/conductivities/coordinates/moments, numeric strings or `None` in numeric fields, a non-member `model_type` or `coordinate_frame`, a non-bool `is_fixed_orientation`, ragged or non-finite leadfield matrices, invalid fixed orientations (before or after a coordinate transform), and any computation whose result would not be finite fail closed immediately with `ForwardModelContractError` subclasses. They never surface as a bare `AttributeError`, `TypeError`, `IndexError`, `OverflowError`, or a silent `NaN`, `inf`, or `0.0`.
+6. **Synthetic Contract ≠ Validated Physics / Measured EEG**: Analytic concentric-sphere leadfields and closed-form oracles in this module are **unit-verification fixtures**. They are not a validated physical head model, not a claim of agreement with measured scalp EEG, and not evidence that an inverse solution recovers biological sources. Synthetic fixtures and analytic oracles are not measured EEG, validated physics, or scientific evidence.
 
 ### Boundary Versus Neighboring PRs (Do Not Duplicate)
 
@@ -106,7 +106,7 @@ The contract strictly enforces standard SI units and MNE canonical coordinate fr
 | **Electrode position** | Meter | $\text{m}$ | On the outer surface, measured from the conductor origin, within $1\,\mu\text{m}$ | Raises `ConductorGeometryError`; `CoordinateUnitMismatchError` above $1.0\text{ m}$ |
 | **Numeric fields** | Real number | – | Finite `int`/`float` only: no `bool`, no numeric strings, no `None` | Raises the field's contract error (never `TypeError`) |
 | **Computed potential** | Volt | $\text{V}$ | Must be finite; overflow is not returned as `inf`/`NaN` | Raises `ForwardModelContractError` |
-| **Coordinate Frame** | HEAD / MNI | `FIFFV_COORD_HEAD` (4) | Mismatched sensor/source frames require validated 4x4 transform | Raises `CoordinateFrameMismatchError` |
+| **Coordinate Frame** | `CoordinateFrame.HEAD` / `CoordinateFrame.MNI` | `FIFFV_COORD_HEAD` (4) | Member enum only. Plain strings are not coerced. Mismatched sensor/source frames require a validated 4x4 transform. `UNKNOWN` is rejected | Raises `CoordinateFrameMismatchError` |
 
 #### Coordinate Transformation Contract
 When sensors and sources reside in differing coordinate frames (e.g. sensors in `HEAD` and sources in `MNI`), the contract requires an explicit $4 \times 4$ homogeneous affine transformation matrix $T$:
@@ -173,7 +173,25 @@ The contract reports structured uncertainty metadata:
 
 ### 3.7 Malformed-Argument and Resource Bounds
 
-Public helpers fail closed with a `ForwardModelContractError` subclass (never a bare `TypeError`/`OverflowError`) for non-sequence matrices, channel names, or affine transforms, for non-finite, negative, or non-numeric comparison tolerances, and for a conductor that fails its own validation when it is used to bound a source space. Loop-driving inputs are capped: `n_max_terms <= MAX_SERIES_TERMS` (10,000) and synthetic grid `n_sources <= MAX_SYNTHETIC_SOURCES` (100,000). Leadfield diagnostics raise `ForwardModelContractError` when channel norms overflow double precision, rather than returning `inf`/`nan` metrics or an `OverflowError`. These are input-hygiene guarantees on synthetic fixtures; they say nothing about physical accuracy.
+Public helpers fail closed with a `ForwardModelContractError` subclass (never a bare `TypeError`/`OverflowError`/`AttributeError`) for non-sequence matrices, channel names, or affine transforms, for non-finite, negative, or non-numeric comparison tolerances, and for a conductor that fails its own validation when it is used to bound a source space. Loop-driving inputs are capped: `n_max_terms <= MAX_SERIES_TERMS` (10,000) and synthetic grid `n_sources <= MAX_SYNTHETIC_SOURCES` (100,000). Leadfield diagnostics raise `ForwardModelContractError` when channel norms overflow double precision, rather than returning `inf`/`nan` metrics or an `OverflowError`. These are input-hygiene guarantees on synthetic fixtures; they say nothing about physical accuracy.
+
+### 3.8 Enum domains on the validate / build path
+
+`validate()` rejects a value that is not an instance of the field's enum or bool. A plain string is not coerced, even when it equals a member's value (`"head"`, `"spherical_3shell"`, `"free"`). Case and whitespace variants are the same kind of non-member. `build_synthetic_forward_contract` runs these checks before any `.value` access, so a bad label does not surface later as `AttributeError: 'str' object has no attribute 'value'`.
+
+No production caller and no `from_dict` round-trip in this repository passes those strings. The MNE auditor's separate `coord_frame` check (integer `4`, the string `"head"`, or `CoordinateFrame.HEAD`) is unchanged.
+
+| Field | What passes `validate()` | Existing rejection that still runs | Error |
+| :--- | :--- | :--- | :--- |
+| `ConductorModel.model_type` | `ConductorModelType.SPHERICAL_3SHELL` (`spherical_3shell`), `ConductorModelType.SPHERICAL_1SHELL` (`spherical_1shell`) | `ConductorModelType.ANATOMICAL_BEM` | `ConductorGeometryError`. The message names `model_type`, the rejected value, and the accepted values `spherical_3shell, spherical_1shell`. The anatomical member keeps the message that anatomical BEM is not supported. |
+| `SensorGeometry.coordinate_frame` | `CoordinateFrame.HEAD` (`head`), `CoordinateFrame.MNI` (`mni`) | `CoordinateFrame.UNKNOWN` | `CoordinateFrameMismatchError`. The message names `sensor_geometry.coordinate_frame`, the rejected value, and the accepted values `head, mni`. The `UNKNOWN` member keeps the message that UNKNOWN is rejected and the frame must be HEAD or MNI. |
+| `SourceSpace.coordinate_frame` | `CoordinateFrame.HEAD`, `CoordinateFrame.MNI` | `CoordinateFrame.UNKNOWN` | `CoordinateFrameMismatchError`, same rule, field name `source_space.coordinate_frame`. |
+| `SourceSpace.is_fixed_orientation` | `True` (fixed, one column per source) or `False` (free, three columns per source) | — | `ForwardModelContractError`. Accepted values are `True, False`. |
+| `SourceSpace.orientations` | `None`, or a sequence of length-3 vectors. Free mode does not require unit length. Fixed mode still requires one unit vector per source | a `str`, `bytes`, or other non-sequence | `ForwardModelContractError`. |
+
+`OrientationType` (`free`, `fixed`) documents those two modes. It is not a field on `SourceSpace`, and neither member is accepted in place of the bool. A truthy string such as `"free"` used to be treated as fixed orientation and could build a one-column leadfield; that path now fails in `validate()`.
+
+`None`, `int`, `bytes`, and a member of a different enum (`CoordinateFrame` passed as `model_type`, `ConductorModelType` or `OrientationType` passed as `coordinate_frame`) are non-members and fail the same way. Synthetic fixtures and analytic oracles are not measured EEG, validated physics, or scientific evidence.
 
 ---
 
@@ -241,6 +259,9 @@ The test suite in `tests/forward_model_contract/test_forward_model_contract.py` 
 
 - Rejection of millimeter units in conductor, sensors, and sources.
 - Rejection of unknown coordinate frames and unaligned cross-frame configurations without transform.
+- Rejection of non-member `model_type` and `coordinate_frame` values (plain strings, including strings equal to a member value, case or whitespace variants, `None`, `int`, `bytes`, and the wrong enum) with `ConductorGeometryError` or `CoordinateFrameMismatchError` at `validate()`, before `build_synthetic_forward_contract` touches `.value`.
+- `ConductorModelType.SPHERICAL_3SHELL` and `SPHERICAL_1SHELL` still validate and build. `ANATOMICAL_BEM` stays rejected. `CoordinateFrame.HEAD` and `MNI` still validate and build. `UNKNOWN` stays rejected.
+- `is_fixed_orientation` accepts only `True` or `False`. `OrientationType` and the strings `"free"` / `"fixed"` are not coerced. `orientations` must be `None` or a sequence of vectors, not a bare string or scalar.
 - Affine coordinate transformation of source spaces into sensor frames.
 - Rejection of non-monotonic, non-positive, non-finite, or unphysical conductor layers.
 - Multi-shell inner-layer sensitivity: changing the skull conductivity $\sigma_{\text{skull}}$ or the brain radius $r_{\text{brain}}$ changes the computed potential, so no layer is silently dropped. This is a regression property of the implementation, not validation against data.
