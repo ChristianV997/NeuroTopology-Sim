@@ -48,7 +48,7 @@ from tools.benchmarks.batch2_pipeline.schema import (
     TargetStatus,
 )
 from tools.benchmarks.batch2_pipeline.telemetry import dumps, execute_child, json_safe
-from tools.benchmarks.batch2_pipeline.validator import validate_root
+from tools.benchmarks.batch2_pipeline.validator import validate_report, validate_root
 from tools.benchmarks.batch2_pipeline.workloads import TARGETS
 
 
@@ -187,6 +187,11 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
         return 2
     if sum(result_counts.values()) != num_targets:
         return 1
+    # Keep CLI success aligned with validate_report for structural hazards the
+    # earlier checks do not cover (non-finite floats, remote-host references, …).
+    validation = validate_report(report)
+    if not validation.get("ok"):
+        return 2
     return 0
 
 

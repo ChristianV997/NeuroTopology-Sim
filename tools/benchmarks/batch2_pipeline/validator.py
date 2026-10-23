@@ -295,9 +295,17 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
     elif all_within_budget is not _aggregate_complete_boolean(budget_verdicts):
         violations.append("budget_claim_mismatch")
 
-    blob = json.dumps(report, allow_nan=False, default=str)
-    _scan_forbidden(blob, violations, "report")
+    # Non-finite floats must become violations, never a JSON-encoder crash that
+    # prevents a fail-closed result (and must stay aligned with CLI exit checks).
     _finite(report, "$", violations)
+    try:
+        blob = json.dumps(report, allow_nan=False, default=str)
+    except ValueError:
+        if not any(item.startswith("non_finite:") for item in violations):
+            violations.append("non_finite_json_encode")
+        blob = None
+    if blob is not None:
+        _scan_forbidden(blob, violations, "report")
     _scan_remote_hosts(report, violations)
     return {
         "ok": not violations,
