@@ -38,21 +38,51 @@ def validate_eigenvalue_floor(eigenvalue_floor: float) -> None:
 # -----------------------------------------------------------------------------
 
 def validate_finite_matrix(X: Sequence[Sequence[float]], name: str = "Matrix") -> None:
-    """Ensure matrix is non-empty, rectangular, and contains only finite floats."""
-    if not X:
-        raise EmptyDataError(f"{name} is empty.")
-    n_rows = len(X)
-    if not X[0]:
-        raise EmptyDataError(f"{name} has zero columns.")
-    n_cols = len(X[0])
+    """Ensure matrix is non-empty, rectangular, and contains only finite floats.
 
-    for i, row in enumerate(X):
-        if len(row) != n_cols:
+    Emptiness uses ``len(...) == 0`` rather than truthiness. Array-like rows
+    (e.g. NumPy ``ndarray``) raise ``ValueError: The truth value of an array…``
+    under ``if not X`` / ``if not X[0]``; length checks keep the same contract
+    without that crash.
+    """
+    try:
+        n_rows = len(X)
+    except TypeError as exc:
+        raise FeatureDimensionMismatchError(
+            f"{name} is not a sequence of rows."
+        ) from exc
+    if n_rows == 0:
+        raise EmptyDataError(f"{name} is empty.")
+    try:
+        n_cols = len(X[0])
+    except TypeError as exc:
+        raise FeatureDimensionMismatchError(
+            f"{name} row 0 is not a sequence of values."
+        ) from exc
+    if n_cols == 0:
+        raise EmptyDataError(f"{name} has zero columns.")
+
+    for i in range(n_rows):
+        row = X[i]
+        try:
+            row_len = len(row)
+        except TypeError as exc:
             raise FeatureDimensionMismatchError(
-                f"{name} row {i} has length {len(row)}, expected {n_cols}."
+                f"{name} row {i} is not a sequence of values."
+            ) from exc
+        if row_len != n_cols:
+            raise FeatureDimensionMismatchError(
+                f"{name} row {i} has length {row_len}, expected {n_cols}."
             )
-        for j, val in enumerate(row):
-            if not math.isfinite(val):
+        for j in range(row_len):
+            val = row[j]
+            try:
+                finite = math.isfinite(val)
+            except TypeError as exc:
+                raise NonFiniteValuesError(
+                    f"{name} contains non-numeric value ({val!r}) at position ({i}, {j})."
+                ) from exc
+            if not finite:
                 raise NonFiniteValuesError(
                     f"{name} contains non-finite value ({val}) at position ({i}, {j})."
                 )
