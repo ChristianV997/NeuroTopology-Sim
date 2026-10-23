@@ -88,32 +88,43 @@ def test_current_harvest_license_contract_defaults_fail_closed():
     assert license_record["manual_review_required"] is True
 
 
-@pytest.mark.parametrize("conflict", ["license_conflict", "cohort_discrepancy"])
-def test_explicit_empirical_declaration_is_refused_when_dataset_metadata_conflicts(tmp_path: Path, conflict: str):
-    # The explicit EMPIRICAL refusal stands independently of the metadata blocker.
-    packet = {
-        "record_type": "SourceSnapshot",
-        "schema_version": "dataset-metadata-fixture-v1",
-        "dataset_id": "ds-fixture-only",
-        "license_status": "conflict" if conflict == "license_conflict" else "unknown",
-        "cohort_status": "unresolved" if conflict == "cohort_discrepancy" else "consistent",
-        "cohort_discrepancy": conflict == "cohort_discrepancy",
-        "evidence_class": "empirical",
-        "data_mode": "observational",
-        "provenance": {"source_id": "ds-fixture-only", "checksum": "a" * 64,
-                       "acquisition": "fixture", "dataset_version": "fixture-v1"},
-    }
-    result = _promotion(_dump_case(tmp_path, conflict, packet))
+@pytest.mark.parametrize(
+    "updates, removals, reason_codes",
+    [
+        ({}, ("license_status",), ("DATASET_LICENSE_EVIDENCE_MISSING",)),
+        ({"license_status": "conflict"}, (), ("DATASET_LICENSE_EVIDENCE_CONFLICT",)),
+        ({"license_status": "incompatible"}, (), ("DATASET_LICENSE_EVIDENCE_UNRESOLVED",)),
+        ({}, ("cohort_status",), ("DATASET_COHORT_EVIDENCE_MISSING",)),
+        ({}, ("cohort_discrepancy",), ("DATASET_COHORT_EVIDENCE_MISSING",)),
+        ({"cohort_status": "conflict"}, (), ("DATASET_COHORT_EVIDENCE_CONFLICT",)),
+        ({"cohort_discrepancy": True}, (), ("DATASET_COHORT_DISCREPANCY",)),
+        ({"network_access_requested": True}, (), ("NETWORK_ACCESS_NOT_APPROVED",)),
+    ],
+    ids=[
+        "license-missing",
+        "license-conflicting",
+        "license-incompatible",
+        "cohort-status-missing",
+        "cohort-discrepancy-missing",
+        "cohort-conflicting",
+        "cohort-discrepant",
+        "network-unauthorized",
+    ],
+)
+def test_explicit_empirical_declaration_fails_closed_on_missing_conflicting_or_unauthorized_evidence(
+    tmp_path: Path, updates: dict, removals: tuple[str, ...], reason_codes: tuple[str, ...]
+):
+    packet = _dataset_packet("EMPIRICAL")
+    for key in removals:
+        packet.pop(key)
+    packet.update(updates)
+    result = _promotion(_dump_case(tmp_path, "empirical_not_authorized", packet))
     assert result.promotion_decision == "BLOCK_PROMOTION"
     assert result.scientific_pass is False
     assert result.allowed_evidence_class != "empirical"
     assert "EMPIRICAL_PROMOTION_REFUSED" in result.reason_codes
-    if conflict == "license_conflict":
-        assert "DATASET_LICENSE_EVIDENCE_CONFLICT" in result.reason_codes
-    else:
-        assert "DATASET_LICENSE_EVIDENCE_UNRESOLVED" in result.reason_codes
-        assert "DATASET_COHORT_EVIDENCE_UNRESOLVED" in result.reason_codes
-        assert "DATASET_COHORT_DISCREPANCY" in result.reason_codes
+    for reason_code in reason_codes:
+        assert reason_code in result.reason_codes
 
 
 @pytest.mark.parametrize("data_mode,kind", [
@@ -166,7 +177,13 @@ def test_integrity_and_hash_chain_are_not_scientific_truth(tmp_path: Path):
     assert result.scientific_eligibility is False
 
 
-def _dataset_packet(evidence_class: str, *, conflict: bool = False, **metadata) -> dict:
+def _dataset_packet(
+    evidence_class: str,
+    *,
+    conflict: bool = False,
+    acquisition: str = "local_bundle",
+    **metadata,
+) -> dict:
     return {
         "record_type": "SourceSnapshot",
         "schema_version": "dataset-metadata-fixture-v1",
@@ -180,12 +197,37 @@ def _dataset_packet(evidence_class: str, *, conflict: bool = False, **metadata) 
         "multiplicity_correction": "holm",
         "null_controls": ["phase_shuffle"],
         "provenance": {"source_id": "ds-fixture-only", "checksum": "a" * 64,
-                       "acquisition": "fixture", "dataset_version": "fixture-v1"},
+                       "acquisition": acquisition, "dataset_version": "fixture-v1"},
         **metadata,
     }
 
 
-def test_resolved_dataset_metadata_allows_descriptive_review(tmp_path: Path):
+@pytest.mark.parametrize(
+    "acquisition",
+    ["fixture", "synthetic", "synthetic_demo", "synthetic_demonstration"],
+)
+def test_fixture_or_synthetic_acquisition_cannot_be_descriptive_eligible(
+    tmp_path: Path, acquisition: str
+):
+    result = _promotion(
+        _dump_case(
+            tmp_path,
+            acquisition,
+            _dataset_packet("descriptive_empirical", acquisition=acquisition),
+        )
+    )
+    assert result.promotion_decision == "HOLD_SYNTHETIC_ONLY"
+    assert result.allowed_evidence_class == "synthetic_demonstration"
+    assert result.synthetic_demo is True
+    assert result.scientific_eligibility is False
+    assert result.scientific_pass is False
+    assert "SYNTHETIC_NOT_EMPIRICAL" in result.reason_codes
+    if acquisition == "fixture":
+        assert "FIXTURE_NOT_EMPIRICAL" in result.reason_codes
+
+
+def test_consistent_dataset_declarations_only_allow_descriptive_review(tmp_path: Path):
+    # The declarations permit only review here; they do not verify permissions or identity.
     result = _promotion(
         _dump_case(tmp_path, "resolved", _dataset_packet("descriptive_empirical"))
     )
@@ -273,6 +315,7 @@ def test_dataset_metadata_does_not_restrict_engineering_only_reporting(
     assert result.promotion_decision == "ADMISSIBLE_FOR_ENGINEERING_REPORT"
     assert result.allowed_evidence_class == "engineering_fact"
     assert result.scientific_pass is False
+    assert result.scientific_eligibility is False
     assert not any(code.startswith("DATASET_") for code in result.reason_codes)
 
 

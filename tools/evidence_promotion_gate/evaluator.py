@@ -53,7 +53,8 @@ def _reason(code: str, severity: str, message: str) -> Reason:
 
 
 def _is_synthetic_token(value: str | None) -> bool:
-    return _norm(value) in SYNTHETIC_TOKENS
+    token = _norm(value).replace("-", "_").replace(" ", "_")
+    return token in SYNTHETIC_TOKENS
 
 
 def _is_proxy_token(value: str | None) -> bool:
@@ -281,6 +282,21 @@ def evaluate_case(case: LoadedCase) -> PromotionResult:
             controls_declared = True
         if artifact.provenance is not None:
             provenance_states.append(_provenance_status(artifact.provenance))
+            for acquisition in (
+                artifact.provenance.get("acquisition"),
+                artifact.provenance.get("acquisition_source"),
+            ):
+                if not isinstance(acquisition, str):
+                    continue
+                acquisition_token = _norm(acquisition).replace("-", "_").replace(" ", "_")
+                if _is_synthetic_token(acquisition):
+                    synthetic = True
+                if acquisition_token == "fixture":
+                    fixture_token = True
+                if acquisition_token in {"null", "surrogate", "null_control", "surrogate_baseline"}:
+                    null_surrogate = True
+                if acquisition_token == "performance_only":
+                    performance_only = True
         if artifact.network_access_requested:
             network_requested = True
         if artifact.declared_k is not None:
@@ -552,10 +568,7 @@ def evaluate_case(case: LoadedCase) -> PromotionResult:
         allowed_evidence_class=allowed,
         synthetic_demo=synthetic,
         scientific_pass=False,
-        scientific_eligibility=decision in {
-            "ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW",
-            "ADMISSIBLE_FOR_ENGINEERING_REPORT",
-        },
+        scientific_eligibility=decision == "ADMISSIBLE_FOR_DESCRIPTIVE_REVIEW",
         formal_bayes_factor=formal_bayes_factor if formal_method and not proxy else None,
         declared_formal_bayes_factor=declared_k if formal_method else None,
         claim_gate=claim_gate_dict,

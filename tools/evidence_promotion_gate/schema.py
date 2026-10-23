@@ -166,7 +166,12 @@ class Reason:
 
 @dataclass(frozen=True)
 class PromotionResult:
-    """Stable output contract. scientific_pass is always false."""
+    """Stable output contract; scientific_pass is always false.
+
+    scientific_eligibility means only eligibility for limited descriptive
+    review. It never verifies permission, identity, or empirical confirmation;
+    engineering reports and explicit EMPIRICAL declarations are not eligible.
+    """
 
     schema_version: str
     case_id: str

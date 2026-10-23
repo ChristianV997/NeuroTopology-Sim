@@ -6,7 +6,7 @@ This isolated test package bridges the current `tools.public_repo_harvest` vocab
 
 - `tools.public_repo_harvest.schema`: `SourceRepo`, `CandidateRepo`, and `LicenseCompatibilityRecord`; unknown licenses default to `license_status=unknown`, `compatibility_status=manual_review_required`, `can_copy_code=False`, and manual review required.
 - `tools.evidence_promotion_gate.adapters`: local JSON classification/loading, malformed JSON reporting, extracted fields, case fingerprints, and read-only case discovery.
-- `tools.evidence_promotion_gate.evaluator.evaluate_case`: finite promotion decision vocabulary, `scientific_pass=False`, non-empirical allowed classes, and explicit license/cohort readiness for descriptive empirical review; its claim path invokes `tools.research_claim_gate.gate.evaluate_claim`.
+- `tools.evidence_promotion_gate.evaluator.evaluate_case`: finite promotion decision vocabulary, `scientific_pass=False`, non-empirical allowed classes, explicit license/cohort declarations for limited descriptive review, and fixture/synthetic acquisition held synthetic-only; `scientific_eligibility` is true only for the descriptive-review decision. Its claim path invokes `tools.research_claim_gate.gate.evaluate_claim`.
 
 The source-pack and dataset metadata structures used here are test-only compatibility fixtures, not claimed production schemas. A hash/checksum proves only that bytes match a recorded digest; it does not prove source identity, license entitlement, cohort correctness, biological validity, or empirical truth. Public source behavior is not treated as scientific evidence.
 
