@@ -210,30 +210,36 @@ def test_session_channel_count_accepts_numpy_integer(bounds):
     assert session.n_channels == 2
 
 
-@pytest.mark.parametrize("run_id", ["", 1, True, [], None])
-def test_session_run_id_requires_nonempty_string(run_id, bounds):
+@pytest.mark.parametrize("run_id", ["", " ", "\t\n", 1, True, [], None])
+def test_session_run_id_requires_nonblank_string(run_id, bounds):
     with pytest.raises(StreamContractError, match="run_id"):
         StreamSession(n_channels=2, bounds=bounds, run_id=run_id)
 
 
-def test_session_reset_rejects_non_string_run_id_without_mutating_state(bounds):
+@pytest.mark.parametrize("run_id", ["", " ", "\t\n", 42])
+def test_session_reset_rejects_malformed_run_id_without_mutating_state(run_id, bounds):
     session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
     session.update(np.ones((3, 2)))
 
     with pytest.raises(StreamContractError, match="run_id"):
-        session.reset(42)
+        session.reset(run_id)
 
     assert session.run_id == "run-a"
     assert session.samples_seen == 3
     assert session.chunks_seen == 1
 
 
-def test_session_update_rejects_array_run_id_without_mutating_state(bounds):
+@pytest.mark.parametrize(
+    "run_id",
+    [np.array(["run-a"]), "", " ", "\t\n"],
+    ids=["array", "empty", "space", "whitespace"],
+)
+def test_session_update_rejects_malformed_run_id_without_mutating_state(run_id, bounds):
     session = StreamSession(n_channels=2, bounds=bounds, run_id="run-a")
     chunk = np.ones((3, 2))
 
     with pytest.raises(StreamContractError, match="run_id"):
-        session.update(chunk, run_id=np.array(["run-a"]))
+        session.update(chunk, run_id=run_id)
 
     assert session.run_id == "run-a"
     assert session.samples_seen == 0
