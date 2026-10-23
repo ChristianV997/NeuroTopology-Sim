@@ -300,6 +300,7 @@ def test_accumulator_bytes_accepts_numpy_integers_and_is_exact():
         ("max_chunk", 8.5),
         ("op_multiplier", True),
         ("target_budget_bytes", 10**400),
+        ("n_channels", np.uint64(2**63)),
     ],
 )
 def test_memory_planner_rejects_noninteger_and_unrepresentable_counters(field, value):
