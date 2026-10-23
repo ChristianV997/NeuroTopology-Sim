@@ -18,7 +18,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import date
 from typing import Any
+from urllib.parse import urlsplit
 
 from dataset_acquisition.store import ALLOWED_TARGET_ROOT_PREFIXES
 from external_tools.validation import EXTERNAL_TOOL_EXTRA_BANNED_PHRASES
@@ -212,6 +214,24 @@ def validate_repo_relative_root(value: Any, field_name: str) -> list[str]:
 _REPO_FULL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _is_iso_calendar_date(value: str) -> bool:
+    if _ISO_DATE.fullmatch(value) is None:
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_http_url(value: str) -> bool:
+    parts = urlsplit(value.strip())
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
 def validate_repository_candidate(record: Any) -> list[str]:
     """Return a list of error strings (empty = valid). Never raises."""
     errors: list[str] = []
@@ -274,6 +294,14 @@ def validate_repository_candidate(record: Any) -> list[str]:
     adapter_docs_url = metadata.get("adapter_docs_url")
     if adapter_docs_url is not None and not isinstance(adapter_docs_url, str):
         errors.append("metadata.adapter_docs_url must be a string")
+    elif adapter_docs_url and not _is_http_url(adapter_docs_url):
+        errors.append("metadata.adapter_docs_url must be an http(s) URL when present")
+    homepage_url = getattr(record, "homepage_url", None)
+    if isinstance(homepage_url, str) and homepage_url.strip() and not _is_http_url(homepage_url):
+        errors.append("homepage_url must be an http(s) URL when present")
+    snapshot_date = getattr(record, "source_snapshot_date", None)
+    if isinstance(snapshot_date, str) and not _is_iso_calendar_date(snapshot_date):
+        errors.append("source_snapshot_date must be an ISO calendar date (YYYY-MM-DD)")
 
     # Rule 13: Trendshift Signal raw payload must never be embedded for
     # redistribution.
@@ -427,6 +455,11 @@ def validate_license_review(record: Any) -> list[str]:
     if not isinstance(metadata, dict):
         errors.append("metadata must be a mapping")
         metadata = {}
+
+    if review_status == "human_reviewed":
+        reviewer = metadata.get("reviewer")
+        if not isinstance(reviewer, str) or not reviewer.strip():
+            errors.append("review_status='human_reviewed' requires metadata.reviewer (a named reviewer)")
 
     for field_name in ("license_name", "provenance", "commercial_core_policy"):
         value = getattr(record, field_name, None)
