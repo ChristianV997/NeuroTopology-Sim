@@ -192,6 +192,20 @@ def _scan_banned_phrases(value: Any, path: str, errors: list[str]) -> None:
             _scan_banned_phrases(item, f"{path}[{idx}]", errors)
 
 
+def _check_string_keys(value: Any, path: str, errors: list[str]) -> None:
+    """Mapping keys must be strings (recursively) so evidence stays
+    JSON-serialisable and cannot be keyed by unhashable-looking tuples."""
+    if isinstance(value, dict):
+        for key, sub in value.items():
+            if not isinstance(key, str):
+                errors.append(f"{path}: mapping key {key!r} must be a string")
+            else:
+                _check_string_keys(sub, f"{path}.{key}", errors)
+    elif isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            _check_string_keys(item, f"{path}[{idx}]", errors)
+
+
 def validate_repo_relative_root(value: Any, field_name: str) -> list[str]:
     errors: list[str] = []
     if not value or not isinstance(value, str):
@@ -320,6 +334,8 @@ def validate_repository_candidate(record: Any) -> list[str]:
 
     if hasattr(record, "claim_scope") or hasattr(record, "evidence_level") or hasattr(record, "evidence_ready"):
         errors.append("OpenSourceRepositoryCandidateV1 must not carry its own claim_scope/evidence_level/evidence_ready field")
+
+    _check_string_keys(metadata, "metadata", errors)
 
     for field_name in ("name", "description", "provenance"):
         value = getattr(record, field_name, None)
@@ -461,6 +477,13 @@ def validate_license_review(record: Any) -> list[str]:
         if not isinstance(reviewer, str) or not reviewer.strip():
             errors.append("review_status='human_reviewed' requires metadata.reviewer (a named reviewer)")
 
+    # The only observation status this pipeline emits is "conflict". Any
+    # other present value (wrong case, bool, list, None, ...) is malformed
+    # evidence and must not silently fall through as "no conflict".
+    if "license_observation_status" in metadata and metadata["license_observation_status"] != "conflict":
+        errors.append("metadata.license_observation_status, when present, must be exactly 'conflict'")
+    _check_string_keys(metadata, "metadata", errors)
+
     for field_name in ("license_name", "provenance", "commercial_core_policy"):
         value = getattr(record, field_name, None)
         if isinstance(value, str):
@@ -571,6 +594,61 @@ def validate_opportunity_against_license_review(opportunity: Any, license_review
 # ── OpenSourceLeverageBatchV1 ──────────────────────────────────────────────
 
 
+_REVIEW_ACTIONS = frozenset({"license_review_required", "security_review_required"})
+
+
+def _validate_ranked_entry(entry: Any, index: int, errors: list[str]) -> None:
+    """Re-validate one ranked entry from first principles so a hand-edited or
+    deserialised batch cannot carry a forged action, a mismatched embedded
+    license review, or non-numeric scores past the planner/renderer. The
+    check is structural consistency only: it does not make the entry
+    verified legal, security, or scientific evidence."""
+    from oss_opportunities.integration_opportunity import OpenSourceIntegrationOpportunityV1
+    from oss_opportunities.license_review import RepositoryLicenseReviewV1, classify_license_risk
+
+    prefix = f"opportunities_ranked[{index}]"
+    if not isinstance(entry, dict):
+        errors.append(f"{prefix} must be a mapping")
+        return
+    review_dict = entry.get("license_review")
+    if not isinstance(review_dict, dict):
+        errors.append(f"{prefix}.license_review must be a mapping (embedded review is required)")
+        return
+    score = entry.get("total_score")
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or score != score or score in (float("inf"), float("-inf")):
+        errors.append(f"{prefix}.total_score must be a finite number")
+        return
+    try:
+        opportunity = OpenSourceIntegrationOpportunityV1.from_dict(
+            {k: v for k, v in entry.items() if k != "license_review"}
+        )
+        review = RepositoryLicenseReviewV1.from_dict(review_dict)
+        problems = [f"opportunity: {e}" for e in opportunity.validate()]
+        problems += [f"license_review: {e}" for e in review.validate()]
+        if not problems:
+            problems += validate_opportunity_against_license_review(opportunity, review)
+            if opportunity.repo_full_name.casefold() != review.repo_full_name.casefold():
+                problems.append("embedded license_review repo_full_name does not match the opportunity")
+            if review.license_review_id != review.recompute_id():
+                problems.append("embedded license_review id does not match its repo/license (forged or edited)")
+            if review.license_risk != classify_license_risk(review.license_spdx):
+                problems.append("embedded license_review license_risk does not match its license_spdx")
+            if opportunity.license_review_id != review.license_review_id:
+                problems.append("embedded license_review id does not match license_review_id")
+            unresolved = (
+                (review.metadata or {}).get("license_observation_status") == "conflict"
+                or review.commercial_core_policy in ("blocked_pending_review", "blocked")
+                or review.license_risk in ("missing_high", "proprietary_or_unknown_high")
+            )
+            if unresolved and opportunity.recommended_action not in _REVIEW_ACTIONS:
+                problems.append(
+                    f"unresolved license evidence requires a review action, got '{opportunity.recommended_action}'"
+                )
+    except Exception as exc:  # validators report, never raise
+        problems = [f"malformed entry ({type(exc).__name__})"]
+    errors.extend(f"{prefix}: {p}" for p in problems)
+
+
 def validate_leverage_batch(batch: Any) -> list[str]:
     errors: list[str] = []
 
@@ -590,10 +668,31 @@ def validate_leverage_batch(batch: Any) -> list[str]:
             errors.append(f"sources_scanned contains unknown source '{source}' (must be one of {sorted(ALLOWED_SOURCE)})")
 
     candidates_seen = getattr(batch, "candidates_seen", None)
-    opportunities_ranked = getattr(batch, "opportunities_ranked", None) or []
-    opportunities_rejected = getattr(batch, "opportunities_rejected", None) or []
-    if candidates_seen is not None and candidates_seen < len(opportunities_ranked) + len(opportunities_rejected):
-        errors.append("candidates_seen must be >= len(opportunities_ranked) + len(opportunities_rejected)")
+    opportunities_ranked = getattr(batch, "opportunities_ranked", None)
+    opportunities_rejected = getattr(batch, "opportunities_rejected", None)
+    lists_ok = True
+    for label, value in (("opportunities_ranked", opportunities_ranked), ("opportunities_rejected", opportunities_rejected)):
+        if not isinstance(value, list):
+            errors.append(f"{label} must be a list")
+            lists_ok = False
+    if lists_ok:
+        if (
+            isinstance(candidates_seen, int)
+            and not isinstance(candidates_seen, bool)
+            and candidates_seen < len(opportunities_ranked) + len(opportunities_rejected)
+        ):
+            errors.append("candidates_seen must be >= len(opportunities_ranked) + len(opportunities_rejected)")
+        elif candidates_seen is not None and (not isinstance(candidates_seen, int) or isinstance(candidates_seen, bool)):
+            errors.append("candidates_seen must be an integer")
+        for index, entry in enumerate(opportunities_ranked):
+            _validate_ranked_entry(entry, index, errors)
+        for index, entry in enumerate(opportunities_rejected):
+            if not isinstance(entry, dict):
+                errors.append(f"opportunities_rejected[{index}] must be a mapping")
+                continue
+            for key in ("repo_full_name", "reason"):
+                if not isinstance(entry.get(key), str) or not entry.get(key):
+                    errors.append(f"opportunities_rejected[{index}].{key} must be a non-empty string")
 
     if hasattr(batch, "claim_scope") or hasattr(batch, "evidence_level"):
         errors.append("OpenSourceLeverageBatchV1 must not carry its own claim_scope/evidence_level field")

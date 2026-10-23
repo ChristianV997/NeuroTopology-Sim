@@ -21,9 +21,12 @@ def test_build_batch_ranks_deterministically():
     batch = build_opportunities_from_candidates([good, sparse])
     assert batch.validate() == []
     assert batch.candidates_seen == 2
-    assert len(batch.opportunities_ranked) == 1
-    assert len(batch.opportunities_rejected) == 1
+    # The sparse candidate has an unresolved (unknown) license, so it is
+    # surfaced for license review rather than silently rejected.
+    assert len(batch.opportunities_ranked) == 2
+    assert batch.opportunities_rejected == []
     assert batch.opportunities_ranked[0]["repo_full_name"] == good.repo_full_name
+    assert batch.opportunities_ranked[1]["recommended_action"] == "license_review_required"
 
 
 def test_no_candidate_silently_dropped():

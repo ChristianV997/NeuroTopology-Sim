@@ -106,6 +106,18 @@ class OpenSourceLeverageBatchV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "OpenSourceLeverageBatchV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("batch payload must be a mapping")
+        try:
+            return cls._from_dict(d)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise OssOpportunityValidationError(f"malformed batch payload: {exc}") from exc
+
+    @classmethod
+    def _from_dict(cls, d: dict[str, Any]) -> "OpenSourceLeverageBatchV1":
+        for key in ("opportunities_ranked", "opportunities_rejected", "sources_scanned", "limitations", "metadata"):
+            if d.get(key) is not None and not isinstance(d[key], (list, dict)):
+                raise TypeError(f"{key} has the wrong type")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             batch_id=d.get("batch_id", ""),
@@ -158,10 +170,14 @@ def build_opportunities_from_candidates(
     `OpenSourceLeverageBatchV1`. Never clones a repository, never installs
     a dependency, and never executes external code -- operates only on
     already-constructed `OpenSourceRepositoryCandidateV1` objects."""
-    if not candidate_records:
-        raise OssOpportunityValidationError("candidate_records must be non-empty -- nothing to score")
+    if not isinstance(candidate_records, (list, tuple)) or not candidate_records:
+        raise OssOpportunityValidationError("candidate_records must be a non-empty list of candidates -- nothing to score")
 
     for index, c in enumerate(candidate_records):
+        if not isinstance(c, OpenSourceRepositoryCandidateV1):
+            raise OssOpportunityValidationError(
+                f"candidate at index {index} is not an OpenSourceRepositoryCandidateV1 ({type(c).__name__})"
+            )
         errs = c.validate()
         if errs:
             raise OssOpportunityValidationError(f"candidate at index {index} failed validation: {'; '.join(errs)}")
@@ -186,6 +202,12 @@ def build_opportunities_from_candidates(
             )
             candidate_ids = sorted({candidate.candidate_id for candidate in observations})
             license_conflicts[repo_key] = (observed_values, candidate_ids)
+
+    # Credential evidence on any observation of a repository applies to the
+    # repository: a higher-scoring uncredentialed duplicate must not hide it.
+    credentialed_repos = {
+        c.repo_full_name.casefold() for c in candidate_records if (c.metadata or {}).get("requires_credentials")
+    }
 
     ts = (_now or datetime.now(timezone.utc)).isoformat()
     sources_scanned = sorted({c.source for c in candidate_records if c.source})
@@ -228,6 +250,13 @@ def build_opportunities_from_candidates(
                 },
             )
         license_review.validate_or_raise()
+        if (
+            candidate.repo_full_name.casefold() in credentialed_repos
+            and not (scoring_candidate.metadata or {}).get("requires_credentials")
+        ):
+            scoring_candidate = replace(
+                scoring_candidate, metadata={**(scoring_candidate.metadata or {}), "requires_credentials": True}
+            )
 
         components = score_opportunity(scoring_candidate, license_review)
         opportunity = OpenSourceIntegrationOpportunityV1.make(

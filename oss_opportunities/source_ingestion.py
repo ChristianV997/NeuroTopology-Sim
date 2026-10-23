@@ -25,7 +25,14 @@ import re
 from pathlib import Path
 from typing import Any, Union
 
+from dataclasses import fields as _dataclass_fields
+
 from oss_opportunities.repository_candidate import OpenSourceRepositoryCandidateV1
+from oss_opportunities.validation import OssOpportunityValidationError
+
+_CANDIDATE_FIELDS = frozenset(f.name for f in _dataclass_fields(OpenSourceRepositoryCandidateV1))
+# Set by the loader itself; a seed entry may not override observation identity.
+_SEED_RESERVED_FIELDS = frozenset({"candidate_id", "source", "source_timeframe", "source_snapshot_date", "schema_version"})
 
 _ALLOWED_TRENDSHIFT_TIMEFRAMES = ("daily", "weekly", "monthly", "yearly")
 _ALLOWED_STARMAP_CATEGORIES = ("frontend", "backend", "data", "infra")
@@ -65,11 +72,17 @@ def import_from_manual_seed(seed_path: Union[str, Path]) -> list[OpenSourceRepos
     unknown) or a dict with any of `OpenSourceRepositoryCandidateV1`'s
     fields. Never fetches anything over the network."""
     payload = _read_json(seed_path)
+    if not isinstance(payload, dict):
+        raise OssOpportunityValidationError("manual seed payload must be a JSON object")
     entries = payload.get("repositories") or payload.get("repos") or []
+    if not isinstance(entries, list):
+        raise OssOpportunityValidationError("manual seed 'repositories' must be a list")
     snapshot_date = payload.get("snapshot_date", "")
 
     candidates: list[OpenSourceRepositoryCandidateV1] = []
-    for entry in entries:
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, (str, dict)):
+            raise OssOpportunityValidationError(f"manual seed entry {index} must be a string or an object")
         if isinstance(entry, str):
             repo_full_name = entry
             fields: dict[str, Any] = {}
@@ -78,6 +91,11 @@ def import_from_manual_seed(seed_path: Union[str, Path]) -> list[OpenSourceRepos
             fields = {k: v for k, v in entry.items() if k not in ("repo_full_name", "repo")}
         if not repo_full_name:
             continue
+        if not isinstance(repo_full_name, str):
+            raise OssOpportunityValidationError(f"manual seed entry {index} repo_full_name must be a string")
+        unknown = sorted(str(k) for k in fields if k not in _CANDIDATE_FIELDS - _SEED_RESERVED_FIELDS and k != "rank")
+        if unknown:
+            raise OssOpportunityValidationError(f"manual seed entry {index} has unknown fields: {unknown}")
         owner = fields.pop("owner", None) or (repo_full_name.split("/")[0] if "/" in repo_full_name else "")
         name = fields.pop("name", None) or (repo_full_name.split("/")[-1] if "/" in repo_full_name else repo_full_name)
         source_rank = fields.pop("source_rank", None)

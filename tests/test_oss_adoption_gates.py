@@ -488,7 +488,6 @@ def test_human_reviewed_status_requires_a_named_reviewer():
 
 import copy
 import json
-import math
 
 from oss_opportunities.export_oss_opportunities import main as cli_main
 from oss_opportunities.opportunity_batch import OpenSourceLeverageBatchV1
