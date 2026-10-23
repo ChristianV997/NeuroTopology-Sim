@@ -623,6 +623,58 @@ class TestWhiteningAudit(unittest.TestCase):
                     delta=max(1e-12, 1e-8 * abs(float(want))),
                 )
 
+    def test_method_comparison_scale_sweep_rejects_absolute_false_equivalence(self) -> None:
+        """Regression: absolute ||ΔW||_F < 1e-9 falsely marked Cholesky≡ZCA on huge cov.
+
+        Relative transform difference stays ~O(0.08) across scales; absolute floors
+        previously forced ``are_methods_equivalent=True`` and ``rel_diff=0`` under
+        underflow of ||W_zca||_F. Tolerances are not loosened — equivalence is
+        relative.
+        """
+        from tools.whitening_audit.whitening_verifier import compare_whitening_methods
+
+        base = [[2.0, 0.3], [0.3, 1.0]]
+        rels: list[float] = []
+        for scale in (1e-20, 1e-10, 1.0, 1e10, 1e20, 1e30, 1e40):
+            cov = [[scale * base[i][j] for j in range(2)] for i in range(2)]
+            floor = max(1e-300, abs(scale) * 1e-12)
+            cmp = compare_whitening_methods(cov, eigenvalue_floor=floor)
+            self.assertFalse(
+                cmp.are_methods_equivalent,
+                msg=f"false equivalence at scale={scale}",
+            )
+            self.assertTrue(
+                math.isfinite(cmp.relative_transform_difference),
+                msg=f"non-finite rel_diff at scale={scale}",
+            )
+            self.assertGreater(
+                cmp.relative_transform_difference,
+                1e-3,
+                msg=f"rel_diff collapsed at scale={scale}: {cmp.relative_transform_difference}",
+            )
+            self.assertTrue(cmp.cholesky_is_lower_triangular, scale)
+            self.assertTrue(cmp.zca_is_symmetric, msg=f"zca symmetry lost at scale={scale}")
+            rels.append(cmp.relative_transform_difference)
+        # Property: relative gap is scale-invariant (within tight band).
+        for r in rels:
+            self.assertAlmostEqual(r, rels[0], delta=1e-6)
+
+    def test_spd_material_and_cond_property_scale_sweep(self) -> None:
+        """Property: cond≈2 and micro-floor material disclosure across decades."""
+        base = [[2.0, 0.0], [0.0, 1.0]]
+        for scale in (1e-20, 1e-12, 1e-6, 1.0, 1e6, 1e12, 1e20):
+            cov = [[scale * base[i][j] for j in range(2)] for i in range(2)]
+            _, raw = project_spd_covariance(cov, eigenvalue_floor=max(1e-300, scale * 1e-12))
+            self.assertTrue(math.isfinite(raw.raw_condition_number), scale)
+            self.assertAlmostEqual(raw.raw_condition_number, 2.0, delta=1e-6)
+
+            # Floor above both eigenvalues → material relative correction must surface.
+            floor = scale * 10.0
+            _, floored = project_spd_covariance(cov, eigenvalue_floor=floor)
+            self.assertGreater(floored.n_floored_eigenvalues, 0, scale)
+            self.assertGreater(floored.relative_correction_norm, 1e-6, scale)
+            self.assertTrue(floored.is_correction_material, scale)
+
 
 if __name__ == "__main__":
     unittest.main()

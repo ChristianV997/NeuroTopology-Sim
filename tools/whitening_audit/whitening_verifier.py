@@ -198,11 +198,11 @@ def compare_whitening_methods(
     L = cholesky_decomposition(cov_spd)
     W_chol = invert_lower_triangular(L)
 
-    # Check lower triangularity
+    # Check lower triangularity (exact structural zeros from triangular inverse).
     is_lower_tri = True
     for i in range(d):
         for j in range(i + 1, d):
-            if abs(W_chol[i][j]) > 1e-12:
+            if W_chol[i][j] != 0.0:
                 is_lower_tri = False
 
     # 2. Symmetric ZCA whitening W_zca = V * Lambda^-1/2 * V^T
@@ -210,11 +210,18 @@ def compare_whitening_methods(
     inv_sqrt_diag = [1.0 / math.sqrt(ev) for ev in evals]
     W_zca = [[sum(V[i][k] * inv_sqrt_diag[k] * V[j][k] for k in range(d)) for j in range(d)] for i in range(d)]
 
-    # Check symmetry of W_zca
+    # Symmetry of W_zca — relative to local transform scale (no absolute 1e-12 floor).
     is_symmetric = True
     for i in range(d):
         for j in range(i + 1, d):
-            if abs(W_zca[i][j] - W_zca[j][i]) > 1e-12:
+            a_ij = W_zca[i][j]
+            a_ji = W_zca[j][i]
+            diff = abs(a_ij - a_ji)
+            if diff == 0.0:
+                continue
+            local = max(abs(a_ij), abs(a_ji), abs(W_zca[i][i]), abs(W_zca[j][j]))
+            eff_tol = 1e-9 * local if local > 0.0 else 0.0
+            if diff > eff_tol:
                 is_symmetric = False
 
     # 3. Verify covariance whitening: W * Sigma * W^T
@@ -230,11 +237,19 @@ def compare_whitening_methods(
     cov_zca_whitened = matrix_multiply(W_zca_cov, matrix_transpose(W_zca))
     err_zca = matrix_frobenius_norm(matrix_subtract(cov_zca_whitened, I_d))
 
-    # 4. Difference between transformation matrices
+    # 4. Difference between transformation matrices (scale-invariant relative gap).
+    # Absolute ||W||_F floors previously forced rel_diff=0 under huge covariances
+    # (W ~ 1/sqrt(λ) underflows the old 1e-15 gate) and marked false equivalence
+    # via ||ΔW||_F < 1e-9.
     diff_W = matrix_subtract(W_chol, W_zca)
     norm_diff = matrix_frobenius_norm(diff_W)
     norm_zca = matrix_frobenius_norm(W_zca)
-    rel_diff = norm_diff / norm_zca if norm_zca > 1e-15 else 0.0
+    if norm_zca > 0.0 and math.isfinite(norm_zca):
+        rel_diff = norm_diff / norm_zca
+        if not math.isfinite(rel_diff):
+            rel_diff = float("inf")
+    else:
+        rel_diff = 0.0 if norm_diff == 0.0 else float("inf")
 
     # 5. Coordinate rotation R = W_chol * Sigma^(1/2)
     # Sigma^(1/2) = V * diag(sqrt(evals)) * V^T
@@ -243,8 +258,8 @@ def compare_whitening_methods(
     R = matrix_multiply(W_chol, sqrt_cov)
     rot_diff = matrix_frobenius_norm(matrix_subtract(R, I_d))
 
-    # Equivalence flag (mathematically false unless covariance is already diagonal scalar)
-    are_equiv = (norm_diff < 1e-9)
+    # Equivalence is relative — absolute 1e-9 falsely passed on huge-Σ / tiny-W.
+    are_equiv = rel_diff < 1e-9
 
     return MethodComparisonResult(
         covariance_in_sample_chol_error=err_chol,
