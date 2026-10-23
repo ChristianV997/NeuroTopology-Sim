@@ -481,3 +481,114 @@ def test_human_reviewed_status_requires_a_named_reviewer():
         metadata={"reviewer": "synthetic reviewer"},
     )
     assert named.validate() == []
+
+
+# ── fail-closed hardening: malformed inputs, forged batches, entry points ──
+
+
+import copy
+import json
+import math
+
+from oss_opportunities.export_oss_opportunities import main as cli_main
+from oss_opportunities.opportunity_batch import OpenSourceLeverageBatchV1
+from oss_opportunities.source_ingestion import import_from_manual_seed
+
+
+@pytest.mark.parametrize("bad", [None, 5, "abc", {}, [None], [{}], ["owner/repo"], [1]])
+def test_builder_rejects_non_candidate_input_with_controlled_error(bad):
+    with pytest.raises(OssOpportunityValidationError):
+        build_opportunities_from_candidates(bad)
+
+
+@pytest.mark.parametrize("bad", ["CONFLICT", " conflict ", "disputed", True, 1, ["conflict"], {"x": 1}, None, ""])
+def test_unrecognised_license_observation_status_is_rejected(bad):
+    candidate = make_document_ingestion_candidate()
+    review = _review(candidate)
+    review.metadata = {"license_observation_status": bad}
+    assert any("license_observation_status" in e for e in review.validate())
+    with pytest.raises(OssOpportunityValidationError):
+        score_opportunity(candidate, review)
+
+
+def test_non_string_metadata_key_is_rejected_not_serialised():
+    candidate = make_document_ingestion_candidate()
+    candidate.metadata = {("a",): 1}
+    assert any("metadata" in e and "key" in e for e in candidate.validate())
+    with pytest.raises(OssOpportunityValidationError):
+        build_opportunities_from_candidates([candidate])
+
+
+def test_credential_evidence_on_any_duplicate_observation_requires_security_review():
+    plain = make_document_ingestion_candidate()
+    credentialed = _observation("github_manual_seed", metadata={"requires_credentials": True})
+    for order in ([plain, credentialed], [credentialed, plain]):
+        batch = build_opportunities_from_candidates(order)
+        assert [e["recommended_action"] for e in batch.opportunities_ranked] == ["security_review_required"]
+
+
+def _ranked_batch():
+    return build_opportunities_from_candidates([make_document_ingestion_candidate()])
+
+
+def _forge(mutate):
+    batch = copy.deepcopy(_ranked_batch())
+    mutate(batch)
+    return batch
+
+
+_FORGERIES = {
+    "risk_downgrade_mismatch": lambda b: b.opportunities_ranked[0]["license_review"].update(license_risk="strong_copyleft_high"),
+    "review_repo_swapped": lambda b: b.opportunities_ranked[0]["license_review"].update(repo_full_name="evil/other"),
+    "review_license_swapped": lambda b: b.opportunities_ranked[0]["license_review"].update(license_spdx="GPL-3.0"),
+    "review_none": lambda b: b.opportunities_ranked[0].update(license_review=None),
+    "review_removed": lambda b: b.opportunities_ranked[0].pop("license_review"),
+    "conflict_marker_but_adapter": lambda b: b.opportunities_ranked[0]["license_review"].update(
+        metadata={"license_observation_status": "conflict"}),
+    "score_nan": lambda b: b.opportunities_ranked[0].update(total_score=float("nan")),
+    "score_str": lambda b: b.opportunities_ranked[0].update(total_score="9"),
+    "unknown_action": lambda b: b.opportunities_ranked[0].update(recommended_action="adopt_now"),
+    "blocked_actions_emptied": lambda b: b.opportunities_ranked[0].update(blocked_actions=[]),
+    "entry_is_str": lambda b: b.opportunities_ranked.__setitem__(0, "x"),
+    "entry_none": lambda b: b.opportunities_ranked.__setitem__(0, None),
+    "ranked_not_list": lambda b: setattr(b, "opportunities_ranked", 5),
+    "rejected_not_list": lambda b: setattr(b, "opportunities_rejected", 5),
+    "rejected_entry_str": lambda b: setattr(b, "opportunities_rejected", ["x"]),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_FORGERIES))
+def test_forged_batch_is_rejected_by_validate_and_planner(name):
+    forged = _forge(_FORGERIES[name])
+    assert forged.validate(), name
+    with pytest.raises(OssOpportunityValidationError):
+        plan_oss_integrations_from_opportunities(forged)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [5, [], {"candidates_seen": "x"}, {"candidates_seen": float("nan")}, {"opportunities_ranked": 5}, {"metadata": [1]}],
+)
+def test_batch_from_dict_malformed_shapes_are_controlled(payload):
+    with pytest.raises(OssOpportunityValidationError):
+        OpenSourceLeverageBatchV1.from_dict(payload)
+
+
+_BAD_SEEDS = {
+    "list_payload": [],
+    "entry_int": {"snapshot_date": "2026-10-01", "repositories": [5]},
+    "entry_list": {"snapshot_date": "2026-10-01", "repositories": [["a/b"]]},
+    "unknown_field": {"snapshot_date": "2026-10-01", "repositories": [{"repo_full_name": "a/b", "bogus_field": 1}]},
+    "repositories_str": {"snapshot_date": "2026-10-01", "repositories": "a/b"},
+    "non_string_name": {"snapshot_date": "2026-10-01", "repositories": [{"repo_full_name": 5}]},
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BAD_SEEDS))
+def test_malformed_manual_seed_is_a_controlled_failure_at_api_and_cli(name, tmp_path):
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps(_BAD_SEEDS[name]))
+    with pytest.raises(OssOpportunityValidationError):
+        import_from_manual_seed(seed)
+    rc = cli_main(["from-manual-seed", "--seed", str(seed), "--out", str(tmp_path / "out")])
+    assert rc == 1
