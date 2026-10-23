@@ -41,7 +41,15 @@ def _check_radius(radius: float) -> None:
         raise OperatorInputError("radius must be finite and > 0")
 
 
+def _refuse_bool(name: str, value: object) -> None:
+    # MNE 1.13.2 validates stiffness and lambda2 with _validate_type(..., "numeric"), which refuses bool and
+    # np.bool_ with TypeError (mne/utils/check.py L25-37, L585-596, L616). Refuse them the same way.
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be numeric, got bool")
+
+
 def _check_stiffness(stiffness: float) -> None:
+    _refuse_bool("stiffness", stiffness)
     # MNE 1.13.2 _csd.py:130-131 rejects stiffness < 0. Non-finite values are refused here too,
     # which is stricter than MNE (MNE would propagate NaN).
     if not (math.isfinite(stiffness) and stiffness >= 0.0):
@@ -60,7 +68,11 @@ def unit_vectors(positions, origin: Sequence[float] = (0.0, 0.0, 0.0)) -> np.nda
     # centre is subtracted. Mirror that, so a sensor MNE refuses is refused here too.
     if np.isclose(pos, 0.0).all(axis=1).any():
         raise OperatorInputError("zero (0,0,0) sensor coordinate(s) rejected, as MNE does")
-    centred = pos - np.asarray(origin, dtype=float)
+    centre = np.asarray(origin, dtype=float)
+    # One sphere centre, as MNE's sphere=(x, y, z, r). An (n, 3) array would broadcast row by row.
+    if centre.shape != (3,) or not np.all(np.isfinite(centre)):
+        raise OperatorInputError("origin must be three finite coordinates")
+    centred = pos - centre
     norms = np.linalg.norm(centred, axis=1)
     if np.any(norms <= 0.0):
         raise OperatorInputError("a sensor position coincides with the sphere origin")
@@ -73,6 +85,7 @@ def legendre_matrices(unit: np.ndarray, *, stiffness: float = 4.0, n_terms: int 
 
 
 def regularise(G: np.ndarray, lambda2: float) -> np.ndarray:
+    _refuse_bool("lambda2", lambda2)
     # Same domain as the pinned MNE 1.13.2: `if not 0 <= lambda2 < 1` (mne/preprocessing/_csd.py L126-127).
     # The chained comparison is False for NaN, so NaN and inf are refused as well.
     if not (0.0 <= lambda2 < 1.0):
@@ -134,6 +147,9 @@ def csd_operator(
 
 def apply_csd(M: np.ndarray, data: np.ndarray) -> np.ndarray:
     data = np.asarray(data, dtype=float)
+    # (n_channels,) or (n_channels, n_times) only. With more axes, M @ data broadcasts over the first axis.
+    if data.ndim not in (1, 2):
+        raise OperatorInputError("data must have one or two axes: (n_channels,) or (n_channels, n_times)")
     if data.shape[0] != M.shape[0]:
         raise OperatorInputError("data must have one row per channel")
     return M @ data

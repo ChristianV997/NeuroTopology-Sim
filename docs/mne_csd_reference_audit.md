@@ -113,6 +113,9 @@ independently. No code is transcribed in `tools/`:
 | `"auto"` sphere | fits a sphere from digitisation | **not accepted**: the reference takes an explicit centre and radius only |
 | single channel | a 1×1 operator of zeros (source-derived: with one channel `Z = 0`, so `C = 0`) | **refuses** (`kkt.py`, at least two channels). Stricter than MNE, stated here. Not executed here |
 | sensor exactly at a non-zero sphere origin | NaN with a RuntimeWarning (source-derived: `pos / ||pos||` divides by zero after centring) | **refuses** (`kkt.py`, a sensor coincides with the sphere origin). Stricter than MNE, stated here. Not executed here |
+| `stiffness` or `lambda2` is a bool or `np.bool_` | refuses: `_validate_type(..., "numeric")` at `_csd.py:125` and `:129` accepts `np.floating`, `float` and `int_like`, and `_ensure_int` raises `TypeError` for bool (`mne/utils/check.py` L25-37, L585-596, L616) | refuses with `TypeError` (`kkt._refuse_bool`, test `test_bool_stiffness_and_lambda2_are_refused_as_mne_refuses_them`). Before the 2026-10-23 fix, `False` and `True` were read as 0 and 1 |
+| sphere centre that is not three finite coordinates | refuses a sphere that does not unpack to `(x, y, z, r)` (`_csd.py:144-148`); a non-finite centre propagates NaN | refuses (`kkt.unit_vectors`, test `test_origin_must_be_three_finite_coordinates`). Before the 2026-10-23 fix, an `(n_channels, 3)` origin was broadcast row by row as a per-sensor centre and returned a finite operator with no error |
+| data with more than two axes | not applicable: MNE applies the transform per epoch (`trans_csd @ data` on `(n_channels, n_times)`, `_csd.py:179`) | refuses (`kkt.apply_csd`, test `test_apply_csd_refuses_data_with_more_than_two_axes`). Before the 2026-10-23 fix, `(n, n, k)` data passed the row check and `M @ data` broadcast over the first axis, returning a result that is not the channel-wise product |
 | Bad EEG channels, or channel picks | refuses (`_csd.py:108-123`) | **not modelled**: the reference takes positions only |
 
 Three of these were gaps before the 2026-10-19 repair: negative stiffness, raw-origin sensors, and the radius guard
@@ -233,13 +236,14 @@ No mathematical or numerical discrepancy was found in the parts that could be ch
 - The owned tests are not in any core batch of `.github/workflows/required-checks.yml`. The round-6 gate is
   the only hosted path that runs them. It is absent at the PR's base `3f3fe85`, present on `origin/main`
   (`bc91af19`), and maps these paths to `spherical_csd`.
-- The live-MNE comparison in `tests/optional_live_mne/` is **not** mapped and is not counted.
+- The live-MNE comparison in `tests/optional_live_mne/` is not counted by the round-6 gate. The gate's
+  `external_test_paths` for this component delegate it to the `optional-eeg-suite` job of `.github/workflows/ci.yml`.
+  As checked on 2026-10-23, that workflow had no run since 2026-04-21, so the live comparison has no hosted result.
 
 ## Ownership and conflicts
 
 - Not modified: `adapters/mne_csd/`, `dual_engine/`, every path owned by another open PR, and all CI files.
-  The adapter wrapping MNE's public function lives in open PR #378 (`batch2/cursor-c-mne-csd-adapter`) and was
-  only read.
+  The adapter wrapping MNE's public function (`adapters/mne_csd/`) was merged to main by #378 and was only read.
 - Paths owned by this PR: `tools/mne_csd_reference_audit/`, `tests/mne_csd_reference_audit/` (including
   `conftest.py` and `fixtures/`), `tests/optional_live_mne/` (new, outside the gate), `docs/mne_csd_reference_audit.md`,
   and `docs/audits/mne_csd_reference_audit.json`.
@@ -250,7 +254,7 @@ No mathematical or numerical discrepancy was found in the parts that could be ch
 ## Reproduce
 
 ```
-PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 158 passed, 0 skipped (gated surface)
+PYTHONPATH=. python -m pytest tests/mne_csd_reference_audit -q            # 169 passed, 0 skipped (gated surface)
 PYTHONPATH=. python -m pytest tests/optional_live_mne -q                  # 3 skipped without MNE 1.13.2 (not evidence)
 PYTHONPATH=. python -m tools.mne_csd_reference_audit --json-out docs/audits/mne_csd_reference_audit.json
 ```
@@ -264,12 +268,12 @@ assertions and bounds. The snapshot command does not regenerate their numerical 
 - Implementation paths: `tools/mne_csd_reference_audit/kkt.py`, `legendre.py`, `montages.py`, `pin.py`,
   `report.py`, `__main__.py`.
 - Test paths the gate runs, each with zero skips expected: `tests/mne_csd_reference_audit/test_kkt_operator.py`
-  (81), `test_legendre_constants.py` (18), `test_isolation_and_pin.py` (41),
+  (94), `test_legendre_constants.py` (23), `test_isolation_and_pin.py` (44),
   `test_mne_integration_optional.py` (8, deterministic; the name is a legacy mapping key and does not mean optional).
 - Command: `python .github/workflows/round6_experimental_tests.py --base <PR base> --head <PR head> --always-component surrogate_nulls --report outputs/round6_experimental_ci_report.json`.
-- Expected for the component `mne_csd_reference_audit` on main (gate blob 3e737372): status PASS, four executions, 158 collected (84 / 23 / 43 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts. The live test is external (`optional-eeg-suite`) and is not counted.
-- Not mapped and not counted: `tests/optional_live_mne/test_mne_csd_live_parity.py`. It must not be added to a
-  required surface unless CI installs MNE 1.13.2.
+- Expected for the component `mne_csd_reference_audit` after the 2026-10-23 follow-up: status PASS, four executions, 169 collected (94 / 23 / 44 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts. The live test is external (`optional-eeg-suite`) and is not counted.
+- Delegated, not counted: `tests/optional_live_mne/test_mne_csd_live_parity.py` goes to `optional-eeg-suite`. It must
+  not be added to a required surface unless CI installs MNE 1.13.2.
 - Renaming `test_mne_integration_optional.py` requires a mapping change, which belongs to the workflow owner.
 
 ## Regenerate the frozen fixture

@@ -1,6 +1,11 @@
 # Notice for mne_code_path below. Its operations are those of MNE-Python 1.13.2 (mne/preprocessing/_csd.py and
 # mne/channels/interpolation.py, from the pinned sdist). That source is Copyright 2011-2025 MNE-Python authors and is
-# licensed under BSD-3-Clause. The licence text is reproduced here, as it requires for source copies:
+# licensed under BSD-3-Clause. mne/preprocessing/_csd.py (lines 5-11) also carries this notice, kept as written:
+#
+#   Copyright 2003-2010 Jürgen Kayser <rjk23@columbia.edu>
+#   Relicensed under BSD-3-Clause and adapted with permission from authors of original GPL code.
+#
+# The licence text is reproduced here, as it requires for source copies:
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 # following conditions are met:
