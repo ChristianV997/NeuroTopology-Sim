@@ -4,7 +4,8 @@ Status: **HOLD / SYNTHETIC_ONLY**. Audit evidence only. This is not authorizatio
 to adopt, install, import, execute, or copy any candidate, and it is not
 scientific validation of any method or tool.
 
-- Base: `origin/main` = `3f3fe8593303184cb88eef056c1322f3d4e57a16` (verified live at audit start)
+- Base (historical audit start): `origin/main` = `3f3fe8593303184cb88eef056c1322f3d4e57a16`
+- Base (branch sync, 2026-10-23): `origin/main` = `57b7e43d42678822e9eec03679891c1770040327` (inventory `base_main_sha`)
 - Branch: `batch1/claude-d-oss-compatibility-map`
 - Research date (UTC): **2026-10-17**
 - Machine-readable inventory: `docs/oss_compat/compatibility_inventory_20261017.json`
@@ -266,3 +267,31 @@ header is a declaration by the project about itself. It is not a transitive
 license scan, a security review, a maintenance judgment, a compatibility
 finding, legal clearance, or evidence of scientific suitability; each of those is
 a separate question this inventory leaves open. Dispositions are unchanged.
+
+## 13. Provenance regressions and cross-PR consistency — 2026-10-23 (Agent D)
+
+Primary sources re-fetched read-only (PyPI JSON; GUDHI upstream LICENSE and
+https://gudhi.inria.fr/licensing/; GitHub Releases/tag-ref API). No candidate
+was cloned, installed, imported, or executed. Claude Agent C’s read-only source
+report was not available in this workspace; findings below are from this agent’s
+own fetches.
+
+Row-level changes in this pass (stable IDs and dispositions unchanged):
+
+| Row | Change | Evidence |
+|---|---|---|
+| `gudhi` | `evidence_urls` cited bare-tag API paths (`…/gudhi-release-3.13.0`) that return HTTP 404. Replaced with the literal upstream tag paths used in `latest_release` (`…/tags/gudhi-release-3.13.0`). | GitHub API 200 vs 404 probe, 2026-10-23 |
+| `gudhi` | `license_spdx_or_text` and `component_license_caveat` now state per-module licensing is unresolved and legal compatibility is not assessed (aligned with merged #375 `license_scope`, without changing this inventory’s `integrate_behind_bounded_adapter` disposition). | Upstream licensing page; #375 `configs/research/batch3_source_registry.yaml` at merge commit `2c8a80bf` |
+| meta | `base_main_sha` refreshed from historical `3f3fe859…` to live main `57b7e43d…` after a normal merge. Snapshot `retrieval_date_utc` / head fields remain 2026-10-17 historical. | `git rev-parse origin/main` |
+
+Cross-PR consistency (read-only; no edits outside owned paths):
+
+| Artifact | Observation | Action |
+|---|---|---|
+| #375 (merged) GUDHI | Pin `tags/gudhi-release-3.13.0` / package 3.13.0; classification **EMULATE**; per-module licensing **unresolved**. | Pins and unresolved scope preserved here. Disposition disagreement (#375 EMULATE vs #406 integrate) kept visible; not collapsed. |
+| #386 (open) | Documents stable IDs `openmed`, `papergym`, `openresearch`, `rea`, `autoresearch`, plus `gudhi` caveat; does not duplicate versions/licenses. | All six IDs present; full 23-row ID set locked by regression tests. #386 paths not edited. |
+| #443 (open) | Maps `oss_compatibility_inventory_artifact` → `tests/oss_compat/test_compatibility_inventory.py`. Mapping not on main yet. | Workflows not edited; mapping packet left for Codex Agent A. |
+
+Regression tests added for HTTPS evidence URLs, stable ID set, GUDHI literal-tag
+evidence URLs, explicit unresolved language, #375 pin alignment, `base_main_sha`
+format/citation, and neuromaps conflict non-clearance.
