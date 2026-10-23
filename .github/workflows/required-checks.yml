@@ -5,16 +5,6 @@ on:
     branches: ["**"]
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      diff_base_sha:
-        description: Full base commit SHA for candidate-path discovery
-        required: true
-        type: string
-      diff_head_sha:
-        description: Full head commit SHA for candidate-path discovery
-        required: true
-        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -65,6 +55,7 @@ jobs:
       - name: Run core tests in isolated batches
         # Do not include research-profile tests here. test_topology.py has a
         # module-level cripser gate and belongs to the explicit research job.
+        # Merged #417 regressions remain part of every isolated core run.
         run: >
           python scripts/run_tests_isolated.py
           --batch-size 1
@@ -83,12 +74,19 @@ jobs:
           tests/ci/test_round6_experimental_discovery.py
           tests/ci/test_round6_benchmark_makefile.py
           tests/docker_context/test_build_context_policy.py
+          tests/surrogate_nulls/test_phase_nulls.py
+          tests/surrogate_nulls/test_cholesky_csd.py
+          tests/surrogate_nulls/test_mv_iaaft.py
+          tests/surrogate_nulls/test_edge_cases.py
+          tests/surrogate_nulls/test_csd_estimators.py
+          tests/surrogate_nulls/test_hardening_diagnostics.py
+          tests/surrogate_nulls/test_real_part_and_validity.py
 
       - name: Discover and run changed Round 6 candidate suites
         if: ${{ !cancelled() && steps.install_base.outcome == 'success' }}
         env:
-          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
-          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TESTED_CHECKOUT_SHA: ${{ github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EVENT_NAME: ${{ github.event_name }}
@@ -158,8 +156,8 @@ jobs:
       - name: Select Docker-context candidate paths
         id: candidate_scope
         env:
-          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
-          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TESTED_CHECKOUT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -239,8 +237,8 @@ jobs:
       - name: Write Docker candidate evidence
         if: always() && steps.candidate_scope.outputs.docker_context_changed == 'true'
         env:
-          DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}
-          DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}
+          DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           TESTED_CHECKOUT_SHA: ${{ github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
           EVENT_NAME: ${{ github.event_name }}

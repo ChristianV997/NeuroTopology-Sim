@@ -2285,7 +2285,7 @@ COMPONENT_OWNER_PRS = {
     "level_t_missingness": (373,),
     "batch3_source_registry": (375,),
     "research_plan_quality_eval": (383,),
-    "forward_model_contract": (388,),
+    "forward_model_contract": (388, 446),
     "nuisance_scenarios": (408,),
 }
 
@@ -4145,6 +4145,8 @@ def run(
     pytest_marker: str | None = None,
     external_test_job: str | None = None,
 ) -> int:
+    if event_name == "workflow_dispatch":
+        raise ValueError("workflow_dispatch candidate execution is disabled")
     root = root.resolve()
     report_path = _lexically_contained_path(root, report_path, "report path")
     always_components = list(dict.fromkeys(always_components))
@@ -4172,12 +4174,6 @@ def run(
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
         raise ValueError("workflow SHA must be a full commit SHA")
-    if event_name == "workflow_dispatch":
-        for label, sha in (("diff base", diff_base_sha), ("diff head", diff_head_sha)):
-            if not re.fullmatch(r"[0-9a-f]{40}", sha):
-                raise ValueError(
-                    f"workflow_dispatch requires an explicit full commit SHA for {label}"
-                )
     changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
     if only_components:
@@ -4800,6 +4796,21 @@ def run(
                                 "JUnit subtest delta "
                                 f"{subtest_delta} does not match registered delta {registered_subtest_delta}"
                             )
+                        if registered_subtest_contract and not pytest_summary_available:
+                            verified_total = registered_subtest_contract["verified_junit_total"]
+                            verified_records = registered_subtest_contract[
+                                "verified_junit_testcase_records"
+                            ]
+                            if (
+                                junit_reported_tests != verified_total
+                                or counts[0] != verified_records
+                            ):
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    "JUnit counts do not match source-bound verified counts "
+                                    f"(reported={junit_reported_tests}, testcase_records={counts[0]}, "
+                                    f"expected_reported={verified_total}, expected_testcase_records={verified_records})"
+                                )
                         failure_cases = [
                             {
                                 "name": case["name"][:MAX_JUNIT_FAILURE_NAME_CHARS],

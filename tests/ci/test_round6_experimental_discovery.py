@@ -183,16 +183,16 @@ class Round6DiscoveryTests(unittest.TestCase):
     def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}",
+            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
             workflow,
         )
         self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}",
+            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
             workflow,
         )
-        self.assertIn("diff_base_sha:\n        description:", workflow)
-        self.assertIn("diff_head_sha:\n        description:", workflow)
-        self.assertIn("required: true\n        type: string", workflow)
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", workflow)
+        self.assertNotIn("inputs.diff_head_sha", workflow)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
         helper_source = HELPER_PATH.read_text(encoding="utf-8")
@@ -201,14 +201,10 @@ class Round6DiscoveryTests(unittest.TestCase):
             helper_source,
         )
 
-    def test_dispatch_never_checks_out_untrusted_candidate_tree(self):
+    def test_required_checks_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
-        dispatch = re.search(
-            r"(?ms)^  workflow_dispatch:\n    inputs:\n(.*?)(?=^\S|\Z)", workflow
-        )
-        self.assertIsNotNone(dispatch)
-        self.assertNotIn("tested_checkout_sha:", dispatch.group(1))
-        self.assertNotIn("inputs.tested_checkout_sha", workflow)
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.", workflow)
         self.assertNotIn("candidate-source", workflow)
         first_checkout = re.search(
             r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - name:|\Z)",
@@ -231,16 +227,45 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertNotIn("--root", candidate_step.group(1))
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", candidate_step.group(1))
 
-    def test_every_workflow_checkout_discards_persisted_credentials(self):
+    def test_core_suite_keeps_merged_surrogate_null_regressions(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
-        checkout_blocks = re.findall(
-            r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - |^\s{0,4}\S|\Z)",
+        core_step = re.search(
+            r"(?ms)^      - name: Run core tests in isolated batches\n(.*?)(?=^      - name:|\Z)",
             workflow,
         )
-        self.assertEqual(len(checkout_blocks), 3)
-        for index, block in enumerate(checkout_blocks, start=1):
-            with self.subTest(checkout=index):
-                self.assertRegex(block, r"(?m)^\s+persist-credentials: false\s*$")
+        self.assertIsNotNone(core_step)
+        self.assertIn("run: >", core_step.group(1))
+        run_scalar = core_step.group(1).split("run: >", 1)[1]
+        self.assertNotIn("# Merged #417 regressions", run_scalar)
+        expected = (
+            "tests/surrogate_nulls/test_phase_nulls.py",
+            "tests/surrogate_nulls/test_cholesky_csd.py",
+            "tests/surrogate_nulls/test_mv_iaaft.py",
+            "tests/surrogate_nulls/test_edge_cases.py",
+            "tests/surrogate_nulls/test_csd_estimators.py",
+            "tests/surrogate_nulls/test_hardening_diagnostics.py",
+            "tests/surrogate_nulls/test_real_part_and_validity.py",
+        )
+        for test_path in expected:
+            with self.subTest(test_path=test_path):
+                self.assertIn(test_path, run_scalar)
+
+    def test_every_workflow_checkout_discards_persisted_credentials(self):
+        expected_counts = {
+            "required-checks.yml": 3,
+            "ci.yml": 4,
+        }
+        for workflow_name, expected_count in expected_counts.items():
+            workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            checkout_blocks = re.findall(
+                r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - |\Z)",
+                workflow,
+            )
+            with self.subTest(workflow=workflow_name):
+                self.assertEqual(len(checkout_blocks), expected_count)
+            for index, block in enumerate(checkout_blocks, start=1):
+                with self.subTest(workflow=workflow_name, checkout=index):
+                    self.assertRegex(block, r"(?m)^\s+persist-credentials: false\s*$")
 
     def test_optional_eeg_profile_discovers_only_changed_mne_candidate_paths(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -260,10 +285,17 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("tools/mne_csd_reference_audit/(kkt|legendre|montages|pin)", eeg_job)
         self.assertIn("--only-component mne_csd_reference_audit", eeg_job)
         self.assertIn("outputs/mne_csd_reference_audit_eeg_report.json", eeg_job)
-        self.assertIn("diff_base_sha:", workflow)
-        self.assertIn("diff_head_sha:", workflow)
-        self.assertIn("inputs.diff_base_sha", eeg_job)
-        self.assertIn("inputs.diff_head_sha", eeg_job)
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", eeg_job)
+        self.assertNotIn("inputs.diff_head_sha", eeg_job)
+        self.assertIn(
+            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            eeg_job,
+        )
+        self.assertIn(
+            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            eeg_job,
+        )
         self.assertEqual(
             _helper().COMPONENTS["mne_signal_blocks"]["external_test_paths"][
                 "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py"
@@ -497,39 +529,30 @@ class Round6DiscoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsupported pytest marker"):
                 helper.run(root, "0" * 40, "1" * 40, root / "outputs/b.json", pytest_marker="optional")
 
-    def test_workflow_dispatch_without_explicit_diff_shas_fails_closed(self):
+    def test_workflow_dispatch_candidate_execution_is_rejected_even_with_explicit_shas(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _repo(root)
-            with self.assertRaisesRegex(ValueError, "workflow_dispatch requires an explicit"):
+            commit_sha = _git(root, "rev-parse", "HEAD")
+            with patch.object(
+                helper.subprocess,
+                "run",
+                side_effect=AssertionError("manual dispatch must be rejected before git execution"),
+            ), self.assertRaisesRegex(ValueError, "workflow_dispatch candidate execution is disabled"):
                 helper.run(
-                    root, "", "", root / "outputs/report.json",
-                    tested_checkout_sha="1" * 40,
-                    workflow_sha="2" * 40,
+                    root, commit_sha, commit_sha, root / "outputs/report.json",
+                    tested_checkout_sha=commit_sha,
+                    workflow_sha=commit_sha,
                     event_name="workflow_dispatch",
                 )
 
-    def test_ci_manual_dispatch_requires_explicit_candidate_diff_shas(self):
+    def test_ci_workflow_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        dispatch = re.search(r"(?ms)^  workflow_dispatch:\n    inputs:\n(.*?)(?=^\S|\Z)", workflow)
-        self.assertIsNotNone(dispatch)
-        inputs = dispatch.group(1)
-        for name in ("diff_base_sha", "diff_head_sha"):
-            with self.subTest(input=name):
-                block = re.search(
-                    rf"(?ms)^      {re.escape(name)}:\n(.*?)(?=^      [^ ]|\Z)", inputs
-                )
-                self.assertIsNotNone(block)
-                self.assertRegex(block.group(1), r"(?m)^        required: true$")
-        self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha",
-            workflow,
-        )
-        self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha",
-            workflow,
-        )
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", workflow)
+        self.assertNotIn("inputs.diff_head_sha", workflow)
+        self.assertNotIn("github.event_name == 'workflow_dispatch'", workflow)
 
     def test_candidate_head_not_in_tested_checkout_is_blocked_before_execution(self):
         helper = _helper()
@@ -547,7 +570,7 @@ class Round6DiscoveryTests(unittest.TestCase):
                 root, candidate_base, candidate_head, report_path,
                 tested_checkout_sha=tested_checkout,
                 workflow_sha=candidate_base,
-                event_name="workflow_dispatch",
+                event_name="pull_request",
                 require_checkout_match=True,
             )
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -1678,6 +1701,50 @@ def test_fixture():
             "errors": 0,
             "timeouts": 0,
         })
+
+        # Matching the allowed delta alone must not accept a smaller unverified baseline.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            for implementation in MNE_SIGNAL_IMPLEMENTATIONS:
+                _write(root, implementation, "# synthetic MNE signal-block module fixture\n")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True\n")
+            base = _commit(root, "registered MNE signal-block candidate fixture")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True  # candidate change\n")
+            head = _commit(root, "same delta with an undercounted JUnit baseline")
+            report_path = root / "outputs/report.json"
+
+            def undercount_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = json.loads(_valid_telemetry(command[-1]))
+                telemetry["batches"][0]["stdout_tail"] = "pytest output captured by isolated runner\n"
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml=(
+                        '<testsuite tests="13" skipped="0" failures="0" errors="0">'
+                        "<testcase/></testsuite>"
+                    ),
+                    **kwargs,
+                )
+
+            with (
+                patch.object(
+                    helper, "_git_tree_blob_sha",
+                    return_value=helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+                ),
+                patch.object(helper.subprocess, "run", side_effect=undercount_runner),
+            ):
+                result = helper.run(root, base, head, report_path, tested_checkout_sha=head)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["junit_reconciliation"], "mismatch")
+        self.assertIn("source-bound verified counts", execution["junit_error"])
+        self.assertEqual(execution["registered_subtest_contract"]["observed_delta"], 12)
 
         # A count mismatch beyond the exact reviewed subtest contract is not pass evidence.
         junit_delta = 13
@@ -3247,7 +3314,7 @@ def test_fixture():
                 },
             ),
             "forward_model_contract": (
-                388,
+                446,
                 {
                     ("dual_engine/forward_model_contract.py", "tests/forward_model_contract/test_forward_model_contract.py"),
                 },
@@ -3323,6 +3390,7 @@ def test_fixture():
             helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],
             (384, 357),
         )
+        self.assertEqual(helper.COMPONENT_OWNER_PRS["forward_model_contract"], (388, 446))
         falsification_followup = {
             "docs/scientific_falsification/batch3_adversarial_review.md",
             "tests/scientific_falsification/test_batch3_falsification_matrix.py",
