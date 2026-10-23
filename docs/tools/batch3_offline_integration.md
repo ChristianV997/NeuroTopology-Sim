@@ -50,11 +50,13 @@ represented by a clearly marked fixture substitute with
   the bundled `fixtures/` directory; absolute paths, traversal, separators,
   symlinks, and junctions are rejected.
 - Both the primary request fixture and `release_bundle_synthetic.json` are read
-  through the same contained `_read_fixture` loader: opened read-only and capped
-  at 1 MiB. Where the platform exposes `O_NOFOLLOW`, it is used for the final
-  file open alongside `stat.S_ISREG` verification. This is not a defense against
-  hostile concurrent replacement of parent directories (TOCTOU) or a compromised
-  checkout.
+  through the same contained `_read_fixture` loader: `lstat` must report a
+  regular file before open (FIFO/socket/dir names fail closed without a blocking
+  open), then the file is opened read-only and capped at 1 MiB. Where the
+  platform exposes `O_NOFOLLOW`, it is used for the final file open alongside a
+  post-open `stat.S_ISREG` check. This is not a defense against hostile
+  concurrent replacement of parent directories (TOCTOU), hardlinks into a
+  compromised checkout, or a replaced fixture directory.
 - Malformed, duplicate-key, non-finite, non-object, or oversized fixtures
   produce a rejected stage and a nonzero CLI status; rejected external paths are
   represented as `<rejected>` in reports.
@@ -62,15 +64,20 @@ represented by a clearly marked fixture substitute with
   forced-failure stage are invalid API inputs rather than successful runs.
 - A bounded API stage selection is diagnostic/partial only. The overall
   `workflow_executed_successfully` flag is true only when every globally
-  required stage is selected and explicitly succeeds; optional-only, partial, or
-  prerequisite-skipped selections cannot pass through vacuous truth.
+  required stage is selected and explicitly succeeds, stage order matches the
+  allowlist, no stage is rejected, and no selected stage ends in `failed`
+  (including `--force-fail-stage` on optional stages). Optional absence
+  (`skipped_optional_absent`) does not clear success; optional-only, partial,
+  prerequisite-skipped, or force-failed selections cannot claim workflow success.
 - Required stages fail closed: `plan_quality` requires `overall_status == "READY_FOR_EXECUTION"`,
   `claim_gate` requires an explicit admissible engineering/synthetic decision with
-  `scientific_pass == False`, `preflight` requires `cleared_for_execution == True`
+  `scientific_pass is False` (exact bool; truthy non-bools fail closed),
+  `preflight` requires `cleared_for_execution == True`
   and `operational_readiness == "READY"`, `registry_probe` requires registered
   hypothesis and plan records, and `release_evaluate` requires `decision == "SYNTHETIC_ONLY"`
-  with `synthetic_flag == True` and `scientific_pass_emitted == False`. Required
-  stages cannot satisfy downstream dependencies via `fixture_substituted`.
+  with `synthetic_flag is True` and exact `scientific_pass_emitted is False` /
+  `bayes_factor_emitted is False`. Required stages cannot satisfy downstream
+  dependencies via `fixture_substituted`.
 - The runner creates no intermediate or temporary files. `--output` is an
   explicit caller-selected report destination.
 - The no-network guard (`no_network()`) replaces Python socket entry points
@@ -100,6 +107,8 @@ python -m tools.batch3_offline_integration \
 python scripts/run_batch3_offline_integration.py --json-stdout
 ```
 
-Exit code `0` only when required stages succeed in allowlist order and no input
-is rejected. Invalid fixture paths and unsupported `--prior-run-dir` inputs
-exit nonzero with a structured JSON report when `--json-stdout` is requested.
+Exit code `0` only when every required stage succeeds in allowlist order, no
+input is rejected, and no selected stage fails (including forced optional
+failures). Invalid fixture paths, unsupported `--prior-run-dir` inputs, and
+`--force-fail-stage` selections exit nonzero with a structured JSON report when
+`--json-stdout` is requested.

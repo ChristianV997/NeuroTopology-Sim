@@ -219,9 +219,11 @@ def _run_claim_gate(spec: StageSpec, record: Dict[str, Any], request: Mapping[st
         record["outputs"] = json_safe(payload)
         record["actual_upstream_producer_ran"] = True
         decision = payload.get("decision")
-        if payload.get("scientific_pass") is True:
+        # Docs/contract: scientific_pass must be exact False. Truthy non-bools
+        # (1, "yes") previously slipped past `is True` and falsely succeeded.
+        if payload.get("scientific_pass") is not False:
             record["outcome"] = StageOutcome.FAILED.value
-            record["error"] = "scientific_pass_emitted_forbidden"
+            record["error"] = "scientific_pass_must_be_false"
         elif decision in _ADMISSIBLE_CLAIM_STAGE_DECISIONS:
             # Explicit allowlist of admissible engineering / synthetic decisions only.
             record["outcome"] = StageOutcome.SUCCEEDED.value
@@ -395,12 +397,14 @@ def _run_release(spec: StageSpec, record: Dict[str, Any]) -> Dict[str, Any]:
         }
         record["outputs"] = json_safe(compact)
         record["actual_upstream_producer_ran"] = True
-        if compact.get("scientific_pass_emitted") is True:
+        # Exact False required (docs/contract). `is True` previously admitted
+        # truthy non-bool markers while still claiming workflow success.
+        if compact.get("scientific_pass_emitted") is not False:
             record["outcome"] = StageOutcome.FAILED.value
-            record["error"] = "scientific_pass_emitted_forbidden"
-        elif compact.get("bayes_factor_emitted") is True:
+            record["error"] = "scientific_pass_emitted_must_be_false"
+        elif compact.get("bayes_factor_emitted") is not False:
             record["outcome"] = StageOutcome.FAILED.value
-            record["error"] = "bayes_factor_emitted_forbidden"
+            record["error"] = "bayes_factor_emitted_must_be_false"
         elif (
             decision in _ADMISSIBLE_RELEASE_STAGE_DECISIONS
             and compact.get("synthetic_flag") is True

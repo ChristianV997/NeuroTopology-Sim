@@ -119,6 +119,9 @@ def run_offline_integration(
         }
         for r in stage_records
     )
+    # Any selected stage that failed (including force-fail on optional stages)
+    # clears workflow success. Optional absence (skipped_optional_absent) does not.
+    any_failed = any(r["outcome"] == StageOutcome.FAILED.value for r in stage_records)
 
     release_decision = None
     release_rec = context["stages"].get("release_evaluate") or {}
@@ -137,7 +140,9 @@ def run_offline_integration(
         "fixture_max_bytes": MAX_FIXTURE_BYTES,
         "scientific_validity_claimed": False,
         "scientific_pass_emitted": False,
-        "workflow_executed_successfully": bool(required_ok and order_ok and not rejected_input),
+        "workflow_executed_successfully": bool(
+            required_ok and order_ok and not rejected_input and not any_failed
+        ),
         "fixture_name": display_fixture_name(fixture_name),
         "stage_order_expected": expected_order,
         "stage_order_observed": observed_order,

@@ -584,3 +584,133 @@ def test_no_network_context_manager_blocks_and_restores_socket():
     assert socket.socket is orig_socket
     assert socket.create_connection is orig_create_conn
     assert socket.getaddrinfo is orig_getaddrinfo
+
+
+@pytest.mark.parametrize("bad_scientific_pass", [1, "yes", True, None, 0.1])
+def test_claim_gate_rejects_non_false_scientific_pass(monkeypatch, bad_scientific_pass):
+    """Regression: only exact False admits; truthy non-bool must not yield workflow success."""
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "claim_gate":
+            return (
+                lambda _claim: {
+                    "decision": "CLAIM_ADMISSIBLE",
+                    "scientific_pass": bad_scientific_pass,
+                }
+            ), None
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["claim_gate"]["outcome"] == StageOutcome.FAILED.value
+    assert by_id["claim_gate"]["error"] == "scientific_pass_must_be_false"
+    assert by_id["preflight"]["outcome"] == StageOutcome.SKIPPED_UPSTREAM_FAILED.value
+    assert report["workflow_executed_successfully"] is False
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("scientific_pass_emitted", 1),
+        ("scientific_pass_emitted", "yes"),
+        ("scientific_pass_emitted", True),
+        ("scientific_pass_emitted", None),
+        ("bayes_factor_emitted", 1),
+        ("bayes_factor_emitted", "yes"),
+        ("bayes_factor_emitted", True),
+        ("bayes_factor_emitted", None),
+    ],
+)
+def test_release_evaluate_rejects_non_false_scientific_markers(monkeypatch, field, bad_value):
+    """Regression: release admission requires exact False scientific/Bayes markers."""
+    from tools.batch3_offline_integration import stages as stages_mod
+
+    orig_resolve = stages_mod.resolve_callable
+
+    def fake_resolve(spec):
+        if spec.stage_id == "release_evaluate":
+            payload = {
+                "decision": "SYNTHETIC_ONLY",
+                "evidence_class": "research_cycle_release_operational",
+                "synthetic_flag": True,
+                "scientific_pass_emitted": False,
+                "bayes_factor_emitted": False,
+                "reason_codes": ["forced_marker"],
+            }
+            payload[field] = bad_value
+            return (lambda _bundle, **_kw: payload), None
+        return orig_resolve(spec)
+
+    monkeypatch.setattr(stages_mod, "resolve_callable", fake_resolve)
+    report = run_offline_integration(fixture_name="workflow_request.json")
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["release_evaluate"]["outcome"] == StageOutcome.FAILED.value
+    assert report["workflow_executed_successfully"] is False
+    if field == "scientific_pass_emitted":
+        assert by_id["release_evaluate"]["error"] == "scientific_pass_emitted_must_be_false"
+    else:
+        assert by_id["release_evaluate"]["error"] == "bayes_factor_emitted_must_be_false"
+
+
+def test_force_fail_optional_stage_clears_workflow_success():
+    """Regression: force-failing optional_artifact_lineage must not claim workflow success."""
+    report = run_offline_integration(
+        fixture_name="workflow_request.json",
+        force_fail_stage="optional_artifact_lineage",
+    )
+    by_id = {s["stage_id"]: s for s in report["stages"]}
+    assert by_id["optional_artifact_lineage"]["outcome"] == StageOutcome.FAILED.value
+    assert by_id["optional_artifact_lineage"]["error"] == "forced_stage_failure"
+    assert report["workflow_executed_successfully"] is False
+
+
+def test_cli_force_fail_optional_exits_nonzero():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.batch3_offline_integration",
+            "--force-fail-stage",
+            "optional_artifact_lineage",
+            "--json-stdout",
+        ],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 1
+    payload = json.loads(proc.stdout)
+    assert payload["workflow_executed_successfully"] is False
+
+
+def test_fifo_allowlisted_fixture_name_fails_closed_without_hang(tmp_path: Path, monkeypatch):
+    """Regression: FIFO under an allowlisted name must reject before a blocking open."""
+    import shutil
+    import signal
+
+    from tools.batch3_offline_integration import fixture_producers
+    from tools.batch3_offline_integration.fixture_producers import _read_fixture
+
+    fixture_root = tmp_path / "fixtures"
+    shutil.copytree(fixture_producers.FIXTURE_DIR, fixture_root)
+    target = fixture_root / "workflow_request.json"
+    target.unlink()
+    os.mkfifo(target)
+    monkeypatch.setattr(fixture_producers, "FIXTURE_DIR", fixture_root)
+
+    def _alarm_handler(_signum, _frame):
+        raise TimeoutError("fifo_open_blocked")
+
+    previous = signal.signal(signal.SIGALRM, _alarm_handler)
+    signal.alarm(2)
+    try:
+        with pytest.raises(ValueError, match="regular file"):
+            _read_fixture("workflow_request.json")
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)

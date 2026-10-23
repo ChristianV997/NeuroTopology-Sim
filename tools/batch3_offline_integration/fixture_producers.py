@@ -70,6 +70,14 @@ def _read_fixture(name: str) -> Dict[str, Any]:
     path = fixture_root / name
     if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
         raise ValueError("fixture must not be a symlink or junction")
+    # Reject non-regular names (FIFO/socket/dir) via lstat before open so a
+    # FIFO under an allowlisted basename cannot hang the reader indefinitely.
+    try:
+        st_before = os.lstat(path)
+    except OSError as exc:
+        raise ValueError("fixture is not readable") from exc
+    if not stat.S_ISREG(st_before.st_mode):
+        raise ValueError("fixture must be a regular file")
     resolved = path.resolve(strict=True)
     if resolved.parent != fixture_root:
         raise ValueError("fixture path escapes the bundled fixture directory")
