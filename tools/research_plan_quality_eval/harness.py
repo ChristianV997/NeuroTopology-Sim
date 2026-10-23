@@ -36,6 +36,12 @@ HARNESS_EVIDENCE_CLASS = "software_validation_on_synthetic_fixtures"
 # digest fails the default run until this pin is changed in a reviewed commit.
 PINNED_SPLIT_DEFINITION_SHA256 = "d587144e4960e78b343f0a2274673d0fa63341afbe8143a8baf62940a3fd016c"
 
+PROTOCOL_GUARDRAILS: dict[str, bool] = {
+    "scientific_pass": False,
+    "empirical_claim_allowed": False,
+    "proposed_thresholds_are_power_validation": False,
+}
+
 NOT_MEASURED: tuple[str, ...] = (
     "criterion_leakage_rate",
     "human_agreement",
@@ -43,6 +49,7 @@ NOT_MEASURED: tuple[str, ...] = (
     "generalization_performance",
     "scientific_validity_of_plans",
     "semantic_paraphrase_duplicate_rate",
+    "proposed_thresholds_power_validation",
 )
 
 LIMITATIONS: tuple[str, ...] = (
@@ -52,6 +59,8 @@ LIMITATIONS: tuple[str, ...] = (
     "The rubric is structural. It does not judge domain soundness, statistical validity, or whether a hypothesis is true.",
     "Ten plans in eight groups cannot support any generalisation estimate.",
     "The duplicate threshold (0.85) and shingle size (3) were set by inspection, not calibrated against a labelled duplicate set.",
+    "Proposed duplicate thresholds are uncalibrated heuristics and are not power validation.",
+    "Scores are structural rubric outputs only, not ground truth, and cannot be used for empirical confirmation.",
     "No LLM-judged leakage detection is implemented, and no leakage rate is reported.",
     "A rubric score is not scientific confirmation, preregistration, or evidence that a hypothesis is true.",
 )
@@ -149,6 +158,7 @@ def build_report(
         "development_stage": {"outcomes": list(development.outcomes)},
         "held_out_stage": {"outcomes": list(held_out.outcomes), "configuration_fingerprint": held_out.config_fingerprint},
         "leakage": leakage.to_dict(),
+        "protocol_guardrails": dict(PROTOCOL_GUARDRAILS),
         "not_measured": list(NOT_MEASURED),
         "limitations": list(LIMITATIONS),
     }

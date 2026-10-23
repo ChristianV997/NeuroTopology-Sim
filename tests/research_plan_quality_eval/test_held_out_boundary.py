@@ -7,6 +7,7 @@ set with no check against a pinned definition. Labels stay single-author expecta
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import pytest
@@ -87,3 +88,46 @@ def test_cli_refuses_a_reassigned_split_with_exit_2_unless_declared(copy_fixture
 
     assert main(["--manifest", str(manifest_path), "--no-label-consistency"]) == 2
     assert "pinned digest" in capsys.readouterr().err
+
+
+def test_forged_stage_with_tampered_scores_is_refused():
+    from tools.research_plan_quality_eval.isolation import run_development_stage
+    manifest = load_manifest(DEFAULT_MANIFEST)
+    clean = run_development_stage(manifest)
+    tampered_outcome = dict(clean.outcomes[0])
+    tampered_outcome["overall_score"] = 999.0
+    tampered = dataclasses.replace(clean, outcomes=(tampered_outcome, *clean.outcomes[1:]))
+    with pytest.raises(HarnessError, match="does not reproduce"):
+        run_held_out_stage(manifest, tampered)
+
+
+def test_forged_stage_with_held_out_fixture_in_development_is_refused():
+    from tools.research_plan_quality_eval.isolation import run_development_stage
+    manifest = load_manifest(DEFAULT_MANIFEST)
+    clean = run_development_stage(manifest)
+    held_entry = next(e for e in manifest.entries if e.split == LOCKED_INTERNAL_VALIDATION)
+    injected_outcome = {
+        "fixture_id": held_entry.fixture_id,
+        "overall_status": "READY_FOR_EXECUTION",
+        "overall_score": 100.0,
+        "non_passing_dimensions": [],
+        "evidence_class": "research_plan_audit",
+    }
+    forged = dataclasses.replace(clean, outcomes=(*clean.outcomes, injected_outcome))
+    with pytest.raises(HarnessError, match="does not reproduce"):
+        run_held_out_stage(manifest, forged)
+
+
+def test_forged_stage_with_unauthorized_role_is_refused():
+    from tools.research_plan_quality_eval.isolation import run_development_stage
+    manifest = load_manifest(DEFAULT_MANIFEST)
+    clean = run_development_stage(manifest)
+    invalid_role_stage = dataclasses.replace(clean, role="UNAUTHORIZED_ROLE")
+    with pytest.raises(HarnessError, match="frozen development stage"):
+        run_held_out_stage(manifest, invalid_role_stage)
+
+
+def test_public_loader_role_separation_returns_empty_for_unknown_role():
+    manifest = load_manifest(DEFAULT_MANIFEST)
+    records = load_plan_records(manifest, roles={"NON_EXISTENT_ROLE"})
+    assert records == ()

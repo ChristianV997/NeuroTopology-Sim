@@ -199,3 +199,35 @@ def test_editing_a_held_out_plan_leaves_the_development_stage_unchanged(copy_fix
     changed = build_report(manifest_path, allow_unpinned=True)
     assert changed["fixture_set"]["plans"] != clean["fixture_set"]["plans"]
     assert changed["development_stage"] == clean["development_stage"]
+
+
+def test_protocol_guardrails_enforce_protocol_only_invariants():
+    report = build_report()
+    assert "protocol_guardrails" in report
+    guardrails = report["protocol_guardrails"]
+    assert guardrails["scientific_pass"] is False
+    assert guardrails["empirical_claim_allowed"] is False
+    assert guardrails["proposed_thresholds_are_power_validation"] is False
+    assert "proposed_thresholds_power_validation" in report["not_measured"]
+
+
+def test_scores_are_rubric_outputs_not_ground_truth():
+    report = build_report()
+    all_outcomes = report["development_stage"]["outcomes"] + report["held_out_stage"]["outcomes"]
+    assert all_outcomes, "outcomes should not be empty"
+    for outcome in all_outcomes:
+        assert outcome["evidence_class"] == "research_plan_audit"
+        assert "ground_truth" not in outcome
+        assert "confirmed_hypothesis" not in outcome
+
+
+def test_label_schema_rejects_independent_or_non_synthetic_adjudication(copy_fixture_tree):
+    manifest_path = copy_fixture_tree()
+    labels_path = manifest_path.parent / "labels.json"
+    labels = json.loads(labels_path.read_text(encoding="utf-8"))
+    labels["adjudication"]["independent"] = True
+    labels_path.write_text(json.dumps(labels, indent=2), encoding="utf-8")
+    from .conftest import rehash_labels
+    rehash_labels(manifest_path)
+    with pytest.raises(ManifestError, match="independent=false"):
+        build_report(manifest_path)

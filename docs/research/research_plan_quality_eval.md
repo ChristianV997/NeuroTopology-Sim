@@ -134,6 +134,15 @@ duplicate results, outcomes, consistency with the synthetic expectations,
 reports a mismatch without the expected values, so held-out labels never reach the
 report. It is strict finite JSON with sorted keys and no timestamps.
 
+## Protocol guardrails
+
+The harness enforces strict protocol-only status:
+- `scientific_pass`: `false` (rubric outcomes provide no scientific pass or hypothesis validation).
+- `empirical_claim_allowed`: `false` (no empirical claims permitted from synthetic rubric outputs).
+- `proposed_thresholds_are_power_validation`: `false` (the near-duplicate threshold is an uncalibrated heuristic, not power-validated).
+
+Scores produced by the rubric evaluator are strictly structural rubric outputs—never ground truth, confirmation, or validation.
+
 ## Limitations
 
 - Fixtures are synthetic and were written by one person. They are not drawn from real plans.
@@ -141,7 +150,8 @@ report. It is strict finite JSON with sorted keys and no timestamps.
 - Only lexical duplicate signals are implemented. Semantic paraphrase leakage and criterion inferability are not measured.
 - The rubric is structural. It does not judge domain soundness, statistical validity, or whether a hypothesis is true.
 - Ten plans in eight groups cannot support any generalisation estimate.
-- The threshold (0.85) and shingle size (3) were set by inspection, not calibrated on labelled duplicates.
+- The threshold (0.85) and shingle size (3) were set by inspection, not calibrated on labelled duplicates. Proposed thresholds are not power validation.
+- Scores are structural rubric outputs only and do not constitute ground truth or empirical validation.
 - No LLM-judged leakage detection is implemented, and no leakage rate is reported.
 
 ## Needs human or empirical evaluation

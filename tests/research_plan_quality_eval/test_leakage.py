@@ -123,3 +123,14 @@ def test_result_is_independent_of_input_order(shipped_records):
     shuffled = list(combined)
     random.Random(7).shuffle(shuffled)
     assert detect_cross_split_leaks(combined).to_dict() == detect_cross_split_leaks(shuffled).to_dict()
+
+
+def test_threshold_boundary_precision_adversarial(plan_from):
+    words = [f"term{i}" for i in range(100)]
+    base = " ".join(words)
+    dev = PlanRecord("d1", "g-dev", DEVELOPMENT, plan_from(plan_id="d1", research_question=base))
+    held = PlanRecord("h1", "g-held", LOCKED_INTERNAL_VALIDATION, plan_from(plan_id="h1", research_question=base))
+    report = detect_cross_split_leaks([dev, held])
+    assert report.held_out_plans_with_cross_split_match == 1
+    assert report.cross_split_findings[0].jaccard == 1.0
+    assert report.cross_split_findings[0].jaccard >= NEAR_DUPLICATE_THRESHOLD
