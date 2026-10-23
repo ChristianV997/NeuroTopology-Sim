@@ -220,6 +220,53 @@ usually emulation/reference, not direct-dependency candidates) -- see
 next PR for these categories is a **decision record**, not an
 implementation.
 
+## Adoption gates
+
+These gates are part of the scouting workflow. They are checks on which
+candidates may be recommended for adoption. They do not perform any
+integration, and they make no claim about repository quality.
+
+- **Malformed evidence and source identity** (`oss_opportunities.validation`).
+  Candidate validation rejects non-string source/identity and provenance
+  fields, malformed metadata/list fields, invalid count inputs, and a
+  `candidate_id` that does not match its repository/source/snapshot identity.
+  An ambiguous `repo_full_name`, mismatched owner, or non-empty `repo_url`
+  pointing elsewhere is rejected. `build_opportunities_from_candidates`
+  raises on any invalid candidate, so a batch never silently includes a
+  malformed record.
+- **Duplicate candidates** (`oss_opportunities.opportunity_batch`). Observations
+  of the same repository (`casefold()`-normalized `repo_full_name`) are ranked
+  once. License labels are compared case-insensitively after trimming only;
+  the code does not parse SPDX expressions or infer equivalence. Conflicting
+  observed labels are retained as a sorted conflict record and force the
+  combined review to `missing_high` / `license_review_required` regardless of
+  score or input order. Case-only spelling differences do not create a
+  conflict. Each duplicate observation remains in `opportunities_rejected`
+  with a `duplicate_of` reason, and the batch records duplicate/conflict
+  counts.
+- **Unresolved license** (`oss_opportunities.scoring`). An empty or unknown
+  license (`missing_high`) and an unmatched license string
+  (`proprietary_or_unknown_high`) both recommend `license_review_required`.
+  Previously, an unmatched string could recommend an external-tool-record path
+  while its commercial-core policy was still `blocked_pending_review`.
+- **Unsupported capability claims** (`oss_opportunities.scoring`).
+  `adapter_surface_clarity` needs a documented surface: a non-empty
+  `homepage_url` or `metadata.adapter_docs_url`. A category inferred only from
+  description or topic keywords earns 0.5 instead of 1.0. Security-category
+  candidates earn 0. This changes the score. It does not change the
+  adoption action, which remains a documented limitation.
+- **Adoption blocked by unresolved risk** (`oss_opportunities.scoring`). A
+  candidate with `metadata.requires_credentials` recommends
+  `security_review_required` instead of an optional-adapter or
+  external-tool-record action. The planner routes it to `security_review_queue`.
+  `credential_required_execution` remains in `blocked_actions` regardless.
+
+Offline tests: `tests/test_oss_adoption_gates.py`. Candidate-level review of
+named external projects is maintained separately in the canonical inventory
+`docs/oss_compat/compatibility_inventory_20261017.json` (PR #406). The
+adoption-gates note references stable row IDs but does not duplicate upstream
+version/license evidence: `docs/oss_opportunity_candidate_review_20261016.md`.
+
 ## CLI usage
 
 ```bash
@@ -255,11 +302,14 @@ pattern), an invalid Trendshift timeframe / starmap category, or a missing
 ## Limitations
 
 - Scoring is a documented, additive heuristic -- not a scientific or
-  legal judgment of repository quality, correctness, or license safety.
+  judgment of repository quality, correctness, compatibility, security,
+  legal clearance, or scientific validity.
 - `classify_license_risk` is an offline string match against a fixed list
-  -- it does not fetch or parse an actual `LICENSE` file, and
-  `review_status` defaults to `"heuristic_unreviewed"`; only a
-  human-set `"human_reviewed"` value means an actual person looked at it.
+  -- it does not fetch or parse an actual `LICENSE` file. `review_status`
+  must be one of `heuristic_unreviewed` or `human_reviewed`; the latter is
+  caller-supplied metadata, not an authorization, security certification, or
+  legal conclusion. Package declarations and transitive/component licenses
+  require separately scoped evidence.
 - `infer_leverage_category`'s keyword matching is a simple substring
   overlap over `description`/`topics`/`name` -- it can misclassify a
   repository whose README doesn't use the expected vocabulary.

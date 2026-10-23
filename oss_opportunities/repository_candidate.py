@@ -14,7 +14,6 @@ judgment.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +21,7 @@ from typing import Any, Optional, Union
 
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
+    candidate_observation_id,
     validate_repository_candidate,
 )
 
@@ -36,14 +36,12 @@ def compute_candidate_id(*, repo_full_name: str, source: str, source_timeframe: 
     refreshed. A different snapshot date is a genuinely different
     observation and gets its own id -- this scout never claims a repo's
     metadata is unchanged across snapshots."""
-    basis = {
-        "repo_full_name": repo_full_name,
-        "source": source,
-        "source_timeframe": source_timeframe,
-        "source_snapshot_date": source_snapshot_date,
-    }
-    canonical = json.dumps(basis, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return candidate_observation_id(
+        repo_full_name=repo_full_name,
+        source=source,
+        source_timeframe=source_timeframe,
+        source_snapshot_date=source_snapshot_date,
+    )
 
 
 @dataclass
