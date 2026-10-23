@@ -502,7 +502,7 @@ def evaluate(doc: dict) -> dict:
 
 def test_complete_matrix() -> None:
     report = evaluate(load_matrix())
-    assert report["complete"] is True
+    assert report["complete"] is True, report["issues"]
     assert report["scientific_pass"] is False
     assert report["formal_bayes_factor"] is None
     text = DOC.read_text(encoding="utf-8").lower()
@@ -906,7 +906,7 @@ def test_required_disclaimers_remain_in_adversarial_review_document() -> None:
 def test_complete_matrix_never_implies_scientific_success() -> None:
     doc = load_matrix()
     report = evaluate(doc)
-    assert report["complete"] is True
+    assert report["complete"] is True, report["issues"]
     assert report["scientific_pass"] is False
     assert report["formal_bayes_factor"] is None
     assert report.get("k_value") is None
