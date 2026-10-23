@@ -54,6 +54,7 @@ from tools.whitening_audit.types import (
     EmptyDataError,
     FeatureDimensionMismatchError,
     InsufficientSamplesError,
+    InvalidCovarianceError,
     NonFiniteValuesError,
     NonPositiveDefiniteError,
     WhiteningMethod,
@@ -674,6 +675,71 @@ class TestWhiteningAudit(unittest.TestCase):
             self.assertGreater(floored.n_floored_eigenvalues, 0, scale)
             self.assertGreater(floored.relative_correction_norm, 1e-6, scale)
             self.assertTrue(floored.is_correction_material, scale)
+
+    def test_huge_correlated_rejects_absolute_false_equivalence(self) -> None:
+        """Reproduce: absolute ||ΔW||_F < 1e-9 falsely equated Cholesky/ZCA on huge Σ.
+
+        Correlated ``Σ = s·[[2,0.3],[0.3,1]]`` at ``s=1e40`` still has relative gap
+        ~0.09; absolute Frobenius difference underflows below 1e-9. Equivalence must
+        stay relative. Tolerances are not loosened.
+        """
+        from tools.whitening_audit.whitening_verifier import compare_whitening_methods
+
+        scale = 1e40
+        base = [[2.0, 0.3], [0.3, 1.0]]
+        cov = [[scale * base[i][j] for j in range(2)] for i in range(2)]
+        floor = max(1e-300, scale * 1e-12)
+        cmp = compare_whitening_methods(cov, eigenvalue_floor=floor)
+        self.assertFalse(cmp.are_methods_equivalent)
+        self.assertGreater(cmp.relative_transform_difference, 1e-3)
+        self.assertLess(cmp.transform_matrix_frobenius_difference, 1e-9)
+        self.assertTrue(cmp.zca_is_symmetric)
+        self.assertTrue(cmp.cholesky_is_lower_triangular)
+
+    def test_near_diagonal_equivalence_is_scale_invariant_not_huge_only(self) -> None:
+        """Weak correlation (ρ=1e-20) is near-equivalent at ordinary and huge scale.
+
+        Distinguishes legitimate near-diagonal agreement from a scale-only false pass.
+        """
+        from tools.whitening_audit.whitening_verifier import compare_whitening_methods
+
+        ordinary = [[1.0, 1e-20], [1e-20, 1.0]]
+        huge = [[1e40, 1e20], [1e20, 1e40]]
+        c_ord = compare_whitening_methods(ordinary)
+        c_huge = compare_whitening_methods(huge)
+        self.assertEqual(c_ord.are_methods_equivalent, c_huge.are_methods_equivalent)
+        self.assertLess(c_ord.relative_transform_difference, 1e-9)
+        self.assertLess(c_huge.relative_transform_difference, 1e-9)
+        self.assertTrue(c_ord.zca_is_symmetric)
+        self.assertTrue(c_huge.zca_is_symmetric)
+
+    def test_numpy_ndarray_covariance_does_not_raise_ambiguous_truth(self) -> None:
+        """Regression: numpy 2-D covariance must not crash on ``if not row`` truthiness.
+
+        ``validate_finite_matrix`` used ``if not X`` / ``if not X[0]``, which raises
+        ``ValueError: The truth value of an array…`` for ndarray inputs. Accept the
+        array via length checks (same finite/symmetric contract); do not claim a
+        new tolerance.
+        """
+        try:
+            import numpy as np
+        except ImportError:
+            self.skipTest("numpy unavailable")
+
+        from tools.whitening_audit.whitening_verifier import compare_whitening_methods
+        from tools.whitening_audit.matrix_ops import validate_finite_matrix
+
+        cov = np.array([[2.0, 0.3], [0.3, 1.0]], dtype=float)
+        # Must not raise the ambiguous-truth ValueError.
+        validate_finite_matrix(cov, "Covariance matrix")
+        cmp = compare_whitening_methods(cov)
+        self.assertFalse(cmp.are_methods_equivalent)
+        self.assertGreater(cmp.relative_transform_difference, 1e-3)
+        self.assertTrue(cmp.zca_is_symmetric)
+
+        asym = np.array([[1e-16, 1e-16], [0.0, 1e-16]], dtype=float)
+        with self.assertRaises(InvalidCovarianceError):
+            project_spd_covariance(asym, eigenvalue_floor=1e-30)
 
 
 if __name__ == "__main__":
