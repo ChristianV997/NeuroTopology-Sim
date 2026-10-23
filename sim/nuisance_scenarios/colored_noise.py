@@ -1,0 +1,270 @@
+"""Pure NumPy colored noise generator and empirical spectral slope diagnostics.
+
+PSD Convention:
+    One-sided Power Spectral Density S(f) is proportional to 1 / f^chi for f > 0.
+    In the discrete Fourier domain:
+        |X(f_k)| = C * f_k^(-chi / 2) for k in {1, ..., floor(N / 2)}.
+
+DC Handling Convention:
+    The zero-frequency component X(f_0) = X(0) is explicitly set to 0.0 + 0.0j.
+    The resulting generated colored noise sequence is strictly zero-mean in expectation.
+
+Nyquist Convention:
+    For even sample count N, the Nyquist bin f_{N/2} = f_s / 2 is constrained to be
+    strictly real-valued (random phase chosen from {0.0, pi}) to maintain real-valued
+    signal symmetry under the discrete inverse real FFT (irfft).
+"""
+from __future__ import annotations
+
+import math
+import numbers
+from typing import NamedTuple, Optional, Sequence, Tuple, Union
+
+import numpy as np
+
+
+class SpectralSlopeFit(NamedTuple):
+    """Result of empirical spectral slope regression."""
+
+    estimated_chi: float
+    fit_r2: float
+
+
+def generate_colored_noise(
+    n_samples: int,
+    chi: float,
+    n_channels: int = 1,
+    sfreq_hz: Optional[float] = None,
+    seed: Optional[Union[int, np.random.Generator, np.random.SeedSequence]] = None,
+    *,
+    sampling_rate_hz: Optional[float] = None,
+    rng: Optional[Union[int, np.random.Generator, np.random.SeedSequence]] = None,
+) -> np.ndarray:
+    """Generate 1D or 2D multichannel colored noise with explicit spectral exponent chi.
+
+    Parameters:
+        n_samples: Number of time samples (must be >= 4).
+        chi: Spectral exponent chi in 1/f^chi (chi >= 0.0).
+             chi=0.0: White noise (flat PSD).
+             chi=1.0: Pink noise (1/f PSD).
+             chi=2.0: Brown/red noise (1/f^2 PSD).
+        n_channels: Number of distinct channels (default 1).
+        sfreq_hz: Sampling frequency in Hz (must be > 0).
+        seed: Master seed for reproducible generation.
+
+    Returns:
+        noise: NumPy array of shape (n_channels, n_samples) with zero mean and unit variance.
+    """
+    if isinstance(n_samples, bool) or not isinstance(n_samples, numbers.Integral) or n_samples < 4:
+        raise ValueError(f"n_samples must be an integer >= 4, got {n_samples}")
+    if isinstance(n_channels, bool) or not isinstance(n_channels, numbers.Integral) or n_channels < 1:
+        raise ValueError(f"n_channels must be an integer >= 1, got {n_channels}")
+    if isinstance(chi, bool) or not isinstance(chi, numbers.Real):
+        raise ValueError(f"chi must be a non-negative finite real number, got {chi!r}")
+    try:
+        chi = float(chi)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"chi must be representable as a finite float, got {chi!r}") from exc
+    if not math.isfinite(chi) or chi < 0.0:
+        raise ValueError(f"chi must be a non-negative finite float, got {chi}")
+    canonical_sfreq = None
+    alias_sfreq = None
+    if sfreq_hz is not None:
+        if isinstance(sfreq_hz, bool) or not isinstance(sfreq_hz, numbers.Real):
+            raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz!r}")
+        try:
+            canonical_sfreq = float(sfreq_hz)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"sfreq_hz must be representable as a finite float, got {sfreq_hz!r}"
+            ) from exc
+    if sampling_rate_hz is not None:
+        if isinstance(sampling_rate_hz, bool) or not isinstance(sampling_rate_hz, numbers.Real):
+            raise ValueError(
+                "sampling_rate_hz must be a positive finite real number, "
+                f"got {sampling_rate_hz!r}"
+            )
+        try:
+            alias_sfreq = float(sampling_rate_hz)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "sampling_rate_hz must be representable as a finite float, "
+                f"got {sampling_rate_hz!r}"
+            ) from exc
+    if canonical_sfreq is not None and alias_sfreq is not None:
+        if not (math.isfinite(canonical_sfreq) and canonical_sfreq == alias_sfreq):
+            raise ValueError(
+                f"conflict: sfreq_hz={sfreq_hz!r} disagrees with "
+                f"alias sampling_rate_hz={sampling_rate_hz!r}"
+            )
+    effective_sfreq = alias_sfreq if alias_sfreq is not None else (
+        canonical_sfreq if canonical_sfreq is not None else 250.0
+    )
+    if not math.isfinite(effective_sfreq) or effective_sfreq <= 0.0:
+        raise ValueError(f"sfreq_hz must be a positive finite float, got {effective_sfreq}")
+
+    if seed is not None and rng is not None:
+        raise ValueError("provide only one of seed or rng")
+    effective_seed = rng if rng is not None else seed
+    if effective_seed is not None:
+        if isinstance(effective_seed, bool):
+            raise ValueError("seed/rng must not be a bool")
+        if not isinstance(effective_seed, (numbers.Integral, np.random.Generator, np.random.SeedSequence)):
+            raise ValueError(f"seed/rng must be a non-negative integer, Generator, or SeedSequence, got {effective_seed!r}")
+        if isinstance(effective_seed, numbers.Integral) and int(effective_seed) < 0:
+            raise ValueError(f"seed/rng must be a non-negative integer, got {effective_seed}")
+    gen = np.random.default_rng(effective_seed)
+
+    # One-sided discrete Fourier frequencies
+    freqs = np.fft.rfftfreq(n_samples, d=1.0 / effective_sfreq)
+    n_freqs = len(freqs)
+
+    noise_out = np.zeros((n_channels, n_samples), dtype=np.float64)
+
+    for ch in range(n_channels):
+        # White complex noise components
+        # Draw independent standard normals for real and imaginary parts
+        real_part = gen.standard_normal(n_freqs)
+        imag_part = gen.standard_normal(n_freqs)
+        complex_spec = real_part + 1j * imag_part
+
+        # Explicit DC Handling: f = 0 bin is strictly zero
+        complex_spec[0] = 0.0 + 0.0j
+
+        # Amplitude scaling: |X(f)| proportional to f^(-chi / 2)
+        if chi > 0.0:
+            # Positive frequency bins k >= 1
+            amplitude_scaling = np.zeros(n_freqs, dtype=np.float64)
+            with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+                amplitude_scaling[1:] = freqs[1:] ** (-chi / 2.0)
+            if (
+                not np.all(np.isfinite(amplitude_scaling))
+                or not np.any(amplitude_scaling[1:] > 0.0)
+            ):
+                raise ValueError("chi is outside the representable colored-noise range")
+            complex_spec *= amplitude_scaling
+            if not np.all(np.isfinite(complex_spec)):
+                raise ValueError("chi produces non-finite colored-noise spectrum values")
+
+        # Nyquist bin constraint for even N: imaginary part must be zero
+        if n_samples % 2 == 0 and n_freqs > 1:
+            complex_spec[-1] = complex_spec[-1].real + 0.0j
+
+        # Synthesize time-domain sequence via inverse real FFT
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            raw_signal = np.fft.irfft(complex_spec, n=n_samples)
+        if not np.all(np.isfinite(raw_signal)):
+            raise ValueError("chi produces non-finite colored-noise samples")
+
+        # Standardize to zero-mean and unit variance per channel
+        std_val = float(np.std(raw_signal, ddof=1)) if n_samples > 1 else 1.0
+        if not math.isfinite(std_val) or std_val <= 1e-12:
+            raise ValueError("chi produced zero or non-finite colored-noise variance")
+        raw_signal = (raw_signal - np.mean(raw_signal)) / std_val
+
+        noise_out[ch] = raw_signal
+
+    if not np.all(np.isfinite(noise_out)):
+        raise ValueError("colored-noise generation produced non-finite samples")
+    return noise_out
+
+
+def estimate_spectral_slope(
+    signal: np.ndarray,
+    sfreq_hz: float,
+    f_min: float | None = None,
+    f_max: float | None = None,
+) -> Tuple[float, float]:
+    """Estimate empirical spectral slope chi from signal PSD using pure NumPy log-log regression.
+
+    Fits the linear model:
+        ln(PSD(f)) = -chi * ln(f) + C
+
+    Parameters:
+        signal: 1D array of shape (n_samples,) or 2D array of shape (n_channels, n_samples).
+        sfreq_hz: Sampling rate in Hz.
+        f_min: Lower frequency bound in Hz (default: 2.0 Hz).
+        f_max: Upper frequency bound in Hz (default: 0.4 * sfreq_hz).
+
+    Returns:
+        (estimated_chi, r_squared):
+            estimated_chi: The empirical slope exponent (e.g. ~1.0 for pink noise).
+            r_squared: Coefficient of determination of the log-log linear fit.
+    """
+    if isinstance(sfreq_hz, bool) or not isinstance(sfreq_hz, numbers.Real):
+        raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz!r}")
+    try:
+        sfreq_hz = float(sfreq_hz)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"sfreq_hz must be representable as a finite float, got {sfreq_hz!r}"
+        ) from exc
+    if not math.isfinite(sfreq_hz) or sfreq_hz <= 0.0:
+        raise ValueError(f"sfreq_hz must be a positive finite real number, got {sfreq_hz}")
+
+    arr = np.asarray(signal, dtype=np.float64)
+    if arr.ndim == 1:
+        arr = arr[None, :]
+    elif arr.ndim != 2:
+        raise ValueError(f"signal must be 1D or 2D, got shape {arr.shape}")
+
+    n_channels, n_samples = arr.shape
+    if n_samples < 8:
+        raise ValueError(f"signal length ({n_samples}) is too short for spectral slope estimation")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError("signal contains non-finite values (NaN or Inf)")
+
+    freqs = np.fft.rfftfreq(n_samples, d=1.0 / sfreq_hz)
+    # Compute periodogram power spectral density averaged across channels
+    fft_vals = np.fft.rfft(arr, axis=-1)
+    psd_channels = (np.abs(fft_vals) ** 2) / (sfreq_hz * n_samples)
+    psd_mean = np.mean(psd_channels, axis=0)
+
+    # Validate and establish frequency fit band
+    if f_min is not None:
+        if isinstance(f_min, bool) or not isinstance(f_min, numbers.Real):
+            raise ValueError(f"f_min must be a positive finite real number, got {f_min!r}")
+        f_low = float(f_min)
+        if not math.isfinite(f_low) or f_low <= 0.0:
+            raise ValueError(f"f_min must be a positive finite float, got {f_low}")
+    else:
+        f_low = max(1.0, float(freqs[1]) if len(freqs) > 1 else 1.0)
+
+    if f_max is not None:
+        if isinstance(f_max, bool) or not isinstance(f_max, numbers.Real):
+            raise ValueError(f"f_max must be a positive finite real number, got {f_max!r}")
+        f_high = float(f_max)
+        if not math.isfinite(f_high) or f_high <= 0.0:
+            raise ValueError(f"f_max must be a positive finite float, got {f_high}")
+    else:
+        f_high = float(0.4 * sfreq_hz)
+
+    if f_min is not None and f_max is not None and f_low >= f_high:
+        raise ValueError(f"f_min ({f_low}) must be strictly less than f_max ({f_high})")
+
+    # Mask positive frequencies within [f_low, f_high]
+    valid_mask = (freqs >= f_low) & (freqs <= f_high) & (freqs > 0.0) & (psd_mean > 1e-20)
+    if np.count_nonzero(valid_mask) < 3:
+        # Not enough frequency bins to reliably fit slope
+        return SpectralSlopeFit(float("nan"), 0.0)
+
+    fit_freqs = freqs[valid_mask]
+    fit_psd = psd_mean[valid_mask]
+
+    log_f = np.log(fit_freqs)
+    log_p = np.log(fit_psd)
+
+    # Pure NumPy linear regression: np.polyfit of degree 1
+    poly = np.polyfit(log_f, log_p, 1)
+    slope = float(poly[0])
+    intercept = float(poly[1])
+
+    estimated_chi = -slope
+
+    # Compute R^2 of log-log fit
+    predicted_log_p = slope * log_f + intercept
+    ss_tot = float(np.sum((log_p - np.mean(log_p)) ** 2))
+    ss_res = float(np.sum((log_p - predicted_log_p) ** 2))
+    r_squared = 1.0 - (ss_res / ss_tot) if ss_tot > 1e-12 else 0.0
+
+    return SpectralSlopeFit(estimated_chi, max(0.0, float(r_squared)))
