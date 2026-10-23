@@ -245,10 +245,16 @@ integration, and they make no claim about repository quality.
   with a `duplicate_of` reason, and the batch records duplicate/conflict
   counts.
 - **Unresolved license** (`oss_opportunities.scoring`). An empty or unknown
-  license (`missing_high`) and an unmatched license string
-  (`proprietary_or_unknown_high`) both recommend `license_review_required`.
-  Previously, an unmatched string could recommend an external-tool-record path
-  while its commercial-core policy was still `blocked_pending_review`.
+  license (`missing_high`), an unmatched license string
+  (`proprietary_or_unknown_high`), a conflicting observation set, or a
+  `blocked` / `blocked_pending_review` commercial-core policy all recommend
+  `license_review_required`. This gate outranks category-based
+  `reject_or_defer` reject/defer routing, and review-required opportunities
+  remain in `opportunities_ranked` even when the heuristic score is negative
+  so the planner's `license_review_queue` cannot drop them. Previously, an
+  unmatched string could recommend an external-tool-record path while its
+  commercial-core policy was still `blocked_pending_review`, and sparse
+  conflicting observations could be ranked away as reject without review.
 - **Unsupported capability claims** (`oss_opportunities.scoring`).
   `adapter_surface_clarity` needs a documented surface: a non-empty
   `homepage_url` or `metadata.adapter_docs_url`. A category inferred only from

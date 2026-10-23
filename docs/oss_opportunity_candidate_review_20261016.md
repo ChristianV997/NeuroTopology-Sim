@@ -75,10 +75,13 @@ evidence is not duplicated here.
   identities are not resolved by choosing the highest score. If observations
   disagree on the license string, the combined candidate is routed through
   `license_review_required` with the conflicting values retained as unresolved
-  evidence. Case-only spelling differences do not create a false conflict.
+  evidence — including when keyword matching would otherwise assign
+  `reject_or_defer`. Case-only spelling differences do not create a false
+  conflict.
 - **Unknown license:** empty, `unknown`, `no-license`, `noassertion`, or
   unmatched strings stay in a high-risk tier and route to review; they are not
-  treated as permissive.
+  treated as permissive and are not silently rejected solely because the
+  leverage category is `reject_or_defer`.
 - **Credentials:** a candidate marked as requiring credentials routes to
   `security_review_required`; credential-required execution remains blocked.
 - **Duplicate records:** observations for the same repository are grouped
