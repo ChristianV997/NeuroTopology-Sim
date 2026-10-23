@@ -20,15 +20,21 @@ Schema: `BIDSAdapterManifest.v1`.
 - Condition labels are accepted only from an **explicit condition manifest**
   with `confirmed=true`. Filename task tokens are structural entities, not
   confirmed conditions.
-- Source checksums may be `null` with `checksum_state="unknown"`; checksums are
-  never fabricated. When `local_root` + `expected_checksum` name an existing
-  file, **plan and read** both fail closed on mismatch.
+- Metadata indexing does not read recording bytes to compute checksums by
+  default: source checksums remain `null` with `checksum_state="unknown"`.
+  When `expected_checksum` is supplied for an explicit `relative_path`, only
+  that local recording is hashed; index, plan, and read fail closed on a
+  mismatch or unreadable target.
 - Metadata JSON (`dataset_description.json`, sidecars) is bounded by
-  `MAX_METADATA_JSON_BYTES` (1 MiB); oversized inputs fail closed.
+  `MAX_METADATA_JSON_BYTES` (1 MiB); every JSON sidecar is size-checked before
+  an optional indexer can parse it, and oversized inputs fail closed.
 - Lazy window reads are allowed only for bounded local windows. Remote
   `allow_network=True` yields a **plan-only** artifact (`executed: false`);
-  this adapter never downloads datasets.
-- Missing-root diagnostics omit absolute host paths.
+  this adapter never downloads datasets. The configured `max_bytes` is enforced
+  against the estimated float64 EEG sample buffer before data are read.
+- Diagnostics and output manifests omit absolute local roots. Remote plan URIs
+  retain only scheme, host, and port; credentials, URI paths, query strings, and
+  fragments are redacted.
 - Manifests are deterministic strict JSON (`allow_nan=False`) with
   `scientific_pass: false`.
 
@@ -89,7 +95,9 @@ plan = plan_bounded_window_access(
 - `relative_path` that is empty, whitespace, or resolves to `local_root` itself (`"."`)
 - boolean, non-finite, non-positive, or out-of-range `BoundedWindowRequest` bounds
   (`start_s`, `end_s`, `max_duration_s > 600.0`, or non-integer `max_bytes`)
-- `expected_checksum` mismatch against computed file digest or unmatched `relative_path`
+- an estimated float64 EEG window buffer larger than `max_bytes`
+- `expected_checksum` without `relative_path`, mismatch against a computed file digest,
+  or unmatched `relative_path`
 - malformed BIDS entities (empty entity values like `sub-`, `run-`, or non-alphanumeric tokens)
   or empty/non-string `Name`/`BIDSVersion` in `dataset_description.json`
 

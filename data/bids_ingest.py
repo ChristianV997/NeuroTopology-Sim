@@ -340,6 +340,7 @@ def read_window_signal(
     pick: str = "mean",
     max_channels: int | None = None,
     preprocess: dict | None = None,
+    max_bytes: int | None = None,
 ) -> np.ndarray:
     """Return REAL samples for one window.
 
@@ -356,7 +357,19 @@ def read_window_signal(
     filter edge artifacts per-window filtering would introduce. Default
     `None` preserves this function's exact prior behavior (no filtering at
     all); every currently-published number was computed with `preprocess=None`.
+
+    `max_bytes`, when set, bounds the float64 sample buffer before signal data
+    are read. `None` preserves the legacy behavior for existing callers.
     """
+    if max_bytes is not None and (
+        isinstance(max_bytes, (bool, np.bool_))
+        or not isinstance(max_bytes, (int, np.integer))
+        or int(max_bytes) <= 0
+    ):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.INVALID_WINDOW,
+            "max_bytes must be a positive integer",
+        )
     ident = _file_identity(path)
     cache_key = None
     if ident is not None:
@@ -372,6 +385,11 @@ def read_window_signal(
         )
         cached = _WINDOW_CACHE.get(cache_key)
         if cached is not None:
+            if max_bytes is not None and int(cached.nbytes) > int(max_bytes):
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.INVALID_WINDOW,
+                    f"cached window requires {int(cached.nbytes)} bytes, exceeds max_bytes={int(max_bytes)}",
+                )
             _WINDOW_CACHE.move_to_end(cache_key)
             return _reduce_window_pick(cached, pick)
 
@@ -410,6 +428,13 @@ def read_window_signal(
         ) from exc
     if max_channels:
         picks = picks[:max_channels]
+    if max_bytes is not None:
+        required_bytes = (stop - start) * len(picks) * np.dtype(float).itemsize
+        if required_bytes > int(max_bytes):
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.INVALID_WINDOW,
+                f"window requires {required_bytes} bytes, exceeds max_bytes={int(max_bytes)}",
+            )
     data = raw.get_data(picks=picks, start=start, stop=stop)  # (n_ch, n_samp), real load here
     if data.ndim == 1:
         data = data[None, :]
@@ -446,6 +471,7 @@ from enum import Enum as _Enum  # noqa: E402
 from typing import Any as _Any  # noqa: E402
 from typing import Mapping as _Mapping  # noqa: E402
 from typing import Tuple as _Tuple  # noqa: E402
+from urllib.parse import urlsplit as _urlsplit  # noqa: E402
 
 BIDS_ADAPTER_SCHEMA = "BIDSAdapterManifest.v1"
 MAX_BOUNDED_WINDOW_SECONDS = 600.0
@@ -665,15 +691,32 @@ def _normalize_dataset_id(dataset_id: str) -> str:
     if not isinstance(dataset_id, str):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
-            f"invalid dataset_id: {dataset_id!r}",
+            "dataset_id must be a non-empty identifier using letters, numbers, '.', '_' or '-'",
         )
     value = dataset_id.strip()
     if not value or not _DATASET_ID_RE.fullmatch(value):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.MALFORMED_REQUEST,
-            f"invalid dataset_id: {dataset_id!r}",
+            "dataset_id must be a non-empty identifier using letters, numbers, '.', '_' or '-'",
         )
     return value
+
+
+def _redact_remote_uri(remote_uri: Optional[str]) -> Optional[str]:
+    """Keep only the remote origin; never serialize credentials or URI paths."""
+    if remote_uri is None:
+        return None
+    try:
+        parsed = _urlsplit(remote_uri)
+        host = parsed.hostname
+        if not parsed.scheme or not host:
+            return "<redacted>"
+        safe_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+        port = parsed.port
+        authority = f"{safe_host}:{port}" if port is not None else safe_host
+        return f"{parsed.scheme.lower()}://{authority}"
+    except (TypeError, ValueError):
+        return "<redacted>"
 
 
 def _normalize_checksum(value: Optional[str]) -> tuple[Optional[str], str]:
@@ -714,23 +757,32 @@ def _file_checksum_or_unknown(path: Path) -> tuple[Optional[str], str]:
 def _read_json_object(path: Path) -> dict[str, _Any]:
     try:
         size = path.stat().st_size
-    except OSError as exc:
+    except OSError:
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
-            f"unreadable JSON at {path.name}: {exc}",
-        ) from exc
+            f"unreadable JSON at {path.name}",
+        ) from None
     if size > MAX_METADATA_JSON_BYTES:
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
             f"metadata JSON {path.name} is oversized (>{MAX_METADATA_JSON_BYTES} bytes)",
         )
     try:
-        payload = _json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, _json.JSONDecodeError) as exc:
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_METADATA_JSON_BYTES + 1)
+        if len(raw) > MAX_METADATA_JSON_BYTES:
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+                f"metadata JSON {path.name} is oversized (>{MAX_METADATA_JSON_BYTES} bytes)",
+            )
+        payload = _json.loads(raw.decode("utf-8"))
+    except BIDSAdapterError:
+        raise
+    except (OSError, UnicodeDecodeError, _json.JSONDecodeError):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
-            f"unreadable JSON at {path.name}: {exc}",
-        ) from exc
+            f"unreadable JSON at {path.name}",
+        ) from None
     if not isinstance(payload, dict):
         raise BIDSAdapterError(
             BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
@@ -739,8 +791,43 @@ def _read_json_object(path: Path) -> dict[str, _Any]:
     return payload
 
 
+def _validate_metadata_json_sizes(root: Path) -> None:
+    """Bound every JSON sidecar before optional indexers can parse it."""
+    resolved_root = root.resolve()
+    try:
+        metadata_paths = sorted(root.rglob("*.json"))
+    except (OSError, RuntimeError):
+        raise BIDSAdapterError(
+            BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+            "cannot enumerate BIDS metadata JSON files",
+        ) from None
+    for path in metadata_paths:
+        if not path.is_file():
+            continue
+        try:
+            if not path.resolve().is_relative_to(resolved_root):
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+                    f"metadata JSON {path.name} escapes local_root",
+                )
+            size = path.stat().st_size
+        except BIDSAdapterError:
+            raise
+        except (OSError, RuntimeError):
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+                f"unreadable JSON at {path.name}",
+            ) from None
+        if size > MAX_METADATA_JSON_BYTES:
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE,
+                f"metadata JSON {path.name} is oversized (>{MAX_METADATA_JSON_BYTES} bytes)",
+            )
+
+
 def _structural_bids_validation(root: Path) -> dict[str, _Any]:
     """Lightweight structural checks; optional bids-validator when installed."""
+    _validate_metadata_json_sizes(root)
     issues: list[str] = []
     description_path = root / "dataset_description.json"
     if not description_path.is_file():
@@ -1034,7 +1121,12 @@ def enforce_bids_access_gate(request: BIDSAccessRequest) -> None:
     if request.window is not None:
         request.window.validate()
     if request.expected_checksum is not None:
-        _normalize_checksum(request.expected_checksum)
+        expected_checksum, _ = _normalize_checksum(request.expected_checksum)
+        if expected_checksum is not None and not request.relative_path:
+            raise BIDSAdapterError(
+                BIDSAdapterErrorCode.MALFORMED_REQUEST,
+                "expected_checksum requires an explicit relative_path",
+            )
 
 
 def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
@@ -1080,7 +1172,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
         manifest = {
             "schema_version": BIDS_ADAPTER_SCHEMA,
             "dataset_id": _normalize_dataset_id(request.dataset_id),
-            "local_root": str(root.resolve()),
+            "local_root": "<redacted>",
             "access_mode": "metadata_only",
             "allow_network": False,
             "network_actions": [],
@@ -1102,6 +1194,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
 
     recordings_out: list[BIDSIndexedRecording] = []
     matched_expected_checksum = False
+    expected_checksum, _ = _normalize_checksum(request.expected_checksum)
     for row in sorted(rows, key=lambda item: item["relative_path"]):
         _require_contained_relative_path(str(root), row["relative_path"])
         if request.require_subject and not row.get("subject_id"):
@@ -1128,17 +1221,21 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
             condition_manifest=request.condition_manifest,
         )
         abs_path = root / row["relative_path"]
-        checksum, checksum_state = _file_checksum_or_unknown(abs_path)
-        if request.expected_checksum and request.relative_path == row["relative_path"]:
-            declared, declared_state = _normalize_checksum(request.expected_checksum)
-            if declared is not None and checksum is not None and declared.lower() != checksum.lower():
+        checksum: Optional[str] = None
+        checksum_state = "unknown"
+        if expected_checksum is not None and request.relative_path == row["relative_path"]:
+            checksum, checksum_state = _file_checksum_or_unknown(abs_path)
+            if checksum is None:
+                raise BIDSAdapterError(
+                    BIDSAdapterErrorCode.CHECKSUM_UNKNOWN,
+                    f"cannot verify expected_checksum for {row['relative_path']}: file unreadable",
+                )
+            if expected_checksum.lower() != checksum.lower():
                 raise BIDSAdapterError(
                     BIDSAdapterErrorCode.MALFORMED_REQUEST,
-                    f"declared checksum {declared} does not match computed checksum {checksum}",
+                    f"declared checksum does not match computed checksum for {row['relative_path']}",
                 )
-            if declared is not None:
-                checksum, checksum_state = declared, declared_state
-                matched_expected_checksum = True
+            matched_expected_checksum = True
         sfreq = row.get("sampling_frequency_hz")
         if isinstance(sfreq, (int, float)) and not _math.isfinite(float(sfreq)):
             sfreq = None
@@ -1161,9 +1258,8 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
             )
         )
 
-    if request.expected_checksum and request.relative_path:
-        declared, _ = _normalize_checksum(request.expected_checksum)
-        if declared is not None and not matched_expected_checksum:
+    if expected_checksum is not None and request.relative_path:
+        if not matched_expected_checksum:
             raise BIDSAdapterError(
                 BIDSAdapterErrorCode.MALFORMED_REQUEST,
                 f"relative_path not found in indexed recordings: {request.relative_path}",
@@ -1172,7 +1268,7 @@ def index_bids_metadata(request: BIDSAccessRequest) -> dict[str, _Any]:
     payload = {
         "schema_version": BIDS_ADAPTER_SCHEMA,
         "dataset_id": _normalize_dataset_id(request.dataset_id),
-        "local_root": str(root.resolve()),
+        "local_root": "<redacted>",
         "access_mode": "metadata_only",
         "allow_network": bool(request.allow_network),
         "network_actions": [],
@@ -1241,7 +1337,7 @@ def plan_bounded_window_access(request: BIDSAccessRequest) -> dict[str, _Any]:
         network_actions = [
             {
                 "action": "planned_only",
-                "uri": request.remote_uri,
+                "uri": _redact_remote_uri(request.remote_uri),
                 "relative_path": request.relative_path,
                 "executed": False,
             }
@@ -1255,8 +1351,8 @@ def plan_bounded_window_access(request: BIDSAccessRequest) -> dict[str, _Any]:
         "schema_version": BIDS_ADAPTER_SCHEMA,
         "dataset_id": _normalize_dataset_id(request.dataset_id),
         "access_mode": mode,
-        "local_root": request.local_root,
-        "remote_uri": request.remote_uri,
+        "local_root": "<redacted>" if request.local_root else None,
+        "remote_uri": _redact_remote_uri(request.remote_uri),
         "relative_path": request.relative_path,
         "window": {
             "start_s": float(request.window.start_s),
@@ -1307,6 +1403,7 @@ def read_bounded_window_lazy(
         float(request.window.start_s),
         float(request.window.end_s),
         pick=pick,
+        max_bytes=int(request.window.max_bytes),
     )
     result = {
         **plan,
