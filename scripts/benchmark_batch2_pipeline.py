@@ -30,7 +30,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.benchmarks.batch2_pipeline.budgets import ResourceBudgets
+from tools.benchmarks.batch2_pipeline.budgets import (
+    ResourceBudgets,
+    budget_result_is_consistent,
+)
 from tools.benchmarks.batch2_pipeline.harness import (
     SCHEMA_VERSION,
     aggregate_complete_boolean,
@@ -120,6 +123,11 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
     for record in results:
         if not isinstance(record, dict):
             return 1
+        if (
+            record.get("evidence_class") != EVIDENCE_CLASS
+            or record.get("synthetic") is not True
+        ):
+            return 2
         target = record.get("target")
         if not isinstance(target, str) or target not in TARGET_NAMES:
             return 1
@@ -134,7 +142,11 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
         if not isinstance(deterministic, dict) or deterministic.get("checksum_match") is not True:
             return 1
         budget = deterministic.get("budget")
-        if not isinstance(budget, dict) or budget.get("within_budget") is not True:
+        if not isinstance(budget, dict):
+            return 1
+        if not budget_result_is_consistent(budget):
+            return 2
+        if budget.get("within_budget") is not True:
             return 1
 
     for status, count in summary.items():

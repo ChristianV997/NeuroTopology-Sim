@@ -5,7 +5,7 @@ import json
 import pytest
 import tools.benchmarks.batch2_pipeline.harness as harness
 
-from tools.benchmarks.batch2_pipeline.budgets import ResourceBudgets
+from tools.benchmarks.batch2_pipeline.budgets import ResourceBudgets, compare_budget
 from tools.benchmarks.batch2_pipeline.harness import run_all, run_target
 from tools.benchmarks.batch2_pipeline.schema import TARGET_NAMES
 from tools.benchmarks.batch2_pipeline.workloads import TARGETS, TargetSpec
@@ -53,6 +53,17 @@ def test_run_all_does_not_claim_complete_success_with_unknown_measurements(monke
     assert report["summary"]["malformed_record"] == 1
     assert report["all_equivalent"] is None
     assert report["all_within_budget"] is None
+
+
+def test_configured_budget_with_missing_measurement_is_unknown():
+    result = compare_budget(
+        {"disk_bytes": None, "worker_count": 1},
+        ResourceBudgets(disk_bytes=1, max_workers=1),
+    )
+
+    assert result["checks"]["disk_within_budget"] is None
+    assert result["checks"]["workers_within_budget"] is True
+    assert result["within_budget"] is None
 
 
 def test_deterministic_checksums_stable_across_runs():

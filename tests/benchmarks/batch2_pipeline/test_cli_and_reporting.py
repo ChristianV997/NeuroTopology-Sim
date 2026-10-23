@@ -73,13 +73,35 @@ def test_isolated_unknown_target_exits_nonzero(capsys):
     assert "unknown target" in (report.get("error") or "")
 
 
+def _budget_result(within_budget=True):
+    return {
+        "within_budget": within_budget,
+        "checks": {
+            "memory_within_budget": None,
+            "disk_within_budget": None,
+            "runtime_within_budget": None,
+            "rss_within_budget": None,
+            "workers_within_budget": True if within_budget is True else None,
+        },
+        "budgets": {
+            "memory_bytes": None,
+            "disk_bytes": None,
+            "runtime_s": None,
+            "rss_bytes": None,
+            "max_workers": 1,
+        },
+    }
+
+
 def _exit_report(status="ok", *, all_equivalent=True, all_within_budget=True):
     record = {
         "target": "full_recording_reread",
         "status": status,
+        "evidence_class": cli.EVIDENCE_CLASS,
+        "synthetic": True,
         "deterministic": {
             "checksum_match": True,
-            "budget": {"within_budget": True},
+            "budget": _budget_result(),
         },
     }
     return {
@@ -109,6 +131,20 @@ def test_cli_exit_code_fails_on_hard_statuses():
 def test_cli_exit_code_fails_on_malformed_record():
     report = _exit_report("malformed_record")
     assert cli._cli_exit_code(report) == 1
+
+
+def test_cli_exit_code_fails_on_non_synthetic_result():
+    report = _exit_report()
+    report["results"][0]["synthetic"] = False
+
+    assert cli._cli_exit_code(report) != 0
+
+
+def test_cli_exit_code_rejects_budget_pass_with_missing_configured_measurement():
+    report = _exit_report()
+    report["results"][0]["deterministic"]["budget"]["budgets"]["disk_bytes"] = 1
+
+    assert cli._cli_exit_code(report) != 0
 
 
 def test_cli_exit_code_fails_on_unknown_record_status():
@@ -157,17 +193,21 @@ def test_isolated_report_does_not_claim_equivalence_with_unknown_measurements(
         "full_recording_reread": {
             "target": "full_recording_reread",
             "status": "ok",
+            "evidence_class": cli.EVIDENCE_CLASS,
+            "synthetic": True,
             "deterministic": {
                 "checksum_match": True,
-                "budget": {"within_budget": True},
+                "budget": _budget_result(),
             },
         },
         "window_cache_hits": {
             "target": "window_cache_hits",
             "status": "malformed_record",
+            "evidence_class": cli.EVIDENCE_CLASS,
+            "synthetic": True,
             "deterministic": {
                 "checksum_match": None,
-                "budget": {"within_budget": None},
+                "budget": _budget_result(None),
             },
         },
     }
@@ -214,9 +254,11 @@ def test_generate_cli_fails_when_all_records_are_malformed(tmp_path, monkeypatch
             {
                 "target": target,
                 "status": "malformed_record",
+                "evidence_class": cli.EVIDENCE_CLASS,
+                "synthetic": True,
                 "deterministic": {
                     "checksum_match": None,
-                    "budget": {"within_budget": None},
+                "budget": _budget_result(None),
                 },
             }
             for target in sorted(TARGET_NAMES)

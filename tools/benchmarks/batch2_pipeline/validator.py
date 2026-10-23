@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
+from .budgets import budget_result_is_consistent
 from .schema import (
     EVIDENCE_CLASS,
     FORBIDDEN_PHRASES,
@@ -41,6 +42,12 @@ _HOSTISH = re.compile(
     r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$",
     re.IGNORECASE,
 )
+_HOST_PATH_TOKEN = re.compile(
+    r"(?<![a-z0-9._/-])"
+    r"((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,})"
+    r"(?::[0-9]{1,5})?(?:/[^\s<>\"']*|\?[^\s<>\"']*)",
+    re.IGNORECASE,
+)
 
 
 def _hostname_is_remote(host: str | None) -> bool:
@@ -65,6 +72,12 @@ def _string_references_remote_host(value: str) -> bool:
         except ValueError:
             continue
         if _hostname_is_remote(hostname):
+            return True
+    # Also recognize the common scheme-less ``host/path`` form in prose.
+    # Requiring a path/query avoids treating an ordinary bare-host mention as
+    # a URL; the slash boundary avoids matching host-like text inside a URL path.
+    for match in _HOST_PATH_TOKEN.finditer(text):
+        if _hostname_is_remote(match.group(1)):
             return True
     # Bare hostname tokens only (avoids incomplete substring matches inside prose).
     if _HOSTISH.match(text):
@@ -160,6 +173,8 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
         target_names.append(target)
         if not isinstance(target, str) or target not in TARGET_NAMES:
             violations.append("unknown_target")
+        if row.get("synthetic") is not True:
+            violations.append(f"row_synthetic_flag_mismatch:{target}")
         status = row.get("status")
         if not isinstance(status, str) or status not in known_statuses:
             violations.append(f"unknown_status:{target}")
@@ -190,6 +205,8 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
             budget_verdict = None
         elif isinstance(budget, dict):
             budget_verdict = budget.get("within_budget")
+            if not budget_result_is_consistent(budget):
+                violations.append(f"budget_checks_mismatch:{target}")
         else:
             violations.append(f"invalid_budget:{target}")
             budget_verdict = None

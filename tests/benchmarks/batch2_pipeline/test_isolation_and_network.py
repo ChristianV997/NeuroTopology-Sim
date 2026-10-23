@@ -100,8 +100,17 @@ def test_no_network_execution():
     assert not _string_references_remote_host("https://evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("//evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("notes mentioning openneuro.org in prose")
+    assert not _string_references_remote_host(
+        "https://example.org/docs/openneuro.org/datasets"
+    )
     assert _string_references_remote_host(
         "Dataset source: https://openneuro.org/datasets/ds000001."
+    )
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org/datasets/ds000001"
+    )
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org:8443/datasets/ds000001"
     )
 
     poisoned = dict(report)
@@ -117,6 +126,51 @@ def test_no_network_execution():
         "Dataset source: (https://openneuro.org/datasets/ds000001)."
     ]
     assert "remote_data_reference" in validate_report(poisoned_prose)["violations"]
+
+    poisoned_schemeless_url = dict(report)
+    poisoned_schemeless_url["notes"] = [
+        "Dataset source: openneuro.org/datasets/ds000001"
+    ]
+    assert "remote_data_reference" in validate_report(poisoned_schemeless_url)["violations"]
+
+
+def test_validator_rejects_non_synthetic_result_row():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["synthetic"] = False
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "row_synthetic_flag_mismatch:full_recording_reread" in validation["violations"]
+
+
+def test_validator_rejects_budget_pass_with_missing_configured_measurement():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    budget = report["results"][0]["deterministic"]["budget"]
+    budget["budgets"]["disk_bytes"] = 1
+    budget["within_budget"] = True
+    report["all_within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
 
 
 def test_empty_report_is_not_valid():
