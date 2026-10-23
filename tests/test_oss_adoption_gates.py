@@ -359,3 +359,58 @@ def test_engineering_recommendation_does_not_claim_science_security_or_legal_cle
     assert "does not establish scientific validity" in limitations
     assert "security certification" in limitations
     assert "legal approval" in limitations
+
+
+# ── malformed evidence fails closed (PR 386 audit regressions) ─────────────
+
+def test_malformed_snapshot_date_is_rejected_even_with_a_recomputed_id():
+    candidate = make_document_ingestion_candidate()
+    candidate.source_snapshot_date = "not-a-date"
+    candidate.candidate_id = candidate.recompute_id()
+    assert any("source_snapshot_date" in error for error in candidate.validate())
+
+
+def test_well_formed_snapshot_date_is_accepted():
+    candidate = make_document_ingestion_candidate()
+    assert candidate.source_snapshot_date == "2026-08-12"
+    assert not any("source_snapshot_date" in error for error in candidate.validate())
+
+
+@pytest.mark.parametrize("bad_url", ["javascript:alert(1)", "not a url", "ftp:/x"])
+def test_non_http_homepage_cannot_earn_documented_surface_credit(bad_url):
+    candidate = make_document_ingestion_candidate()
+    candidate.homepage_url = bad_url
+    assert any("homepage_url" in error for error in candidate.validate())
+    with pytest.raises(OssOpportunityValidationError):
+        score_opportunity(candidate, _review(candidate))
+
+
+def test_non_http_adapter_docs_url_is_rejected():
+    candidate = make_document_ingestion_candidate()
+    candidate.metadata = {"adapter_docs_url": "javascript:alert(1)"}
+    assert any("adapter_docs_url" in error for error in candidate.validate())
+
+
+def test_human_reviewed_status_requires_a_named_reviewer():
+    candidate = make_document_ingestion_candidate()
+    unnamed = RepositoryLicenseReviewV1.make(
+        repo_full_name=candidate.repo_full_name,
+        license_spdx=candidate.license_spdx,
+        license_name=candidate.license_name,
+        provenance="synthetic fixture",
+        limitations=["synthetic fixture only"],
+        review_status="human_reviewed",
+    )
+    assert any("reviewer" in error for error in unnamed.validate())
+    with pytest.raises(OssOpportunityValidationError):
+        score_opportunity(candidate, unnamed)
+    named = RepositoryLicenseReviewV1.make(
+        repo_full_name=candidate.repo_full_name,
+        license_spdx=candidate.license_spdx,
+        license_name=candidate.license_name,
+        provenance="synthetic fixture",
+        limitations=["synthetic fixture only"],
+        review_status="human_reviewed",
+        metadata={"reviewer": "synthetic reviewer"},
+    )
+    assert named.validate() == []
