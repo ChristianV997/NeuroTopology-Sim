@@ -255,3 +255,6 @@ def test_transcription_carries_the_mne_licence_notice():
     assert "Copyright 2011-2025 MNE-Python authors" in conftest
     assert "Redistributions of source code must retain the above copyright notice" in conftest
     assert "BSD-3-Clause" in conftest
+    # Regression (2026-10-23, post-merge audit of #402): mne/preprocessing/_csd.py lines 5-11, the file the
+    # transcription copies _compute_csd from, carry a second copyright line that the notice did not keep.
+    assert "Copyright 2003-2010 J\u00fcrgen Kayser" in conftest

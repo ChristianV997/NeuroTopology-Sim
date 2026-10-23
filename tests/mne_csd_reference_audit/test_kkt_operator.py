@@ -242,3 +242,14 @@ def test_origin_must_be_three_finite_coordinates():
     per_sensor = np.random.default_rng(0).normal(scale=0.01, size=pos.shape)
     with pytest.raises(OperatorInputError, match="origin"):
         csd_operator(pos, radius=RADIUS, origin=per_sensor)
+
+
+@pytest.mark.parametrize("value", [True, False, np.True_, np.False_])
+@pytest.mark.parametrize("name", ["stiffness", "lambda2"])
+def test_bool_stiffness_and_lambda2_are_refused_as_mne_refuses_them(name, value):
+    # Regression (2026-10-23, post-merge audit of #402): MNE 1.13.2 checks both with _validate_type(..., "numeric")
+    # (_csd.py:125 and :129). "numeric" is (np.floating, float, int_like), and int_like uses _ensure_int, which
+    # raises TypeError for bool (mne/utils/check.py L25-37, L585-596, L616). The reference returned a finite
+    # operator, with False read as 0 and True as 1, so the same class of fix #402 made for n_legendre_terms.
+    with pytest.raises(TypeError, match=name):
+        csd_operator(_positions("tetrahedron_4"), radius=RADIUS, **{name: value})
