@@ -140,6 +140,15 @@ def validate_dataset_candidate_record(candidate: dict[str, Any]) -> None:
     if not isinstance(doi, str) or not doi.startswith("10."):
         raise ValueError(f"doi must be a valid DOI string starting with '10.': {doi!r}")
 
+    # Versioned OpenNeuro source_url pins must match the DOI version token
+    if isinstance(url, str) and "/versions/" in url:
+        version = url.rstrip("/").rsplit("/", 1)[-1]
+        if version and f".v{version}" not in doi and f"/{version}" not in doi:
+            raise ValueError(
+                f"DOI version must match source_url version for {acc}: "
+                f"doi={doi!r} source_url={url!r}"
+            )
+
     # License and conflict
     if not isinstance(candidate["license"], str) or not candidate["license"].strip():
         raise ValueError("license must be a non-empty string")
@@ -160,6 +169,27 @@ def validate_dataset_candidate_record(candidate: dict[str, Any]) -> None:
         if not any("license_conflict" in b for b in blockers):
             raise ValueError(
                 f"Candidate {acc} flags license_conflict=True but has no license_conflict blocker."
+            )
+        declarations = candidate["license_declarations"]
+        for url_key in ("dataset_description_source_url", "readme_source_url"):
+            url = declarations.get(url_key)
+            if not isinstance(url, str) or not url.startswith("https://"):
+                raise ValueError(
+                    f"Candidate {acc} license_conflict requires https {url_key} provenance"
+                )
+        retrieved = declarations.get("retrieved_date")
+        if not isinstance(retrieved, str) or not retrieved.strip():
+            raise ValueError(
+                f"Candidate {acc} license_conflict requires retrieved_date on license_declarations"
+            )
+        if declarations.get("permission_inferred") is not False:
+            raise ValueError(
+                f"Candidate {acc} must set license_declarations.permission_inferred=false"
+            )
+        readme_url = str(declarations.get("readme_source_url", ""))
+        if "README.txt" not in readme_url:
+            raise ValueError(
+                f"Candidate {acc} readme_source_url must identify README.txt (bare README 404s)"
             )
 
     # Inspection level: must not claim analysis_performed
@@ -279,7 +309,7 @@ def test_finite_json_and_deterministic() -> None:
     dumped = json.dumps(parsed, sort_keys=True, allow_nan=False)
     assert dumped == json.dumps(json.loads(raw), sort_keys=True, allow_nan=False)
     assert parsed["access_date"] == "2026-10-16"
-    assert parsed["last_verified_date"] == "2026-10-22"
+    assert parsed["last_verified_date"] == "2026-10-23"
 
 
 def test_ds005620_license_conflict_acknowledged_and_preserved() -> None:
@@ -293,6 +323,12 @@ def test_ds005620_license_conflict_acknowledged_and_preserved() -> None:
     assert "CC0" in ds["license_declarations"]["dataset_description_license"]
     assert "CC-BY-4.0" in ds["license_declarations"]["readme_license"]
     assert ds["license_declarations"]["conflict_status"] == "unresolved_conflict_preserved"
+    assert ds["license_declarations"]["permission_inferred"] is False
+    assert ds["license_declarations"]["dataset_description_source_url"].endswith(
+        "/dataset_description.json"
+    )
+    assert ds["license_declarations"]["readme_source_url"].endswith("/README.txt")
+    assert "README.txt" in ds["license"]
 
 
 def test_ds003969_primary_candidate_provenance() -> None:
@@ -317,11 +353,14 @@ def test_ds008836_reconciled_catalog_metadata() -> None:
     assert ds["role"] == "autonomic_covariate_candidate"
     assert ds["catalog_n"] == 39
     assert ds["analyzed_n"] is None
-    assert ds["doi"] == "10.18112/openneuro.ds008836.v1.0.0"
+    # DOI must match the versioned source_url pin (no silent v1.0.0/v1.0.1/v1.0.2 drift)
+    assert ds["doi"] == "10.18112/openneuro.ds008836.v1.0.2"
+    assert ds["source_url"].endswith("/versions/1.0.2")
     assert ds["license"] == "CC0"
     assert ds["license_conflict"] is False
     assert ds["recommendation"] == "rank_2_after_license_check"
     assert "companion_paper_unindexed" in ds["blockers"]
+    assert "version_pin_ambiguity_v1_0_0_to_v1_0_2" in ds["blockers"]
     assert "ECG, respiration, EMG, and electrodermal activity" in ds["channel_montage_sampling"]
 
 
@@ -435,6 +474,35 @@ def test_adversarial_rejects_unacknowledged_license_conflict() -> None:
     # blockers does not have license_conflict
     cand["blockers"] = ["some_other_blocker"]
     with pytest.raises(ValueError, match="flags license_conflict=True but has no license_conflict blocker"):
+        validate_dataset_candidate_record(cand)
+
+
+def test_adversarial_rejects_license_conflict_without_primary_source_urls() -> None:
+    doc = load_candidate_matrix()
+    cand = copy.deepcopy(next(item for item in doc["candidates"] if item["accession"] == "ds005620"))
+    cand["license_declarations"].pop("readme_source_url", None)
+    with pytest.raises(ValueError, match="readme_source_url"):
+        validate_dataset_candidate_record(cand)
+
+    cand = copy.deepcopy(next(item for item in doc["candidates"] if item["accession"] == "ds005620"))
+    cand["license_declarations"]["readme_source_url"] = (
+        "https://github.com/OpenNeuroDatasets/ds005620/blob/master/README"
+    )
+    with pytest.raises(ValueError, match="README.txt"):
+        validate_dataset_candidate_record(cand)
+
+    cand = copy.deepcopy(next(item for item in doc["candidates"] if item["accession"] == "ds005620"))
+    cand["license_declarations"]["permission_inferred"] = True
+    with pytest.raises(ValueError, match="permission_inferred=false"):
+        validate_dataset_candidate_record(cand)
+
+
+def test_adversarial_rejects_doi_source_url_version_mismatch() -> None:
+    cand = _get_valid_sample_candidate()
+    # Prior fail-open: versioned URL v1.0.1 with DOI pinned to a different version
+    cand["source_url"] = "https://openneuro.org/datasets/ds003969/versions/1.0.1"
+    cand["doi"] = "10.18112/openneuro.ds003969.v1.0.0"
+    with pytest.raises(ValueError, match="DOI version must match source_url version"):
         validate_dataset_candidate_record(cand)
 
 

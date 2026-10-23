@@ -2,8 +2,8 @@
   "schema": "NeuroTopology.Batch3ReplicationDatasetCandidates.v1",
   "package_id": "batch3_grok_chat_b_replication_dataset_feasibility",
   "access_date": "2026-10-16",
-  "last_verified_date": "2026-10-22",
-  "verified_by": "Antigravity Agent C",
+  "last_verified_date": "2026-10-23",
+  "verified_by": "Cursor Agent C",
   "status": "FEASIBILITY_ONLY",
   "scientific_pass": false,
   "empirical_claim_allowed": false,
@@ -38,27 +38,39 @@
       "modality": "EEG",
       "source_url": "https://openneuro.org/datasets/ds005620",
       "doi": "10.18112/openneuro.ds005620.v1.0.0",
-      "license": "Unresolved conflict: CC0 in dataset_description.json vs CC-BY-4.0 in README",
+      "license": "Unresolved conflict: CC0 in dataset_description.json vs CC-BY-4.0 in README.txt",
       "license_conflict": true,
       "license_declarations": {
         "dataset_description_license": "CC0",
         "readme_license": "CC-BY-4.0",
-        "conflict_status": "unresolved_conflict_preserved"
+        "conflict_status": "unresolved_conflict_preserved",
+        "dataset_description_source_url": "https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/dataset_description.json",
+        "readme_source_url": "https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/README.txt",
+        "retrieved_date": "2026-10-23",
+        "permission_inferred": false
       },
-      "license_details": "OpenNeuro dataset_description.json declares CC0; README author text specifies CC-BY-4.0. Both sources preserved without silent override.",
+      "license_details": "OpenNeuroDatasets raw dataset_description.json declares License CC0; raw README.txt author text specifies CC-BY-4.0. Both sources preserved without silent override. Bare README (no .txt) is absent (HTTP 404). Permission is not inferred.",
       "inspection_level": "metadata_inspected",
       "catalog_n": 21,
       "analyzed_n": null,
       "analyzed_n_status": "unresolved_exclusions",
       "participants_stated": "EEGDash catalog states 21 subjects. participants.tsv contains excluded and bad_after_preprocessing columns; included cohort count after those exclusion flags is not resolved from catalog text alone. Catalog N is an enrollment upper bound, not analyzed N.",
       "sessions_stated": "OpenNeuro page lists tasks: awake, sed, sed2. Total session count not unified on catalog page.",
-      "tasks_or_conditions": ["awake", "sed", "sed2"],
+      "tasks_or_conditions": [
+        "awake",
+        "sed",
+        "sed2"
+      ],
       "behavioral_labels": "README describes repeated awakening / dreaming under propofol sedation. Exact event codes not inspected.",
       "channel_montage_sampling": "Inspected sidecar (sub-1010 task-awake acq-EC eeg.json) states SamplingFrequency 5000.0 Hz, EEGChannelCount 65, Manufacturer Brain Products, EEGReference n/a. EEGDash catalog notes mixed 64/65 channel counts across recordings, all 5000 Hz.",
       "access_restrictions": "OpenNeuro public download. Access is not permission to reidentify or redistribute participant data.",
       "exclusions_or_missingness": "participants.tsv has excluded and bad_after_preprocessing columns. Filtered counts remain unverified.",
       "compatibility": "BIDS EEG. Primary reference cohort; cannot serve as an independent replication of itself.",
-      "blockers": ["same_cohort_as_primary_reference", "included_n_after_exclusion_not_resolved", "license_conflict_cc0_vs_cc_by_4_0"],
+      "blockers": [
+        "same_cohort_as_primary_reference",
+        "included_n_after_exclusion_not_resolved",
+        "license_conflict_cc0_vs_cc_by_4_0"
+      ],
       "recommendation": "reference_only",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_eegdash_and_openneuro_catalog",
@@ -89,13 +101,22 @@
       "analyzed_n_status": "unresolved_exclusions",
       "participants_stated": "OpenNeuro catalog states 98 participants. Public comment records that participants.tsv contains 24 Himalayan Yoga (HT), 31 Control (CTR), 19 Vipassana (VIP), 20 Isha Shoonya (SNY), and 4 Transcendental Meditation (TM) subjects (total 98), while companion source files note ~100 subjects. Catalog count does not equal analyzed count.",
       "sessions_stated": "OpenNeuro catalog states 1 session.",
-      "tasks_or_conditions": ["med1breath", "med2", "think1", "think2"],
+      "tasks_or_conditions": [
+        "med1breath",
+        "med2",
+        "think1",
+        "think2"
+      ],
       "behavioral_labels": "README describes four blocks alternating meditation and active thinking with eyes closed. Block 1 is breath counting for all; block 2 is tradition-specific meditation.",
       "channel_montage_sampling": "BioSemi ActiveTwo 64 channels (standard 10-10 layout) plus external electrodes (mastoids, EOG); sampling rate 1024 Hz confirmed from publisher/NEMAR records.",
       "access_restrictions": "OpenNeuro CC0. Availability is not permission to redistribute derived claims as empirical confirmation.",
       "exclusions_or_missingness": "Participant subgroup count conflict between catalog headline (98) and source documentation (~100); external artifact channels require adapter mapping.",
       "compatibility": "BIDS EEG with task labels. Independent hardware (BioSemi vs Brain Products in ds005620) and non-pharmacological altered state.",
-      "blockers": ["participant_count_subgroup_discrepancy", "no_autonomic_monitoring_channels", "requires_biosemi_bids_adapter"],
+      "blockers": [
+        "participant_count_subgroup_discrepancy",
+        "no_autonomic_monitoring_channels",
+        "requires_biosemi_bids_adapter"
+      ],
       "recommendation": "rank_1_conditional",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog_with_subgroup_discrepancy",
@@ -111,33 +132,39 @@
       "accession": "ds008836",
       "title": "Heartbeat-evoked responses and self-reported meditative depth in Vipassana practitioners",
       "modality": "EEG",
-      "source_url": "https://openneuro.org/datasets/ds008836/versions/1.0.1",
-      "doi": "10.18112/openneuro.ds008836.v1.0.0",
+      "source_url": "https://openneuro.org/datasets/ds008836/versions/1.0.2",
+      "doi": "10.18112/openneuro.ds008836.v1.0.2",
       "license": "CC0",
       "license_conflict": false,
       "license_declarations": {
         "openneuro_license": "CC0",
         "conflict_status": "consistent"
       },
-      "license_details": "Verified CC0 on OpenNeuro catalog page as of 2026-10-21.",
+      "license_details": "dataset_description.json on OpenNeuroDatasets/ds008836 main declares License CC0 and DatasetDOI doi:10.18112/openneuro.ds008836.v1.0.2 (public metadata re-fetched 2026-10-23). Earlier catalog pins listed v1.0.0/v1.0.1; version tip advanced without adjudicating prior pins.",
       "inspection_level": "metadata_inspected",
       "catalog_n": 39,
       "analyzed_n": null,
       "analyzed_n_status": "no_analysis_performed",
       "participants_stated": "OpenNeuro catalog states 39 participants. Experienced Vipassana practitioners. Catalog enrollment is not analyzed N.",
       "sessions_stated": "OpenNeuro catalog states 2 sessions.",
-      "tasks_or_conditions": ["meditation"],
+      "tasks_or_conditions": [
+        "meditation"
+      ],
       "behavioral_labels": "Repeated real-time self-reports of meditative depth across meditation blocks (rest, pre-up meditation, SAPO, active oddball, SILENT, cool-down).",
       "channel_montage_sampling": "High-density EEG (64 channels) with concurrent ECG, respiration, EMG, and electrodermal activity (EDA).",
       "access_restrictions": "OpenNeuro CC0 public download.",
       "exclusions_or_missingness": "Companion peer-reviewed journal article in preparation / not yet indexed.",
       "compatibility": "BIDS EEG with cardiac and respiratory covariates. Enables partialling of autonomic confounders.",
-      "blockers": ["companion_paper_unindexed", "no_prior_locked_validation_split"],
+      "blockers": [
+        "companion_paper_unindexed",
+        "no_prior_locked_validation_split",
+        "version_pin_ambiguity_v1_0_0_to_v1_0_2"
+      ],
       "recommendation": "rank_2_after_license_check",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog_summary",
         "license_provenance": "verified_cc0_in_openneuro_catalog_metadata",
-        "doi_provenance": "openneuro_doi_resolver_record",
+        "doi_provenance": "openneuro_doi_resolver_record_and_dataset_description_DatasetDOI_v1_0_2_revalidated_2026_10_23",
         "hardware_and_sampling_provenance": "author_assertion_in_openneuro_dataset_description",
         "empirical_status": "unverified_feasibility_metadata_only"
       }
@@ -163,13 +190,17 @@
       "analyzed_n_status": "no_analysis_performed",
       "participants_stated": "README and OpenNeuro catalog state 24 participants. Catalog enrollment is not analyzed N.",
       "sessions_stated": "OpenNeuro catalog states 3 sessions.",
-      "tasks_or_conditions": ["meditation"],
+      "tasks_or_conditions": [
+        "meditation"
+      ],
       "behavioral_labels": "README describes meditation interrupted approximately every 2 minutes for concentration and mind-wandering ratings.",
       "channel_montage_sampling": "BioSemi ActiveTwo 80 channels (64 scalp + 16 auxiliary/external); originally recorded at 2048 Hz, downsampled to 256 Hz.",
       "access_restrictions": "OpenNeuro CC0.",
       "exclusions_or_missingness": "Sample size (N=24) below preferred threshold for held-out split.",
       "compatibility": "BIDS EEG, Biosemi, thought-probe labels.",
-      "blockers": ["n_24_below_preferred_held_out_size"],
+      "blockers": [
+        "n_24_below_preferred_held_out_size"
+      ],
       "recommendation": "rank_3_small_n",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog_and_readme",
@@ -200,13 +231,28 @@
       "analyzed_n_status": "unresolved_exclusions",
       "participants_stated": "README and catalog state 52 participants (39 females). Published study reports hypnotizability scores available for only 83% of participants (N=43). Catalog N is not analyzed N.",
       "sessions_stated": "OpenNeuro catalog states 1 session.",
-      "tasks_or_conditions": ["baseline1", "baseline2", "induction1", "induction2", "induction3", "induction4", "experience1", "experience2", "experience3", "experience4"],
+      "tasks_or_conditions": [
+        "baseline1",
+        "baseline2",
+        "induction1",
+        "induction2",
+        "induction3",
+        "induction4",
+        "experience1",
+        "experience2",
+        "experience3",
+        "experience4"
+      ],
       "behavioral_labels": "2x2 balanced placebo design crossing induction technique with framing (hypnosis vs relaxation). Pre/post eyes-closed rest.",
       "channel_montage_sampling": "64-channel EasyCap from Brain Products. BrainVision format (.vhdr, .vmrk, .eeg).",
       "access_restrictions": "OpenNeuro CC0. Pinned here to v1.3.1 metadata.",
       "exclusions_or_missingness": "Hypnotizability score missingness (17% missing in published cohort analysis).",
       "compatibility": "BIDS EEG with balanced placebo conditions. Evaluates construct generalization across non-pharmacological induction, not propofol replication.",
-      "blockers": ["construct_mismatch_hypnosis_vs_propofol", "incomplete_hypnotizability_scores", "version_tag_ambiguity_v1_3_1_vs_v1_3_2"],
+      "blockers": [
+        "construct_mismatch_hypnosis_vs_propofol",
+        "incomplete_hypnotizability_scores",
+        "version_tag_ambiguity_v1_3_1_vs_v1_3_2"
+      ],
       "recommendation": "rank_4_construct_generalization",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
@@ -237,13 +283,19 @@
       "analyzed_n_status": "no_analysis_performed",
       "participants_stated": "OpenNeuro catalog states 8 participants. Undergoing endoscopic anesthesia. Catalog N=8 is an enrollment upper bound, not analyzed N.",
       "sessions_stated": "OpenNeuro catalog states 2 sessions.",
-      "tasks_or_conditions": ["anesthesia"],
+      "tasks_or_conditions": [
+        "anesthesia"
+      ],
       "behavioral_labels": "Endoscopy/colonoscopy anesthesia.",
       "channel_montage_sampling": "EEGDash catalog states channel counts 59, 40, 30, 38 across recordings and sampling rates 1000 Hz and 7.8125 Hz.",
       "access_restrictions": "OpenNeuro CC0.",
       "exclusions_or_missingness": "N=8. Variable channel counts across subjects.",
       "compatibility": "Too small and heterogeneous for primary replication.",
-      "blockers": ["n_8_insufficient_for_statistical_holdout", "variable_channel_count", "clinical_surgery_population"],
+      "blockers": [
+        "n_8_insufficient_for_statistical_holdout",
+        "variable_channel_count",
+        "clinical_surgery_population"
+      ],
       "recommendation": "defer",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
@@ -274,13 +326,19 @@
       "analyzed_n_status": "unresolved_exclusions",
       "participants_stated": "OpenNeuro catalog states 128 participants. README states 128 nights from 100 participants. Discrepancy between catalog N and participant N flagged.",
       "sessions_stated": "OpenNeuro catalog states 1 session; README describes full-night recordings.",
-      "tasks_or_conditions": ["Sleep"],
+      "tasks_or_conditions": [
+        "Sleep"
+      ],
       "behavioral_labels": "Human-consensus and AI sleep-stage labels.",
       "channel_montage_sampling": "Micromed Brain Quick Plus Evolution PSG plus Bitbrain wearable headband.",
       "access_restrictions": "OpenNeuro public download.",
       "exclusions_or_missingness": "Participant vs night count discrepancy; BIDS validation error flagged on catalog snippet.",
       "compatibility": "Sleep is a distinct neurophysiological construct. Wearable montage is not comparable to high-density propofol EEG without locked channel map.",
-      "blockers": ["sleep_not_the_replication_construct", "participant_vs_night_count_conflict", "bids_invalid_on_catalog"],
+      "blockers": [
+        "sleep_not_the_replication_construct",
+        "participant_vs_night_count_conflict",
+        "bids_invalid_on_catalog"
+      ],
       "recommendation": "defer",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_conflict_catalog_128_vs_readme_100_subjects",
@@ -311,13 +369,18 @@
       "analyzed_n_status": "no_analysis_performed",
       "participants_stated": "OpenNeuro catalog states 17 participants.",
       "sessions_stated": "OpenNeuro catalog states 1 session.",
-      "tasks_or_conditions": ["movie", "rest"],
+      "tasks_or_conditions": [
+        "movie",
+        "rest"
+      ],
       "behavioral_labels": "Sedation states: awake, mild, deep, recovery. fMRI modality.",
       "channel_montage_sampling": null,
       "access_restrictions": "OpenNeuro CC0.",
       "exclusions_or_missingness": "Not EEG/MEG modality.",
       "compatibility": "Excluded from EEG replication scope.",
-      "blockers": ["not_eeg_or_meg"],
+      "blockers": [
+        "not_eeg_or_meg"
+      ],
       "recommendation": "exclude",
       "statement_provenance": {
         "catalog_n_provenance": "author_assertion_in_openneuro_catalog",
@@ -338,9 +401,25 @@
   ],
   "unknowns": [
     "Exact included subject count on ds005620 after excluded and bad_after_preprocessing flags.",
-    "Unresolved license conflict on ds005620: CC0 (dataset_description.json) vs CC-BY-4.0 (README).",
+    "Unresolved license conflict on ds005620: CC0 (dataset_description.json) vs CC-BY-4.0 (README.txt); primary raw sources re-fetched 2026-10-23; permission not inferred.",
     "Subgroup count reconciliation on ds003969 (98 catalog vs ~100 in source documentation).",
     "Whether any candidate has a locked subject-held-out split already published.",
-    "Whether repository import contracts accept BrainVision, BDF, EDF, and EasyCap montages without new adapter code."
-  ]
+    "Whether repository import contracts accept BrainVision, BDF, EDF, and EasyCap montages without new adapter code.",
+    "ds008836 OpenNeuro version tip moved across v1.0.0 / v1.0.1 / v1.0.2 in public metadata; this matrix pins the DatasetDOI observed in dataset_description.json on 2026-10-23 (v1.0.2) without upgrading scientific claims."
+  ],
+  "primary_source_revalidation": {
+    "date": "2026-10-23",
+    "method": "https_get_public_metadata_only",
+    "participant_payloads_opened": false,
+    "ds005620_license_sources_fetched": [
+      "https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/dataset_description.json",
+      "https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/README.txt"
+    ],
+    "notes": [
+      "dataset_description.json License field is CC0.",
+      "README.txt states This dataset is licensed under CC-BY-4.0.",
+      "Bare path README (no .txt) returns 404 on OpenNeuroDatasets/ds005620 main/master.",
+      "No participant EEG payloads downloaded or inspected."
+    ]
+  }
 }

@@ -1,6 +1,6 @@
 # Batch 3 — Cross-Dataset Replication Feasibility
 
-Access date: 2026-10-16. Verification audit date: 2026-10-22. Package maintainers: Grok Chat B, Antigravity Agent C.
+Access date: 2026-10-16. Verification audit date: 2026-10-23. Package maintainers: Grok Chat B, Antigravity Agent C, Cursor Agent C.
 Status: Research feasibility audit only. Not empirical evidence.
 Project Posture: **HOLD / SYNTHETIC_ONLY**.
 No participant data were downloaded, opened, preprocessed, or analyzed. No signal files were touched.
@@ -8,6 +8,13 @@ Inspection levels used: `listed_in_catalog`, `metadata_inspected`, `files_locall
 Every candidate in this package is strictly at `listed_in_catalog` or `metadata_inspected` level. None are locally available or analyzed.
 
 A successful feasibility note does not validate a theory, does not establish causal or biological validity, and does not emit a scientific PASS.
+
+---
+
+Primary raw license sources re-fetched 2026-10-23 (public metadata only; no participant payloads):
+- `https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/dataset_description.json` → `"License": "CC0"`
+- `https://raw.githubusercontent.com/OpenNeuroDatasets/ds005620/main/README.txt` → `This dataset is licensed under CC-BY-4.0.`
+- Bare `README` (no `.txt`) returns HTTP 404 on `main`/`master`. Permission is not inferred from either statement.
 
 ---
 
@@ -41,9 +48,9 @@ To preserve epistemic integrity, every candidate metadata item is audited and cl
 
 | Candidate Accession | Catalog N Provenance | License Provenance | DOI Provenance | Hardware / Montage Provenance | Empirical Status |
 |:---|:---|:---|:---|:---|:---|
-| `ds005620` | Author assertion (EEGDash / catalog text: 21 subjects) | Unresolved conflict: CC0 (`dataset_description.json`) vs CC-BY-4.0 (`README`) | OpenNeuro DOI resolver record (`10.18112/openneuro.ds005620.v1.0.0`) | Independently sourced from sidecar JSON (`sub-1010`, 5000 Hz, 65 ch) | Unverified (feasibility metadata only) |
+| `ds005620` | Author assertion (EEGDash / catalog text: 21 subjects) | Unresolved conflict: CC0 (`dataset_description.json`) vs CC-BY-4.0 (`README.txt`) | OpenNeuro DOI resolver record (`10.18112/openneuro.ds005620.v1.0.0`) | Independently sourced from sidecar JSON (`sub-1010`, 5000 Hz, 65 ch) | Unverified (feasibility metadata only) |
 | `ds003969` | Author assertion (catalog states 98; source text reports ~100) | Author declaration: CC0 Public Domain in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds003969.v1.0.0`) | Independently sourced from NEMAR & publisher records (1024 Hz, BioSemi ActiveTwo 64 ch) | Unverified (feasibility metadata only) |
-| `ds008836` | Author assertion (catalog summary: 39 practitioners, 2 sessions) | Verified CC0 on OpenNeuro catalog page (audit date: 2026-10-21/22) | OpenNeuro DOI resolver record (`10.18112/openneuro.ds008836.v1.0.0`) | Author assertion in dataset description (64 ch EEG + ECG/EDA/respiration/EMG) | Unverified (feasibility metadata only) |
+| `ds008836` | Author assertion (catalog summary: 39 practitioners, 2 sessions) | Verified CC0 on OpenNeuro catalog page (audit date: 2026-10-21/22) | OpenNeuro DOI / DatasetDOI tip (`10.18112/openneuro.ds008836.v1.0.2`; earlier pins v1.0.0/v1.0.1 noted) | Author assertion in dataset description (64 ch EEG + ECG/EDA/respiration/EMG) | Unverified (feasibility metadata only) |
 | `ds001787` | Author assertion (catalog and README state 24 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds001787.v1.1.1`) | Author assertion in BIDS README (BioSemi 80 ch, 2048 Hz -> 256 Hz) | Unverified (feasibility metadata only) |
 | `ds004572` | Author assertion (catalog states 52 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds004572.v1.3.1`) | Independently sourced from published study ($N=43$ analyzed) and BrainVision sidecars | Unverified (feasibility metadata only) |
 | `ds004541` | Author assertion (catalog states 8 subjects) | Author declaration: CC0 in OpenNeuro metadata | OpenNeuro DOI resolver record (`10.18112/openneuro.ds004541.v1.0.0`) | Independently sourced from EEGDash catalog (variable 30–59 channels) | Unverified (feasibility metadata only) |
@@ -70,7 +77,7 @@ To preserve epistemic integrity, every candidate metadata item is audited and cl
 - **Title**: Heartbeat-evoked responses and self-reported meditative depth in Vipassana practitioners
 - **Role**: Autonomic covariate candidate (Rank 2)
 - **Modality**: High-density EEG (64 channels) + concurrent ECG, respiration, EMG, and electrodermal activity (EDA)
-- **Primary Source**: OpenNeuro `v1.0.1` / `v1.0.2` (https://openneuro.org/datasets/ds008836), DOI `10.18112/openneuro.ds008836.v1.0.0`
+- **Primary Source**: OpenNeuro `v1.0.2` (https://openneuro.org/datasets/ds008836/versions/1.0.2), DOI `10.18112/openneuro.ds008836.v1.0.2` (public `dataset_description.json` DatasetDOI re-fetched 2026-10-23; earlier catalog pins included v1.0.0/v1.0.1)
 - **License**: CC0 Public Domain Dedication (verified on OpenNeuro catalog page 2026-10-21/22)
 - **Catalog Enrollment**: 39 participants, 2 sessions.
 - **Analyzed Cohort Status**: Catalog states 39 experienced meditators. No analysis performed; usable N after artifact rejection is unverified.
