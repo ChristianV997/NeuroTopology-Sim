@@ -231,6 +231,17 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertNotIn("--root", candidate_step.group(1))
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", candidate_step.group(1))
 
+    def test_every_workflow_checkout_discards_persisted_credentials(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        checkout_blocks = re.findall(
+            r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - |^\s{0,4}\S|\Z)",
+            workflow,
+        )
+        self.assertEqual(len(checkout_blocks), 3)
+        for index, block in enumerate(checkout_blocks, start=1):
+            with self.subTest(checkout=index):
+                self.assertRegex(block, r"(?m)^\s+persist-credentials: false\s*$")
+
     def test_optional_eeg_profile_discovers_only_changed_mne_candidate_paths(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         job = re.search(r"(?ms)^  optional-eeg-suite:\n(.*?)(?=^  [a-zA-Z0-9_-]+:|\Z)", workflow)
@@ -1051,25 +1062,34 @@ def test_fixture():
         self.assertEqual(helper.select_components(workflow_owned_changes), [])
         self.assertEqual(helper._unmapped_candidate_paths(workflow_owned_changes), [])
 
-    def test_dmd_production_bridge_is_paired_but_oracle_only_change_blocks(self):
+    def test_dmd_oracle_is_reference_support_for_the_production_bridge(self):
         helper = _helper()
         implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
         oracle_test = "tests/dmd_ep2_oracle/test_oracle.py"
         bridge_test = "tests/dmd_ep2_oracle/test_production_bridge.py"
-        self.assertEqual(
-            helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][-1],
-            {"implementation": implementation, "test": bridge_test},
-        )
+        spec = helper.COMPONENTS["dmd_crouzeix"]
         self.assertNotIn(
             oracle_test,
-            {pair["test"] for pair in helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"]},
+            {pair["test"] for pair in spec["candidate_pairs"]},
+        )
+        self.assertIn(oracle_test, spec["tests"])
+        self.assertIn(oracle_test, spec["triggers"])
+        self.assertIn(oracle_test, spec["independent_reference_tests"])
+        self.assertEqual(spec["support_files"][oracle_test], (bridge_test,))
+        self.assertEqual(
+            {pair["test"] for pair in spec["candidate_pairs"]},
+            {
+                "tests/dmd_crouzeix_contract/test_production_contract.py",
+                "tests/experimental/test_dmd_crouzeix.py",
+                bridge_test,
+            },
         )
         self.assertEqual(
-            helper.COMPONENTS["dmd_crouzeix"]["environment_overrides"],
+            spec["environment_overrides"],
             {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         )
-        self.assertEqual(helper.select_components({oracle_test}), [])
-        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [oracle_test])
+        self.assertEqual(helper.select_components({oracle_test}), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [])
         self.assertEqual(helper.select_components({bridge_test}), ["dmd_crouzeix"])
         self.assertEqual(helper._unmapped_candidate_paths({bridge_test}), [])
         self.assertEqual(
@@ -1082,8 +1102,9 @@ def test_fixture():
             _repo(root, with_candidate=False)
             _write(root, implementation, "def marker(): return 'fixture'\n")
             _write(root, oracle_test, "def oracle_fixture(): return 1\n")
-            base = _commit(root, "DMD production implementation and stable oracle fixture")
             _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            base = _commit(root, "DMD production implementation and stable oracle fixture")
+            _write(root, oracle_test, "def oracle_fixture(): return 2\n")
             head = _commit(root, "DMD production bridge candidate test")
             report_path = root / "outputs/report.json"
             observed_environments = []
@@ -1100,10 +1121,18 @@ def test_fixture():
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["selected_components"], ["dmd_crouzeix"])
         component = report["components"][0]
-        self.assertEqual(component["tests_to_run"], [bridge_test])
-        self.assertEqual(observed_environments, ["1"])
+        self.assertEqual(component["tests_to_run"], [bridge_test, oracle_test])
+        self.assertEqual(observed_environments, ["1", "1"])
         self.assertTrue(all(item["environment_overrides"] == {"DMD_EP2_REQUIRE_PRODUCTION": "1"}
                             for item in component["executions"]))
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, oracle_test, "def oracle_fixture(): return 1\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            inspection = helper.inspect_component("dmd_crouzeix", root, {oracle_test})
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertEqual(inspection["missing_implementations"], [implementation])
 
     def test_candidate_environment_overrides_are_allowlisted_and_do_not_echo_secrets(self):
         helper = _helper()
@@ -3025,10 +3054,6 @@ def test_fixture():
     def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
         helper = _helper()
         current_open_pr_gaps = (
-            # PR #400's standalone mathematical oracle does not exercise the
-            # registered production DMD implementation; do not relabel it as
-            # production coverage merely because the same PR adds a bridge test.
-            (400, "tests/dmd_ep2_oracle/test_oracle.py"),
             (400, "tests/dmd_ep2_oracle/test_unregistered_extra.py"),
         )
         for pr_number, path in current_open_pr_gaps:
@@ -3040,7 +3065,6 @@ def test_fixture():
         helper = _helper()
         report_only_paths = (
             "tests/research/batch3/test_claim_matrix_supplement.py",  # unregistered sibling
-            "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 standalone oracle
         )
         for path in report_only_paths:
             with self.subTest(path=path):

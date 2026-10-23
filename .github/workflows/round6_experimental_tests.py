@@ -712,17 +712,27 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
         "tests": (
             "tests/dmd_crouzeix_contract/test_production_contract.py",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_crouzeix_contract/test_production_contract.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
+        ),
+        "support_files": {
+            "tests/dmd_ep2_oracle/test_oracle.py": (
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
+            ),
+        },
+        "independent_reference_tests": (
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "environment_overrides": {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
@@ -730,11 +740,13 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "candidate_test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
     },
     "docker_context_policy": {
