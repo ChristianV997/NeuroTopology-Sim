@@ -66,6 +66,15 @@ EXPECTED_CAMPAIGN_STATES = {
     "ABORTED",
 }
 EXPECTED_TERMINAL_STATES = {"COMPLETED", "ABORTED"}
+EXPECTED_TRANSITIONS = {
+    "PLANNING": {"REGISTERED", "ABORTED"},
+    "REGISTERED": {"EXECUTING", "ABORTED"},
+    "EXECUTING": {"INTERRUPTED", "COMPLETED", "ABORTED"},
+    "INTERRUPTED": {"RESUMED", "ABORTED"},
+    "RESUMED": {"INTERRUPTED", "COMPLETED", "ABORTED"},
+    "COMPLETED": set(),
+    "ABORTED": set(),
+}
 FORBIDDEN_PASS = {"PASS", "scientific_PASS", "FORMAL_BAYES_FACTOR"}
 
 
@@ -110,8 +119,11 @@ def evaluate(doc: dict) -> dict:
         issues.append("synthetic_demo must be false")
     if doc.get("rea_status") != "REA_UNAVAILABLE":
         issues.append("rea_status must be REA_UNAVAILABLE")
-    if doc.get("formal_bayes_factor") is not None or doc.get("k_value") is not None:
-        issues.append("formal k must be null")
+    # Top-level formal K fields must be present and explicitly null (unset-by-omission is not enough).
+    if "formal_bayes_factor" not in doc or doc.get("formal_bayes_factor") is not None:
+        issues.append("formal_bayes_factor must be present and null")
+    if "k_value" not in doc or doc.get("k_value") is not None:
+        issues.append("k_value must be present and null")
 
     limits = doc.get("protocol_limits")
     if not isinstance(limits, dict):
@@ -147,14 +159,20 @@ def evaluate(doc: dict) -> dict:
     else:
         claims = {str(item.get("claim_id")) for item in claims_raw if item.get("claim_id")}
         for item in claims_raw:
+            cid = item.get("claim_id")
             if item.get("blocked_if_missing_baseline") is not True:
-                issues.append(f"claim {item.get('claim_id')} must block if baseline is missing")
+                issues.append(f"claim {cid} must block if baseline is missing")
             if "scientific_pass" in item and item.get("scientific_pass") is not False:
-                issues.append(f"claim {item.get('claim_id')} scientific_pass must be false")
+                issues.append(f"claim {cid} scientific_pass must be false")
             if "formal_bayes_factor" in item and item.get("formal_bayes_factor") is not None:
-                issues.append(f"claim {item.get('claim_id')} formal_bayes_factor must be null")
+                issues.append(f"claim {cid} formal_bayes_factor must be null")
             if "k_value" in item and item.get("k_value") is not None:
-                issues.append(f"claim {item.get('claim_id')} k_value must be null")
+                issues.append(f"claim {cid} k_value must be null")
+            if cid == "NO-SCIENTIFIC-PASS":
+                if "scientific_pass" not in item or item.get("scientific_pass") is not False:
+                    issues.append("claim NO-SCIENTIFIC-PASS must set scientific_pass false")
+                if "formal_bayes_factor" not in item or item.get("formal_bayes_factor") is not None:
+                    issues.append("claim NO-SCIENTIFIC-PASS must set formal_bayes_factor null")
     if not REQUIRED_CLAIMS.issubset(claims):
         issues.append("missing claim")
 
@@ -243,6 +261,16 @@ def evaluate(doc: dict) -> dict:
     if not isinstance(transitions, dict) or set(transitions.keys()) != EXPECTED_CAMPAIGN_STATES:
         issues.append("invalid valid_state_transitions")
     else:
+        for state, expected_targets in EXPECTED_TRANSITIONS.items():
+            raw_targets = transitions.get(state)
+            if not isinstance(raw_targets, list) or not all(isinstance(t, str) for t in raw_targets):
+                issues.append(f"invalid transitions for {state}")
+                continue
+            targets = set(raw_targets)
+            if targets != expected_targets:
+                issues.append(f"invalid transition set for {state}")
+            if not targets.issubset(EXPECTED_CAMPAIGN_STATES):
+                issues.append(f"non-protocol transition target from {state}")
         for term in EXPECTED_TERMINAL_STATES:
             if transitions.get(term) != []:
                 issues.append(f"terminal state {term} must have empty transitions")
@@ -452,6 +480,8 @@ def test_missing_fields_and_controls_fail_closed() -> None:
         "matrix_id",
         "status",
         "evidence_class",
+        "formal_bayes_factor",
+        "k_value",
         "protocol_limits",
         "sample_requirements",
         "replication",
@@ -481,6 +511,8 @@ def test_malformed_values_fail_closed_without_uncaught_exception() -> None:
         lambda d: d.__setitem__("formal_bayes_factor", 3.2),
         lambda d: d.__setitem__("k_value", 5.0),
         lambda d: d["valid_state_transitions"].__setitem__("COMPLETED", ["EXECUTING"]),
+        lambda d: d["valid_state_transitions"].__setitem__("EXECUTING", ["NOT_A_STATE", "PASS"]),
+        lambda d: d["valid_state_transitions"].__setitem__("PLANNING", ["COMPLETED"]),
         lambda d: d["resumability_policy"].__setitem__("prohibit_terminal_state_reopening", False),
         lambda d: d["claims"].append("not-a-dict"),
     ):
@@ -490,6 +522,45 @@ def test_malformed_values_fail_closed_without_uncaught_exception() -> None:
         assert report["complete"] is False
         assert report["scientific_pass"] is False
         assert report["formal_bayes_factor"] is None
+
+
+def test_transition_graph_and_required_null_keys_reject_false_success() -> None:
+    """Regression: invalid edges / omitted formal-K keys must not yield complete=True."""
+    # Invalid non-protocol destination previously passed complete=True.
+    doc = load_matrix()
+    doc["valid_state_transitions"]["EXECUTING"] = ["NOT_A_STATE", "PASS"]
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
+    assert report["formal_bayes_factor"] is None
+    assert report["k_value"] is None
+
+    # Skipping REGISTERED/EXECUTING into COMPLETED previously passed complete=True.
+    doc = load_matrix()
+    doc["valid_state_transitions"]["PLANNING"] = ["COMPLETED"]
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
+
+    # Omitting top-level formal_bayes_factor / k_value previously passed complete=True.
+    doc = load_matrix()
+    doc.pop("formal_bayes_factor", None)
+    doc.pop("k_value", None)
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
+    assert report["formal_bayes_factor"] is None
+    assert report["k_value"] is None
+
+    # NO-SCIENTIFIC-PASS must keep explicit scientific_pass=false and formal_bayes_factor=null.
+    doc = load_matrix()
+    for item in doc["claims"]:
+        if item.get("claim_id") == "NO-SCIENTIFIC-PASS":
+            item.pop("scientific_pass", None)
+            item.pop("formal_bayes_factor", None)
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
 
 
 def test_complete_matrix_never_implies_scientific_success() -> None:
