@@ -21,7 +21,7 @@ import importlib.util
 import os
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import CodeType, ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 
@@ -67,6 +67,7 @@ def _expected_production_source():
 def _assert_checkout_production_source(dmd):
     checkout_root = Path(__file__).resolve().parents[2]
     expected = _expected_production_source().resolve()
+    expected_name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
     raw_path = getattr(dmd, "__file__", None)
     if not raw_path:
         raise AssertionError("production module has no source file path")
@@ -82,11 +83,50 @@ def _assert_checkout_production_source(dmd):
             "production source is not this checkout's dmd_crouzeix.py: "
             f"expected {expected}, got {actual}"
         )
-    expected_name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
     if getattr(dmd, "__name__", None) != expected_name:
         raise AssertionError(
             f"unexpected production module name: {getattr(dmd, '__name__', None)!r}"
         )
+
+    spec = getattr(dmd, "__spec__", None)
+    spec_origin = getattr(spec, "origin", None)
+    if not spec_origin or Path(spec_origin).resolve() != expected:
+        raise AssertionError(
+            "production module import spec does not identify this checkout's source"
+        )
+    loader = getattr(dmd, "__loader__", None)
+    if loader is None or loader is not getattr(spec, "loader", None):
+        raise AssertionError("production module was not loaded by its declared source loader")
+
+    # Import metadata and co_filename can both be forged by an in-process
+    # stub. Compare the exercised function code against definitions compiled
+    # directly from the exact source file. This is a test-time identity check,
+    # not a security boundary against arbitrary Python code execution.
+    source_code = compile(expected.read_text(encoding="utf-8"), str(expected), "exec")
+    source_functions = {
+        item.co_name: item
+        for item in source_code.co_consts
+        if isinstance(item, CodeType)
+    }
+
+    for symbol in (
+        "ep2_hamiltonian",
+        "diagnose_ep2",
+        "discrete_eigenvalue_from_frequency_hz",
+        "alias_ambiguity_report",
+    ):
+        function = getattr(dmd, symbol, None)
+        code = getattr(function, "__code__", None)
+        if (
+            function is None
+            or getattr(function, "__module__", None) != expected_name
+            or code is None
+            or Path(code.co_filename).resolve() != expected
+            or source_functions.get(symbol) != code
+        ):
+            raise AssertionError(
+                f"production function {symbol!r} does not match this checkout's source"
+            )
     return actual
 
 
@@ -239,6 +279,45 @@ class ProductionBridgePolicyTests(unittest.TestCase):
                 ProductionImportBridgeTests.dmd = previous
             elif hasattr(ProductionImportBridgeTests, "dmd"):
                 del ProductionImportBridgeTests.dmd
+
+    def test_rejects_stub_claiming_exact_production_source_path(self):
+        """A module-name/path-shaped stub is not the imported production leaf."""
+        expected = _expected_production_source().resolve()
+        stub = SimpleNamespace(
+            __file__=str(expected),
+            __name__="neurotopology_sim.experimental.dynamics.dmd_crouzeix",
+        )
+        with self.assertRaisesRegex(AssertionError, "production module|production function"):
+            _load_production_for_suite(
+                True,
+                loader=lambda: stub,
+                source_path=expected,
+            )
+
+    def test_rejects_stub_with_forged_import_and_function_metadata(self):
+        """Metadata alone cannot make unrelated function bodies the production leaf."""
+        expected = _expected_production_source().resolve()
+        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+        stub = ModuleType(name)
+        stub.__file__ = str(expected)
+        stub.__spec__ = importlib.util.spec_from_file_location(name, expected)
+        stub.__loader__ = stub.__spec__.loader
+        spoofed_functions = compile(
+            "\n".join(
+                f"def {symbol}(*args, **kwargs): return 'spoofed'"
+                for symbol in (
+                    "ep2_hamiltonian",
+                    "diagnose_ep2",
+                    "discrete_eigenvalue_from_frequency_hz",
+                    "alias_ambiguity_report",
+                )
+            ),
+            str(expected),
+            "exec",
+        )
+        exec(spoofed_functions, stub.__dict__)
+        with self.assertRaisesRegex(AssertionError, "production function"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
 
     def test_oracle_only_skip_is_limited_to_an_absent_leaf(self):
         missing_source = _expected_production_source().with_name(
