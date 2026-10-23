@@ -84,6 +84,7 @@ def _load() -> dict:
 
 def test_inventory_is_valid_json_with_hold_status():
     data = _load()
+    assert data["schema_version"] == "2"
     assert data["project_status"] == "HOLD / SYNTHETIC_ONLY"
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", data["retrieval_date_utc"])
     assert set(data["allowed_dispositions"]) == _DISPOSITIONS
@@ -164,3 +165,57 @@ def test_out_of_scope_candidates_are_rejected_or_referenced_only():
 def test_all_named_leads_are_present():
     ids = {c["id"] for c in _load()["candidates"]}
     assert _NAMED_LEADS <= ids
+
+
+def test_revalidated_release_tags_match_primary_upstream_records():
+    candidates = {c["id"]: c for c in _load()["candidates"]}
+    expected_releases = {
+        "openresearch": ("v0.2.20", "2026-10-21", "37a367bcdbc26ba2a492bccf12b85bddc5852567"),
+        "rea": ("rea-agents-6.7.0", "2026-10-18", "27dc42d10249f0410904a75c0997842eb03b931c"),
+        "persim": ("v0.4.1", "2026-10-18", "00144a82949c214283655f68d1985725882eea59"),
+        "gudhi": ("tags/gudhi-release-3.13.0", "2026-07-02", "5dbe510bed5d8d700ec7243fd915769fb67964a2"),
+    }
+    for candidate_id, (tag, published, commit) in expected_releases.items():
+        release = candidates[candidate_id]["latest_release"]
+        assert release["tag"] == tag
+        assert release["published_utc"] == published
+        assert release["commit_sha"] == commit
+        assert re.fullmatch(r"[0-9a-f]{40}", release["commit_sha"])
+        assert release["release_api_url"].startswith("https://api.github.com/repos/")
+        assert release["tag_ref_api_url"].startswith("https://api.github.com/repos/")
+
+
+def test_inventory_distinguishes_historical_snapshot_from_revalidated_releases():
+    data = _load()
+    assert data["retrieval_date_utc"] == "2026-10-17"
+    assert data["release_revalidated_at_utc"] == "2026-10-22"
+    assert "not install pins" in data["release_revalidation_method"]
+    assert "not imply compatibility" in data["release_scope_note"]
+
+
+def test_gudhi_repository_license_is_not_presented_as_package_or_component_clearance():
+    gudhi = next(c for c in _load()["candidates"] if c["id"] == "gudhi")
+    assert gudhi["github_license_label"] == "MIT"
+    assert gudhi["package_version"] == "3.13.0"
+    assert gudhi["package_license_metadata_status"] == "not_declared"
+    assert gudhi["package_license_declaration"] is None
+    assert gudhi["license_status"] == "permissive_custom_review_required"
+    assert "license_review" in gudhi["adoption_prerequisites"]
+    assert "module_specific_dependency_scope_review" in gudhi["adoption_prerequisites"]
+    caveat = gudhi["component_license_caveat"]
+    assert "GPLv3" in caveat and "LGPL" in caveat
+    assert "repository-level" in _load()["license_scope_note"]
+    assert "transitive-dependency" in _load()["license_scope_note"]
+    assert "https://gudhi.inria.fr/licensing/" in gudhi["evidence_urls"]
+    assert "https://pypi.org/pypi/gudhi/3.13.0/json" in gudhi["evidence_urls"]
+    assert gudhi["latest_release"]["release_api_url"].endswith("/releases/tags/tags/gudhi-release-3.13.0")
+    assert gudhi["latest_release"]["tag_ref_api_url"].endswith("/git/ref/tags/tags/gudhi-release-3.13.0")
+
+
+def test_persim_package_license_evidence_is_separate_from_repository_license_label():
+    persim = next(c for c in _load()["candidates"] if c["id"] == "persim")
+    assert persim["github_license_label"] == "MIT"
+    assert persim["package_version"] == "0.4.1"
+    assert persim["package_license_metadata_status"] == "declared_by_pypi_classifier"
+    assert "OSI Approved :: MIT License" in persim["package_license_declaration"]
+    assert persim["package_license_evidence_url"] == "https://pypi.org/project/persim/0.4.1/"

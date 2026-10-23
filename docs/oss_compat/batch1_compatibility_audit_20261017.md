@@ -189,3 +189,47 @@ No other path changed. Not touched: PR #375, PR #391, `external_tools/`, and
 ## 10. Pull request
 
 Recorded in the session handoff.
+
+## 11. Release and package-license revalidation — 2026-10-22
+
+The matrix and repository-head fields above describe the 2026-10-17 snapshot;
+they are not silently rewritten as if observed on this later date. The
+machine-readable inventory now records a separate release revalidation date,
+exact tag refs, release dates, and resolved commit objects for the four rows
+whose release records changed or whose tag spelling needed correction:
+
+| Inventory row | Revalidated release | Published | Resolved commit |
+|---|---|---|---|
+| `openresearch` | [`v0.2.20`](https://api.github.com/repos/alphaXiv/OpenResearch/releases/tags/v0.2.20) | 2026-10-21 | `37a367bcdbc26ba2a492bccf12b85bddc5852567` |
+| `rea` | [`rea-agents-6.7.0`](https://api.github.com/repos/morluto/rea/releases/tags/rea-agents-6.7.0) | 2026-10-18 | `27dc42d10249f0410904a75c0997842eb03b931c` |
+| `persim` | [`v0.4.1`](https://api.github.com/repos/scikit-tda/persim/releases/tags/v0.4.1) | 2026-10-18 | `00144a82949c214283655f68d1985725882eea59` |
+| `gudhi` | [`tags/gudhi-release-3.13.0`](https://api.github.com/repos/GUDHI/gudhi-devel/git/ref/tags/tags/gudhi-release-3.13.0) | 2026-07-02 | `5dbe510bed5d8d700ec7243fd915769fb67964a2` |
+
+For GUDHI, the literal upstream tag name itself contains the prefix `tags/`;
+the verified Git ref is `refs/tags/tags/gudhi-release-3.13.0`. The GitHub root
+license label and repository `LICENSE` text are MIT evidence at repository
+scope only. PyPI's 3.13.0 JSON metadata has no declared `license` or
+`license_expression`; official [GUDHI licensing guidance](https://gudhi.inria.fr/licensing/)
+describes MIT library code while warning that some modules/dependencies use
+GPLv3/LGPL components (including CGAL, Miniball, and PyKeOps). Therefore the
+inventory now requires both `license_review` and
+`module_specific_dependency_scope_review`; it does not assert blanket package
+or transitive-license clearance. Evidence also includes the pinned [root
+LICENSE](https://github.com/GUDHI/gudhi-devel/blob/1c4ba125edf2822f823fb6669cfac067dafd10d7/LICENSE),
+[PyPI project](https://pypi.org/project/gudhi/3.13.0/), and
+[PyPI metadata](https://pypi.org/pypi/gudhi/3.13.0/json) and
+[exact GitHub release record](https://api.github.com/repos/GUDHI/gudhi-devel/releases/tags/tags/gudhi-release-3.13.0).
+
+Persim's package-level statement is recorded separately from GitHub's
+repository label: the [PyPI 0.4.1 project metadata](https://pypi.org/project/persim/0.4.1/)
+declares the OSI Approved MIT License classifier. That statement is limited to
+the package metadata inspected; it does not imply transitive/component
+licensing or compatibility.
+
+This revalidation used public GitHub Releases/tag-ref and PyPI metadata plus
+official GUDHI licensing guidance. No candidate was cloned, installed,
+imported, executed, or copied; no datasets were accessed. Version and license
+records are evidence snapshots, not adoption approval, security certification,
+legal clearance, compatibility conclusions, or scientific evidence. The
+initial `head_sha` and `last_commit_utc` values remain explicitly historical
+and require a separate revalidation before they are treated as current.
