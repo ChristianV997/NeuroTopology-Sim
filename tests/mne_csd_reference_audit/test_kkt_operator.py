@@ -224,3 +224,37 @@ def test_sensor_at_the_raw_origin_is_refused_as_mne_refuses_it(offset):
     pos = np.vstack([_positions("tetrahedron_4"), [offset, offset, offset]])
     with pytest.raises(OperatorInputError, match="zero"):
         csd_operator(pos, radius=RADIUS)
+
+
+# Regression (2026-10-23, post-merge QA audit of #402): bool lambda2 and stiffness were accepted (False as 0, True as
+# stiffness 1), and True for lambda2 was refused only by the range check. The pinned MNE 1.13.2 refuses all of them
+# with TypeError before any range check: `_validate_type(..., "numeric", ...)` (mne/preprocessing/_csd.py L125, L129)
+# admits float, np.floating and int-like, and int-like goes through `_ensure_int`, which raises for bool
+# (mne/utils/check.py L25-37, L585-592, L616). The reference already refuses bool n_legendre_terms the same way.
+@pytest.mark.parametrize("field", ["stiffness", "lambda2"])
+@pytest.mark.parametrize("value", [True, False, np.True_, np.False_])
+def test_bool_spline_parameters_are_refused_as_mne_refuses_them(field, value):
+    with pytest.raises(TypeError, match=field):
+        csd_operator(_positions("tetrahedron_4"), radius=RADIUS, **{field: value})
+
+
+# Regression (2026-10-23, post-merge QA audit of #402): apply_csd accepted 3-D data. With shape (n, n, t), numpy's
+# matmul treats the data as a stack of n matrices and contracts the operator with axis 1, not the channel axis, and
+# returns a finite array of the right shape with the wrong values (55% relative error on tetrahedron_4).
+def test_apply_csd_refuses_data_with_more_than_two_axes():
+    M = csd_operator(_positions("tetrahedron_4"), radius=RADIUS)
+    with pytest.raises(OperatorInputError, match="channels x times"):
+        apply_csd(M, np.zeros((4, 4, 10)))
+
+
+@pytest.mark.parametrize("bad", [np.ones((4, 3)), np.ones(4), np.ones((4, 4, 1)), np.full((4, 4), np.nan)])
+def test_apply_csd_refuses_a_non_square_or_non_finite_operator(bad):
+    with pytest.raises(OperatorInputError, match="operator"):
+        apply_csd(bad, np.ones((4, 2)))
+
+
+def test_apply_csd_still_accepts_one_and_two_dimensional_channel_data():
+    M = csd_operator(_positions("tetrahedron_4"), radius=RADIUS)
+    np.testing.assert_allclose(apply_csd(M, np.ones(4)), M @ np.ones(4), rtol=0, atol=0)
+    data = np.random.default_rng(3).standard_normal((4, 5))
+    np.testing.assert_allclose(apply_csd(M, data), M @ data, rtol=0, atol=0)

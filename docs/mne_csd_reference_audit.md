@@ -111,6 +111,8 @@ independently. No code is transcribed in `tools/`:
 | `n_legendre_terms < 1` | refuses (`_csd.py:134-136`) | refuses |
 | `n_legendre_terms` not a true integer (bool, float, NaN) | refuses: `_ensure_int` raises `TypeError` for bool and non-integers (`mne/utils/check.py` L25-37, used at `_csd.py:133`) | refuses with `TypeError` (`legendre._series`). Before the 2026-10-21 fix, `True` was accepted as one term |
 | `"auto"` sphere | fits a sphere from digitisation | **not accepted**: the reference takes an explicit centre and radius only |
+| `stiffness` or `lambda2` given as a bool (`True`, `False`, `np.bool_`) | refuses: `_validate_type(..., "numeric")` (`_csd.py:125`, `:129`) admits float and int-like only, and int-like goes through `_ensure_int`, which raises `TypeError` for bool (`mne/utils/check.py` L25-37, L585-592, L616) | refuses with `TypeError` (`kkt._refuse_bool`; test `test_bool_spline_parameters_are_refused_as_mne_refuses_them`). Before the 2026-10-23 post-merge fix, `False` was accepted as 0 for both and `True` as stiffness 1 |
+| `apply_csd` data with more than two axes, or a non-square or non-finite operator | not applicable: MNE applies the operator per epoch to `(n_picks, n_times)` slices (`_csd.py` epoch loop) | **refuses** (`kkt.apply_csd`; tests `test_apply_csd_refuses_data_with_more_than_two_axes`, `test_apply_csd_refuses_a_non_square_or_non_finite_operator`). Before the 2026-10-23 fix, `(n, n, t)` data was contracted on the wrong axis without error |
 | single channel | a 1×1 operator of zeros (source-derived: with one channel `Z = 0`, so `C = 0`) | **refuses** (`kkt.py`, at least two channels). Stricter than MNE, stated here. Not executed here |
 | sensor exactly at a non-zero sphere origin | NaN with a RuntimeWarning (source-derived: `pos / ||pos||` divides by zero after centring) | **refuses** (`kkt.py`, a sensor coincides with the sphere origin). Stricter than MNE, stated here. Not executed here |
 | Bad EEG channels, or channel picks | refuses (`_csd.py:108-123`) | **not modelled**: the reference takes positions only |
@@ -264,10 +266,10 @@ assertions and bounds. The snapshot command does not regenerate their numerical 
 - Implementation paths: `tools/mne_csd_reference_audit/kkt.py`, `legendre.py`, `montages.py`, `pin.py`,
   `report.py`, `__main__.py`.
 - Test paths the gate runs, each with zero skips expected: `tests/mne_csd_reference_audit/test_kkt_operator.py`
-  (81), `test_legendre_constants.py` (18), `test_isolation_and_pin.py` (41),
+  (98), `test_legendre_constants.py` (23), `test_isolation_and_pin.py` (44),
   `test_mne_integration_optional.py` (8, deterministic; the name is a legacy mapping key and does not mean optional).
 - Command: `python .github/workflows/round6_experimental_tests.py --base <PR base> --head <PR head> --always-component surrogate_nulls --report outputs/round6_experimental_ci_report.json`.
-- Expected for the component `mne_csd_reference_audit` on main (gate blob 3e737372): status PASS, four executions, 158 collected (84 / 23 / 43 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts. The live test is external (`optional-eeg-suite`) and is not counted.
+- Expected for the component `mne_csd_reference_audit` after the 2026-10-23 post-merge follow-up (gate blob 03105147 on main 648e5e4f): status PASS, four executions, 173 collected (98 / 23 / 44 / 8), 0 skipped, 0 failed, 0 errors, 0 timeouts. The live test is external (`optional-eeg-suite`) and is not counted.
 - Not mapped and not counted: `tests/optional_live_mne/test_mne_csd_live_parity.py`. It must not be added to a
   required surface unless CI installs MNE 1.13.2.
 - Renaming `test_mne_integration_optional.py` requires a mapping change, which belongs to the workflow owner.

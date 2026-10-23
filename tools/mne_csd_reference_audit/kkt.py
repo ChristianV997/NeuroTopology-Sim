@@ -41,7 +41,16 @@ def _check_radius(radius: float) -> None:
         raise OperatorInputError("radius must be finite and > 0")
 
 
+def _refuse_bool(value, name: str) -> None:
+    # MNE 1.13.2 checks lambda2 and stiffness with _validate_type(..., "numeric") (_csd.py:125, :129). "numeric" admits
+    # float, np.floating and int-like, and int-like goes through _ensure_int, which raises TypeError for bool and np.bool_
+    # (mne/utils/check.py L25-37, L585-592, L616). Refuse them the same way, before any range check.
+    if isinstance(value, (bool, np.bool_)):
+        raise TypeError(f"{name} must be numeric, got {type(value).__name__}")
+
+
 def _check_stiffness(stiffness: float) -> None:
+    _refuse_bool(stiffness, "stiffness")
     # MNE 1.13.2 _csd.py:130-131 rejects stiffness < 0. Non-finite values are refused here too,
     # which is stricter than MNE (MNE would propagate NaN).
     if not (math.isfinite(stiffness) and stiffness >= 0.0):
@@ -75,6 +84,7 @@ def legendre_matrices(unit: np.ndarray, *, stiffness: float = 4.0, n_terms: int 
 def regularise(G: np.ndarray, lambda2: float) -> np.ndarray:
     # Same domain as the pinned MNE 1.13.2: `if not 0 <= lambda2 < 1` (mne/preprocessing/_csd.py L126-127).
     # The chained comparison is False for NaN, so NaN and inf are refused as well.
+    _refuse_bool(lambda2, "lambda2")
     if not (0.0 <= lambda2 < 1.0):
         raise OperatorInputError("lambda2 must satisfy 0 <= lambda2 < 1")
     return G + lambda2 * np.eye(G.shape[0])
@@ -133,7 +143,13 @@ def csd_operator(
 
 
 def apply_csd(M: np.ndarray, data: np.ndarray) -> np.ndarray:
+    M = np.asarray(M, dtype=float)
+    if M.ndim != 2 or M.shape[0] != M.shape[1] or not np.all(np.isfinite(M)):
+        raise OperatorInputError("operator must be a finite square (n_channels, n_channels) matrix")
     data = np.asarray(data, dtype=float)
+    # 3-D data would be read by matmul as a stack of matrices, contracting the wrong axis. Apply per epoch instead.
+    if data.ndim not in (1, 2):
+        raise OperatorInputError("data must be channels x times (1-D or 2-D); apply the operator per epoch")
     if data.shape[0] != M.shape[0]:
         raise OperatorInputError("data must have one row per channel")
     return M @ data
