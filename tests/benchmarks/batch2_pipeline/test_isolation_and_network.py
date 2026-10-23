@@ -163,6 +163,7 @@ def test_validator_rejects_budget_pass_with_missing_configured_measurement():
         targets=["full_recording_reread"],
     )
     budget = report["results"][0]["deterministic"]["budget"]
+    report["budgets"]["disk_bytes"] = 1
     budget["budgets"]["disk_bytes"] = 1
     budget["checks"]["disk_within_budget"] = True
     budget["within_budget"] = True
@@ -220,6 +221,154 @@ def test_validator_rejects_row_evidence_class_mismatch():
 
     assert validation["ok"] is False
     assert "row_evidence_class:full_recording_reread" in validation["violations"]
+
+
+def test_validator_and_cli_reject_telemetry_check_mismatch():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    row["telemetry"]["candidate"]["tracemalloc_peak_bytes"] = 10**12 + 1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_negative_unbudgeted_telemetry():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    candidate = report["results"][0]["telemetry"]["candidate"]
+    candidate["tracemalloc_peak_bytes"] = -1
+    candidate["disk_bytes"] = -1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_advisory_success_without_measurements():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(runtime_s=1.0, rss_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    candidate = row["telemetry"]["candidate"]
+    candidate["runtime_best_s"] = None
+    candidate["rss_after_bytes"] = None
+    checks = row["deterministic"]["budget"]["checks"]
+    checks["runtime_within_budget"] = True
+    checks["rss_within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_zero_memory_measurement():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["telemetry"]["candidate"]["tracemalloc_peak_bytes"] = 0
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_unrecognized_budget_map_mismatch():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["budgets"]["unrecognized_limit"] = 1
+    report["results"][0]["deterministic"]["budget"]["budgets"]["unrecognized_limit"] = 999
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_worker_count_above_runner_cap():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    budget = row["deterministic"]["budget"]
+    report["budgets"]["max_workers"] = 2
+    budget["budgets"]["max_workers"] = 2
+    row["telemetry"]["candidate"]["worker_count"] = 2
+    budget["checks"]["workers_within_budget"] = True
+    budget["within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert report["config"]["max_workers"] == 1
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_scheme_less_remote_host_with_trailing_dns_dot_is_detected():
+    from tools.benchmarks.batch2_pipeline.validator import _string_references_remote_host
+
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org./datasets/ds000001"
+    )
+
+
+def test_remote_authority_with_explicit_port_is_detected():
+    from tools.benchmarks.batch2_pipeline.validator import _string_references_remote_host
+
+    assert _string_references_remote_host("Dataset source: openneuro.org:443")
 
 
 def test_empty_report_is_not_valid():

@@ -33,6 +33,7 @@ if str(ROOT) not in sys.path:
 from tools.benchmarks.batch2_pipeline.budgets import (
     ResourceBudgets,
     budget_result_is_consistent,
+    telemetry_metrics_are_valid,
 )
 from tools.benchmarks.batch2_pipeline.harness import (
     SCHEMA_VERSION,
@@ -148,6 +149,11 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
         if not isinstance(budget, dict):
             return 1
         telemetry = record.get("telemetry")
+        if not isinstance(telemetry, dict):
+            return 2
+        for side in ("baseline", "candidate"):
+            if side in telemetry and not telemetry_metrics_are_valid(telemetry[side]):
+                return 2
         candidate_metrics = (
             telemetry.get("candidate") if isinstance(telemetry, dict) else None
         )
@@ -155,6 +161,7 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
             budget,
             candidate_metrics,
             declared_budgets,
+            config.get("max_workers"),
         ):
             return 2
         if budget.get("within_budget") is not True:

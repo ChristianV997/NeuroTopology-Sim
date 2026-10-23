@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
-from .budgets import budget_result_is_consistent
+from .budgets import budget_result_is_consistent, telemetry_metrics_are_valid
 from .schema import (
     EVIDENCE_CLASS,
     FORBIDDEN_PHRASES,
@@ -39,13 +39,13 @@ _REMOTE_HOST_SUFFIXES = (
 )
 _URL_TOKEN = re.compile(r"(?:[a-z][a-z0-9+.-]*://|//)[^\s<>\"']+", re.IGNORECASE)
 _HOSTISH = re.compile(
-    r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$",
+    r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\.?$",
     re.IGNORECASE,
 )
 _HOST_PATH_TOKEN = re.compile(
     r"(?<![a-z0-9._/-])"
-    r"((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,})"
-    r"(?::[0-9]{1,5})?(?:/[^\s<>\"']*|\?[^\s<>\"']*)",
+    r"((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}\.?)"
+    r"(?::[0-9]{1,5}(?:/[^\s<>\"']*|\?[^\s<>\"']*)?|/[^\s<>\"']*|\?[^\s<>\"']*)",
     re.IGNORECASE,
 )
 
@@ -216,6 +216,7 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
                 budget,
                 candidate_metrics,
                 declared_budgets,
+                max_workers,
             ):
                 violations.append(f"budget_checks_mismatch:{target}")
         else:
@@ -236,10 +237,14 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
             violations.append(f"invalid_telemetry:{target}")
         elif tel:
             for side in ("baseline", "candidate"):
-                view = tel.get(side) or {}
+                if side not in tel:
+                    continue
+                view = tel[side]
                 if not isinstance(view, dict):
                     violations.append(f"invalid_telemetry:{target}:{side}")
                     continue
+                if not telemetry_metrics_are_valid(view):
+                    violations.append(f"invalid_telemetry_metric:{target}:{side}")
                 for key in ("rss_after_bytes", "tracemalloc_peak_bytes"):
                     if key in view and view[key] == 0:
                         violations.append(f"zero_metric:{target}:{side}:{key}")
