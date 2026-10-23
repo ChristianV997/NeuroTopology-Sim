@@ -334,8 +334,14 @@ def test_non_pypi_release_channels_do_not_masquerade_as_package_versions():
     assert neurolib["package_version"] == "0.6.2"
     assert "no PyPI release" in neurolib["package_channel_note"]
     validator = _candidate("bids-validator")
-    assert "package_version" not in validator
+    # The PyPI project named bids-validator (1.14.x) is a different artifact; the
+    # package that tracks tag 3.0.2 is the separate bids-validator-deno wrapper.
     assert "different artifact" in validator["package_channel_note"]
+    assert "bids-validator-deno" in validator["package_channel_note"]
+    assert validator["package_version"] == "3.0.2"
+    assert validator["package_license_evidence_url"] == "https://pypi.org/pypi/bids-validator-deno/3.0.2/json"
+    assert validator["package_license_metadata_status"] == "declared_by_pypi_license_expression"
+    assert "1.14" not in validator["package_license_declaration"]
 
 
 def test_giotto_and_pyspi_license_text_match_primary_declarations():
@@ -482,3 +488,60 @@ def test_neuromaps_conflict_is_not_silently_cleared():
     ).lower()
     for phrase in ("legal clearance", "resolved in favor", "bsd-cleared", "scientifically validated"):
         assert phrase not in joined
+
+
+def test_bids_validator_runtime_is_deno_not_node():
+    """Tag 3.0.2 ships deno.json (@bids/validator) and a `deno run` README; it is not a Node package."""
+    validator = _candidate("bids-validator")
+    runtime = validator["runtime_requirements"]
+    assert "Deno" in runtime
+    assert "Node" not in runtime and "Node" not in validator["disposition_rationale"]
+    assert "Node" not in validator["package_channel_note"]
+    assert validator["disposition"] == "reference_only"
+    assert "wrapper" in validator["package_channel_note"] and "not inspected" in validator["package_channel_note"]
+
+
+def test_newer_upstream_release_is_recorded_without_replacing_the_pinned_snapshot():
+    """A release newer than the revalidated snapshot is observed evidence, never a pin."""
+    openresearch = _candidate("openresearch")
+    assert openresearch["latest_release"]["tag"] == "v0.2.20"
+    newer = openresearch["newer_release_observed"]
+    assert newer["tag"] == "v0.2.21"
+    assert newer["published_utc"] == "2026-10-23"
+    assert newer["observed_utc"] == "2026-10-23"
+    assert newer["source_url"] == "https://github.com/alphaXiv/OpenResearch/releases"
+    assert newer["not_a_pin"] is True
+    assert "commit_sha" not in newer
+    for candidate in _load()["candidates"]:
+        if candidate["id"] != "openresearch":
+            assert "newer_release_observed" not in candidate, candidate["id"]
+
+
+def test_cross_registry_notes_keep_conflicts_visible_without_copying_verdicts():
+    data = _load()
+    notes = data["cross_registry_notes"]
+    ids = {c["id"] for c in data["candidates"]}
+    assert notes, "cross-registry observations must be recorded"
+    for note in notes:
+        assert note["inventory_id"] in ids, note
+        assert note["registry"] == "configs/research/batch3_source_registry.yaml (PR #375, merged)"
+        assert note["registry_not_edited"] is True
+        assert note["verdict_not_copied"] is True
+    by_id = {n["inventory_id"]: n for n in notes}
+    assert "rea-agents-6.5.0" in by_id["rea"]["observation"] and "rea-agents-6.7.0" in by_id["rea"]["observation"]
+    assert "ripser-py" in by_id["ripser.py"]["observation"]
+    assert "EMULATE" in by_id["gudhi"]["observation"] and "integrate_behind_bounded_adapter" in by_id["gudhi"]["observation"]
+
+
+def test_gudhi_bare_tag_evidence_paths_are_absent_and_literal_tag_paths_present():
+    gudhi = _candidate("gudhi")
+    joined = " ".join(gudhi["evidence_urls"]) + " " + json.dumps(gudhi["latest_release"])
+    assert "/tags/tags/gudhi-release-3.13.0" in joined
+    assert not re.search(r"/(releases/tags|git/ref/tags)/gudhi-release-3\.13\.0", joined)
+
+
+def test_inventory_declares_the_api_and_page_urls_this_audit_could_not_resolve():
+    note = _load()["link_resolution_scope"]
+    assert "raw.githubusercontent.com" in note and "pypi.org" in note
+    assert "api.github.com" in note and "not resolved" in note
+    assert "does not establish" in note
