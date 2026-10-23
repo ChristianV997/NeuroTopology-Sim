@@ -734,3 +734,154 @@ def test_find_eeg_files_missing_root_is_privacy_safe(tmp_path: Path):
     with pytest.raises(FileNotFoundError) as exc_ev:
         onl.find_events(secret)
     assert "super_secret_host_directory_name" not in str(exc_ev.value)
+
+
+def test_metadata_index_does_not_hash_recording_bytes_by_default(monkeypatch):
+    """Metadata indexing must not read full EEG recordings just to hash them."""
+    monkeypatch.setattr(
+        bids_ingest,
+        "_file_checksum_or_unknown",
+        lambda path: pytest.fail(f"metadata-only index hashed recording {path.name}"),
+    )
+    manifest = index_bids_metadata(BIDSAccessRequest(dataset_id="dsFIX001", local_root=str(VALID)))
+    assert manifest["n_recordings"] == 1
+    assert manifest["recordings"][0]["source_checksum"] is None
+    assert manifest["recordings"][0]["checksum_state"] == "unknown"
+
+
+def test_successful_manifest_and_local_plan_redact_host_root(tmp_path: Path):
+    root = tmp_path / "private-host-path-sentinel"
+    (root / "sub-01" / "eeg").mkdir(parents=True)
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "SyntheticRedaction", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    manifest = index_bids_metadata(BIDSAccessRequest(dataset_id="dsPRIV03", local_root=str(root)))
+    plan = plan_bounded_window_access(
+        BIDSAccessRequest(
+            dataset_id="dsPRIV03",
+            local_root=str(root),
+            relative_path="sub-01/eeg/synthetic.edf",
+            window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+        )
+    )
+    assert "private-host-path-sentinel" not in serialize_bids_manifest(manifest)
+    assert "private-host-path-sentinel" not in serialize_bids_manifest(plan)
+
+
+def test_invalid_dataset_id_does_not_echo_pathlike_value(tmp_path: Path):
+    secret = str(tmp_path / "private-dataset-path-sentinel")
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(BIDSAccessRequest(dataset_id=secret, local_root=str(VALID)))
+    assert "private-dataset-path-sentinel" not in str(exc.value)
+
+
+def test_remote_plan_redacts_credentials_query_and_uri_path():
+    uri = "https://user:credential-sentinel@openneuro.org/dsFIX001?token=query-sentinel"
+    plan = plan_bounded_window_access(
+        BIDSAccessRequest(
+            dataset_id="dsFIX001",
+            remote_uri=uri,
+            relative_path="sub-01/eeg/file.edf",
+            window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+            allow_network=True,
+        )
+    )
+    assert plan["remote_uri"] == "https://openneuro.org"
+    assert plan["network_actions"][0]["uri"] == "https://openneuro.org"
+    rendered = serialize_bids_manifest(plan)
+    assert "credential-sentinel" not in rendered
+    assert "query-sentinel" not in rendered
+    assert "user:" not in rendered
+
+
+def test_remote_network_opt_in_is_plan_only(monkeypatch):
+    import socket
+
+    def forbidden_network(*args, **kwargs):
+        pytest.fail("remote planning attempted a network operation")
+
+    monkeypatch.setattr(socket, "create_connection", forbidden_network)
+    plan = plan_bounded_window_access(
+        BIDSAccessRequest(
+            dataset_id="dsFIX001",
+            remote_uri="https://openneuro.org/dsFIX001",
+            relative_path="sub-01/eeg/file.edf",
+            window=BoundedWindowRequest(start_s=0.0, end_s=1.0),
+            allow_network=True,
+        )
+    )
+    assert plan["access_mode"] == "bounded_remote_plan"
+    assert plan["network_actions"]
+    assert all(action["executed"] is False for action in plan["network_actions"])
+
+
+def test_oversized_sidecar_json_is_rejected_before_optional_indexer(monkeypatch, tmp_path: Path):
+    root = tmp_path / "bids"
+    eeg_dir = root / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    (root / "dataset_description.json").write_text(
+        json.dumps({"Name": "SyntheticSidecar", "BIDSVersion": "1.8.0"}),
+        encoding="utf-8",
+    )
+    sidecar = eeg_dir / "sub-01_task-rest_eeg.json"
+    sidecar.write_text(
+        json.dumps({"pad": "x" * bids_ingest.MAX_METADATA_JSON_BYTES}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(bids_ingest, "_pybids_query_index", lambda _root: None)
+    monkeypatch.setattr(bids_ingest, "_mne_bids_index", lambda _root: None)
+    with pytest.raises(BIDSAdapterError) as exc:
+        index_bids_metadata(BIDSAccessRequest(dataset_id="dsSIDE01", local_root=str(root)))
+    assert exc.value.code == BIDSAdapterErrorCode.INVALID_BIDS_STRUCTURE.value
+    assert "oversized" in str(exc.value).lower()
+
+
+def test_read_window_signal_enforces_max_bytes_before_loading(monkeypatch):
+    import numpy as np
+    from types import SimpleNamespace
+
+    class FakeRaw:
+        info = {"sfreq": 100.0}
+        n_times = 1000
+
+        def __init__(self):
+            self.get_data_calls = 0
+
+        def get_data(self, **kwargs):
+            self.get_data_calls += 1
+            return np.zeros((2, 100), dtype=float)
+
+    raw = FakeRaw()
+    monkeypatch.setattr(bids_ingest, "_file_identity", lambda _path: None)
+    monkeypatch.setattr(bids_ingest, "_read_raw_cached", lambda _path: raw)
+    monkeypatch.setitem(sys.modules, "mne", SimpleNamespace(pick_types=lambda _info, eeg: [0, 1]))
+    with pytest.raises(BIDSAdapterError) as exc:
+        bids_ingest.read_window_signal("synthetic.edf", 0.0, 1.0, max_bytes=1024)
+    assert exc.value.code == BIDSAdapterErrorCode.INVALID_WINDOW.value
+    assert raw.get_data_calls == 0
+
+
+def test_lazy_window_reader_passes_byte_limit_to_signal_reader(monkeypatch, tmp_path: Path):
+    import numpy as np
+
+    root = tmp_path / "local-bids"
+    recording = root / "sub-01" / "eeg" / "sub-01_task-rest_eeg.edf"
+    recording.parent.mkdir(parents=True)
+    recording.write_bytes(b"synthetic")
+    seen: dict[str, int | None] = {}
+
+    def fake_reader(path, start_s, end_s, *, pick="mean", max_channels=None, preprocess=None, max_bytes=None):
+        seen["max_bytes"] = max_bytes
+        return np.ones(1, dtype=float)
+
+    monkeypatch.setattr(bids_ingest, "read_window_signal", fake_reader)
+    read_bounded_window_lazy(
+        BIDSAccessRequest(
+            dataset_id="dsFIX001",
+            local_root=str(root),
+            relative_path="sub-01/eeg/sub-01_task-rest_eeg.edf",
+            window=BoundedWindowRequest(start_s=0.0, end_s=1.0, max_bytes=1024),
+        )
+    )
+    assert seen["max_bytes"] == 1024
