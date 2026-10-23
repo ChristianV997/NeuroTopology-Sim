@@ -7,7 +7,7 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
-Live main synced: `fc274148a3539a0b4171cdb91b258fdd509e94a8` (PR #376 merge `7fb3c18`; historical bases superseded).
+Live main synced: `b51bb9b4bdf63c19894bb407eadcd70f528f7dda` (PR #376 merge `7fb3c18`; normal sync merge incorporated this current base).
 
 Owned paths only:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
