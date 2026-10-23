@@ -10,6 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.28",
     "python-dotenv>=1.0",
+    # Registered execution requests a memory budget; the canonical runner uses
+    # psutil to enforce that budget and fails closed when it is unavailable.
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

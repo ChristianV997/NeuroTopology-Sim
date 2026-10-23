@@ -1,0 +1,295 @@
+schema: NeuroTopology.Batch3FalsificationMatrix.v1
+matrix_id: batch3_adversarial_falsification_2026
+status: FALSIFICATION_HARNESS_ONLY
+scientific_pass: false
+formal_bayes_factor: null
+k_value: null
+evidence_class: preregistered_protocol
+empirical_claim_allowed: false
+synthetic_demo: false
+rea_status: REA_UNAVAILABLE
+note: >
+  A successful falsification harness does not validate the theory.
+  It only makes invalid conclusions harder to emit. Proposed thresholds
+  are protocol floors and falsification gates, not empirical power validation.
+
+protocol_limits:
+  scientific_pass: false
+  empirical_claim_allowed: false
+  proposed_thresholds_are_power_validation: false
+  proposed_splits_nulls_controls_are_proposals_only: true
+  completeness_implies_scientific_adequacy: false
+  note: >
+    Proposed splits, null models, sample/effect thresholds, exclusion rules,
+    controls, and replication requirements are conservative protocol proposals
+    and falsification criteria, not empirical power validation or established
+    scientific adequacy.
+
+campaign_execution_states:
+  - PLANNING
+  - REGISTERED
+  - EXECUTING
+  - INTERRUPTED
+  - RESUMED
+  - COMPLETED
+  - ABORTED
+
+terminal_states:
+  - COMPLETED
+  - ABORTED
+
+valid_state_transitions:
+  PLANNING:
+    - REGISTERED
+    - ABORTED
+  REGISTERED:
+    - EXECUTING
+    - ABORTED
+  EXECUTING:
+    - INTERRUPTED
+    - COMPLETED
+    - ABORTED
+  INTERRUPTED:
+    - RESUMED
+    - ABORTED
+  RESUMED:
+    - INTERRUPTED
+    - COMPLETED
+    - ABORTED
+  COMPLETED: []
+  ABORTED: []
+
+resumability_policy:
+  allowed: true
+  require_exact_hash_match: true
+  require_checkpoint_manifest: true
+  recompute_interrupted_units_only: true
+  prohibit_terminal_state_reopening: true
+  prohibit_non_protocol_state: true
+
+sample_requirements:
+  minimum_paired_subjects: 20
+  minimum_held_out_subjects: 8
+  minimum_sessions_per_split: 2
+  below_minimum_outcome: INSUFFICIENT_POWER
+  missing_subjects_policy: exclude_and_report
+  failed_subjects_policy: exclude_and_report_never_impute_as_null_effect
+  proposed_thresholds_power_validated: false
+
+replication:
+  required: true
+  independent_cohort_or_site: true
+  failure_outcome: GAIN_NOT_REPLICATED
+
+splits_required:
+  - subject_held_out
+  - session_held_out
+  - forward_time
+
+null_models_required:
+  - flat
+  - gaussian
+  - phase_shuffle
+  - label_permutation
+  - circular_shift
+  - block_shuffle
+  - matched_variance
+  - matched_autocorrelation
+minimum_null_replicates: 100
+
+positive_controls:
+  - known_synthetic_pairwise_coupling
+  - known_synthetic_power_change
+negative_controls:
+  - independent_gaussian
+  - phase_shuffled_spectrum_preserved
+confound_controls:
+  - volume_conduction_imaginary_coherence
+  - respiration_rate
+  - heart_rate
+  - heart_rate_variability
+  - motion
+  - global_signal
+  - temporal_smoothing_matched
+
+forbidden_outcomes:
+  - PASS
+  - scientific_PASS
+  - FORMAL_BAYES_FACTOR
+
+allowed_outcomes:
+  - NO_INCREMENTAL_GAIN
+  - GAIN_UNSTABLE
+  - GAIN_CONFUNDED
+  - GAIN_NOT_REPLICATED
+  - INSUFFICIENT_POWER
+  - INCONCLUSIVE
+  - FORMAL_FORECAST_EVIDENCE_PENDING_REVIEW
+  - BLOCKED_BY_MISSING_SUBJECTS
+  - BLOCKED_BY_LANGUAGE
+
+forbidden_phrases:
+  - proved consciousness
+  - proves consciousness
+  - confirmed liberation
+  - demonstrates quantum coherence
+  - biological quantum coherence
+  - respiration is equanimity
+  - respiration as equanimity
+  - proof of consciousness
+  - graph beta-1 is spatial topological charge
+  - beta-1 is topological charge
+  - formal bayes factor
+  - scientific pass
+  - discernment from eeg alone
+  - nonattachment from eeg
+  - triadic dependence is a biological mechanism
+  - exceptional point is a biological phase transition
+  - prediction proves causation
+
+claims:
+  - claim_id: HOI-VS-PAIRWISE
+    text: Higher-order connectivity shows incremental forecast skill beyond pairwise baselines.
+    category: higher_order_connectivity
+    evidence_class: hypothesis
+    required_baselines:
+      - power_spectral_density
+      - pairwise_functional_connectivity
+    required_controls:
+      - volume_conduction_imaginary_coherence
+      - common_driver_controls
+      - subject_held_out
+    falsification: incremental delta on locked splits is non-positive or vanishes after confound controls
+    downgrade_if_missing_baseline: proxy_inference
+    blocked_if_missing_baseline: true
+
+  - claim_id: HOS-VS-CFC
+    text: Higher-order spectra are distinct from ordinary cross-frequency coupling.
+    category: higher_order_spectra
+    evidence_class: hypothesis
+    required_baselines:
+      - ordinary_cross_frequency_coupling
+    required_controls:
+      - phase_shuffle
+      - matched_autocorrelation
+    falsification: higher-order spectra do not improve locked scores beyond CFC
+    downgrade_if_missing_baseline: proxy_inference
+    blocked_if_missing_baseline: true
+
+  - claim_id: RESP-AUTONOMIC
+    text: Respiration and autonomic variables are candidate predictors or controls, not equanimity.
+    category: autonomic
+    evidence_class: hypothesis
+    required_baselines:
+      - respiration_rate
+      - heart_rate
+      - heart_rate_variability
+    required_controls:
+      - confound_controls
+    falsification: gain that disappears after autonomic partialling is GAIN_CONFUNDED
+    downgrade_if_missing_baseline: unsupported_claim
+    blocked_if_missing_baseline: true
+    forbidden_interpretations:
+      - equanimity
+      - meditation_quality
+
+  - claim_id: DISCERNMENT-CONSTRUCTS
+    text: Discernment is not nonjudgment, decentering, or nonattachment without behavioral instruments.
+    category: constructs
+    evidence_class: hypothesis
+    required_instruments:
+      - experiences_questionnaire_decentering
+      - ffmq_nonjudge
+      - nonattachment_scale
+    required_controls:
+      - contemporaneous_behavioral_measurement
+    falsification: EEG-only inference of discernment is unsupported
+    downgrade_if_missing_baseline: unsupported_claim
+    blocked_if_missing_baseline: true
+
+  - claim_id: TOPOLOGY-PROXY
+    text: Graph beta-1, spatial winding, and scalar chirality are distinct observables.
+    category: topology
+    evidence_class: engineering_fact
+    required_fields:
+      - graph_beta1
+      - spatial_winding_q
+      - scalar_chirality
+    forbidden_conversions:
+      - graph_beta1_to_spatial_charge
+    falsification: any conversion of graph beta-1 into spatial topological charge is blocked
+    blocked_if_missing_baseline: true
+
+  - claim_id: EVIDENCE-SEPARATION
+    text: Synthetic, proxy, engineering, and empirical evidence must remain separate.
+    category: evidence_class
+    evidence_class: engineering_fact
+    required_classes:
+      - engineering_fact
+      - benchmark_result
+      - synthetic_demonstration
+      - empirical_observation
+      - proxy_inference
+      - formal_statistical_evidence
+      - hypothesis
+      - speculation
+      - unsupported_claim
+      - historical_context
+    falsification: synthetic output labeled empirical is blocked
+    blocked_if_missing_baseline: true
+
+  - claim_id: CONFOUND-LEAKAGE
+    text: Causal language, leakage, smoothing, volume conduction, and common drivers require controls.
+    category: confounds
+    evidence_class: hypothesis
+    required_controls:
+      - subject_held_out
+      - session_held_out
+      - forward_time
+      - volume_conduction_imaginary_coherence
+      - temporal_smoothing_matched
+      - common_driver_controls
+    falsification: missing split or confound control blocks formal language
+    blocked_if_missing_baseline: true
+
+  - claim_id: MULTIPLICITY-SAMPLE
+    text: Multiple comparisons, sample size, replication, null calibration, and held-out prediction are required.
+    category: statistics
+    evidence_class: hypothesis
+    required_controls:
+      - multiplicity_correction
+      - null_calibration
+      - held_out_prediction
+      - replication
+    minimum_paired_subjects: 20
+    falsification: unknown n_tests is not one test; below minimum is INSUFFICIENT_POWER
+    blocked_if_missing_baseline: true
+
+  - claim_id: NO-SCIENTIFIC-PASS
+    text: No report or CLI may emit scientific PASS without sufficient evidence.
+    category: gate
+    evidence_class: engineering_fact
+    scientific_pass: false
+    formal_bayes_factor: null
+    falsification: any emitted PASS or formal K is blocked
+    blocked_if_missing_baseline: true
+
+  - claim_id: MISSING-SUBJECTS
+    text: Missing or failed subjects must not be imputed as null effects.
+    category: sample_integrity
+    evidence_class: engineering_fact
+    required_controls:
+      - exclude_and_report
+    falsification: silent drop or zero-fill of failed subjects is blocked
+    blocked_if_missing_baseline: true
+
+gates:
+  scientific_pass_allowed: false
+  formal_k_allowed: false
+  synthetic_to_empirical: false
+  unknown_n_tests_is_one: false
+  missing_subject_zero_fill: false
+  prediction_as_causation: false
+  eeg_only_discernment: false
+  respiration_as_equanimity: false
+  beta1_as_spatial_charge: false
