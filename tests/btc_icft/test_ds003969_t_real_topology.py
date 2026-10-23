@@ -97,21 +97,50 @@ def test_cli(tmp_path: Path):
     assert r4.returncode != 0
     assert "mutually exclusive" in (r4.stdout + r4.stderr)
 
-    # --real with an existing m-windows table whose source files don't exist: skips
-    # gracefully (zeroed row + warning) rather than crashing or fabricating data.
+    # --real with an existing M-windows table whose source files don't exist:
+    # emit explicit missing rows, never zero-valued topology measurements.
+    missing_rows = [
+        {**row, "source_file": str(tmp_path / f"missing-{row['row_id']}.edf")}
+        for row in _m_rows()
+    ]
+    assert all(not Path(row["source_file"]).exists() for row in missing_rows)
     m_dir = tmp_path / "m_missing_files"
     m_dir.mkdir()
     with (m_dir / "features_m.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(_m_rows()[0].keys()))
+        w = csv.DictWriter(f, fieldnames=list(missing_rows[0].keys()))
         w.writeheader()
-        w.writerows(_m_rows())
+        w.writerows(missing_rows)
     c5 = [sys.executable, "-m", "sciencer_d.btc_icft.pipelines.run_ds003969_t_real", "--m-windows", str(m_dir), "--out", str(tmp_path / "o5"), "--real"]
     r5 = subprocess.run(c5, capture_output=True, text=True)
     assert r5.returncode == 0, r5.stderr
     with (tmp_path / "o5" / "features_t.csv").open(encoding="utf-8") as f:
         out_rows = list(csv.DictReader(f))
     assert len(out_rows) == 2
-    assert all(row["q_abs"] == "0.0" for row in out_rows)  # skipped: no real signal available
+    row_ids = [row["row_id"] for row in missing_rows]
+    metric_fields = ("q_abs", "q_net", "f_dress", "defect_density", "topology_quality")
+    for row in out_rows:
+        assert row["q_abs"] == ""
+        assert all(row[name] == "" for name in metric_fields)
+        assert row["is_valid"] == "False"
+        assert row["topology_status"] == "skipped"
+        assert row["missingness_state"] == "missing_source_file"
+        assert "source file not found" in row["missingness_reason"]
+        assert row["run_status"] == "failed"
+        assert row["replicate_count"] == "0"
+        assert any("source file not found" in warning for warning in json.loads(row["warnings"]))
+
+    quality = json.loads((tmp_path / "o5" / "topology_quality_report.json").read_text(encoding="utf-8"))
+    assert quality["status"] == "blocked_high_skip_rate"
+    assert quality["n_valid_rows"] == 0
+    assert quality["n_missing_rows"] == 2
+    assert quality["quality_passed"] is False
+    assert quality["missing_row_ids"] == row_ids
+    group = json.loads((tmp_path / "o5" / "group_significance_report.json").read_text(encoding="utf-8"))
+    assert group["status"] == "not_applicable"
+    assert group["n_rows_eligible"] == 0
+    ml = json.loads((tmp_path / "o5" / "ml_decoding_report.json").read_text(encoding="utf-8"))
+    assert ml["status"] == "not_applicable"
+    assert ml["n_rows_excluded"] == 2
 
 
 def test_real_topology_derived_from_signal_not_metadata(tmp_path: Path, monkeypatch):

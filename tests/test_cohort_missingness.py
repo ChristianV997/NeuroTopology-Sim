@@ -23,6 +23,7 @@ import pytest
 from sciencer_d.btc_icft.level_t.base_real_topology import (
     LevelTRealTopologyRow,
     audit_cohort_missingness,
+    build_level_t_rows_from_m_windows,
 )
 
 
@@ -567,3 +568,43 @@ def test_truthy_non_boolean_validity_marker_cannot_pass_cohort_gate():
     assert report["gate_passed"] is False
     assert report["n_valid_windows"] == len(t_rows) - 1
     assert report["n_missing_windows"] == 1
+
+
+def test_missing_source_rows_from_real_builder_cannot_pass_cohort_gate(tmp_path):
+    m_rows = [
+        {
+            "row_id": "missing-awake",
+            "subject_id": "sub-01",
+            "session_id": "ses-01",
+            "run_id": "run-01",
+            "window_id": "w-awake",
+            "task_label": "awake",
+            "source_file": str(tmp_path / "missing-awake.edf"),
+            "window_start_s": "0",
+            "window_end_s": "2",
+        },
+        {
+            "row_id": "missing-sedated",
+            "subject_id": "sub-01",
+            "session_id": "ses-01",
+            "run_id": "run-01",
+            "window_id": "w-sedated",
+            "task_label": "sedated",
+            "source_file": str(tmp_path / "missing-sedated.edf"),
+            "window_start_s": "2",
+            "window_end_s": "4",
+        },
+    ]
+    assert all(not Path(row["source_file"]).exists() for row in m_rows)
+    t_rows = build_level_t_rows_from_m_windows(m_rows, real=True)
+
+    assert all(row.is_valid is False for row in t_rows)
+    assert all(row.q_abs is None for row in t_rows)
+    assert all(row.missingness_state == "missing_source_file" for row in t_rows)
+
+    report = audit_cohort_missingness(t_rows, m_rows, min_paired_subjects=1)
+    assert report["verdict"] == "BLOCKED"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == 0
+    assert report["n_missing_windows"] == 2
+    assert report["missingness_by_reason"]["missing_source_file"] == 2
