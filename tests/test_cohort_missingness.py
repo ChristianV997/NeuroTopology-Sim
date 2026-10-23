@@ -552,3 +552,18 @@ def test_whitespace_only_condition_labels_do_not_pass_as_complete_cohort():
     assert report["n_unlabeled_valid_windows"] == len(t_rows)
     assert "condition labels" in report["verdict_reason"]
     json.dumps(report, allow_nan=False)
+
+
+def test_truthy_non_boolean_validity_marker_cannot_pass_cohort_gate():
+    """A malformed string validity flag must not be treated as True."""
+    from dataclasses import replace
+
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    t_rows[0] = replace(t_rows[0], is_valid="false")
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == len(t_rows) - 1
+    assert report["n_missing_windows"] == 1
