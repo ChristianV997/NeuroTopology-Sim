@@ -99,6 +99,13 @@ def _exit_report(status="ok", *, all_equivalent=True, all_within_budget=True):
         "status": status,
         "evidence_class": cli.EVIDENCE_CLASS,
         "synthetic": True,
+        "telemetry": {
+            "candidate": {
+                "tracemalloc_peak_bytes": None,
+                "disk_bytes": None,
+                "worker_count": 1,
+            }
+        },
         "deterministic": {
             "checksum_match": True,
             "budget": _budget_result(),
@@ -109,6 +116,7 @@ def _exit_report(status="ok", *, all_equivalent=True, all_within_budget=True):
         "schema_version": cli.SCHEMA_VERSION,
         "evidence_class": cli.EVIDENCE_CLASS,
         "synthetic": True,
+        "budgets": _budget_result()["budgets"],
         "all_equivalent": all_equivalent,
         "all_within_budget": all_within_budget,
         "config": {"max_workers": 1, "targets": ["full_recording_reread"]},
@@ -140,9 +148,33 @@ def test_cli_exit_code_fails_on_non_synthetic_result():
     assert cli._cli_exit_code(report) != 0
 
 
+def test_cli_exit_code_fails_on_row_evidence_class_mismatch():
+    report = _exit_report()
+    report["results"][0]["evidence_class"] = "empirical"
+
+    assert cli._cli_exit_code(report) != 0
+
+
 def test_cli_exit_code_rejects_budget_pass_with_missing_configured_measurement():
     report = _exit_report()
-    report["results"][0]["deterministic"]["budget"]["budgets"]["disk_bytes"] = 1
+    row = report["results"][0]
+    budget = row["deterministic"]["budget"]
+    budget["budgets"]["disk_bytes"] = 1
+    budget["checks"]["disk_within_budget"] = True
+    row["telemetry"]["candidate"]["disk_bytes"] = None
+
+    assert cli._cli_exit_code(report) != 0
+
+
+def test_cli_exit_code_rejects_row_budget_relaxation():
+    report = _exit_report()
+    report["budgets"]["memory_bytes"] = 1
+    row = report["results"][0]
+    row["telemetry"]["candidate"]["tracemalloc_peak_bytes"] = 50824
+    budget = row["deterministic"]["budget"]
+    budget["budgets"]["memory_bytes"] = 50825
+    budget["checks"]["memory_within_budget"] = True
+    budget["within_budget"] = True
 
     assert cli._cli_exit_code(report) != 0
 
@@ -195,6 +227,13 @@ def test_isolated_report_does_not_claim_equivalence_with_unknown_measurements(
             "status": "ok",
             "evidence_class": cli.EVIDENCE_CLASS,
             "synthetic": True,
+            "telemetry": {
+                "candidate": {
+                    "tracemalloc_peak_bytes": None,
+                    "disk_bytes": None,
+                    "worker_count": 1,
+                }
+            },
             "deterministic": {
                 "checksum_match": True,
                 "budget": _budget_result(),
@@ -245,6 +284,7 @@ def test_generate_cli_fails_when_all_records_are_malformed(tmp_path, monkeypatch
         "schema": "batch2_pipeline/v1",
         "evidence_class": cli.EVIDENCE_CLASS,
         "synthetic": True,
+        "budgets": _budget_result()["budgets"],
         "all_equivalent": None,
         "all_within_budget": None,
         "config": {"max_workers": 1, "targets": sorted(TARGET_NAMES)},

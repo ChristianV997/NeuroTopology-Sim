@@ -81,8 +81,12 @@ def compare_budget(metrics: Dict[str, Any], budgets: ResourceBudgets) -> Dict[st
     }
 
 
-def budget_result_is_consistent(result: Any) -> bool:
-    """Check that a serialized aggregate agrees with configured authoritative checks.
+def budget_result_is_consistent(
+    result: Any,
+    metrics: Any = None,
+    declared_budgets: Any = None,
+) -> bool:
+    """Check checks against declared limits, telemetry, and their aggregate.
 
     A missing measurement under an enabled limit is unknown, not a pass. Runtime
     and RSS remain advisory and are deliberately excluded from this aggregate.
@@ -91,28 +95,59 @@ def budget_result_is_consistent(result: Any) -> bool:
         return False
     checks = result.get("checks")
     budgets = result.get("budgets")
-    if not isinstance(checks, dict) or not isinstance(budgets, dict):
+    if (
+        not isinstance(checks, dict)
+        or not isinstance(budgets, dict)
+        or not isinstance(declared_budgets, dict)
+    ):
         return False
 
     mapping = (
-        ("memory_within_budget", "memory_bytes", True),
-        ("disk_within_budget", "disk_bytes", True),
-        ("workers_within_budget", "max_workers", True),
-        ("runtime_within_budget", "runtime_s", False),
-        ("rss_within_budget", "rss_bytes", False),
+        ("memory_within_budget", "memory_bytes", "tracemalloc_peak_bytes", True),
+        ("disk_within_budget", "disk_bytes", "disk_bytes", True),
+        ("workers_within_budget", "max_workers", "worker_count", True),
+        ("runtime_within_budget", "runtime_s", None, False),
+        ("rss_within_budget", "rss_bytes", None, False),
     )
-    for check_name, budget_name, _is_authoritative in mapping:
-        if check_name not in checks or budget_name not in budgets:
+    for check_name, budget_name, metric_name, is_authoritative in mapping:
+        if (
+            check_name not in checks
+            or budget_name not in budgets
+            or budget_name not in declared_budgets
+        ):
+            return False
+        row_limit = budgets[budget_name]
+        declared_limit = declared_budgets[budget_name]
+        if row_limit is None or declared_limit is None:
+            if row_limit is not declared_limit:
+                return False
+        elif type(row_limit) is not type(declared_limit) or row_limit != declared_limit:
             return False
         check = checks[check_name]
         if check is not True and check is not False and check is not None:
             return False
-        if budgets[budget_name] is None and check is not None:
+        if row_limit is None and check is not None:
             return False
+        if is_authoritative:
+            limit = row_limit
+            metric = metrics.get(metric_name) if isinstance(metrics, dict) else None
+            if limit is None or metric is None:
+                expected_check: Optional[bool] = None
+            elif (
+                type(limit) is not int
+                or limit < 0
+                or type(metric) is not int
+                or metric < 0
+            ):
+                return False
+            else:
+                expected_check = metric <= limit
+            if check is not expected_check:
+                return False
 
     authoritative = [
         checks[check_name]
-        for check_name, budget_name, is_authoritative in mapping
+        for check_name, budget_name, _metric_name, is_authoritative in mapping
         if is_authoritative and budgets[budget_name] is not None
     ]
     if any(value is False for value in authoritative):

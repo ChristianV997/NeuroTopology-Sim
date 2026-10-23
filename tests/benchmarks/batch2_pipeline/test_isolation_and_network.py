@@ -164,13 +164,62 @@ def test_validator_rejects_budget_pass_with_missing_configured_measurement():
     )
     budget = report["results"][0]["deterministic"]["budget"]
     budget["budgets"]["disk_bytes"] = 1
+    budget["checks"]["disk_within_budget"] = True
     budget["within_budget"] = True
+    report["all_within_budget"] = True
+    assert report["results"][0]["telemetry"]["candidate"]["disk_bytes"] is None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+
+
+def test_validator_and_cli_reject_row_budget_relaxation():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=1, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    metric = row["telemetry"]["candidate"]["tracemalloc_peak_bytes"]
+    assert metric is not None
+    budget = row["deterministic"]["budget"]
+    budget["budgets"]["memory_bytes"] = metric + 1
+    budget["checks"]["memory_within_budget"] = True
+    budget["within_budget"] = True
+    row["status"] = "ok"
+    report["summary"] = {"ok": 1}
     report["all_within_budget"] = True
 
     validation = validate_report(report)
 
     assert validation["ok"] is False
     assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_rejects_row_evidence_class_mismatch():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["evidence_class"] = "empirical"
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "row_evidence_class:full_recording_reread" in validation["violations"]
 
 
 def test_empty_report_is_not_valid():

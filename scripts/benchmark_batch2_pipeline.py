@@ -101,6 +101,9 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
         or config.get("max_workers") != 1
     ):
         return 2
+    declared_budgets = report.get("budgets")
+    if not isinstance(declared_budgets, dict):
+        return 2
     if report.get("all_equivalent") is not True:
         return 1
     if report.get("all_within_budget") is not True:
@@ -144,7 +147,15 @@ def _cli_exit_code(report: Dict[str, Any]) -> int:
         budget = deterministic.get("budget")
         if not isinstance(budget, dict):
             return 1
-        if not budget_result_is_consistent(budget):
+        telemetry = record.get("telemetry")
+        candidate_metrics = (
+            telemetry.get("candidate") if isinstance(telemetry, dict) else None
+        )
+        if not budget_result_is_consistent(
+            budget,
+            candidate_metrics,
+            declared_budgets,
+        ):
             return 2
         if budget.get("within_budget") is not True:
             return 1

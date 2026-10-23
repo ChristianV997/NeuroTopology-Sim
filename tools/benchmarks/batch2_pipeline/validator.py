@@ -154,6 +154,9 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
     max_workers = config.get("max_workers")
     if type(max_workers) is not int or max_workers != 1:
         violations.append("unbounded_workers")
+    declared_budgets = report.get("budgets")
+    if not isinstance(declared_budgets, dict):
+        violations.append("invalid_budget_declaration")
     results = report.get("results")
     if not isinstance(results, list):
         violations.append("invalid_results")
@@ -205,7 +208,15 @@ def validate_report(report: Dict[str, Any]) -> Dict[str, Any]:
             budget_verdict = None
         elif isinstance(budget, dict):
             budget_verdict = budget.get("within_budget")
-            if not budget_result_is_consistent(budget):
+            telemetry = row.get("telemetry")
+            candidate_metrics = (
+                telemetry.get("candidate") if isinstance(telemetry, dict) else None
+            )
+            if not budget_result_is_consistent(
+                budget,
+                candidate_metrics,
+                declared_budgets,
+            ):
                 violations.append(f"budget_checks_mismatch:{target}")
         else:
             violations.append(f"invalid_budget:{target}")
