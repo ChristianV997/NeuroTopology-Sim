@@ -224,3 +224,21 @@ def test_sensor_at_the_raw_origin_is_refused_as_mne_refuses_it(offset):
     pos = np.vstack([_positions("tetrahedron_4"), [offset, offset, offset]])
     with pytest.raises(OperatorInputError, match="zero"):
         csd_operator(pos, radius=RADIUS)
+
+
+def test_apply_csd_refuses_data_with_more_than_two_axes():
+    # Regression (2026-10-23, post-merge audit of #402): data of shape (n, n, k) passed the row check, and
+    # M @ data then broadcast over the first axis, so a result that is not the channel-wise product was
+    # returned with no error.
+    M = csd_operator(_positions("tetrahedron_4"), radius=RADIUS)
+    with pytest.raises(OperatorInputError, match="axes"):
+        apply_csd(M, np.ones((4, 4, 3)))
+
+
+def test_origin_must_be_three_finite_coordinates():
+    # Regression (2026-10-23, post-merge audit of #402): an (n_channels, 3) origin was broadcast row by row as
+    # a per-sensor centre, and a finite operator was returned with no error. MNE takes a single sphere centre.
+    pos = _positions("tetrahedron_4")
+    per_sensor = np.random.default_rng(0).normal(scale=0.01, size=pos.shape)
+    with pytest.raises(OperatorInputError, match="origin"):
+        csd_operator(pos, radius=RADIUS, origin=per_sensor)
