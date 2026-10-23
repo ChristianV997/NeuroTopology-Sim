@@ -38,6 +38,11 @@ _SCHEMA_VERSION = "1"
 # silently dropped.
 _MIN_RANKED_SCORE = 0.0
 
+# Review-required actions must remain visible to the planner even when the
+# heuristic total_score is negative. Dropping them would hide unresolved
+# license/security evidence behind a score threshold.
+_MUST_SURFACE_ACTIONS = frozenset({"license_review_required", "security_review_required"})
+
 
 def _repo_commit() -> str:
     try:
@@ -267,7 +272,10 @@ def build_opportunities_from_candidates(
     for candidate, license_review, opportunity in unique_scored:
         entry = opportunity.to_dict()
         entry["license_review"] = license_review.to_dict()
-        if opportunity.total_score >= _MIN_RANKED_SCORE and opportunity.recommended_action != "reject":
+        must_surface = opportunity.recommended_action in _MUST_SURFACE_ACTIONS
+        if must_surface or (
+            opportunity.total_score >= _MIN_RANKED_SCORE and opportunity.recommended_action != "reject"
+        ):
             ranked.append(entry)
         else:
             rejected.append(

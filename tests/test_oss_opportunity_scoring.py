@@ -67,8 +67,18 @@ def test_unknown_license_lowers_score_vs_permissive():
     assert result_unknown["score_components"]["license_safety"] < result_mit["score_components"]["license_safety"]
 
 
-def test_sparse_candidate_falls_back_to_reject_or_defer():
+def test_sparse_candidate_with_unknown_license_requires_license_review():
+    """Unresolved license outranks category-based reject/defer."""
     c = make_sparse_candidate()
+    result = score_opportunity(c, _review_for(c))
+    assert result["leverage_category"] == "reject_or_defer"
+    assert result["recommended_action"] == "license_review_required"
+
+
+def test_sparse_candidate_with_resolved_license_falls_back_to_reject_or_defer():
+    c = make_sparse_candidate()
+    c.license_spdx = "MIT"
+    c.license_name = "MIT License"
     result = score_opportunity(c, _review_for(c))
     assert result["leverage_category"] == "reject_or_defer"
     assert result["recommended_action"] in ("reject", "defer")

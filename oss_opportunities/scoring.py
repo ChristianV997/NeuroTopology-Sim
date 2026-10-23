@@ -188,16 +188,21 @@ def score_opportunity(
     total_score = round(sum(score_components.values()), 2)
 
     # ── recommended_action + blocked_actions ────────────────────────────
+    # Unresolved license evidence outranks category-based reject/defer.
+    # Otherwise a keyword-less (reject_or_defer) observation with conflicting
+    # or unknown SPDX labels is ranked away as reject/defer and never reaches
+    # the planner's license_review_queue — a fail-open for review routing.
+    unresolved_license_evidence = (
+        (license_review.metadata or {}).get("license_observation_status") == "conflict"
+        or license_review.commercial_core_policy in ("blocked_pending_review", "blocked")
+        or license_review.license_risk in ("missing_high", "proprietary_or_unknown_high")
+    )
     blocked = leverage_category == "reject_or_defer"
 
-    if blocked:
+    if unresolved_license_evidence:
+        recommended_action = "license_review_required"
+    elif blocked:
         recommended_action = "reject" if total_score < 0 else "defer"
-    elif license_review.commercial_core_policy in ("blocked_pending_review", "blocked"):
-        recommended_action = "license_review_required"
-    elif license_review.license_risk in ("missing_high", "proprietary_or_unknown_high"):
-        # Unresolved license: an empty/unknown string, or an unmatched license
-        # string. Adoption of any kind waits for a license review.
-        recommended_action = "license_review_required"
     elif leverage_category == "security_compliance":
         recommended_action = "security_review_required"
     elif is_non_python_core or leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack", "infra_observability_stack"):
