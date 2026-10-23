@@ -195,7 +195,7 @@ def _is_eligible_topology_row(row: LevelTRealTopologyRow) -> bool:
     """
     return (
         row.null_method != "fixture_none"
-        and row.is_valid
+        and row.is_valid is True
         and row.topology_status == "computed"
         and row.missingness_state == "computed"
         and row.run_status == "complete"
