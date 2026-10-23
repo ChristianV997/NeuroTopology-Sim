@@ -133,6 +133,13 @@ REASON_CODES: tuple[str, ...] = (
     "CLAIM_GATE_INCOMPLETE",
     "NETWORK_ACCESS_NOT_APPROVED",
     "NON_FINITE_VALUE",
+    "DATASET_LICENSE_EVIDENCE_MISSING",
+    "DATASET_LICENSE_EVIDENCE_CONFLICT",
+    "DATASET_LICENSE_EVIDENCE_UNRESOLVED",
+    "DATASET_COHORT_EVIDENCE_MISSING",
+    "DATASET_COHORT_EVIDENCE_CONFLICT",
+    "DATASET_COHORT_EVIDENCE_UNRESOLVED",
+    "DATASET_COHORT_DISCREPANCY",
 )
 
 DECISION_TO_ALLOWED_CLASS: dict[str, str] = {
@@ -159,7 +166,12 @@ class Reason:
 
 @dataclass(frozen=True)
 class PromotionResult:
-    """Stable output contract. scientific_pass is always false."""
+    """Stable output contract; scientific_pass is always false.
+
+    scientific_eligibility means only eligibility for limited descriptive
+    review. It never verifies permission, identity, or empirical confirmation;
+    engineering reports and explicit EMPIRICAL declarations are not eligible.
+    """
 
     schema_version: str
     case_id: str
