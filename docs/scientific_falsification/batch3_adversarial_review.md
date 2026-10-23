@@ -7,7 +7,7 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
-Live main synced: `52e9a7cb5ed9c16000fc8a07c5c759649133f338` (historical base `3f3fe8593303184cb88eef056c1322f3d4e57a16`).
+Live main synced: `2c8a80bf9874b9f14205d4bb4e466754fb4589cb` (historical base `3f3fe8593303184cb88eef056c1322f3d4e57a16`).
 
 Owned paths only:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
@@ -19,11 +19,9 @@ No neurodata, credentials, or external data services were accessed.
 
 ## Protocol Limits and Power Validation
 
-- Status: protocol-only (`scientific_pass=false`, `empirical_claim_allowed=false`).
-- Proposed thresholds are not power validation: Proposed sample and effect thresholds
-  (such as `minimum_paired_subjects=20`, `minimum_held_out_subjects=8`, and minimum
-  100 null replicates) are conservative protocol floors and falsification criteria,
-  not empirical power validation or statistical ground truth.
+- Status: protocol-only (`scientific_pass=false`, `empirical_claim_allowed=false`, `formal_bayes_factor=null`, `k_value=null`).
+- Completeness never implies scientific success: Completing the falsification matrix (`complete=true`) only verifies that protocol rules and gates are structurally specified; it never sets `scientific_pass=true`, never allows empirical claims, and never establishes scientific adequacy.
+- Proposed thresholds are not power validation: Proposed splits, null models, sample and effect thresholds (such as `minimum_paired_subjects=20`, `minimum_held_out_subjects=8`, `minimum_sessions_per_split=2`, and minimum 100 null replicates), confound controls, subject exclusion policies, and replication gates are conservative protocol proposals and falsification criteria, not empirical power validation, statistical ground truth, or established scientific adequacy.
 - Falsification metrics cannot be inverted into affirmative empirical confirmation.
 
 ## Campaign Execution States and Resumability

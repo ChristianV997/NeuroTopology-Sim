@@ -17,7 +17,13 @@ protocol_limits:
   scientific_pass: false
   empirical_claim_allowed: false
   proposed_thresholds_are_power_validation: false
-  note: "Proposed sample and effect thresholds are conservative protocol floors, not empirical power validation or ground truth."
+  proposed_splits_nulls_controls_are_proposals_only: true
+  completeness_implies_scientific_adequacy: false
+  note: >
+    Proposed splits, null models, sample/effect thresholds, exclusion rules,
+    controls, and replication requirements are conservative protocol proposals
+    and falsification criteria, not empirical power validation or established
+    scientific adequacy.
 
 campaign_execution_states:
   - PLANNING
