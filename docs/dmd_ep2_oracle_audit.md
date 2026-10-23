@@ -36,7 +36,7 @@ Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signe
 
 ## Discovery note
 
-On the last verified hosted run for head `525aedda73534da7dfbcc554722a2456d692461f` (Required Checks run `39852520708`), Round-6 selected only `tests/dmd_ep2_oracle/test_production_bridge.py` under `dmd_crouzeix`: 4 collected, 4 passed, 0 skipped/failures/errors/timeouts, JUnit matched. `tests/dmd_ep2_oracle/test_oracle.py` remained unmapped and the overall selector reported `BLOCKED`; this is not a green required check. The run predates the path/import-policy regressions in this update and must be refreshed on the final head. CI/workflows are not edited in this lane.
+At verified head `991c9c4fa5a81cfdb681ab8ad452e6206daa743c` (live base `d78f54128b6fd60c30665c9e9cff307056dbdd82`), Required Checks run `39877182407` used tested checkout/workflow SHA `2a426235ca454edc21b225adadbc9ccd7fe237fd`. Round-6 selected only `tests/dmd_ep2_oracle/test_production_bridge.py` under `dmd_crouzeix`: 7 collected, 7 passed, 0 skipped/failures/errors/timeouts, JUnit matched. The `required-core-test-report` artifact is `12468448185`. `tests/dmd_ep2_oracle/test_oracle.py` remained unmapped and the overall selector reported `BLOCKED`; this is not a green required check. CI/workflows are not edited in this lane.
 
 Exact discovery handoff for Codex Agent A:
 
