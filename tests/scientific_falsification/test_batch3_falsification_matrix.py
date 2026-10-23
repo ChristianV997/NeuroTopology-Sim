@@ -76,6 +76,123 @@ EXPECTED_TRANSITIONS = {
     "ABORTED": set(),
 }
 FORBIDDEN_PASS = {"PASS", "scientific_PASS", "FORMAL_BAYES_FACTOR"}
+EXPECTED_ALLOWED_OUTCOMES = {
+    "NO_INCREMENTAL_GAIN",
+    "GAIN_UNSTABLE",
+    "GAIN_CONFUNDED",
+    "GAIN_NOT_REPLICATED",
+    "INSUFFICIENT_POWER",
+    "INCONCLUSIVE",
+    "FORMAL_FORECAST_EVIDENCE_PENDING_REVIEW",
+    "BLOCKED_BY_MISSING_SUBJECTS",
+    "BLOCKED_BY_LANGUAGE",
+}
+EXPECTED_MATRIX_KEYS = {
+    "schema",
+    "matrix_id",
+    "status",
+    "scientific_pass",
+    "formal_bayes_factor",
+    "k_value",
+    "evidence_class",
+    "empirical_claim_allowed",
+    "synthetic_demo",
+    "rea_status",
+    "note",
+    "protocol_limits",
+    "campaign_execution_states",
+    "terminal_states",
+    "valid_state_transitions",
+    "resumability_policy",
+    "sample_requirements",
+    "replication",
+    "splits_required",
+    "null_models_required",
+    "minimum_null_replicates",
+    "positive_controls",
+    "negative_controls",
+    "confound_controls",
+    "forbidden_outcomes",
+    "allowed_outcomes",
+    "forbidden_phrases",
+    "claims",
+    "gates",
+}
+CLAIM_REQUIRED_KEYS = {
+    "claim_id",
+    "text",
+    "category",
+    "evidence_class",
+    "falsification",
+    "blocked_if_missing_baseline",
+}
+CLAIM_ALLOWED_KEYS = CLAIM_REQUIRED_KEYS | {
+    "required_baselines",
+    "required_controls",
+    "downgrade_if_missing_baseline",
+    "forbidden_interpretations",
+    "required_instruments",
+    "required_fields",
+    "forbidden_conversions",
+    "required_classes",
+    "minimum_paired_subjects",
+    "scientific_pass",
+    "formal_bayes_factor",
+    "k_value",
+}
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate mapping keys at every level."""
+
+    def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict:
+        self.flatten_mapping(node)
+        mapping = {}
+        for key_node, value_node in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in mapping
+            except TypeError as exc:
+                raise ValueError("YAML mapping keys must be hashable") from exc
+            if duplicate:
+                raise ValueError(f"duplicate YAML mapping key: {key!r}")
+            mapping[key] = self.construct_object(value_node, deep=deep)
+        return mapping
+
+
+def _string_list(value: object, name: str, issues: list[str]) -> set[str] | None:
+    """Validate a declared string list before using set operations on it."""
+    if not isinstance(value, list):
+        issues.append(f"{name} must be a list of strings")
+        return None
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        issues.append(f"{name} must contain only non-empty strings")
+        return None
+    if len(value) != len(set(value)):
+        issues.append(f"{name} must not contain duplicate entries")
+    return set(value)
+
+
+def _exact_keys(
+    value: object,
+    name: str,
+    allowed: set[str],
+    issues: list[str],
+    *,
+    required: set[str] | None = None,
+) -> bool:
+    if not isinstance(value, dict):
+        issues.append(f"{name} must be a mapping")
+        return False
+    actual = set(value)
+    required = allowed if required is None else required
+    missing = required - actual
+    unknown = actual - allowed
+    if missing:
+        issues.append(f"{name} is missing keys: {', '.join(sorted(missing))}")
+    if unknown:
+        issues.append(f"{name} has unsupported keys: {', '.join(sorted(map(str, unknown)))}")
+    return not missing and not unknown
 
 
 def _strict_int(value: object) -> int | None:
@@ -85,7 +202,7 @@ def _strict_int(value: object) -> int | None:
 
 
 def load_matrix(path: Path = MATRIX) -> dict:
-    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    doc = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     if not isinstance(doc, dict):
         raise ValueError("matrix must be a mapping")
     return doc
@@ -103,6 +220,9 @@ def evaluate(doc: dict) -> dict:
             "empirical_claim_allowed": False,
             "proposed_thresholds_are_power_validation": False,
         }
+    _exact_keys(doc, "matrix", EXPECTED_MATRIX_KEYS, issues)
+    if not isinstance(doc.get("note"), str) or not doc.get("note", "").strip():
+        issues.append("note must be a non-empty string")
     if doc.get("schema") != "NeuroTopology.Batch3FalsificationMatrix.v1":
         issues.append("invalid or missing schema")
     if not isinstance(doc.get("matrix_id"), str) or not doc.get("matrix_id", "").strip():
@@ -126,9 +246,15 @@ def evaluate(doc: dict) -> dict:
         issues.append("k_value must be present and null")
 
     limits = doc.get("protocol_limits")
-    if not isinstance(limits, dict):
-        issues.append("missing protocol_limits")
-    else:
+    limits_keys = {
+        "scientific_pass",
+        "empirical_claim_allowed",
+        "proposed_thresholds_are_power_validation",
+        "proposed_splits_nulls_controls_are_proposals_only",
+        "completeness_implies_scientific_adequacy",
+        "note",
+    }
+    if _exact_keys(limits, "protocol_limits", limits_keys, issues):
         if limits.get("scientific_pass") is not False:
             issues.append("protocol_limits.scientific_pass must be false")
         if limits.get("empirical_claim_allowed") is not False:
@@ -139,17 +265,20 @@ def evaluate(doc: dict) -> dict:
             issues.append("protocol_limits.proposed_splits_nulls_controls_are_proposals_only must be true")
         if limits.get("completeness_implies_scientific_adequacy") is not False:
             issues.append("protocol_limits.completeness_implies_scientific_adequacy must be false")
+        if not isinstance(limits.get("note"), str) or not limits["note"].strip():
+            issues.append("protocol_limits.note must be a non-empty string")
 
     allowed_outcomes_raw = doc.get("allowed_outcomes")
     forbidden_outcomes_raw = doc.get("forbidden_outcomes")
-    if not isinstance(allowed_outcomes_raw, list) or not allowed_outcomes_raw:
+    outcomes = _string_list(allowed_outcomes_raw, "allowed_outcomes", issues)
+    if not outcomes:
         issues.append("missing allowed_outcomes")
-        outcomes: set[str] = set()
-    else:
-        outcomes = {str(x) for x in allowed_outcomes_raw}
-    if not isinstance(forbidden_outcomes_raw, list) or not FORBIDDEN_PASS.issubset(set(forbidden_outcomes_raw)):
+    elif outcomes != EXPECTED_ALLOWED_OUTCOMES:
+        issues.append("allowed_outcomes do not match the versioned protocol vocabulary")
+    forbidden_outcomes = _string_list(forbidden_outcomes_raw, "forbidden_outcomes", issues)
+    if forbidden_outcomes is None or not FORBIDDEN_PASS.issubset(forbidden_outcomes):
         issues.append("missing forbidden_outcomes")
-    if FORBIDDEN_PASS & outcomes or any("pass" in o.lower() for o in outcomes):
+    if outcomes is not None and (FORBIDDEN_PASS & outcomes or any("pass" in o.lower() for o in outcomes)):
         issues.append("PASS outcome present")
 
     claims_raw = doc.get("claims")
@@ -157,11 +286,42 @@ def evaluate(doc: dict) -> dict:
         issues.append("claims must be a list of mappings")
         claims: set[str] = set()
     else:
-        claims = {str(item.get("claim_id")) for item in claims_raw if item.get("claim_id")}
+        claim_ids: list[str] = []
         for item in claims_raw:
             cid = item.get("claim_id")
+            _exact_keys(
+                item,
+                f"claim {cid!r}",
+                CLAIM_ALLOWED_KEYS,
+                issues,
+                required=CLAIM_REQUIRED_KEYS,
+            )
+            missing_claim_keys = CLAIM_REQUIRED_KEYS - set(item)
+            if missing_claim_keys:
+                issues.append(f"claim {cid!r} is missing required fields: {', '.join(sorted(missing_claim_keys))}")
+            for key in ("claim_id", "text", "category", "evidence_class", "falsification"):
+                if not isinstance(item.get(key), str) or not item.get(key, "").strip():
+                    issues.append(f"claim {cid!r} {key} must be a non-empty string")
+            if isinstance(cid, str) and cid.strip():
+                claim_ids.append(cid)
             if item.get("blocked_if_missing_baseline") is not True:
                 issues.append(f"claim {cid} must block if baseline is missing")
+            for key in (
+                "required_baselines",
+                "required_controls",
+                "downgrade_if_missing_baseline",
+                "forbidden_interpretations",
+                "required_instruments",
+                "required_fields",
+                "forbidden_conversions",
+                "required_classes",
+            ):
+                if key in item:
+                    _string_list(item[key], f"claim {cid!r}.{key}", issues)
+            if "minimum_paired_subjects" in item:
+                value = _strict_int(item["minimum_paired_subjects"])
+                if value is None or value < 1:
+                    issues.append(f"claim {cid!r}.minimum_paired_subjects must be a positive integer")
             if "scientific_pass" in item and item.get("scientific_pass") is not False:
                 issues.append(f"claim {cid} scientific_pass must be false")
             if "formal_bayes_factor" in item and item.get("formal_bayes_factor") is not None:
@@ -173,36 +333,50 @@ def evaluate(doc: dict) -> dict:
                     issues.append("claim NO-SCIENTIFIC-PASS must set scientific_pass false")
                 if "formal_bayes_factor" not in item or item.get("formal_bayes_factor") is not None:
                     issues.append("claim NO-SCIENTIFIC-PASS must set formal_bayes_factor null")
-    if not REQUIRED_CLAIMS.issubset(claims):
-        issues.append("missing claim")
+        if len(claim_ids) != len(set(claim_ids)):
+            issues.append("claim IDs must be unique")
+        claims = set(claim_ids)
+    missing_claims = REQUIRED_CLAIMS - claims
+    unknown_claims = claims - REQUIRED_CLAIMS
+    if missing_claims:
+        issues.append(f"missing claims: {', '.join(sorted(missing_claims))}")
+    if unknown_claims:
+        issues.append(f"unsupported claim IDs: {', '.join(sorted(unknown_claims))}")
 
-    nulls_raw = doc.get("null_models_required")
-    nulls = set(nulls_raw) if isinstance(nulls_raw, list) else set()
-    if not REQUIRED_NULLS.issubset(nulls):
+    nulls = _string_list(doc.get("null_models_required"), "null_models_required", issues)
+    if nulls is None or not REQUIRED_NULLS.issubset(nulls):
         issues.append("missing null")
     min_null_reps = _strict_int(doc.get("minimum_null_replicates"))
     if min_null_reps is None or min_null_reps < 100:
         issues.append("minimum_null_replicates must be an integer >= 100")
 
-    splits_raw = doc.get("splits_required")
-    splits = set(splits_raw) if isinstance(splits_raw, list) else set()
-    if not REQUIRED_SPLITS.issubset(splits):
+    splits = _string_list(doc.get("splits_required"), "splits_required", issues)
+    if splits is None or not REQUIRED_SPLITS.issubset(splits):
         issues.append("missing split")
 
-    pos_raw = doc.get("positive_controls")
-    neg_raw = doc.get("negative_controls")
-    conf_raw = doc.get("confound_controls")
-    if not isinstance(pos_raw, list) or not REQUIRED_POSITIVE_CONTROLS.issubset(set(pos_raw)):
+    pos = _string_list(doc.get("positive_controls"), "positive_controls", issues)
+    neg = _string_list(doc.get("negative_controls"), "negative_controls", issues)
+    conf = _string_list(doc.get("confound_controls"), "confound_controls", issues)
+    if pos is None or not REQUIRED_POSITIVE_CONTROLS.issubset(pos):
         issues.append("missing positive_controls")
-    if not isinstance(neg_raw, list) or not REQUIRED_NEGATIVE_CONTROLS.issubset(set(neg_raw)):
+    if neg is None or not REQUIRED_NEGATIVE_CONTROLS.issubset(neg):
         issues.append("missing negative_controls")
-    if not isinstance(conf_raw, list) or not REQUIRED_CONFOUND_CONTROLS.issubset(set(conf_raw)):
+    if conf is None or not REQUIRED_CONFOUND_CONTROLS.issubset(conf):
         issues.append("missing confound_controls")
 
     gates = doc.get("gates")
-    if not isinstance(gates, dict):
-        issues.append("missing gates")
-    else:
+    gate_keys = {
+        "scientific_pass_allowed",
+        "formal_k_allowed",
+        "synthetic_to_empirical",
+        "unknown_n_tests_is_one",
+        "missing_subject_zero_fill",
+        "prediction_as_causation",
+        "eeg_only_discernment",
+        "respiration_as_equanimity",
+        "beta1_as_spatial_charge",
+    }
+    if _exact_keys(gates, "gates", gate_keys, issues):
         for gate_key in (
             "scientific_pass_allowed",
             "formal_k_allowed",
@@ -218,9 +392,16 @@ def evaluate(doc: dict) -> dict:
                 issues.append(f"gate {gate_key} must be false")
 
     sample = doc.get("sample_requirements")
-    if not isinstance(sample, dict):
-        issues.append("missing sample_requirements")
-    else:
+    sample_keys = {
+        "minimum_paired_subjects",
+        "minimum_held_out_subjects",
+        "minimum_sessions_per_split",
+        "below_minimum_outcome",
+        "missing_subjects_policy",
+        "failed_subjects_policy",
+        "proposed_thresholds_power_validated",
+    }
+    if _exact_keys(sample, "sample_requirements", sample_keys, issues):
         min_paired = _strict_int(sample.get("minimum_paired_subjects"))
         min_held_out = _strict_int(sample.get("minimum_held_out_subjects"))
         min_sessions = _strict_int(sample.get("minimum_sessions_per_split"))
@@ -240,9 +421,8 @@ def evaluate(doc: dict) -> dict:
             issues.append("sample_requirements.proposed_thresholds_power_validated must be false")
 
     replication = doc.get("replication")
-    if not isinstance(replication, dict):
-        issues.append("missing replication")
-    else:
+    replication_keys = {"required", "independent_cohort_or_site", "failure_outcome"}
+    if _exact_keys(replication, "replication", replication_keys, issues):
         if replication.get("required") is not True:
             issues.append("replication.required must be true")
         if replication.get("independent_cohort_or_site") is not True:
@@ -254,19 +434,18 @@ def evaluate(doc: dict) -> dict:
     term_raw = doc.get("terminal_states")
     transitions = doc.get("valid_state_transitions")
     resumability = doc.get("resumability_policy")
-    if not isinstance(states_raw, list) or set(states_raw) != EXPECTED_CAMPAIGN_STATES:
+    states = _string_list(states_raw, "campaign_execution_states", issues)
+    if states != EXPECTED_CAMPAIGN_STATES:
         issues.append("invalid campaign_execution_states")
-    if not isinstance(term_raw, list) or set(term_raw) != EXPECTED_TERMINAL_STATES:
+    terminals = _string_list(term_raw, "terminal_states", issues)
+    if terminals != EXPECTED_TERMINAL_STATES:
         issues.append("invalid terminal_states")
-    if not isinstance(transitions, dict) or set(transitions.keys()) != EXPECTED_CAMPAIGN_STATES:
-        issues.append("invalid valid_state_transitions")
-    else:
+    if _exact_keys(transitions, "valid_state_transitions", EXPECTED_CAMPAIGN_STATES, issues):
         for state, expected_targets in EXPECTED_TRANSITIONS.items():
             raw_targets = transitions.get(state)
-            if not isinstance(raw_targets, list) or not all(isinstance(t, str) for t in raw_targets):
-                issues.append(f"invalid transitions for {state}")
+            targets = _string_list(raw_targets, f"valid_state_transitions.{state}", issues)
+            if targets is None:
                 continue
-            targets = set(raw_targets)
             if targets != expected_targets:
                 issues.append(f"invalid transition set for {state}")
             if not targets.issubset(EXPECTED_CAMPAIGN_STATES):
@@ -277,6 +456,15 @@ def evaluate(doc: dict) -> dict:
     if not isinstance(resumability, dict):
         issues.append("missing resumability_policy")
     else:
+        resumability_keys = {
+            "allowed",
+            "require_exact_hash_match",
+            "require_checkpoint_manifest",
+            "recompute_interrupted_units_only",
+            "prohibit_terminal_state_reopening",
+            "prohibit_non_protocol_state",
+        }
+        _exact_keys(resumability, "resumability_policy", resumability_keys, issues)
         for res_key in (
             "allowed",
             "require_exact_hash_match",
@@ -288,9 +476,16 @@ def evaluate(doc: dict) -> dict:
             if resumability.get(res_key) is not True:
                 issues.append(f"resumability_policy.{res_key} must be true")
 
-    phrases_raw = doc.get("forbidden_phrases")
-    phrases = " ".join(str(x) for x in phrases_raw).lower() if isinstance(phrases_raw, list) else ""
-    for token in ("consciousness", "equanimity", "quantum", "topological charge", "bayes"):
+    phrases_list = _string_list(doc.get("forbidden_phrases"), "forbidden_phrases", issues)
+    phrases = " ".join(phrases_list or ()).lower()
+    for token in (
+        "consciousness",
+        "equanimity",
+        "quantum",
+        "topological charge",
+        "bayes",
+        "scientific pass",
+    ):
         if token not in phrases:
             issues.append(f"missing forbidden phrase family: {token}")
 
@@ -561,6 +756,151 @@ def test_transition_graph_and_required_null_keys_reject_false_success() -> None:
     report = evaluate(doc)
     assert report["complete"] is False
     assert report["scientific_pass"] is False
+
+
+def test_duplicate_state_and_transition_entries_fail_closed() -> None:
+    """Set-equivalent duplicates are malformed protocol declarations, not valid lists."""
+    cases = (
+        lambda d: d["campaign_execution_states"].append("PLANNING"),
+        lambda d: d["terminal_states"].append("COMPLETED"),
+        lambda d: d["valid_state_transitions"]["PLANNING"].append("REGISTERED"),
+    )
+    for mutate in cases:
+        doc = load_matrix()
+        mutate(doc)
+        assert evaluate(doc)["complete"] is False
+
+
+def test_duplicate_protocol_lists_and_claim_ids_fail_closed() -> None:
+    cases = (
+        lambda d: d["null_models_required"].append("flat"),
+        lambda d: d["splits_required"].append("forward_time"),
+        lambda d: d["positive_controls"].append("known_synthetic_power_change"),
+        lambda d: d["forbidden_outcomes"].append("PASS"),
+        lambda d: d["claims"].append(dict(d["claims"][0])),
+    )
+    for mutate in cases:
+        doc = load_matrix()
+        mutate(doc)
+        assert evaluate(doc)["complete"] is False
+
+
+def test_unrecognized_claim_id_is_not_admitted_by_versioned_matrix() -> None:
+    doc = load_matrix()
+    doc["claims"].append(
+        {
+            "claim_id": "UNRECOGNIZED",
+            "text": "unsupported claim",
+            "category": "protocol",
+            "evidence_class": "preregistered_protocol",
+            "falsification": "unsupported",
+            "blocked_if_missing_baseline": True,
+        }
+    )
+    assert evaluate(doc)["complete"] is False
+
+
+def test_unhashable_malformed_list_entries_return_incomplete_not_exceptions() -> None:
+    cases = (
+        ("campaign_execution_states", {}),
+        ("terminal_states", []),
+        ("null_models_required", {}),
+        ("splits_required", []),
+        ("positive_controls", {}),
+        ("forbidden_outcomes", {}),
+    )
+    for key, malformed in cases:
+        doc = load_matrix()
+        doc[key].append(malformed)
+        report = evaluate(doc)
+        assert report["complete"] is False
+        assert report["scientific_pass"] is False
+
+
+def test_unknown_outcomes_and_extra_status_keys_fail_closed() -> None:
+    # A versioned matrix must not silently accept unsupported science/status fields.
+    for key, value in (
+        ("scientific_status", "VALIDATED"),
+        ("outcome", "PASS"),
+        ("execution_state", "COMPLETED"),
+    ):
+        doc = load_matrix()
+        doc[key] = value
+        assert evaluate(doc)["complete"] is False
+
+    doc = load_matrix()
+    doc["allowed_outcomes"] = ["VALIDATED"]
+    assert evaluate(doc)["complete"] is False
+
+
+def test_claim_rows_require_core_fields_and_reject_extra_status_fields() -> None:
+    doc = load_matrix()
+    del doc["claims"][0]["text"]
+    assert evaluate(doc)["complete"] is False
+
+    doc = load_matrix()
+    doc["claims"][0]["status"] = "PASS"
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
+
+
+def test_explicit_nulls_and_invalid_nested_types_fail_closed() -> None:
+    cases = (
+        lambda d: d.__setitem__("status", None),
+        lambda d: d.__setitem__("evidence_class", None),
+        lambda d: d["protocol_limits"].__setitem__("note", None),
+        lambda d: d["valid_state_transitions"].__setitem__("PLANNING", "REGISTERED"),
+        lambda d: d["claims"][0].__setitem__("text", None),
+        lambda d: d["claims"][0].__setitem__("required_baselines", ["pairwise", None]),
+    )
+    for mutate in cases:
+        doc = load_matrix()
+        mutate(doc)
+        report = evaluate(doc)
+        assert report["complete"] is False
+        assert report["scientific_pass"] is False
+
+
+def test_incomplete_or_failed_execution_status_cannot_be_smuggled_into_matrix() -> None:
+    for key, value in (("status", "FAILED"), ("run_status", "INCOMPLETE"), ("execution_state", "ABORTED")):
+        doc = load_matrix()
+        doc[key] = value
+        assert evaluate(doc)["complete"] is False
+
+
+def test_required_disclaimer_families_cannot_be_removed_from_declaration() -> None:
+    doc = load_matrix()
+    doc["forbidden_phrases"] = [
+        phrase for phrase in doc["forbidden_phrases"] if "scientific pass" not in phrase.lower()
+    ]
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert report["scientific_pass"] is False
+
+
+def test_duplicate_yaml_mapping_keys_are_rejected(tmp_path: Path) -> None:
+    source = MATRIX.read_text(encoding="utf-8")
+    duplicate = tmp_path / "duplicate-matrix.yaml"
+    duplicate.write_text(source + "\nmatrix_id: shadowed-id\n", encoding="utf-8")
+    try:
+        load_matrix(duplicate)
+    except ValueError as exc:
+        assert "duplicate" in str(exc).lower()
+    else:
+        raise AssertionError("duplicate YAML keys must not be silently overwritten")
+
+
+def test_required_disclaimers_remain_in_adversarial_review_document() -> None:
+    text = DOC.read_text(encoding="utf-8").lower()
+    for phrase in (
+        "does not validate the theory",
+        "not an empirical result",
+        "completeness never implies scientific success",
+        "proposed thresholds are not power validation",
+        "does not validate actual execution histories",
+    ):
+        assert phrase in text
 
 
 def test_complete_matrix_never_implies_scientific_success() -> None:
