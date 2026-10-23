@@ -712,7 +712,6 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
-            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
         "tests": (
@@ -727,6 +726,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
         ),
         "support_files": {
+            "tests/dmd_ep2_oracle/test_oracle.py": (
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
+            ),
+        },
+        "support_file_requires_changed": {
             "tests/dmd_ep2_oracle/test_oracle.py": (
                 "tests/dmd_ep2_oracle/test_production_bridge.py",
             ),
@@ -2727,11 +2731,37 @@ def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[st
     return not _is_documentation_path(normalized)
 
 
+def _active_support_paths(spec: dict[str, Any], changed_paths: set[str]) -> set[str]:
+    """Return support paths whose declared changed-path prerequisites are met."""
+    changed = {normalize_repo_path(path).casefold() for path in changed_paths}
+    requirements = spec.get("support_file_requires_changed", {})
+    if not isinstance(requirements, dict):
+        return set()
+    active = set()
+    for support_path in spec.get("support_files", {}):
+        if support_path not in requirements:
+            active.add(normalize_repo_path(support_path))
+            continue
+        companions = requirements[support_path]
+        if (
+            isinstance(companions, (tuple, list))
+            and companions
+            and all(
+                isinstance(path, str)
+                and normalize_repo_path(path).casefold() in changed
+                for path in companions
+            )
+        ):
+            active.add(normalize_repo_path(support_path))
+    return active
+
+
 def _is_component_relevant(
     name: str,
     changed_paths: set[str],
     *,
     include_package_initializers: bool = True,
+    context_paths: set[str] | None = None,
 ) -> bool:
     spec = COMPONENTS[name]
     if any(
@@ -2745,7 +2775,10 @@ def _is_component_relevant(
         for pair in spec.get("candidate_pairs", ())
         for path in (pair["implementation"], pair["test"])
     }
-    mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
+    mapped.update(
+        path.casefold()
+        for path in _active_support_paths(spec, context_paths or changed_paths)
+    )
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("external_test_paths", {}))
     non_selecting_test_paths = {
         normalize_repo_path(path).casefold()
@@ -2832,6 +2865,7 @@ def select_components(changed_paths: set[str]) -> list[str]:
 
 def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> list[str]:
     pairs = spec.get("candidate_pairs", ())
+    active_support_paths = _active_support_paths(spec, changed_paths)
     globally_registered_paths = {
         normalize_repo_path(path).casefold()
         for candidate_spec in COMPONENTS.values()
@@ -2841,7 +2875,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path).casefold()
         for candidate_spec in COMPONENTS.values()
         for path in (
-            *candidate_spec.get("support_files", {}).keys(),
+            *_active_support_paths(candidate_spec, changed_paths),
             *candidate_spec.get("package_initializers", {}).keys(),
         )
     }
@@ -2850,10 +2884,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
     }
-    support_paths = {
-        normalize_repo_path(path).casefold()
-        for path in spec.get("support_files", {})
-    }
+    support_paths = {path.casefold() for path in active_support_paths}
     external_test_paths = {
         normalize_repo_path(path).casefold()
         for path in spec.get("external_test_paths", {})
@@ -2873,7 +2904,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
     } | {
         normalize_repo_path(path)
         for path in (
-            *spec.get("support_files", {}).keys(),
+            *active_support_paths,
             *spec.get("package_initializers", {}).keys(),
             *spec.get("external_test_paths", {}).keys(),
         )
@@ -2926,7 +2957,7 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
     } | {
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
-        for candidate in spec.get("support_files", {})
+        for candidate in _active_support_paths(spec, changed_paths)
     } | {
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
@@ -2976,7 +3007,10 @@ def inspect_component(
     """Require a concrete implementation/test pair for every selected candidate path."""
     spec = COMPONENTS[name]
     pairs = list(spec.get("candidate_pairs", ()))
-    changes = {normalize_repo_path(path).casefold() for path in (changed_paths or set())}
+    changed_paths = changed_paths or set()
+    changes = {normalize_repo_path(path).casefold() for path in changed_paths}
+    active_support_paths = _active_support_paths(spec, changed_paths)
+    active_support_paths_casefold = {path.casefold() for path in active_support_paths}
     unmapped = _changed_candidate_paths(spec, changed_paths or set())
     selected_pairs = list(pairs) if require_all_pairs else [
         pair for pair in pairs
@@ -2993,7 +3027,8 @@ def inspect_component(
     changed_support_tests = {
         normalize_repo_path(test).casefold()
         for support_path, mapped_tests in spec.get("support_files", {}).items()
-        if normalize_repo_path(support_path).casefold() in changes
+        if normalize_repo_path(support_path).casefold() in active_support_paths_casefold
+        and normalize_repo_path(support_path).casefold() in changes
         for test in mapped_tests
     }
     changed_initializer_tests = {
@@ -3116,6 +3151,26 @@ def inspect_component(
             dict(raw_environment_overrides) if not invalid_environment_overrides else {}
         )
     independent_reference_tests = tuple(spec.get("independent_reference_tests", ()))
+    raw_support_requirements = spec.get("support_file_requires_changed", {})
+    if not isinstance(raw_support_requirements, dict):
+        invalid_support_file_requirements = ["<mapping>"]
+    else:
+        candidate_test_paths = {
+            normalize_repo_path(pair["test"]).casefold() for pair in pairs
+        }
+        invalid_support_file_requirements = sorted(
+            str(support_path)
+            for support_path, companion_paths in raw_support_requirements.items()
+            if support_path not in spec.get("support_files", {})
+            or not isinstance(companion_paths, (tuple, list))
+            or not companion_paths
+            or any(
+                not isinstance(path, str)
+                or path not in spec.get("tests", ())
+                or normalize_repo_path(path).casefold() not in candidate_test_paths
+                for path in companion_paths
+            )
+        )
     invalid_independent_reference_tests = sorted(
         path for path in independent_reference_tests
         if path not in spec.get("tests", ()) or path not in spec.get("support_files", {})
@@ -3123,6 +3178,7 @@ def inspect_component(
     changed_reference_tests = [
         path for path in independent_reference_tests
         if normalize_repo_path(path).casefold() in changes
+        and normalize_repo_path(path).casefold() in active_support_paths_casefold
     ]
     missing_reference_tests = sorted(
         path for path in changed_reference_tests if not (root / path).is_file()
@@ -3166,9 +3222,15 @@ def inspect_component(
     active_support_files = {
         support_path: mapped_tests
         for support_path, mapped_tests in spec.get("support_files", {}).items()
-        if normalize_repo_path(support_path).casefold() in changes
-        or any(normalize_repo_path(test_path).casefold() in {normalize_repo_path(test).casefold() for test in tests_to_run}
-               for test_path in mapped_tests)
+        if normalize_repo_path(support_path).casefold() in active_support_paths_casefold
+        and (
+            normalize_repo_path(support_path).casefold() in changes
+            or any(
+                normalize_repo_path(test_path).casefold()
+                in {normalize_repo_path(test).casefold() for test in tests_to_run}
+                for test_path in mapped_tests
+            )
+        )
     }
     missing_support_files = sorted({
         support_path for support_path in active_support_files
@@ -3215,6 +3277,7 @@ def inspect_component(
     selected_support_files = sorted(
         support_path for support_path in spec.get("support_files", {})
         if normalize_repo_path(support_path).casefold() in changes
+        and normalize_repo_path(support_path).casefold() in active_support_paths_casefold
     )
     implementations = sorted({
         pair["implementation"] for pair in selected_pairs
@@ -3231,6 +3294,8 @@ def inspect_component(
         blockers.append("required candidate package initializer is absent")
     if invalid_support_test_mappings:
         blockers.append("candidate test support mapping is invalid or mapped test is absent")
+    if invalid_support_file_requirements:
+        blockers.append("support-file changed-path prerequisite mapping is invalid")
     if invalid_initializer_test_mappings:
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if invalid_test_markers:
@@ -3262,6 +3327,7 @@ def inspect_component(
         "missing_support_files": missing_support_files,
         "missing_package_initializers": missing_package_initializers,
         "invalid_support_test_mappings": invalid_support_test_mappings,
+        "invalid_support_file_requirements": invalid_support_file_requirements,
         "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
         "invalid_test_markers": invalid_test_markers,
         "invalid_environment_overrides": invalid_environment_overrides,
@@ -4036,13 +4102,19 @@ def run(
     relevant_paths = sorted({
         normalize_repo_path(path)
         for path in changed
-        if any(_is_component_relevant(name, {path}) for name in component_scope)
+        if any(
+            _is_component_relevant(name, {path}, context_paths=changed)
+            for name in component_scope
+        )
     })
     unmapped_candidate_paths = _unmapped_candidate_paths(changed)
     if only_components:
         unmapped_candidate_paths = [
             path for path in unmapped_candidate_paths
-            if any(_is_component_relevant(name, {path}) for name in only_components)
+            if any(
+                _is_component_relevant(name, {path}, context_paths=changed)
+                for name in only_components
+            )
         ]
     report: dict[str, Any] = {
         "schema_version": "round6-experimental-ci-report-v1",
@@ -4210,7 +4282,7 @@ def run(
         for index, name in enumerate(run_components, start=1):
             component_changes = {
                 path for path in changed
-                if _is_component_relevant(name, {path})
+                if _is_component_relevant(name, {path}, context_paths=changed)
             }
             spec = COMPONENTS[name]
             require_all_pairs = name in always_components

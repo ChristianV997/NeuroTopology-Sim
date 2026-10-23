@@ -1073,9 +1073,10 @@ def test_fixture():
             {pair["test"] for pair in spec["candidate_pairs"]},
         )
         self.assertIn(oracle_test, spec["tests"])
-        self.assertIn(oracle_test, spec["triggers"])
+        self.assertNotIn(oracle_test, spec["triggers"])
         self.assertIn(oracle_test, spec["independent_reference_tests"])
         self.assertEqual(spec["support_files"][oracle_test], (bridge_test,))
+        self.assertEqual(spec["support_file_requires_changed"][oracle_test], (bridge_test,))
         self.assertEqual(
             {pair["test"] for pair in spec["candidate_pairs"]},
             {
@@ -1088,10 +1089,13 @@ def test_fixture():
             spec["environment_overrides"],
             {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         )
-        self.assertEqual(helper.select_components({oracle_test}), ["dmd_crouzeix"])
-        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [])
+        self.assertEqual(helper.select_components({oracle_test}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [oracle_test])
         self.assertEqual(helper.select_components({bridge_test}), ["dmd_crouzeix"])
         self.assertEqual(helper._unmapped_candidate_paths({bridge_test}), [])
+        paired_changes = {oracle_test, bridge_test}
+        self.assertEqual(helper.select_components(paired_changes), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths(paired_changes), [])
         self.assertEqual(
             helper._unmapped_candidate_paths({"tests/dmd_ep2_oracle/test_unregistered_extra.py"}),
             ["tests/dmd_ep2_oracle/test_unregistered_extra.py"],
@@ -1101,11 +1105,31 @@ def test_fixture():
             root = Path(td)
             _repo(root, with_candidate=False)
             _write(root, implementation, "def marker(): return 'fixture'\n")
-            _write(root, oracle_test, "def oracle_fixture(): return 1\n")
+            base = _commit(root, "DMD implementation before oracle-only change")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            head = _commit(root, "unpaired oracle-only change")
+            report_path = root / "outputs/report.json"
+            exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["selected_components"], [])
+        self.assertEqual(report["unmapped_candidate_paths"], [oracle_test])
+        self.assertEqual(report["executed_commands"], [])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            base = _commit(root, "DMD production implementation without oracle-only candidate")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
             _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
-            base = _commit(root, "DMD production implementation and stable oracle fixture")
-            _write(root, oracle_test, "def oracle_fixture(): return 2\n")
-            head = _commit(root, "DMD production bridge candidate test")
+            head = _commit(root, "DMD paired production bridge and reference tests")
+            changed_paths = helper.collect_changed_paths(base, head, root)
+            self.assertEqual(changed_paths, {oracle_test, bridge_test})
+            self.assertIn(oracle_test, helper._active_support_paths(spec, changed_paths))
+            inspection = helper.inspect_component("dmd_crouzeix", root, changed_paths)
+            self.assertEqual(inspection["tests_to_run"], [bridge_test, oracle_test])
             report_path = root / "outputs/report.json"
             observed_environments = []
 
@@ -1121,10 +1145,40 @@ def test_fixture():
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["selected_components"], ["dmd_crouzeix"])
         component = report["components"][0]
+        self.assertEqual(report["changed_paths"], sorted({bridge_test, oracle_test}))
         self.assertEqual(component["tests_to_run"], [bridge_test, oracle_test])
         self.assertEqual(observed_environments, ["1", "1"])
         self.assertTrue(all(item["environment_overrides"] == {"DMD_EP2_REQUIRE_PRODUCTION": "1"}
                             for item in component["executions"]))
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            inspection = helper.inspect_component("dmd_crouzeix", root, {oracle_test})
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertEqual(inspection["unmapped_candidate_paths"], [oracle_test])
+        self.assertNotIn(oracle_test, inspection["tests_to_run"])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            with patch.dict(
+                helper.COMPONENTS["dmd_crouzeix"],
+                {"support_file_requires_changed": {oracle_test: ("tests/not_registered.py",)}},
+            ):
+                inspection = helper.inspect_component(
+                    "dmd_crouzeix", root, {oracle_test, bridge_test}
+                )
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertIn(
+            "support-file changed-path prerequisite mapping is invalid",
+            inspection["blockers"],
+        )
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
