@@ -713,6 +713,65 @@ class TestWhiteningAudit(unittest.TestCase):
         self.assertTrue(c_ord.zca_is_symmetric)
         self.assertTrue(c_huge.zca_is_symmetric)
 
+    def test_floor_dominated_covariance_does_not_claim_method_equivalence(self) -> None:
+        """Red/green: default floor dominating Σ must not report Cholesky≡ZCA.
+
+        For ``Σ = s·[[2,0.3],[0.3,1]]`` with ``eigenvalue_floor=1e-6`` and
+        ``s ∈ {1e-20, 1e-12}``, flooring collapses Σ→εI so ``||ΔW||`` vanishes.
+        That post-floor agreement is an artifact, not convention equivalence.
+        Tolerances are not loosened.
+        """
+        base = [[2.0, 0.3], [0.3, 1.0]]
+        for scale in (1e-20, 1e-12):
+            cov = [[scale * base[i][j] for j in range(2)] for i in range(2)]
+            _, rep = project_spd_covariance(cov, eigenvalue_floor=1e-6)
+            self.assertGreater(rep.n_floored_eigenvalues, 0, scale)
+            self.assertTrue(rep.is_correction_material, scale)
+            cmp = compare_whitening_methods(cov, eigenvalue_floor=1e-6)
+            self.assertFalse(
+                cmp.are_methods_equivalent,
+                msg=f"floor-collapsed false equivalence at scale={scale}",
+            )
+
+    def test_audit_pipeline_discloses_floor_collapsed_convention_artifact(self) -> None:
+        """Pipeline must warn when flooring collapses the Cholesky/ZCA gap."""
+        import random
+
+        rng = random.Random(407)
+        # Micro-scale features → empirical cov << default 1e-6 floor.
+        X_train = [[rng.gauss(0.0, 1e-10), rng.gauss(0.0, 1e-10)] for _ in range(40)]
+        X_test = [[rng.gauss(0.0, 1e-10), rng.gauss(0.0, 1e-10)] for _ in range(20)]
+        audit_res = audit_whitening_pipeline(X_train, X_test, eigenvalue_floor=1e-6)
+        self.assertIsNotNone(audit_res.method_comparison)
+        assert audit_res.method_comparison is not None
+        self.assertFalse(audit_res.method_comparison.are_methods_equivalent)
+        self.assertTrue(audit_res.spd_report.is_correction_material)
+        joined = " ".join(audit_res.warnings)
+        self.assertIn("post-floor", joined.lower())
+        md = __import__(
+            "tools.whitening_audit.audit_reporter", fromlist=["generate_markdown_audit_report"]
+        ).generate_markdown_audit_report(audit_res)
+        self.assertNotIn("Strictly non-equivalent coordinate bases", md)
+        self.assertIn("Are Methods Equivalent?", md)
+
+    def test_huge_scale_convention_warning_uses_relative_gate(self) -> None:
+        """Absolute ||ΔW||_F gate must not silence the convention warning on huge Σ."""
+        import random
+
+        rng = random.Random(408)
+        # Large-scale features so abs ||ΔW|| underflows while relative gap remains.
+        X_train = [[rng.gauss(0.0, 1e20), rng.gauss(0.0, 1e20)] for _ in range(50)]
+        X_test = [[rng.gauss(0.0, 1e20), rng.gauss(0.0, 1e20)] for _ in range(20)]
+        audit_res = audit_whitening_pipeline(X_train, X_test, eigenvalue_floor=1e-6)
+        assert audit_res.method_comparison is not None
+        self.assertFalse(audit_res.method_comparison.are_methods_equivalent)
+        self.assertGreater(audit_res.method_comparison.relative_transform_difference, 1e-3)
+        self.assertLess(
+            audit_res.method_comparison.transform_matrix_frobenius_difference, 1e-6
+        )
+        joined = " ".join(audit_res.warnings)
+        self.assertIn("relative transform gap", joined.lower())
+
     def test_numpy_ndarray_covariance_does_not_raise_ambiguous_truth(self) -> None:
         """Regression: numpy 2-D covariance must not crash on ``if not row`` truthiness.
 

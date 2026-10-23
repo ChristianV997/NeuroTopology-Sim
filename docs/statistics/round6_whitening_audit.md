@@ -118,7 +118,7 @@ The verifier implements explicit pre-condition checks and raises distinct except
 | **Dimension mismatch** | $d_{\text{test}} \ne d_{\text{train}}$ during transform | `FeatureDimensionMismatchError` |
 | **Non-SPD without floor** | Covariance minor $\le 0$ without repair | `NonPositiveDefiniteError` |
 | **Asymmetric covariance** | $|A_{ij}-A_{ji}| > 10^{-9}\cdot\max(|A_{ij}|,|A_{ji}|,|A_{ii}|,|A_{jj}|)$ (no absolute $10^{-15}$ floor) | `InvalidCovarianceError` |
-| **Cholesky vs ZCA equivalence** | Relative $||W_{\mathrm{chol}}-W_{\mathrm{zca}}||_F / ||W_{\mathrm{zca}}||_F < 10^{-9}$ (no absolute $||\Delta W||_F$ / $||W||_F$ floors) | `are_methods_equivalent` |
+| **Cholesky vs ZCA equivalence** | Relative $||W_{\mathrm{chol}}-W_{\mathrm{zca}}||_F / ||W_{\mathrm{zca}}||_F < 10^{-9}$ **and** zero floored eigenvalues (no absolute $||\Delta W||_F$ / $||W||_F$ floors; floor-collapsed $\Sigma\to\varepsilon I$ agreement is withheld) | `are_methods_equivalent` |
 
 ---
 

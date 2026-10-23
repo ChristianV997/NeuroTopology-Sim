@@ -192,7 +192,7 @@ def compare_whitening_methods(
     """
     validate_eigenvalue_floor(eigenvalue_floor)
     d = len(covariance)
-    cov_spd, _ = project_spd_covariance(covariance, eigenvalue_floor=eigenvalue_floor)
+    cov_spd, spd_rep = project_spd_covariance(covariance, eigenvalue_floor=eigenvalue_floor)
 
     # 1. Cholesky whitening W_chol = L^-1
     L = cholesky_decomposition(cov_spd)
@@ -259,7 +259,10 @@ def compare_whitening_methods(
     rot_diff = matrix_frobenius_norm(matrix_subtract(R, I_d))
 
     # Equivalence is relative — absolute 1e-9 falsely passed on huge-Σ / tiny-W.
-    are_equiv = rel_diff < 1e-9
+    # Floor-dominated repairs collapse Σ → εI so Cholesky and ZCA agree on the
+    # *repaired* matrix; that post-floor agreement must not be reported as
+    # method equivalence (docs: "must not occur silently").
+    are_equiv = (rel_diff < 1e-9) and (spd_rep.n_floored_eigenvalues == 0)
 
     return MethodComparisonResult(
         covariance_in_sample_chol_error=err_chol,
@@ -302,10 +305,23 @@ def audit_whitening_pipeline(
             f"Material SPD repair applied: raw min eigenvalue {spd_rep.raw_min_eigenvalue:.4e} "
             f"floored to {spd_rep.applied_floor:.4e} (correction norm: {spd_rep.correction_frobenius_norm:.4e})."
         )
-    if comparison.transform_matrix_frobenius_difference > 1e-6:
+    # Relative gate: absolute ||ΔW||_F underflows on huge covariances and misses
+    # the convention gap; floor-collapse paths need an explicit artifact warning.
+    if comparison.relative_transform_difference > 1e-3:
         warnings.append(
-            f"Whitening convention note: Cholesky and Symmetric ZCA differ by rotation norm "
-            f"{comparison.rotation_deviation_from_identity:.4f}. They are not equivalent."
+            f"Whitening convention note: Cholesky and Symmetric ZCA differ by relative "
+            f"transform gap {comparison.relative_transform_difference:.4e} "
+            f"(rotation deviation {comparison.rotation_deviation_from_identity:.4f}). "
+            "They are not equivalent."
+        )
+    elif (
+        spd_rep.n_floored_eigenvalues > 0
+        and comparison.relative_transform_difference < 1e-9
+    ):
+        warnings.append(
+            "Whitening convention note: Cholesky/ZCA agreement here is a post-floor "
+            "artifact after material SPD eigenvalue flooring collapsed the spectrum; "
+            "it is not evidence that the two conventions are equivalent."
         )
 
     provenance = {

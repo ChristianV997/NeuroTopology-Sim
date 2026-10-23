@@ -65,7 +65,14 @@ def generate_markdown_audit_report(result: WhiteningAuditResult) -> str:
             f"- **Transform Matrix Frobenius Difference** ($||W_{{\\text{{chol}}}} - W_{{\\text{{zca}}}}||_F$): `{comp.transform_matrix_frobenius_difference:.6f}`",
             f"- **Relative Transform Difference**: `{comp.relative_transform_difference * 100:.2f}%`",
             f"- **Rotation Matrix Deviation from Identity** ($||R - I||_F$): `{comp.rotation_deviation_from_identity:.6f}`",
-            f"- **Are Methods Equivalent?**: `{comp.are_methods_equivalent}` (Strictly non-equivalent coordinate bases)",
+            (
+                f"- **Are Methods Equivalent?**: `{comp.are_methods_equivalent}`"
+                + (
+                    " (relative transform gap below threshold on unrepaired spectrum)"
+                    if comp.are_methods_equivalent
+                    else " (distinct coordinate bases / or floor-collapsed agreement withheld)"
+                )
+            ),
         ])
 
     md_lines.extend([

@@ -127,7 +127,7 @@ class MethodComparisonResult:
     relative_transform_difference: float            # ||W_chol - W_zca||_F / ||W_zca||_F
     rotation_matrix: Tuple[Tuple[float, ...], ...]  # R = W_chol * W_zca^-1
     rotation_deviation_from_identity: float         # ||R - I||_F
-    are_methods_equivalent: bool                    # Mathematically False
+    are_methods_equivalent: bool                    # True only if rel gap < 1e-9 and no SPD flooring
     cholesky_is_lower_triangular: bool
     zca_is_symmetric: bool
 
