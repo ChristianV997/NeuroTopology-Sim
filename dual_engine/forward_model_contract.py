@@ -28,6 +28,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 import json
 import math
+import operator
 import numbers
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -108,6 +109,36 @@ class SourceOutOfBoundsError(ForwardModelContractError):
     """Raised when a dipole source is positioned outside the innermost conductor shell."""
 
 
+def _plain_text(value: str) -> str:
+    """Return the text of a ``str`` without calling a subclass ``__str__`` or ``__format__``."""
+    return str.__str__(value)
+
+
+MAX_SEQUENCE_LENGTH = 1_000_000
+
+
+def _snapshot_sequence(value: Any, field: str, exc_cls: type) -> Tuple[Any, ...]:
+    """Return a tuple copy of a caller sequence, or raise ``exc_cls`` without echoing the value.
+
+    Only a registered ``collections.abc.Sequence`` is accepted, so a NumPy array is rejected
+    rather than implicitly converted. The length is read first and indexing is bounded by it,
+    so a caller object with an endless iterator cannot stall validation; every call into the
+    caller's object runs inside the guard, so its exceptions never escape raw.
+    """
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, AbcSequence):
+        raise exc_cls(f"{field} must be a sequence (tuple or list).")
+    try:
+        count = len(value)
+    except Exception:
+        raise exc_cls(f"{field} must be readable as a sequence.") from None
+    if count > MAX_SEQUENCE_LENGTH:
+        raise exc_cls(f"{field} exceeds the maximum readable length.")
+    try:
+        return tuple(value[index] for index in range(count))
+    except Exception:
+        raise exc_cls(f"{field} must be readable as a sequence.") from None
+
+
 def _require_finite(
     value: float,
     label: str,
@@ -159,24 +190,44 @@ def _require_finite_vec3(
 def _require_unit_orientations(
     orientations: Optional[Sequence[Sequence[float]]],
     expected_count: int,
-) -> None:
+) -> Tuple[Tuple[float, float, float], ...]:
     """Fail closed unless there is exactly one finite, unit-norm orientation per source."""
     if orientations is None:
         raise ForwardModelContractError(
             "Fixed orientation requested but no orientation vectors provided."
         )
-    if len(orientations) != expected_count:
+    return _require_orientation_vectors(orientations, expected_count, unit_length=True)
+
+
+def _require_orientation_vectors(
+    orientations: Any,
+    expected_count: int,
+    *,
+    unit_length: bool,
+) -> Tuple[Tuple[float, float, float], ...]:
+    """Validate one finite length-3 vector per source, unit-norm when ``unit_length`` is set.
+
+    A free-orientation table is not normalised, but a supplied table must still have the
+    documented shape and one vector per source, exactly as a fixed table does.
+    """
+    vectors = _snapshot_sequence(orientations, "source_space.orientations", ForwardModelContractError)
+    if len(vectors) != expected_count:
         raise ForwardModelContractError(
-            f"Orientation count ({len(orientations)}) does not match "
+            f"Orientation count ({len(vectors)}) does not match "
             f"source count ({expected_count})."
         )
-    for i, ori in enumerate(orientations):
-        finite_ori = _require_finite_vec3(ori, f"Fixed orientation vector at index {i}")
-        norm = math.hypot(*finite_ori)
-        if not math.isfinite(norm) or abs(norm - 1.0) > 1e-4:
-            raise ForwardModelContractError(
-                f"Fixed orientation vector at index {i} must be unit norm; got {norm}."
-            )
+    label = "Fixed orientation vector" if unit_length else "Orientation vector"
+    checked = []
+    for i, ori in enumerate(vectors):
+        finite_ori = _require_finite_vec3(ori, f"{label} at index {i}")
+        if unit_length:
+            norm = math.hypot(*finite_ori)
+            if not math.isfinite(norm) or abs(norm - 1.0) > 1e-4:
+                raise ForwardModelContractError(
+                    f"{label} at index {i} must be unit norm; got {norm}."
+                )
+        checked.append(finite_ori)
+    return tuple(checked)
 
 
 def _require_leadfield_matrix(
@@ -191,8 +242,8 @@ def _require_leadfield_matrix(
     """
     try:
         rows = [list(row) for row in leadfield]
-    except TypeError as exc:
-        raise LeadfieldDimensionMismatchError(f"{label} must be a matrix (sequence of rows).") from exc
+    except Exception:
+        raise LeadfieldDimensionMismatchError(f"{label} must be a matrix (sequence of rows).") from None
     if not rows:
         raise LeadfieldDimensionMismatchError(f"{label} has zero rows.")
     n_cols = len(rows[0])
@@ -211,37 +262,42 @@ def _require_leadfield_matrix(
 
 def _require_series_terms(n_max_terms: Any) -> int:
     """Validate the Legendre series length (a positive integer, not a bool)."""
-    if (
-        isinstance(n_max_terms, bool)
-        or not isinstance(n_max_terms, numbers.Integral)
-        or n_max_terms < 1
-    ):
-        raise ForwardModelContractError(f"n_max_terms must be a positive integer; got {n_max_terms!r}.")
-    if n_max_terms > MAX_SERIES_TERMS:
+    if isinstance(n_max_terms, bool) or not isinstance(n_max_terms, numbers.Integral):
+        raise ForwardModelContractError("n_max_terms must be a positive integer.")
+    try:
+        terms = operator.index(n_max_terms)
+    except Exception:
+        raise ForwardModelContractError("n_max_terms must be a positive integer.") from None
+    if terms < 1:
+        raise ForwardModelContractError("n_max_terms must be a positive integer.")
+    if terms > MAX_SERIES_TERMS:
         raise ForwardModelContractError(
-            f"n_max_terms={n_max_terms} exceeds MAX_SERIES_TERMS={MAX_SERIES_TERMS}."
+            f"n_max_terms={terms} exceeds MAX_SERIES_TERMS={MAX_SERIES_TERMS}."
         )
-    return int(n_max_terms)
+    return terms
 
 
 def _require_tolerance(tolerance: Any) -> float:
     """Validate a non-negative finite comparison tolerance."""
     value = _require_finite(tolerance, "tolerance")
     if value < 0.0:
-        raise ForwardModelContractError(f"tolerance must be non-negative; got {tolerance!r}.")
+        raise ForwardModelContractError("tolerance must be non-negative.")
     return value
 
 
 def _require_channel_names(channel_names: Any) -> Tuple[str, ...]:
-    """Return channel names as a tuple, or raise a contract error for non-sequences."""
+    """Return channel names as a tuple of ``str``, or raise a contract error."""
+    message = "channel_names must be a sequence of str names."
     if isinstance(channel_names, (str, bytes)) or channel_names is None:
-        raise ChannelOrderMismatchError(f"channel_names must be a sequence of names; got {channel_names!r}.")
+        raise ChannelOrderMismatchError(message)
     try:
-        return tuple(channel_names)
-    except TypeError as exc:
-        raise ChannelOrderMismatchError(
-            f"channel_names must be a sequence of names; got {channel_names!r}."
-        ) from exc
+        names = tuple(channel_names)
+    except Exception:
+        raise ChannelOrderMismatchError(message) from None
+    for index, name in enumerate(names):
+        if not isinstance(name, str):
+            raise ChannelOrderMismatchError(f"channel_names entry {index} must be a str name.")
+    return names
 
 
 def _require_electrode_on_surface(distance_m: float, surface_radius_m: float) -> None:
@@ -429,23 +485,26 @@ class ConductorModel:
                 "Anatomical BEM conductor models are not supported in synthetic forward contract; "
                 "fail closed."
             )
-        if len(self.radii_m) != len(self.sigmas_sm):
+        radii = _snapshot_sequence(self.radii_m, "conductor.radii_m", ConductorGeometryError)
+        sigmas = _snapshot_sequence(self.sigmas_sm, "conductor.sigmas_sm", ConductorGeometryError)
+        if len(radii) != len(sigmas):
             raise ConductorGeometryError(
-                f"Mismatch: {len(self.radii_m)} radii vs {len(self.sigmas_sm)} conductivities."
+                f"Mismatch: {len(radii)} radii vs {len(sigmas)} conductivities."
             )
-        if not self.radii_m:
+        if not radii:
             raise ConductorGeometryError("Conductor model requires at least one layer.")
 
-        if self.model_type == ConductorModelType.SPHERICAL_1SHELL and len(self.radii_m) != 1:
+        if self.model_type == ConductorModelType.SPHERICAL_1SHELL and len(radii) != 1:
             raise ConductorGeometryError(
-                f"SPHERICAL_1SHELL requires exactly 1 layer; got {len(self.radii_m)}."
+                f"SPHERICAL_1SHELL requires exactly 1 layer; got {len(radii)}."
             )
-        if self.model_type == ConductorModelType.SPHERICAL_3SHELL and len(self.radii_m) != 3:
+        if self.model_type == ConductorModelType.SPHERICAL_3SHELL and len(radii) != 3:
             raise ConductorGeometryError(
-                f"SPHERICAL_3SHELL requires exactly 3 layers; got {len(self.radii_m)}."
+                f"SPHERICAL_3SHELL requires exactly 3 layers; got {len(radii)}."
             )
 
-        for i, r in enumerate(self.radii_m):
+        layer_radii: List[float] = []
+        for i, r in enumerate(radii):
             r = _require_finite(r, f"Radius layer {i}", exc_cls=ConductorGeometryError)
             if r > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
@@ -453,23 +512,24 @@ class ConductorModel:
                 )
             if r <= 0:
                 raise ConductorGeometryError(f"Radius layer {i} must be positive, got {r}.")
+            layer_radii.append(r)
 
         # Check strictly monotonic radii
-        for i in range(len(self.radii_m) - 1):
-            if self.radii_m[i] >= self.radii_m[i + 1]:
+        for i in range(len(layer_radii) - 1):
+            if layer_radii[i] >= layer_radii[i + 1]:
                 raise ConductorGeometryError(
-                    f"Layer radii must be strictly increasing: {self.radii_m[i]} >= {self.radii_m[i+1]}"
+                    f"Layer radii must be strictly increasing: {layer_radii[i]} >= {layer_radii[i + 1]}"
                 )
 
         # Check scalp radius bounds
-        outer_r = self.radii_m[-1]
+        outer_r = layer_radii[-1]
         if not (MIN_PLAUSIBLE_SCALP_RADIUS_M <= outer_r <= MAX_PLAUSIBLE_SCALP_RADIUS_M):
             raise ConductorGeometryError(
                 f"Outer conductor radius {outer_r}m outside plausible range "
                 f"[{MIN_PLAUSIBLE_SCALP_RADIUS_M}, {MAX_PLAUSIBLE_SCALP_RADIUS_M}]m."
             )
 
-        for i, s in enumerate(self.sigmas_sm):
+        for i, s in enumerate(sigmas):
             s = _require_finite(s, f"Conductivity layer {i}", exc_cls=ConductorGeometryError)
             if s <= 0:
                 raise ConductorGeometryError(f"Conductivity layer {i} must be positive, got {s}.")
@@ -507,38 +567,57 @@ class SensorGeometry:
         _require_coordinate_frame_member(
             self.coordinate_frame, "sensor_geometry.coordinate_frame"
         )
-        if len(self.channel_names) != len(self.positions_m):
+        names = _snapshot_sequence(
+            self.channel_names, "sensor_geometry.channel_names", ForwardModelContractError
+        )
+        positions = _snapshot_sequence(
+            self.positions_m, "sensor_geometry.positions_m", ForwardModelContractError
+        )
+        if len(names) != len(positions):
             raise LeadfieldDimensionMismatchError(
-                f"Channel count ({len(self.channel_names)}) does not match "
-                f"positions count ({len(self.positions_m)})."
+                f"Channel count ({len(names)}) does not match "
+                f"positions count ({len(positions)})."
             )
-        if len(self.channel_names) < 4:
+        if len(names) < 4:
             raise ForwardModelContractError(
-                f"At least 4 channels are required for 3D forward geometry; got {len(self.channel_names)}."
+                f"At least 4 channels are required for 3D forward geometry; got {len(names)}."
             )
-        if len(set(self.channel_names)) != len(self.channel_names):
+        for index, name in enumerate(names):
+            if not isinstance(name, str):
+                raise ForwardModelContractError(
+                    f"sensor_geometry.channel_names entry {index} must be a str name."
+                )
+        plain_names = tuple(_plain_text(name) for name in names)
+        if len(set(plain_names)) != len(plain_names):
             raise ForwardModelContractError("Duplicate channel names detected in sensor montage.")
-        if self.reference_channel is not None and self.reference_channel not in self.channel_names:
-            raise ForwardModelContractError(
-                f"Declared reference channel '{self.reference_channel}' is not present in channel names: "
-                f"{self.channel_names}."
-            )
+        reference = self.reference_channel
+        if reference is not None:
+            if not isinstance(reference, str):
+                raise ForwardModelContractError(
+                    "sensor_geometry.reference_channel must be a channel-name string or None."
+                )
+            reference_text = _plain_text(reference)
+            if reference_text not in plain_names:
+                raise ForwardModelContractError(
+                    f"Declared reference channel '{reference_text}' is not present in channel names: "
+                    f"{plain_names}."
+                )
 
-        for ch, pos in zip(self.channel_names, self.positions_m):
-            finite_pos = _require_finite_vec3(pos, f"Channel '{ch}' position")
+        for name, pos in zip(plain_names, positions):
+            finite_pos = _require_finite_vec3(pos, f"Channel '{name}' position")
             norm = math.sqrt(sum(p * p for p in finite_pos))
             if not math.isfinite(norm) or norm <= 0.0:
                 raise ConductorGeometryError(
-                    f"Channel '{ch}' position norm must be strictly positive and finite; got {norm!r}."
+                    f"Channel '{name}' position norm must be strictly positive and finite; got {norm!r}."
                 )
             if norm > MILLIMETER_THRESHOLD_M:
                 raise CoordinateUnitMismatchError(
-                    f"Channel '{ch}' position norm {norm:.2f}m > 1.0m; "
+                    f"Channel '{name}' position norm {norm:.2f}m > 1.0m; "
                     "positions must be specified in meters (m), not millimeters (mm)."
                 )
             if not (MIN_PLAUSIBLE_SCALP_RADIUS_M <= norm <= MAX_PLAUSIBLE_SCALP_RADIUS_M):
                 raise ConductorGeometryError(
-                    f"Channel '{ch}' position norm {norm:.4f}m outside plausible scalp range "
+                    f"Channel '{name}' position norm {norm:.4f}m outside plausible scalp range "
                     f"[{MIN_PLAUSIBLE_SCALP_RADIUS_M}, {MAX_PLAUSIBLE_SCALP_RADIUS_M}]m."
                 )
 
@@ -557,7 +636,10 @@ class SourceSpace:
 
     def validate(self, conductor: Optional[ConductorModel] = None) -> None:
         """Validate dipole positions and orientation unit vectors."""
-        if not self.positions_m:
+        positions = _snapshot_sequence(
+            self.positions_m, "source_space.positions_m", ForwardModelContractError
+        )
+        if not positions:
             raise ForwardModelContractError("Source space must contain at least one source location.")
         _require_source_space_labels(
             self.coordinate_frame, self.is_fixed_orientation, self.orientations
@@ -565,14 +647,20 @@ class SourceSpace:
 
         if conductor is not None:
             conductor.validate()
-        brain_r = conductor.brain_radius_m if conductor is not None else DEFAULT_BRAIN_RADIUS_M
+        brain_r = (
+            _require_finite(
+                conductor.brain_radius_m, "Conductor brain radius", exc_cls=ConductorGeometryError
+            )
+            if conductor is not None
+            else DEFAULT_BRAIN_RADIUS_M
+        )
         origin = (
             _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
             if conductor is not None
             else (0.0, 0.0, 0.0)
         )
 
-        for i, pos in enumerate(self.positions_m):
+        for i, pos in enumerate(positions):
             finite_pos = _require_finite_vec3(pos, f"Source index {i} position")
             abs_norm = math.sqrt(sum(p * p for p in finite_pos))
             if not math.isfinite(abs_norm):
@@ -596,7 +684,9 @@ class SourceSpace:
                 )
 
         if self.is_fixed_orientation:
-            _require_unit_orientations(self.orientations, len(self.positions_m))
+            _require_unit_orientations(self.orientations, len(positions))
+        elif self.orientations is not None:
+            _require_orientation_vectors(self.orientations, len(positions), unit_length=False)
 
     @property
     def n_sources(self) -> int:
@@ -1434,10 +1524,9 @@ def make_synthetic_source_grid(
     is_fixed_orientation: bool = False,
 ) -> SourceSpace:
     """Generate deterministic synthetic dipole locations strictly inside the brain shell."""
+    _require_fixed_orientation_flag(is_fixed_orientation)
     if isinstance(n_sources, bool) or not isinstance(n_sources, int) or n_sources <= 0:
-        raise ForwardModelContractError(
-            f"n_sources must be a positive integer; got {n_sources!r}."
-        )
+        raise ForwardModelContractError("n_sources must be a positive integer.")
     if n_sources > MAX_SYNTHETIC_SOURCES:
         raise ForwardModelContractError(
             f"n_sources={n_sources} exceeds MAX_SYNTHETIC_SOURCES={MAX_SYNTHETIC_SOURCES}."
@@ -1502,12 +1591,15 @@ def _require_sensors_on_scalp(sensors: SensorGeometry, conductor: ConductorModel
     montage that is not on the (possibly shifted) scalp sphere is rejected here.
     """
     origin = _require_finite_vec3(conductor.origin_m, "Conductor origin", exc_cls=ConductorGeometryError)
+    surface_radius = _require_finite(
+        conductor.scalp_radius_m, "Conductor scalp radius", exc_cls=ConductorGeometryError
+    )
     for name, pos in zip(sensors.channel_names, sensors.positions_m):
         distance = math.hypot(pos[0] - origin[0], pos[1] - origin[1], pos[2] - origin[2])
         try:
-            _require_electrode_on_surface(distance, conductor.scalp_radius_m)
+            _require_electrode_on_surface(distance, surface_radius)
         except ForwardModelContractError as exc:
-            raise type(exc)(f"Channel '{name}': {exc}") from exc
+            raise type(exc)(f"Channel '{_plain_text(name)}': {exc}") from exc
 
 
 def build_synthetic_forward_contract(
@@ -1522,6 +1614,8 @@ def build_synthetic_forward_contract(
 
     Returns a ForwardModelContractResult marked SYNTHETIC_ONLY.
     """
+    if reference_channel is not None and not isinstance(reference_channel, str):
+        raise ForwardModelContractError("reference_channel must be a channel-name string or None.")
     conductor = conductor_model or ConductorModel()
     conductor.validate()
 
@@ -1549,14 +1643,18 @@ def build_synthetic_forward_contract(
         validate_affine_transform(coord_transform)
         # Validate before transforming: an invalid orientation must fail closed here exactly as
         # it does without a transform, never be renormalised or replaced by an invented direction.
-        for i, pos in enumerate(sources.positions_m):
+        source_positions = _snapshot_sequence(
+            sources.positions_m, "source_space.positions_m", ForwardModelContractError
+        )
+        for i, pos in enumerate(source_positions):
             _require_finite_vec3(pos, f"Source index {i} position")
         if sources.is_fixed_orientation:
-            _require_unit_orientations(sources.orientations, len(sources.positions_m))
+            _require_unit_orientations(sources.orientations, len(source_positions))
         elif sources.orientations is not None:
-            for i, ori in enumerate(sources.orientations):
-                _require_finite_vec3(ori, f"Orientation vector at index {i}")
-        trans_pos = apply_affine_transform(sources.positions_m, coord_transform, is_vector=False)
+            _require_orientation_vectors(
+                sources.orientations, len(source_positions), unit_length=False
+            )
+        trans_pos = apply_affine_transform(source_positions, coord_transform, is_vector=False)
         trans_ori = None
         if sources.orientations is not None:
             raw_ori = apply_affine_transform(sources.orientations, coord_transform, is_vector=True)
@@ -1591,7 +1689,7 @@ def build_synthetic_forward_contract(
     if reference_channel is not None and apply_avg_ref:
         raise ForwardModelContractError(
             f"Conflicting referencing policies: cannot apply average reference (apply_avg_ref=True) "
-            f"and unipolar reference channel '{reference_channel}' simultaneously. "
+            f"and unipolar reference channel '{_plain_text(reference_channel)}' simultaneously. "
             "Set apply_avg_ref=False when specifying a reference_channel."
         )
 
@@ -1786,7 +1884,7 @@ def audit_mne_forward_solution(
     if n_sources is not None and (
         isinstance(n_sources, bool) or not isinstance(n_sources, numbers.Integral) or n_sources < 0
     ):
-        raise LeadfieldDimensionMismatchError(f"MNE nsource must be a non-negative integer; got {n_sources!r}.")
+        raise LeadfieldDimensionMismatchError("MNE nsource must be a non-negative integer.")
     if n_sources is None:
         n_sources = len(positions) if positions else (len(leadfield_list[0]) // (1 if is_fixed else 3))
 
