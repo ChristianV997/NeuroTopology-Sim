@@ -128,6 +128,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
                 "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
             )
+        ) + (
+            {
+                "implementation": "tools/higher_order_runtime/planner.py",
+                "test": "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+            },
         ),
         "support_files": {
             "tests/higher_order_runtime_contract/conftest.py": (
@@ -1670,10 +1675,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "oss_opportunities/opportunity_batch.py",
             "oss_opportunities/license_review.py",
             "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/source_ingestion.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
             "tests/test_oss_license_review.py",
             "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_opportunity_batch.py",
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
@@ -1682,6 +1689,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "tests": (
             "tests/test_oss_adoption_gates.py",
             "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
@@ -1693,6 +1701,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             }
             for implementation, test in (
                 ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/opportunity_batch.py", "tests/test_oss_opportunity_batch.py"),
                 ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
                 ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
                 ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
@@ -1710,12 +1719,14 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "oss_opportunities/opportunity_batch.py",
             "oss_opportunities/license_review.py",
             "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/source_ingestion.py",
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
         ),
         "candidate_test_roots": (
             "tests/test_oss_adoption_gates.py",
             "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
@@ -2253,7 +2264,7 @@ for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.ite
 # They are ownership evidence, not approval or merge state.
 COMPONENT_OWNER_PRS = {
     "planar_geometry": (416,),
-    "higher_order_runtime": (377,),
+    "higher_order_runtime": (377, 450),
     "synthetic_pipeline_replay": (387,),
     "hodge_2d": (423,),
     "phase_cochain_reference": (385,),
@@ -2287,8 +2298,8 @@ COMPONENT_OWNER_PRS = {
     "batch3_metadata_audit_artifact": (411,),
     "oss_adoption_gates": (386,),
     "whitening_audit": (407,),
-    "batch3_falsification_matrix_artifact": (376, 444),
-    "batch3_offline_integration": (381,),
+    "batch3_falsification_matrix_artifact": (376, 444, 447),
+    "batch3_offline_integration": (381, 449),
     "measurement_hypothesis_contract": (384, 357),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
@@ -2302,7 +2313,7 @@ COMPONENT_OWNER_PRS = {
     "batch3_source_registry": (375,),
     "research_plan_quality_eval": (383,),
     "forward_model_contract": (388, 446),
-    "nuisance_scenarios": (408,),
+    "nuisance_scenarios": (408, 448),
 }
 
 
@@ -2427,6 +2438,18 @@ def normalize_repo_path(path: str) -> str:
     normalized = path.replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
+    # Git -z paths are repository-relative, but keep this boundary explicit:
+    # malformed or injected names must never alias registered paths or escape
+    # the checkout during a later file read.
+    parts = normalized.split("/")
+    path_segments = parts[:-1] if parts and parts[-1] == "" else parts
+    if (
+        normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", normalized)
+        or any(part in {".", ".."} for part in path_segments)
+        or any(not part for part in path_segments)
+    ):
+        raise ValueError("path must be a normalized relative repository path")
     return normalized
 
 

@@ -238,6 +238,34 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertEqual(report["changed_paths"], [candidate_path])
         self.assertEqual(report["unmapped_candidate_paths"], [candidate_path])
 
+    def test_git_changed_paths_reject_absolute_and_traversal_paths(self):
+        helper = _helper()
+        invalid_paths = (
+            "../tools/surrogate_nulls/nulls.py",
+            "tools/surrogate_nulls/../../outside.py",
+            "/tools/surrogate_nulls/nulls.py",
+            r"C:\tools\surrogate_nulls\nulls.py",
+            r"tests\fixtures\..\..\tools\surrogate_nulls\nulls.py",
+        )
+        for path in invalid_paths:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValueError, "relative repository path"):
+                    helper.normalize_repo_path(path)
+
+        self.assertEqual(
+            helper.normalize_repo_path("./tests/surrogate_nulls/test_phase_nulls.py"),
+            "tests/surrogate_nulls/test_phase_nulls.py",
+        )
+
+        malicious_git_output = b"../tools/surrogate_nulls/nulls.py\0"
+        with patch.object(
+            helper.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0, stdout=malicious_git_output),
+        ):
+            with self.assertRaisesRegex(ValueError, "relative repository path"):
+                helper.collect_changed_paths("a" * 40, "b" * 40, Path.cwd())
+
     def test_required_checks_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
@@ -2409,7 +2437,7 @@ def test_fixture():
                 "tests/release_readiness/batch2_security/test_artifact_states.py",
             ),
             "higher_order_runtime": (
-                377,
+                377, 450,
                 "tools/higher_order_runtime/stream_contract.py",
                 "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
             ),
@@ -2919,6 +2947,80 @@ def test_fixture():
                     blocked = helper.inspect_component(component, root, changed)
                     self.assertEqual(blocked["status"], "BLOCKED")
                     self.assertEqual(blocked["missing_required_tests"], [test_path])
+
+    def test_pr447_falsification_matrix_test_only_change_keeps_exact_owner_pair(self):
+        helper = _helper()
+        component = "batch3_falsification_matrix_artifact"
+        matrix = "configs/scientific_falsification/batch3_falsification_matrix.yaml"
+        test_path = "tests/scientific_falsification/test_batch3_falsification_matrix.py"
+        changed = {
+            "docs/scientific_falsification/batch3_adversarial_review.md",
+            test_path,
+        }
+        self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (376, 444, 447))
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, matrix, "schema: fixture\n")
+            _write(root, test_path, "def test_matrix_contract(): pass\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertEqual(result["tests_to_run"], [test_path])
+
+    def test_live_planner_followup_has_an_exact_new_pair(self):
+        helper = _helper()
+        component = "higher_order_runtime"
+        implementation = "tools/higher_order_runtime/planner.py"
+        test_path = "tests/higher_order_runtime_contract/test_bounds_and_failures.py"
+        changed = {implementation, test_path}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((implementation, test_path), pairs)
+        self.assertIn(450, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+
+    def test_offline_serialization_followup_keeps_the_exact_contract_pair(self):
+        helper = _helper()
+        component = "batch3_offline_integration"
+        implementation = "tools/batch3_offline_integration/serialization.py"
+        test_path = "tests/tools/batch3_offline_integration/test_offline_integration.py"
+        changed = {implementation, test_path}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((implementation, test_path), pairs)
+        self.assertIn(449, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+
+    def test_oss_batch_update_is_paired_but_uncovered_ingestion_source_blocks(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        batch_source = "oss_opportunities/opportunity_batch.py"
+        batch_test = "tests/test_oss_opportunity_batch.py"
+        untested_source = "oss_opportunities/source_ingestion.py"
+        changed = {batch_source, batch_test, untested_source}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((batch_source, batch_test), pairs)
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [untested_source])
+
+    def test_nuisance_factory_followup_has_exact_pair_and_owner(self):
+        helper = _helper()
+        component = "nuisance_scenarios"
+        implementation = "sim/nuisance_scenarios/factory.py"
+        test_path = "tests/nuisance_scenarios/test_factory_and_grid.py"
+        self.assertIn(448, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components({implementation, test_path}), [component])
+        self.assertEqual(helper._unmapped_candidate_paths({implementation, test_path}), [])
 
     def test_workflow_benchmark_contract_runs_in_core_without_self_selecting(self):
         helper = _helper()
@@ -3448,7 +3550,7 @@ def test_fixture():
 
         self.assertEqual(
             helper.COMPONENT_OWNER_PRS["batch3_falsification_matrix_artifact"],
-            (376, 444),
+            (376, 444, 447),
         )
         self.assertEqual(
             helper.COMPONENT_OWNER_PRS["batch2_pipeline_benchmark"],
@@ -3594,6 +3696,7 @@ def test_fixture():
                 "oss_opportunities/opportunity_batch.py",
                 "oss_opportunities/repository_candidate.py",
                 "oss_opportunities/scoring.py",
+                "tests/test_oss_opportunity_batch.py",
                 "oss_opportunities/validation.py",
                 "tests/test_oss_adoption_gates.py",
             },
@@ -3652,6 +3755,7 @@ def test_fixture():
         tests = (
             "tests/test_oss_adoption_gates.py",
             "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
@@ -3660,6 +3764,7 @@ def test_fixture():
         self.assertEqual(spec["suite_companion_tests"], ("tests/test_oss_license_review.py",))
         expected_pairs = {
             ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/opportunity_batch.py", "tests/test_oss_opportunity_batch.py"),
             ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
             ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
             ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
@@ -3678,6 +3783,7 @@ def test_fixture():
             "oss_opportunities/scoring.py",
             "oss_opportunities/validation.py",
             "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_opportunity_batch.py",
         }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
