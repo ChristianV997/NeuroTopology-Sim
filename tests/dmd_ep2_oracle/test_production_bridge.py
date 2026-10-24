@@ -336,6 +336,55 @@ class ProductionBridgePolicyTests(unittest.TestCase):
                 True, loader=unexpected_load, source_path=missing_source
             )
 
+    def test_rejects_stub_with_missing_required_symbol(self):
+        """A stub missing one of the required symbols must be rejected."""
+        expected = _expected_production_source().resolve()
+        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+        real_dmd = _load_production()
+        stub = ModuleType(name)
+        stub.__file__ = str(expected)
+        stub.__spec__ = importlib.util.spec_from_file_location(name, expected)
+        stub.__loader__ = stub.__spec__.loader
+        # Copy the genuine implementations for the first 3 symbols, leaving alias_ambiguity_report missing
+        for symbol in (
+            "ep2_hamiltonian",
+            "diagnose_ep2",
+            "discrete_eigenvalue_from_frequency_hz",
+        ):
+            setattr(stub, symbol, getattr(real_dmd, symbol))
+        with self.assertRaisesRegex(AssertionError, "production function 'alias_ambiguity_report'"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+
+    def test_rejects_stub_with_loader_mismatch(self):
+        """A module whose loader doesn't match its spec loader must be rejected."""
+        expected = _expected_production_source().resolve()
+        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+        stub = ModuleType(name)
+        stub.__file__ = str(expected)
+        stub.__spec__ = importlib.util.spec_from_file_location(name, expected)
+        stub.__loader__ = object()  # Mismatched loader
+        with self.assertRaisesRegex(AssertionError, "not loaded by its declared source loader"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+
+    def test_rejects_stub_with_none_file_attribute(self):
+        """A module without __file__ must fail closed."""
+        expected = _expected_production_source().resolve()
+        stub = SimpleNamespace(__name__="neurotopology_sim.experimental.dynamics.dmd_crouzeix")
+        with self.assertRaisesRegex(AssertionError, "has no source file path"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+
+    def test_rejects_stub_with_spec_origin_mismatch(self):
+        """A module whose spec origin differs from expected must fail closed."""
+        expected = _expected_production_source().resolve()
+        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+        stub = ModuleType(name)
+        stub.__file__ = str(expected)
+        stub.__spec__ = SimpleNamespace(origin=str(expected.parent / "other.py"), loader=object())
+        stub.__loader__ = stub.__spec__.loader
+        with self.assertRaisesRegex(AssertionError, "import spec does not identify this checkout's source"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+
+
 
 if __name__ == "__main__":
     unittest.main()

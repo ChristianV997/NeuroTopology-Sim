@@ -671,5 +671,45 @@ spec.loader.exec_module(module)
             signed_nyquist_alias(10.0, float('nan'))
 
 
+    def test_matrix_log_overflow_in_off_diagonals_fails_closed(self):
+        """Synthetic matrix with large entries overflowing radius fails closed."""
+        matrix = ((1.7e308 + 0j, 1.7e308 + 0j), (1.7e308 + 0j, -1.7e308 + 0j))
+        with self.assertRaisesRegex(ValueError, 'matrix eigenvalue radius must be finite'):
+            principal_matrix_log(matrix)
+
+    def test_matrix_log_overflow_in_eigenvalue_addition_fails_closed(self):
+        """Matrix where center and radius are finite but sum overflows fails closed."""
+        matrix = ((1.2e308 + 0j, 0.9e308 + 0j), (0.9e308 + 0j, 1.2e308 + 0j))
+        with self.assertRaisesRegex(ValueError, 'first matrix eigenvalue must be finite'):
+            principal_matrix_log(matrix)
+
+    def test_matrix_log_overflow_in_eigenvalue_subtraction_fails_closed(self):
+        """Matrix where subtraction center - radius overflows negatively fails closed."""
+        matrix = ((-1.2e308 + 0j, 0.9e308 + 0j), (0.9e308 + 0j, -1.2e308 + 0j))
+        with self.assertRaisesRegex(ValueError, 'second matrix eigenvalue must be finite'):
+            principal_matrix_log(matrix)
+
+    def test_matrix_log_catastrophic_cancellation_preserves_log(self):
+        """Exact rational determinant recovery preserves log despite float cancellation."""
+        # det = (1e100 + 1j)(1e100 - 1j) - (1e100)^2 = 1e200 + 1 - 1e200 = 1.
+        matrix = ((1e100 + 1j, 1e100 + 0j), (1e100 + 0j, 1e100 - 1j))
+        res = principal_matrix_log(matrix)
+        for i in range(2):
+            for j in range(2):
+                self.assertTrue(math.isfinite(res[i][j].real))
+                self.assertTrue(math.isfinite(res[i][j].imag))
+
+    def test_matrix_log_zero_matrix_is_singular(self):
+        """Zero matrix has all zero eigenvalues and is classified as singular."""
+        with self.assertRaisesRegex(ValueError, 'singular matrix has no logarithm'):
+            principal_matrix_log(((0j, 0j), (0j, 0j)))
+
+    def test_exact_determinant_quotient_rejects_zero_dominant_root(self):
+        """_exact_determinant_quotient fails closed if dominant root is zero."""
+        matrix = ((1.0 + 0j, 0j), (0j, 1.0 + 0j))
+        with self.assertRaisesRegex(ValueError, 'cannot recover an eigenvalue from a zero dominant root'):
+            _exact_determinant_quotient(matrix, 0j)
+
+
 if __name__ == '__main__':
     unittest.main()
