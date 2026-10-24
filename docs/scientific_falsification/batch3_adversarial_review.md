@@ -7,7 +7,7 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
-Live main synced: `2c8a80bf9874b9f14205d4bb4e466754fb4589cb` (historical base `3f3fe8593303184cb88eef056c1322f3d4e57a16`).
+Live main synced: `b51bb9b4bdf63c19894bb407eadcd70f528f7dda` (PR #376 merge `7fb3c18`; normal sync merge incorporated this current base).
 
 Owned paths only:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
@@ -37,10 +37,15 @@ The campaign execution harness defines an explicit deterministic state machine:
   - `ABORTED`: Terminal state reached upon hard failure, schema breach, or claim violation.
 - **Terminal States**: `COMPLETED` and `ABORTED` are terminal. They have zero outgoing transitions
   and cannot be reopened or mutated.
+- **Transition graph**: Only the locked adjacency is accepted (for example `PLANNING` may go to
+  `REGISTERED` or `ABORTED`, never directly to `COMPLETED`). Destinations outside
+  `campaign_execution_states` (including outcome labels such as `PASS`) fail closed.
 - **Resumability Invariants**:
   - Resumption requires exact plan and artifact hash matches.
   - Resumed runs must replay from verified checkpoint manifests and only execute interrupted units.
   - Resumption cannot bypass falsification gates or transition into non-protocol states.
+- **Formal K fields**: Top-level `formal_bayes_factor` and `k_value` must be present and null;
+  omitting the keys is not treated as an authorized unset.
 
 ## Claims reviewed
 
