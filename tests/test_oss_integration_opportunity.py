@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from oss_opportunities.integration_opportunity import OpenSourceIntegrationOpportunityV1, compute_opportunity_id
-from oss_opportunities.license_review import RepositoryLicenseReviewV1
-from oss_opportunities.validation import REQUIRED_BLOCKED_ACTIONS, validate_opportunity_against_license_review
+from oss_opportunities.license_review import RepositoryLicenseReviewV1, compute_license_review_id
+from oss_opportunities.validation import (
+    EXPECTED_SCORE_COMPONENTS,
+    LICENSE_POLICY_VERSION,
+    REQUIRED_BLOCKED_ACTIONS,
+    validate_opportunity_against_license_review,
+)
 
 
 def _make(**overrides):
     kwargs = dict(
-        repo_full_name="a/b", candidate_id="cand123", license_review_id="lic123",
+        repo_full_name="a/b", candidate_id="cand123",
+        license_review_id=compute_license_review_id(repo_full_name="a/b", license_spdx="GPL-3.0"),
         leverage_category="document_ingestion", recommended_action="integrate_as_optional_adapter",
         blocked_actions=list(REQUIRED_BLOCKED_ACTIONS),
-        score_components={"direct_product_leverage": 2.0, "license_safety": 3.0},
-        total_score=5.0,
+        score_components={name: 0.0 for name in EXPECTED_SCORE_COMPONENTS},
+        total_score=0.0, security_risk="low",
         limitations=["synthetic fixture only"], provenance="synthetic fixture",
     )
     kwargs.update(overrides)
@@ -45,9 +51,42 @@ def test_missing_blocked_actions_fails():
 
 
 def test_total_score_must_equal_sum_of_components():
-    o = _make(score_components={"a": 1.0, "b": 1.0}, total_score=5.0)
+    components = {name: 0.0 for name in EXPECTED_SCORE_COMPONENTS}
+    components["direct_product_leverage"] = 2.0
+    components["license_safety"] = 3.0
+    o = _make(score_components=components, total_score=99.0)
     errs = o.validate()
     assert any("total_score" in e for e in errs)
+
+
+def test_component_sum_overflow_cannot_pass_with_finite_total():
+    components = {name: 0.0 for name in sorted(EXPECTED_SCORE_COMPONENTS)}
+    keys = list(components)
+    for key, value in zip(keys[:4], (-1e308, -1e308, 1e308, 1e308)):
+        components[key] = value
+    opportunity = _make(score_components=components, total_score=0.0)
+    assert any("score_components" in error or "total_score" in error for error in opportunity.validate())
+
+
+def test_unhashable_enum_values_are_reported_not_raised():
+    for override, field in (
+        ({"leverage_category": []}, "leverage_category"),
+        ({"recommended_action": {}}, "recommended_action"),
+    ):
+        errors = _make(**override).validate()
+        assert any(field in error for error in errors)
+
+
+def test_malformed_text_and_surface_fields_are_rejected():
+    cases = (
+        ({"limitations": "synthetic fixture only"}, "limitations"),
+        ({"provenance": ["synthetic fixture"]}, "provenance"),
+        ({"integration_surface": "adapter"}, "integration_surface"),
+        ({"emulation_surface": [17]}, "emulation_surface"),
+    )
+    for overrides, field in cases:
+        errors = _make(**overrides).validate()
+        assert any(field in error for error in errors)
 
 
 def test_invalid_leverage_category_fails():
@@ -82,19 +121,15 @@ def test_missing_limitations_fails():
 
 
 def _review(**overrides):
-    # Built via the raw dataclass constructor (not .make()) so tests can
-    # freely set arbitrary (commercial_core_policy, license_risk)
-    # combinations -- including tampered/mismatched ones -- to exercise
-    # the cross-object check. .make() derives license_risk from
-    # license_spdx and does not accept it as a direct override.
     kwargs = dict(
         repo_full_name="a/b", license_spdx="GPL-3.0", license_name="GPLv3",
         provenance="fixture", limitations=["synthetic"],
-        commercial_core_policy="external_process_only", license_risk="strong_copyleft_high",
-        allowed_use_modes=["external_process_only"], blocked_use_modes=["commercial_core_copy"],
+        commercial_core_policy="external_process_only",
+        allowed_use_modes=["external_process_only", "docs_reference"],
+        blocked_use_modes=["commercial_core_copy", "code_copy_of_any_kind"],
     )
     kwargs.update(overrides)
-    return RepositoryLicenseReviewV1(license_review_id="fixed-test-id", **kwargs)
+    return RepositoryLicenseReviewV1.make(license_policy_version=LICENSE_POLICY_VERSION, **kwargs)
 
 
 def test_cross_check_fails_closed_for_non_copy_permitting_policy_mismatch():
@@ -103,25 +138,51 @@ def test_cross_check_fails_closed_for_non_copy_permitting_policy_mismatch():
     # mismatched pair like external_process_only/strong_copyleft_high
     # paired with integrate_as_optional_adapter silently passed.
     o = _make(recommended_action="integrate_as_optional_adapter")
-    review = _review(commercial_core_policy="external_process_only", license_risk="strong_copyleft_high")
+    review = _review(commercial_core_policy="external_process_only")
     errs = validate_opportunity_against_license_review(o, review)
     assert any("rule 7/8" in e for e in errs)
 
 
 def test_cross_check_fails_closed_for_docs_reference_only_mismatch():
     o = _make(recommended_action="integrate_as_optional_adapter")
-    review = _review(commercial_core_policy="docs_reference_only", license_risk="source_available_or_fair_code_high")
+    review = _review(
+        license_spdx="BSL-1.1", commercial_core_policy="docs_reference_only",
+        allowed_use_modes=["docs_reference", "external_process_only_if_terms_permit"],
+        blocked_use_modes=["commercial_core_copy", "code_copy_of_any_kind", "resale_without_review"],
+    )
     errs = validate_opportunity_against_license_review(o, review)
     assert any("rule 7/8" in e for e in errs)
 
 
 def test_cross_check_passes_for_permissive_optional_adapter():
-    o = _make(recommended_action="integrate_as_optional_adapter")
-    review = _review(commercial_core_policy="allowed_with_attribution", license_risk="permissive_low")
+    review = _review(
+        license_spdx="MIT", license_name="MIT", commercial_core_policy="allowed_with_attribution",
+        allowed_use_modes=["adapter_only", "docs_reference", "attributed_snippet_copy"],
+        blocked_use_modes=["unattributed_copy"],
+    )
+    o = _make(license_review_id=review.license_review_id, recommended_action="integrate_as_optional_adapter")
     assert validate_opportunity_against_license_review(o, review) == []
 
 
 def test_cross_check_ignores_other_recommended_actions():
-    o = _make(recommended_action="integrate_as_external_tool_record")
-    review = _review(commercial_core_policy="blocked", license_risk="missing_high")
+    review = _review(license_spdx="unknown", license_name="unknown", commercial_core_policy="blocked")
+    o = _make(
+        license_review_id=review.license_review_id,
+        recommended_action="integrate_as_external_tool_record",
+    )
     assert validate_opportunity_against_license_review(o, review) == []
+
+
+def test_cross_check_rejects_external_tool_record_under_docs_reference_only_policy():
+    review = _review(
+        license_spdx="ELv2", license_name="Elastic License 2.0",
+        commercial_core_policy="docs_reference_only",
+        allowed_use_modes=["docs_reference", "external_process_only_if_terms_permit"],
+    )
+    opportunity = _make(
+        license_review_id=review.license_review_id,
+        recommended_action="integrate_as_external_tool_record",
+    )
+
+    errors = validate_opportunity_against_license_review(opportunity, review)
+    assert any("docs_reference_only" in error for error in errors)

@@ -22,6 +22,8 @@ from typing import Any, Union
 from oss_opportunities.validation import (
     LICENSE_POLICY_VERSION,
     OssOpportunityValidationError,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
     validate_license_review,
 )
 
@@ -122,6 +124,7 @@ class RepositoryLicenseReviewV1:
     license_review_id: str = ""
     repo_full_name: str = ""
     license_spdx: str = "unknown"
+    license_policy_version: str = LICENSE_POLICY_VERSION
     license_name: str = "unknown"
     license_risk: str = "missing_high"
     commercial_core_policy: str = "blocked_pending_review"
@@ -151,10 +154,13 @@ class RepositoryLicenseReviewV1:
         defaults.update(kwargs)
         return cls(
             license_review_id=license_review_id, repo_full_name=repo_full_name,
-            license_spdx=license_spdx, license_name=license_name, license_risk=license_risk, **defaults,
+            license_spdx=license_spdx, license_policy_version=license_policy_version,
+            license_name=license_name, license_risk=license_risk, **defaults,
         )
 
-    def recompute_id(self, *, license_policy_version: str = LICENSE_POLICY_VERSION) -> str:
+    def recompute_id(self, *, license_policy_version: str | None = None) -> str:
+        if license_policy_version is None:
+            license_policy_version = self.license_policy_version
         return compute_license_review_id(
             repo_full_name=self.repo_full_name, license_spdx=self.license_spdx, license_policy_version=license_policy_version,
         )
@@ -165,12 +171,13 @@ class RepositoryLicenseReviewV1:
             "license_review_id": self.license_review_id,
             "repo_full_name": self.repo_full_name,
             "license_spdx": self.license_spdx,
+            "license_policy_version": self.license_policy_version,
             "license_name": self.license_name,
             "license_risk": self.license_risk,
             "commercial_core_policy": self.commercial_core_policy,
             "allowed_use_modes": list(self.allowed_use_modes),
             "blocked_use_modes": list(self.blocked_use_modes),
-            "attribution_required": bool(self.attribution_required),
+            "attribution_required": self.attribution_required,
             "review_status": self.review_status,
             "limitations": list(self.limitations),
             "provenance": self.provenance,
@@ -179,17 +186,26 @@ class RepositoryLicenseReviewV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "RepositoryLicenseReviewV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("license review payload must be a mapping")
+        reject_forbidden_claim_fields(d, "license review payload")
+        for key in ("allowed_use_modes", "blocked_use_modes", "limitations"):
+            if key in d and not isinstance(d[key], list):
+                raise OssOpportunityValidationError(f"license review {key} must be a list")
+        if "metadata" in d and not isinstance(d["metadata"], dict):
+            raise OssOpportunityValidationError("license review metadata must be a mapping")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             license_review_id=d.get("license_review_id", ""),
             repo_full_name=d.get("repo_full_name", ""),
             license_spdx=d.get("license_spdx", "unknown"),
+            license_policy_version=d.get("license_policy_version", LICENSE_POLICY_VERSION),
             license_name=d.get("license_name", "unknown"),
             license_risk=d.get("license_risk", "missing_high"),
             commercial_core_policy=d.get("commercial_core_policy", "blocked_pending_review"),
             allowed_use_modes=list(d.get("allowed_use_modes") or []),
             blocked_use_modes=list(d.get("blocked_use_modes") or []),
-            attribution_required=bool(d.get("attribution_required", True)),
+            attribution_required=d.get("attribution_required", True),
             review_status=d.get("review_status", "heuristic_unreviewed"),
             limitations=list(d.get("limitations") or []),
             provenance=d.get("provenance", ""),
@@ -197,11 +213,12 @@ class RepositoryLicenseReviewV1:
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "RepositoryLicenseReviewV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)

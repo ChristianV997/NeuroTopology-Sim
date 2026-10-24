@@ -55,9 +55,10 @@ Markdown / static HTML leverage report
   ladder (`oss_opportunities.license_review.classify_license_risk`) --
   never a network license check, never a legal opinion.
 - Ranks candidates deterministically into `OpenSourceLeverageBatchV1`, with
-  every candidate ending up in either `opportunities_ranked` or
-  `opportunities_rejected` (with a documented reason) -- never silently
-  dropped.
+  every input accounted for as a ranked row, a rejected row, an explicit
+  duplicate diagnostic, or an explicit `top_n_limit` omission -- never
+  silently dropped. Review-required and security-review-required actions
+  remain visible even when they exceed the requested `top_n` cap.
 - Proposes conservative, actionable next-PR names via
   `oss_opportunities.planner.plan_oss_integrations_from_opportunities`.
 - Renders a deterministic Markdown and static HTML summary.
@@ -90,6 +91,23 @@ Markdown / static HTML leverage report
   never raise `license_safety` or unlock a commercial-core action --
   `test_trending_stars_alone_do_not_force_immediate_integration` asserts
   this directly.
+- **Reports are structurally validated before JSON serialization.** JSON
+  inputs reject duplicate object keys and non-standard `NaN`/`Infinity`
+  constants. Versioned opportunity/review identifiers, the exact score
+  vector, batch count accounting, and derived report projections are checked
+  rather than trusting caller-supplied summaries.
+- **Action routing follows the explicit license policy.** For high-value
+  categories, `allowed_with_attribution` plus `permissive_low` may produce an
+  optional-adapter proposal; `adapter_only`/`external_process_only` route to
+  an external tool-record proposal; `docs_reference_only` routes to a docs
+  reference. Blocked or unresolved policies remain in review. Elevated or
+  unknown security-risk labels cannot produce an integration action.
+- **V1 output rows are closed shapes.** Unknown fields in ranked, rejected,
+  and plan action rows are rejected, as are structured scientific/evidence,
+  security-certification, legal-approval, and compatibility-clearance claim
+  fields. A candidate's exact `license_observation_status: "conflict"`
+  marker also forces the repository into license review, including when it
+  appears on one of several duplicate observations.
 
 ## Trendshift source policy and raw-data redistribution caution
 
@@ -157,6 +175,44 @@ Every `OpenSourceIntegrationOpportunityV1`'s `blocked_actions` is always a
 superset of the fixed floor listed above, regardless of how well the
 repository scores.
 
+## Input and ranking failure behavior
+
+Fixture and manual-seed inputs must be JSON objects with an explicit
+`repositories` list (or `repos` for manual seeds). Every row must be a
+mapping with a non-empty repository identity and recognized fields. Malformed
+rows, duplicate JSON keys, and missing identities are errors; loaders do not
+silently discard malformed rows. `top_n` must be a non-negative integer (not
+a boolean or numeric string). It limits ordinary ranked rows, but never
+suppresses license/security review actions. Any ordinary row omitted by that
+limit is recorded in `opportunities_rejected` with `omitted_by_top_n` and a
+`top_n_limit` reason. Duplicate diagnostics point to the canonical row and
+do not claim a second distinct opportunity ID.
+
+The planner's `max_selected` must also be a non-negative integer. Its cap
+never suppresses `license_review_required` or `security_review_required`
+queues; ordinary selected rows omitted by the cap remain explicit in
+`rejected_candidates` with a `max_selected_limit` reason. Planner identifiers
+are checked against the batch ID, planner version, and selected row IDs.
+
+The additive `scoring_version` and `license_policy_version` fields identify
+the versions used to derive opportunity/review IDs. Existing records that
+omit these additive fields are interpreted using the current v1 policy
+constants. This is structural identity checking, not independent source or
+license verification. Unknown schema, scoring, license-policy, or planner
+versions are rejected until an implementation explicitly supports them;
+recomputing a deterministic ID is not provenance or authenticity proof.
+
+## Interpretation boundary
+
+An action such as `integrate_as_optional_adapter` is an engineering
+proposal only. It does not establish legal permission, data-use rights,
+security certification, compatibility, cohort identity, implementation
+correctness, empirical support, biological validity, or scientific truth.
+`human_reviewed` remains caller-supplied review metadata, not an authenticated
+approval. A `local_fixture` source remains fixture-derived metadata and does
+not become empirical evidence through scoring or rendering. No report status
+is a scientific `PASS` or adoption authorization.
+
 ## How Copilot Pro review comments should be handled
 
 Per this repository's standing Copilot Pro usage rule: Copilot review
@@ -220,6 +276,59 @@ usually emulation/reference, not direct-dependency candidates) -- see
 next PR for these categories is a **decision record**, not an
 implementation.
 
+## Adoption gates
+
+These gates are part of the scouting workflow. They are checks on which
+candidates may be recommended for adoption. They do not perform any
+integration, and they make no claim about repository quality.
+
+- **Malformed evidence and source identity** (`oss_opportunities.validation`).
+  Candidate validation rejects non-string source/identity and provenance
+  fields, malformed metadata/list fields, invalid count inputs, and a
+  `candidate_id` that does not match its repository/source/snapshot identity.
+  An ambiguous `repo_full_name`, mismatched owner, or non-empty `repo_url`
+  pointing elsewhere is rejected. `build_opportunities_from_candidates`
+  raises on any invalid candidate, so a batch never silently includes a
+  malformed record.
+- **Duplicate candidates** (`oss_opportunities.opportunity_batch`). Observations
+  of the same repository (`casefold()`-normalized `repo_full_name`) are ranked
+  once. License labels are compared case-insensitively after trimming only;
+  the code does not parse SPDX expressions or infer equivalence. Conflicting
+  observed labels are retained as a sorted conflict record and force the
+  combined review to `missing_high` / `license_review_required` regardless of
+  score or input order. Case-only spelling differences do not create a
+  conflict. Each duplicate observation remains in `opportunities_rejected`
+  with a `duplicate_of` reason, and the batch records duplicate/conflict
+  counts.
+- **Unresolved license** (`oss_opportunities.scoring`). An empty or unknown
+  license (`missing_high`), an unmatched license string
+  (`proprietary_or_unknown_high`), a conflicting observation set, or a
+  `blocked` / `blocked_pending_review` commercial-core policy all recommend
+  `license_review_required`. This gate outranks category-based
+  `reject_or_defer` reject/defer routing, and review-required opportunities
+  remain in `opportunities_ranked` even when the heuristic score is negative
+  so the planner's `license_review_queue` cannot drop them. Previously, an
+  unmatched string could recommend an external-tool-record path while its
+  commercial-core policy was still `blocked_pending_review`, and sparse
+  conflicting observations could be ranked away as reject without review.
+- **Unsupported capability claims** (`oss_opportunities.scoring`).
+  `adapter_surface_clarity` needs a documented surface: a non-empty
+  `homepage_url` or `metadata.adapter_docs_url`. A category inferred only from
+  description or topic keywords earns 0.5 instead of 1.0. Security-category
+  candidates earn 0. This changes the score. It does not change the
+  adoption action, which remains a documented limitation.
+- **Adoption blocked by unresolved risk** (`oss_opportunities.scoring`). A
+  candidate with `metadata.requires_credentials` recommends
+  `security_review_required` instead of an optional-adapter or
+  external-tool-record action. The planner routes it to `security_review_queue`.
+  `credential_required_execution` remains in `blocked_actions` regardless.
+
+Offline tests: `tests/test_oss_adoption_gates.py`. Candidate-level review of
+named external projects is maintained separately in the canonical inventory
+`docs/oss_compat/compatibility_inventory_20261017.json` (PR #406). The
+adoption-gates note references stable row IDs but does not duplicate upstream
+version/license evidence: `docs/oss_opportunity_candidate_review_20261016.md`.
+
 ## CLI usage
 
 ```bash
@@ -255,11 +364,14 @@ pattern), an invalid Trendshift timeframe / starmap category, or a missing
 ## Limitations
 
 - Scoring is a documented, additive heuristic -- not a scientific or
-  legal judgment of repository quality, correctness, or license safety.
+  judgment of repository quality, correctness, compatibility, security,
+  legal clearance, or scientific validity.
 - `classify_license_risk` is an offline string match against a fixed list
-  -- it does not fetch or parse an actual `LICENSE` file, and
-  `review_status` defaults to `"heuristic_unreviewed"`; only a
-  human-set `"human_reviewed"` value means an actual person looked at it.
+  -- it does not fetch or parse an actual `LICENSE` file. `review_status`
+  must be one of `heuristic_unreviewed` or `human_reviewed`; the latter is
+  caller-supplied metadata, not an authorization, security certification, or
+  legal conclusion. Package declarations and transitive/component licenses
+  require separately scoped evidence.
 - `infer_leverage_category`'s keyword matching is a simple substring
   overlap over `description`/`topics`/`name` -- it can misclassify a
   repository whose README doesn't use the expected vocabulary.

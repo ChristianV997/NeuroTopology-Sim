@@ -14,7 +14,6 @@ judgment.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +21,9 @@ from typing import Any, Optional, Union
 
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
+    candidate_observation_id,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
     validate_repository_candidate,
 )
 
@@ -36,14 +38,12 @@ def compute_candidate_id(*, repo_full_name: str, source: str, source_timeframe: 
     refreshed. A different snapshot date is a genuinely different
     observation and gets its own id -- this scout never claims a repo's
     metadata is unchanged across snapshots."""
-    basis = {
-        "repo_full_name": repo_full_name,
-        "source": source,
-        "source_timeframe": source_timeframe,
-        "source_snapshot_date": source_snapshot_date,
-    }
-    canonical = json.dumps(basis, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return candidate_observation_id(
+        repo_full_name=repo_full_name,
+        source=source,
+        source_timeframe=source_timeframe,
+        source_snapshot_date=source_snapshot_date,
+    )
 
 
 @dataclass
@@ -132,6 +132,14 @@ class OpenSourceRepositoryCandidateV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "OpenSourceRepositoryCandidateV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("candidate payload must be a mapping")
+        reject_forbidden_claim_fields(d, "candidate payload")
+        for key in ("topics", "observed_categories", "limitations"):
+            if key in d and not isinstance(d[key], list):
+                raise OssOpportunityValidationError(f"candidate {key} must be a list")
+        if "metadata" in d and not isinstance(d["metadata"], dict):
+            raise OssOpportunityValidationError("candidate metadata must be a mapping")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             candidate_id=d.get("candidate_id", ""),
@@ -162,11 +170,12 @@ class OpenSourceRepositoryCandidateV1:
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "OpenSourceRepositoryCandidateV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)
