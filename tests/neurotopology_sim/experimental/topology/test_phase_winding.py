@@ -461,3 +461,48 @@ def test_ulp_neighborhoods_of_odd_pi_keep_n_omega_synced():
                 if cons > 1e-9:
                     hits.append((k, x, int(n[0]), float(omega[0]), cons))
     assert hits == []
+
+
+@pytest.mark.parametrize("raw", [1e18, -1e18, 1e20, -1e20])
+def test_branch_index_fails_closed_when_float_wrap_cannot_fit_int64(raw):
+    """Large finite raw differences must not escape the int64/principal contract.
+
+    At 1e18 the ideal branch index still fits int64, but float spacing makes a
+    one-step correction too small to restore [-pi, pi). At 1e20 the ideal
+    branch index itself is outside int64. Both cases must reject, not return an
+    out-of-range omega or a corrupted integer branch index.
+    """
+    with pytest.raises(WindingError, match="branch index|principal|wrap"):
+        branch_index_floor([raw])
+
+
+def test_edge_permutation_preserves_integer_charge_and_circulation_invariant():
+    """Reordering edge rows/columns changes storage order, not the face result."""
+    d0, d1 = _standard_triangle_incidence()
+    raw_near_cut = float(np.nextafter(np.pi, -np.inf))
+    theta = np.array([0.0, raw_near_cut, raw_near_cut + 0.1])
+    reference = phase_winding(theta, d0, d1)
+
+    permutation = np.array([2, 0, 1])
+    reordered = phase_winding(theta, d0[permutation], d1[:, permutation])
+    repeated = phase_winding(theta, d0, d1)
+
+    assert np.array_equal(reordered.branch_index, reference.branch_index[permutation])
+    assert np.array_equal(reordered.omega, reference.omega[permutation])
+    assert np.array_equal(reordered.face_charge, reference.face_charge)
+    circulation = float((d1.astype(float) @ reference.omega)[0])
+    assert reference.face_charge.tolist() == [int(round(circulation / TWO_PI))]
+    assert abs(circulation - TWO_PI * int(reference.face_charge[0])) < 1e-10
+    assert reference.identity_residual_max_abs < 1e-10
+    assert np.array_equal(repeated.branch_index, reference.branch_index)
+    assert np.array_equal(repeated.omega, reference.omega)
+    assert np.array_equal(repeated.face_charge, reference.face_charge)
+
+
+def test_rejects_open_boundary_that_is_not_a_cycle():
+    d0, _ = _standard_triangle_incidence()
+    # Two successive edges without the closing edge have nonzero boundary.
+    open_path = np.array([[1, 1, 0]], dtype=np.int64)
+    assert not np.array_equal(open_path @ d0, np.zeros((1, 3), dtype=np.int64))
+    with pytest.raises(WindingError, match="incidence identity"):
+        phase_winding([0.0, 1.0, 2.0], d0, open_path)
