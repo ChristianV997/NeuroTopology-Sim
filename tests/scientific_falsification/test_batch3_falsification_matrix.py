@@ -980,3 +980,60 @@ def test_complete_matrix_never_implies_scientific_success() -> None:
     assert report.get("proposed_thresholds_are_power_validation", False) is False
     assert doc.get("status") == "FALSIFICATION_HARNESS_ONLY"
     assert doc.get("evidence_class") == "preregistered_protocol"
+
+
+def test_downgrade_targets_must_come_from_declared_vocabulary() -> None:
+    """A downgrade target is a declared scalar, never a PASS-like or formal-K label."""
+    for target in ("scientific_PASS", "promote_to_pass", "PASS", "FORMAL_BAYES_FACTOR"):
+        doc = load_matrix()
+        doc["claims"][1]["downgrade_if_missing_baseline"] = target
+        report = evaluate(doc)
+        assert report["complete"] is False, target
+        assert report["scientific_pass"] is False
+    doc = load_matrix()
+    doc["claims"][1]["downgrade_if_missing_baseline"] = ["FORMAL_BAYES_FACTOR"]
+    assert evaluate(doc)["complete"] is False
+    doc = load_matrix()
+    doc["claims"][1]["downgrade_if_missing_baseline"] = []
+    assert evaluate(doc)["complete"] is False
+
+
+def test_claim_evidence_class_must_come_from_declared_vocabulary() -> None:
+    """Claim evidence classes are the versioned vocabulary, not any free string."""
+    for value in ("empirical_validated", "PASS", "formal"):
+        doc = load_matrix()
+        doc["claims"][0]["evidence_class"] = value
+        report = evaluate(doc)
+        assert report["complete"] is False, value
+        assert report["scientific_pass"] is False
+
+
+def test_explicit_empty_claim_requirement_lists_fail_closed() -> None:
+    """An explicitly empty baseline, control or instrument list declares nothing and must fail."""
+    for key in ("required_baselines", "required_controls", "required_instruments"):
+        doc = load_matrix()
+        claim = next(item for item in doc["claims"] if key in item)
+        claim[key] = []
+        report = evaluate(doc)
+        assert report["complete"] is False, key
+        assert report["scientific_pass"] is False
+
+
+def test_family_marker_must_use_ascii_spelling() -> None:
+    """A long-s look-alike spelling of a disclaimer family is not that family marker."""
+    doc = load_matrix()
+    doc["forbidden_phrases"] = [p for p in doc["forbidden_phrases"] if "consciousness" not in p.lower()]
+    doc["forbidden_phrases"].append("conſciouſnesſ claim")
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert "missing forbidden phrase family: consciousness" in report["issues"]
+
+
+def test_family_split_across_entries_fails_closed() -> None:
+    """A family must appear whole within one entry; split words across entries do not satisfy it."""
+    doc = load_matrix()
+    doc["forbidden_phrases"] = [p for p in doc["forbidden_phrases"] if "scientific pass" not in p.lower()]
+    doc["forbidden_phrases"].extend(["scientific", "pass"])
+    report = evaluate(doc)
+    assert report["complete"] is False
+    assert "missing forbidden phrase family: scientific pass" in report["issues"]
