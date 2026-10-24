@@ -7,14 +7,13 @@ It does not emit scientific PASS and does not compute a formal Bayes factor.
 A successful falsification harness does not validate the theory; it only
 makes invalid conclusions harder to emit.
 
-Live main synced: `b51bb9b4bdf63c19894bb407eadcd70f528f7dda` (PR #376 merge `7fb3c18`; normal sync merge incorporated this current base).
+This follow-up audits the merged matrix evaluator. The YAML matrix is read-only input to this evaluator; this change owns only this document and the test-side evaluator.
 
-Owned paths only:
+Paths changed by this follow-up:
 - `docs/scientific_falsification/batch3_adversarial_review.md`
-- `configs/scientific_falsification/batch3_falsification_matrix.yaml`
 - `tests/scientific_falsification/test_batch3_falsification_matrix.py`
 
-Primary checkout was not touched. Branch starts from current `origin/main`.
+The primary checkout was not touched. No scientific workload was run.
 No neurodata, credentials, or external data services were accessed.
 
 ## Protocol Limits and Power Validation
@@ -26,7 +25,7 @@ No neurodata, credentials, or external data services were accessed.
 
 ## Campaign Execution States and Resumability
 
-The campaign execution harness defines an explicit deterministic state machine:
+The matrix declares an intended deterministic campaign state graph:
 - **Campaign Execution States**:
   - `PLANNING`: Initial specification and preregistration phase.
   - `REGISTERED`: Protocol locked with cryptographic manifest digest.
@@ -35,17 +34,23 @@ The campaign execution harness defines an explicit deterministic state machine:
   - `RESUMED`: Resumed from intermediate checkpoint with verified plan digest.
   - `COMPLETED`: Terminal state reached when all registered units finish cleanly.
   - `ABORTED`: Terminal state reached upon hard failure, schema breach, or claim violation.
-- **Terminal States**: `COMPLETED` and `ABORTED` are terminal. They have zero outgoing transitions
+- **Terminal-state declaration**: `COMPLETED` and `ABORTED` are declared terminal, with zero outgoing transitions
   and cannot be reopened or mutated.
 - **Transition graph**: Only the locked adjacency is accepted (for example `PLANNING` may go to
   `REGISTERED` or `ABORTED`, never directly to `COMPLETED`). Destinations outside
   `campaign_execution_states` (including outcome labels such as `PASS`) fail closed.
-- **Resumability Invariants**:
-  - Resumption requires exact plan and artifact hash matches.
-  - Resumed runs must replay from verified checkpoint manifests and only execute interrupted units.
-  - Resumption cannot bypass falsification gates or transition into non-protocol states.
+- **Resumability policy declaration**:
+  - A conforming runner is specified to require exact plan and artifact hash matches.
+  - A conforming runner is specified to use checkpoint manifests and only re-execute interrupted units.
+  - A conforming runner is specified not to bypass falsification gates or transition into non-protocol states.
 - **Formal K fields**: Top-level `formal_bayes_factor` and `k_value` must be present and null;
   omitting the keys is not treated as an authorized unset.
+
+These are declarations checked in a static matrix document—not observations of execution. The evaluator does not validate actual execution histories: it does not consume campaign event histories, enforce runtime transitions, inspect checkpoint or artifact manifests, or verify hashes. It cannot establish that a runner followed the declared graph or resumability rules. A structurally complete result means only that this versioned declaration has the expected keys, values, and protocol vocabulary; it is not scientific PASS, empirical support, validated power, or theory confirmation.
+
+The evaluator rejects duplicate YAML mapping keys, duplicate list declarations, missing or unsupported fields, malformed values, and unsupported status/outcome vocabulary. Required disclaimer families must appear as whole words within an individual phrase entry, spelled in ASCII; substring lookalikes and non-ASCII spellings do not satisfy the declaration. Claim `evidence_class` values must come from the versioned claim vocabulary (`hypothesis`, `engineering_fact`), claim `category` values must come from the versioned category vocabulary (for example `higher_order_connectivity`, `gate`, `topology`), and a `downgrade_if_missing_baseline` must name a declared downgrade target (`proxy_inference` or `unsupported_claim`). An explicitly empty claim requirement list (for example `required_baselines: []`) is rejected.
+
+Known declaration gaps that this evaluator does not enforce: a claim may omit its optional `required_baselines`, `required_controls` or `required_instruments` key (three matrix claims do so), and forbidden wording placed inside a claim `text` is not cross-checked against `forbidden_phrases`. Both are declaration-completeness questions for the protocol owner. Neither can set `scientific_pass` or a formal K. These checks protect the integrity of the declaration only; they do not validate the truth of its claims or the scientific adequacy of its proposed thresholds.
 
 ## Claims reviewed
 
