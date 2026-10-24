@@ -114,6 +114,18 @@ class SphericalCSDError(ValueError):
     """Fail-closed input / numerical error for the spherical CSD transform."""
 
 
+def _as_mne_numeric(value: Any, name: str) -> float:
+    """Validate a numeric CSD parameter without accepting text or booleans."""
+    if isinstance(value, (bool, np.bool_)):
+        raise SphericalCSDError(f"{name} must be numeric")
+    try:
+        if isinstance(value, (float, np.floating)):
+            return float(value)
+        return float(operator.index(value))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise SphericalCSDError(f"{name} must be numeric") from exc
+
+
 @dataclass(frozen=True)
 class SphericalCSDConfig:
     """Explicit CSD configuration — no silent montage / sphere / unit inference.
@@ -164,7 +176,7 @@ class SphericalCSDConfig:
             )
         try:
             x, y, z, r = (float(v) for v in self.sphere)
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise SphericalCSDError(
                 "sphere components must be finite floats (meters)"
             ) from exc
@@ -173,17 +185,19 @@ class SphericalCSDConfig:
                 raise SphericalCSDError(f"sphere {name} must be finite, got {val!r}")
         if r <= 0.0:
             raise SphericalCSDError(f"sphere radius must be > 0 meters, got {r!r}")
-        if not (0.0 <= float(self.lambda2) < 1.0):
+        lambda2 = _as_mne_numeric(self.lambda2, "lambda2")
+        if not (0.0 <= lambda2 < 1.0):
             raise SphericalCSDError(
-                f"lambda2 must satisfy 0 <= lambda2 < 1, got {self.lambda2!r}"
+                f"lambda2 must satisfy 0 <= lambda2 < 1, got {lambda2!r}"
             )
-        if not np.isfinite(float(self.stiffness)):
+        stiffness = _as_mne_numeric(self.stiffness, "stiffness")
+        if not np.isfinite(stiffness):
             raise SphericalCSDError(
-                f"stiffness must be finite, got {self.stiffness!r}"
+                f"stiffness must be finite, got {stiffness!r}"
             )
-        if float(self.stiffness) < 0.0:
+        if stiffness < 0.0:
             raise SphericalCSDError(
-                f"stiffness must be non-negative, got {self.stiffness!r}"
+                f"stiffness must be non-negative, got {stiffness!r}"
             )
         # Only true integers are valid, matching the pinned MNE (operator.index in
         # mne/utils/check.py _ensure_int). Floats, bools, and strings are refused.
@@ -226,8 +240,8 @@ class SphericalCSDConfig:
             raise SphericalCSDError("avg_ref_null_rtol must be non-negative")
         return SphericalCSDConfig(
             sphere=(x, y, z, r),
-            lambda2=float(self.lambda2),
-            stiffness=float(self.stiffness),
+            lambda2=lambda2,
+            stiffness=stiffness,
             n_legendre_terms=n_terms,
             coincident_cos_tol=cos_tol,
             condition_max=cond_max,
@@ -333,7 +347,12 @@ def _validate_positions_and_names(
     positions: np.ndarray,
     channel_names: Optional[Sequence[str]],
 ) -> Tuple[np.ndarray, Tuple[str, ...]]:
-    pos = np.asarray(positions, dtype=float)
+    try:
+        pos = np.asarray(positions, dtype=float)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise SphericalCSDError(
+            "positions must be a numeric array with shape (n_channels, 3) in meters"
+        ) from exc
     if pos.ndim != 2 or pos.shape[1] != 3:
         raise SphericalCSDError(
             f"positions must have shape (n_channels, 3) in meters, got {pos.shape}"
@@ -459,9 +478,11 @@ def compute_spherical_csd_transform(
     null_residual = transform @ ones
     null_inf = float(np.max(np.abs(null_residual)))
     row_sum_inf = float(np.max(np.abs(transform.sum(axis=1))))
-    peak = float(np.max(np.abs(transform)))
+    matrix_inf = float(np.linalg.norm(transform, ord=np.inf))
+    if not all(np.isfinite(value) for value in (null_inf, row_sum_inf, matrix_inf)):
+        raise SphericalCSDError("non-finite CSD transform norm diagnostic")
     # An identically zero operator passes any relative null check, so refuse it outright.
-    if peak == 0.0:
+    if matrix_inf == 0.0:
         raise SphericalCSDError(
             "CSD transform is identically zero; the kernel or regularization is degenerate"
         )
@@ -474,7 +495,8 @@ def compute_spherical_csd_transform(
         "cond_G_reg": cond,
         "sgi": sgi,
         "avg_ref_null_inf": null_inf,
-        "avg_ref_null_rel": null_inf / peak,
+        "avg_ref_null_rel": null_inf / matrix_inf,
+        "matrix_inf": matrix_inf,
         "row_sum_inf": row_sum_inf,
         "scaling": "1/R^2",
         "channel_order": list(names),
@@ -488,10 +510,10 @@ def compute_spherical_csd_transform(
         "evidence_class": "SYNTHETIC_ONLY",
         "not_source_localization": True,
     }
-    if cfg.enforce_avg_ref_null and null_inf > cfg.avg_ref_null_rtol * peak:
+    if cfg.enforce_avg_ref_null and null_inf > cfg.avg_ref_null_rtol * matrix_inf:
         raise SphericalCSDError(
             f"average-reference null-vector check failed: ||M @ 1||_∞ = {null_inf!r} "
-            f"> rtol {cfg.avg_ref_null_rtol} * ||M||_∞ = {cfg.avg_ref_null_rtol * peak!r}"
+            f"> rtol {cfg.avg_ref_null_rtol} * ||M||_∞ = {cfg.avg_ref_null_rtol * matrix_inf!r}"
         )
 
     return SphericalCSDResult(
