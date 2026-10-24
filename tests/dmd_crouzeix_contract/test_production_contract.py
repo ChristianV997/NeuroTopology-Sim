@@ -171,3 +171,31 @@ def test_diagonalizable_repeated_eigenvalue_not_defective_ep():
     assert rep.theoretical_coalesced
     assert not rep.operator_entry_ok
     assert any("diagonalizable degeneracy" in n for n in rep.notes)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"dt": True},
+        {"dt": 0.01, "rank": True},
+        {"dt": 0.01, "rcond": True},
+        {"dt": 0.01, "sample_rate_hz": True},
+    ],
+)
+def test_estimate_exact_dmd_rejects_boolean_numeric_coercion(kwargs: dict[str, object]) -> None:
+    """Regression: bool must not silently become 1.0 / rank 1 via numeric checks."""
+    traj = np.array([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]], dtype=float)
+    with pytest.raises(DMDValidationError, match="real number|integer"):
+        estimate_exact_dmd(traj, **kwargs)  # type: ignore[arg-type]
+
+
+def test_ep2_and_alias_helpers_reject_boolean_parameters() -> None:
+    """EP2 / alias helpers must fail closed on bool parameters (not coerce to 0/1)."""
+    with pytest.raises(DMDValidationError, match="real number"):
+        ep2_hamiltonian(True, 1.0, 0.0, 1.0)  # type: ignore[arg-type]
+    with pytest.raises(DMDValidationError, match="real number"):
+        alias_ambiguity_report(True, 250.0)  # type: ignore[arg-type]
+    with pytest.raises(DMDValidationError, match="real number"):
+        discrete_eigenvalue_from_frequency_hz(10.0, True)  # type: ignore[arg-type]
+    with pytest.raises(DMDValidationError, match="real number"):
+        diagnose_ep2(np.eye(2, dtype=complex), tol=True)  # type: ignore[arg-type]
