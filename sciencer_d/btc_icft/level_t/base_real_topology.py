@@ -429,13 +429,24 @@ def compute_real_topology_for_window(m_row: dict, max_channels: int | None = 16)
     if channels is None or len(channels) == 0:
         return _missing_row("no channels returned for window", missingness_state="failed_read")
 
-    channel_arr = np.asarray(channels, dtype=float)
+    try:
+        channel_arr = np.asarray(channels, dtype=float)
+    except (TypeError, ValueError, OverflowError):
+        return _missing_row(
+            "malformed channel samples returned for window",
+            missingness_state="failed_read",
+        )
     if channel_arr.size == 0:
         return _missing_row("empty channel samples returned for window", missingness_state="failed_read")
+    if channel_arr.ndim != 2:
+        return _missing_row(
+            "channel samples must be a two-dimensional array",
+            missingness_state="failed_read",
+        )
     if not np.all(np.isfinite(channel_arr)):
         return _missing_row("non-finite samples in window signal", missingness_state="failed_read")
 
-    channel_data = [list(map(float, ch)) for ch in channels]
+    channel_data = channel_arr.tolist()
     (
         q_net, q_abs, f_dress, defect_density,
         n_triangles, n_valid_triangles, topology_quality,
@@ -1418,8 +1429,18 @@ def audit_cohort_missingness(
         raise ValueError("max_skip_rate must be finite and between 0 and 1") from exc
     if not math.isfinite(max_skip_rate) or not 0.0 <= max_skip_rate <= 1.0:
         raise ValueError("max_skip_rate must be finite and between 0 and 1")
-    if min_paired_subjects < 0 or min_windows_per_subject < 1:
-        raise ValueError("minimum subject/window counts must be non-negative and positive, respectively")
+    if (
+        isinstance(min_paired_subjects, bool)
+        or not isinstance(min_paired_subjects, int)
+        or min_paired_subjects < 0
+    ):
+        raise ValueError("min_paired_subjects must be a non-negative integer")
+    if (
+        isinstance(min_windows_per_subject, bool)
+        or not isinstance(min_windows_per_subject, int)
+        or min_windows_per_subject < 1
+    ):
+        raise ValueError("min_windows_per_subject must be a positive integer")
 
     total_t_rows = len(t_rows)
     fixture_t_rows = [r for r in t_rows if r.null_method == "fixture_none"]
@@ -1509,16 +1530,25 @@ def audit_cohort_missingness(
         ]
 
         sub_conditions = set()
+        sub_cohort_eligible = []
+        sub_unlabeled = 0
+        sub_contradictory = 0
         for r in sub_valid:
             c, is_contradictory = _resolve_cohort_condition(r)
-            if c and not is_contradictory:
+            if is_contradictory:
+                sub_contradictory += 1
+            elif c is None:
+                sub_unlabeled += 1
+            elif r.null_method != "fixture_none":
+                sub_cohort_eligible.append(r)
                 sub_conditions.add(str(c))
 
         n_sub_total = len(sub_rows)
         n_sub_valid = len(sub_valid)
+        n_sub_cohort_eligible = len(sub_cohort_eligible)
         sub_skip = ((len(sub_missing) + len(sub_fixture)) / n_sub_total) if n_sub_total > 0 else 1.0
 
-        if n_sub_valid == n_sub_total and n_sub_valid >= min_windows_per_subject:
+        if n_sub_cohort_eligible == n_sub_total and n_sub_cohort_eligible >= min_windows_per_subject:
             status = "complete"
             complete_subjects.append(sub_id)
         elif n_sub_valid > 0:
@@ -1532,7 +1562,10 @@ def audit_cohort_missingness(
             "status": status,
             "n_total_windows": n_sub_total,
             "n_valid_windows": n_sub_valid,
+            "n_cohort_eligible_windows": n_sub_cohort_eligible,
             "n_missing_windows": len(sub_missing),
+            "n_unlabeled_windows": sub_unlabeled,
+            "n_contradictory_windows": sub_contradictory,
             "n_synthetic_fixture_windows": len(sub_fixture),
             "skip_rate": round(sub_skip, 4),
             "conditions": sorted(list(sub_conditions)),

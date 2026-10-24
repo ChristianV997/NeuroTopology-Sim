@@ -259,6 +259,8 @@ def test_missing_condition_labels_do_not_pass_as_complete_cohort():
     assert report["conditions_detected"] == []
     assert report["n_unlabeled_valid_windows"] == len(t_rows)
     assert report["n_paired_subjects"] == 0
+    assert all(detail["status"] != "complete" for detail in report["subject_details"].values())
+    assert all(detail["n_cohort_eligible_windows"] == 0 for detail in report["subject_details"].values())
     assert "condition labels" in report["verdict_reason"]
 
 
@@ -295,6 +297,23 @@ def test_nonfinite_skip_threshold_is_rejected():
 
     with pytest.raises(ValueError, match="max_skip_rate must be finite"):
         audit_cohort_missingness(t_rows, m_rows, max_skip_rate=float("nan"))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"min_paired_subjects": 2.5},
+        {"min_paired_subjects": "5"},
+        {"min_paired_subjects": True},
+        {"min_windows_per_subject": 1.5},
+        {"min_windows_per_subject": False},
+    ],
+)
+def test_non_integer_minimum_counts_are_rejected(kwargs):
+    t_rows, m_rows = _build_paired_cohort(n_subjects=1, windows_per_condition=1)
+
+    with pytest.raises(ValueError, match="must be"):
+        audit_cohort_missingness(t_rows, m_rows, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +495,10 @@ def test_audit_cohort_missingness_flags_contradictory_condition_labels():
     assert report["verdict"] == "INCOMPLETE"
     assert report["n_contradictory_label_windows"] == 1
     assert "contradictory" in report["verdict_reason"]
+    subject = report["subject_details"][t_rows[0].subject_id]
+    assert subject["status"] == "partial"
+    assert subject["n_cohort_eligible_windows"] == 1
+    assert subject["n_contradictory_windows"] == 1
 
 
 def test_audit_cohort_missingness_respects_custom_group_col_over_task_label():

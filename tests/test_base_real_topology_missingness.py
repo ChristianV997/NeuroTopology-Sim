@@ -307,6 +307,164 @@ def test_real_zero_valued_observation_distinguished_from_missing():
     assert m_row.replicate_count == 0
 
 
+def test_signal_zero_magnitude_is_measured_and_distinct_from_missing_source(tmp_path, monkeypatch):
+    signal_file = tmp_path / "synthetic-all-zero.edf"
+    signal_file.write_bytes(b"synthetic-only")
+    zero_channels = np.zeros((5, 4), dtype=float)
+    monkeypatch.setattr(
+        "data.bids_ingest.read_window_signal",
+        lambda *args, **kwargs: zero_channels.copy(),
+    )
+
+    measured = compute_real_topology_for_window({
+        "row_id": "synthetic-all-zero",
+        "subject_id": "synthetic-subject",
+        "session_id": None,
+        "run_id": None,
+        "window_id": "synthetic-zero-window",
+        "task_label": "synthetic-rest",
+        "source_file": str(signal_file),
+        "window_start_s": 0.0,
+        "window_end_s": 1.0,
+    })
+    missing = compute_real_topology_for_window({
+        "row_id": "synthetic-absent-source",
+        "subject_id": "synthetic-subject",
+        "session_id": None,
+        "run_id": None,
+        "window_id": "synthetic-missing-window",
+        "task_label": "synthetic-rest",
+        "source_file": str(tmp_path / "absent.edf"),
+        "window_start_s": 0.0,
+        "window_end_s": 1.0,
+    })
+
+    assert measured.is_valid is True
+    assert measured.topology_status == "computed"
+    assert measured.missingness_state == "computed"
+    assert measured.q_net == 0.0
+    assert measured.q_abs == 0.0
+    assert measured.replicate_count == 1
+    assert missing.is_valid is False
+    assert missing.topology_status == "skipped"
+    assert missing.missingness_state == "missing_source_file"
+    assert missing.q_net is None
+    assert missing.q_abs is None
+    assert missing.replicate_count == 0
+
+    quality = build_topology_quality_report([measured, missing])
+    assert quality["n_valid_rows"] == 1
+    assert quality["n_missing_rows"] == 1
+    assert quality["missing_row_ids"] == [missing.row_id]
+
+
+def test_signal_measured_zero_stays_distinct_from_missing_source(tmp_path, monkeypatch):
+    signal_file = tmp_path / "synthetic-zero.edf"
+    signal_file.write_bytes(b"synthetic-only")
+    offsets = [0.0, 1.0, 1.0, 2.0, 2.0]
+    variation = [-1.0, 0.0, 1.0, 0.0]
+    channels = np.asarray(
+        [[offset + delta for delta in variation] for offset in offsets],
+        dtype=float,
+    )
+    monkeypatch.setattr(
+        "data.bids_ingest.read_window_signal",
+        lambda *args, **kwargs: channels.copy(),
+    )
+
+    measured_metadata = {
+        "row_id": "synthetic-measured-zero",
+        "subject_id": "synthetic-subject",
+        "session_id": None,
+        "run_id": None,
+        "window_id": "synthetic-window-zero",
+        "task_label": "synthetic-rest",
+        "source_file": str(signal_file),
+        "window_start_s": 0.0,
+        "window_end_s": 1.0,
+    }
+    missing_metadata = {
+        **measured_metadata,
+        "row_id": "synthetic-missing-source",
+        "window_id": "synthetic-window-missing",
+        "source_file": str(tmp_path / "absent.edf"),
+    }
+    m_rows = [measured_metadata, missing_metadata]
+    rows = [compute_real_topology_for_window(row) for row in m_rows]
+    measured, missing = rows
+
+    assert measured.is_valid is True
+    assert measured.topology_status == "computed"
+    assert measured.missingness_state == "computed"
+    assert measured.q_net == 0.0
+    assert measured.q_abs > 0.0
+    assert measured.n_valid_triangles == measured.n_triangles == 10
+    assert measured.topology_quality == 1.0
+    assert measured.replicate_count == 1
+
+    assert missing.is_valid is False
+    assert missing.topology_status == "skipped"
+    assert missing.missingness_state == "missing_source_file"
+    assert missing.q_net is None
+    assert missing.q_abs is None
+    assert missing.replicate_count == 0
+
+    quality = build_topology_quality_report(rows)
+    assert quality["n_valid_rows"] == 1
+    assert quality["n_missing_rows"] == 1
+    assert quality["missing_row_ids"] == [missing.row_id]
+
+    group = build_group_significance_report(
+        rows, m_rows, group_col="task_label", max_skip_rate=0.20
+    )
+    assert group["status"] == "blocked_high_skip_rate"
+    assert group["n_rows_eligible"] == 1
+
+    ml = build_ml_decoding_report(rows, m_rows, group_col="task_label")
+    assert ml["status"] == "not_applicable"
+    assert "has 1 distinct values" in ml["reason"]
+    missing_only_ml = build_ml_decoding_report(
+        [missing], [missing_metadata], group_col="task_label"
+    )
+    assert missing_only_ml["n_rows_excluded"] == 1
+
+    cohort = audit_cohort_missingness(rows, m_rows, group_col="task_label")
+    assert cohort["verdict"] == "BLOCKED"
+    assert cohort["n_valid_windows"] == 1
+    assert cohort["n_missing_windows"] == 1
+    assert cohort["missing_records"][0]["row_id"] == missing.row_id
+
+    result = LevelTRealTopologyResult(
+        dataset_id="synthetic",
+        n_rows=len(rows),
+        n_subjects=1,
+        n_windows=len(rows),
+        topology_quality_report=quality,
+        null_placeholder_report={"status": "placeholder_only"},
+        artifact_alignment_report={"n_rows": len(rows)},
+        omega_event=build_level_t_omega_event(rows, "synthetic"),
+        safe_claim="Synthetic signal-path test only.",
+        forbidden_claims=[],
+        warnings=[],
+    )
+    paths = write_level_t_topology_outputs(
+        result,
+        str(tmp_path / "out"),
+        rows,
+        "synthetic",
+        cohort_missingness_report=cohort,
+    )
+    with Path(paths["features_t.csv"]).open(encoding="utf-8") as handle:
+        serialized = list(csv.DictReader(handle))
+    assert serialized[0]["q_net"] == "0.0"
+    assert float(serialized[0]["q_abs"]) > 0.0
+    assert serialized[0]["is_valid"] == "True"
+    assert serialized[1]["q_net"] == ""
+    assert serialized[1]["q_abs"] == ""
+    assert serialized[1]["is_valid"] == "False"
+    assert serialized[1]["missingness_state"] == "missing_source_file"
+
+
 # ---------------------------------------------------------------------------
 # 6. Null metadata fields remain None, not string "0" or "none"
 # ---------------------------------------------------------------------------

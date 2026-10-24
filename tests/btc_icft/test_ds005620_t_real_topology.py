@@ -157,9 +157,11 @@ def test_real_topology_derived_from_signal_not_metadata(tmp_path: Path, monkeypa
     f1.write_bytes(b"x")  # only needs to exist; read_window_signal is monkeypatched
     f2.write_bytes(b"x")
 
+    offsets = [0.0, 1.0, 1.0, 2.0, 2.0]
+    variation = [-1.0, 0.0, 1.0, 0.0]
     signals = {
-        str(f1): np.array([[1.0, 1.0, 1.0, 1.0] for _ in range(4)]),  # 4ch, constant -> zero topology
-        str(f2): np.array([[float(i % 7) for i in range(40)] for _ in range(6)]),  # 6ch, varying
+        str(f1): np.array([[1.0, 1.0, 1.0, 1.0] for _ in range(4)]),  # constant signal
+        str(f2): np.array([[offset + delta for delta in variation] for offset in offsets]),
     }
     monkeypatch.setattr(
         "data.bids_ingest.read_window_signal",
@@ -176,6 +178,9 @@ def test_real_topology_derived_from_signal_not_metadata(tmp_path: Path, monkeypa
     out_a = topo.compute_real_topology_for_window(row_a)
     out_b = topo.compute_real_topology_for_window(row_b)
 
+    assert out_b.is_valid is True
+    assert out_b.topology_status == "computed"
+    assert out_b.q_abs > 0.0
     # Same function, different real signal in -> different topology out (not the same
     # constant regardless of content, and not a hash of row_id/metadata text).
     assert (out_a.q_abs, out_a.n_valid_triangles) != (out_b.q_abs, out_b.n_valid_triangles)
