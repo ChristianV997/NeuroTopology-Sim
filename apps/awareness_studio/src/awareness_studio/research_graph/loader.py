@@ -77,6 +77,25 @@ def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
     return normalized_status
 
 
+# Node types whose declared status is a verification-bearing claim about evidence.
+_STATUS_GATED_NODE_TYPES = frozenset({
+    NodeType.SOURCE_SNAPSHOT.value,
+    NodeType.CLAIM.value,
+    NodeType.EVIDENCE_RECORD.value,
+    NodeType.EXPERIMENT.value,
+    NodeType.ARTIFACT.value,
+    NodeType.RUN.value,
+})
+
+
+def _run_status(run: Mapping[str, Any]) -> str:
+    """A run verdict is evidence to review, never a bare 'pass' node status."""
+    verdict = str(run.get("verdict", NodeStatus.ACTIVE.value)).strip().lower()
+    if verdict in {"pass", "passed"}:
+        return NodeStatus.REVIEW_REQUIRED.value
+    return verdict
+
+
 def _direct_node_projection(
     raw_node: Mapping[str, Any],
 ) -> tuple[Any, Any, Any, Any]:
@@ -84,12 +103,14 @@ def _direct_node_projection(
     raw_properties = raw_node.get("properties", {})
     metadata = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
     metadata.update(raw_node)
-    evidence_class = raw_node.get("evidence_class", EvidenceClass.UNKNOWN.value)
+    # A declared evidence_class is never trusted directly, for any node type.
+    # It goes through the same preregistration/held-out gate as manifest claims.
+    evidence_class = _classify_evidence(metadata)
     status = raw_node.get("status", NodeStatus.ACTIVE.value)
     properties = raw_properties
-    if node_type == NodeType.SOURCE_SNAPSHOT.value:
-        evidence_class = _classify_evidence(metadata)
+    if node_type in _STATUS_GATED_NODE_TYPES:
         status = _source_status(metadata, evidence_class)
+    if node_type == NodeType.SOURCE_SNAPSHOT.value:
         properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
         properties.update({key: value for key, value in raw_node.items() if key not in {
             "node_id", "node_type", "label", "status", "safety_labels", "properties",
@@ -98,7 +119,6 @@ def _direct_node_projection(
     elif node_type == NodeType.VALIDATION.value:
         raw_verdict = metadata.get("verdict")
         verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
-        evidence_class = _classify_evidence(metadata)
         status = (
             NodeStatus.FALSIFIED.value
             if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}
@@ -110,8 +130,6 @@ def _direct_node_projection(
             "source_id", "checksum", "tags",
         }})
     elif node_type == NodeType.CLAIM.value:
-        evidence_class = _classify_evidence(metadata)
-        status = _source_status(metadata, evidence_class)
         properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
         properties.update({key: value for key, value in raw_node.items() if key not in {
             "node_id", "node_type", "label", "status", "safety_labels", "properties",
@@ -273,7 +291,7 @@ def load_from_dict(
                     node_id=rid,
                     node_type=NodeType.RUN.value,
                     label=f"Run {rid} ({r.get('data_mode', 'sim')})",
-                    status=r.get("verdict", NodeStatus.ACTIVE.value).lower(),
+                    status=_run_status(r),
                     evidence_class=_classify_evidence(r),
                     properties=r,
                 )

@@ -41,7 +41,9 @@ proxy: RSS/AIC/AICc/BIC ratios cannot be called formal Bayesian evidence,
 causal influence, or a mechanism.
 
 Placeholder identities such as `none`, `unknown_source`, `derived_from_ledger`,
-and `TBD` are rejected as invalid provenance. A syntactically complete checksum
+and `TBD`, and bare verdict-like tokens such as `pass`, `fail`, `ok`, `true`,
+and `null`, are rejected as invalid provenance in any required field. A verdict
+word is never a source identity, acquisition record, or dataset version. A syntactically complete checksum
 is not independently verified by this offline gate and therefore cannot create
 a scientific-evidence status.
 

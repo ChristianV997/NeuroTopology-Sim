@@ -109,7 +109,10 @@ def _validate_artifact_checksums(
             invalid = True
             continue
         if not artifact.is_file():
-            # The caller already reports a missing or non-file artifact; there is no file to snapshot.
+            # A declared checksum asserts that this artifact exists and is readable. An absent or
+            # non-file target therefore fails the binding; it is not merely an undeclared artifact.
+            reasons.append(f"recordings[{index}] declared {name} artifact is missing or not a regular file")
+            invalid = True
             continue
         snapshot_path = snapshot_root / f"{index}-{name}{artifact.suffix.lower()}"
         digest = hashlib.sha256()
@@ -260,7 +263,8 @@ def validate_manifest(path: str | Path) -> ValidationResult:
         )
         incomplete = incomplete or checksum_incomplete
         invalid = invalid or checksum_invalid
-        for family in FEATURE_FAMILIES[:-1]:
+        # Optional higher_order_spectra is not required, but a supplied and checksum-bound copy must be valid.
+        for family in FEATURE_FAMILIES:
             artifact = verified_paths.get(family)
             if artifact is None:
                 continue

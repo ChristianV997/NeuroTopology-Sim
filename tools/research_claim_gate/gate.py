@@ -99,6 +99,20 @@ _PLACEHOLDER_PROVENANCE_VALUES = frozenset(
         "placeholder",
         "tbd",
         "n/a",
+        "na",
+        "pass",
+        "passed",
+        "fail",
+        "failed",
+        "ok",
+        "true",
+        "false",
+        "yes",
+        "no",
+        "null",
+        "nan",
+        "undefined",
+        "unspecified",
     }
 )
 

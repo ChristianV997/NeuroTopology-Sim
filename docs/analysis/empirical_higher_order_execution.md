@@ -4,7 +4,10 @@ This runner executes a declared, local-only feature manifest. It never downloads
 
 ## Input contract
 
-The JSON manifest uses schema `NeuroTopologySim.EmpiricalHigherOrderManifest.v1` and declares `dataset_path`, its SHA-256 `dataset_checksum`, `source_type`, complete `provenance`, and a list of recordings. Each recording explicitly identifies `subject_id`, `session_id`, `run_id`, `condition_label`, `pairing_key`, `sampling_rate_hz`, `channel_count`, finite `montage_coordinates`, `recording_quality_state`, `origin`, `feature_paths` for PSD, pairwise FC, triadic FC, and directed hypergraph features, and a binary `target_path`. Each consumed artifact (including target and timestamps) requires an `artifact_checksums` SHA-256 binding. Optional `higher_order_spectra` is classified as missing when absent. Paths must be local NPY/NPZ files contained beneath the manifest directory; URLs, absolute-outside-root, and `..` escape paths are rejected.
+The JSON manifest uses schema `NeuroTopologySim.EmpiricalHigherOrderManifest.v1` and declares `dataset_path`, its SHA-256 `dataset_checksum`, `source_type`, complete `provenance`, and a list of recordings. Each recording explicitly identifies `subject_id`, `session_id`, `run_id`, `condition_label`, `pairing_key`, `sampling_rate_hz`, `channel_count`, finite `montage_coordinates`, `recording_quality_state`, `origin`, `feature_paths` for PSD, pairwise FC, triadic FC, and directed hypergraph features, and a binary `target_path`. Each consumed artifact (including target and timestamps) requires an `artifact_checksums` SHA-256 binding. Optional `higher_order_spectra` is classified as missing when absent. When it
+is supplied with a checksum, it must be a finite, non-empty artifact; otherwise
+readiness is `INCONCLUSIVE`. A declared checksum whose artifact is absent or is
+not a regular file is also `INCONCLUSIVE`, never a forecasting-ready state. Paths must be local NPY/NPZ files contained beneath the manifest directory; URLs, absolute-outside-root, and `..` escape paths are rejected.
 
 `channel_count` is a positive integer (a JSON boolean is not an integer for this contract). Only an explicit `recording_quality_state: PASS` is eligible for forecasting; `UNKNOWN` remains incomplete provenance and `FAIL` is invalid. Required provenance strings must be nonblank after trimming.
 

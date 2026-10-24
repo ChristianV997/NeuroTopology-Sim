@@ -68,7 +68,7 @@ Linkages express directed epistemic and causal relationships:
 
 | Edge Type | Source Node -> Target Node | Epistemic Meaning |
 |---|---|---|
-| `supports` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Empirical observation or passed validation supporting target proposition. |
+| `supports` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Empirical observation or independently reviewed validation supporting the target proposition. A validation `PASS` alone is pending review. |
 | `contradicts` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Evidentiary conflict or failed validation falsifying target proposition. |
 | `tests` | `experiment` / `run` -> `hypothesis` / `claim` | Operational execution designed to test target hypothesis. |
 | `generated_by` | `artifact` -> `run` / `experiment` | Provenance trace showing which execution produced an artifact. |

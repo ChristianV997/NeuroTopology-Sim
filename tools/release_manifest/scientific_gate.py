@@ -39,7 +39,10 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
             findings,
         )
 
-    if gate_input.verdict == "PASS":
+    # Verdict casing and padding must not change how a negative or literal PASS is treated.
+    verdict = gate_input.verdict.strip().upper() if isinstance(gate_input.verdict, str) else gate_input.verdict
+
+    if verdict == "PASS":
         findings.append(
             "unverified_scientific_pass: caller-supplied PASS cannot be promoted "
             "without an independently validated evidence artifact"
@@ -50,14 +53,14 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
             findings,
         )
 
-    if gate_input.verdict in ("NOT_SUPPORTED", "ERROR"):
+    if verdict in ("NOT_SUPPORTED", "ERROR"):
         return (
             Evidence("blocked", f"verdict={gate_input.verdict!r} (data_mode={gate_input.data_mode!r})"),
             True,
             findings,
         )
 
-    if gate_input.verdict == "INCONCLUSIVE":
+    if verdict == "INCONCLUSIVE":
         return (
             Evidence("insufficient_data", f"verdict=INCONCLUSIVE (data_mode={gate_input.data_mode!r})"),
             False,
