@@ -714,7 +714,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("DIFF_BASE_SHA", job)
         self.assertIn("DIFF_HEAD_SHA", job)
         self.assertIn("git merge-base --is-ancestor", job)
-        self.assertIn('git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
+        self.assertIn('git diff --no-renames --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
         self.assertIn("registered engine test is absent", job)
         self.assertIn("if: steps.candidate_scope.outputs.docker_context_changed == 'true'", job)
         self.assertIn(
@@ -724,7 +724,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn('helper["validate_docker_engine_test_artifacts"]', job)
         self.assertIn("Upload Docker-context diagnostics", job)
         self.assertLess(
-            job.index("git diff --name-only"),
+            job.index("git diff --no-renames --name-only"),
             job.index("git merge-base --is-ancestor"),
         )
 

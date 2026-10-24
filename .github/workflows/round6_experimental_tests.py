@@ -3728,19 +3728,29 @@ def junit_status(counts: tuple[int, int, int, int]) -> str:
 def collect_changed_paths(base: str, head: str, root: Path) -> set[str]:
     if not re.fullmatch(r"[0-9a-f]{40}", base) or not re.fullmatch(r"[0-9a-f]{40}", head):
         raise ValueError("base and head must be full commit SHAs")
+    # --no-renames lists the removed side of a rename as well as the new name.
+    # Rename detection would otherwise hide moving a registered implementation
+    # out of its candidate root.
     result = subprocess.run(
-        ["git", "diff", "--name-only", "-z", f"{base}...{head}"],
+        ["git", "diff", "--name-only", "--no-renames", "-z", f"{base}...{head}"],
         cwd=root,
         check=True,
         capture_output=True,
         text=False,
         timeout=30,
     )
-    return {
-        normalize_repo_path(os.fsdecode(path))
-        for path in result.stdout.split(b"\0")
-        if path
-    }
+    changed = set()
+    for raw in result.stdout.split(b"\0"):
+        if not raw:
+            continue
+        name = os.fsdecode(raw)
+        # Backslash is an ordinary filename byte on POSIX runners. Rewriting it
+        # would alias a root-level file to a registered repository path, so
+        # reject it instead of normalizing it.
+        if "\\" in name:
+            raise ValueError("git changed path contains a backslash; refusing ambiguous repository path")
+        changed.add(normalize_repo_path(name))
+    return changed
 
 
 def verify_candidate_source_identity(
