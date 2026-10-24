@@ -12,8 +12,9 @@ from __future__ import annotations
 import pytest
 
 from oss_opportunities.license_review import RepositoryLicenseReviewV1
-from oss_opportunities.opportunity_batch import build_opportunities_from_candidates
-from oss_opportunities.planner import plan_oss_integrations_from_opportunities
+from oss_opportunities.integration_opportunity import OpenSourceIntegrationOpportunityV1
+from oss_opportunities.opportunity_batch import build_opportunities_from_candidates, compute_batch_id
+from oss_opportunities.planner import compute_plan_id, plan_oss_integrations_from_opportunities
 from oss_opportunities.scoring import score_opportunity
 from oss_opportunities.validation import OssOpportunityValidationError
 from tests._oss_opportunity_fixtures import (
@@ -137,6 +138,67 @@ def test_missing_source_fails_closed_at_batch_build():
     candidate.candidate_id = candidate.recompute_id()
     with pytest.raises(OssOpportunityValidationError, match="must be one of"):
         build_opportunities_from_candidates([candidate])
+
+
+def test_unknown_schema_versions_fail_closed_across_pipeline_records():
+    candidate = make_document_ingestion_candidate()
+    candidate.schema_version = "future"
+    assert any("schema_version" in error for error in candidate.validate())
+
+    review = _review(make_document_ingestion_candidate())
+    review.schema_version = "future"
+    assert any("schema_version" in error for error in review.validate())
+
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    batch.schema_version = "future"
+    assert any("schema_version" in error for error in batch.validate())
+
+    entry = batch.opportunities_ranked[0]
+    opportunity = OpenSourceIntegrationOpportunityV1.from_dict(
+        {key: value for key, value in entry.items() if key != "license_review"}
+    )
+    opportunity.schema_version = "future"
+    assert any("schema_version" in error for error in opportunity.validate())
+
+    valid_batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    plan = plan_oss_integrations_from_opportunities(valid_batch)
+    plan.schema_version = "future"
+    assert any("schema_version" in error for error in plan.validate())
+
+
+def test_unknown_algorithm_versions_cannot_be_self_asserted_by_rehashing_ids():
+    candidate = make_document_ingestion_candidate()
+    review = _review(candidate)
+    review.license_policy_version = "future"
+    review.license_review_id = review.recompute_id()
+    assert any("license_policy_version" in error for error in review.validate())
+
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    entry = batch.opportunities_ranked[0]
+    opportunity = OpenSourceIntegrationOpportunityV1.from_dict(
+        {key: value for key, value in entry.items() if key != "license_review"}
+    )
+    opportunity.scoring_version = "future"
+    opportunity.opportunity_id = opportunity.recompute_id()
+    assert any("scoring_version" in error for error in opportunity.validate())
+
+    batch.scoring_version = "future"
+    batch.batch_id = compute_batch_id(
+        opportunity_ids=[row["opportunity_id"] for row in batch.opportunities_ranked],
+        sources_scanned=batch.sources_scanned,
+        scoring_version=batch.scoring_version,
+    )
+    assert any("scoring_version" in error for error in batch.validate())
+
+    valid_batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    plan = plan_oss_integrations_from_opportunities(valid_batch)
+    plan.planner_version = "future"
+    plan.plan_id = compute_plan_id(
+        batch_id=plan.batch_id,
+        selected_opportunity_ids=plan.selected_opportunity_ids,
+        planner_version=plan.planner_version,
+    )
+    assert any("planner_version" in error for error in plan.validate())
 
 
 # ── unresolved license ──────────────────────────────────────────────────────
@@ -283,6 +345,35 @@ def test_unknown_license_on_reject_or_defer_category_requires_review_not_silent_
     assert [item["repo_full_name"] for item in plan.license_review_queue] == ["acme/widget"]
 
 
+def test_plan_selection_limit_never_hides_required_review_actions():
+    candidates = []
+    for repo in ("org/review-one", "org/review-two"):
+        candidate = make_unknown_license_candidate(repo)
+        candidate.owner = "org"
+        candidate.name = repo.split("/", 1)[1]
+        candidate.candidate_id = candidate.recompute_id()
+        candidates.append(candidate)
+    batch = build_opportunities_from_candidates(candidates)
+    plan = plan_oss_integrations_from_opportunities(batch, max_selected=0)
+    assert {row["repo_full_name"] for row in plan.license_review_queue} == {
+        "org/review-one", "org/review-two"
+    }
+
+
+@pytest.mark.parametrize("max_selected", [-1, True, 1.5, "1"])
+def test_plan_selection_limit_rejects_invalid_values(max_selected):
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    with pytest.raises(OssOpportunityValidationError, match="max_selected"):
+        plan_oss_integrations_from_opportunities(batch, max_selected=max_selected)
+
+
+def test_plan_identifier_is_bound_to_batch_and_selected_rows():
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()])
+    plan = plan_oss_integrations_from_opportunities(batch)
+    plan.plan_id = "forged-plan-id"
+    assert any("plan_id" in error for error in plan.validate())
+
+
 def test_conflicting_license_result_is_independent_of_input_order():
     first = make_document_ingestion_candidate()
     second = _observation("github_manual_seed", license_spdx="AGPL-3.0", license_name="GNU AGPLv3")
@@ -340,6 +431,9 @@ def test_identical_observation_twice_is_deduplicated():
     )
     assert batch.candidates_seen == 2
     assert len(batch.opportunities_ranked) == 1
+    duplicate = batch.opportunities_rejected[0]
+    assert "opportunity_id" not in duplicate
+    assert duplicate["duplicate_of"] == batch.opportunities_ranked[0]["opportunity_id"]
     assert batch.metadata == {"duplicate_observations": 1}
 
 
@@ -491,7 +585,11 @@ import json
 
 from oss_opportunities.export_oss_opportunities import main as cli_main
 from oss_opportunities.opportunity_batch import OpenSourceLeverageBatchV1
-from oss_opportunities.source_ingestion import import_from_manual_seed
+from oss_opportunities.source_ingestion import (
+    import_from_manual_seed,
+    import_from_starmap_fixture,
+    import_from_trendshift_fixture,
+)
 
 
 @pytest.mark.parametrize("bad", [None, 5, "abc", {}, [None], [{}], ["owner/repo"], [1]])
@@ -536,6 +634,12 @@ def _forge(mutate):
     return batch
 
 
+def _forge_score_components(batch, mutate):
+    entry = batch.opportunities_ranked[0]
+    mutate(entry["score_components"])
+    entry["total_score"] = round(sum(float(value) for value in entry["score_components"].values()), 2)
+
+
 _FORGERIES = {
     "risk_downgrade_mismatch": lambda b: b.opportunities_ranked[0]["license_review"].update(license_risk="strong_copyleft_high"),
     "review_repo_swapped": lambda b: b.opportunities_ranked[0]["license_review"].update(repo_full_name="evil/other"),
@@ -546,13 +650,31 @@ _FORGERIES = {
         metadata={"license_observation_status": "conflict"}),
     "score_nan": lambda b: b.opportunities_ranked[0].update(total_score=float("nan")),
     "score_str": lambda b: b.opportunities_ranked[0].update(total_score="9"),
+    "opportunity_id_forged": lambda b: b.opportunities_ranked[0].update(opportunity_id="forged-id"),
+    "score_component_nan": lambda b: b.opportunities_ranked[0]["score_components"].update(
+        direct_product_leverage=float("nan")),
+    "score_component_unknown": lambda b: _forge_score_components(
+        b, lambda c: c.update(untrusted_bonus=1000.0)),
+    "score_component_boolean": lambda b: _forge_score_components(
+        b, lambda c: c.update(direct_product_leverage=True)),
+    "score_components_empty": lambda b: (
+        b.opportunities_ranked[0].update(score_components={}),
+        b.opportunities_ranked[0].update(total_score=1000000.0),
+    ),
     "unknown_action": lambda b: b.opportunities_ranked[0].update(recommended_action="adopt_now"),
+    "action_unhashable_type": lambda b: b.opportunities_ranked[0].update(recommended_action=[]),
+    "category_unhashable_type": lambda b: b.opportunities_ranked[0].update(leverage_category=[]),
     "blocked_actions_emptied": lambda b: b.opportunities_ranked[0].update(blocked_actions=[]),
     "entry_is_str": lambda b: b.opportunities_ranked.__setitem__(0, "x"),
     "entry_none": lambda b: b.opportunities_ranked.__setitem__(0, None),
     "ranked_not_list": lambda b: setattr(b, "opportunities_ranked", 5),
     "rejected_not_list": lambda b: setattr(b, "opportunities_rejected", 5),
     "rejected_entry_str": lambda b: setattr(b, "opportunities_rejected", ["x"]),
+    "attribution_required_integer": lambda b: b.opportunities_ranked[0]["license_review"].update(
+        attribution_required=0),
+    "scientific_pass_field": lambda b: b.opportunities_ranked[0].update(scientific_pass=True),
+    "fixture_claim_scope_field": lambda b: b.opportunities_ranked[0].update(claim_scope="empirical"),
+    "scientific_status_in_metadata": lambda b: b.metadata.update(scientific_status="VALIDATED"),
 }
 
 
@@ -564,6 +686,22 @@ def test_forged_batch_is_rejected_by_validate_and_planner(name):
         plan_oss_integrations_from_opportunities(forged)
 
 
+def test_invalid_license_review_identifier_cannot_be_scored():
+    candidate = make_document_ingestion_candidate()
+    review = _review(candidate)
+    review.license_review_id = "forged-license-review-id"
+    with pytest.raises(OssOpportunityValidationError, match="license_review_id"):
+        score_opportunity(candidate, review)
+
+
+def test_non_finite_score_components_are_rejected_before_json_serialization():
+    forged = _forge(lambda batch: batch.opportunities_ranked[0]["score_components"].update(
+        direct_product_leverage=float("nan")))
+    assert any("score_components" in error for error in forged.validate())
+    with pytest.raises(OssOpportunityValidationError):
+        forged.to_json()
+
+
 @pytest.mark.parametrize(
     "payload",
     [5, [], {"candidates_seen": "x"}, {"candidates_seen": float("nan")}, {"opportunities_ranked": 5}, {"metadata": [1]}],
@@ -571,6 +709,79 @@ def test_forged_batch_is_rejected_by_validate_and_planner(name):
 def test_batch_from_dict_malformed_shapes_are_controlled(payload):
     with pytest.raises(OssOpportunityValidationError):
         OpenSourceLeverageBatchV1.from_dict(payload)
+
+
+def test_batch_from_dict_does_not_coerce_boolean_candidate_count():
+    payload = _ranked_batch().to_dict()
+    payload["candidates_seen"] = True
+    with pytest.raises(OssOpportunityValidationError, match="candidates_seen"):
+        OpenSourceLeverageBatchV1.from_dict(payload)
+
+
+def test_batch_from_dict_rejects_scientific_promotion_fields():
+    payload = _ranked_batch().to_dict()
+    payload["scientific_pass"] = True
+    with pytest.raises(OssOpportunityValidationError, match="unsupported field"):
+        OpenSourceLeverageBatchV1.from_dict(payload)
+
+
+def test_batch_from_json_rejects_duplicate_license_keys():
+    payload = _ranked_batch().to_json()
+    needle = '"license_spdx": "MIT"'
+    assert payload.count(needle) == 1
+    payload = payload.replace(needle, '"license_spdx": "AGPL-3.0", ' + needle, 1)
+    with pytest.raises(OssOpportunityValidationError, match="duplicate JSON key"):
+        OpenSourceLeverageBatchV1.from_json(payload)
+
+
+def test_manual_seed_rejects_duplicate_license_keys(tmp_path):
+    seed = tmp_path / "duplicate-license-key.json"
+    seed.write_text(
+        '{"snapshot_date":"2026-10-23","repositories":[{"repo_full_name":"owner/repo",'
+        '"license_spdx":"AGPL-3.0","license_spdx":"MIT"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(OssOpportunityValidationError, match="duplicate JSON key"):
+        import_from_manual_seed(seed)
+
+
+@pytest.mark.parametrize(
+    ("loader", "payload"),
+    [
+        (import_from_trendshift_fixture, "[]"),
+        (import_from_starmap_fixture, "[]"),
+    ],
+)
+def test_snapshot_loaders_reject_non_mapping_payloads(loader, payload, tmp_path):
+    path = tmp_path / "non-mapping.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(OssOpportunityValidationError, match="JSON object"):
+        loader(path)
+
+
+@pytest.mark.parametrize(
+    ("loader", "payload"),
+    [
+        (import_from_trendshift_fixture, {"repositories": "owner/repo"}),
+        (import_from_trendshift_fixture, {"repositories": [None]}),
+        (import_from_trendshift_fixture, {"repositories": [{"name": "missing-repository-identity"}]}),
+        (import_from_starmap_fixture, {"repositories": None}),
+        (import_from_starmap_fixture, {"repositories": [5]}),
+        (import_from_starmap_fixture, {"repositories": [{"name": "missing-repository-identity"}]}),
+    ],
+)
+def test_snapshot_loaders_reject_malformed_repository_entries(loader, payload, tmp_path):
+    path = tmp_path / "malformed-snapshot.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(OssOpportunityValidationError):
+        loader(path)
+
+
+def test_manual_seed_does_not_silently_drop_missing_repository_identity(tmp_path):
+    seed = tmp_path / "missing-repository.json"
+    seed.write_text(json.dumps({"snapshot_date": "2026-10-23", "repositories": [{"license_spdx": "MIT"}]}))
+    with pytest.raises(OssOpportunityValidationError, match="repo_full_name"):
+        import_from_manual_seed(seed)
 
 
 _BAD_SEEDS = {

@@ -26,6 +26,8 @@ from oss_opportunities.scoring import score_opportunity
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
     SCORING_VERSION,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
     validate_leverage_batch,
     validate_opportunity_against_license_review,
 )
@@ -69,6 +71,7 @@ def compute_batch_id(*, opportunity_ids: list[str], sources_scanned: list[str], 
 class OpenSourceLeverageBatchV1:
     schema_version: str = _SCHEMA_VERSION
     batch_id: str = ""
+    scoring_version: str = SCORING_VERSION
     sources_scanned: list[str] = field(default_factory=list)
     candidates_seen: int = 0
     opportunities_ranked: list[dict[str, Any]] = field(default_factory=list)
@@ -88,6 +91,7 @@ class OpenSourceLeverageBatchV1:
         return {
             "schema_version": self.schema_version,
             "batch_id": self.batch_id,
+            "scoring_version": self.scoring_version,
             "sources_scanned": list(self.sources_scanned),
             "candidates_seen": self.candidates_seen,
             "opportunities_ranked": list(self.opportunities_ranked),
@@ -115,14 +119,26 @@ class OpenSourceLeverageBatchV1:
 
     @classmethod
     def _from_dict(cls, d: dict[str, Any]) -> "OpenSourceLeverageBatchV1":
-        for key in ("opportunities_ranked", "opportunities_rejected", "sources_scanned", "limitations", "metadata"):
-            if d.get(key) is not None and not isinstance(d[key], (list, dict)):
+        reject_forbidden_claim_fields(d, "batch payload")
+        list_fields = (
+            "opportunities_ranked", "opportunities_rejected", "sources_scanned", "limitations",
+            "top_immediate_adapters", "top_architecture_emulation", "top_docs_references", "top_rejections",
+        )
+        for key in list_fields:
+            if d.get(key) is not None and not isinstance(d[key], list):
                 raise TypeError(f"{key} has the wrong type")
+        for key in ("metadata", "top_by_category"):
+            if d.get(key) is not None and not isinstance(d[key], dict):
+                raise TypeError(f"{key} has the wrong type")
+        candidates_seen = d.get("candidates_seen", 0)
+        if not isinstance(candidates_seen, int) or isinstance(candidates_seen, bool):
+            raise TypeError("candidates_seen must be an integer")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             batch_id=d.get("batch_id", ""),
+            scoring_version=d.get("scoring_version", SCORING_VERSION),
             sources_scanned=list(d.get("sources_scanned") or []),
-            candidates_seen=int(d.get("candidates_seen", 0)),
+            candidates_seen=candidates_seen,
             opportunities_ranked=list(d.get("opportunities_ranked") or []),
             opportunities_rejected=list(d.get("opportunities_rejected") or []),
             top_by_category=dict(d.get("top_by_category") or {}),
@@ -138,11 +154,12 @@ class OpenSourceLeverageBatchV1:
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "OpenSourceLeverageBatchV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)
@@ -172,6 +189,10 @@ def build_opportunities_from_candidates(
     already-constructed `OpenSourceRepositoryCandidateV1` objects."""
     if not isinstance(candidate_records, (list, tuple)) or not candidate_records:
         raise OssOpportunityValidationError("candidate_records must be a non-empty list of candidates -- nothing to score")
+    if not isinstance(scoring_version, str) or not scoring_version.strip():
+        raise OssOpportunityValidationError("scoring_version must be a non-empty string")
+    if top_n is not None and (not isinstance(top_n, int) or isinstance(top_n, bool) or top_n < 0):
+        raise OssOpportunityValidationError("top_n must be a non-negative integer or None")
 
     for index, c in enumerate(candidate_records):
         if not isinstance(c, OpenSourceRepositoryCandidateV1):
@@ -323,7 +344,6 @@ def build_opportunities_from_candidates(
     for duplicate, primary_id in duplicate_observations:
         rejected.append(
             {
-                "opportunity_id": duplicate.opportunity_id,
                 "repo_full_name": duplicate.repo_full_name,
                 "total_score": duplicate.total_score,
                 "reason": f"duplicate_of:{primary_id} (same repo_full_name observed from another source or snapshot)",
@@ -332,7 +352,22 @@ def build_opportunities_from_candidates(
         )
 
     if top_n is not None:
-        ranked = ranked[:top_n]
+        required = [entry for entry in ranked if entry["recommended_action"] in _MUST_SURFACE_ACTIONS]
+        ordinary = [entry for entry in ranked if entry["recommended_action"] not in _MUST_SURFACE_ACTIONS]
+        retained_ordinary = ordinary[: max(0, top_n - len(required))]
+        retained_ids = {id(entry) for entry in required + retained_ordinary}
+        omitted = [entry for entry in ranked if id(entry) not in retained_ids]
+        ranked = [entry for entry in ranked if id(entry) in retained_ids]
+        for entry in omitted:
+            rejected.append(
+                {
+                    "opportunity_id": entry["opportunity_id"],
+                    "repo_full_name": entry["repo_full_name"],
+                    "total_score": entry["total_score"],
+                    "reason": f"top_n_limit:{top_n}",
+                    "omitted_by_top_n": True,
+                }
+            )
 
     top_by_category: dict[str, list[str]] = {}
     for entry in ranked:
@@ -344,13 +379,14 @@ def build_opportunities_from_candidates(
     ]
     top_architecture_emulation = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "emulate_architecture_pattern"]
     top_docs_references = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "create_docs_reference"]
-    top_rejections = [e["repo_full_name"] for e in rejected if "duplicate_of" not in e]
+    top_rejections = [e["repo_full_name"] for e in rejected if "duplicate_of" not in e and not e.get("omitted_by_top_n")]
 
     opportunity_ids = [e["opportunity_id"] for e in ranked]
     batch_id = compute_batch_id(opportunity_ids=opportunity_ids, sources_scanned=sources_scanned, scoring_version=scoring_version)
 
     batch = OpenSourceLeverageBatchV1(
         batch_id=batch_id,
+        scoring_version=scoring_version,
         sources_scanned=sources_scanned,
         candidates_seen=len(candidate_records),
         opportunities_ranked=ranked,

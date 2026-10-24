@@ -20,7 +20,6 @@ records without changing the schema.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any, Union
@@ -28,7 +27,11 @@ from typing import Any, Union
 from dataclasses import fields as _dataclass_fields
 
 from oss_opportunities.repository_candidate import OpenSourceRepositoryCandidateV1
-from oss_opportunities.validation import OssOpportunityValidationError
+from oss_opportunities.validation import (
+    OssOpportunityValidationError,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
+)
 
 _CANDIDATE_FIELDS = frozenset(f.name for f in _dataclass_fields(OpenSourceRepositoryCandidateV1))
 # Set by the loader itself; a seed entry may not override observation identity.
@@ -56,7 +59,32 @@ def _read_json(path: Union[str, Path]) -> Any:
     resolved = Path(path)
     if not resolved.exists():
         raise FileNotFoundError(f"fixture file not found: {path}")
-    return json.loads(resolved.read_text(encoding="utf-8"))
+    return strict_json_loads(resolved.read_text(encoding="utf-8"))
+
+
+def _fixture_entries(payload: Any, source_name: str) -> tuple[dict[str, Any], list[Any]]:
+    if not isinstance(payload, dict):
+        raise OssOpportunityValidationError(f"{source_name} fixture payload must be a JSON object")
+    reject_forbidden_claim_fields(payload, f"{source_name} fixture payload")
+    if "repositories" not in payload:
+        raise OssOpportunityValidationError(f"{source_name} fixture requires a repositories list")
+    entries = payload["repositories"]
+    if not isinstance(entries, list):
+        raise OssOpportunityValidationError(f"{source_name} fixture repositories must be a list")
+    return payload, entries
+
+
+def _fixture_repo_fields(entry: Any, index: int, source_name: str, extra_fields: set[str] | None = None) -> tuple[str, dict[str, Any]]:
+    if not isinstance(entry, dict):
+        raise OssOpportunityValidationError(f"{source_name} entry {index} must be a JSON object")
+    repo_full_name = entry.get("repo_full_name") or entry.get("repo")
+    if not isinstance(repo_full_name, str) or not repo_full_name.strip():
+        raise OssOpportunityValidationError(f"{source_name} entry {index} requires a non-empty repo_full_name")
+    allowed = (_CANDIDATE_FIELDS - _SEED_RESERVED_FIELDS) | {"repo", "rank"} | (extra_fields or set())
+    unknown = sorted(str(key) for key in entry if key not in allowed)
+    if unknown:
+        raise OssOpportunityValidationError(f"{source_name} entry {index} has unknown fields: {unknown}")
+    return repo_full_name, {key: value for key, value in entry.items() if key not in ("repo_full_name", "repo")}
 
 
 def _default_limitations() -> list[str]:
@@ -74,7 +102,10 @@ def import_from_manual_seed(seed_path: Union[str, Path]) -> list[OpenSourceRepos
     payload = _read_json(seed_path)
     if not isinstance(payload, dict):
         raise OssOpportunityValidationError("manual seed payload must be a JSON object")
-    entries = payload.get("repositories") or payload.get("repos") or []
+    reject_forbidden_claim_fields(payload, "manual seed payload")
+    if "repositories" not in payload and "repos" not in payload:
+        raise OssOpportunityValidationError("manual seed requires a repositories list")
+    entries = payload.get("repositories") if "repositories" in payload else payload.get("repos")
     if not isinstance(entries, list):
         raise OssOpportunityValidationError("manual seed 'repositories' must be a list")
     snapshot_date = payload.get("snapshot_date", "")
@@ -89,9 +120,7 @@ def import_from_manual_seed(seed_path: Union[str, Path]) -> list[OpenSourceRepos
         else:
             repo_full_name = entry.get("repo_full_name") or entry.get("repo") or ""
             fields = {k: v for k, v in entry.items() if k not in ("repo_full_name", "repo")}
-        if not repo_full_name:
-            continue
-        if not isinstance(repo_full_name, str):
+        if not isinstance(repo_full_name, str) or not repo_full_name.strip():
             raise OssOpportunityValidationError(f"manual seed entry {index} repo_full_name must be a string")
         unknown = sorted(str(k) for k in fields if k not in _CANDIDATE_FIELDS - _SEED_RESERVED_FIELDS and k != "rank")
         if unknown:
@@ -108,6 +137,7 @@ def import_from_manual_seed(seed_path: Union[str, Path]) -> list[OpenSourceRepos
             limitations=fields.pop("limitations", None) or _default_limitations(),
             **fields,
         )
+        candidate.validate_or_raise()
         candidates.append(candidate)
     return candidates
 
@@ -121,7 +151,7 @@ def import_from_trendshift_fixture(fixture_path: Union[str, Path]) -> list[OpenS
     ..., ...}]}` captured from a Trendshift page snippet. Never fetches
     anything over the network; never embeds a raw Trendshift Signal API
     payload (this is the static-snapshot path, not the Signal API)."""
-    payload = _read_json(fixture_path)
+    payload, entries = _fixture_entries(_read_json(fixture_path), "Trendshift")
     timeframe = payload.get("timeframe", "daily")
     if timeframe not in _ALLOWED_TRENDSHIFT_TIMEFRAMES:
         raise ValueError(f"timeframe {timeframe!r} must be one of {_ALLOWED_TRENDSHIFT_TIMEFRAMES}")
@@ -129,11 +159,8 @@ def import_from_trendshift_fixture(fixture_path: Union[str, Path]) -> list[OpenS
     snapshot_date = payload.get("snapshot_date", "")
 
     candidates: list[OpenSourceRepositoryCandidateV1] = []
-    for entry in payload.get("repositories") or []:
-        repo_full_name = entry.get("repo_full_name") or entry.get("repo") or ""
-        if not repo_full_name:
-            continue
-        fields = {k: v for k, v in entry.items() if k not in ("repo_full_name", "repo")}
+    for index, entry in enumerate(entries):
+        repo_full_name, fields = _fixture_repo_fields(entry, index, "Trendshift")
         owner = fields.pop("owner", None) or (repo_full_name.split("/")[0] if "/" in repo_full_name else "")
         name = fields.pop("name", None) or (repo_full_name.split("/")[-1] if "/" in repo_full_name else repo_full_name)
         source_rank = fields.pop("source_rank", None)
@@ -149,6 +176,7 @@ def import_from_trendshift_fixture(fixture_path: Union[str, Path]) -> list[OpenS
             limitations=fields.pop("limitations", None) or _default_limitations(),
             **fields,
         )
+        candidate.validate_or_raise()
         candidates.append(candidate)
     return candidates
 
@@ -161,18 +189,17 @@ def import_from_starmap_fixture(fixture_path: Union[str, Path]) -> list[OpenSour
     "snapshot_date": "...", "repositories": [{"repo_full_name": ...,
     "stack_layer": ..., ...}]}` captured from a Star History starmap
     snapshot. Never fetches anything over the network."""
-    payload = _read_json(fixture_path)
+    payload, entries = _fixture_entries(_read_json(fixture_path), "Star History")
     category = payload.get("category", "frontend")
     if category not in _ALLOWED_STARMAP_CATEGORIES:
         raise ValueError(f"category {category!r} must be one of {_ALLOWED_STARMAP_CATEGORIES}")
     snapshot_date = payload.get("snapshot_date", "")
 
     candidates: list[OpenSourceRepositoryCandidateV1] = []
-    for entry in payload.get("repositories") or []:
-        repo_full_name = entry.get("repo_full_name") or entry.get("repo") or ""
-        if not repo_full_name:
-            continue
-        fields = {k: v for k, v in entry.items() if k not in ("repo_full_name", "repo")}
+    for index, entry in enumerate(entries):
+        repo_full_name, fields = _fixture_repo_fields(
+            entry, index, "Star History", extra_fields={"stack_layer", "observed_categories"}
+        )
         stack_layer = fields.pop("stack_layer", category)
         observed_categories = fields.pop("observed_categories", None) or [stack_layer]
         owner = fields.pop("owner", None) or (repo_full_name.split("/")[0] if "/" in repo_full_name else "")
@@ -186,6 +213,7 @@ def import_from_starmap_fixture(fixture_path: Union[str, Path]) -> list[OpenSour
             limitations=fields.pop("limitations", None) or _default_limitations(),
             **fields,
         )
+        candidate.validate_or_raise()
         candidates.append(candidate)
     return candidates
 

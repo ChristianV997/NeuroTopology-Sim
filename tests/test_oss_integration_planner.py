@@ -22,6 +22,17 @@ def test_plan_has_no_validation_errors():
     assert plan.validate() == []
 
 
+def test_plan_rejects_malformed_provenance_limitations_and_proposals():
+    for field, value in (
+        ("provenance", ["fixture"]),
+        ("limitations", "not a list"),
+        ("proposed_next_prs", [17]),
+    ):
+        plan, _ = _make_plan()
+        setattr(plan, field, value)
+        assert any(field in error for error in plan.validate())
+
+
 def test_immediate_adapter_and_external_tool_record_populated():
     plan, _ = _make_plan()
     all_repos = {c["repo_full_name"] for c in plan.immediate_adapter_candidates} | {

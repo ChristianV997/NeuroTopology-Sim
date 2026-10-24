@@ -10,6 +10,14 @@
 > remain independent artifacts; this is a documentation reference only, not
 > runtime coupling.
 
+Cross-check note (2026-10-23): those six stable IDs were present in the
+latest visible #406 inventory snapshot at head
+`1633e9cbb3f2947f6e5ad4db7cd5293dbab30c40`; the `gudhi` row still explicitly
+scopes package/module-license uncertainty. That inventory file is not on
+current main (`2345e5896a04d1af9fdd02845d78624a0e3a300f`), so candidate-specific
+statements remain dependent on the separately reviewed #406 artifact and are
+not independently established by this PR. No row details are copied here.
+
 Status: engineering and adoption routing only; project posture remains **HOLD /
 SYNTHETIC_ONLY**. Nothing here is scientific evidence, a legal opinion,
 security certification, or validation of a candidate's claims. The candidate

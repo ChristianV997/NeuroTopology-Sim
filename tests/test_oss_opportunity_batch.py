@@ -77,6 +77,36 @@ def test_top_n_limits_ranked_but_not_seen_count():
     batch = build_opportunities_from_candidates([a, b], top_n=1)
     assert batch.candidates_seen == 2
     assert len(batch.opportunities_ranked) == 1
+    assert len(batch.opportunities_rejected) == 1
+    assert batch.opportunities_rejected[0]["reason"].startswith("top_n_limit:")
+    assert batch.validate() == []
+
+
+def _unknown_license_document_candidate(repo_full_name):
+    candidate = make_document_ingestion_candidate(repo_full_name)
+    candidate.owner = repo_full_name.split("/", 1)[0]
+    candidate.name = repo_full_name.split("/", 1)[1]
+    candidate.license_spdx = "unknown"
+    candidate.license_name = "unknown"
+    candidate.candidate_id = candidate.recompute_id()
+    return candidate
+
+
+def test_top_n_never_hides_unresolved_license_reviews():
+    candidates = [
+        _unknown_license_document_candidate("org/one"),
+        _unknown_license_document_candidate("org/two"),
+    ]
+    batch = build_opportunities_from_candidates(candidates, top_n=1)
+    assert {entry["repo_full_name"] for entry in batch.opportunities_ranked} == {"org/one", "org/two"}
+    assert all(entry["recommended_action"] == "license_review_required" for entry in batch.opportunities_ranked)
+    assert batch.opportunities_rejected == []
+
+
+@pytest.mark.parametrize("top_n", [-1, True, 1.5, "1"])
+def test_top_n_rejects_invalid_limits(top_n):
+    with pytest.raises(OssOpportunityValidationError, match="top_n"):
+        build_opportunities_from_candidates([make_document_ingestion_candidate()], top_n=top_n)
 
 
 def test_top_by_category_and_action_lists_populated():

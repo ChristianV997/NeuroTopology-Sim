@@ -17,11 +17,13 @@ from typing import Any, Optional, Union
 from oss_opportunities.opportunity_batch import OpenSourceLeverageBatchV1
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
+    PLANNER_VERSION,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
     validate_integration_plan,
 )
 
 _SCHEMA_VERSION = "1"
-PLANNER_VERSION = "1"
 
 # Conservative, actionable "what to build next" suggestions per
 # leverage_category -- these name a *future milestone*, never an
@@ -57,6 +59,7 @@ def compute_plan_id(*, batch_id: str, selected_opportunity_ids: list[str], plann
 class OpenSourceIntegrationPlanV1:
     schema_version: str = _SCHEMA_VERSION
     plan_id: str = ""
+    planner_version: str = PLANNER_VERSION
     batch_id: str = ""
     selected_opportunity_ids: list[str] = field(default_factory=list)
     immediate_adapter_candidates: list[dict[str, Any]] = field(default_factory=list)
@@ -77,6 +80,7 @@ class OpenSourceIntegrationPlanV1:
         return {
             "schema_version": self.schema_version,
             "plan_id": self.plan_id,
+            "planner_version": self.planner_version,
             "batch_id": self.batch_id,
             "selected_opportunity_ids": list(self.selected_opportunity_ids),
             "immediate_adapter_candidates": list(self.immediate_adapter_candidates),
@@ -96,9 +100,23 @@ class OpenSourceIntegrationPlanV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "OpenSourceIntegrationPlanV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("plan payload must be a mapping")
+        reject_forbidden_claim_fields(d, "plan payload")
+        list_fields = (
+            "selected_opportunity_ids", "immediate_adapter_candidates", "external_tool_record_candidates",
+            "architecture_emulation_candidates", "documentation_reference_candidates", "license_review_queue",
+            "security_review_queue", "deferred_candidates", "rejected_candidates", "proposed_next_prs", "limitations",
+        )
+        for key in list_fields:
+            if key in d and not isinstance(d[key], list):
+                raise OssOpportunityValidationError(f"plan {key} must be a list")
+        if "metadata" in d and not isinstance(d["metadata"], dict):
+            raise OssOpportunityValidationError("plan metadata must be a mapping")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             plan_id=d.get("plan_id", ""),
+            planner_version=d.get("planner_version", PLANNER_VERSION),
             batch_id=d.get("batch_id", ""),
             selected_opportunity_ids=list(d.get("selected_opportunity_ids") or []),
             immediate_adapter_candidates=list(d.get("immediate_adapter_candidates") or []),
@@ -117,11 +135,12 @@ class OpenSourceIntegrationPlanV1:
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "OpenSourceIntegrationPlanV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)
@@ -145,12 +164,19 @@ def plan_oss_integrations_from_opportunities(
     planner_version: str = PLANNER_VERSION,
     _now: Optional[datetime] = None,
 ) -> OpenSourceIntegrationPlanV1:
+    if not isinstance(max_selected, int) or isinstance(max_selected, bool) or max_selected < 0:
+        raise OssOpportunityValidationError("max_selected must be a non-negative integer")
     batch_errs = batch.validate()
     if batch_errs:
         raise OssOpportunityValidationError(f"batch failed validation: {'; '.join(batch_errs)}")
 
     ts = (_now or datetime.now(timezone.utc)).isoformat()
-    selected = batch.opportunities_ranked[:max_selected]
+    must_surface_actions = {"license_review_required", "security_review_required"}
+    required = [entry for entry in batch.opportunities_ranked if entry["recommended_action"] in must_surface_actions]
+    ordinary = [entry for entry in batch.opportunities_ranked if entry["recommended_action"] not in must_surface_actions]
+    selected_set = {id(entry) for entry in required + ordinary[:max(0, max_selected - len(required))]}
+    selected = [entry for entry in batch.opportunities_ranked if id(entry) in selected_set]
+    omitted = [entry for entry in batch.opportunities_ranked if id(entry) not in selected_set]
     selected_ids = [e["opportunity_id"] for e in selected]
 
     immediate_adapter: list[dict[str, Any]] = []
@@ -200,6 +226,15 @@ def plan_oss_integrations_from_opportunities(
         {"repo_full_name": r["repo_full_name"], "reason": r["reason"], "not_executed": True}
         for r in batch.opportunities_rejected
     ]
+    rejected.extend(
+        {
+            "repo_full_name": entry["repo_full_name"],
+            "reason": f"max_selected_limit:{max_selected}",
+            "not_executed": True,
+            "omitted_by_max_selected": True,
+        }
+        for entry in omitted
+    )
 
     proposed_next_prs: list[str] = []
     for category in sorted(categories_seen):
@@ -211,6 +246,7 @@ def plan_oss_integrations_from_opportunities(
 
     plan = OpenSourceIntegrationPlanV1(
         plan_id=plan_id,
+        planner_version=planner_version,
         batch_id=batch.batch_id,
         selected_opportunity_ids=selected_ids,
         immediate_adapter_candidates=immediate_adapter,
