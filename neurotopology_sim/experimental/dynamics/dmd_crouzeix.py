@@ -106,6 +106,7 @@ References
 
 from __future__ import annotations
 
+import numbers
 from dataclasses import asdict, dataclass
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
@@ -136,6 +137,26 @@ TrajectoryInput = Union[TrajectoryLike, Sequence[TrajectoryLike]]
 
 class DMDValidationError(ValueError):
     """Invalid DMD / EP diagnostic input."""
+
+
+def _require_real(name: str, value: Any) -> float:
+    """Return a finite-capable real scalar without accepting bools or strings."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise DMDValidationError(f"{name} must be a real number, got {value!r}")
+    try:
+        out = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise DMDValidationError(
+            f"{name} must be representable as a finite float, got {value!r}"
+        ) from exc
+    return out
+
+
+def _require_integer(name: str, value: Any) -> int:
+    """Return an integral scalar without accepting bools or floats."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+        raise DMDValidationError(f"{name} must be an integer, got {value!r}")
+    return int(value)
 
 
 @dataclass(frozen=True)
@@ -369,9 +390,10 @@ def _select_rank(singular_values: np.ndarray, rank: Optional[int], rcond: float)
         )
     if rank is None:
         return auto
-    if rank < 1:
+    rank_i = _require_integer("rank", rank)
+    if rank_i < 1:
         raise DMDValidationError("rank must be >= 1")
-    return min(int(rank), auto, int(singular_values.size))
+    return min(rank_i, auto, int(singular_values.size))
 
 
 def _principal_branch_diagnostics(
@@ -507,11 +529,17 @@ def estimate_exact_dmd(
         Optional sampling rate metadata for generator diagnostics
         (``1/dt`` is implied when omitted).
     """
+    dt = _require_real("dt", dt)
     if not np.isfinite(dt) or dt <= 0.0:
         raise DMDValidationError("dt must be a finite positive float (seconds)")
+    rcond = _require_real("rcond", rcond)
     if not np.isfinite(rcond) or rcond <= 0.0:
         raise DMDValidationError("rcond must be a finite positive float")
+    if rank is not None:
+        # Validate type early so bool True is not silently truncated to rank 1.
+        _require_integer("rank", rank)
     if sample_rate_hz is not None:
+        sample_rate_hz = _require_real("sample_rate_hz", sample_rate_hz)
         if not np.isfinite(sample_rate_hz) or sample_rate_hz <= 0.0:
             raise DMDValidationError("sample_rate_hz must be finite and positive when provided")
         implied_fs = 1.0 / float(dt)
@@ -585,6 +613,10 @@ def ep2_hamiltonian(
     g: float,
 ) -> np.ndarray:
     """Return the exact 2×2 non-Hermitian EP model matrix."""
+    omega = _require_real("omega", omega)
+    delta = _require_real("delta", delta)
+    gamma = _require_real("gamma", gamma)
+    g = _require_real("g", g)
     vals = (omega, delta, gamma, g)
     if not all(np.isfinite(v) for v in vals):
         raise DMDValidationError("ep2_hamiltonian parameters must be finite")
@@ -615,11 +647,16 @@ def diagnose_ep2(
         raise DMDValidationError("diagnose_ep2 expects a 2×2 matrix")
     if not np.all(np.isfinite(H)):
         raise DMDValidationError("H contains non-finite values")
+    tol = _require_real("tol", tol)
+    if not np.isfinite(tol) or tol < 0.0:
+        raise DMDValidationError("tol must be a finite non-negative float")
 
     # Infer center if not provided: mean of diagonal (ω − iγ for the fixture).
     if omega is None or gamma is None:
         center = 0.5 * (H[0, 0] + H[1, 1])
     else:
+        omega = _require_real("omega", omega)
+        gamma = _require_real("gamma", gamma)
         center = complex(omega, -gamma)
     N = H - center * np.eye(2, dtype=np.complex128)
     # For the fixture, discriminant = δ² − g² with δ = Re(H00−center), g = Im(-H01).
@@ -671,8 +708,12 @@ def diagnose_ep2(
 
 def discrete_eigenvalue_from_frequency_hz(freq_hz: float, dt: float) -> complex:
     """Map frequency (Hz) to discrete eigenvalue under λ = exp(-i ω dt)."""
+    freq_hz = _require_real("freq_hz", freq_hz)
+    dt = _require_real("dt", dt)
     if not np.isfinite(dt) or dt <= 0.0:
         raise DMDValidationError("dt must be finite and positive")
+    if not np.isfinite(freq_hz):
+        raise DMDValidationError("freq_hz must be finite")
     omega = 2.0 * np.pi * float(freq_hz)
     return complex(np.exp(-1j * omega * dt))
 
@@ -682,6 +723,8 @@ def alias_ambiguity_report(
     fs_hz: float = 250.0,
 ) -> AliasAmbiguityReport:
     """Report the discriminating 240 Hz ↔ −10 Hz alias at fs = 250 Hz."""
+    f_hz = _require_real("f_hz", f_hz)
+    fs_hz = _require_real("fs_hz", fs_hz)
     if not np.isfinite(f_hz):
         raise DMDValidationError("f_hz must be finite")
     if not np.isfinite(fs_hz) or fs_hz <= 0.0:
