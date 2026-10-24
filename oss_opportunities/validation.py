@@ -178,7 +178,15 @@ EXPECTED_SCORE_COMPONENTS: frozenset[str] = frozenset(
 )
 
 FORBIDDEN_CLAIM_FIELDS: frozenset[str] = frozenset(
-    {"claim_scope", "evidence_level", "evidence_ready", "scientific_pass", "scientific_status"}
+    {
+        "claim_scope", "evidence_level", "evidence_ready", "scientific_pass", "scientific_status",
+        "security_certified", "security_certification", "security_certification_status",
+        "security_certification_passed", "security_clearance", "security_review_passed",
+        "legal_approved", "legal_approval", "legal_approval_status", "legal_clearance",
+        "legal_review_passed",
+        "compatibility_verified", "compatibility_clearance", "compatibility_clearance_status",
+        "compatibility_cleared", "compatibility_review_passed",
+    }
 )
 
 # ── shared banned-phrase chain ──────────────────────────────────────────
@@ -206,16 +214,35 @@ class OssOpportunityStoreError(ValueError):
 
 
 def reject_forbidden_claim_fields(payload: Any, context: str) -> None:
-    if not isinstance(payload, dict):
+    seen: set[int] = set()
+
+    def inspect(value: Any, path: str) -> None:
+        if isinstance(value, dict):
+            if id(value) in seen:
+                return
+            seen.add(id(value))
+            for key, child in value.items():
+                if isinstance(key, str) and key.casefold() in FORBIDDEN_CLAIM_FIELDS:
+                    raise OssOpportunityValidationError(
+                        f"{path} contains unsupported field(s): {[key]}"
+                    )
+                inspect(child, f"{path}.{key}")
+        elif isinstance(value, (list, tuple)):
+            if id(value) in seen:
+                return
+            seen.add(id(value))
+            for index, child in enumerate(value):
+                inspect(child, f"{path}[{index}]")
+
+    inspect(payload, context)
+
+
+def _check_allowed_mapping_fields(value: Any, allowed: set[str], path: str, errors: list[str]) -> None:
+    if not isinstance(value, dict):
         return
-    forbidden = sorted(
-        key for key in payload
-        if isinstance(key, str) and key.casefold() in FORBIDDEN_CLAIM_FIELDS
-    )
-    if forbidden:
-        raise OssOpportunityValidationError(
-            f"{context} contains unsupported field(s): {forbidden}"
-        )
+    unsupported = sorted((key for key in value if key not in allowed), key=repr)
+    if unsupported:
+        errors.append(f"{path} contains unsupported field(s): {unsupported}")
 
 
 def strict_json_loads(text: str) -> Any:
@@ -278,7 +305,7 @@ def _check_string_keys(value: Any, path: str, errors: list[str]) -> None:
             if not isinstance(key, str):
                 errors.append(f"{path}: mapping key {key!r} must be a string")
             elif key.casefold() in FORBIDDEN_CLAIM_FIELDS:
-                errors.append(f"{path}.{key}: unsupported field; OSS adoption metadata cannot assert scientific/evidence status")
+                errors.append(f"{path}.{key}: unsupported structured claim field for OSS adoption metadata")
             _check_string_keys(sub, f"{path}.{key}", errors)
     elif isinstance(value, (list, tuple)):
         for idx, item in enumerate(value):
@@ -389,6 +416,11 @@ def validate_repository_candidate(record: Any) -> list[str]:
 
     if "requires_credentials" in metadata and not isinstance(metadata["requires_credentials"], bool):
         errors.append("metadata.requires_credentials must be a boolean")
+    if (
+        "license_observation_status" in metadata
+        and metadata["license_observation_status"] != "conflict"
+    ):
+        errors.append("metadata.license_observation_status, when present, must be exactly 'conflict'")
     adapter_docs_url = metadata.get("adapter_docs_url")
     if adapter_docs_url is not None and not isinstance(adapter_docs_url, str):
         errors.append("metadata.adapter_docs_url must be a string")
@@ -658,6 +690,14 @@ def validate_integration_opportunity(record: Any) -> list[str]:
     if not isinstance(recommended_action, str) or recommended_action not in ALLOWED_RECOMMENDED_ACTION:
         errors.append(f"recommended_action '{recommended_action}' must be one of {sorted(ALLOWED_RECOMMENDED_ACTION)}")
 
+    security_risk = getattr(record, "security_risk", None)
+    if not isinstance(security_risk, str) or security_risk not in {"low", "elevated", "unknown"}:
+        errors.append("security_risk must be one of ['elevated', 'low', 'unknown']")
+    elif recommended_action in ("integrate_as_optional_adapter", "integrate_as_external_tool_record") and security_risk != "low":
+        errors.append(
+            f"recommended_action '{recommended_action}' requires security_risk='low'; elevated or unknown risk requires review"
+        )
+
     # Rule 4 (score aggregation must be documented/consistent).
     score_components = getattr(record, "score_components", None)
     total_score = getattr(record, "total_score", None)
@@ -685,6 +725,18 @@ def validate_integration_opportunity(record: Any) -> list[str]:
                     errors.append(
                         f"total_score ({total_score}) must equal sum of score_components ({computed}) (rule 5)"
                     )
+
+    security_penalty = score_components.get("security_risk_penalty") if isinstance(score_components, dict) else None
+    if (
+        isinstance(security_penalty, (int, float))
+        and not isinstance(security_penalty, bool)
+        and _is_finite_number(security_penalty)
+    ):
+        expected_security_risk = "elevated" if security_penalty < 0 else "low"
+        if security_risk != expected_security_risk:
+            errors.append(
+                "security_risk does not match score_components.security_risk_penalty"
+            )
 
     # Rule 6: blocked_actions must be a superset of the required floor.
     blocked_actions_value = getattr(record, "blocked_actions", None)
@@ -762,6 +814,11 @@ def validate_opportunity_against_license_review(opportunity: Any, license_review
                 f"only commercial_core_policy in {sorted(_COMMERCIAL_CORE_COPY_POLICIES)} with license_risk "
                 f"in {sorted(_COMMERCIAL_CORE_COPY_ALLOWED_LICENSE_RISK)} permits this action (rule 7/8)"
             )
+    elif recommended_action == "integrate_as_external_tool_record" and commercial_core_policy == "docs_reference_only":
+        errors.append(
+            f"opportunity recommends '{recommended_action}' but license_review policy is "
+            f"'{commercial_core_policy}' and does not permit an external tool-record action"
+        )
     return errors
 
 
@@ -784,6 +841,12 @@ def _validate_ranked_entry(entry: Any, index: int, errors: list[str]) -> None:
     if not isinstance(entry, dict):
         errors.append(f"{prefix} must be a mapping")
         return
+    _check_allowed_mapping_fields(
+        entry,
+        set(OpenSourceIntegrationOpportunityV1().to_dict()) | {"license_review"},
+        prefix,
+        errors,
+    )
     try:
         reject_forbidden_claim_fields(entry, prefix)
     except OssOpportunityValidationError as exc:
@@ -792,6 +855,9 @@ def _validate_ranked_entry(entry: Any, index: int, errors: list[str]) -> None:
     if not isinstance(review_dict, dict):
         errors.append(f"{prefix}.license_review must be a mapping (embedded review is required)")
         return
+    _check_allowed_mapping_fields(
+        review_dict, set(RepositoryLicenseReviewV1().to_dict()), f"{prefix}.license_review", errors
+    )
     score = entry.get("total_score")
     if not _is_finite_number(score):
         errors.append(f"{prefix}.total_score must be a finite number")
@@ -893,10 +959,30 @@ def validate_leverage_batch(batch: Any) -> list[str]:
             if not isinstance(entry, dict):
                 errors.append(f"opportunities_rejected[{index}] must be a mapping")
                 continue
+            rejected_prefix = f"opportunities_rejected[{index}]"
+            _check_allowed_mapping_fields(
+                entry,
+                {"opportunity_id", "repo_full_name", "total_score", "reason", "duplicate_of", "omitted_by_top_n"},
+                rejected_prefix,
+                errors,
+            )
+            try:
+                reject_forbidden_claim_fields(entry, rejected_prefix)
+            except OssOpportunityValidationError as exc:
+                errors.append(str(exc))
             for key in ("repo_full_name", "reason"):
                 if not isinstance(entry.get(key), str) or not entry.get(key):
                     errors.append(f"opportunities_rejected[{index}].{key} must be a non-empty string")
+            if not _is_finite_number(entry.get("total_score")):
+                errors.append(f"{rejected_prefix}.total_score must be a finite number")
             duplicate_of = entry.get("duplicate_of")
+            if "duplicate_of" in entry:
+                if not isinstance(duplicate_of, str) or not duplicate_of:
+                    errors.append(f"{rejected_prefix}.duplicate_of must be a non-empty opportunity ID")
+                if "opportunity_id" in entry:
+                    errors.append(f"{rejected_prefix} duplicate diagnostics must not include opportunity_id")
+            elif not isinstance(entry.get("opportunity_id"), str) or not entry.get("opportunity_id"):
+                errors.append(f"{rejected_prefix}.opportunity_id must be a non-empty string")
             if "omitted_by_top_n" in entry and type(entry["omitted_by_top_n"]) is not bool:
                 errors.append(f"opportunities_rejected[{index}].omitted_by_top_n must be a boolean")
             if entry.get("omitted_by_top_n") is True and not str(entry.get("reason", "")).startswith("top_n_limit:"):
@@ -995,6 +1081,15 @@ def validate_integration_plan(plan: Any) -> list[str]:
             if not isinstance(row, dict):
                 errors.append(f"{prefix} must be a mapping")
                 continue
+            _check_allowed_mapping_fields(
+                row,
+                {
+                    "opportunity_id", "repo_full_name", "leverage_category", "license_risk",
+                    "commercial_core_policy", "not_executed", "not_installed",
+                },
+                prefix,
+                errors,
+            )
             try:
                 reject_forbidden_claim_fields(row, prefix)
             except OssOpportunityValidationError as exc:
@@ -1020,6 +1115,12 @@ def validate_integration_plan(plan: Any) -> list[str]:
             if not isinstance(row, dict):
                 errors.append(f"rejected_candidates[{index}] must be a mapping")
                 continue
+            _check_allowed_mapping_fields(
+                row,
+                {"repo_full_name", "reason", "not_executed", "omitted_by_max_selected"},
+                f"rejected_candidates[{index}]",
+                errors,
+            )
             try:
                 reject_forbidden_claim_fields(row, f"rejected_candidates[{index}]")
             except OssOpportunityValidationError as exc:

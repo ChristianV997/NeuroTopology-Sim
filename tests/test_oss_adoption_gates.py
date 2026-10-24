@@ -802,3 +802,74 @@ def test_malformed_manual_seed_is_a_controlled_failure_at_api_and_cli(name, tmp_
         import_from_manual_seed(seed)
     rc = cli_main(["from-manual-seed", "--seed", str(seed), "--out", str(tmp_path / "out")])
     assert rc == 1
+
+
+def test_candidate_license_conflict_marker_routes_to_review():
+    candidate = make_document_ingestion_candidate()
+    candidate.metadata = {"license_observation_status": "conflict"}
+    duplicate = _observation("github_manual_seed")
+
+    batch = build_opportunities_from_candidates([candidate, duplicate])
+    entry = batch.opportunities_ranked[0]
+    assert entry["license_review"]["metadata"]["license_observation_status"] == "conflict"
+    assert entry["recommended_action"] == "license_review_required"
+    assert batch.top_immediate_adapters == []
+    assert len(batch.opportunities_rejected) == 1
+
+
+def test_malformed_candidate_license_conflict_marker_is_rejected():
+    candidate = make_document_ingestion_candidate()
+    candidate.metadata = {"license_observation_status": "CONFLICT"}
+
+    assert any("license_observation_status" in error for error in candidate.validate())
+    with pytest.raises(OssOpportunityValidationError, match="license_observation_status"):
+        build_opportunities_from_candidates([candidate])
+
+
+def test_credential_risk_downgrade_inconsistent_with_score_component_is_rejected():
+    candidate = make_document_ingestion_candidate()
+    candidate.metadata = {"requires_credentials": True}
+    batch = build_opportunities_from_candidates([candidate])
+    entry = batch.opportunities_ranked[0]
+    assert entry["recommended_action"] == "security_review_required"
+
+    entry["recommended_action"] = "integrate_as_optional_adapter"
+    entry["security_risk"] = "low"
+    batch.top_immediate_adapters = [entry["repo_full_name"]]
+
+    assert any("security" in error.casefold() for error in batch.validate())
+    with pytest.raises(OssOpportunityValidationError, match="batch failed validation"):
+        plan_oss_integrations_from_opportunities(batch)
+
+
+def test_unknown_claim_fields_are_rejected_in_batch_and_plan_records():
+    for claim_field in (
+        "security_certified", "security_certification_status", "legal_approved",
+        "legal_approval_status", "compatibility_verified", "compatibility_clearance_status",
+    ):
+        batch = _ranked_batch()
+        batch.opportunities_ranked[0][claim_field] = True
+        assert any(claim_field in error for error in batch.validate())
+
+        batch = _ranked_batch()
+        batch.opportunities_ranked[0]["license_review"]["metadata"] = {claim_field: True}
+        assert any(claim_field in error for error in batch.validate())
+
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()], top_n=0)
+    batch.opportunities_rejected[0]["legal_approved"] = True
+    assert any("legal_approved" in error for error in batch.validate())
+
+    plan = plan_oss_integrations_from_opportunities(_ranked_batch())
+    plan.immediate_adapter_candidates[0]["metadata"] = {"security_certified": True}
+    assert any("security_certified" in error for error in plan.validate())
+
+
+def test_rejected_batch_rows_require_finite_score_and_nonempty_identity():
+    batch = build_opportunities_from_candidates([make_document_ingestion_candidate()], top_n=0)
+    rejected = batch.opportunities_rejected[0]
+    rejected.pop("opportunity_id")
+    assert any("opportunity_id" in error for error in batch.validate())
+
+    rejected["opportunity_id"] = "restored-id"
+    rejected["total_score"] = float("nan")
+    assert any("total_score" in error for error in batch.validate())

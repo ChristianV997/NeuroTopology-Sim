@@ -216,7 +216,11 @@ def build_opportunities_from_candidates(
             (candidate.license_spdx or "unknown").strip().casefold()
             for candidate in observations
         }
-        if len(normalized) > 1:
+        source_marks_conflict = any(
+            (candidate.metadata or {}).get("license_observation_status") == "conflict"
+            for candidate in observations
+        )
+        if len(normalized) > 1 or source_marks_conflict:
             observed_values = sorted(
                 {(candidate.license_spdx or "unknown").strip() or "unknown" for candidate in observations},
                 key=str.casefold,

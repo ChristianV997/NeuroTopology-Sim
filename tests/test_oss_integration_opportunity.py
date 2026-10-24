@@ -17,7 +17,7 @@ def _make(**overrides):
         leverage_category="document_ingestion", recommended_action="integrate_as_optional_adapter",
         blocked_actions=list(REQUIRED_BLOCKED_ACTIONS),
         score_components={name: 0.0 for name in EXPECTED_SCORE_COMPONENTS},
-        total_score=0.0,
+        total_score=0.0, security_risk="low",
         limitations=["synthetic fixture only"], provenance="synthetic fixture",
     )
     kwargs.update(overrides)
@@ -171,3 +171,18 @@ def test_cross_check_ignores_other_recommended_actions():
         recommended_action="integrate_as_external_tool_record",
     )
     assert validate_opportunity_against_license_review(o, review) == []
+
+
+def test_cross_check_rejects_external_tool_record_under_docs_reference_only_policy():
+    review = _review(
+        license_spdx="ELv2", license_name="Elastic License 2.0",
+        commercial_core_policy="docs_reference_only",
+        allowed_use_modes=["docs_reference", "external_process_only_if_terms_permit"],
+    )
+    opportunity = _make(
+        license_review_id=review.license_review_id,
+        recommended_action="integrate_as_external_tool_record",
+    )
+
+    errors = validate_opportunity_against_license_review(opportunity, review)
+    assert any("docs_reference_only" in error for error in errors)

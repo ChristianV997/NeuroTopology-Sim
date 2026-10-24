@@ -114,6 +114,41 @@ def test_weak_copyleft_document_ingestion_uses_external_tool_record_not_optional
     assert result["recommended_action"] == "integrate_as_external_tool_record"
 
 
+def test_docs_reference_only_license_never_routes_to_external_tool_record():
+    candidate = make_document_ingestion_candidate("some/fair-code-repo")
+    candidate.license_spdx = "ELv2"
+    candidate.license_name = "Elastic License 2.0"
+    candidate.candidate_id = candidate.recompute_id()
+
+    review = _review_for(candidate)
+    assert review.commercial_core_policy == "docs_reference_only"
+    result = score_opportunity(candidate, review)
+    assert result["recommended_action"] == "create_docs_reference"
+
+
+def test_docs_reference_only_policy_applies_to_every_external_record_category():
+    candidate = make_document_ingestion_candidate("some/fair-code-data-catalog")
+    candidate.name = "data-catalog"
+    candidate.description = "Catalog of public datasets"
+    candidate.topics = ["dataset", "data-catalog"]
+    candidate.license_spdx = "ELv2"
+    candidate.license_name = "Elastic License 2.0"
+    candidate.candidate_id = candidate.recompute_id()
+
+    result = score_opportunity(candidate, _review_for(candidate))
+    assert result["leverage_category"] == "dataset_discovery"
+    assert result["recommended_action"] == "create_docs_reference"
+
+
+def test_explicit_non_copy_policy_is_honored_by_direct_scoring():
+    candidate = make_document_ingestion_candidate("some/restricted-policy-repo")
+    review = _review_for(candidate)
+    review.commercial_core_policy = "external_process_only"
+
+    result = score_opportunity(candidate, review)
+    assert result["recommended_action"] == "integrate_as_external_tool_record"
+
+
 def test_never_recommends_execution_or_install_actions():
     for maker in (make_document_ingestion_candidate, make_agpl_scraper_candidate, make_frontend_stack_candidate):
         c = maker()

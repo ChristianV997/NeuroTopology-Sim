@@ -96,6 +96,18 @@ Markdown / static HTML leverage report
   constants. Versioned opportunity/review identifiers, the exact score
   vector, batch count accounting, and derived report projections are checked
   rather than trusting caller-supplied summaries.
+- **Action routing follows the explicit license policy.** For high-value
+  categories, `allowed_with_attribution` plus `permissive_low` may produce an
+  optional-adapter proposal; `adapter_only`/`external_process_only` route to
+  an external tool-record proposal; `docs_reference_only` routes to a docs
+  reference. Blocked or unresolved policies remain in review. Elevated or
+  unknown security-risk labels cannot produce an integration action.
+- **V1 output rows are closed shapes.** Unknown fields in ranked, rejected,
+  and plan action rows are rejected, as are structured scientific/evidence,
+  security-certification, legal-approval, and compatibility-clearance claim
+  fields. A candidate's exact `license_observation_status: "conflict"`
+  marker also forces the repository into license review, including when it
+  appears on one of several duplicate observations.
 
 ## Trendshift source policy and raw-data redistribution caution
 

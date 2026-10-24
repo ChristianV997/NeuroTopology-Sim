@@ -208,19 +208,19 @@ def score_opportunity(
     elif is_non_python_core or leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack", "infra_observability_stack"):
         recommended_action = "emulate_architecture_pattern"
     elif leverage_category in ("document_ingestion", "web_literature_acquisition"):
-        # High-value categories always get a real integration path: only a
-        # permissive_low license (the one risk tier whose default
-        # commercial_core_policy is copy-permitting, see
-        # oss_opportunities.license_review._DEFAULT_POLICY_BY_RISK) can be
-        # an in-process optional adapter. Every other risk tier -- weak
-        # copyleft, strong copyleft, source-available/fair-code,
-        # proprietary/unknown (e.g. an AGPL scraping library) -- is still
-        # worth using, just only as an external process/service adapter,
-        # never as copied-in code (rule 8).
-        if license_review.license_risk == "permissive_low":
+        # Route from the explicit policy, not the license-risk label alone:
+        # in particular, docs_reference_only must not become an external
+        # tool-record recommendation, and caller policy overrides must be
+        # respected after license-review validation.
+        policy = license_review.commercial_core_policy
+        if policy == "allowed_with_attribution" and license_review.license_risk == "permissive_low":
             recommended_action = "integrate_as_optional_adapter"
-        else:
+        elif policy in ("adapter_only", "external_process_only"):
             recommended_action = "integrate_as_external_tool_record"
+        elif policy == "docs_reference_only":
+            recommended_action = "create_docs_reference"
+        else:
+            recommended_action = "license_review_required"
     elif leverage_category in ("code_graph_memory", "research_memory", "agent_harness", "workflow_orchestration"):
         recommended_action = "emulate_architecture_pattern"
     elif leverage_category == "report_visualization":
@@ -235,6 +235,14 @@ def score_opportunity(
     # on top of validate_opportunity_against_license_review's cross-check).
     if recommended_action == "integrate_as_optional_adapter" and license_review.license_risk not in ("permissive_low",):
         recommended_action = "integrate_as_external_tool_record"
+
+    # Apply docs-reference-only policy to every category that otherwise
+    # proposes an external record, not just document-ingestion categories.
+    if (
+        recommended_action == "integrate_as_external_tool_record"
+        and license_review.commercial_core_policy == "docs_reference_only"
+    ):
+        recommended_action = "create_docs_reference"
 
     # Credentialed adoption is never a direct adapter or tool-record path: it
     # waits for security review first. credential_required_execution stays in
