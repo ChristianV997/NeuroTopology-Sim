@@ -6,7 +6,7 @@ scientific validation of any method or tool.
 
 - Base (historical audit start): `origin/main` = `3f3fe8593303184cb88eef056c1322f3d4e57a16`
 - Base (current PR base, checked 2026-10-23): `origin/main` = `648e5e4fb67e9e7c399c78c00b1a139f83db2b36` (inventory `base_main_sha`)
-- Current live main (refreshed 2026-10-24): `6136cb3fe3bc97e811f494a853f471988ce976bb` (inventory `current_main_sha`)
+- Current live main (refreshed 2026-10-24): `2345e5896a04d1af9fdd02845d78624a0e3a300f` (inventory `current_main_sha`)
 - Branch: `batch1/claude-d-oss-compatibility-map`
 - Research date (UTC): **2026-10-17**
 - Machine-readable inventory: `docs/oss_compat/compatibility_inventory_20261017.json`

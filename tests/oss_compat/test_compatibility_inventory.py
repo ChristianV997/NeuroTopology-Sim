@@ -492,7 +492,7 @@ def test_inventory_base_and_current_main_shas_are_full_hex_and_cited_in_audit():
     assert re.fullmatch(r"[0-9a-f]{40}", base_sha)
     assert re.fullmatch(r"[0-9a-f]{40}", current_sha)
     assert base_sha == "648e5e4fb67e9e7c399c78c00b1a139f83db2b36"
-    assert current_sha == "6136cb3fe3bc97e811f494a853f471988ce976bb"
+    assert current_sha == "2345e5896a04d1af9fdd02845d78624a0e3a300f"
     audit = (_ROOT / "docs" / "oss_compat" / "batch1_compatibility_audit_20261017.md").read_text(encoding="utf-8")
     assert base_sha in audit
     assert current_sha in audit

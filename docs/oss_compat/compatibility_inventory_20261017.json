@@ -4,7 +4,7 @@
   "project_status": "HOLD / SYNTHETIC_ONLY",
   "scope_note": "Audit evidence only. Not authorization to adopt, install, import, execute, or copy any candidate. Not scientific validation.",
   "base_main_sha": "648e5e4fb67e9e7c399c78c00b1a139f83db2b36",
-  "current_main_sha": "6136cb3fe3bc97e811f494a853f471988ce976bb",
+  "current_main_sha": "2345e5896a04d1af9fdd02845d78624a0e3a300f",
   "retrieval_date_utc": "2026-10-17",
   "retrieval_method": "GitHub REST API (repository metadata, commits, releases, license metadata) and public README/LICENSE text. No clone, install, import, execution, or dataset download.",
   "release_revalidated_at_utc": "2026-10-23",
