@@ -343,3 +343,20 @@ def test_calibration_fails_closed_when_ratio_is_nonfinite(monkeypatch: pytest.Mo
     for b in report.bins:
         if b.sample_count > 0:
             assert b.verdict == CalibrationVerdict.OVERCONFIDENT.value
+
+
+def test_calibration_bins_account_for_all_samples_including_extreme_uncertainty() -> None:
+    """All samples must be partitioned into calibration bins without silently dropping extreme values."""
+    n = 20
+    t = np.arange(n) / 1000.0
+    sig = np.cos(2.0 * np.pi * 10.0 * t)
+    dummy_res = estimate_narrowband_phase_uncertainty(sig)
+
+    # Wide range of predicted std up to float64 large value where max_std + 1e-6 == max_std
+    pred_std = np.linspace(0.1, 1e16, n)
+    res = replace(dummy_res, phase_std=pred_std)
+
+    report = evaluate_phase_uncertainty_calibration(res, np.zeros(n), n_bins=5)
+    total_binned = sum(b.sample_count for b in report.bins)
+    assert total_binned == n, f"Expected {n} samples binned, but got {total_binned}"
+    assert report.bins[-1].sample_count > 0, "Last bin must contain the extreme uncertainty samples"

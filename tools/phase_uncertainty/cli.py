@@ -30,6 +30,7 @@ def run_full_calibration_audit(n_bins: int = 5) -> dict[str, Any]:
             "overconfident_fixtures": 0,
             "conservative_fixtures": 0,
             "well_calibrated_fixtures": 0,
+            "insufficient_data_fixtures": 0,
         },
     }
 
@@ -50,6 +51,8 @@ def run_full_calibration_audit(n_bins: int = 5) -> dict[str, Any]:
             report["aggregate_summary"]["conservative_fixtures"] += 1
         elif verdict == "well_calibrated":
             report["aggregate_summary"]["well_calibrated_fixtures"] += 1
+        elif verdict == "insufficient_data":
+            report["aggregate_summary"]["insufficient_data_fixtures"] += 1
 
     return report
 

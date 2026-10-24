@@ -290,7 +290,10 @@ def evaluate_phase_uncertainty_calibration(
     for b_idx in range(n_bins):
         lo = float(bin_edges[b_idx])
         hi = float(bin_edges[b_idx + 1])
-        mask = (pred_std >= lo) & (pred_std < hi)
+        if b_idx == n_bins - 1:
+            mask = (pred_std >= lo) & (pred_std <= hi)
+        else:
+            mask = (pred_std >= lo) & (pred_std < hi)
         count = int(np.count_nonzero(mask))
 
         if count == 0:

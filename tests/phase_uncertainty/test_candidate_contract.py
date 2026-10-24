@@ -248,3 +248,29 @@ def test_mad_second_difference_underestimates_colored_noise() -> None:
     # Because adjacent samples are positively correlated, Var(d2) < 6 * Var(noise).
     # The assumed i.i.d. formula severely underestimates the true noise:
     assert sigma_hat_assumed_iid < 0.70 * empirical_std
+
+
+def test_zero_amplitude_frames_report_maximum_uncertainty_ceiling() -> None:
+    """Zero-amplitude frames have undefined phase and must report maximum uncertainty ceiling, never picoradian certainty."""
+    # Case 1: Entire signal is zero
+    sig_zero = np.zeros(32, dtype=np.float64)
+    res_zero = estimate_narrowband_phase_uncertainty(sig_zero)
+    assert np.all(res_zero.phase_std >= 0.99 * UNIFORM_CIRCULAR_STD_CEILING), (
+        f"All-zero signal reported certainty instead of ceiling: min={np.min(res_zero.phase_std)}, max={np.max(res_zero.phase_std)}"
+    )
+
+    # Case 2: Complex all-zero signal
+    sig_zero_c = np.zeros(32, dtype=np.complex128)
+    res_zero_c = estimate_narrowband_phase_uncertainty(sig_zero_c)
+    assert np.all(res_zero_c.phase_std >= 0.99 * UNIFORM_CIRCULAR_STD_CEILING), (
+        f"Complex all-zero signal reported certainty: min={np.min(res_zero_c.phase_std)}"
+    )
+
+    # Case 3: Signal with a zero-amplitude notch in the middle
+    t = np.arange(100) / 1000.0
+    sig_notch = np.exp(1j * 2.0 * np.pi * 10.0 * t)
+    sig_notch[40:60] = 0.0
+    res_notch = estimate_narrowband_phase_uncertainty(sig_notch)
+    assert np.all(res_notch.phase_std[40:60] >= 0.99 * UNIFORM_CIRCULAR_STD_CEILING), (
+        f"Zero-amplitude notch frames reported certainty: {res_notch.phase_std[45:55]}"
+    )
