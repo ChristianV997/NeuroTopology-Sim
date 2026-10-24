@@ -235,6 +235,22 @@ def test_apply_csd_refuses_data_with_more_than_two_axes():
         apply_csd(M, np.ones((4, 4, 3)))
 
 
+ONE_AXIS = np.ones(4)
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [ONE_AXIS, np.ones((4, 4, 4)), np.ones((4, 3)), [[1.0] * 4] * 4 + [[1.0] * 3], np.full((4, 4), np.nan)],
+    ids=["one_axis", "three_axes", "not_square", "ragged_list", "non_finite"],
+)
+def test_apply_csd_refuses_an_operator_that_is_not_a_finite_square_matrix(operator):
+    # Regression (2026-10-23, QA re-probe of the #402 follow-up): apply_csd checked data but not M. A 1-D M
+    # returned a scalar dot product with no error; a 3-D M returned a (4, 4, k) array; a list raised
+    # AttributeError and a non-square M raised ValueError instead of OperatorInputError.
+    with pytest.raises(OperatorInputError, match="operator"):
+        apply_csd(operator, np.ones(4) if operator is ONE_AXIS else np.ones((4, 5)))
+
+
 def test_origin_must_be_three_finite_coordinates():
     # Regression (2026-10-23, post-merge audit of #402): an (n_channels, 3) origin was broadcast row by row as
     # a per-sensor centre, and a finite operator was returned with no error. MNE takes a single sphere centre.
