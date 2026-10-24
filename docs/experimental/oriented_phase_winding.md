@@ -71,12 +71,18 @@ Only `wrap_interval="[-pi,pi)"` is supported.
 
 ```text
 raw   = D0 @ θ
-n     = floor((raw + π) / (2π))     # int64
+n     = floor((raw + π) / (2π))     # int64 (ideal arithmetic)
 omega = raw − 2π n                  # ∈ [-π, π)
 ```
 
 Exact `+π` maps to `−π`; exact `−π` stays `−π`. No jitter is applied to break
 ties.
+
+**Float hardening:** near odd multiples of `π`, float evaluation of the floor
+formula can disagree with the reconstructed principal value. When `omega` is
+shifted by `±2π` to restore `[-π, π)`, `n` is adjusted by the same `±1` and
+`omega` is recomputed so `omega = raw − 2π n` holds. This keeps
+`q = −D1 @ n` aligned with `(D1 @ omega) / 2π`.
 
 ### Tie tolerance
 
