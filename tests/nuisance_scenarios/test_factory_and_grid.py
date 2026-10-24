@@ -96,6 +96,182 @@ def test_factory_with_custom_clean_signal() -> None:
     assert res.diagnostics.realized_snr_db == pytest.approx(10.0, abs=1e-5)
 
 
+def test_factory_does_not_alias_caller_clean_signal_or_coordinates() -> None:
+    """Regression: ScenarioResult must own copies of caller-supplied float64 arrays.
+
+    np.asarray(..., dtype=float64) is a no-op view for float64 inputs, so storing
+    that reference let result mutations rewrite the caller's buffers.
+    """
+    cfg = NuisanceScenarioConfig(
+        noise_exponent=0.5,
+        target_snr_db=0.0,
+        coordinate_jitter_std=0.0,
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+        seed=19,
+    )
+    clean = np.ascontiguousarray(
+        np.vstack(
+            [
+                np.sin(2 * np.pi * 5 * np.linspace(0, 0.5, 50, endpoint=False)),
+                np.cos(2 * np.pi * 5 * np.linspace(0, 0.5, 50, endpoint=False)),
+            ]
+        ),
+        dtype=np.float64,
+    )
+    coords = np.ones((2, 3), dtype=np.float64) * 11.0
+    clean_snap = clean.copy()
+    coords_snap = coords.copy()
+
+    res = NuisanceScenarioFactory.generate(cfg, clean_signal=clean, coordinates=coords)
+
+    assert res.clean_signal is not clean
+    assert res.original_coordinates is not coords
+    assert not np.shares_memory(res.clean_signal, clean)
+    assert not np.shares_memory(res.original_coordinates, coords)
+    assert res.jittered_coordinates is not None
+    assert not np.shares_memory(res.jittered_coordinates, coords)
+
+    res.clean_signal[0, 0] = 12345.0
+    res.original_coordinates[0, 0] = -7.0
+    res.jittered_coordinates[0, 1] = -8.0
+
+    np.testing.assert_array_equal(clean, clean_snap)
+    np.testing.assert_array_equal(coords, coords_snap)
+
+def test_factory_does_not_mutate_result_when_caller_arrays_are_mutated_after_creation() -> None:
+    """Verifies that mutating caller inputs after generate() does not affect ScenarioResult."""
+    cfg = NuisanceScenarioConfig(
+        noise_exponent=0.5,
+        target_snr_db=0.0,
+        coordinate_jitter_std=0.0,
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+        seed=19,
+    )
+    clean = np.ones((2, 50), dtype=np.float64) * 3.0
+    coords = np.ones((2, 3), dtype=np.float64) * 5.0
+
+    res = NuisanceScenarioFactory.generate(cfg, clean_signal=clean, coordinates=coords)
+    clean_snap = res.clean_signal.copy()
+    coords_snap = res.original_coordinates.copy()
+    assert res.jittered_coordinates is not None
+    jit_snap = res.jittered_coordinates.copy()
+
+    # Mutate caller input arrays after result creation
+    clean[0, 0] = 9999.0
+    coords[0, 0] = -8888.0
+
+    np.testing.assert_array_equal(res.clean_signal, clean_snap)
+    np.testing.assert_array_equal(res.original_coordinates, coords_snap)
+    np.testing.assert_array_equal(res.jittered_coordinates, jit_snap)
+
+
+def test_factory_does_not_alias_generator_returned_buffers() -> None:
+    """Regression: ScenarioResult must own copies of generator-returned buffers.
+
+    Ensures bidirectional buffer isolation between custom signal_generator callables
+    and the returned ScenarioResult, including writeable and read-only generator buffers.
+    """
+    cfg = NuisanceScenarioConfig(
+        noise_exponent=1.0,
+        target_snr_db=0.0,
+        coordinate_jitter_std=0.0,
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+        seed=42,
+    )
+    cached_buf = np.ones((2, 50), dtype=np.float64) * 7.0
+    cached_snap = cached_buf.copy()
+
+    def generator(n_ch: int, n_samp: int, sfreq: float, rng: np.random.Generator) -> np.ndarray:
+        return cached_buf
+
+    res = NuisanceScenarioFactory.generate(cfg, signal_generator=generator)
+
+    assert res.clean_signal is not cached_buf
+    assert not np.shares_memory(res.clean_signal, cached_buf)
+    assert not np.shares_memory(res.noisy_signal, cached_buf)
+
+    # 1. Mutate result array; generator buffer must remain untouched
+    res.clean_signal[0, 0] = 12345.0
+    np.testing.assert_array_equal(cached_buf, cached_snap)
+
+    # 2. Mutate generator buffer; result arrays must remain untouched
+    res_clean_snap = res.clean_signal.copy()
+    res_noisy_snap = res.noisy_signal.copy()
+    cached_buf[0, 1] = -777.0
+    np.testing.assert_array_equal(res.clean_signal, res_clean_snap)
+    np.testing.assert_array_equal(res.noisy_signal, res_noisy_snap)
+
+    # 3. Generator returning read-only array produces writeable owned clean_signal
+    ro_buf = np.ones((2, 50), dtype=np.float64) * 2.0
+    ro_buf.flags.writeable = False
+
+    def ro_generator(n_ch: int, n_samp: int, sfreq: float, rng: np.random.Generator) -> np.ndarray:
+        return ro_buf
+
+    res_ro = NuisanceScenarioFactory.generate(cfg, signal_generator=ro_generator)
+    assert res_ro.clean_signal.flags.writeable is True
+    res_ro.clean_signal[0, 0] = 42.0
+    assert ro_buf[0, 0] == 2.0
+
+
+def test_factory_rejects_both_clean_signal_and_signal_generator_conflict() -> None:
+    """Fail closed when both clean_signal and signal_generator are supplied."""
+    cfg = NuisanceScenarioConfig(
+        noise_exponent=1.0,
+        target_snr_db=0.0,
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+        seed=42,
+    )
+    clean = np.ones((2, 50), dtype=np.float64)
+    with pytest.raises(ValueError, match="provide only one of clean_signal or signal_generator"):
+        NuisanceScenarioFactory.generate(
+            cfg,
+            clean_signal=clean,
+            signal_generator=lambda n_ch, n_samp, sf, rng: clean,
+        )
+
+
+def test_factory_grid_generation_isolates_buffers_across_scenarios() -> None:
+    """Verifies that generate_grid isolates clean_signal across scenarios and caller buffers."""
+    grid_cfg = NuisanceGridConfig(
+        chi_values=[0.5, 1.5],
+        snr_db_values=[0.0],
+        jitter_std_values=[0.0],
+        seeds=[42],
+        sfreq_hz=100.0,
+        duration_s=0.5,
+        n_channels=2,
+    )
+    clean = np.ones((2, 50), dtype=np.float64) * 10.0
+    coords = np.ones((2, 3), dtype=np.float64) * 4.0
+    clean_snap = clean.copy()
+
+    results = NuisanceScenarioFactory.generate_grid(
+        grid_cfg, clean_signal=clean, coordinates=coords
+    )
+    assert len(results) == 2
+
+    # Scenarios must not share memory with each other or caller
+    assert not np.shares_memory(results[0].clean_signal, results[1].clean_signal)
+    assert not np.shares_memory(results[0].clean_signal, clean)
+    assert not np.shares_memory(results[1].clean_signal, clean)
+    assert not np.shares_memory(results[0].original_coordinates, results[1].original_coordinates)
+    assert not np.shares_memory(results[0].original_coordinates, coords)
+
+    # Mutating scenario 0 clean_signal does not affect scenario 1 or caller
+    results[0].clean_signal[0, 0] = -999.0
+    assert results[1].clean_signal[0, 0] == 10.0
+    np.testing.assert_array_equal(clean, clean_snap)
+
+
 def test_factory_with_signal_generator_callable() -> None:
     """Verifies factory accepts a custom signal generator callable."""
     cfg = NuisanceScenarioConfig(
