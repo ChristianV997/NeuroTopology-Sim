@@ -117,7 +117,7 @@ The verifier implements explicit pre-condition checks and raises distinct except
 | **Non-finite entries** | Any entry is `NaN`, `+Inf`, or `-Inf` | `NonFiniteValuesError` |
 | **Dimension mismatch** | $d_{\text{test}} \ne d_{\text{train}}$ during transform | `FeatureDimensionMismatchError` |
 | **Non-SPD without floor** | Covariance minor $\le 0$ without repair | `NonPositiveDefiniteError` |
-| **Asymmetric covariance** | $|A_{ij}-A_{ji}| > 10^{-9}\cdot\max(|A_{ij}|,|A_{ji}|,|A_{ii}|,|A_{jj}|)$ (no absolute $10^{-15}$ floor) | `InvalidCovarianceError` |
+| **Asymmetric covariance** | $|A_{ij}-A_{ji}| > \max\big(10^{-9}\cdot\max(|A_{ij}|,|A_{ji}|),\; n\,\varepsilon_{\text{mach}}\sqrt{|A_{ii}|}\sqrt{|A_{jj}|}\big)$. The diagonal sets only the rounding-noise floor, so a large diagonal cannot hide a material off-diagonal asymmetry. No absolute $10^{-15}$ floor | `InvalidCovarianceError` |
 | **Cholesky vs ZCA equivalence** | Relative $||W_{\mathrm{chol}}-W_{\mathrm{zca}}||_F / ||W_{\mathrm{zca}}||_F < 10^{-9}$ **and** zero floored eigenvalues (no absolute $||\Delta W||_F$ / $||W||_F$ floors; floor-collapsed $\Sigma\to\varepsilon I$ agreement is withheld) | `are_methods_equivalent` |
 
 ---

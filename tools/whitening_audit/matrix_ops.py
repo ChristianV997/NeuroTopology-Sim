@@ -88,13 +88,18 @@ def validate_finite_matrix(X: Sequence[Sequence[float]], name: str = "Matrix") -
                 )
 
 
+_MACHINE_EPSILON = 2.220446049250313e-16
+
+
 def validate_square_symmetric(A: Sequence[Sequence[float]], tol: float = 1e-9) -> None:
     """Ensure matrix is square and symmetric within relative/local tolerance.
 
-    Tolerance is relative to the local matrix scale (off-diagonal magnitudes and
-    the two diagonal entries). An absolute ``1e-15`` floor is intentionally
-    avoided: it previously accepted fully asymmetric micro-scale covariances
-    (e.g. off-diagonals ``1e-16`` vs ``0``).
+    The tolerance is relative to the asymmetric off-diagonal pair itself. The
+    diagonal entries only set a rounding-noise floor, ``n * eps * sqrt(|a_ii|)
+    * sqrt(|a_jj|)`` (standard dimension-scaled rounding bound, computed without
+    overflow), so a large diagonal cannot hide a material off-diagonal asymmetry.
+    An absolute ``1e-15`` floor is intentionally avoided: it previously accepted
+    fully asymmetric micro-scale covariances (e.g. off-diagonals ``1e-16`` vs ``0``).
     """
     validate_finite_matrix(A, "Covariance matrix")
     n = len(A)
@@ -107,8 +112,9 @@ def validate_square_symmetric(A: Sequence[Sequence[float]], tol: float = 1e-9) -
             diff = abs(a_ij - a_ji)
             if diff == 0.0:
                 continue
-            scale = max(abs(a_ij), abs(a_ji), abs(A[i][i]), abs(A[j][j]))
-            eff_tol = tol * scale if scale > 0.0 else 0.0
+            pair_scale = max(abs(a_ij), abs(a_ji))
+            noise = n * _MACHINE_EPSILON * math.sqrt(abs(A[i][i])) * math.sqrt(abs(A[j][j]))
+            eff_tol = max(tol * pair_scale, noise)
             if diff > eff_tol:
                 raise InvalidCovarianceError(
                     f"Matrix is asymmetric: A[{i}][{j}]={a_ij} vs A[{j}][{i}]={a_ji}."
