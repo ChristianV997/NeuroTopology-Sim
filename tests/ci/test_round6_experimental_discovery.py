@@ -207,6 +207,11 @@ class Round6DiscoveryTests(unittest.TestCase):
             with self.subTest(workflow=workflow_name):
                 self.assertRegex(workflow, r"(?m)^\s+PIP_NO_CACHE_DIR: \"1\"$")
                 self.assertNotRegex(workflow, r"(?m)^\s+python -m pip cache\b")
+                self.assertNotRegex(workflow, r"(?m)^\s*-\s*uses:\s*actions/cache@")
+                self.assertNotRegex(
+                    workflow,
+                    r"(?im)^\s+cache:\s*(['\"]?)(?:pip|true)\1\s*(?:#.*)?$",
+                )
 
     def test_quoted_candidate_paths_cannot_become_not_applicable(self):
         helper = _helper()
@@ -2732,6 +2737,7 @@ def test_fixture():
                 ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
                 ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
                 ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                ("tools/release_manifest/scientific_gate.py", "tests/release_manifest/test_scientific_gate.py"),
                 ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
             ),
         }
@@ -3076,6 +3082,30 @@ def test_fixture():
                     self.assertEqual(blocked["status"], "BLOCKED")
                     self.assertEqual(blocked["missing_required_tests"], [test_path])
 
+    def test_pr357_scientific_gate_uses_direct_existing_test_pair(self):
+        helper = _helper()
+        implementation = "tools/release_manifest/scientific_gate.py"
+        test_path = "tests/release_manifest/test_scientific_gate.py"
+        component = "release_manifest"
+        self.assertIn(
+            {"implementation": implementation, "test": test_path},
+            helper.COMPONENTS[component]["candidate_pairs"],
+        )
+        self.assertEqual(helper.select_components({implementation}), [component])
+        self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for path in helper.COMPONENTS[component]["implementation_roots"]:
+                _write(root, path, "# release-manifest source fixture\\n")
+            for path in helper.COMPONENTS[component]["tests"]:
+                _write(root, path, "def test_contract_fixture():\\n    assert True\\n")
+            inspection = helper.inspect_component(component, root, {implementation})
+
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertIn(test_path, inspection["tests_to_run"])
+        self.assertEqual(inspection["missing_required_tests"], [])
+
     def test_pr447_falsification_matrix_test_only_change_keeps_exact_owner_pair(self):
         helper = _helper()
         component = "batch3_falsification_matrix_artifact"
@@ -3095,6 +3125,52 @@ def test_fixture():
             result = helper.inspect_component(component, root, changed)
         self.assertEqual(result["status"], "READY_TO_RUN")
         self.assertEqual(result["tests_to_run"], [test_path])
+
+    def test_malformed_component_owner_registry_blocks_candidate_selection(self):
+        helper = _helper()
+        component = "simulation_grid_planner"
+        pair = helper.COMPONENTS[component]["candidate_pairs"][0]
+        malformed_owner_mappings = (
+            (),
+            [],
+            None,
+            (True,),
+            ("424",),
+            (424, 424),
+            (0,),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            _write(root, pair["implementation"], "# fixture implementation\n")
+            _write(root, pair["test"], "# fixture test\n")
+            for owners in malformed_owner_mappings:
+                with self.subTest(owners=owners):
+                    with patch.dict(helper.COMPONENT_OWNER_PRS, {component: owners}):
+                        result = helper.inspect_component(component, root)
+                    self.assertEqual(result["status"], "BLOCKED")
+                    self.assertIn(
+                        "component owner mapping is invalid", result["blockers"]
+                    )
+                    self.assertFalse(result["owner_mapping_valid"])
+                    self.assertEqual(result["owner_prs"], [])
+                    json.dumps(result, allow_nan=False)
+
+            with patch.dict(helper.COMPONENT_OWNER_PRS):
+                del helper.COMPONENT_OWNER_PRS[component]
+                missing = helper.inspect_component(component, root)
+            self.assertEqual(missing["status"], "BLOCKED")
+            self.assertEqual(
+                missing["owner_mapping_error"], "component_owner_mapping_is_missing"
+            )
+
+            with patch.object(helper, "COMPONENT_OWNER_PRS", None):
+                malformed_registry = helper.inspect_component(component, root)
+            self.assertEqual(malformed_registry["status"], "BLOCKED")
+            self.assertEqual(
+                malformed_registry["owner_mapping_error"],
+                "owner_registry_must_be_a_mapping",
+            )
 
     def test_live_planner_followup_has_an_exact_new_pair(self):
         helper = _helper()
@@ -3604,6 +3680,7 @@ def test_fixture():
                     ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
                     ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
                     ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                    ("tools/release_manifest/scientific_gate.py", "tests/release_manifest/test_scientific_gate.py"),
                     ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
                 },
             ),
@@ -3759,11 +3836,13 @@ def test_fixture():
                 "tools/release_manifest/merge_state.py",
                 "tools/release_manifest/models.py",
                 "tools/release_manifest/reporting.py",
+                "tools/release_manifest/scientific_gate.py",
                 "scripts/build_release_manifest.py",
                 "tests/release_manifest/test_build_release_manifest_cli.py",
                 "tests/release_manifest/test_manifest_builder.py",
                 "tests/release_manifest/test_merge_state.py",
                 "tests/release_manifest/test_reporting.py",
+                "tests/release_manifest/test_scientific_gate.py",
             },
             "bids_adapter": {
                 "data/bids_ingest.py",
@@ -3992,8 +4071,8 @@ def test_fixture():
             "release_manifest": (
                 "tools/release_manifest/manifest_builder.py",
                 "tests/release_manifest/test_manifest_builder.py",
-                "tools/release_manifest/scientific_gate.py",
-                "tests/release_manifest/test_scientific_gate.py",
+                "tools/release_manifest/unregistered_extension.py",
+                "tests/release_manifest/test_unregistered_extension.py",
             ),
         }
         for component, (source, test_path, unknown_source, unknown_test) in fixtures.items():
@@ -4019,9 +4098,16 @@ def test_fixture():
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
         )
         self.assertEqual(spec["tests"], tests)
-        self.assertEqual(spec["suite_companion_tests"], ("tests/test_oss_license_review.py",))
+        self.assertEqual(
+            spec["suite_companion_tests"],
+            (
+                "tests/test_oss_license_review.py",
+                "tests/test_oss_integration_planner.py",
+            ),
+        )
         expected_pairs = {
             ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
             ("oss_opportunities/opportunity_batch.py", "tests/test_oss_opportunity_batch.py"),
@@ -4032,6 +4118,8 @@ def test_fixture():
             ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
             ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
             ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+            ("oss_opportunities/integration_opportunity.py", "tests/test_oss_integration_opportunity.py"),
+            ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
             ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
         }
         pairs = {(item["implementation"], item["test"]) for item in spec["candidate_pairs"]}
@@ -4047,12 +4135,55 @@ def test_fixture():
         }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            for path in (*changed, *tests, "oss_opportunities/license_review.py"):
+            for path in (*changed, *tests, *spec["implementation_roots"]):
                 _write(root, path, "# offline fixture\n")
             result = helper.inspect_component(component, root, changed)
         self.assertEqual(result["status"], "READY_TO_RUN")
         self.assertCountEqual(result["tests_to_run"], tests)
         self.assertEqual(len(result["tests_to_run"]), len(tests))
+        self.assertEqual(result["missing_required_tests"], [])
+
+    def test_live_pr386_changed_paths_pair_integration_and_planner_sources(self):
+        helper = _helper()
+        changed = {
+            "oss_opportunities/integration_opportunity.py",
+            "oss_opportunities/planner.py",
+            "oss_opportunities/source_ingestion.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        }
+        component = "oss_adoption_gates"
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn(
+            (
+                "oss_opportunities/integration_opportunity.py",
+                "tests/test_oss_integration_opportunity.py",
+            ),
+            pairs,
+        )
+        self.assertIn(
+            ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
+            pairs,
+        )
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(
+            helper._unmapped_candidate_paths(changed),
+            ["oss_opportunities/source_ingestion.py"],
+        )
+        spec = helper.COMPONENTS[component]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for path in (*spec["implementation_roots"], *spec["tests"]):
+                _write(root, path, "# offline candidate fixture\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(
+            result["unmapped_candidate_paths"],
+            ["oss_opportunities/source_ingestion.py"],
+        )
         self.assertEqual(result["missing_required_tests"], [])
 
     def test_oss_adoption_mapping_blocks_when_suite_companion_is_missing(self):

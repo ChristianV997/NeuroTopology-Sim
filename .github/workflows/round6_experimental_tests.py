@@ -1730,11 +1730,13 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tools/release_manifest/merge_state.py",
             "tools/release_manifest/models.py",
             "tools/release_manifest/reporting.py",
+            "tools/release_manifest/scientific_gate.py",
             "scripts/build_release_manifest.py",
             "tests/release_manifest/test_build_release_manifest_cli.py",
             "tests/release_manifest/test_manifest_builder.py",
             "tests/release_manifest/test_merge_state.py",
             "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
         ),
         "implementation": "tools/release_manifest/manifest_builder.py",
         "tests": (
@@ -1742,6 +1744,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/release_manifest/test_manifest_builder.py",
             "tests/release_manifest/test_merge_state.py",
             "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
         ),
         "candidate_pairs": (
             {
@@ -1777,6 +1780,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "test": "tests/release_manifest/test_build_release_manifest_cli.py",
             },
             {
+                "implementation": "tools/release_manifest/scientific_gate.py",
+                "test": "tests/release_manifest/test_scientific_gate.py",
+            },
+            {
                 "implementation": "scripts/build_release_manifest.py",
                 "test": "tests/release_manifest/test_build_release_manifest_cli.py",
             },
@@ -1786,6 +1793,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tools/release_manifest/merge_state.py",
             "tools/release_manifest/models.py",
             "tools/release_manifest/reporting.py",
+            "tools/release_manifest/scientific_gate.py",
             "scripts/build_release_manifest.py",
         ),
         "candidate_test_roots": (
@@ -1793,12 +1801,15 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/release_manifest/test_manifest_builder.py",
             "tests/release_manifest/test_merge_state.py",
             "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
         ),
     },
     "oss_adoption_gates": {
         "triggers": (
+            "oss_opportunities/integration_opportunity.py",
             "oss_opportunities/opportunity_batch.py",
             "oss_opportunities/license_review.py",
+            "oss_opportunities/planner.py",
             "oss_opportunities/repository_candidate.py",
             "oss_opportunities/source_ingestion.py",
             "oss_opportunities/scoring.py",
@@ -1809,6 +1820,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
         ),
         "implementation": "oss_opportunities/opportunity_batch.py",
         "tests": (
@@ -1818,6 +1830,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
         ),
         "candidate_pairs": tuple(
             {
@@ -1834,15 +1847,22 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
                 ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
                 ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+                ("oss_opportunities/integration_opportunity.py", "tests/test_oss_integration_opportunity.py"),
+                ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
                 ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
             )
         ),
         # The owner-requested suite includes a license-review regression as a
         # component-level companion, not as a false pair to a changed file.
-        "suite_companion_tests": ("tests/test_oss_license_review.py",),
+        "suite_companion_tests": (
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_integration_planner.py",
+        ),
         "implementation_roots": (
+            "oss_opportunities/integration_opportunity.py",
             "oss_opportunities/opportunity_batch.py",
             "oss_opportunities/license_review.py",
+            "oss_opportunities/planner.py",
             "oss_opportunities/repository_candidate.py",
             "oss_opportunities/source_ingestion.py",
             "oss_opportunities/scoring.py",
@@ -1855,6 +1875,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/test_oss_opportunity_scoring.py",
             "tests/test_oss_repository_candidate.py",
             "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
         ),
     },
     "whitening_audit": {
@@ -3210,6 +3231,23 @@ def inspect_component(
 ) -> dict[str, Any]:
     """Require a concrete implementation/test pair for every selected candidate path."""
     spec = COMPONENTS[name]
+    owner_registry = COMPONENT_OWNER_PRS
+    owner_mapping_error = None
+    owner_prs: list[int] = []
+    if not isinstance(owner_registry, dict):
+        owner_mapping_error = "owner_registry_must_be_a_mapping"
+    elif name not in owner_registry:
+        owner_mapping_error = "component_owner_mapping_is_missing"
+    else:
+        raw_owner_prs = owner_registry[name]
+        if not isinstance(raw_owner_prs, tuple) or not raw_owner_prs:
+            owner_mapping_error = "owner_ids_must_be_a_nonempty_tuple"
+        elif any(type(owner_pr) is not int or owner_pr <= 0 for owner_pr in raw_owner_prs):
+            owner_mapping_error = "owner_ids_must_be_positive_integers"
+        elif len(set(raw_owner_prs)) != len(raw_owner_prs):
+            owner_mapping_error = "owner_ids_must_be_unique"
+        else:
+            owner_prs = list(raw_owner_prs)
     pairs = list(spec.get("candidate_pairs", ()))
     changed_paths = changed_paths or set()
     changes = {normalize_repo_path(path).casefold() for path in changed_paths}
@@ -3539,6 +3577,8 @@ def inspect_component(
         if (root / pair["implementation"]).is_file()
     })
     blockers = []
+    if owner_mapping_error is not None:
+        blockers.append("component owner mapping is invalid")
     if missing_implementations:
         blockers.append("required candidate implementation is absent")
     if missing_required_tests:
@@ -3567,7 +3607,9 @@ def inspect_component(
         blockers.append("no registered implementation-test pair exists")
     return {
         "component": name,
-        "owner_prs": list(COMPONENT_OWNER_PRS.get(name, ())),
+        "owner_prs": owner_prs,
+        "owner_mapping_valid": owner_mapping_error is None,
+        "owner_mapping_error": owner_mapping_error,
         "status": "BLOCKED" if blockers else "READY_TO_RUN",
         "blockers": blockers,
         "selected_paths": sorted({
