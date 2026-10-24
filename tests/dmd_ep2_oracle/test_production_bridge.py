@@ -21,7 +21,7 @@ import importlib.util
 import os
 import unittest
 from pathlib import Path
-from types import CodeType, ModuleType, SimpleNamespace
+from types import CodeType, FunctionType, ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 
@@ -120,6 +120,8 @@ def _assert_checkout_production_source(dmd):
         if (
             function is None
             or getattr(function, "__module__", None) != expected_name
+            # Genuine code rebound to another globals dict would run against forged names.
+            or getattr(function, "__globals__", None) is not dmd.__dict__
             or code is None
             or Path(code.co_filename).resolve() != expected
             or source_functions.get(symbol) != code
@@ -158,12 +160,10 @@ class ProductionImportBridgeTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        require = os.environ.get("DMD_EP2_REQUIRE_PRODUCTION", "").strip() in {
+        require = os.environ.get("DMD_EP2_REQUIRE_PRODUCTION", "").strip().lower() in {
             "1",
             "true",
-            "TRUE",
             "yes",
-            "YES",
         }
         cls.dmd = _load_production_for_suite(require)
 
@@ -337,23 +337,17 @@ class ProductionBridgePolicyTests(unittest.TestCase):
             )
 
     def test_rejects_stub_with_missing_required_symbol(self):
-        """A stub missing one of the required symbols must be rejected."""
+        """A module missing one of the required symbols must be rejected.
+
+        The genuine module object is used, with only alias_ambiguity_report unset. Copying
+        genuine functions into a separate stub module is a forgery, and the globals check
+        rejects it before the missing symbol is reached.
+        """
         expected = _expected_production_source().resolve()
-        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
         real_dmd = _load_production()
-        stub = ModuleType(name)
-        stub.__file__ = str(expected)
-        stub.__spec__ = importlib.util.spec_from_file_location(name, expected)
-        stub.__loader__ = stub.__spec__.loader
-        # Copy the genuine implementations for the first 3 symbols, leaving alias_ambiguity_report missing
-        for symbol in (
-            "ep2_hamiltonian",
-            "diagnose_ep2",
-            "discrete_eigenvalue_from_frequency_hz",
-        ):
-            setattr(stub, symbol, getattr(real_dmd, symbol))
-        with self.assertRaisesRegex(AssertionError, "production function 'alias_ambiguity_report'"):
-            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+        with patch.object(real_dmd, "alias_ambiguity_report", None):
+            with self.assertRaisesRegex(AssertionError, "production function 'alias_ambiguity_report'"):
+                _load_production_for_suite(True, loader=lambda: real_dmd, source_path=expected)
 
     def test_rejects_stub_with_loader_mismatch(self):
         """A module whose loader doesn't match its spec loader must be rejected."""
@@ -384,6 +378,49 @@ class ProductionBridgePolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "import spec does not identify this checkout's source"):
             _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
 
+
+
+    def test_rejects_genuine_code_rebound_to_forged_globals(self):
+        """Genuine code objects bound to a different globals dict are not the leaf's functions."""
+        expected = _expected_production_source().resolve()
+        name = "neurotopology_sim.experimental.dynamics.dmd_crouzeix"
+        real = _load_production()
+        stub = ModuleType(name)
+        stub.__file__ = str(expected)
+        stub.__spec__ = importlib.util.spec_from_file_location(name, expected)
+        stub.__loader__ = stub.__spec__.loader
+        forged_globals = dict(real.__dict__)
+        forged_globals["__name__"] = name
+        for symbol in (
+            "ep2_hamiltonian",
+            "diagnose_ep2",
+            "discrete_eigenvalue_from_frequency_hz",
+            "alias_ambiguity_report",
+        ):
+            genuine = getattr(real, symbol)
+            rebound = FunctionType(
+                genuine.__code__, forged_globals, symbol, genuine.__defaults__, genuine.__closure__
+            )
+            rebound.__kwdefaults__ = genuine.__kwdefaults__
+            setattr(stub, symbol, rebound)
+        with self.assertRaisesRegex(AssertionError, "production function"):
+            _load_production_for_suite(True, loader=lambda: stub, source_path=expected)
+
+    def test_production_required_flag_is_case_insensitive(self):
+        """'True' and 'Yes' are required-mode spellings: an absent leaf must fail, not skip."""
+        missing = _expected_production_source().with_name("missing_dmd_crouzeix.py")
+        for value in ("True", "Yes", "yes", "TRUE"):
+            with self.subTest(value=value):
+                with patch.dict(os.environ, {"DMD_EP2_REQUIRE_PRODUCTION": value}):
+                    with patch(__name__ + "._expected_production_source", return_value=missing):
+                        try:
+                            ProductionImportBridgeTests.setUpClass()
+                        except unittest.SkipTest:
+                            self.fail(f"required-mode value {value!r} produced an ORACLE_ONLY skip")
+                        except AssertionError:
+                            pass
+                        else:
+                            self.fail(f"required-mode value {value!r} accepted an absent leaf")
 
 
 if __name__ == "__main__":

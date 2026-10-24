@@ -28,7 +28,24 @@ def log_diag(z):
     return cmath.log(z)
 
 
+def _is_non_numeric(value):
+    """Strings, bytes and booleans are not numeric inputs, including NumPy bool scalars.
+
+    complex() and float() would coerce these, and the coerced value would then fail later on a
+    raw AttributeError or TypeError. A NumPy bool scalar is recognised by its dtype kind 'b',
+    which avoids importing NumPy.
+    """
+    if isinstance(value, (str, bytes, bytearray, bool)):
+        return True
+    try:
+        return getattr(getattr(value, 'dtype', None), 'kind', None) == 'b'
+    except Exception:
+        return False
+
+
 def _require_finite_scalar(z, name='value'):
+    if _is_non_numeric(z):
+        raise ValueError(f'{name} must be numeric (not str, bytes, or bool)')
     if isinstance(z, complex):
         if not (math.isfinite(z.real) and math.isfinite(z.imag)):
             raise ValueError(f'{name} must be finite')
@@ -51,6 +68,8 @@ def _require_finite_scalar(z, name='value'):
 
 
 def _require_finite_nonnegative_real(value, name):
+    if _is_non_numeric(value):
+        raise ValueError(f'{name} must be a finite nonnegative real number')
     try:
         numeric = float(value)
     except (OverflowError, TypeError, ValueError) as exc:
@@ -99,10 +118,13 @@ def signed_nyquist_alias(frequency, sampling_rate):
     Fail closed on non-finite frequency/rate or non-positive sampling rate
     (avoids silent NaN and ZeroDivisionError from ``% 0``).
     """
+    for value in (frequency, sampling_rate):
+        if _is_non_numeric(value):
+            raise ValueError('frequency and sampling_rate must be real floats, not str, bytes, or bool')
     try:
         f = float(frequency)
         fs = float(sampling_rate)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError('frequency and sampling_rate must be real floats') from exc
     if not math.isfinite(f):
         raise ValueError(f'frequency must be finite; got {frequency!r}')
@@ -140,13 +162,19 @@ def mat_mul(a, b):
 
 def mat_inv_2x2(a, tol=1e-14):
     """Invert a nonsingular 2×2 matrix; reject ill-conditioned det analytically."""
-    det = a[0][0] * a[1][1] - a[0][1] * a[1][0]
+    # The determinant test is relative to the matrix scale, so a well-conditioned matrix with tiny
+    # entries (for example 1e-9 * I) is not rejected for having a tiny absolute determinant.
+    scale = max(abs(a[i][j]) for i in range(2) for j in range(2))
+    if scale == 0.0:
+        raise ValueError("singular / ill-conditioned 2x2 inverse; the matrix is zero")
+    b = tuple(tuple(a[i][j] / scale for j in range(2)) for i in range(2))
+    det = b[0][0] * b[1][1] - b[0][1] * b[1][0]
     if abs(det) <= tol:
-        raise ValueError(f"singular / ill-conditioned 2x2 inverse; |det|={abs(det)}")
+        raise ValueError(f"singular / ill-conditioned 2x2 inverse; relative |det|={abs(det)}")
     inv_det = 1.0 / det
     return (
-        (a[1][1] * inv_det, -a[0][1] * inv_det),
-        (-a[1][0] * inv_det, a[0][0] * inv_det),
+        (b[1][1] * inv_det / scale, -b[0][1] * inv_det / scale),
+        (-b[1][0] * inv_det / scale, b[0][0] * inv_det / scale),
     )
 
 
@@ -163,8 +191,12 @@ def frobenius_cond_diag_dominant(a):
     """
     center = (a[0][0] + a[1][1]) / 2
     half_diff = (a[0][0] - a[1][1]) / 2
-    radius = cmath.sqrt(half_diff * half_diff + a[0][1] * a[1][0])
+    radicand = half_diff * half_diff + a[0][1] * a[1][0]
+    _require_finite_scalar(radicand, name='condition proxy radicand')
+    radius = cmath.sqrt(radicand)
     l1, l2 = center + radius, center - radius
+    _require_finite_scalar(l1, name='condition proxy eigenvalue')
+    _require_finite_scalar(l2, name='condition proxy eigenvalue')
     if l1 == 0 or l2 == 0:
         raise ValueError("zero eigenvalue: matrix log undefined")
     return abs(l1) / abs(l2) if abs(l1) >= abs(l2) else abs(l2) / abs(l1)
@@ -215,29 +247,37 @@ def _matrix_center_radius(a):
     return center, radius
 
 
+def _exact_complex_parts(value):
+    value = complex(value)
+    return Fraction.from_float(value.real), Fraction.from_float(value.imag)
+
+
+def _exact_complex_multiply(left, right):
+    return (
+        left[0] * right[0] - left[1] * right[1],
+        left[0] * right[1] + left[1] * right[0],
+    )
+
+
+def _exact_complex_subtract(left, right):
+    return left[0] - right[0], left[1] - right[1]
+
+
+def _exact_determinant(a):
+    """Exact rational determinant of a 2x2 matrix of floats, with no rounding."""
+    return _exact_complex_subtract(
+        _exact_complex_multiply(_exact_complex_parts(a[0][0]), _exact_complex_parts(a[1][1])),
+        _exact_complex_multiply(_exact_complex_parts(a[0][1]), _exact_complex_parts(a[1][0])),
+    )
+
+
 def _exact_determinant_quotient(a, root):
     """Recover det(A)/root exactly from the input floats when scaling underflows."""
-    def parts(value):
-        value = complex(value)
-        return Fraction.from_float(value.real), Fraction.from_float(value.imag)
-
-    def multiply(left, right):
-        return (
-            left[0] * right[0] - left[1] * right[1],
-            left[0] * right[1] + left[1] * right[0],
-        )
-
-    def subtract(left, right):
-        return left[0] - right[0], left[1] - right[1]
-
-    determinant = subtract(
-        multiply(parts(a[0][0]), parts(a[1][1])),
-        multiply(parts(a[0][1]), parts(a[1][0])),
-    )
+    determinant = _exact_determinant(a)
     if determinant == (0, 0):
         return 0j
 
-    root_real, root_imag = parts(root)
+    root_real, root_imag = _exact_complex_parts(root)
     denominator = root_real * root_real + root_imag * root_imag
     if denominator == 0:
         raise ValueError('cannot recover an eigenvalue from a zero dominant root')
@@ -300,6 +340,16 @@ def _matrix_eigenvalues_2x2(a, center, radius):
     return first, second
 
 
+def _evaluate_matrix_function(function, value, name):
+    """Evaluate a scalar function; overflow or a division blow-up is a contract error."""
+    try:
+        result = function(value)
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError(f'{name} is not representable in floating-point range') from exc
+    _require_finite_scalar(result, name=name)
+    return result
+
+
 def matrix_function_2x2(a, function, derivative, tol=1e-12):
     """Analytic 2x2 oracle, using interpolation or the repeated-root limit."""
     tol = _require_finite_nonnegative_real(tol, 'tol')
@@ -308,25 +358,26 @@ def matrix_function_2x2(a, function, derivative, tol=1e-12):
         n = mat_sub(a, mat_scale(center, mat_identity()))
         _require_finite_2x2(n, name='matrix nilpotent part')
         if mat_norm(n) <= tol:
-            value = function(center)
+            value = _evaluate_matrix_function(function, center, 'matrix function value')
             _require_finite_scalar(value, name='matrix function value')
             result = mat_scale(value, mat_identity())
             _require_finite_2x2(result, name='matrix function result')
             return result
         # Defective Jordan case: enforce full N**2 == 0 before using N f'(λ).
         assert_full_nilpotency(n, tol=tol)
-        value = function(center)
-        slope = derivative(center)
+        value = _evaluate_matrix_function(function, center, 'matrix function value')
+        slope = _evaluate_matrix_function(derivative, center, 'matrix function derivative')
         _require_finite_scalar(value, name='matrix function value')
         _require_finite_scalar(slope, name='matrix function derivative')
         result = mat_add(mat_scale(value, mat_identity()), mat_scale(slope, n))
         _require_finite_2x2(result, name='matrix function result')
         return result
     l1, l2 = _matrix_eigenvalues_2x2(a, center, radius)
-    value1 = function(l1)
-    value2 = function(l2)
-    _require_finite_scalar(value1, name='first matrix function value')
-    _require_finite_scalar(value2, name='second matrix function value')
+    if l1 == l2:
+        # Roots that differ by |radius| > tol but round to the same float cannot be separated.
+        raise ValueError('matrix eigenvalues are not representably distinct; divided difference undefined')
+    value1 = _evaluate_matrix_function(function, l1, 'first matrix function value')
+    value2 = _evaluate_matrix_function(function, l2, 'second matrix function value')
     slope = (value1 - value2) / (l1 - l2)
     _require_finite_scalar(slope, name='matrix function slope')
     result = mat_add(
@@ -346,6 +397,12 @@ def principal_matrix_log(a):
     center, radius = _matrix_center_radius(a)
     for eigenvalue in _matrix_eigenvalues_2x2(a, center, radius):
         if eigenvalue == 0:
+            # Zero is a singularity only when the exact determinant is zero. A nonzero exact
+            # determinant whose roots underflowed is an unsupported range, not a singular matrix.
+            if _exact_determinant(a) != (0, 0):
+                raise ValueError(
+                    'matrix eigenvalue underflows floating-point range; logarithm not representable'
+                )
             raise ValueError('singular matrix has no logarithm')
         if eigenvalue.real < 0.0 and eigenvalue.imag == 0.0:
             raise ValueError(
@@ -698,6 +755,8 @@ spec.loader.exec_module(module)
             for j in range(2):
                 self.assertTrue(math.isfinite(res[i][j].real))
                 self.assertTrue(math.isfinite(res[i][j].imag))
+        # The small root (about 5e-101) is checked through the reconstruction exp(log M) = M.
+        self.assertLess(max_entry_error(mat_exp(res), matrix) / mat_norm(matrix), 1e-12)
 
     def test_matrix_log_zero_matrix_is_singular(self):
         """Zero matrix has all zero eigenvalues and is classified as singular."""
@@ -709,6 +768,93 @@ spec.loader.exec_module(module)
         matrix = ((1.0 + 0j, 0j), (0j, 1.0 + 0j))
         with self.assertRaisesRegex(ValueError, 'cannot recover an eigenvalue from a zero dominant root'):
             _exact_determinant_quotient(matrix, 0j)
+
+
+class _BoolKindScalar:
+    """Stand-in for a NumPy bool scalar (dtype kind 'b'); the oracle must not import NumPy."""
+
+    dtype = type('_Dtype', (), {'kind': 'b'})()
+
+    def __complex__(self):
+        return complex(1)
+
+    def __float__(self):
+        return 1.0
+
+
+class OracleAdversarialRegressionTests(unittest.TestCase):
+    """Red regressions from adversarial probing: classification, overflow and input types."""
+
+    def test_numpy_style_bool_scalars_are_rejected(self):
+        """A bool-kind scalar is a bool, even though it is not the builtin bool type."""
+        flag = _BoolKindScalar()
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((flag, 0), (0, 2)))
+        with self.assertRaises(ValueError):
+            signed_nyquist_alias(10.0, flag)
+
+    def test_nonsingular_near_rank_one_matrix_is_not_reported_singular(self):
+        """A nonzero determinant lost to scaling is an underflow, never a singular matrix."""
+        matrix = ((1e300 + 0j, -1e300 + 0j), (1e300 + 0j, -1e300 + 1e-30j))
+        with self.assertRaises(ValueError) as caught:
+            principal_matrix_log(matrix)
+        self.assertNotIn('singular', str(caught.exception))
+        self.assertIn('underflow', str(caught.exception))
+
+    def test_unrepresentable_distinct_roots_fail_closed(self):
+        """Roots 1e20 +/- 2e-12 collapse in double precision: a ValueError, not ZeroDivisionError."""
+        matrix = ((1e20 + 0j, 2e-12 + 0j), (2e-12 + 0j, 1e20 + 0j))
+        with self.assertRaises(ValueError):
+            principal_matrix_log(matrix)
+        with self.assertRaises(ValueError):
+            mat_exp(matrix)
+
+    def test_matrix_function_overflow_is_reported_as_value_error(self):
+        """exp of a finite but huge eigenvalue overflows: a contract error, not OverflowError."""
+        with self.assertRaises(ValueError):
+            mat_exp(((1000.0 + 0j, 0j), (0j, 1.0 + 0j)))
+
+    def test_string_and_bytes_matrix_entries_are_rejected_not_coerced(self):
+        for matrix in ((('1', 0), (0, '2')), ((b'1', 0), (0, 2))):
+            with self.subTest(matrix=matrix):
+                with self.assertRaises(ValueError):
+                    principal_matrix_log(matrix)
+
+    def test_bool_matrix_entries_are_rejected(self):
+        """Bool entries are rejected, consistent with the production bool-coercion policy."""
+        with self.assertRaises(ValueError):
+            principal_matrix_log(((True, 0), (0, 2)))
+
+    def test_branch_diagnostic_rejects_string_eigenvalues_and_margin(self):
+        with self.assertRaises(ValueError):
+            branch_diagnostic(['1'])
+        with self.assertRaises(ValueError):
+            branch_diagnostic([1 + 0j], margin='0.1')
+
+    def test_nyquist_rejects_strings_bools_and_unrepresentable_integers(self):
+        cases = ((('240', 250.0)), ((240.0, '250')), ((10 ** 400, 250.0)), ((10.0, True)))
+        for frequency, rate in cases:
+            with self.subTest(frequency=frequency, rate=rate):
+                with self.assertRaises(ValueError):
+                    signed_nyquist_alias(frequency, rate)
+
+    def test_inverse_is_scale_relative_for_tiny_well_conditioned_matrices(self):
+        """1e-9 * I is perfectly conditioned; an absolute |det| cutoff must not reject it."""
+        inverse = mat_inv_2x2(((1e-9 + 0j, 0j), (0j, 1e-9 + 0j)))
+        self.assertAlmostEqual(inverse[0][0] / 1e9, 1 + 0j)
+        self.assertAlmostEqual(inverse[1][1] / 1e9, 1 + 0j)
+        with self.assertRaises(ValueError):
+            mat_inv_2x2(((1 + 0j, 1 + 0j), (1 + 0j, 1 + 0j)))  # exactly singular
+
+    def test_condition_proxy_rejects_overflow_instead_of_returning_nan(self):
+        matrices = (
+            ((1e308 + 0j, 1e308 + 0j), (1e308 + 0j, -1e308 + 0j)),
+            ((1 + 0j, 1e200 + 0j), (1e200 + 0j, 2 + 0j)),
+        )
+        for matrix in matrices:
+            with self.subTest(matrix=matrix):
+                with self.assertRaises(ValueError):
+                    frobenius_cond_diag_dominant(matrix)
 
 
 if __name__ == '__main__':
