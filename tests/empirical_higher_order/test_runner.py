@@ -379,3 +379,19 @@ def test_auprc_tied_scores_is_invariant_to_row_order():
 
     assert positive_first == pytest.approx(0.5)
     assert negative_first == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("corruption", ["empty", "nan"])
+def test_present_optional_spectra_must_be_valid_when_checksum_bound(tmp_path, corruption):
+    # Regression (#357 remediation): an optional artifact that is supplied and checksum-bound is still validated.
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    for record in data["recordings"]:
+        name = f"{record['subject_id']}_{record['condition_label'] or 'x'}_spectra.npy"
+        values = np.empty((0, 2)) if corruption == "empty" else np.array([[np.nan, 1.0]])
+        np.save(tmp_path / name, values)
+        record["feature_paths"]["higher_order_spectra"] = name
+        record["artifact_checksums"]["higher_order_spectra"] = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+    path.write_text(json.dumps(data))
+    assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
+

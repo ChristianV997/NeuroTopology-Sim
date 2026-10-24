@@ -206,3 +206,15 @@ def test_typed_provenance_whitespace_fields_are_incomplete(field):
 
     assert result.status == "incomplete"
     assert ("source_id" if field == "identity" else field) in result.missing_fields
+
+
+@pytest.mark.parametrize("field", ["source_id", "acquisition", "dataset_version"])
+@pytest.mark.parametrize("token", ["pass", "PASS", "passed", "fail", "ok", "true", "yes", "null"])
+def test_bare_verdict_tokens_cannot_serve_as_complete_provenance(field, token):
+    # Regression (#357 remediation): a bare verdict-like token must not complete provenance
+    # and promote an empirical claim to CLAIM_ADMISSIBLE.
+    provenance = {**GOOD_PROVENANCE, field: token}
+    assert validate_provenance(provenance).status == "invalid"
+    result = evaluate_claim(good_claim(provenance=provenance))
+    assert result.decision == "CLAIM_PROVENANCE_INVALID"
+

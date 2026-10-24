@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import itertools
 import json
 import sys
 from pathlib import Path
@@ -325,3 +326,41 @@ def test_empty_adjudication_sequences_are_missing():
 
     assert "null_models" in report.adjudication["missing_requirements"]
     assert "locked_split" in report.adjudication["missing_requirements"]
+
+
+@pytest.mark.parametrize("declaration", [
+    {"families": []},
+    {"families": {}},
+    {"method": ""},
+    {"metric": None},
+    {"outer": {"inner": []}},
+    [{}],
+    [[]],
+])
+def test_nested_empty_adjudication_declarations_are_missing(declaration):
+    # Regression (#357 remediation): a non-empty mapping whose leaves are all empty is not a declaration.
+    assert _metadata_is_missing(declaration)
+
+
+def test_nested_empty_null_model_declaration_stays_missing_in_report():
+    dataset = make_dataset(synthetic=False)
+    dataset.adjudication_metadata = {
+        "null_models": {"families": []},
+        "calibration": {"metric": "ece"},
+        "locked_split": {"strategy": "subject-held-out"},
+        "multiplicity": {"method": "holm"},
+    }
+    report = run_benchmark(dataset)
+    assert "null_models" in report.adjudication["missing_requirements"]
+
+
+def test_auprc_multi_row_ties_are_invariant_to_row_order():
+    # Lock: tie groups are evaluated at their threshold, so reordering rows inside a tie cannot move AUPRC.
+    y = np.array([0, 1, 0, 1, 1, 0])
+    scores = np.array([0.9, 0.5, 0.5, 0.5, 0.2, 0.9])
+    expected = 1.3 / 3  # 0.9: 0 positives; 0.5: 2 positives at precision 2/5; 0.2: 1 positive at precision 3/6.
+    assert _auprc(y, scores) == pytest.approx(expected)
+    for order in itertools.permutations(range(len(y))):
+        order = np.array(order)
+        assert _auprc(y[order], scores[order]) == pytest.approx(expected)
+

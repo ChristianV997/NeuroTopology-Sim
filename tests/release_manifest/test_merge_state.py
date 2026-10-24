@@ -1,7 +1,8 @@
 import pytest
 
 from tools.release_manifest.merge_state import MergeStateContext, classify_merge_state, classify_release_state
-from tools.release_manifest.models import PRSnapshot
+from tools.release_manifest.models import PRSnapshot, ScientificGateInput
+from tools.release_manifest.scientific_gate import evaluate_scientific_gate
 
 
 def test_unresolvable_commit_is_unknown():
@@ -192,3 +193,21 @@ def test_release_is_not_ready_until_required_ci_is_passing(ci_state):
 
     assert release_state == "inconclusive"
     assert blockers
+
+
+@pytest.mark.parametrize("verdict", ["NOT_SUPPORTED", "not_supported", " Not_Supported "])
+def test_negative_scientific_verdict_blocks_regardless_of_casing(verdict):
+    # Regression (#357 remediation): a negative verdict must block whatever its casing or padding.
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert blocking is True
+    assert evidence.value == "blocked"
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "pass", "Pass", "none"])
+def test_bare_pass_or_none_verdict_never_promotes_release(verdict):
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert evidence.value != "pass"
+    ctx = MergeStateContext(commit_resolves=True, is_ancestor_of_target=True, worst_ci_state="passing")
+    release_state, _ = classify_release_state(ctx, merge_state="merged_into_main", scientific_gate_value=evidence.value)
+    assert release_state != "ready_for_release"
+
