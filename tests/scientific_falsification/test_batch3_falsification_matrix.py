@@ -77,6 +77,8 @@ EXPECTED_TRANSITIONS = {
     "ABORTED": set(),
 }
 FORBIDDEN_PASS = {"PASS", "scientific_PASS", "FORMAL_BAYES_FACTOR"}
+EXPECTED_DOWNGRADE_TARGETS = {"proxy_inference", "unsupported_claim"}
+EXPECTED_CLAIM_EVIDENCE_CLASSES = {"hypothesis", "engineering_fact"}
 EXPECTED_ALLOWED_OUTCOMES = {
     "NO_INCREMENTAL_GAIN",
     "GAIN_UNSTABLE",
@@ -303,6 +305,9 @@ def evaluate(doc: dict) -> dict:
             for key in ("claim_id", "text", "category", "evidence_class", "falsification"):
                 if not isinstance(item.get(key), str) or not item.get(key, "").strip():
                     issues.append(f"claim {cid!r} {key} must be a non-empty string")
+            evidence_class = item.get("evidence_class")
+            if isinstance(evidence_class, str) and evidence_class not in EXPECTED_CLAIM_EVIDENCE_CLASSES:
+                issues.append(f"claim {cid!r} evidence_class is not in the versioned claim vocabulary")
             if isinstance(cid, str) and cid.strip():
                 claim_ids.append(cid)
             if item.get("blocked_if_missing_baseline") is not True:
@@ -317,16 +322,23 @@ def evaluate(doc: dict) -> dict:
                 "required_classes",
             ):
                 if key in item:
-                    _string_list(item[key], f"claim {cid!r}.{key}", issues)
+                    declared = _string_list(item[key], f"claim {cid!r}.{key}", issues)
+                    if declared is not None and not declared:
+                        issues.append(f"claim {cid!r}.{key} must not be empty")
             if "downgrade_if_missing_baseline" in item:
                 downgrade = item["downgrade_if_missing_baseline"]
-                if isinstance(downgrade, str) and downgrade.strip():
-                    pass
+                if isinstance(downgrade, str):
+                    targets = {downgrade}
                 elif isinstance(downgrade, list):
-                    _string_list(downgrade, f"claim {cid!r}.downgrade_if_missing_baseline", issues)
+                    targets = _string_list(downgrade, f"claim {cid!r}.downgrade_if_missing_baseline", issues)
                 else:
+                    targets = None
                     issues.append(
                         f"claim {cid!r}.downgrade_if_missing_baseline must be a non-empty string or string list"
+                    )
+                if targets is not None and (not targets or not targets <= EXPECTED_DOWNGRADE_TARGETS):
+                    issues.append(
+                        f"claim {cid!r}.downgrade_if_missing_baseline must name a declared downgrade target"
                     )
             if "minimum_paired_subjects" in item:
                 value = _strict_int(item["minimum_paired_subjects"])
@@ -497,7 +509,8 @@ def evaluate(doc: dict) -> dict:
     ):
         marker_pattern = rf"\b{re.escape(token)}\b"
         if phrases_list is None or not any(
-            re.search(marker_pattern, phrase, flags=re.IGNORECASE) for phrase in phrases_list
+            any(match.group(0).isascii() for match in re.finditer(marker_pattern, phrase, flags=re.IGNORECASE))
+            for phrase in phrases_list
         ):
             issues.append(f"missing forbidden phrase family: {token}")
 
