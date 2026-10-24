@@ -266,6 +266,53 @@ class Round6DiscoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "relative repository path"):
                 helper.collect_changed_paths("a" * 40, "b" * 40, Path.cwd())
 
+    def test_renamed_registered_implementation_cannot_hide_candidate_removal(self):
+        helper = _helper()
+        moved = "tools/simulation_runtime/relocated_grid_plan.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _git(root, "mv", IMPLEMENTATION, moved)
+            head = _commit(root, "move registered candidate out of its registered path")
+            changed = helper.collect_changed_paths(base, head, root)
+            self.assertIn(IMPLEMENTATION, changed)
+            self.assertIn(moved, changed)
+            self.assertIn("simulation_grid_planner", helper.select_components(changed))
+            report_path = root / "outputs/report.json"
+            with redirect_stdout(io.StringIO()):
+                result = helper.run(
+                    root,
+                    base,
+                    head,
+                    report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=head,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertNotEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(result, 1)
+
+    def test_backslash_named_git_path_is_not_aliased_to_registered_candidate(self):
+        helper = _helper()
+        malicious_git_output = b"tools\\simulation_runtime\\grid_plan.py\0"
+        with patch.object(
+            helper.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0, stdout=malicious_git_output),
+        ):
+            with self.assertRaisesRegex(ValueError, "backslash"):
+                helper.collect_changed_paths("a" * 40, "b" * 40, Path.cwd())
+
+    def test_docker_candidate_scope_detects_renamed_dockerignore_removal(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        self.assertTrue(
+            "git diff --no-renames --name-only" in workflow,
+            "Docker candidate scope must list deleted and renamed-away paths",
+        )
+
     def test_required_checks_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
@@ -667,7 +714,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("DIFF_BASE_SHA", job)
         self.assertIn("DIFF_HEAD_SHA", job)
         self.assertIn("git merge-base --is-ancestor", job)
-        self.assertIn('git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
+        self.assertIn('git diff --no-renames --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
         self.assertIn("registered engine test is absent", job)
         self.assertIn("if: steps.candidate_scope.outputs.docker_context_changed == 'true'", job)
         self.assertIn(
@@ -677,7 +724,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn('helper["validate_docker_engine_test_artifacts"]', job)
         self.assertIn("Upload Docker-context diagnostics", job)
         self.assertLess(
-            job.index("git diff --name-only"),
+            job.index("git diff --no-renames --name-only"),
             job.index("git merge-base --is-ancestor"),
         )
 

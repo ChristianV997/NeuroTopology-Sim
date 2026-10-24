@@ -165,7 +165,7 @@ jobs:
               exit 2
             fi
           done
-          changed_paths="$(git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA")"
+          changed_paths="$(git diff --no-renames --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA")"
           if grep -Fxq '.dockerignore' <<< "$changed_paths" || \
              grep -Fxq 'tests/docker_context/test_docker_engine_build_context.py' <<< "$changed_paths"; then
             checkout_sha="$(git rev-parse HEAD)"
