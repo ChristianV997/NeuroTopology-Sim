@@ -85,12 +85,12 @@ satisfy a tip claim, and a file that is not on main does not satisfy it either.
 `admissible_on_ancestor`.
 
 No writer default path is committed on main at the audited tip
-`57b7e43d42678822e9eec03679891c1770040327`. The previous audited tip
-`b51bb9b4bdf63c19894bb407eadcd70f528f7dda` is an ancestor of that commit, and
-`fc274148a3539a0b4171cdb91b258fdd509e94a8` is an ancestor of both. Between `b51bb9b4` and
-`57b7e43d`, 54 commits landed on main. They add documentation, research and
-falsification fixtures, the higher-order runtime stream contract, source-mining
-evidence-boundary tests, and evidence-promotion-gate changes. No pinned module
+`648e5e4fb67e9e7c399c78c00b1a139f83db2b36`. The previous audited tip
+`57b7e43d42678822e9eec03679891c1770040327` is an ancestor of that commit, and
+`b51bb9b4bdf63c19894bb407eadcd70f528f7dda` is an ancestor of both. Between `57b7e43d` and
+`648e5e4f`, 15 commits landed on main, ending in the merge of #402. They add only
+`tools/mne_csd_reference_audit/`, `tests/mne_csd_reference_audit/`,
+`tests/optional_live_mne/` and two MNE CSD audit documents. No pinned module
 path and no writer or grid path changed, so each pin's blob is the same at the
 previous tip, at its pin, and at the current tip.
 `four_sphere_forward_model`,
