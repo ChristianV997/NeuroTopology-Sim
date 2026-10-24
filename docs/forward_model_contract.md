@@ -197,6 +197,10 @@ This boundary performs no implicit NumPy conversion: a top-level `numpy.ndarray`
 
 Geometry containers (`SensorGeometry.channel_names` and `positions_m`, `SourceSpace.positions_m`, `ConductorModel.radii_m` and `sigmas_sm`) must be Python tuples or lists; a NumPy array or a scalar is rejected and the message names the field. The length is read first, and at most 1,000,000 entries are read, so an endless caller sequence cannot stall validation. Channel names and `reference_channel` must be `str`; a non-string entry is rejected by index. Any exception raised by a caller object's `__len__`, indexing, iteration, `__float__`, `__repr__` or `__format__` is converted to a field-specific contract error, and no caller representation is echoed into a message. Free-orientation tables get the same shape, finiteness and one-vector-per-source checks as fixed tables. `build_synthetic_forward_contract` applies them on both the same-frame path and the coordinate-transformed path.
 
+Type checks classify a value by `type(value)`, not by `isinstance`, so a caller object's `__class__` property is never run. A `str` subclass channel name or reference is reduced to its text before any comparison, so its equality hook is not run either. Leadfield matrices and rows, channel-name sequences, dipole-moment vectors, and the MNE `src`, `inuse`, `info['chs']` and `loc` sequences are read through the same 1,000,000-entry bound.
+
+**Caller objects are read once.** `ConductorModel`, `SensorGeometry` and `SourceSpace` each validate into an immutable copy of plain floats and strings. `compute_concentric_spheres_potential`, `compute_3shell_sphere_potential` and `build_synthetic_forward_contract` compute only from that copy, so a stateful caller object cannot show the check one value and the computation another. The builder substitutes a default only for an argument that is `None`; a falsy conductor, montage or source space is used as given. A supplied `coord_transform` is validated even when sensors and sources share a frame, but it is not applied in that case. `apply_avg_ref` must be a `bool`.
+
 ---
 
 ## 4. Numerical Conditioning and Quality Diagnostics
@@ -209,6 +213,8 @@ The contract computes a comprehensive suite of numerical diagnostics via Gram ma
 - **Channel Frobenius Norms**: $\|L_{i, :}\|_2$ for each channel $i$.
 - **Crosstalk / Collinearity Index**: Mean pairwise correlation of normalized leadfield columns across spatial sources.
 - **Well-Conditioned Flag**: Set to `True` if $\kappa(L) < 10^6$ and active channel norm exceeds $10^{-12}$.
+
+The diagnostics arguments are checked before any metric is computed. `is_fixed_orientation` must be a `bool`, `n_sources` must be a positive integer, and the leadfield must have exactly `n_sources` columns for fixed orientation or `3 * n_sources` for free orientation; otherwise a contract error is raised. `reference_channel` must be a channel-name string, and `channel_names` must be a sequence of strings.
 
 ---
 
@@ -229,12 +235,13 @@ assert contract_result.uncertainty.status.value == "UNAVAILABLE"
 ```
 
 ### Audit Checklist:
-- [x] **Coordinate Frame**: Validates `fwd['coord_frame'] == 4` (`FIFFV_COORD_HEAD`).
+- [x] **Coordinate Frame**: Accepts `fwd['coord_frame']` as the integer 4 (`FIFFV_COORD_HEAD`), the string `'head'`, or `CoordinateFrame.HEAD`. The value is classified by type, so no caller comparison hook runs. Any other value raises `CoordinateFrameMismatchError`, and its message does not echo the value.
 - [x] **Units**: Verifies source vertex positions `fwd['src'][k]['rr']` and sensor `loc` have norm $\le 1.0\text{ m}$ (larger values indicate millimetres and raise `CoordinateUnitMismatchError`). Values are not otherwise checked against a head model.
 - [x] **Channel Order**: Verifies leadfield `row_names` match `info['ch_names']` without permutation.
 - [x] **Sensor positions by channel name**: positions are taken from `info['chs']` and matched to leadfield rows **by `ch_name`**, whatever the order of `chs`. If any channel has no usable `loc`, no position is used for any channel.
 - [x] **Placeholders are labelled**: if sensor positions (or source vertices) are unavailable, the result keeps its structure with identical placeholder positions (sensors on the default scalp sphere, sources at the origin) but adds a warning and records `provenance['sensor_positions'] == 'placeholder'` (respectively `provenance['source_positions']`). Placeholders are never electrode or source locations; measured positions are reported as `'info_chs'` and `'mne_src'`. Likewise `provenance['conductor_model']` is `'expected_conductor'` when one was supplied and `'default_placeholder'` (with a warning) otherwise.
-- [x] **Leadfield Dimensions**: Checks $(M, 3N)$ or $(M, N)$ dimensions against `nsource`.
+- [x] **Leadfield Dimensions**: Checks $(M, 3N)$ or $(M, N)$ dimensions against `nsource`. `nsource` must be a non-negative integer. `source_ori` must be an integer orientation code when present: `1` means fixed, and any other integer means free. A non-integer `source_ori` raises `ForwardModelContractError` rather than being read as free orientation.
+- [x] **Caller objects**: `expected_conductor` is validated and copied before it is recorded. Each `info['chs']` entry must be a mapping. Channel names from `row_names` and `info['ch_names']` must be strings. An `info` object with neither a mapping shape nor a `ch_names` / `chs` attribute is treated as absent, so the placeholder labels below apply.
 - [x] **Reference Projection**: Verifies reference column sums $\approx 0$.
 - [x] **Uncertainty & Status**: Discloses `UNAVAILABLE` uncertainty and marks result `ENGINEERING_ONLY`.
 
@@ -267,6 +274,7 @@ The test suite in `tests/forward_model_contract/test_forward_model_contract.py` 
 - `ConductorModelType.SPHERICAL_3SHELL` and `SPHERICAL_1SHELL` still validate and build. `ANATOMICAL_BEM` stays rejected. `CoordinateFrame.HEAD` and `MNI` still validate and build. `UNKNOWN` stays rejected.
 - `is_fixed_orientation` accepts only `True` or `False`. `OrientationType` and the strings `"free"` / `"fixed"` are not coerced. `orientations` must be `None` or a sequence of vectors, not a bare string or scalar. Free-mode tables are checked for shape and count as well.
 - Hostile caller values (raising `__repr__`, `__len__`, iteration, indexing or truth conversion; attacker-controlled text), non-sequence geometry shapes, non-string channel names and `reference_channel`, and malformed free-orientation tables fail as field-specific contract errors with no echoed marker.
+- Follow-up hostile-input regressions (`TestForwardModelHostileInputFollowUp`, 17 tests): a raising `__class__` property, `==` hook, or `str`-subclass hook is never run; leadfield reads stop at the 1,000,000-entry bound; a zero-row leadfield is rejected by the averaging helpers; a non-string `reference_channel` is rejected by both reference helpers; a falsy conductor, montage or source space is used rather than replaced; a conductivity or sensor position that changes between check and use does not alter the result; a scalar or `None` dipole-moment argument raises a contract error; a malformed same-frame transform is rejected; diagnostics check `is_fixed_orientation`, `n_sources` and the column count; the auditor classifies `coord_frame`, `info` and `source_ori` without caller hooks or silent fallback.
 - Affine coordinate transformation of source spaces into sensor frames.
 - Rejection of non-monotonic, non-positive, non-finite, or unphysical conductor layers.
 - Multi-shell inner-layer sensitivity: changing the skull conductivity $\sigma_{\text{skull}}$ or the brain radius $r_{\text{brain}}$ changes the computed potential, so no layer is silently dropped. This is a regression property of the implementation, not validation against data.

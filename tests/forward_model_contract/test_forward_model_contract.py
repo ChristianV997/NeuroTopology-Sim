@@ -26,6 +26,7 @@ import math
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -2330,6 +2331,299 @@ class TestForwardModelHostileInputSanitization(unittest.TestCase):
                 orientations=self.unit,
                 is_fixed_orientation=np.bool_(True),
             ).validate()
+
+
+class _ClassPropertyRaiser:
+    """A caller value whose ``__class__`` property raises, so ``isinstance`` would run it."""
+
+    @property
+    def __class__(self):
+        raise RuntimeError("SYNTHETIC-CLASS-MARKER")
+
+
+class _EqRaisingName(str):
+    """A channel name whose equality hook raises, so ``in`` comparisons would run it."""
+
+    __hash__ = str.__hash__
+
+    def __eq__(self, other: object) -> bool:
+        raise RuntimeError("SYNTHETIC-EQ-MARKER")
+
+    def __ne__(self, other: object) -> bool:
+        raise RuntimeError("SYNTHETIC-EQ-MARKER")
+
+
+class _EqRaisingValue:
+    """A caller value whose equality hook raises; the auditor compares ``coord_frame`` with ``==``."""
+
+    __hash__ = object.__hash__
+
+    def __eq__(self, other: object) -> bool:
+        raise RuntimeError("SYNTHETIC-EQ-MARKER")
+
+
+class _EndlessRows:
+    """An endless iterator of leadfield rows; ``pulls`` records how far a caller read."""
+
+    SAFETY_STOP = 10_000
+
+    def __init__(self) -> None:
+        self.pulls = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.pulls += 1
+        if self.pulls > self.SAFETY_STOP:
+            raise RuntimeError("SYNTHETIC-ITER-MARKER")
+        return [1.0, 0.0]
+
+
+class _ShiftingSequence(Sequence):
+    """Serves ``good`` for the first ``switch_after`` accesses, then ``bad``.
+
+    Each ``len()`` or index counts as one access, so a function that re-reads a caller object
+    after validating it sees values other than the ones it checked.
+    """
+
+    def __init__(self, good, bad, switch_after: int) -> None:
+        self._good = tuple(good)
+        self._bad = tuple(bad)
+        self._switch_after = switch_after
+        self.accesses = 0
+
+    def _values(self):
+        self.accesses += 1
+        return self._good if self.accesses <= self._switch_after else self._bad
+
+    def __len__(self) -> int:
+        return len(self._values())
+
+    def __getitem__(self, index):
+        return self._values()[index]
+
+
+class _FalsyConductor(ConductorModel):
+    """Always falsy; a ``conductor or default`` expression would drop it silently."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
+class _FalsySensors(SensorGeometry):
+    """Always falsy; a ``sensors or default`` expression would drop it silently."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
+FOLLOW_UP_MARKERS = HOSTILE_MARKERS + (
+    "SYNTHETIC-CLASS-MARKER",
+    "SYNTHETIC-EQ-MARKER",
+    "SYNTHETIC-ITER-MARKER",
+)
+
+
+class TestForwardModelHostileInputFollowUp(unittest.TestCase):
+    """Follow-up hostile-input regressions for the contract helpers, builder and auditor.
+
+    Each test reproduces a defect on the pre-fix head: a caller object's ``__class__``, ``==``
+    or truth hook running raw; an unbounded leadfield read; an echoed value in a message; a
+    zero-row leadfield accepted by the averaging helpers; a silently replaced conductor or
+    montage; a caller object re-read after it was validated; and diagnostics arguments that
+    were stored without checks.
+    """
+
+    def setUp(self) -> None:
+        self.matrix = ((1.0, 2.0), (3.0, 5.0))
+        self.names = ("Cz", "Pz")
+        self.identity = (
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0, 0.0),
+            (0.0, 0.0, 0.0, 1.0),
+        )
+
+    def _assert_field_error(
+        self, call, field: str, exc_cls: type = ForwardModelContractError
+    ) -> None:
+        with self.assertRaises(exc_cls) as caught:
+            call()
+        message = str(caught.exception)
+        self.assertIn(field, message)
+        for marker in FOLLOW_UP_MARKERS:
+            self.assertNotIn(marker, message)
+
+    def test_class_property_caller_values_fail_closed_with_field_name(self) -> None:
+        raiser = _ClassPropertyRaiser()
+        cases = (
+            ("n_sources", lambda: make_synthetic_source_grid(raiser)),
+            (
+                "n_max_terms",
+                lambda: compute_concentric_spheres_potential(
+                    (0.0, 0.0, 0.09),
+                    (0.0, 0.0, 0.02),
+                    (0.0, 0.0, 1e-9),
+                    ConductorModel(),
+                    n_max_terms=raiser,
+                ),
+            ),
+            ("Leadfield", lambda: compute_leadfield_diagnostics(((raiser, 0.0), (0.0, 1.0)), False, 2)),
+            ("channel_names", lambda: apply_channel_reference(self.matrix, (raiser, "Pz"), "Pz")),
+            (
+                "transform[0][0]",
+                lambda: validate_affine_transform(((raiser, 0.0, 0.0, 0.0),) + self.identity[1:]),
+            ),
+        )
+        for field, call in cases:
+            with self.subTest(field=field):
+                self._assert_field_error(call, field)
+
+    def test_leadfield_rows_are_read_only_up_to_the_maximum_length(self) -> None:
+        rows = _EndlessRows()
+        with mock.patch("dual_engine.forward_model_contract.MAX_SEQUENCE_LENGTH", 8):
+            with self.assertRaises(LeadfieldDimensionMismatchError) as caught:
+                compute_leadfield_diagnostics(rows, False, 2)
+        self.assertIn("maximum readable length", str(caught.exception))
+        self.assertLessEqual(rows.pulls, 9)
+
+    def test_averaging_helpers_reject_a_zero_row_leadfield(self) -> None:
+        for name, call in (
+            ("apply_average_reference", lambda: apply_average_reference([])),
+            ("verify_average_reference_invariant", lambda: verify_average_reference_invariant([])),
+        ):
+            with self.subTest(helper=name):
+                with self.assertRaises(LeadfieldDimensionMismatchError):
+                    call()
+
+    def test_non_string_reference_channel_is_rejected_by_both_channel_helpers(self) -> None:
+        reference = _EchoRepr()
+        self._assert_field_error(
+            lambda: apply_channel_reference(self.matrix, self.names, reference),
+            "reference_channel",
+            ChannelOrderMismatchError,
+        )
+        self._assert_field_error(
+            lambda: verify_channel_reference_invariant(self.matrix, self.names, reference),
+            "reference_channel",
+            ChannelOrderMismatchError,
+        )
+
+    def test_channel_reference_name_hooks_are_not_called(self) -> None:
+        projected = apply_channel_reference(self.matrix, self.names, _EqRaisingName("Pz"))
+        self.assertEqual(projected, [[-2.0, -3.0], [0.0, 0.0]])
+
+    def test_affine_bottom_row_message_does_not_echo_caller_values(self) -> None:
+        transform = self.identity[:3] + ((_EchoFloat(0.0), 0.0, 0.0, 2.0),)
+        self._assert_field_error(
+            lambda: validate_affine_transform(transform),
+            "bottom row",
+            CoordinateFrameMismatchError,
+        )
+
+    def test_falsy_conductor_model_is_used_not_replaced_by_default(self) -> None:
+        conductor = _FalsyConductor(radii_m=(0.075, 0.085, 0.09))
+        contract = build_synthetic_forward_contract(conductor_model=conductor)
+        self.assertEqual(contract.conductor_model.brain_radius_m, 0.075)
+
+    def test_falsy_sensor_geometry_is_used_not_replaced_by_default(self) -> None:
+        base = make_standard_1020_synthetic_sensors()
+        names = base.channel_names[::-1]
+        sensors = _FalsySensors(channel_names=names, positions_m=base.positions_m[::-1])
+        contract = build_synthetic_forward_contract(sensor_geometry=sensors)
+        self.assertEqual(contract.sensor_geometry.channel_names, names)
+
+    def test_concentric_potential_reads_each_conductor_value_once(self) -> None:
+        electrode, source, moment = (0.0, 0.0, 0.09), (0.0, 0.0, 0.02), (0.0, 0.0, 1e-9)
+        control = compute_concentric_spheres_potential(electrode, source, moment, ConductorModel())
+        sigmas = _ShiftingSequence(
+            ConductorModel().sigmas_sm, (-5.0, -5.0, -5.0), switch_after=4
+        )
+        value = compute_concentric_spheres_potential(
+            electrode, source, moment, ConductorModel(sigmas_sm=sigmas)
+        )
+        self.assertEqual(value, control)
+
+    def test_builder_reads_each_sensor_position_once(self) -> None:
+        base = make_standard_1020_synthetic_sensors()
+        scaled = tuple(tuple(0.9 * c for c in pos) for pos in base.positions_m)
+        positions = _ShiftingSequence(
+            base.positions_m, scaled, switch_after=len(base.positions_m) + 1
+        )
+        hostile = SensorGeometry(
+            channel_names=base.channel_names,
+            positions_m=positions,
+            coordinate_frame=base.coordinate_frame,
+        )
+        control = build_synthetic_forward_contract(sensor_geometry=base)
+        result = build_synthetic_forward_contract(sensor_geometry=hostile)
+        self.assertEqual(result.leadfield, control.leadfield)
+
+    def test_simulate_rejects_scalar_and_none_dipole_moments(self) -> None:
+        contract = build_synthetic_forward_contract()
+        for bad in (1.0, None):
+            with self.subTest(value=bad):
+                with self.assertRaises(ForwardModelContractError):
+                    contract.simulate_scalp_potentials(bad)
+
+    def test_same_frame_coord_transform_is_validated_even_though_not_applied(self) -> None:
+        sources = SourceSpace(
+            positions_m=((0.02, 0.0, 0.0),),
+            orientations=((0.0, 0.0, 1.0),),
+            is_fixed_orientation=True,
+        )
+        bad_transform = self.identity[:3] + ((0.0, 0.0, 0.0, 2.0),)
+        with self.assertRaises(CoordinateFrameMismatchError):
+            build_synthetic_forward_contract(source_space=sources, coord_transform=bad_transform)
+
+    def test_leadfield_diagnostics_check_orientation_flag_and_source_count(self) -> None:
+        leadfield = ((1.0, 0.0), (0.0, 1.0), (1.0, 1.0))
+        self._assert_field_error(
+            lambda: compute_leadfield_diagnostics(leadfield, "free", 2), "is_fixed_orientation"
+        )
+        self._assert_field_error(
+            lambda: compute_leadfield_diagnostics(leadfield, False, 999),
+            "n_sources",
+            LeadfieldDimensionMismatchError,
+        )
+
+    @staticmethod
+    def _audit_fwd(**overrides):
+        fwd = {
+            "coord_frame": 4,
+            "source_ori": 2,
+            "nsource": 1,
+            "sol": {
+                "data": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [1.0, 0.0, 1.0]],
+                "row_names": ["A", "B", "C", "D"],
+            },
+            "src": [{"rr": [[0.01, 0.0, 0.0]], "inuse": [1]}],
+        }
+        fwd.update(overrides)
+        return fwd
+
+    def test_audit_compares_coord_frame_without_running_caller_hooks(self) -> None:
+        fwd = self._audit_fwd(coord_frame=_EqRaisingValue())
+        self._assert_field_error(lambda: audit_mne_forward_solution(fwd), "coord_frame")
+
+    def test_audit_info_object_with_raising_class_property_is_not_run(self) -> None:
+        result = audit_mne_forward_solution(self._audit_fwd(), info=_ClassPropertyRaiser())
+        self.assertEqual(result.provenance["sensor_positions"], "placeholder")
+
+    def test_audit_info_channel_records_must_be_mappings(self) -> None:
+        self._assert_field_error(
+            lambda: audit_mne_forward_solution(self._audit_fwd(), info={"chs": "Pz"}),
+            "info chs",
+        )
+
+    def test_audit_source_orientation_code_must_be_an_integer(self) -> None:
+        for value in ("free", _EqRaisingValue()):
+            with self.subTest(value=type(value).__name__):
+                self._assert_field_error(
+                    lambda v=value: audit_mne_forward_solution(self._audit_fwd(source_ori=v)),
+                    "source_ori",
+                )
 
 
 if __name__ == "__main__":
