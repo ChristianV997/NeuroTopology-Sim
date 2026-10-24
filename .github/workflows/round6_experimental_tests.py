@@ -128,6 +128,11 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "tests/higher_order_runtime_contract/test_state_reset_and_parity.py",
                 "tests/higher_order_runtime_contract/test_timeline_and_shape.py",
             )
+        ) + (
+            {
+                "implementation": "tools/higher_order_runtime/planner.py",
+                "test": "tests/higher_order_runtime_contract/test_bounds_and_failures.py",
+            },
         ),
         "support_files": {
             "tests/higher_order_runtime_contract/conftest.py": (
@@ -718,11 +723,25 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/dmd_crouzeix_contract/test_production_contract.py",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "candidate_pairs": (
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_crouzeix_contract/test_production_contract.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/experimental/test_dmd_crouzeix.py"},
             {"implementation": "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py", "test": "tests/dmd_ep2_oracle/test_production_bridge.py"},
+        ),
+        "support_files": {
+            "tests/dmd_ep2_oracle/test_oracle.py": (
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
+            ),
+        },
+        "support_file_requires_changed": {
+            "tests/dmd_ep2_oracle/test_oracle.py": (
+                "tests/dmd_ep2_oracle/test_production_bridge.py",
+            ),
+        },
+        "independent_reference_tests": (
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "environment_overrides": {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         "implementation_roots": ("neurotopology_sim/experimental/dynamics/",),
@@ -730,11 +749,13 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
         "candidate_test_roots": (
             "tests/dmd_crouzeix_contract/",
             "tests/experimental/test_dmd_crouzeix.py",
             "tests/dmd_ep2_oracle/test_production_bridge.py",
+            "tests/dmd_ep2_oracle/test_oracle.py",
         ),
     },
     "docker_context_policy": {
@@ -1086,6 +1107,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         "triggers": (
             "shared/measurement_hypothesis/",
             "tools/research_claim_gate/gate.py",
+            "tests/research_claim_gate/test_claim_gate.py",
             "tests/measurement_hypothesis/",
         ),
         "tests": (
@@ -1098,6 +1120,7 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/measurement_hypothesis/test_namespace_and_renaming.py",
             "tests/measurement_hypothesis/test_provenance_and_sources.py",
             "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            "tests/research_claim_gate/test_claim_gate.py",
         ),
         "candidate_pairs": tuple(
             {"implementation": implementation, "test": test}
@@ -1126,6 +1149,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             {
                 "implementation": "tools/research_claim_gate/gate.py",
                 "test": "tests/measurement_hypothesis/test_valid_hypothetical_mapping.py",
+            },
+            {
+                "implementation": "tools/research_claim_gate/gate.py",
+                "test": "tests/research_claim_gate/test_claim_gate.py",
             },
         ),
         "support_files": {
@@ -1168,7 +1195,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "shared/measurement_hypothesis/",
             "tools/research_claim_gate/gate.py",
         ),
-        "candidate_test_roots": ("tests/measurement_hypothesis/",),
+        "candidate_test_roots": (
+            "tests/measurement_hypothesis/",
+            "tests/research_claim_gate/test_claim_gate.py",
+        ),
     },
     "dandi_nwb_bounded": {
         "triggers": (
@@ -1490,11 +1520,19 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "level_t_missingness": {
         "triggers": (
             "sciencer_d/btc_icft/level_t/base_real_topology.py",
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),
         "implementation": "sciencer_d/btc_icft/level_t/base_real_topology.py",
         "tests": (
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),
@@ -1504,6 +1542,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "test": test_path,
             }
             for test_path in (
+                "tests/btc_icft/test_ds001787_t_real_topology.py",
+                "tests/btc_icft/test_ds003816_t_real_topology.py",
+                "tests/btc_icft/test_ds003969_t_real_topology.py",
+                "tests/btc_icft/test_ds005620_t_real_topology.py",
                 "tests/test_base_real_topology_missingness.py",
                 "tests/test_cohort_missingness.py",
             )
@@ -1512,6 +1554,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "sciencer_d/btc_icft/level_t/base_real_topology.py",
         ),
         "candidate_test_roots": (
+            "tests/btc_icft/test_ds001787_t_real_topology.py",
+            "tests/btc_icft/test_ds003816_t_real_topology.py",
+            "tests/btc_icft/test_ds003969_t_real_topology.py",
+            "tests/btc_icft/test_ds005620_t_real_topology.py",
             "tests/test_base_real_topology_missingness.py",
             "tests/test_cohort_missingness.py",
         ),
@@ -1550,6 +1596,342 @@ COMPONENTS: dict[str, dict[str, Any]] = {
         ),
         "implementation_roots": ("reports/batch3/grok_chat_a/claim_matrix.json",),
         "candidate_test_roots": ("tests/research/batch3/test_claim_matrix.py",),
+    },
+    # Declarative research artifacts are admitted only when their dedicated
+    # tests validate the exact checked-in schema/contract. These remain
+    # synthetic/review artifacts and do not count as scientific evidence.
+    "oss_compatibility_inventory_artifact": {
+        "triggers": (
+            "docs/oss_compat/compatibility_inventory_20261017.json",
+            "tests/oss_compat/test_compatibility_inventory.py",
+        ),
+        "implementation": "docs/oss_compat/compatibility_inventory_20261017.json",
+        "tests": ("tests/oss_compat/test_compatibility_inventory.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "docs/oss_compat/compatibility_inventory_20261017.json",
+                "test": "tests/oss_compat/test_compatibility_inventory.py",
+            },
+        ),
+        "implementation_roots": (
+            "docs/oss_compat/compatibility_inventory_20261017.json",
+        ),
+        "candidate_test_roots": ("tests/oss_compat/test_compatibility_inventory.py",),
+    },
+    "batch3_dataset_feasibility_artifact": {
+        "triggers": (
+            "docs/research/batch3/replication_dataset_feasibility.md",
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
+            "tests/research/batch3/test_replication_dataset_feasibility.py",
+        ),
+        "implementation": "reports/batch3/grok_chat_b/dataset_candidates.json",
+        "tests": ("tests/research/batch3/test_replication_dataset_feasibility.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "test": "tests/research/batch3/test_replication_dataset_feasibility.py",
+            },
+        ),
+        "support_files": {
+            "docs/research/batch3/replication_dataset_feasibility.md": (
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+            ),
+        },
+        "implementation_roots": (
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
+        ),
+        "candidate_test_roots": (
+            "tests/research/batch3/test_replication_dataset_feasibility.py",
+        ),
+    },
+    "batch3_metadata_audit_artifact": {
+        "triggers": (
+            "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+            "tests/research/batch3/test_dataset_metadata_audit.py",
+        ),
+        "implementation": "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+        "tests": ("tests/research/batch3/test_dataset_metadata_audit.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "test": "tests/research/batch3/test_dataset_metadata_audit.py",
+            },
+        ),
+        "support_files": {
+            "docs/research/batch3/grok_chat_b_dataset_feasibility.md": (
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+            ),
+        },
+        "implementation_roots": (
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+        ),
+        "candidate_test_roots": (
+            "tests/research/batch3/test_dataset_metadata_audit.py",
+        ),
+    },
+    # PR #357 changes these code/test pairs alongside the claim-gate work.
+    # Keep each production source paired with the tests that import/exercise it;
+    # source-only edits still select their unchanged companion tests.
+    "empirical_higher_order": {
+        "triggers": (
+            "analysis/empirical_higher_order/runner.py",
+            "analysis/empirical_higher_order/schema.py",
+            "analysis/empirical_higher_order/validation.py",
+            "tests/empirical_higher_order/test_runner.py",
+        ),
+        "implementation": "analysis/empirical_higher_order/runner.py",
+        "tests": ("tests/empirical_higher_order/test_runner.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/empirical_higher_order/test_runner.py",
+            }
+            for implementation in (
+                "analysis/empirical_higher_order/runner.py",
+                "analysis/empirical_higher_order/schema.py",
+                "analysis/empirical_higher_order/validation.py",
+            )
+        ),
+        "implementation_roots": (
+            "analysis/empirical_higher_order/runner.py",
+            "analysis/empirical_higher_order/schema.py",
+            "analysis/empirical_higher_order/validation.py",
+        ),
+        "candidate_test_roots": ("tests/empirical_higher_order/test_runner.py",),
+    },
+    "transition_forecasting_benchmark": {
+        "triggers": (
+            "analysis/transition_forecasting/benchmark.py",
+            "scripts/run_transition_benchmark.py",
+            "tests/transition_forecasting/test_benchmark.py",
+        ),
+        "implementation": "analysis/transition_forecasting/benchmark.py",
+        "tests": ("tests/transition_forecasting/test_benchmark.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "analysis/transition_forecasting/benchmark.py",
+                "test": "tests/transition_forecasting/test_benchmark.py",
+            },
+            {
+                "implementation": "scripts/run_transition_benchmark.py",
+                "test": "tests/transition_forecasting/test_benchmark.py",
+            },
+        ),
+        "implementation_roots": (
+            "analysis/transition_forecasting/benchmark.py",
+            "scripts/run_transition_benchmark.py",
+        ),
+        "candidate_test_roots": ("tests/transition_forecasting/test_benchmark.py",),
+    },
+    "release_manifest": {
+        "triggers": (
+            "tools/release_manifest/manifest_builder.py",
+            "tools/release_manifest/merge_state.py",
+            "tools/release_manifest/models.py",
+            "tools/release_manifest/reporting.py",
+            "tools/release_manifest/scientific_gate.py",
+            "scripts/build_release_manifest.py",
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
+        ),
+        "implementation": "tools/release_manifest/manifest_builder.py",
+        "tests": (
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
+        ),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/release_manifest/manifest_builder.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/merge_state.py",
+                "test": "tests/release_manifest/test_merge_state.py",
+            },
+            {
+                "implementation": "tools/release_manifest/merge_state.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_merge_state.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_reporting.py",
+            },
+            {
+                "implementation": "tools/release_manifest/reporting.py",
+                "test": "tests/release_manifest/test_reporting.py",
+            },
+            {
+                "implementation": "tools/release_manifest/reporting.py",
+                "test": "tests/release_manifest/test_build_release_manifest_cli.py",
+            },
+            {
+                "implementation": "tools/release_manifest/scientific_gate.py",
+                "test": "tests/release_manifest/test_scientific_gate.py",
+            },
+            {
+                "implementation": "scripts/build_release_manifest.py",
+                "test": "tests/release_manifest/test_build_release_manifest_cli.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/release_manifest/manifest_builder.py",
+            "tools/release_manifest/merge_state.py",
+            "tools/release_manifest/models.py",
+            "tools/release_manifest/reporting.py",
+            "tools/release_manifest/scientific_gate.py",
+            "scripts/build_release_manifest.py",
+        ),
+        "candidate_test_roots": (
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+            "tests/release_manifest/test_scientific_gate.py",
+        ),
+    },
+    "oss_adoption_gates": {
+        "triggers": (
+            "oss_opportunities/integration_opportunity.py",
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/license_review.py",
+            "oss_opportunities/planner.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/source_ingestion.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_opportunity_batch.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        ),
+        "implementation": "oss_opportunities/opportunity_batch.py",
+        "tests": (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        ),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": test,
+            }
+            for implementation, test in (
+                ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/opportunity_batch.py", "tests/test_oss_opportunity_batch.py"),
+                ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
+                ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+                ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+                ("oss_opportunities/integration_opportunity.py", "tests/test_oss_integration_opportunity.py"),
+                ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
+                ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
+            )
+        ),
+        # The owner-requested suite includes a license-review regression as a
+        # component-level companion, not as a false pair to a changed file.
+        "suite_companion_tests": (
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_integration_planner.py",
+        ),
+        "implementation_roots": (
+            "oss_opportunities/integration_opportunity.py",
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/license_review.py",
+            "oss_opportunities/planner.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/source_ingestion.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+        ),
+        "candidate_test_roots": (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        ),
+    },
+    "whitening_audit": {
+        "triggers": (
+            "scripts/audit_round6_whitening.py",
+            "tools/whitening_audit/audit_reporter.py",
+            "tools/whitening_audit/leakage_detector.py",
+            "tools/whitening_audit/matrix_ops.py",
+            "tools/whitening_audit/synthetic_data.py",
+            "tools/whitening_audit/types.py",
+            "tools/whitening_audit/whitening_verifier.py",
+            "tools/whitening_audit/__init__.py",
+            "tests/whitening_audit/__init__.py",
+            "tests/whitening_audit/test_whitening_audit.py",
+        ),
+        "implementation": "tools/whitening_audit/whitening_verifier.py",
+        "tests": ("tests/whitening_audit/test_whitening_audit.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/whitening_audit/test_whitening_audit.py",
+            }
+            for implementation in (
+                "scripts/audit_round6_whitening.py",
+                "tools/whitening_audit/audit_reporter.py",
+                "tools/whitening_audit/leakage_detector.py",
+                "tools/whitening_audit/matrix_ops.py",
+                "tools/whitening_audit/synthetic_data.py",
+                "tools/whitening_audit/types.py",
+                "tools/whitening_audit/whitening_verifier.py",
+            )
+        ),
+        # These are exact support paths for one suite, not a package-wide
+        # initializer rule. Importing the tools package executes its exports.
+        "support_files": {
+            "tools/whitening_audit/__init__.py": (
+                "tests/whitening_audit/test_whitening_audit.py",
+            ),
+            "tests/whitening_audit/__init__.py": (
+                "tests/whitening_audit/test_whitening_audit.py",
+            ),
+        },
+        "implementation_roots": (
+            "scripts/audit_round6_whitening.py",
+            "tools/whitening_audit/audit_reporter.py",
+            "tools/whitening_audit/leakage_detector.py",
+            "tools/whitening_audit/matrix_ops.py",
+            "tools/whitening_audit/synthetic_data.py",
+            "tools/whitening_audit/types.py",
+            "tools/whitening_audit/whitening_verifier.py",
+            "tools/whitening_audit/__init__.py",
+        ),
+        "candidate_test_roots": (
+            "tests/whitening_audit/test_whitening_audit.py",
+            "tests/whitening_audit/__init__.py",
+        ),
     },
     "batch3_falsification_matrix_artifact": {
         "triggers": (
@@ -2028,7 +2410,7 @@ for _component_name, _initializer_paths in PACKAGE_INITIALIZER_SUPPORT_PATHS.ite
 # They are ownership evidence, not approval or merge state.
 COMPONENT_OWNER_PRS = {
     "planar_geometry": (416,),
-    "higher_order_runtime": (377,),
+    "higher_order_runtime": (377, 450),
     "synthetic_pipeline_replay": (387,),
     "hodge_2d": (423,),
     "phase_cochain_reference": (385,),
@@ -2036,7 +2418,7 @@ COMPONENT_OWNER_PRS = {
     "spherical_csd": (402, 414, 419),
     "mne_csd_reference_audit": (402,),
     "four_sphere": (418, 409),
-    "phase_winding": (413,),
+    "phase_winding": (413, 453),
     "surrogate_nulls": (417, 430),
     "phase_uncertainty": (403,),
     "surrogate_audit": (398,),
@@ -2048,8 +2430,8 @@ COMPONENT_OWNER_PRS = {
     "topology_backend_conformance": (389,),
     "finite_chain_audit": (397,),
     "winding_charge_audit": (399,),
-    "dmd_crouzeix": (415, 420, 400),
-    "batch2_pipeline_benchmark": (371,),
+    "dmd_crouzeix": (415, 420, 400, 452),
+    "batch2_pipeline_benchmark": (371, 445),
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
     "finite_jitter_geometry_audit": (410,),
@@ -2057,9 +2439,17 @@ COMPONENT_OWNER_PRS = {
     "release_readiness_security": (370,),
     "source_mining_evidence_boundary": (382,),
     "batch3_claim_matrix_artifact": (393,),
-    "batch3_falsification_matrix_artifact": (376,),
-    "batch3_offline_integration": (381,),
-    "measurement_hypothesis_contract": (384,),
+    "oss_compatibility_inventory_artifact": (406,),
+    "batch3_dataset_feasibility_artifact": (394,),
+    "batch3_metadata_audit_artifact": (411,),
+    "oss_adoption_gates": (386,),
+    "whitening_audit": (407,),
+    "batch3_falsification_matrix_artifact": (376, 444, 447),
+    "batch3_offline_integration": (381, 449),
+    "measurement_hypothesis_contract": (384, 357),
+    "empirical_higher_order": (357,),
+    "transition_forecasting_benchmark": (357,),
+    "release_manifest": (357,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
@@ -2071,8 +2461,8 @@ COMPONENT_OWNER_PRS = {
     "level_t_missingness": (373,),
     "batch3_source_registry": (375,),
     "research_plan_quality_eval": (383,),
-    "forward_model_contract": (388,),
-    "nuisance_scenarios": (408,),
+    "forward_model_contract": (388, 446),
+    "nuisance_scenarios": (408, 448),
 }
 
 
@@ -2143,6 +2533,9 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "configs/scientific_falsification/batch3_falsification_matrix.yaml",
     "tests/scientific_falsification/test_batch3_falsification_matrix.py",  # PR #376
     "configs/research/batch3_source_registry.yaml",
+    "docs/oss_compat/compatibility_inventory_20261017.json",
+    "reports/batch3/grok_chat_b/dataset_candidates.json",
+    "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
     "tests/research/test_batch3_source_registry.py",  # PR #375
     "sciencer_d/btc_icft/level_t/base_real_topology.py",
     "tests/test_base_real_topology_missingness.py",
@@ -2177,6 +2570,8 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "tests/research_cycle_release/",
     "tests/integration_reconciliation/",
     "scripts/build_release_manifest.py",
+    "scripts/run_transition_benchmark.py",
+    "tools/release_manifest/",
     "scripts/run_registered_fhn.py",
     "scripts/validate_research_cycle_preflight.py",
 )
@@ -2194,6 +2589,18 @@ def normalize_repo_path(path: str) -> str:
     normalized = path.replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
+    # Git -z paths are repository-relative, but keep this boundary explicit:
+    # malformed or injected names must never alias registered paths or escape
+    # the checkout during a later file read.
+    parts = normalized.split("/")
+    path_segments = parts[:-1] if parts and parts[-1] == "" else parts
+    if (
+        normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", normalized)
+        or any(part in {".", ".."} for part in path_segments)
+        or any(not part for part in path_segments)
+    ):
+        raise ValueError("path must be a normalized relative repository path")
     return normalized
 
 
@@ -2549,11 +2956,37 @@ def _is_candidate_file(path: str, roots: tuple[str, ...], explicit_paths: set[st
     return not _is_documentation_path(normalized)
 
 
+def _active_support_paths(spec: dict[str, Any], changed_paths: set[str]) -> set[str]:
+    """Return support paths whose declared changed-path prerequisites are met."""
+    changed = {normalize_repo_path(path).casefold() for path in changed_paths}
+    requirements = spec.get("support_file_requires_changed", {})
+    if not isinstance(requirements, dict):
+        return set()
+    active = set()
+    for support_path in spec.get("support_files", {}):
+        if support_path not in requirements:
+            active.add(normalize_repo_path(support_path))
+            continue
+        companions = requirements[support_path]
+        if (
+            isinstance(companions, (tuple, list))
+            and companions
+            and all(
+                isinstance(path, str)
+                and normalize_repo_path(path).casefold() in changed
+                for path in companions
+            )
+        ):
+            active.add(normalize_repo_path(support_path))
+    return active
+
+
 def _is_component_relevant(
     name: str,
     changed_paths: set[str],
     *,
     include_package_initializers: bool = True,
+    context_paths: set[str] | None = None,
 ) -> bool:
     spec = COMPONENTS[name]
     if any(
@@ -2567,7 +3000,10 @@ def _is_component_relevant(
         for pair in spec.get("candidate_pairs", ())
         for path in (pair["implementation"], pair["test"])
     }
-    mapped.update(normalize_repo_path(path).casefold() for path in spec.get("support_files", {}))
+    mapped.update(
+        path.casefold()
+        for path in _active_support_paths(spec, context_paths or changed_paths)
+    )
     mapped.update(normalize_repo_path(path).casefold() for path in spec.get("external_test_paths", {}))
     non_selecting_test_paths = {
         normalize_repo_path(path).casefold()
@@ -2654,6 +3090,7 @@ def select_components(changed_paths: set[str]) -> list[str]:
 
 def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> list[str]:
     pairs = spec.get("candidate_pairs", ())
+    active_support_paths = _active_support_paths(spec, changed_paths)
     globally_registered_paths = {
         normalize_repo_path(path).casefold()
         for candidate_spec in COMPONENTS.values()
@@ -2663,7 +3100,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         normalize_repo_path(path).casefold()
         for candidate_spec in COMPONENTS.values()
         for path in (
-            *candidate_spec.get("support_files", {}).keys(),
+            *_active_support_paths(candidate_spec, changed_paths),
             *candidate_spec.get("package_initializers", {}).keys(),
         )
     }
@@ -2672,10 +3109,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
         for pair in pairs
         for path in (pair["implementation"], pair["test"])
     }
-    support_paths = {
-        normalize_repo_path(path).casefold()
-        for path in spec.get("support_files", {})
-    }
+    support_paths = {path.casefold() for path in active_support_paths}
     external_test_paths = {
         normalize_repo_path(path).casefold()
         for path in spec.get("external_test_paths", {})
@@ -2695,7 +3129,7 @@ def _changed_candidate_paths(spec: dict[str, Any], changed_paths: set[str]) -> l
     } | {
         normalize_repo_path(path)
         for path in (
-            *spec.get("support_files", {}).keys(),
+            *active_support_paths,
             *spec.get("package_initializers", {}).keys(),
             *spec.get("external_test_paths", {}).keys(),
         )
@@ -2748,7 +3182,7 @@ def _unmapped_candidate_paths(changed_paths: set[str]) -> list[str]:
     } | {
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
-        for candidate in spec.get("support_files", {})
+        for candidate in _active_support_paths(spec, changed_paths)
     } | {
         normalize_repo_path(candidate)
         for spec in COMPONENTS.values()
@@ -2797,8 +3231,28 @@ def inspect_component(
 ) -> dict[str, Any]:
     """Require a concrete implementation/test pair for every selected candidate path."""
     spec = COMPONENTS[name]
+    owner_registry = COMPONENT_OWNER_PRS
+    owner_mapping_error = None
+    owner_prs: list[int] = []
+    if not isinstance(owner_registry, dict):
+        owner_mapping_error = "owner_registry_must_be_a_mapping"
+    elif name not in owner_registry:
+        owner_mapping_error = "component_owner_mapping_is_missing"
+    else:
+        raw_owner_prs = owner_registry[name]
+        if not isinstance(raw_owner_prs, tuple) or not raw_owner_prs:
+            owner_mapping_error = "owner_ids_must_be_a_nonempty_tuple"
+        elif any(type(owner_pr) is not int or owner_pr <= 0 for owner_pr in raw_owner_prs):
+            owner_mapping_error = "owner_ids_must_be_positive_integers"
+        elif len(set(raw_owner_prs)) != len(raw_owner_prs):
+            owner_mapping_error = "owner_ids_must_be_unique"
+        else:
+            owner_prs = list(raw_owner_prs)
     pairs = list(spec.get("candidate_pairs", ()))
-    changes = {normalize_repo_path(path).casefold() for path in (changed_paths or set())}
+    changed_paths = changed_paths or set()
+    changes = {normalize_repo_path(path).casefold() for path in changed_paths}
+    active_support_paths = _active_support_paths(spec, changed_paths)
+    active_support_paths_casefold = {path.casefold() for path in active_support_paths}
     unmapped = _changed_candidate_paths(spec, changed_paths or set())
     selected_pairs = list(pairs) if require_all_pairs else [
         pair for pair in pairs
@@ -2815,7 +3269,8 @@ def inspect_component(
     changed_support_tests = {
         normalize_repo_path(test).casefold()
         for support_path, mapped_tests in spec.get("support_files", {}).items()
-        if normalize_repo_path(support_path).casefold() in changes
+        if normalize_repo_path(support_path).casefold() in active_support_paths_casefold
+        and normalize_repo_path(support_path).casefold() in changes
         for test in mapped_tests
     }
     changed_initializer_tests = {
@@ -2907,6 +3362,56 @@ def inspect_component(
         pair["test"] for pair in selected_pairs
         if not (root / pair["test"]).is_file()
     } | {pair["test"] for pair in unavailable_companion_pairs})
+    raw_suite_companion_tests = spec.get("suite_companion_tests", ())
+    invalid_suite_companion_tests = []
+    suite_companion_tests = []
+    if not isinstance(raw_suite_companion_tests, (tuple, list)):
+        invalid_suite_companion_tests.append("<mapping>")
+    else:
+        candidate_test_paths = {
+            normalize_repo_path(pair["test"]).casefold() for pair in pairs
+        }
+        seen_companion_tests = set()
+        for test_path in raw_suite_companion_tests:
+            if not isinstance(test_path, str):
+                invalid_suite_companion_tests.append(str(test_path))
+                continue
+            normalized_test_path = normalize_repo_path(test_path)
+            casefolded_test_path = normalized_test_path.casefold()
+            if (
+                normalized_test_path not in spec.get("tests", ())
+                or casefolded_test_path not in candidate_test_paths
+                or casefolded_test_path in seen_companion_tests
+            ):
+                invalid_suite_companion_tests.append(normalized_test_path)
+                continue
+            suite_companion_tests.append(normalized_test_path)
+            seen_companion_tests.add(casefolded_test_path)
+    selected_suite_companion_tests = list(suite_companion_tests) if selected_pairs else []
+    selected_pair_ids = {
+        (pair["implementation"], pair["test"]) for pair in selected_pairs
+    }
+    companion_test_ids = {
+        test_path.casefold() for test_path in selected_suite_companion_tests
+    }
+    # A component-level companion test is still an exact implementation/test
+    # pair: require its source in the checked-out tree before it can run.
+    selected_pairs.extend(
+        pair for pair in pairs
+        if normalize_repo_path(pair["test"]).casefold() in companion_test_ids
+        and (pair["implementation"], pair["test"]) not in selected_pair_ids
+    )
+    missing_implementations = sorted({
+        pair["implementation"] for pair in selected_pairs
+        if not (root / pair["implementation"]).is_file()
+    })
+    missing_suite_companion_tests = sorted(
+        test_path for test_path in selected_suite_companion_tests
+        if not (root / test_path).is_file()
+    )
+    missing_required_tests = sorted(
+        set(missing_required_tests) | set(missing_suite_companion_tests)
+    )
     tests = [path for path in spec["tests"] if (root / path).is_file()]
     test_markers = {
         normalize_repo_path(path): marker
@@ -2938,6 +3443,26 @@ def inspect_component(
             dict(raw_environment_overrides) if not invalid_environment_overrides else {}
         )
     independent_reference_tests = tuple(spec.get("independent_reference_tests", ()))
+    raw_support_requirements = spec.get("support_file_requires_changed", {})
+    if not isinstance(raw_support_requirements, dict):
+        invalid_support_file_requirements = ["<mapping>"]
+    else:
+        candidate_test_paths = {
+            normalize_repo_path(pair["test"]).casefold() for pair in pairs
+        }
+        invalid_support_file_requirements = sorted(
+            str(support_path)
+            for support_path, companion_paths in raw_support_requirements.items()
+            if support_path not in spec.get("support_files", {})
+            or not isinstance(companion_paths, (tuple, list))
+            or not companion_paths
+            or any(
+                not isinstance(path, str)
+                or path not in spec.get("tests", ())
+                or normalize_repo_path(path).casefold() not in candidate_test_paths
+                for path in companion_paths
+            )
+        )
     invalid_independent_reference_tests = sorted(
         path for path in independent_reference_tests
         if path not in spec.get("tests", ()) or path not in spec.get("support_files", {})
@@ -2945,6 +3470,7 @@ def inspect_component(
     changed_reference_tests = [
         path for path in independent_reference_tests
         if normalize_repo_path(path).casefold() in changes
+        and normalize_repo_path(path).casefold() in active_support_paths_casefold
     ]
     missing_reference_tests = sorted(
         path for path in changed_reference_tests if not (root / path).is_file()
@@ -2984,13 +3510,20 @@ def inspect_component(
     tests_to_run = list(dict.fromkeys([
         *pair_tests,
         *(path for path in changed_reference_tests if (root / path).is_file()),
+        *(path for path in selected_suite_companion_tests if (root / path).is_file()),
     ]))
     active_support_files = {
         support_path: mapped_tests
         for support_path, mapped_tests in spec.get("support_files", {}).items()
-        if normalize_repo_path(support_path).casefold() in changes
-        or any(normalize_repo_path(test_path).casefold() in {normalize_repo_path(test).casefold() for test in tests_to_run}
-               for test_path in mapped_tests)
+        if normalize_repo_path(support_path).casefold() in active_support_paths_casefold
+        and (
+            normalize_repo_path(support_path).casefold() in changes
+            or any(
+                normalize_repo_path(test_path).casefold()
+                in {normalize_repo_path(test).casefold() for test in tests_to_run}
+                for test_path in mapped_tests
+            )
+        )
     }
     missing_support_files = sorted({
         support_path for support_path in active_support_files
@@ -3037,12 +3570,15 @@ def inspect_component(
     selected_support_files = sorted(
         support_path for support_path in spec.get("support_files", {})
         if normalize_repo_path(support_path).casefold() in changes
+        and normalize_repo_path(support_path).casefold() in active_support_paths_casefold
     )
     implementations = sorted({
         pair["implementation"] for pair in selected_pairs
         if (root / pair["implementation"]).is_file()
     })
     blockers = []
+    if owner_mapping_error is not None:
+        blockers.append("component owner mapping is invalid")
     if missing_implementations:
         blockers.append("required candidate implementation is absent")
     if missing_required_tests:
@@ -3053,10 +3589,14 @@ def inspect_component(
         blockers.append("required candidate package initializer is absent")
     if invalid_support_test_mappings:
         blockers.append("candidate test support mapping is invalid or mapped test is absent")
+    if invalid_support_file_requirements:
+        blockers.append("support-file changed-path prerequisite mapping is invalid")
     if invalid_initializer_test_mappings:
         blockers.append("package initializer mapping is invalid or mapped test is unpaired")
     if invalid_test_markers:
         blockers.append("candidate test marker mapping is invalid or unpaired")
+    if invalid_suite_companion_tests:
+        blockers.append("component suite companion test mapping is invalid")
     if invalid_environment_overrides:
         blockers.append("candidate environment override mapping is invalid")
     if invalid_independent_reference_tests:
@@ -3067,12 +3607,15 @@ def inspect_component(
         blockers.append("no registered implementation-test pair exists")
     return {
         "component": name,
-        "owner_prs": list(COMPONENT_OWNER_PRS.get(name, ())),
+        "owner_prs": owner_prs,
+        "owner_mapping_valid": owner_mapping_error is None,
+        "owner_mapping_error": owner_mapping_error,
         "status": "BLOCKED" if blockers else "READY_TO_RUN",
         "blockers": blockers,
         "selected_paths": sorted({
             path for pair in selected_pairs for path in (pair["implementation"], pair["test"])
-        } | set(selected_support_files) | set(selected_package_initializers) | set(changed_reference_tests)),
+        } | set(selected_support_files) | set(selected_package_initializers)
+          | set(changed_reference_tests) | set(selected_suite_companion_tests)),
         "selected_support_files": selected_support_files,
         "selected_package_initializers": selected_package_initializers,
         "required_pairs": selected_pairs,
@@ -3081,9 +3624,13 @@ def inspect_component(
         "implementations": implementations,
         "missing_implementations": missing_implementations,
         "missing_required_tests": missing_required_tests,
+        "suite_companion_tests": selected_suite_companion_tests,
+        "missing_suite_companion_tests": missing_suite_companion_tests,
+        "invalid_suite_companion_tests": sorted(set(invalid_suite_companion_tests)),
         "missing_support_files": missing_support_files,
         "missing_package_initializers": missing_package_initializers,
         "invalid_support_test_mappings": invalid_support_test_mappings,
+        "invalid_support_file_requirements": invalid_support_file_requirements,
         "invalid_initializer_test_mappings": invalid_initializer_test_mappings,
         "invalid_test_markers": invalid_test_markers,
         "invalid_environment_overrides": invalid_environment_overrides,
@@ -3353,15 +3900,29 @@ def junit_status(counts: tuple[int, int, int, int]) -> str:
 def collect_changed_paths(base: str, head: str, root: Path) -> set[str]:
     if not re.fullmatch(r"[0-9a-f]{40}", base) or not re.fullmatch(r"[0-9a-f]{40}", head):
         raise ValueError("base and head must be full commit SHAs")
+    # --no-renames lists the removed side of a rename as well as the new name.
+    # Rename detection would otherwise hide moving a registered implementation
+    # out of its candidate root.
     result = subprocess.run(
-        ["git", "diff", "--name-only", f"{base}...{head}"],
+        ["git", "diff", "--name-only", "--no-renames", "-z", f"{base}...{head}"],
         cwd=root,
         check=True,
         capture_output=True,
-        text=True,
+        text=False,
         timeout=30,
     )
-    return {normalize_repo_path(line) for line in result.stdout.splitlines() if line.strip()}
+    changed = set()
+    for raw in result.stdout.split(b"\0"):
+        if not raw:
+            continue
+        name = os.fsdecode(raw)
+        # Backslash is an ordinary filename byte on POSIX runners. Rewriting it
+        # would alias a root-level file to a registered repository path, so
+        # reject it instead of normalizing it.
+        if "\\" in name:
+            raise ValueError("git changed path contains a backslash; refusing ambiguous repository path")
+        changed.add(normalize_repo_path(name))
+    return changed
 
 
 def verify_candidate_source_identity(
@@ -3731,7 +4292,14 @@ def docker_engine_candidate_evidence(
             "errors": 0,
             "timeouts": 0,
         }
-        evidence["status"] = "PASS"
+        if execution_outcome == "success":
+            evidence["status"] = "PASS"
+        else:
+            evidence["status"] = "FAIL" if execution_outcome == "failure" else "BLOCKED"
+            evidence["failure_reason"] = (
+                "Docker test step did not succeed despite valid-looking reports: "
+                f"{execution_outcome}"
+            )
         return evidence
 
     evidence["failure_reason"] = reason
@@ -3787,10 +4355,15 @@ def docker_engine_candidate_evidence(
         type(evidence["counts"][key]) is int and evidence["counts"][key] > 0
         for key in ("skipped", "failures", "errors", "timeouts")
     )
-    if known_test_failure:
+    if known_test_failure or execution_outcome == "failure":
         evidence["status"] = "FAIL"
     else:
         evidence["status"] = "BLOCKED"
+        if execution_outcome != "success":
+            evidence["failure_reason"] = (
+                f"Docker test step did not succeed: {execution_outcome}; "
+                f"artifact validation: {reason}"
+            )
     return evidence
 
 
@@ -3809,6 +4382,8 @@ def run(
     pytest_marker: str | None = None,
     external_test_job: str | None = None,
 ) -> int:
+    if event_name == "workflow_dispatch":
+        raise ValueError("workflow_dispatch candidate execution is disabled")
     root = root.resolve()
     report_path = _lexically_contained_path(root, report_path, "report path")
     always_components = list(dict.fromkeys(always_components))
@@ -3836,12 +4411,6 @@ def run(
         raise ValueError("tested checkout must be a full commit SHA")
     if workflow_sha is not None and not re.fullmatch(r"[0-9a-f]{40}", workflow_sha):
         raise ValueError("workflow SHA must be a full commit SHA")
-    if event_name == "workflow_dispatch":
-        for label, sha in (("diff base", diff_base_sha), ("diff head", diff_head_sha)):
-            if not re.fullmatch(r"[0-9a-f]{40}", sha):
-                raise ValueError(
-                    f"workflow_dispatch requires an explicit full commit SHA for {label}"
-                )
     changed = collect_changed_paths(diff_base_sha, diff_head_sha, root)
     selected = select_components(changed)
     if only_components:
@@ -3858,13 +4427,19 @@ def run(
     relevant_paths = sorted({
         normalize_repo_path(path)
         for path in changed
-        if any(_is_component_relevant(name, {path}) for name in component_scope)
+        if any(
+            _is_component_relevant(name, {path}, context_paths=changed)
+            for name in component_scope
+        )
     })
     unmapped_candidate_paths = _unmapped_candidate_paths(changed)
     if only_components:
         unmapped_candidate_paths = [
             path for path in unmapped_candidate_paths
-            if any(_is_component_relevant(name, {path}) for name in only_components)
+            if any(
+                _is_component_relevant(name, {path}, context_paths=changed)
+                for name in only_components
+            )
         ]
     report: dict[str, Any] = {
         "schema_version": "round6-experimental-ci-report-v1",
@@ -4032,7 +4607,7 @@ def run(
         for index, name in enumerate(run_components, start=1):
             component_changes = {
                 path for path in changed
-                if _is_component_relevant(name, {path})
+                if _is_component_relevant(name, {path}, context_paths=changed)
             }
             spec = COMPONENTS[name]
             require_all_pairs = name in always_components
@@ -4458,6 +5033,21 @@ def run(
                                 "JUnit subtest delta "
                                 f"{subtest_delta} does not match registered delta {registered_subtest_delta}"
                             )
+                        if registered_subtest_contract and not pytest_summary_available:
+                            verified_total = registered_subtest_contract["verified_junit_total"]
+                            verified_records = registered_subtest_contract[
+                                "verified_junit_testcase_records"
+                            ]
+                            if (
+                                junit_reported_tests != verified_total
+                                or counts[0] != verified_records
+                            ):
+                                execution["junit_reconciliation"] = "mismatch"
+                                raise ValueError(
+                                    "JUnit counts do not match source-bound verified counts "
+                                    f"(reported={junit_reported_tests}, testcase_records={counts[0]}, "
+                                    f"expected_reported={verified_total}, expected_testcase_records={verified_records})"
+                                )
                         failure_cases = [
                             {
                                 "name": case["name"][:MAX_JUNIT_FAILURE_NAME_CHARS],
