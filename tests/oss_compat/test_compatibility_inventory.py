@@ -9,9 +9,28 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 _ROOT = Path(__file__).resolve().parents[2]
 _INVENTORY = _ROOT / "docs" / "oss_compat" / "compatibility_inventory_20261017.json"
+_ALLOWED_EVIDENCE_HOSTS = {"api.github.com", "github.com", "gudhi.inria.fr", "pypi.org"}
+
+
+def _is_allowed_evidence_url(url: object) -> bool:
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlsplit(url)
+        return (
+            parsed.scheme == "https"
+            and parsed.hostname in _ALLOWED_EVIDENCE_HOSTS
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port is None
+            and not parsed.fragment
+        )
+    except ValueError:
+        return False
 
 _DISPOSITIONS = {
     "integrate_behind_bounded_adapter",
@@ -170,7 +189,7 @@ def test_all_named_leads_are_present():
 def test_revalidated_release_tags_match_primary_upstream_records():
     candidates = {c["id"]: c for c in _load()["candidates"]}
     expected_releases = {
-        "openresearch": ("v0.2.20", "2026-10-21", "37a367bcdbc26ba2a492bccf12b85bddc5852567"),
+        "openresearch": ("v0.2.21", "2026-10-23", "5af82bb531a731698afc6e8e46f3e5157e20210b"),
         "rea": ("rea-agents-6.7.0", "2026-10-18", "27dc42d10249f0410904a75c0997842eb03b931c"),
         "persim": ("v0.4.1", "2026-10-18", "00144a82949c214283655f68d1985725882eea59"),
         "gudhi": ("tags/gudhi-release-3.13.0", "2026-07-02", "5dbe510bed5d8d700ec7243fd915769fb67964a2"),
@@ -188,7 +207,7 @@ def test_revalidated_release_tags_match_primary_upstream_records():
 def test_inventory_distinguishes_historical_snapshot_from_revalidated_releases():
     data = _load()
     assert data["retrieval_date_utc"] == "2026-10-17"
-    assert data["release_revalidated_at_utc"] == "2026-10-22"
+    assert data["release_revalidated_at_utc"] == "2026-10-23"
     assert "not install pins" in data["release_revalidation_method"]
     assert "not imply compatibility" in data["release_scope_note"]
 
@@ -470,6 +489,7 @@ def test_inventory_base_main_sha_is_full_hex_and_cited_in_audit():
     data = _load()
     sha = data["base_main_sha"]
     assert re.fullmatch(r"[0-9a-f]{40}", sha)
+    assert sha == "648e5e4fb67e9e7c399c78c00b1a139f83db2b36"
     audit = (_ROOT / "docs" / "oss_compat" / "batch1_compatibility_audit_20261017.md").read_text(encoding="utf-8")
     assert sha in audit
 
@@ -501,20 +521,35 @@ def test_bids_validator_runtime_is_deno_not_node():
     assert "wrapper" in validator["package_channel_note"] and "not inspected" in validator["package_channel_note"]
 
 
-def test_newer_upstream_release_is_recorded_without_replacing_the_pinned_snapshot():
-    """A release newer than the revalidated snapshot is observed evidence, never a pin."""
+def test_revalidated_openresearch_release_is_resolved_without_moving_head_snapshot():
+    """Revalidation resolves the newer tag, without retargeting the historical head snapshot."""
     openresearch = _candidate("openresearch")
-    assert openresearch["latest_release"]["tag"] == "v0.2.20"
-    newer = openresearch["newer_release_observed"]
-    assert newer["tag"] == "v0.2.21"
-    assert newer["published_utc"] == "2026-10-23"
-    assert newer["observed_utc"] == "2026-10-23"
-    assert newer["source_url"] == "https://github.com/alphaXiv/OpenResearch/releases"
-    assert newer["not_a_pin"] is True
-    assert "commit_sha" not in newer
+    release = openresearch["latest_release"]
+    assert openresearch["head_sha"] == "6285fee7f42bc8ad21500b84278d38679f1ac01b"
+    assert release["tag"] == "v0.2.21"
+    assert release["published_utc"] == "2026-10-23"
+    assert release["commit_sha"] == "5af82bb531a731698afc6e8e46f3e5157e20210b"
+    assert release["release_api_url"] == "https://api.github.com/repos/alphaXiv/OpenResearch/releases/tags/v0.2.21"
+    assert release["tag_ref_api_url"] == "https://api.github.com/repos/alphaXiv/OpenResearch/git/ref/tags/v0.2.21"
+    assert openresearch["evidence_urls"]
+    assert release["release_api_url"] in openresearch["evidence_urls"]
+    assert release["tag_ref_api_url"] in openresearch["evidence_urls"]
     for candidate in _load()["candidates"]:
-        if candidate["id"] != "openresearch":
-            assert "newer_release_observed" not in candidate, candidate["id"]
+        assert "newer_release_observed" not in candidate, candidate["id"]
+
+
+def test_evidence_urls_require_an_exact_allowed_https_authority():
+    """An allowed hostname embedded in userinfo or a suffix is not the authority."""
+    data = _load()
+    for candidate in data["candidates"]:
+        for url in candidate["evidence_urls"]:
+            assert _is_allowed_evidence_url(url), f"{candidate['id']}: invalid evidence authority"
+    assert not _is_allowed_evidence_url("https://github.com@evil.example/owner/repo")
+    assert not _is_allowed_evidence_url("https://github.com.evil.example/owner/repo")
+    assert not _is_allowed_evidence_url("http://github.com/owner/repo")
+    assert not _is_allowed_evidence_url("https://github.com/owner/repo#fragment")
+    assert not _is_allowed_evidence_url("https://github.com:443/owner/repo")
+    assert not _is_allowed_evidence_url("https://github.com.unknown/owner/repo")
 
 
 def test_cross_registry_notes_keep_conflicts_visible_without_copying_verdicts():
@@ -540,8 +575,9 @@ def test_gudhi_bare_tag_evidence_paths_are_absent_and_literal_tag_paths_present(
     assert not re.search(r"/(releases/tags|git/ref/tags)/gudhi-release-3\.13\.0", joined)
 
 
-def test_inventory_declares_the_api_and_page_urls_this_audit_could_not_resolve():
+def test_inventory_declares_revalidated_and_unresolved_link_scopes():
     note = _load()["link_resolution_scope"]
-    assert "raw.githubusercontent.com" in note and "pypi.org" in note
-    assert "api.github.com" in note and "not resolved" in note
+    assert "HTTP 200" in note
+    assert "GitHub REST latest-release and exact-tag-ref records were queried" in note
+    assert "rather than by the file-resolution procedure" in note
     assert "does not establish" in note

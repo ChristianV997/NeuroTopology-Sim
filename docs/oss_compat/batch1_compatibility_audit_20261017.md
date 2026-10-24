@@ -5,7 +5,7 @@ to adopt, install, import, execute, or copy any candidate, and it is not
 scientific validation of any method or tool.
 
 - Base (historical audit start): `origin/main` = `3f3fe8593303184cb88eef056c1322f3d4e57a16`
-- Base (branch sync, 2026-10-23): `origin/main` = `57b7e43d42678822e9eec03679891c1770040327` (inventory `base_main_sha`)
+- Base (current PR base, checked 2026-10-23): `origin/main` = `648e5e4fb67e9e7c399c78c00b1a139f83db2b36` (inventory `base_main_sha`)
 - Branch: `batch1/claude-d-oss-compatibility-map`
 - Research date (UTC): **2026-10-17**
 - Machine-readable inventory: `docs/oss_compat/compatibility_inventory_20261017.json`
@@ -20,7 +20,7 @@ imported, executed, or copied, and no dataset was downloaded.
 
 Dispositions use the five labels from the brief. Each candidate gets exactly one.
 
-| # | Candidate (canonical) | Need area | Role | License (verified) | Last commit | Disposition |
+| # | Candidate (canonical) | Need area | Role | License declaration / evidence | Last commit | Disposition |
 |---|---|---|---|---|---|---|
 | 1 | [mne-tools/mne-python](https://github.com/mne-tools/mne-python) | EEG/BIDS handling | Scientific runtime | BSD-3-Clause | 2026-10-15 | integrate behind bounded adapter (existing use) |
 | 2 | [mne-tools/mne-bids](https://github.com/mne-tools/mne-bids) | EEG/BIDS handling | Data standard | BSD-3-Clause | 2026-10-16 | integrate behind bounded adapter |
@@ -282,7 +282,7 @@ Row-level changes in this pass (stable IDs and dispositions unchanged):
 |---|---|---|
 | `gudhi` | `evidence_urls` cited bare-tag API paths (`…/gudhi-release-3.13.0`) that return HTTP 404. Replaced with the literal upstream tag paths used in `latest_release` (`…/tags/gudhi-release-3.13.0`). | GitHub API 200 vs 404 probe, 2026-10-23 |
 | `gudhi` | `license_spdx_or_text` and `component_license_caveat` now state per-module licensing is unresolved and legal compatibility is not assessed (aligned with merged #375 `license_scope`, without changing this inventory’s `integrate_behind_bounded_adapter` disposition). | Upstream licensing page; #375 `configs/research/batch3_source_registry.yaml` at merge commit `2c8a80bf` |
-| meta | `base_main_sha` refreshed from historical `3f3fe859…` to live main `57b7e43d…` after a normal merge. Snapshot `retrieval_date_utc` / head fields remain 2026-10-17 historical. | `git rev-parse origin/main` |
+| meta | `base_main_sha` refreshed from historical `3f3fe859…` through `57b7e43d…` to current PR base `648e5e4f…`; the 648… main commit is in the branch ancestry. Snapshot `retrieval_date_utc` / head fields remain 2026-10-17 historical. | `git rev-parse origin/main`; PR base metadata |
 
 Cross-PR consistency (read-only; no edits outside owned paths):
 
@@ -307,20 +307,20 @@ Defects reproduced and what changed (IDs and dispositions unchanged):
 | Row | Finding | Source | Change |
 |---|---|---|---|
 | `bids-validator` | The row called tag 3.0.2 a TypeScript/Node package. The tag's `deno.json` names `@bids/validator` 3.0.2 and its README runs `deno run -ERWN jsr:@bids/validator`. The PyPI project that tracks it is `bids-validator-deno` 3.0.2 (license expression MIT), not the older `bids-validator` 1.14.x. | raw `deno.json` and README at tag 3.0.2; PyPI JSON for `bids-validator-deno` | Runtime, rationale, and channel note corrected to Deno; wrapper package fields added; wrapper contents recorded as not inspected. |
-| `openresearch` | The GitHub releases page marks v0.2.21 (2026-10-23) Latest; the snapshot says v0.2.20 (2026-10-21). | GitHub releases page, read 2026-10-23 | `newer_release_observed` added (not a pin; tag ref and commit unresolved). The v0.2.20 snapshot is unchanged. |
+| `openresearch` | The GitHub releases page marks v0.2.21 (2026-10-23) Latest; the earlier release snapshot says v0.2.20 (2026-10-21). | GitHub releases page and REST release/tag-ref records | At that pass the tag ref and commit were unresolved; see section 15 for the later exact resolution and updated `latest_release`. |
 | `gudhi` | Re-confirmed that bare-tag paths return HTTP 404 and the literal tag `tags/gudhi-release-3.13.0` returns 200; tag and commit `5dbe510b` serve identical `LICENSE` and `CMakeLists.txt`. | raw requests at the tag, the bare tag, and the commit | None needed; a regression now locks the literal-tag form. Per-module licensing stays unresolved. |
 | `neuromaps` | Re-confirmed: the `LICENSE` file at the pinned head is CC BY-NC-SA 4.0 text, PyPI 0.0.7 carries the same text in its license field, and its classifier says BSD. | raw `LICENSE`; PyPI JSON | None; the conflict stays recorded and unresolved. |
 | top level | No machine-readable record of where this inventory differs from the merged #375 registry, or of which URL classes were not resolved. | #375 `configs/research/batch3_source_registry.yaml` at current main | Added `cross_registry_notes` and `link_resolution_scope`. |
 
 Comparison with #375 (read only, not edited, verdicts not copied). Overlapping sources: mne-python, mne-bids, bids-validator, mne-connectivity, gudhi, ripser, datalad, neurolib, rea. Versions agree for all but REA: #375 records `rea-agents-6.5.0` (2026-10-14) while the releases page marks `rea-agents-6.7.0` (2026-10-18) Latest, which this inventory records. #375 names the project `ripser-py`; this inventory's stable id `ripser.py` is kept. Classification differences are not reconciled here: GUDHI is EMULATE in #375 and `integrate_behind_bounded_adapter` here; Ripser is EMULATE there and integrate here. #375 covers 16 sources and this inventory 23; the rest do not overlap.
 
-Per-row summary (release is the recorded GitHub tag; package is the PyPI version where a package record exists):
+Per-row summary (latest GitHub release revalidated 2026-10-23; package is the PyPI version where a package record exists):
 
 | Row | Release tag | Package | License status / evidence level | Disposition |
 |---|---|---|---|---|
 | `openmed` | v3.0.0 | - | permissive / license_file_text | `reject_or_defer` |
 | `papergym` | none | - | permissive / github_api_spdx | `reference_only` |
-| `openresearch` | v0.2.20 | - | permissive / license_file_text | `emulate_narrow_pattern` |
+| `openresearch` | v0.2.21 | - | permissive / license_file_text | `emulate_narrow_pattern` |
 | `rea` | rea-agents-6.7.0 | - | permissive / github_api_spdx | `reject_or_defer` |
 | `autoresearch` | none | - | missing / github_api_spdx | `reference_only` |
 | `mne-python` | v1.13.2 | - | permissive / github_api_spdx | `integrate_behind_bounded_adapter` |
@@ -343,3 +343,34 @@ Per-row summary (release is the recorded GitHub tag; package is the PyPI version
 | `giotto-tda` | v0.6.2 | 0.6.2 | dual_licensed_copyleft / license_file_text | `reject_or_defer` |
 
 Limits. Legal clearance, transitive and per-module licensing, security posture, maintenance quality, compatibility with this repository, data access, and scientific suitability are all outside what a package declaration or license file can show, and none is claimed.
+
+## 15. Current-base and exact OpenResearch release follow-up — 2026-10-23
+
+Live repository refs were refreshed before this update: `origin/main` and PR #406
+base are `648e5e4fb67e9e7c399c78c00b1a139f83db2b36`. The inventory provenance
+field and this document now agree with that base. The original repository-head
+snapshots still refer to the 2026-10-17 retrieval; they were not silently moved.
+
+The OpenResearch release discrepancy is now resolved at the record level. The
+[GitHub release record](https://api.github.com/repos/alphaXiv/OpenResearch/releases/tags/v0.2.21)
+reports v0.2.21, published 2026-10-23 at 02:20:25Z. The
+[Git tag-ref record](https://api.github.com/repos/alphaXiv/OpenResearch/git/ref/tags/v0.2.21)
+resolves directly to commit
+[`5af82bb531a731698afc6e8e46f3e5157e20210b`](https://github.com/alphaXiv/OpenResearch/commit/5af82bb531a731698afc6e8e46f3e5157e20210b).
+The inventory's revalidated `latest_release` was updated to this tag; the separate
+2026-10-17 `head_sha` remains unchanged. This release observation is not an
+install pin and says nothing about compatibility or adoption.
+
+The exact URL-authority regression now parses evidence URLs and checks the
+hostname, rather than searching for a hostname substring in free text. Synthetic
+cases reject user-info spoofing, suffix hosts, non-HTTPS, fragments, and explicit
+ports. This is a documentation-test hardening only; it does not fetch URLs.
+
+Cross-registry comparison remains unchanged: #375's REA tag is older than the
+revalidated latest release; GUDHI and Ripser dispositions differ; and the stable
+row IDs remain unchanged for the #386 references. The neuromaps PyPI classifier
+versus license-text conflict and GUDHI per-module/component license scope remain
+unresolved. The root listing for AutoResearch at the inventory's pinned commit
+contains no root `LICENSE`, `COPYING`, or `NOTICE` entry; this records missing
+repository-level evidence and is not a legal determination. No disposition is
+upgraded on the basis of release recency, license metadata, or a resolving URL.
