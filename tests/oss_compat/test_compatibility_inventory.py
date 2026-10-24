@@ -485,13 +485,17 @@ def test_gudhi_release_pin_matches_merged_batch3_registry_tag():
     assert gudhi["latest_release"]["commit_sha"] == "5dbe510bed5d8d700ec7243fd915769fb67964a2"
 
 
-def test_inventory_base_main_sha_is_full_hex_and_cited_in_audit():
+def test_inventory_base_and_current_main_shas_are_full_hex_and_cited_in_audit():
     data = _load()
-    sha = data["base_main_sha"]
-    assert re.fullmatch(r"[0-9a-f]{40}", sha)
-    assert sha == "648e5e4fb67e9e7c399c78c00b1a139f83db2b36"
+    base_sha = data["base_main_sha"]
+    current_sha = data["current_main_sha"]
+    assert re.fullmatch(r"[0-9a-f]{40}", base_sha)
+    assert re.fullmatch(r"[0-9a-f]{40}", current_sha)
+    assert base_sha == "648e5e4fb67e9e7c399c78c00b1a139f83db2b36"
+    assert current_sha == "6136cb3fe3bc97e811f494a853f471988ce976bb"
     audit = (_ROOT / "docs" / "oss_compat" / "batch1_compatibility_audit_20261017.md").read_text(encoding="utf-8")
-    assert sha in audit
+    assert base_sha in audit
+    assert current_sha in audit
 
 
 def test_neuromaps_conflict_is_not_silently_cleared():
