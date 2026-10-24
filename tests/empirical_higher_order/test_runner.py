@@ -82,6 +82,35 @@ def test_multiple_pairs_are_forecasting_ready(tmp_path):
     assert "FORMAL_FORECAST_EVIDENCE" not in {entry["incremental_status"] for entry in report["model_ladder"] if "incremental_status" in entry}
 
 
+def test_empty_recording_arrays_are_not_forecasting_ready(tmp_path):
+    path = _manifest(tmp_path, subjects=2)
+    data = json.loads(path.read_text())
+    widths = {"psd": 3, "pairwise_fc": 2, "triadic_fc": 2, "directed_hypergraph": 2}
+    for record in data["recordings"]:
+        for family, width in widths.items():
+            artifact = tmp_path / record["feature_paths"][family]
+            np.save(artifact, np.empty((0, width), dtype=float))
+        np.save(tmp_path / record["target_path"], np.empty(0, dtype=int))
+        np.save(tmp_path / record["timestamps_path"], np.empty(0, dtype=float))
+        record["target_timestamps"] = []
+        for artifact_name, relative_path in {
+            **record["feature_paths"],
+            "target": record["target_path"],
+            "timestamps": record["timestamps_path"],
+        }.items():
+            record["artifact_checksums"][artifact_name] = hashlib.sha256(
+                (tmp_path / relative_path).read_bytes()
+            ).hexdigest()
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    report = run_empirical(path)
+
+    assert report["status"] == ReadinessState.INCONCLUSIVE.value
+    assert report["validation"]["status"] == ReadinessState.INCONCLUSIVE.value
+    assert report["model_ladder"] == []
+    assert any("empty" in reason.lower() for reason in report["validation"]["reasons"])
+
+
 def test_missing_respiration_is_explicit(tmp_path):
     report = run_empirical(_manifest(tmp_path, respiration=False))
     assert report["missingness"]["respiration"]["state"] == "MISSING_OPTIONAL_PHYSIOLOGY"

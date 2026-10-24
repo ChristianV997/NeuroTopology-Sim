@@ -158,3 +158,44 @@ def test_jsonl_source_snapshot_uses_source_gate():
     )
 
     assert graph.nodes["src-jsonl"].status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_direct_formal_claim_uses_claim_evidence_gates():
+    graph = load_from_dict({
+        "nodes": [{
+            "node_id": "claim-direct-formal",
+            "node_type": "claim",
+            "status": "supported",
+            "evidence_class": "formal",
+        }],
+    })
+
+    node = graph.nodes["claim-direct-formal"]
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_direct_claim_unknown_class_is_normalized_and_review_required():
+    graph = load_from_dict({
+        "nodes": [{
+            "node_id": "claim-direct-unknown",
+            "node_type": "claim",
+            "status": "active",
+            "evidence_class": "unrecognized-class",
+        }],
+    })
+
+    node = graph.nodes["claim-direct-unknown"]
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_jsonl_formal_claim_uses_claim_evidence_gates():
+    graph = load_from_jsonl(
+        '{"node_id":"claim-jsonl-formal","node_type":"claim",'
+        '"status":"supported","evidence_class":"formal"}'
+    )
+
+    node = graph.nodes["claim-jsonl-formal"]
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value

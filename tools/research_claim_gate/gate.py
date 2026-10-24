@@ -88,6 +88,7 @@ _PROXY_METHODS = frozenset(
 )
 _PLACEHOLDER_PROVENANCE_VALUES = frozenset(
     {
+        "none",
         "unknown",
         "unknown_source",
         "unknown-source",

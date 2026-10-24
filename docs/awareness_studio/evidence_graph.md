@@ -107,10 +107,13 @@ Recognized negative and terminal statuses are preserved; an
 unrecognized status becomes `REVIEW_REQUIRED`. These rules project declared
 fields only and do not verify a source, registration, or reviewer independently.
 
-Direct `nodes[]` entries and JSONL node records use the same source and
-validation gates as section-based records. A direct source with missing or
-unknown evidence remains `REVIEW_REQUIRED`; a validation `PASS` remains
-pending review and does not create support.
+Direct `nodes[]` entries and JSONL node records use the same source, claim, and
+validation gates as section-based records. Direct claims normalize evidence
+classes through the same preregistration/locked-split checks; missing or
+unrecognized evidence remains unknown and unverified positive statuses become
+`REVIEW_REQUIRED`. A direct source with missing or unknown evidence remains
+`REVIEW_REQUIRED`; a validation `PASS` remains pending review and does not
+create support.
 
 Likewise, a literal validation `verdict: PASS` is recorded as
 `REVIEW_REQUIRED` and does not create a `supports` edge. The projection does

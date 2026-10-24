@@ -13,10 +13,12 @@ Priority order (highest first) and why:
 2. ``merged_into_main``    -- either (a) real git ancestry shows the commit
    IS the current head of, or an ancestor of, ``target_branch`` (a hard
    fact, independent of any PR snapshot), or (b) the PR snapshot reports
-   ``merged=True`` and its ``base_ref`` matches ``target_branch``. A PR merge
-   into another base, or one with no verifiable base, is not target ancestry.
-   A disagreement between matching PR metadata and local ancestry is recorded
-   as a blocker note, but the matching-base snapshot still covers squash merges.
+   ``merged=True``, its ``base_ref`` matches ``target_branch``, and its
+   ``head_sha`` exactly matches the claimed source commit. A PR merge into
+   another base, or a snapshot for a different/missing head, cannot establish
+   this commit's target integration. A disagreement between matching PR
+   metadata and local ancestry is recorded as a blocker note, while the
+   matching base-and-head snapshot still covers squash merges.
    This is the one deliberate exception to "local merge commit alone is not
    enough": a direct ``is_ancestor`` check against the real target ref is a
    hard fact, not a heuristic commit-message search.
@@ -68,6 +70,7 @@ class MergeStateContext:
     dependency_blockers: tuple = field(default_factory=tuple)
     superseded_by: Optional[str] = None
     target_branch: str = "main"
+    source_commit: Optional[str] = None
 
 
 def _branch_ref_name(ref: str | None) -> str | None:
@@ -102,12 +105,23 @@ def classify_merge_state(ctx: MergeStateContext) -> tuple[str, list[str]]:
     target_name = _branch_ref_name(ctx.target_branch)
     pr_base_name = _branch_ref_name(pr.base_ref) if pr is not None else None
     pr_base_matches_target = target_name is not None and pr_base_name == target_name
-    pr_says_merged = pr.merged is True and pr_base_matches_target if pr is not None else False
+    source_commit = ctx.source_commit.strip().lower() if isinstance(ctx.source_commit, str) else None
+    pr_head_sha = pr.head_sha.strip().lower() if pr is not None and isinstance(pr.head_sha, str) else None
+    pr_head_matches_source = bool(source_commit and pr_head_sha and pr_head_sha == source_commit)
+    pr_says_merged = (
+        pr.merged is True and pr_base_matches_target and pr_head_matches_source
+        if pr is not None else False
+    )
 
     if pr is not None and pr.merged is True and not pr_base_matches_target:
         blockers.append(
             f"PR snapshot reports merged=True but base_ref {pr.base_ref!r} does not verify "
             f"target_branch {ctx.target_branch!r}; PR merge status alone cannot establish target ancestry"
+        )
+    if pr is not None and pr.merged is True and not pr_head_matches_source:
+        blockers.append(
+            f"PR snapshot reports merged=True but head_sha {pr.head_sha!r} does not match "
+            f"source_commit {ctx.source_commit!r}; the snapshot cannot establish that this commit was merged"
         )
 
     if ancestry_says_merged or pr_says_merged:

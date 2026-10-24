@@ -266,8 +266,24 @@ def validate_manifest(path: str | Path) -> ValidationResult:
                 continue
             try:
                 values = _load_array(artifact)
-                if not np.all(np.isfinite(values)):
+                if values.size == 0:
+                    reasons.append(f"recordings[{index}] {family} artifact is empty; at least one observation is required")
+                    invalid = True
+                elif not np.all(np.isfinite(values)):
                     reasons.append(f"recordings[{index}] {family} contains NaN or Inf"); invalid = True
+            except (OSError, ValueError, ManifestError) as exc:
+                reasons.append(f"recordings[{index}] {family} cannot be read: {exc}"); invalid = True
+        for family in ("target", "timestamps"):
+            if family == "timestamps" and "target" not in verified_paths:
+                continue
+            artifact = verified_paths.get(family)
+            if artifact is None:
+                continue
+            try:
+                values = _load_array(artifact)
+                if values.size == 0:
+                    reasons.append(f"recordings[{index}] {family} artifact is empty; at least one observation is required")
+                    invalid = True
             except (OSError, ValueError, ManifestError) as exc:
                 reasons.append(f"recordings[{index}] {family} cannot be read: {exc}"); invalid = True
         subject = str(raw.get("subject_id", "")).strip()

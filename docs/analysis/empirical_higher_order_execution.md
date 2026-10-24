@@ -8,7 +8,7 @@ The JSON manifest uses schema `NeuroTopologySim.EmpiricalHigherOrderManifest.v1`
 
 `channel_count` is a positive integer (a JSON boolean is not an integer for this contract). Only an explicit `recording_quality_state: PASS` is eligible for forecasting; `UNKNOWN` remains incomplete provenance and `FAIL` is invalid. Required provenance strings must be nonblank after trimming.
 
-The validator streams each declared artifact into a private temporary snapshot while computing its SHA-256, then validates and scores from that same snapshot rather than reopening the mutable source path. It also validates identities, labels, pairing, finite values, monotonic timestamps, and feature/target row alignment. Missing respiration is reported explicitly and is never treated as observed physiology.
+The validator streams each declared artifact into a private temporary snapshot while computing its SHA-256, then validates and scores from that same snapshot rather than reopening the mutable source path. It also validates identities, labels, pairing, finite values, monotonic timestamps, and feature/target row alignment. Every required feature, target, and timestamp array must contain at least one observation; an empty required array is `INCONCLUSIVE`, not forecasting-ready. Missing respiration is reported explicitly and is never treated as observed physiology.
 
 ## Execution and safeguards
 

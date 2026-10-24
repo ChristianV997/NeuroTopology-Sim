@@ -109,6 +109,14 @@ def _direct_node_projection(
             "node_id", "node_type", "label", "status", "safety_labels", "properties",
             "source_id", "checksum", "tags",
         }})
+    elif node_type == NodeType.CLAIM.value:
+        evidence_class = _classify_evidence(metadata)
+        status = _source_status(metadata, evidence_class)
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
     return node_type, status, evidence_class, properties
 
 

@@ -17,22 +17,46 @@ def test_ancestor_of_target_is_merged_into_main():
     assert state == "merged_into_main"
 
 
-def test_pr_snapshot_merged_true_overrides_missing_ancestry():
-    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main")
-    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
+def test_pr_snapshot_matching_head_preserves_squash_merge_without_ancestry():
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha=source_commit)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
     state, blockers = classify_merge_state(ctx)
     assert state == "merged_into_main"
     assert any("contradiction" in b for b in blockers)
 
 
 def test_pr_merged_to_different_base_is_not_merged_into_target():
-    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="release")
-    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="release", head_sha=source_commit)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
 
     state, blockers = classify_merge_state(ctx)
 
     assert state != "merged_into_main"
     assert any("target_branch" in blocker for blocker in blockers)
+
+
+@pytest.mark.parametrize("head_sha", [None, "b" * 40])
+def test_pr_snapshot_for_different_or_missing_head_cannot_merge_source_commit(head_sha):
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha=head_sha)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("head_sha" in blocker for blocker in blockers)
+
+
+def test_pr_snapshot_cannot_merge_when_claimed_source_commit_is_missing():
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha="a" * 40)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("source_commit None" in blocker for blocker in blockers)
 
 
 def test_pr_snapshot_says_not_merged_but_ancestry_says_merged_ancestry_wins():

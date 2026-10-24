@@ -172,8 +172,11 @@ def test_provenance_validation_is_explicit():
 
 @pytest.mark.parametrize("field,value", [
     ("source_id", "unknown_source"),
+    ("source_id", "none"),
     ("acquisition", "derived_from_ledger"),
+    ("acquisition", "none"),
     ("dataset_version", "TBD"),
+    ("dataset_version", "none"),
 ])
 def test_placeholder_provenance_cannot_be_treated_as_complete(field, value):
     provenance = {**GOOD_PROVENANCE, field: value}

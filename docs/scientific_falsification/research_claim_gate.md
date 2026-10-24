@@ -40,10 +40,10 @@ empirical, biological, or mental-state evidence. A proxy metric remains a
 proxy: RSS/AIC/AICc/BIC ratios cannot be called formal Bayesian evidence,
 causal influence, or a mechanism.
 
-Placeholder identities such as `unknown_source`, `derived_from_ledger`, and
-`TBD` are rejected as invalid provenance. A syntactically complete checksum is
-not independently verified by this offline gate and therefore cannot create a
-scientific-evidence status.
+Placeholder identities such as `none`, `unknown_source`, `derived_from_ledger`,
+and `TBD` are rejected as invalid provenance. A syntactically complete checksum
+is not independently verified by this offline gate and therefore cannot create
+a scientific-evidence status.
 
 Unknown `n_tests` is never interpreted as one test. More than one test requires
 an explicit multiplicity-correction status. Missing null controls, uncertainty,

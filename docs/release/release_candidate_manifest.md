@@ -67,7 +67,7 @@ Full rationale lives as a module docstring in
 | Priority | State | Meaning |
 |---|---|---|
 | 1 | `unknown` (commit unresolvable) | The claimed commit is not a real git object — includes the fabricated-hash case. Nothing else is evaluated once identity itself is unverifiable. |
-| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot reports `merged=True` and its `base_ref` matches `target_branch` (including a matching squash-merge snapshot). A merge into another or unspecified base is not evidence of integration into this target. |
+| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot reports `merged=True`, its `base_ref` matches `target_branch`, and its `head_sha` exactly matches `source_commit` (including a matching squash-merge snapshot). A merge into another or unspecified base, or a snapshot for a different/missing PR head, is not evidence that this commit integrated into the target. |
 | 3 | `duplicate` | This work's changed-file set overlaps another concurrent owner's above the Jaccard/shared-file threshold (and isn't already merged). |
 | 4 | `blocked_by_scientific_review` | The scientific gate reports a genuinely evidenced negative verdict (not merely missing data). |
 | 5 | `blocked_by_ci` | Worst classified CI check is `failing`. |
