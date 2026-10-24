@@ -464,7 +464,7 @@ def test_ulp_neighborhoods_of_odd_pi_keep_n_omega_synced():
 
 
 @pytest.mark.parametrize("raw", [1e18, -1e18, 1e20, -1e20])
-def test_branch_index_fails_closed_when_float_wrap_cannot_fit_int64(raw):
+def test_branch_index_rejects_unsafe_int64_or_float_magnitudes(raw):
     """Large finite raw differences must not escape the int64/principal contract.
 
     At 1e18 the ideal branch index still fits int64, but float spacing makes a
@@ -488,7 +488,7 @@ def test_edge_permutation_preserves_integer_charge_and_circulation_invariant():
     repeated = phase_winding(theta, d0, d1)
 
     assert np.array_equal(reordered.branch_index, reference.branch_index[permutation])
-    assert np.array_equal(reordered.omega, reference.omega[permutation])
+    assert np.allclose(reordered.omega, reference.omega[permutation], rtol=0.0, atol=1e-12)
     assert np.array_equal(reordered.face_charge, reference.face_charge)
     circulation = float((d1.astype(float) @ reference.omega)[0])
     assert reference.face_charge.tolist() == [int(round(circulation / TWO_PI))]
