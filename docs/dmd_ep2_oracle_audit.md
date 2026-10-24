@@ -34,28 +34,37 @@ it does not establish numerical, physical, empirical, or biological validity.
 
 Pure-Python 2×2: EP2 splitting / full `N²=0`, within-trajectory pairing, signed Nyquist 240↔−10 @ 250 Hz (exact float identity), principal matrix log, branch proximity, similarity covariance `f(PBP⁻¹)=P f(B) P⁻¹`, ill-conditioned nonnormal residual budgets (`κ_proxy`-scaled, not ad hoc loosening), exact-zero/empty spectrum fail-closed branch diagnostics, shape/finite validation before matrix-function evaluation, and Nyquist fail-closed on non-finite frequency or non-positive `Fs`. It rejects non-finite scalar logs and nilpotency residuals (including overflow-generated NaN), invalid thresholds, and the principal-log negative-real cut; it preserves representable small positive eigenvalues and finite large-scale diagonal inputs using a scaled discriminant/determinant calculation, with exact rational determinant fallback near floating-point cancellation. Roots below the representable range are rejected explicitly as unsupported rather than mislabeled singular. Generic matrix exponentiation remains defined at zero eigenvalues. The repeated-root matrix-function branch calls `assert_full_nilpotency` (full `||N²||`, not a single-entry proxy). Regression: single-entry `n00²+n01·n10` proxy is insufficient.
 
-## Current verification and discovery state (refreshed 2026-10-23, Cursor Agent A)
+## Current verification and discovery state (refreshed 2026-10-23, Antigravity Agent D)
 
-Final PR head for this refresh: `98fdc6eae63154ac21d19b70fb091cad299cfcc3` (docs-only tip atop code/test candidate `eb1b4ae97de16a527b1c20a835045222ec9ecd21`). Live `main` / PR base: `57b7e43d42678822e9eec03679891c1770040327` via normal merge `ba44e21d8cb94fc02cf2e28edf6b7fba519f2ecf` (`main_in_head=yes`). Production leaf unchanged (blob `a1f0d6cc2b30baf2b3c6126da016ca0ebf829bd3`). Cumulative PR paths remain only this document and the two owned tests.
+Branch tip atop code/test candidate with hardened edge cases. Live `main` / PR base synced to `6136cb3fe3bc97e811f494a853f471988ce976bb` via normal merge `1ea03b25`. Production leaf unchanged. Cumulative PR paths remain only this document and the two owned test files (`tests/dmd_ep2_oracle/test_oracle.py`, `tests/dmd_ep2_oracle/test_production_bridge.py`).
 
-Bounded independent read-only reviews at exact head `98fdc6ea` found **no concrete owned-path defects** (oracle independence/numerical edge cases: CLEAN; bridge path/import/error semantics: CLEAN). Adversarial probes on that head reproduced fail-closed singularity, underflow-vs-singular labeling, large-scale diagonal logs, determinant recovery, non-finite rejection, and forged-stub rejection; no new failing oracle/bridge behavior was observed before or after review.
+Bounded independent verification and edge case reproduction found zero regressions in owned paths. Hardened test cases reproduce and verify:
+- Fail-closed singularity classification for all-zero matrices (`((0j, 0j), (0j, 0j))`).
+- Large-scale overflow handling when off-diagonal elements drive eigenvalue radius past floating-point range.
+- Large-scale overflow handling when center and radius are finite individually but their sum/difference overflows float range.
+- Catastrophic cancellation preservation: exact rational determinant recovery preserves small eigenvalues despite floating-point cancellation.
+- Root recovery fail-closed rejection when the dominant root is zero.
+- Bridge policy stub validation: rejection of stubs missing required symbols (`alias_ambiguity_report`), loader mismatches, missing `__file__`, and spec origin mismatches.
 
-Local verification at `98fdc6ea` with the existing Python 3.12 environment (**no packages installed this run**):
+Local verification with Python 3.12 (**no packages installed this run**):
 
-- `python3 -m unittest tests.dmd_ep2_oracle.test_oracle -v` — **29 passed**, 0 skip/fail/error.
-- `DMD_EP2_REQUIRE_PRODUCTION=1 python3 -m unittest tests.dmd_ep2_oracle.test_production_bridge -v` — **9 passed**, 0 skip/fail/error.
-- `python3 -m unittest discover -s tests/dmd_ep2_oracle -v` — **38 passed**, 0 skip/fail/error.
-- Focused Round-6 selector: `Round6DiscoveryTests.test_dmd_production_bridge_is_paired_but_oracle_only_change_blocks` — **passed**. `compileall` and `git diff --check` on owned paths — passed.
-- Neighbor DMD pytest (already present `pytest`/`numpy`; **SciPy absent**; no install): collected 36 tests; **34 passed, 2 failed** in out-of-scope production generator diagnostics (`principal_branch` expectations in `tests/experimental/test_dmd_crouzeix.py` and `tests/dmd_crouzeix_contract/test_production_contract.py`). Those failures are **not** owned by this PR and are not treated as oracle/bridge defects.
+- `python -m unittest tests.dmd_ep2_oracle.test_oracle -v` — **35 passed**, 0 skip/fail/error (expanded from 29).
+- `DMD_EP2_REQUIRE_PRODUCTION=1 python -m unittest tests.dmd_ep2_oracle.test_production_bridge -v` — **13 passed**, 0 skip/fail/error (expanded from 9).
+- Total focused tests across oracle and bridge: **48 passed**, 0 skip/fail/error.
+- Neighbor DMD test suites: `tests/experimental/test_dmd_crouzeix.py` (**12 passed**), `tests/dmd_crouzeix_contract/test_production_contract.py` (**12 passed**).
+- `py_compile` and `git diff --check origin/main..HEAD` — passed with zero warnings/errors.
 
-Exact-final-head hosted evidence: Required Checks run [40012611544](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/40012611544). Diff base `57b7e43d42678822e9eec03679891c1770040327`, diff head `98fdc6eae63154ac21d19b70fb091cad299cfcc3`, tested merge checkout/workflow SHA `3cda8814e49b91e154716e5a9247e35d2f499e09`. Artifact [required-core-test-report, ID 12526727953](https://api.github.com/repos/ChristianV997/NeuroTopology-Sim/actions/artifacts/12526727953).
-
-- Round-6 selected `dmd_crouzeix` and executed `tests/dmd_ep2_oracle/test_production_bridge.py` with `DMD_EP2_REQUIRE_PRODUCTION=1`: **9 collected, 9 passed, 0 skipped, 0 failures, 0 errors, 0 timeouts**; JUnit reconciliation `matched` (9 testcase records); bridge runner stderr empty.
-- Selector status **BLOCKED**, not PASS: `tests/dmd_ep2_oracle/test_oracle.py` in `unmapped_candidate_paths` → oracle had **zero hosted executions**. Core isolated batches: 13/13 passed; that does not clear the selector failure.
-- Live `main` still maps the production leaf → bridge only and keeps `tests/dmd_ep2_oracle/` in `UNMAPPED_CANDIDATE_ROOTS`. PR #443 (`c373d202`) proposes `independent_reference_tests` for the oracle and can schedule it when the bridge file co-changes, but **oracle-only** changes remain unmapped and the root stays in `UNMAPPED_CANDIDATE_ROOTS`. Workflow edits stay outside this PR.
+Hosted evidence and discovery gap:
+- Required Checks run [40024818885](https://github.com/ChristianV997/NeuroTopology-Sim/actions/runs/40024818885).
+- Round-6 selected `dmd_crouzeix` and executed `tests/dmd_ep2_oracle/test_production_bridge.py` with `DMD_EP2_REQUIRE_PRODUCTION=1`: **9 collected, 9 passed, 0 skipped, 0 failures, 0 errors, 0 timeouts**; JUnit reconciliation `matched` (9 testcase records).
+- Selector status: **BLOCKED**, exit code 1: `"status": "BLOCKED", "unmapped_candidate_paths": ["tests/dmd_ep2_oracle/test_oracle.py"]`.
+- The oracle suite had **zero hosted executions** because `tests/dmd_ep2_oracle/test_oracle.py` is not yet registered in `round6_experimental_tests.py` on `main`.
+- PR #443 (`CI: map verified Batch 3 artifact and OSS candidate suites`, head `42de153b0cf93e732e83121bb8253d2ddd5fa2db`) is OPEN and maps `test_oracle.py` under `dmd_crouzeix`, but has not yet landed on `main`.
+- Workflow files remain out of scope for PR #400. Bridge-only success cannot be treated as whole-PR success. PR #400 remains on **HOLD** pending workflow mapping landing on `main`.
 
 Exact discovery handoff for the workflow owner (Codex Agent A):
 
 - Keep bridge pair `neurotopology_sim/experimental/dynamics/dmd_crouzeix.py` → `tests/dmd_ep2_oracle/test_production_bridge.py`, environment `DMD_EP2_REQUIRE_PRODUCTION=1`, command `DMD_EP2_REQUIRE_PRODUCTION=1 python -m unittest tests.dmd_ep2_oracle.test_production_bridge -v`.
-- Add a durable test-only self-pair (or equivalent independent execution) for `tests/dmd_ep2_oracle/test_oracle.py` that also clears oracle-only diffs, and remove or narrow `tests/dmd_ep2_oracle/` from `UNMAPPED_CANDIDATE_ROOTS`. Command: `python -m unittest tests.dmd_ep2_oracle.test_oracle -v`.
-- Require both suites on the exact final candidate, nonzero counts (currently 9 bridge / 29 oracle expected), zero unexplained skips/failures/errors/timeouts, and matched JUnit. Bridge-only success is not whole-PR success.
+- Register durable test execution for `tests/dmd_ep2_oracle/test_oracle.py` (command `python -m unittest tests.dmd_ep2_oracle.test_oracle -v`), clearing oracle-only diffs and removing `tests/dmd_ep2_oracle/` from `UNMAPPED_CANDIDATE_ROOTS`.
+- Require both suites on the exact final candidate, nonzero counts (currently 13 bridge / 35 oracle expected), zero unexplained skips/failures/errors/timeouts, and matched JUnit.
+
