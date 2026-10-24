@@ -113,6 +113,20 @@ _PLACEHOLDER_PROVENANCE_VALUES = frozenset(
         "nan",
         "undefined",
         "unspecified",
+        "rejected",
+        "inconclusive",
+        "error",
+        "blocked",
+        "supported",
+        "confirmed",
+        "validated",
+        "verified",
+        "accepted",
+        "approved",
+        "admissible",
+        "complete",
+        "success",
+        "falsified",
     }
 )
 

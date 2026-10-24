@@ -116,7 +116,12 @@ unrecognized evidence remains unknown and unverified positive statuses become
 create support.
 
 Likewise, a literal validation `verdict: PASS` is recorded as
-`REVIEW_REQUIRED` and does not create a `supports` edge. The projection does
+`REVIEW_REQUIRED` and does not create a `supports` edge. Run verdicts follow
+the same rule: a `PASS` run is `REVIEW_REQUIRED`, a failing run is
+`FALSIFIED`, and no run node is ever given a bare `pass` status. The declared
+`evidence_class` is recomputed for every node type, so a node cannot
+self-declare `formal` without the preregistration and held-out flags.
+Node types and status values are case-normalized before these gates apply. The projection does
 not adjudicate provenance, artifact lineage, labels, nulls, multiplicity, or
 split integrity; those require independent review before any scientific
 interpretation. A metadata declaration alone is not scientific support.

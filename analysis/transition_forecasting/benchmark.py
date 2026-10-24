@@ -273,10 +273,10 @@ def _metadata_is_missing(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"", "unknown", "missing", "not_provided", "none", "unavailable"}
     if isinstance(value, Mapping):
-        # A declaration is supplied only when at least one leaf carries a value.
-        return all(_metadata_is_missing(item) for item in value.values())
+        # A declaration is complete only when every field carries a value.
+        return not value or any(_metadata_is_missing(item) for item in value.values())
     if isinstance(value, Sequence):
-        return all(_metadata_is_missing(item) for item in value)
+        return not value or any(_metadata_is_missing(item) for item in value)
     return False
 
 

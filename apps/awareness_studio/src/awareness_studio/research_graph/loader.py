@@ -65,10 +65,12 @@ def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
         or source.get("review_status") == "reviewed_accepted"
         or (source.get("preregistered") is True and source.get("held_out_split_locked") is True)
     )
+    # Synthetic and proxy records can never carry a promotion status, whatever
+    # verification flags they declare; empirical and formal ones need verification.
     unverified_claim = evidence_class in {
-        EvidenceClass.EMPIRICAL.value,
-        EvidenceClass.FORMAL.value,
-    } and not verified
+        EvidenceClass.SYNTHETIC.value,
+        EvidenceClass.PROXY.value,
+    } or (evidence_class in {EvidenceClass.EMPIRICAL.value, EvidenceClass.FORMAL.value} and not verified)
     if (
         normalized_status in _UNVERIFIED_SOURCE_STATUSES
         and (evidence_class == EvidenceClass.UNKNOWN.value or unverified_claim)
@@ -89,17 +91,19 @@ _STATUS_GATED_NODE_TYPES = frozenset({
 
 
 def _run_status(run: Mapping[str, Any]) -> str:
-    """A run verdict is evidence to review, never a bare 'pass' node status."""
-    verdict = str(run.get("verdict", NodeStatus.ACTIVE.value)).strip().lower()
-    if verdict in {"pass", "passed"}:
-        return NodeStatus.REVIEW_REQUIRED.value
-    return verdict
+    """A run verdict is evidence to review: it passes the same status gate as
+    other evidence, and a failing verdict is recorded as falsified."""
+    verdict = run.get("verdict")
+    if isinstance(verdict, str) and verdict.strip().upper() in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+        return NodeStatus.FALSIFIED.value
+    declared = verdict if isinstance(verdict, str) and verdict.strip() else NodeStatus.ACTIVE.value
+    return _source_status({**run, "status": declared}, _classify_evidence(run))
 
 
 def _direct_node_projection(
     raw_node: Mapping[str, Any],
 ) -> tuple[Any, Any, Any, Any]:
-    node_type = raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value)
+    node_type = str(raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value)).strip().lower()
     raw_properties = raw_node.get("properties", {})
     metadata = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
     metadata.update(raw_node)

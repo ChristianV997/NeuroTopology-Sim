@@ -28,9 +28,9 @@ This package always serializes `formal_bayes_factor: null` and
 The report carries an `adjudication` record describing missing null-model,
 calibration, split-lock, and multiplicity declarations. Those declarations
 are audit inputs, not authority: caller-supplied formal evidence, Bayes-factor,
-or PASS metadata is recorded as ignored. Empty sequences, and mappings whose
-leaves are all empty or unknown (for example `{"families": []}`), count as
-missing requirements, not as supplied adjudication. An external independently validated
+or PASS metadata is recorded as ignored. Empty sequences, and mappings with any
+empty, unknown, or false field (for example `{"families": [], "method": "shuffle"}`),
+count as missing requirements, not as supplied adjudication. An external independently validated
 adjudication path is required before any stronger scientific claim can be
 considered.
 

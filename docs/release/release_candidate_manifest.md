@@ -55,6 +55,10 @@ that is technically `merged_into_main` remains `blocked_by_scientific_review`,
 `blocked_by_ci`, `blocked_by_infrastructure`, `blocked_by_dependency`, or
 `inconclusive` until its independent gates are admissible. The current
 metadata-only scientific gate intentionally cannot emit `ready_for_release`.
+Verdict strings are canonicalized before evaluation: invisible format
+characters, surrounding whitespace, casing, and `-` or space separators are
+ignored, so `PASS`, `pass`, and `Pass` are one unverified literal, and
+`NOT_SUPPORTED`, `not supported`, `FAIL`, `FALSIFIED`, and `REJECTED` all block.
 Release readiness also requires classified CI to be `passing`; `pending`,
 `skipped`, and `unavailable` CI states remain `inconclusive` rather than being
 treated as a release pass.

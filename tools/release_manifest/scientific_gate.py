@@ -11,9 +11,22 @@ allowing a literal verdict to promote an unverified result.
 """
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import Optional
 
 from .models import Evidence, ScientificGateInput
+
+# Explicit negative verdicts block. Anything else unrecognized is absent data.
+_NEGATIVE_VERDICTS = frozenset({"NOT_SUPPORTED", "ERROR", "FAIL", "FAILED", "FALSIFIED", "REJECTED"})
+
+
+def _canonical_verdict(value):
+    """Strip invisible format characters and normalize separators and casing."""
+    if not isinstance(value, str):
+        return value
+    visible = "".join(ch for ch in value if unicodedata.category(ch) != "Cf")
+    return re.sub(r"[\s\-]+", "_", visible.strip()).upper()
 
 
 def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple:
@@ -39,8 +52,8 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
             findings,
         )
 
-    # Verdict casing and padding must not change how a negative or literal PASS is treated.
-    verdict = gate_input.verdict.strip().upper() if isinstance(gate_input.verdict, str) else gate_input.verdict
+    # Casing, padding, invisible characters, and separators must not change how a verdict blocks.
+    verdict = _canonical_verdict(gate_input.verdict)
 
     if verdict == "PASS":
         findings.append(
@@ -53,7 +66,7 @@ def evaluate_scientific_gate(gate_input: Optional[ScientificGateInput]) -> tuple
             findings,
         )
 
-    if verdict in ("NOT_SUPPORTED", "ERROR"):
+    if verdict in _NEGATIVE_VERDICTS:
         return (
             Evidence("blocked", f"verdict={gate_input.verdict!r} (data_mode={gate_input.data_mode!r})"),
             True,
