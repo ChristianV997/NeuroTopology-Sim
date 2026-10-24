@@ -368,6 +368,12 @@ def validate_block(block_metadata: Mapping[str, Any]) -> dict[str, Any]:
         status = BlockStatus.ERROR
         codes.append(ReasonCode.MALFORMED_INPUT.value)
         warnings.append("scientific_pass must remain false")
+    # Never retain OK alongside a non-converted status after escalation.
+    if status != BlockStatus.CONVERTED:
+        codes = [code for code in codes if code != ReasonCode.OK.value]
+    codes = list(dict.fromkeys(codes))
+    if status == BlockStatus.CONVERTED and not codes:
+        codes = [ReasonCode.OK.value]
     return {
         "status": status.value,
         "reason_codes": codes,
