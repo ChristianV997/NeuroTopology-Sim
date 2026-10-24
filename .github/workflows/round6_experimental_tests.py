@@ -1693,8 +1693,12 @@ COMPONENTS: dict[str, dict[str, Any]] = {
                 "analysis/empirical_higher_order/validation.py",
             )
         ),
-        "implementation_roots": ("analysis/empirical_higher_order/",),
-        "candidate_test_roots": ("tests/empirical_higher_order/",),
+        "implementation_roots": (
+            "analysis/empirical_higher_order/runner.py",
+            "analysis/empirical_higher_order/schema.py",
+            "analysis/empirical_higher_order/validation.py",
+        ),
+        "candidate_test_roots": ("tests/empirical_higher_order/test_runner.py",),
     },
     "transition_forecasting_benchmark": {
         "triggers": (
@@ -1715,10 +1719,10 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             },
         ),
         "implementation_roots": (
-            "analysis/transition_forecasting/",
+            "analysis/transition_forecasting/benchmark.py",
             "scripts/run_transition_benchmark.py",
         ),
-        "candidate_test_roots": ("tests/transition_forecasting/",),
+        "candidate_test_roots": ("tests/transition_forecasting/test_benchmark.py",),
     },
     "release_manifest": {
         "triggers": (
@@ -1778,10 +1782,18 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             },
         ),
         "implementation_roots": (
-            "tools/release_manifest/",
+            "tools/release_manifest/manifest_builder.py",
+            "tools/release_manifest/merge_state.py",
+            "tools/release_manifest/models.py",
+            "tools/release_manifest/reporting.py",
             "scripts/build_release_manifest.py",
         ),
-        "candidate_test_roots": ("tests/release_manifest/",),
+        "candidate_test_roots": (
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+        ),
     },
     "oss_adoption_gates": {
         "triggers": (

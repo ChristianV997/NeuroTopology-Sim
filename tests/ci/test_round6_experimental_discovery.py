@@ -3974,6 +3974,40 @@ def test_fixture():
         )
         self.assertEqual(helper._unmapped_candidate_paths(winding_paths), [])
 
+    def test_pr357_exact_component_roots_do_not_claim_unknown_siblings(self):
+        helper = _helper()
+        fixtures = {
+            "empirical_higher_order": (
+                "analysis/empirical_higher_order/runner.py",
+                "tests/empirical_higher_order/test_runner.py",
+                "analysis/empirical_higher_order/unregistered_extension.py",
+                "tests/empirical_higher_order/test_unregistered_extension.py",
+            ),
+            "transition_forecasting_benchmark": (
+                "analysis/transition_forecasting/benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+                "analysis/transition_forecasting/unregistered_extension.py",
+                "tests/transition_forecasting/test_unregistered_extension.py",
+            ),
+            "release_manifest": (
+                "tools/release_manifest/manifest_builder.py",
+                "tests/release_manifest/test_manifest_builder.py",
+                "tools/release_manifest/scientific_gate.py",
+                "tests/release_manifest/test_scientific_gate.py",
+            ),
+        }
+        for component, (source, test_path, unknown_source, unknown_test) in fixtures.items():
+            with self.subTest(component=component):
+                changed = {source, test_path, unknown_source, unknown_test}
+                self.assertEqual(
+                    helper._changed_candidate_paths(helper.COMPONENTS[component], changed),
+                    [],
+                )
+                self.assertEqual(
+                    set(helper._unmapped_candidate_paths(changed)),
+                    {unknown_source, unknown_test},
+                )
+
     def test_oss_adoption_mapping_runs_the_verified_owner_suite(self):
         helper = _helper()
         component = "oss_adoption_gates"
