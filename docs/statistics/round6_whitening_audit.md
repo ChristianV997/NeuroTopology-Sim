@@ -124,11 +124,10 @@ The verifier implements explicit pre-condition checks and raises distinct except
 
 ## 6. Verification and Test Results
 
-The test suite in `tests/whitening_audit/test_whitening_audit.py` contains 15 unit tests executed with standard library `unittest`:
+The test suite in `tests/whitening_audit/test_whitening_audit.py` contains 38 unit tests executed with standard library `unittest`:
 
 ```text
-Ran 15 tests in 0.185s
-OK
+38 passed in 24.09s
 ```
 
 All stress tests pass:
