@@ -408,18 +408,39 @@ def test_write_report_and_cli(tmp_path: Path):
 
 @pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), float("-inf")])
 def test_report_serialization_rejects_nonfinite_values_before_writing(tmp_path: Path, nonfinite: float):
-    from tools.batch3_offline_integration.serialization import canonical_bytes
+    from tools.batch3_offline_integration.serialization import (
+        canonical_bytes,
+        json_safe,
+        sha256_hex,
+    )
 
     invalid = {"nested": [{"metric": nonfinite}]}
+    with pytest.raises(ValueError, match="non-finite"):
+        json_safe(invalid)
     with pytest.raises(ValueError, match="non-finite"):
         dumps(invalid)
     with pytest.raises(ValueError, match="non-finite"):
         canonical_bytes(invalid)
+    with pytest.raises(ValueError, match="non-finite"):
+        sha256_hex(invalid)
 
     destination = tmp_path / "invalid-report.json"
     with pytest.raises(ValueError, match="non-finite"):
         write_report(invalid, str(destination))
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf"), float("-inf")])
+def test_write_report_preserves_existing_destination_on_nonfinite(tmp_path: Path, nonfinite: float):
+    """Failed non-finite serialization must not truncate an existing report file."""
+    destination = tmp_path / "existing-report.json"
+    prior = '{"ok": true, "marker": "SYNTHETIC_PRESERVE_449"}\n'
+    destination.write_text(prior, encoding="utf-8")
+    before_mtime = destination.stat().st_mtime_ns
+    with pytest.raises(ValueError, match="non-finite"):
+        write_report({"nested": [{"metric": nonfinite}]}, str(destination))
+    assert destination.read_text(encoding="utf-8") == prior
+    assert destination.stat().st_mtime_ns == before_mtime
 
 
 def test_does_not_overlap_batch2_paths():
