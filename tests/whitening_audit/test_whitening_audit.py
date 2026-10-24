@@ -601,6 +601,28 @@ class TestWhiteningAudit(unittest.TestCase):
         with self.assertRaises(InvalidCovarianceError):
             project_spd_covariance([[1.0, 1e-6], [0.0, 1.0]])
 
+    def test_huge_diagonal_does_not_mask_off_diagonal_asymmetry(self) -> None:
+        """Regression: a 1e12 diagonal must not hide asymmetry 1.0 between entries 0.01 and 1.01.
+
+        The symmetry tolerance was scaled by the diagonal entries, so the matrix was accepted and
+        the audit then silently used the upper triangle (0.01) and ignored the lower one (1.01).
+        """
+        from tools.whitening_audit.matrix_ops import validate_square_symmetric
+        from tools.whitening_audit.types import InvalidCovarianceError
+        from tools.whitening_audit.whitening_verifier import compare_whitening_methods
+
+        asymmetric = [[1e12, 0.01], [1.01, 1e12]]
+        with self.assertRaises(InvalidCovarianceError):
+            validate_square_symmetric(asymmetric)
+        with self.assertRaises(InvalidCovarianceError):
+            compare_whitening_methods(asymmetric, eigenvalue_floor=1e-300)
+
+    def test_huge_diagonal_still_accepts_rounding_level_symmetry(self) -> None:
+        """Control: rounding-level asymmetry at huge scale stays accepted; tolerance is not loosened."""
+        from tools.whitening_audit.matrix_ops import validate_square_symmetric
+
+        validate_square_symmetric([[1e12, 1e-5], [1e-5 * (1.0 + 1e-15), 1e12]])
+
     def test_jacobi_numpy_oracle_across_tiny_ordinary_large_scales(self) -> None:
         """Adversarial: Jacobi vs NumPy eigh under tiny / ordinary / large SPD scales."""
         try:
