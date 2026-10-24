@@ -364,3 +364,11 @@ def test_auprc_multi_row_ties_are_invariant_to_row_order():
         order = np.array(order)
         assert _auprc(y[order], scores[order]) == pytest.approx(expected)
 
+
+@pytest.mark.parametrize("declaration", [
+    {"families": [], "method": "shuffle"},
+    {"families": ["label-permutation"], "method": None},
+])
+def test_partially_empty_adjudication_declarations_are_missing(declaration):
+    # Regression (#357 review): a declaration with any empty or unknown field is not a complete declaration.
+    assert _metadata_is_missing(declaration)

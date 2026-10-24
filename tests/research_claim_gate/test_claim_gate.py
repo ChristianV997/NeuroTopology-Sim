@@ -218,3 +218,11 @@ def test_bare_verdict_tokens_cannot_serve_as_complete_provenance(field, token):
     result = evaluate_claim(good_claim(provenance=provenance))
     assert result.decision == "CLAIM_PROVENANCE_INVALID"
 
+
+@pytest.mark.parametrize("field", ["source_id", "acquisition", "dataset_version"])
+@pytest.mark.parametrize("token", ["rejected", "inconclusive", "error", "blocked", "supported", "verified", "accepted", "success"])
+def test_verdict_and_status_words_cannot_serve_as_provenance(field, token):
+    # Regression (#357 review): verdict and status vocabulary is not a source identity.
+    provenance = {**GOOD_PROVENANCE, field: token}
+    assert validate_provenance(provenance).status == "invalid"
+    assert evaluate_claim(good_claim(provenance=provenance)).decision == "CLAIM_PROVENANCE_INVALID"

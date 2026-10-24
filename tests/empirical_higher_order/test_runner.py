@@ -395,3 +395,16 @@ def test_present_optional_spectra_must_be_valid_when_checksum_bound(tmp_path, co
     path.write_text(json.dumps(data))
     assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE
 
+
+@pytest.mark.parametrize("family", ["psd", "higher_order_spectra"])
+def test_non_numeric_checksum_bound_artifact_is_inconclusive_not_raised(tmp_path, family):
+    # Regression (#357 review): a string-dtype artifact raised TypeError from np.isfinite instead of reporting.
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    for record in data["recordings"]:
+        name = f"{record['subject_id']}_{record['condition_label'] or 'x'}_{family}_str.npy"
+        np.save(tmp_path / name, np.array([["a", "b"], ["c", "d"]]))
+        record["feature_paths"][family] = name
+        record["artifact_checksums"][family] = hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
+    path.write_text(json.dumps(data))
+    assert validate_manifest(path).status is ReadinessState.INCONCLUSIVE

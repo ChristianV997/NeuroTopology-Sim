@@ -232,3 +232,29 @@ def test_run_verdict_pass_is_not_surfaced_as_a_bare_pass_status():
     graph = load_from_dict({"runs": [{"run_id": "r-pass", "verdict": "PASS", "data_mode": "empirical"}]})
     assert graph.nodes["r-pass"].status != "pass"
     assert graph.nodes["r-pass"].status == NodeStatus.REVIEW_REQUIRED.value
+
+
+@pytest.mark.parametrize("verdict", ["SUPPORTED", "CONFIRMED", None])
+def test_run_status_cannot_be_a_promoted_or_literal_none_verdict(verdict):
+    # Regression (#357 review): run verdicts go through the same status gate; None is never a status string.
+    graph = load_from_dict({"runs": [{"run_id": "r-x", "verdict": verdict, "data_mode": "empirical"}]})
+    status = graph.nodes["r-x"].status
+    assert status not in {"supported", "confirmed", "none"}
+    assert status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_node_type_casing_cannot_skip_the_status_gate():
+    node, _ = _direct_node({"node_id": "c-case", "node_type": "Evidence_Record", "evidence_class": "empirical", "status": "supported"})
+    assert node.node_type == "evidence_record"
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_validation_fail_casing_is_falsified_regardless_of_node_type_casing():
+    node, _ = _direct_node({"node_id": "v-case", "node_type": "VALIDATION", "verdict": "FAIL"})
+    assert node.status == NodeStatus.FALSIFIED.value
+
+
+def test_synthetic_or_proxy_record_declared_supported_is_review_required():
+    for evidence in ({"is_synthetic": True}, {"is_proxy": True}):
+        node, _ = _direct_node({"node_id": "sp", "node_type": "evidence_record", "status": "supported", **evidence})
+        assert node.status == NodeStatus.REVIEW_REQUIRED.value, evidence

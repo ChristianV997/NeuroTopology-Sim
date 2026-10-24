@@ -211,3 +211,10 @@ def test_bare_pass_or_none_verdict_never_promotes_release(verdict):
     release_state, _ = classify_release_state(ctx, merge_state="merged_into_main", scientific_gate_value=evidence.value)
     assert release_state != "ready_for_release"
 
+
+@pytest.mark.parametrize("verdict", ["PASS\u200b", "NOT_SUPPORTED\u200b", "FAIL", "Falsified", "NOT SUPPORTED", "rejected"])
+def test_obfuscated_or_negative_verdicts_block_rather_than_fall_through(verdict):
+    # Regression (#357 review): zero-width padding and negative vocabulary must not leave a verdict non-blocking.
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert evidence.value == "blocked" or blocking is True
+    assert evidence.value != "pass"
