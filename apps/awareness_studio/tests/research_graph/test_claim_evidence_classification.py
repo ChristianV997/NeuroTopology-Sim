@@ -7,8 +7,8 @@ rejects unknown class strings. Synthetic provenance must not be relabelled.
 """
 from __future__ import annotations
 
-from awareness_studio.research_graph.loader import load_from_dict
-from awareness_studio.research_graph.types import EvidenceClass, NodeStatus
+from awareness_studio.research_graph.loader import load_from_dict, load_from_jsonl
+from awareness_studio.research_graph.types import DiagnosticCode, EvidenceClass, NodeStatus
 
 
 def _claim_node(claim: dict):
@@ -47,3 +47,114 @@ def test_validation_pass_is_pending_review_not_supported():
         }
     )
     assert graph.nodes["v-pass"].status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_direct_source_snapshot_node_uses_source_gate():
+    graph = load_from_dict({
+        "nodes": [{
+            "node_id": "src-direct",
+            "node_type": "source_snapshot",
+            "status": "active",
+            "evidence_class": "unknown",
+        }],
+    })
+
+    node = graph.nodes["src-direct"]
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_direct_source_snapshot_without_status_does_not_default_active():
+    graph = load_from_dict({
+        "nodes": [{"node_id": "src-direct-default", "node_type": "source_snapshot"}],
+    })
+
+    assert graph.nodes["src-direct-default"].status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_string_false_preregistration_flags_do_not_promote_source():
+    graph = load_from_dict({
+        "sources": [{
+            "source_id": "src-string-false",
+            "title": "String false flags",
+            "source_type": "journal_article",
+            "status": "active",
+            "evidence_class": "formal",
+            "preregistered": "false",
+            "held_out_split_locked": "false",
+        }],
+    })
+
+    node = graph.nodes["src-string-false"]
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+    assert any(
+        diagnostic.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+        for diagnostic in graph.diagnostics
+    )
+
+
+def test_direct_validation_node_pass_remains_pending():
+    graph = load_from_dict({
+        "nodes": [{
+            "node_id": "val-direct-pass",
+            "node_type": "validation",
+            "status": "supported",
+            "evidence_class": "formal",
+            "properties": {"verdict": "PASS"},
+        }],
+    })
+
+    node = graph.nodes["val-direct-pass"]
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+    assert not any(
+        edge.source_id == "val-direct-pass" and edge.edge_type == "supports"
+        for edge in graph.edges
+    )
+
+
+def test_direct_source_snapshot_string_false_is_not_verified():
+    graph = load_from_dict({
+        "nodes": [{
+            "node_id": "src-direct-false",
+            "node_type": "source_snapshot",
+            "status": "active",
+            "evidence_class": "formal",
+            "preregistered": "false",
+            "held_out_split_locked": "false",
+        }],
+    })
+
+    node = graph.nodes["src-direct-false"]
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+    assert any(
+        diagnostic.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
+        for diagnostic in graph.diagnostics
+    )
+
+
+def test_string_false_is_formal_flag_does_not_promote():
+    graph = load_from_dict({
+        "sources": [{
+            "source_id": "src-formal-flag-false",
+            "title": "String false formal flag",
+            "status": "active",
+            "is_formal": "false",
+            "preregistered": True,
+            "held_out_split_locked": True,
+        }],
+    })
+
+    node = graph.nodes["src-formal-flag-false"]
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_jsonl_source_snapshot_uses_source_gate():
+    graph = load_from_jsonl(
+        '{"node_id":"src-jsonl","node_type":"source_snapshot",'
+        '"evidence_class":"unknown","status":"active"}'
+    )
+
+    assert graph.nodes["src-jsonl"].status == NodeStatus.REVIEW_REQUIRED.value

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import weakref
 from pathlib import Path
@@ -253,3 +254,99 @@ def test_target_timestamp_length_mismatch_is_inconclusive(tmp_path):
     report = run_empirical(path)
     assert report["status"] == ReadinessState.INCONCLUSIVE.value
     assert any("TEMPORAL_LINEAGE_INVALID" in reason for reason in report["validation"]["reasons"])
+
+
+def test_boolean_channel_count_is_rejected(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["channel_count"] = True
+    data["recordings"][0]["montage_coordinates"] = [[0, 0, 0]]
+    path.write_text(json.dumps(data))
+
+    result = validate_manifest(path)
+
+    assert result.status is ReadinessState.INCONCLUSIVE
+    assert any("channel_count is invalid" in reason for reason in result.reasons)
+
+
+def test_unknown_recording_quality_is_not_forecasting_ready(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["recording_quality_state"] = "UNKNOWN"
+    path.write_text(json.dumps(data))
+
+    result = validate_manifest(path)
+
+    assert result.status is ReadinessState.INCOMPLETE_PROVENANCE
+    assert any("UNKNOWN" in reason for reason in result.reasons)
+
+
+def test_whitespace_provenance_source_is_incomplete(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["provenance"]["source"] = "   "
+    path.write_text(json.dumps(data))
+
+    assert validate_manifest(path).status is ReadinessState.INCOMPLETE_PROVENANCE
+
+
+@pytest.mark.parametrize("label", [None, False, 0])
+def test_non_string_condition_label_is_not_forecasting_ready(tmp_path, label):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["recordings"][0]["condition_label"] = label
+    path.write_text(json.dumps(data))
+
+    result = validate_manifest(path)
+
+    assert not result.ok
+    assert any("condition_label" in reason for reason in result.reasons)
+
+
+def test_null_target_definition_is_incomplete(tmp_path):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    data["target_definition"] = None
+    path.write_text(json.dumps(data))
+
+    result = validate_manifest(path)
+
+    assert result.status is ReadinessState.INCOMPLETE_PROVENANCE
+    assert any("target_definition" in reason for reason in result.reasons)
+
+
+def test_artifact_changed_after_checksum_uses_verified_snapshot(tmp_path, monkeypatch):
+    path = _manifest(tmp_path)
+    data = json.loads(path.read_text())
+    artifact = (tmp_path / data["recordings"][0]["feature_paths"]["psd"]).resolve()
+    expected_checksum = data["recordings"][0]["artifact_checksums"]["psd"]
+    replacement = io.BytesIO()
+    np.save(replacement, np.ones((6, 3), dtype=float))
+    original_load = validation_module._load_array
+    mutated = False
+
+    def mutate_source_after_snapshot(candidate, *args, **kwargs):
+        nonlocal mutated
+        if not mutated:
+            artifact.write_bytes(replacement.getvalue())
+            mutated = True
+        return original_load(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(validation_module, "_load_array", mutate_source_after_snapshot)
+    result = validate_manifest(path)
+    verified_artifact = result.recordings[0]["paths"]["psd"]
+
+    assert mutated
+    assert result.status is ReadinessState.READY_FOR_FORECASTING
+    assert verified_artifact.resolve() != artifact
+    assert hashlib.sha256(verified_artifact.read_bytes()).hexdigest() == expected_checksum
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() != expected_checksum
+
+
+def test_auprc_tied_scores_is_invariant_to_row_order():
+    scores = np.array([0.5, 0.5])
+    positive_first = runner_module._metrics(np.array([1, 0]), scores)["auprc"]
+    negative_first = runner_module._metrics(np.array([0, 1]), scores)["auprc"]
+
+    assert positive_first == pytest.approx(0.5)
+    assert negative_first == pytest.approx(0.5)

@@ -36,11 +36,15 @@ def _metrics(y: np.ndarray, p: np.ndarray) -> dict[str, Any]:
             (positive_rank_sum - positive_count * (positive_count + 1) / 2)
             / (positive_count * negative_count)
         )
-        order = np.argsort(-p)
+        scores = np.asarray(p)
+        order = np.argsort(-scores, kind="mergesort")
+        sorted_scores = scores[order]
         sorted_y = y[order]
-        cumulative = np.cumsum(sorted_y)
-        denom = max(int(np.sum(y)), 1)
-        auprc = float(np.sum((cumulative / np.arange(1, len(y) + 1)) * sorted_y) / denom)
+        group_ends = np.flatnonzero(np.r_[sorted_scores[1:] != sorted_scores[:-1], True])
+        cumulative_hits = np.cumsum(sorted_y)[group_ends]
+        group_positive_counts = np.diff(np.r_[0, cumulative_hits])
+        precision_at_threshold = cumulative_hits / (group_ends + 1)
+        auprc = float(np.sum(group_positive_counts * precision_at_threshold) / positive_count)
     calibration = float(abs(float(np.mean(p)) - float(np.mean(y))))
     return {"rows": int(len(y)), "log_loss": log_loss, "brier_score": brier, "auroc": auroc, "auprc": auprc, "calibration_error": calibration}
 

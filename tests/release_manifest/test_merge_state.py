@@ -18,11 +18,21 @@ def test_ancestor_of_target_is_merged_into_main():
 
 
 def test_pr_snapshot_merged_true_overrides_missing_ancestry():
-    pr = PRSnapshot(number=1, state="closed", merged=True)
-    ctx = MergeStateContext(commit_resolves=True, pr_snapshot=pr)
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main")
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
     state, blockers = classify_merge_state(ctx)
     assert state == "merged_into_main"
     assert any("contradiction" in b for b in blockers)
+
+
+def test_pr_merged_to_different_base_is_not_merged_into_target():
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="release")
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("target_branch" in blocker for blocker in blockers)
 
 
 def test_pr_snapshot_says_not_merged_but_ancestry_says_merged_ancestry_wins():

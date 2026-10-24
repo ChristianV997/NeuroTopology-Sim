@@ -129,8 +129,8 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
     for nid, node in graph.nodes.items():
         # Check evidence class violations
         if node.node_type == NodeType.EVIDENCE_RECORD.value:
-            is_synth = node.properties.get("is_synthetic", False) or node.evidence_class == EvidenceClass.SYNTHETIC.value
-            is_proxy = node.properties.get("is_proxy", False) or node.evidence_class == EvidenceClass.PROXY.value
+            is_synth = node.properties.get("is_synthetic") is True or node.evidence_class == EvidenceClass.SYNTHETIC.value
+            is_proxy = node.properties.get("is_proxy") is True or node.evidence_class == EvidenceClass.PROXY.value
 
             if is_synth and node.evidence_class == EvidenceClass.FORMAL.value:
                 diagnostics.append(
@@ -173,7 +173,7 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
                 props.get("verification_status") == "verified"
                 or props.get("peer_review_status") == "peer_reviewed"
                 or props.get("review_status") == "reviewed_accepted"
-                or (props.get("preregistered", False) and props.get("held_out_split_locked", False))
+                or (props.get("preregistered") is True and props.get("held_out_split_locked") is True)
             )
             if not verified:
                 diagnostics.append(
@@ -196,13 +196,13 @@ def run_graph_diagnostics(graph: EvidenceGraph) -> list[GraphDiagnostic]:
                 gate_passed = False
                 reviewer = None
                 if isinstance(gate, dict):
-                    gate_passed = bool(gate.get("passed", False))
+                    gate_passed = gate.get("passed") is True
                     reviewer = gate.get("reviewer")
-                elif node.properties.get("human_review_passed"):
+                elif node.properties.get("human_review_passed") is True:
                     gate_passed = True
                     reviewer = node.properties.get("human_reviewer")
 
-                if not gate_passed or not reviewer:
+                if not gate_passed or not isinstance(reviewer, str) or not reviewer.strip():
                     diagnostics.append(
                         GraphDiagnostic(
                             code=DiagnosticCode.UNSUPPORTED_PROMOTION.value,

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from analysis.transition_forecasting import BenchmarkDataset, ForecastStatus, locked_split, run_benchmark, validate_split
-from analysis.transition_forecasting.benchmark import LeakageDetected, _auroc
+from analysis.transition_forecasting.benchmark import LeakageDetected, _auprc, _auroc, _metadata_is_missing
 from scripts.run_transition_benchmark import main as transition_benchmark_main
 
 
@@ -302,3 +302,26 @@ def test_target_derived_preprocessing_cannot_use_test_rows():
     dataset = make_dataset()
     report = run_benchmark(dataset, preprocessing_fit_indices=list(range(60, 72)))
     assert report.status == ForecastStatus.LEAKAGE_DETECTED.value
+
+
+def test_auprc_tied_scores_is_invariant_to_row_order():
+    scores = np.array([0.5, 0.5])
+    assert _auprc(np.array([1, 0]), scores) == pytest.approx(0.5)
+    assert _auprc(np.array([0, 1]), scores) == pytest.approx(0.5)
+
+
+def test_empty_adjudication_sequences_are_missing():
+    assert _metadata_is_missing([])
+    assert _metadata_is_missing(())
+
+    dataset = make_dataset(synthetic=False)
+    dataset.adjudication_metadata = {
+        "null_models": [],
+        "calibration": {},
+        "locked_split": (),
+        "multiplicity": {},
+    }
+    report = run_benchmark(dataset)
+
+    assert "null_models" in report.adjudication["missing_requirements"]
+    assert "locked_split" in report.adjudication["missing_requirements"]

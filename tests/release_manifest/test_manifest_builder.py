@@ -4,6 +4,7 @@ import socket
 import pytest
 
 from tools.release_manifest.manifest_builder import build_manifest
+from tools.release_manifest.merge_state import MergeStateContext, classify_release_state
 from tools.release_manifest.models import ChangedFileOwnership, ScientificGateInput
 from tests.release_manifest.conftest import commit_of
 
@@ -28,6 +29,21 @@ def test_verified_merge_reports_merged_into_main(git_repo):
     assert manifest.release_state == "inconclusive"
     assert manifest.release_eligibility is False
     assert manifest.verified_head_commit.value == head
+
+
+def test_bare_scientific_pass_does_not_make_release_ready():
+    ctx = MergeStateContext(
+        commit_resolves=True,
+        is_ancestor_of_target=True,
+        worst_ci_state="passing",
+    )
+    state, blockers = classify_release_state(
+        ctx,
+        merge_state="merged_into_main",
+        scientific_gate_value="pass",
+    )
+    assert state == "inconclusive"
+    assert blockers
 
 
 def test_integration_only_is_never_reported_as_merged(git_repo_with_integration_branch):

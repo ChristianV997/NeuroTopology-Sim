@@ -274,6 +274,8 @@ def _metadata_is_missing(value: Any) -> bool:
         return value.strip().lower() in {"", "unknown", "missing", "not_provided", "none", "unavailable"}
     if isinstance(value, Mapping):
         return not bool(value)
+    if isinstance(value, Sequence):
+        return not bool(value)
     return False
 
 
@@ -414,10 +416,15 @@ def _auprc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
     positives = int(y.sum())
     if positives == 0:
         return None
-    order = np.argsort(-np.asarray(p), kind="mergesort")
-    hits = np.cumsum(y[order])
-    precision = hits / np.arange(1, len(y) + 1)
-    return float(np.sum(precision[y[order] == 1]) / positives)
+    scores = np.asarray(p)
+    order = np.argsort(-scores, kind="mergesort")
+    sorted_scores = scores[order]
+    sorted_y = y[order]
+    group_ends = np.flatnonzero(np.r_[sorted_scores[1:] != sorted_scores[:-1], True])
+    cumulative_hits = np.cumsum(sorted_y)[group_ends]
+    group_positive_counts = np.diff(np.r_[0, cumulative_hits])
+    precision_at_threshold = cumulative_hits / (group_ends + 1)
+    return float(np.sum(group_positive_counts * precision_at_threshold) / positives)
 
 
 def _ece(y: np.ndarray, p: np.ndarray, bins: int = 10) -> float:

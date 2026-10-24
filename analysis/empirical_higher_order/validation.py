@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 import math
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -31,6 +33,7 @@ class ValidationResult:
     paired_subjects: list[str] = field(default_factory=list)
     missing_optional: list[str] = field(default_factory=list)
     manifest: dict[str, Any] | None = None
+    snapshot_dir: tempfile.TemporaryDirectory | None = field(default=None, repr=False, compare=False)
 
     @property
     def ok(self) -> bool:
@@ -48,6 +51,8 @@ class ValidationResult:
 
 
 def _finite(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
     try:
         return math.isfinite(float(value))
     except (TypeError, ValueError):
@@ -76,20 +81,20 @@ def _recording_paths(recording: Mapping[str, Any], base: Path) -> dict[str, Path
 
 
 def _validate_artifact_checksums(
-    recording: Mapping[str, Any], paths: Mapping[str, Path | None], index: int, reasons: list[str]
-) -> tuple[bool, bool]:
-    """Require manifest-bound hashes for every artifact used by a run.
-
-    A readable local file is not provenance.  The manifest must bind it to a
-    SHA-256 digest so a later execution cannot silently consume a different
-    feature or target artifact.
-    """
+    recording: Mapping[str, Any],
+    paths: Mapping[str, Path | None],
+    index: int,
+    reasons: list[str],
+    snapshot_root: Path,
+) -> tuple[bool, bool, dict[str, Path]]:
+    """Verify and snapshot the exact bytes later validation/scoring will read."""
     declared = recording.get("artifact_checksums")
     if not isinstance(declared, Mapping):
         reasons.append(f"recordings[{index}] artifact_checksums mapping is required")
-        return True, False
+        return True, False, {}
     incomplete = False
     invalid = False
+    verified_paths: dict[str, Path] = {}
     for name, artifact in paths.items():
         if artifact is None:
             continue
@@ -104,18 +109,27 @@ def _validate_artifact_checksums(
             invalid = True
             continue
         if not artifact.is_file():
-            # The caller already reports a missing or non-file artifact; there is no file to hash.
+            # The caller already reports a missing or non-file artifact; there is no file to snapshot.
             continue
+        snapshot_path = snapshot_root / f"{index}-{name}{artifact.suffix.lower()}"
+        digest = hashlib.sha256()
         try:
-            actual = sha256_file(artifact)
+            with artifact.open("rb") as source, snapshot_path.open("xb") as snapshot:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    snapshot.write(chunk)
         except OSError as exc:
-            reasons.append(f"recordings[{index}] {name} cannot be hashed: {exc}")
+            snapshot_path.unlink(missing_ok=True)
+            reasons.append(f"recordings[{index}] {name} cannot be snapshotted: {exc}")
             invalid = True
             continue
-        if actual.lower() != expected:
+        if digest.hexdigest() != expected:
+            snapshot_path.unlink(missing_ok=True)
             reasons.append(f"recordings[{index}] {name} checksum does not match the declared SHA-256")
             invalid = True
-    return incomplete, invalid
+            continue
+        verified_paths[name] = snapshot_path
+    return incomplete, invalid, verified_paths
 
 
 def validate_manifest(path: str | Path) -> ValidationResult:
@@ -131,7 +145,8 @@ def validate_manifest(path: str | Path) -> ValidationResult:
         return ValidationResult(ReadinessState.INCOMPLETE_PROVENANCE, ["unsupported or missing manifest schema_version"], manifest=manifest)
     if not _finite(manifest.get("prediction_horizon")) or float(manifest["prediction_horizon"]) <= 0:
         return ValidationResult(ReadinessState.INCOMPLETE_PROVENANCE, ["positive prediction_horizon is required"], manifest=manifest)
-    if not str(manifest.get("target_definition", "")).strip():
+    target_definition = manifest.get("target_definition")
+    if not isinstance(target_definition, str) or not target_definition.strip():
         return ValidationResult(ReadinessState.INCOMPLETE_PROVENANCE, ["target_definition must be explicit"], manifest=manifest)
     reasons: list[str] = []
     validated: list[dict[str, Any]] = []
@@ -144,7 +159,12 @@ def validate_manifest(path: str | Path) -> ValidationResult:
         reasons.append("source_type must explicitly be empirical_local or synthetic")
         incomplete = True
     provenance = manifest.get("provenance")
-    if not isinstance(provenance, Mapping) or not provenance.get("source") or provenance.get("complete") is not True:
+    provenance_source = provenance.get("source") if isinstance(provenance, Mapping) else None
+    if (
+        not isinstance(provenance_source, str)
+        or not provenance_source.strip()
+        or provenance.get("complete") is not True
+    ):
         reasons.append("provenance.source and provenance.complete=true are required")
         incomplete = True
     dataset_path = None
@@ -168,13 +188,18 @@ def validate_manifest(path: str | Path) -> ValidationResult:
             ):
                 reasons.append("dataset checksum does not match the declared SHA-256")
                 invalid = True
+    snapshot_dir = tempfile.TemporaryDirectory(prefix="empirical-higher-order-")
+    snapshot_root = Path(snapshot_dir.name)
     by_pair: dict[str, dict[str, set[str]]] = {}
     identities: set[tuple[str, str, str]] = set()
     for index, raw in enumerate(recordings):
         if not isinstance(raw, Mapping):
             reasons.append(f"recordings[{index}] is not an object"); invalid = True; continue
         required_text = ("subject_id", "session_id", "run_id", "condition_label", "pairing_key", "recording_quality_state")
-        missing = [key for key in required_text if not str(raw.get(key, "")).strip()]
+        missing = [
+            key for key in required_text
+            if not isinstance(raw.get(key), str) or not raw[key].strip()
+        ]
         if missing:
             reasons.append(f"recordings[{index}] missing explicit fields: {', '.join(missing)}"); incomplete = True
         if "condition_label" in missing:
@@ -182,6 +207,9 @@ def validate_manifest(path: str | Path) -> ValidationResult:
             invalid = True
         if raw.get("recording_quality_state") not in {"PASS", "FAIL", "UNKNOWN"}:
             reasons.append(f"recordings[{index}] has invalid recording-quality state"); invalid = True
+        elif raw.get("recording_quality_state") == "UNKNOWN":
+            reasons.append(f"recordings[{index}] recording-quality state is UNKNOWN; explicit PASS is required")
+            incomplete = True
         elif raw.get("recording_quality_state") == "FAIL":
             reasons.append(f"recordings[{index}] recording-quality state is FAIL")
             invalid = True
@@ -196,10 +224,15 @@ def validate_manifest(path: str | Path) -> ValidationResult:
         if not _finite(raw.get("sampling_rate_hz")) or float(raw.get("sampling_rate_hz")) <= 0:
             reasons.append(f"recordings[{index}] sampling_rate_hz is invalid"); invalid = True
         channels = raw.get("channel_count")
-        if not isinstance(channels, int) or channels < 1:
+        if isinstance(channels, bool) or not isinstance(channels, int) or channels < 1:
             reasons.append(f"recordings[{index}] channel_count is invalid"); invalid = True
         coords = raw.get("montage_coordinates")
-        if not isinstance(coords, list) or not isinstance(channels, int) or len(coords) != channels:
+        if (
+            not isinstance(coords, list)
+            or isinstance(channels, bool)
+            or not isinstance(channels, int)
+            or len(coords) != channels
+        ):
             reasons.append(f"recordings[{index}] montage coordinates do not match channel count"); incomplete = True
         else:
             try:
@@ -222,11 +255,14 @@ def validate_manifest(path: str | Path) -> ValidationResult:
                 reasons.append(f"recordings[{index}] missing {family} feature artifact"); incomplete = True
         if paths["higher_order_spectra"] is None or not paths["higher_order_spectra"].is_file():
             optional_missing.add("higher_order_spectra")
-        checksum_incomplete, checksum_invalid = _validate_artifact_checksums(raw, paths, index, reasons)
+        checksum_incomplete, checksum_invalid, verified_paths = _validate_artifact_checksums(
+            raw, paths, index, reasons, snapshot_root
+        )
         incomplete = incomplete or checksum_incomplete
         invalid = invalid or checksum_invalid
-        for family, artifact in paths.items():
-            if family == "higher_order_spectra" or family in {"target", "timestamps"}:
+        for family in FEATURE_FAMILIES[:-1]:
+            artifact = verified_paths.get(family)
+            if artifact is None:
                 continue
             try:
                 values = _load_array(artifact)
@@ -239,22 +275,22 @@ def validate_manifest(path: str | Path) -> ValidationResult:
         condition = str(raw.get("condition_label", "")).strip()
         if subject and pairing and condition:
             by_pair.setdefault(pairing, {}).setdefault(subject, set()).add(condition)
-        validated.append({"raw": dict(raw), "paths": paths})
+        validated.append({"raw": dict(raw), "paths": verified_paths})
     paired = sorted(subject for group in by_pair.values() for subject, labels in group.items() if len(labels) == 2)
     ambiguous = any(len(labels) != 2 for group in by_pair.values() for labels in group.values())
     if ambiguous:
         reasons.append("each pairing key must resolve to exactly two explicit condition labels per subject")
         invalid = True
     if synthetic:
-        return ValidationResult(ReadinessState.SYNTHETIC_DEMO_ONLY, reasons + ["synthetic origin is never eligible for empirical forecasting"], validated, paired, sorted(optional_missing), manifest)
+        return ValidationResult(ReadinessState.SYNTHETIC_DEMO_ONLY, reasons + ["synthetic origin is never eligible for empirical forecasting"], validated, paired, sorted(optional_missing), manifest, snapshot_dir)
     if invalid:
-        return ValidationResult(ReadinessState.INCONCLUSIVE, reasons, validated, paired, sorted(optional_missing), manifest)
+        return ValidationResult(ReadinessState.INCONCLUSIVE, reasons, validated, paired, sorted(optional_missing), manifest, snapshot_dir)
     if incomplete:
-        return ValidationResult(ReadinessState.INCOMPLETE_PROVENANCE, reasons, validated, paired, sorted(optional_missing), manifest)
+        return ValidationResult(ReadinessState.INCOMPLETE_PROVENANCE, reasons, validated, paired, sorted(optional_missing), manifest, snapshot_dir)
     if len(paired) < 2:
-        return ValidationResult(ReadinessState.INSUFFICIENT_PAIRED_SUBJECTS, reasons + ["at least two paired subjects are required for subject-held-out forecasting"], validated, paired, sorted(optional_missing), manifest)
+        return ValidationResult(ReadinessState.INSUFFICIENT_PAIRED_SUBJECTS, reasons + ["at least two paired subjects are required for subject-held-out forecasting"], validated, paired, sorted(optional_missing), manifest, snapshot_dir)
     if target_missing:
-        return ValidationResult(ReadinessState.READY_FOR_DESCRIPTIVE_ANALYSIS, reasons + ["forecast target is not supplied; descriptive execution only"], validated, paired, sorted(optional_missing), manifest)
+        return ValidationResult(ReadinessState.READY_FOR_DESCRIPTIVE_ANALYSIS, reasons + ["forecast target is not supplied; descriptive execution only"], validated, paired, sorted(optional_missing), manifest, snapshot_dir)
     if optional_missing:
         reasons.append("higher_order_spectra is optional and unavailable; classified explicitly")
-    return ValidationResult(ReadinessState.READY_FOR_FORECASTING, reasons, validated, paired, sorted(optional_missing), manifest)
+    return ValidationResult(ReadinessState.READY_FOR_FORECASTING, reasons, validated, paired, sorted(optional_missing), manifest, snapshot_dir)

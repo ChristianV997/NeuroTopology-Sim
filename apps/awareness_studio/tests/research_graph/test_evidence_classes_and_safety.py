@@ -428,3 +428,28 @@ def test_pass_validation_stays_pending_without_independent_adjudication():
     assert synthetic is not None
     assert synthetic.evidence_class == EvidenceClass.SYNTHETIC.value
     assert SafetyLabel.SYNTHETIC_ONLY.value in synthetic.safety_labels
+
+
+@pytest.mark.parametrize(
+    "review_metadata",
+    [
+        {"human_review_gate": {"passed": "false", "reviewer": "fixture-reviewer"}},
+        {"human_review_passed": "false", "human_reviewer": "fixture-reviewer"},
+        {"human_review_gate": {"passed": True, "reviewer": "   "}},
+        {"human_review_passed": True, "human_reviewer": "   "},
+    ],
+)
+def test_unverified_human_review_does_not_authorize_supported_claim(review_metadata):
+    graph = load_from_dict({
+        "claims": [{
+            "claim_id": "clm-string-false-review",
+            "claim_text": "synthetic-only fixture",
+            "claim_status": "supported",
+            **review_metadata,
+        }],
+    })
+
+    assert any(
+        diagnostic.code == DiagnosticCode.UNSUPPORTED_PROMOTION.value
+        for diagnostic in graph.diagnostics
+    )

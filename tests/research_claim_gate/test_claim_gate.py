@@ -11,6 +11,7 @@ from tools.research_claim_gate.gate import (
     CLAIM_CLASSES,
     DECISION_STATES,
     ClaimGateResult,
+    ProvenanceRecord,
     evaluate_claim,
     evaluate_claim_batch,
     serialize_json,
@@ -181,3 +182,24 @@ def test_placeholder_provenance_cannot_be_treated_as_complete(field, value):
     assert validation.reason_code == "PLACEHOLDER_PROVENANCE"
     result = evaluate_claim(good_claim(provenance=provenance))
     assert result.decision == "CLAIM_PROVENANCE_INVALID"
+
+
+@pytest.mark.parametrize("field", ["identity", "checksum", "acquisition", "dataset_version"])
+def test_typed_provenance_whitespace_fields_are_incomplete(field):
+    values = {
+        "source_id": "fixture-dataset",
+        "source_uri": "local://fixture-dataset",
+        "checksum": "a" * 64,
+        "acquisition": "fixture",
+        "dataset_version": "v1",
+    }
+    if field == "identity":
+        values["source_id"] = "   "
+        values["source_uri"] = "   "
+    else:
+        values[field] = "   "
+
+    result = validate_provenance(ProvenanceRecord(**values))
+
+    assert result.status == "incomplete"
+    assert ("source_id" if field == "identity" else field) in result.missing_fields

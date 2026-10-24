@@ -12,12 +12,11 @@ Priority order (highest first) and why:
    so this always wins.
 2. ``merged_into_main``    -- either (a) real git ancestry shows the commit
    IS the current head of, or an ancestor of, ``target_branch`` (a hard
-   fact, independent of any PR snapshot), or (b) the PR snapshot's own
-   ``merged`` field is ``True`` (GitHub's own record is authoritative for
-   its own state even absent local ancestry, e.g. a squash-merge that
-   rewrites history). A disagreement between the two is never silently
-   resolved -- it is recorded as a blocker note, but the release is still
-   reported as merged (never as "integration-only" when it plainly landed).
+   fact, independent of any PR snapshot), or (b) the PR snapshot reports
+   ``merged=True`` and its ``base_ref`` matches ``target_branch``. A PR merge
+   into another base, or one with no verifiable base, is not target ancestry.
+   A disagreement between matching PR metadata and local ancestry is recorded
+   as a blocker note, but the matching-base snapshot still covers squash merges.
    This is the one deliberate exception to "local merge commit alone is not
    enough": a direct ``is_ancestor`` check against the real target ref is a
    hard fact, not a heuristic commit-message search.
@@ -68,6 +67,20 @@ class MergeStateContext:
     duplicate_findings: tuple = field(default_factory=tuple)
     dependency_blockers: tuple = field(default_factory=tuple)
     superseded_by: Optional[str] = None
+    target_branch: str = "main"
+
+
+def _branch_ref_name(ref: str | None) -> str | None:
+    if not isinstance(ref, str):
+        return None
+    value = ref.strip()
+    if value.startswith("refs/heads/"):
+        value = value[len("refs/heads/"):]
+    elif value.startswith("refs/remotes/"):
+        value = value[len("refs/remotes/"):].split("/", 1)[-1]
+    elif value.startswith("origin/"):
+        value = value[len("origin/"):]
+    return value or None
 
 
 def classify_merge_state(ctx: MergeStateContext) -> tuple[str, list[str]]:
@@ -86,19 +99,28 @@ def classify_merge_state(ctx: MergeStateContext) -> tuple[str, list[str]]:
 
     pr = ctx.pr_snapshot
     ancestry_says_merged = ctx.is_current_head_of_target or ctx.is_ancestor_of_target
-    pr_says_merged = pr.merged if pr is not None else None
+    target_name = _branch_ref_name(ctx.target_branch)
+    pr_base_name = _branch_ref_name(pr.base_ref) if pr is not None else None
+    pr_base_matches_target = target_name is not None and pr_base_name == target_name
+    pr_says_merged = pr.merged is True and pr_base_matches_target if pr is not None else False
 
-    if ancestry_says_merged or pr_says_merged is True:
-        if pr_says_merged is False and ancestry_says_merged:
+    if pr is not None and pr.merged is True and not pr_base_matches_target:
+        blockers.append(
+            f"PR snapshot reports merged=True but base_ref {pr.base_ref!r} does not verify "
+            f"target_branch {ctx.target_branch!r}; PR merge status alone cannot establish target ancestry"
+        )
+
+    if ancestry_says_merged or pr_says_merged:
+        if pr is not None and pr.merged is False and ancestry_says_merged:
             blockers.append(
                 "contradiction: real git ancestry places this commit on target_branch, "
                 "but the PR snapshot's own merged field is False -- ancestry (a hard fact) wins"
             )
-        if pr_says_merged is True and not ancestry_says_merged:
+        if pr_says_merged and not ancestry_says_merged:
             blockers.append(
-                "contradiction: PR snapshot reports merged=True but local ancestry does not "
+                "contradiction: PR snapshot reports merged=True on the target base but local ancestry does not "
                 "place this commit on target_branch (e.g. squash-merge rewrote history) -- "
-                "PR snapshot's own record is authoritative for its own merged state"
+                "the matching PR base snapshot is authoritative for its own merged state"
             )
         return "merged_into_main", blockers
 
@@ -122,7 +144,7 @@ def classify_merge_state(ctx: MergeStateContext) -> tuple[str, list[str]]:
         blockers.append(f"unmet dependencies: {list(ctx.dependency_blockers)}")
         return "blocked_by_dependency", blockers
 
-    if pr is not None and pr.state == "closed" and pr_says_merged is not True and ctx.superseded_by:
+    if pr is not None and pr.state == "closed" and pr.merged is False and ctx.superseded_by:
         blockers.append(f"PR closed without merging; superseded by {ctx.superseded_by!r}")
         return "superseded", blockers
 
@@ -196,14 +218,13 @@ def classify_release_state(
         blockers.append("release cannot be evaluated as ready until the commit is integrated into target_branch")
         return "not_integrated", blockers
 
-    # The metadata-only scientific gate intentionally never emits "pass".
-    # Retain this branch for a future independently verified artifact-backed
-    # gate, but never infer readiness from missing or caller-supplied metadata.
-    if scientific_gate_value != "pass":
-        blockers.append("release evidence is incomplete or not independently admissible")
-        return "inconclusive", blockers
-
-    return "ready_for_release", blockers
+    # The current metadata-only gate has no artifact-backed proof object.  A
+    # bare string (including "pass") cannot establish release eligibility.
+    blockers.append(
+        "release readiness requires independently verified artifact-backed evidence; "
+        "a gate status string is insufficient"
+    )
+    return "inconclusive", blockers
 
 
 assert set(MERGE_STATES) == {

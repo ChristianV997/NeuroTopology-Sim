@@ -224,7 +224,8 @@ def validate_provenance(provenance: ProvenanceRecord | Mapping[str, Any] | str |
     intentionally not complete provenance.
     """
     try:
-        record = provenance if isinstance(provenance, ProvenanceRecord) else ProvenanceRecord.from_value(provenance)
+        source = provenance.to_dict() if isinstance(provenance, ProvenanceRecord) else provenance
+        record = ProvenanceRecord.from_value(source)
     except ClaimInputError:
         return ProvenanceValidation("invalid", reason_code="INVALID_PROVENANCE")
     if not any((record.source_id, record.source_uri, record.checksum, record.acquisition, record.dataset_version)):

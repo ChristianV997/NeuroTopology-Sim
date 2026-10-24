@@ -102,15 +102,27 @@ when the evidence class is unknown, or when an empirical/formal label lacks
 a declared verification marker
 (`verification_status: verified`, `peer_review_status: peer_reviewed`,
 `review_status: reviewed_accepted`, or both preregistration and locked-split
-flags). Recognized negative and terminal statuses are preserved; an
+flags set to the JSON boolean `true`; strings such as `"false"` do not count).
+Recognized negative and terminal statuses are preserved; an
 unrecognized status becomes `REVIEW_REQUIRED`. These rules project declared
 fields only and do not verify a source, registration, or reviewer independently.
+
+Direct `nodes[]` entries and JSONL node records use the same source and
+validation gates as section-based records. A direct source with missing or
+unknown evidence remains `REVIEW_REQUIRED`; a validation `PASS` remains
+pending review and does not create support.
 
 Likewise, a literal validation `verdict: PASS` is recorded as
 `REVIEW_REQUIRED` and does not create a `supports` edge. The projection does
 not adjudicate provenance, artifact lineage, labels, nulls, multiplicity, or
 split integrity; those require independent review before any scientific
 interpretation. A metadata declaration alone is not scientific support.
+
+The unsupported-promotion diagnostic accepts only the JSON boolean
+`human_review_gate.passed: true` (or `human_review_passed: true`) and a
+nonblank reviewer identifier. Truthy strings and whitespace-only reviewer
+values do not satisfy this metadata check; it is not an independent signature
+verification.
 
 ### Safety States
 - `PROVISIONAL`: Initial state for proposed hypotheses and unreviewed claims.

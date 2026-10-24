@@ -103,6 +103,7 @@ def build_manifest(
 
     ctx = MergeStateContext(
         commit_resolves=commit_resolves,
+        target_branch=target_branch,
         is_current_head_of_target=is_head_of_target,
         is_ancestor_of_target=is_ancestor_of_target,
         is_current_head_of_integration=is_head_of_integration,

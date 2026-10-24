@@ -35,13 +35,13 @@ _KNOWN_SOURCE_STATUSES = frozenset(status.value for status in NodeStatus)
 
 def _classify_evidence(data: Mapping[str, Any]) -> str:
     """Infer evidence class from record metadata without claim promotion."""
-    if data.get("is_synthetic") or data.get("data_mode") == "synthetic":
+    if data.get("is_synthetic") is True or data.get("data_mode") == "synthetic":
         return EvidenceClass.SYNTHETIC.value
-    if data.get("is_proxy") or data.get("data_type") == "proxy_bayes_factor":
+    if data.get("is_proxy") is True or data.get("data_type") == "proxy_bayes_factor":
         return EvidenceClass.PROXY.value
-    if data.get("is_formal") or data.get("evidence_class") == "formal":
+    if data.get("is_formal") is True or data.get("evidence_class") == "formal":
         # Only true formal if preregistered, held out locked, and not synthetic
-        if data.get("preregistered", False) and data.get("held_out_split_locked", False):
+        if data.get("preregistered") is True and data.get("held_out_split_locked") is True:
             return EvidenceClass.FORMAL.value
         return EvidenceClass.EMPIRICAL.value
     if data.get("data_mode") == "empirical" or data.get("data_type") == "empirical_dataset":
@@ -63,7 +63,7 @@ def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
         source.get("verification_status") == "verified"
         or source.get("peer_review_status") == "peer_reviewed"
         or source.get("review_status") == "reviewed_accepted"
-        or (source.get("preregistered", False) and source.get("held_out_split_locked", False))
+        or (source.get("preregistered") is True and source.get("held_out_split_locked") is True)
     )
     unverified_claim = evidence_class in {
         EvidenceClass.EMPIRICAL.value,
@@ -75,6 +75,41 @@ def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
     ):
         return NodeStatus.REVIEW_REQUIRED.value
     return normalized_status
+
+
+def _direct_node_projection(
+    raw_node: Mapping[str, Any],
+) -> tuple[Any, Any, Any, Any]:
+    node_type = raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value)
+    raw_properties = raw_node.get("properties", {})
+    metadata = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+    metadata.update(raw_node)
+    evidence_class = raw_node.get("evidence_class", EvidenceClass.UNKNOWN.value)
+    status = raw_node.get("status", NodeStatus.ACTIVE.value)
+    properties = raw_properties
+    if node_type == NodeType.SOURCE_SNAPSHOT.value:
+        evidence_class = _classify_evidence(metadata)
+        status = _source_status(metadata, evidence_class)
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
+    elif node_type == NodeType.VALIDATION.value:
+        raw_verdict = metadata.get("verdict")
+        verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
+        evidence_class = _classify_evidence(metadata)
+        status = (
+            NodeStatus.FALSIFIED.value
+            if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}
+            else NodeStatus.REVIEW_REQUIRED.value
+        )
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
+    return node_type, status, evidence_class, properties
 
 
 def load_from_dict(
@@ -91,15 +126,16 @@ def load_from_dict(
         for raw_node in data["nodes"]:
             if not isinstance(raw_node, dict) or "node_id" not in raw_node:
                 continue
+            node_type, status, evidence_class, properties = _direct_node_projection(raw_node)
             builder.add_node(
                 GraphNode(
                     node_id=str(raw_node["node_id"]),
-                    node_type=raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value),
+                    node_type=node_type,
                     label=raw_node.get("label", str(raw_node["node_id"])),
-                    status=raw_node.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=raw_node.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    status=status,
+                    evidence_class=evidence_class,
                     safety_labels=raw_node.get("safety_labels", []),
-                    properties=raw_node.get("properties", {}),
+                    properties=properties,
                     source_id=raw_node.get("source_id"),
                     checksum=raw_node.get("checksum", ""),
                     tags=raw_node.get("tags", []),
@@ -397,15 +433,16 @@ def load_from_jsonl(
                 metadata=record.get("metadata"),
             )
         elif "node_type" in record and "node_id" in record:
+            node_type, status, evidence_class, properties = _direct_node_projection(record)
             builder.add_node(
                 GraphNode(
                     node_id=str(record["node_id"]),
-                    node_type=record["node_type"],
+                    node_type=node_type,
                     label=record.get("label", str(record["node_id"])),
-                    status=record.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=record.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    status=status,
+                    evidence_class=evidence_class,
                     safety_labels=record.get("safety_labels", []),
-                    properties=record.get("properties", {}),
+                    properties=properties,
                     source_id=record.get("source_id"),
                     checksum=record.get("checksum", ""),
                     tags=record.get("tags", []),

@@ -67,7 +67,7 @@ Full rationale lives as a module docstring in
 | Priority | State | Meaning |
 |---|---|---|
 | 1 | `unknown` (commit unresolvable) | The claimed commit is not a real git object — includes the fabricated-hash case. Nothing else is evaluated once identity itself is unverifiable. |
-| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot's own `merged` field is `True`. A disagreement between the two is recorded as a blocker note, never silently resolved, but the release is still reported merged when it plainly landed. |
+| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot reports `merged=True` and its `base_ref` matches `target_branch` (including a matching squash-merge snapshot). A merge into another or unspecified base is not evidence of integration into this target. |
 | 3 | `duplicate` | This work's changed-file set overlaps another concurrent owner's above the Jaccard/shared-file threshold (and isn't already merged). |
 | 4 | `blocked_by_scientific_review` | The scientific gate reports a genuinely evidenced negative verdict (not merely missing data). |
 | 5 | `blocked_by_ci` | Worst classified CI check is `failing`. |
@@ -100,13 +100,13 @@ in this effort:
 
 `merge_state.classify_merge_state` treats a direct `git merge-base
 --is-ancestor` check against the real `target_branch` ref as a hard fact
-(not a heuristic), which is the one case where local git evidence alone
-is sufficient to call `merged_into_main`. A commit-message *search* for
-`"#NNN"` (`git_source.find_merge_commit_for_pr_number`) is explicitly
-documented as evidence code landed, never evidence a PR's own `merged`
-field is `True`, and this function is not wired into the merge-state
-decision for exactly that reason — only `is_ancestor` and the PR
-snapshot's own `merged` field feed the classifier.
+(not a heuristic), which is sufficient to call `merged_into_main`. A PR
+snapshot can also establish a squash merge when `merged=True` and its
+`base_ref` matches `target_branch`; a missing or different base is recorded
+as a blocker and cannot promote the commit to target-merged. A commit-message
+*search* for `"#NNN"` (`git_source.find_merge_commit_for_pr_number`) is
+evidence code landed on a branch, never evidence that the PR merged into
+this target.
 
 ## The `^{commit}` fix, applied from the first draft
 
