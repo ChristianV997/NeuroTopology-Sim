@@ -79,6 +79,18 @@ EXPECTED_TRANSITIONS = {
 FORBIDDEN_PASS = {"PASS", "scientific_PASS", "FORMAL_BAYES_FACTOR"}
 EXPECTED_DOWNGRADE_TARGETS = {"proxy_inference", "unsupported_claim"}
 EXPECTED_CLAIM_EVIDENCE_CLASSES = {"hypothesis", "engineering_fact"}
+EXPECTED_CLAIM_CATEGORIES = {
+    "autonomic",
+    "confounds",
+    "constructs",
+    "evidence_class",
+    "gate",
+    "higher_order_connectivity",
+    "higher_order_spectra",
+    "sample_integrity",
+    "statistics",
+    "topology",
+}
 EXPECTED_ALLOWED_OUTCOMES = {
     "NO_INCREMENTAL_GAIN",
     "GAIN_UNSTABLE",
@@ -308,6 +320,9 @@ def evaluate(doc: dict) -> dict:
             evidence_class = item.get("evidence_class")
             if isinstance(evidence_class, str) and evidence_class not in EXPECTED_CLAIM_EVIDENCE_CLASSES:
                 issues.append(f"claim {cid!r} evidence_class is not in the versioned claim vocabulary")
+            category = item.get("category")
+            if isinstance(category, str) and category not in EXPECTED_CLAIM_CATEGORIES:
+                issues.append(f"claim {cid!r} category is not in the versioned claim vocabulary")
             if isinstance(cid, str) and cid.strip():
                 claim_ids.append(cid)
             if item.get("blocked_if_missing_baseline") is not True:
