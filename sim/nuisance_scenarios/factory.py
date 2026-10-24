@@ -145,6 +145,9 @@ class NuisanceScenarioFactory:
 
         # 1. Resolve clean signal (always own a float64 copy so result mutations
         # cannot rewrite caller-supplied or generator-returned buffers).
+        if clean_signal is not None and signal_generator is not None:
+            raise ValueError("provide only one of clean_signal or signal_generator")
+
         if clean_signal is not None:
             clean = np.array(clean_signal, dtype=np.float64, copy=True)
             if clean.ndim != 2:
