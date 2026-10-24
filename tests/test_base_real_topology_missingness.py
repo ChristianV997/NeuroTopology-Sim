@@ -239,6 +239,49 @@ def test_empty_channels_returns_failed_read(tmp_path, monkeypatch):
     assert row.q_net is None
 
 
+@pytest.mark.parametrize(
+    "channels",
+    [
+        [[1.0, 2.0], [3.0]],
+        [1.0, 2.0],
+    ],
+    ids=["ragged-channels", "one-dimensional-channels"],
+)
+def test_malformed_channel_layout_returns_failed_read(tmp_path, monkeypatch, channels):
+    signal_file = tmp_path / "malformed.edf"
+    signal_file.write_bytes(b"synthetic-only")
+    monkeypatch.setattr(
+        "data.bids_ingest.read_window_signal",
+        lambda *args, **kwargs: channels,
+    )
+
+    row = compute_real_topology_for_window(
+        {
+            "row_id": "synthetic-malformed",
+            "subject_id": "synthetic-subject",
+            "window_id": "synthetic-window",
+            "task_label": "synthetic-task",
+            "source_file": str(signal_file),
+            "window_start_s": 0.0,
+            "window_end_s": 2.0,
+        }
+    )
+
+    assert row.is_valid is False
+    assert row.topology_status == "skipped"
+    assert row.missingness_state == "failed_read"
+    assert row.q_net is None
+    assert row.q_abs is None
+    assert row.f_dress is None
+    assert row.defect_density is None
+    assert row.topology_quality is None
+    assert row.n_triangles == 0
+    assert row.n_valid_triangles == 0
+    assert row.missingness_reason is not None
+    assert row.replicate_count == 0
+    assert row.run_status == "failed"
+
+
 # ---------------------------------------------------------------------------
 # 5. Genuine zero observation (q_net = 0.0) is preserved as valid computed row
 # ---------------------------------------------------------------------------
