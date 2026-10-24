@@ -146,6 +146,15 @@ def csd_operator(
 
 
 def apply_csd(M: np.ndarray, data: np.ndarray) -> np.ndarray:
+    # M must be a finite (n_channels, n_channels) operator; a 1-D M gave a scalar dot product with no error.
+    try:
+        M = np.asarray(M, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise OperatorInputError("operator must be a numeric (n_channels, n_channels) array") from exc
+    if M.ndim != 2 or M.shape[0] != M.shape[1]:
+        raise OperatorInputError("operator must be a square (n_channels, n_channels) array")
+    if not np.isfinite(M).all():
+        raise OperatorInputError("operator must be finite")
     data = np.asarray(data, dtype=float)
     # (n_channels,) or (n_channels, n_times) only. With more axes, M @ data broadcasts over the first axis.
     if data.ndim not in (1, 2):
