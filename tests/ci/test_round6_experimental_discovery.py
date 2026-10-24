@@ -2496,6 +2496,21 @@ def test_fixture():
                 "shared/measurement_hypothesis/validate.py",
                 "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
             ),
+            "empirical_higher_order": (
+                357,
+                "analysis/empirical_higher_order/runner.py",
+                "tests/empirical_higher_order/test_runner.py",
+            ),
+            "transition_forecasting_benchmark": (
+                357,
+                "analysis/transition_forecasting/benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+            ),
+            "release_manifest": (
+                357,
+                "tools/release_manifest/manifest_builder.py",
+                "tests/release_manifest/test_manifest_builder.py",
+            ),
             "batch2_pipeline_benchmark": (
                 371, 445,
                 "tools/benchmarks/batch2_pipeline/harness.py",
@@ -2507,7 +2522,7 @@ def test_fixture():
                 "tests/physics/test_four_sphere_oracle.py",
             ),
             "phase_winding": (
-                413,
+                413, 453,
                 "neurotopology_sim/experimental/topology/winding.py",
                 "tests/neurotopology_sim/experimental/topology/test_phase_winding.py",
             ),
@@ -2517,7 +2532,7 @@ def test_fixture():
                 "tests/surrogate_nulls/test_adversarial_contracts.py",
             ),
             "dmd_crouzeix": (
-                415, 420, 400,
+                415, 420, 400, 452,
                 "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
                 "tests/dmd_ep2_oracle/test_production_bridge.py",
             ),
@@ -2648,6 +2663,72 @@ def test_fixture():
             measurement["package_initializers"]["shared/measurement_hypothesis/__init__.py"],
             tuple(measurement["tests"]),
         )
+
+    def test_pr357_source_only_changes_select_exact_release_and_forecasting_tests(self):
+        helper = _helper()
+        source_pairs = {
+            "empirical_higher_order": (
+                ("analysis/empirical_higher_order/runner.py", "tests/empirical_higher_order/test_runner.py"),
+                ("analysis/empirical_higher_order/schema.py", "tests/empirical_higher_order/test_runner.py"),
+                ("analysis/empirical_higher_order/validation.py", "tests/empirical_higher_order/test_runner.py"),
+            ),
+            "transition_forecasting_benchmark": (
+                ("analysis/transition_forecasting/benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                ("scripts/run_transition_benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+            ),
+            "release_manifest": (
+                ("tools/release_manifest/manifest_builder.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_merge_state.py"),
+                ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_merge_state.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
+                ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
+                ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+            ),
+        }
+        for component, expected_pairs in source_pairs.items():
+            with self.subTest(component=component):
+                spec = helper.COMPONENTS[component]
+                self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (357,))
+                self.assertTrue(
+                    {tuple(pair) for pair in expected_pairs}
+                    <= {
+                        (pair["implementation"], pair["test"])
+                        for pair in spec["candidate_pairs"]
+                    }
+                )
+                for implementation, test_path in expected_pairs:
+                    with self.subTest(implementation=implementation, test_path=test_path):
+                        self.assertEqual(
+                            helper.select_components({implementation}),
+                            [component],
+                            "a changed PR #357 implementation must not disappear as NOT_APPLICABLE",
+                        )
+                        self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
+                        selected_tests = list(dict.fromkeys(
+                            test for source, test in expected_pairs if source == implementation
+                        ))
+
+                        with tempfile.TemporaryDirectory() as td:
+                            root = Path(td)
+                            _write(root, implementation, "# source fixture\\n")
+                            for selected_test in selected_tests:
+                                _write(root, selected_test, "def test_contract_fixture():\\n    assert True\\n")
+                            inspection = helper.inspect_component(component, root, {implementation})
+                        self.assertEqual(inspection["status"], "READY_TO_RUN")
+                        self.assertEqual(inspection["tests_to_run"], selected_tests)
+
+                        with tempfile.TemporaryDirectory() as td:
+                            root = Path(td)
+                            _write(root, implementation, "# source fixture\\n")
+                            inspection = helper.inspect_component(component, root, {implementation})
+                        self.assertEqual(inspection["status"], "BLOCKED")
+                        self.assertEqual(
+                            set(inspection["missing_required_tests"]),
+                            set(selected_tests),
+                        )
 
         self.assertIn(
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_adversarial_contracts.py"},
@@ -3450,6 +3531,35 @@ def test_fixture():
                     ),
                 },
             ),
+            "empirical_higher_order": (
+                357,
+                {
+                    ("analysis/empirical_higher_order/runner.py", "tests/empirical_higher_order/test_runner.py"),
+                    ("analysis/empirical_higher_order/schema.py", "tests/empirical_higher_order/test_runner.py"),
+                    ("analysis/empirical_higher_order/validation.py", "tests/empirical_higher_order/test_runner.py"),
+                },
+            ),
+            "transition_forecasting_benchmark": (
+                357,
+                {
+                    ("analysis/transition_forecasting/benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                    ("scripts/run_transition_benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                },
+            ),
+            "release_manifest": (
+                357,
+                {
+                    ("tools/release_manifest/manifest_builder.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_merge_state.py"),
+                    ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_merge_state.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
+                    ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
+                    ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                    ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                },
+            ),
             "whitening_audit": (
                 407,
                 {
@@ -3586,6 +3696,28 @@ def test_fixture():
         self.assertEqual(helper._unmapped_candidate_paths(benchmark_followup), [])
 
         exact_candidate_diffs = {
+            "empirical_higher_order": {
+                "analysis/empirical_higher_order/runner.py",
+                "analysis/empirical_higher_order/schema.py",
+                "analysis/empirical_higher_order/validation.py",
+                "tests/empirical_higher_order/test_runner.py",
+            },
+            "transition_forecasting_benchmark": {
+                "analysis/transition_forecasting/benchmark.py",
+                "scripts/run_transition_benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+            },
+            "release_manifest": {
+                "tools/release_manifest/manifest_builder.py",
+                "tools/release_manifest/merge_state.py",
+                "tools/release_manifest/models.py",
+                "tools/release_manifest/reporting.py",
+                "scripts/build_release_manifest.py",
+                "tests/release_manifest/test_build_release_manifest_cli.py",
+                "tests/release_manifest/test_manifest_builder.py",
+                "tests/release_manifest/test_merge_state.py",
+                "tests/release_manifest/test_reporting.py",
+            },
             "bids_adapter": {
                 "data/bids_ingest.py",
                 "data/openneuro_loader.py",
@@ -3748,6 +3880,53 @@ def test_fixture():
                 self.assertEqual(helper.select_components(paths), [component])
                 self.assertEqual(helper._unmapped_candidate_paths(paths), [])
 
+        pr357_candidate_paths = (
+            set().union(*(exact_candidate_diffs[key] for key in (
+                "empirical_higher_order",
+                "transition_forecasting_benchmark",
+                "release_manifest",
+            )))
+            | {"tools/research_claim_gate/gate.py", "tests/research_claim_gate/test_claim_gate.py"}
+        )
+        self.assertEqual(
+            set(helper.select_components(pr357_candidate_paths)),
+            {
+                "empirical_higher_order",
+                "transition_forecasting_benchmark",
+                "release_manifest",
+                "measurement_hypothesis_contract",
+            },
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(pr357_candidate_paths), [])
+
+    def test_current_dmd_and_winding_followups_select_their_exact_contract_pairs(self):
+        helper = _helper()
+        dmd_implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
+        dmd_contract = "tests/dmd_crouzeix_contract/test_production_contract.py"
+        dmd_spec = helper.COMPONENTS["dmd_crouzeix"]
+        self.assertIn(452, helper.COMPONENT_OWNER_PRS["dmd_crouzeix"])
+        self.assertIn(
+            {"implementation": dmd_implementation, "test": dmd_contract},
+            dmd_spec["candidate_pairs"],
+        )
+        dmd_paths = {dmd_implementation, dmd_contract}
+        self.assertEqual(helper.select_components(dmd_paths), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths(dmd_paths), [])
+
+        winding_implementation = "neurotopology_sim/experimental/topology/winding.py"
+        winding_test = "tests/neurotopology_sim/experimental/topology/test_phase_winding.py"
+        self.assertIn(453, helper.COMPONENT_OWNER_PRS["phase_winding"])
+        self.assertIn(
+            {"implementation": winding_implementation, "test": winding_test},
+            helper.COMPONENTS["phase_winding"]["candidate_pairs"],
+        )
+        winding_paths = {winding_implementation, winding_test}
+        self.assertEqual(
+            set(helper.select_components(winding_paths)),
+            {"phase_winding", "winding_charge_audit"},
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(winding_paths), [])
+
     def test_oss_adoption_mapping_runs_the_verified_owner_suite(self):
         helper = _helper()
         component = "oss_adoption_gates"
@@ -3876,7 +4055,7 @@ def test_fixture():
         helper = _helper()
         implementation = "tools/research_claim_gate/gate.py"
         test_path = "tests/research_claim_gate/test_claim_gate.py"
-        unmapped_implementation = "analysis/empirical_higher_order/runner.py"
+        unmapped_implementation = "analysis/empirical_higher_order/unregistered_extension.py"
         changed = {implementation, test_path, unmapped_implementation}
         self.assertEqual(
             helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],

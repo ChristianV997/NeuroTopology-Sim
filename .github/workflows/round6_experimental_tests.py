@@ -1670,6 +1670,119 @@ COMPONENTS: dict[str, dict[str, Any]] = {
             "tests/research/batch3/test_dataset_metadata_audit.py",
         ),
     },
+    # PR #357 changes these code/test pairs alongside the claim-gate work.
+    # Keep each production source paired with the tests that import/exercise it;
+    # source-only edits still select their unchanged companion tests.
+    "empirical_higher_order": {
+        "triggers": (
+            "analysis/empirical_higher_order/runner.py",
+            "analysis/empirical_higher_order/schema.py",
+            "analysis/empirical_higher_order/validation.py",
+            "tests/empirical_higher_order/test_runner.py",
+        ),
+        "implementation": "analysis/empirical_higher_order/runner.py",
+        "tests": ("tests/empirical_higher_order/test_runner.py",),
+        "candidate_pairs": tuple(
+            {
+                "implementation": implementation,
+                "test": "tests/empirical_higher_order/test_runner.py",
+            }
+            for implementation in (
+                "analysis/empirical_higher_order/runner.py",
+                "analysis/empirical_higher_order/schema.py",
+                "analysis/empirical_higher_order/validation.py",
+            )
+        ),
+        "implementation_roots": ("analysis/empirical_higher_order/",),
+        "candidate_test_roots": ("tests/empirical_higher_order/",),
+    },
+    "transition_forecasting_benchmark": {
+        "triggers": (
+            "analysis/transition_forecasting/benchmark.py",
+            "scripts/run_transition_benchmark.py",
+            "tests/transition_forecasting/test_benchmark.py",
+        ),
+        "implementation": "analysis/transition_forecasting/benchmark.py",
+        "tests": ("tests/transition_forecasting/test_benchmark.py",),
+        "candidate_pairs": (
+            {
+                "implementation": "analysis/transition_forecasting/benchmark.py",
+                "test": "tests/transition_forecasting/test_benchmark.py",
+            },
+            {
+                "implementation": "scripts/run_transition_benchmark.py",
+                "test": "tests/transition_forecasting/test_benchmark.py",
+            },
+        ),
+        "implementation_roots": (
+            "analysis/transition_forecasting/",
+            "scripts/run_transition_benchmark.py",
+        ),
+        "candidate_test_roots": ("tests/transition_forecasting/",),
+    },
+    "release_manifest": {
+        "triggers": (
+            "tools/release_manifest/manifest_builder.py",
+            "tools/release_manifest/merge_state.py",
+            "tools/release_manifest/models.py",
+            "tools/release_manifest/reporting.py",
+            "scripts/build_release_manifest.py",
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+        ),
+        "implementation": "tools/release_manifest/manifest_builder.py",
+        "tests": (
+            "tests/release_manifest/test_build_release_manifest_cli.py",
+            "tests/release_manifest/test_manifest_builder.py",
+            "tests/release_manifest/test_merge_state.py",
+            "tests/release_manifest/test_reporting.py",
+        ),
+        "candidate_pairs": (
+            {
+                "implementation": "tools/release_manifest/manifest_builder.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/merge_state.py",
+                "test": "tests/release_manifest/test_merge_state.py",
+            },
+            {
+                "implementation": "tools/release_manifest/merge_state.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_manifest_builder.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_merge_state.py",
+            },
+            {
+                "implementation": "tools/release_manifest/models.py",
+                "test": "tests/release_manifest/test_reporting.py",
+            },
+            {
+                "implementation": "tools/release_manifest/reporting.py",
+                "test": "tests/release_manifest/test_reporting.py",
+            },
+            {
+                "implementation": "tools/release_manifest/reporting.py",
+                "test": "tests/release_manifest/test_build_release_manifest_cli.py",
+            },
+            {
+                "implementation": "scripts/build_release_manifest.py",
+                "test": "tests/release_manifest/test_build_release_manifest_cli.py",
+            },
+        ),
+        "implementation_roots": (
+            "tools/release_manifest/",
+            "scripts/build_release_manifest.py",
+        ),
+        "candidate_test_roots": ("tests/release_manifest/",),
+    },
     "oss_adoption_gates": {
         "triggers": (
             "oss_opportunities/opportunity_batch.py",
@@ -2272,7 +2385,7 @@ COMPONENT_OWNER_PRS = {
     "spherical_csd": (402, 414, 419),
     "mne_csd_reference_audit": (402,),
     "four_sphere": (418, 409),
-    "phase_winding": (413,),
+    "phase_winding": (413, 453),
     "surrogate_nulls": (417, 430),
     "phase_uncertainty": (403,),
     "surrogate_audit": (398,),
@@ -2284,7 +2397,7 @@ COMPONENT_OWNER_PRS = {
     "topology_backend_conformance": (389,),
     "finite_chain_audit": (397,),
     "winding_charge_audit": (399,),
-    "dmd_crouzeix": (415, 420, 400),
+    "dmd_crouzeix": (415, 420, 400, 452),
     "batch2_pipeline_benchmark": (371, 445),
     "docker_context_policy": (431, 434),
     "bids_inventory_audit": (401,),
@@ -2301,6 +2414,9 @@ COMPONENT_OWNER_PRS = {
     "batch3_falsification_matrix_artifact": (376, 444, 447),
     "batch3_offline_integration": (381, 449),
     "measurement_hypothesis_contract": (384, 357),
+    "empirical_higher_order": (357,),
+    "transition_forecasting_benchmark": (357,),
+    "release_manifest": (357,),
     "public_repo_source_pack": (391,),
     "dandi_nwb_bounded": (437,),
     "streaming_s3_transfer": (437,),
@@ -2421,6 +2537,8 @@ UNMAPPED_CANDIDATE_ROOTS = (
     "tests/research_cycle_release/",
     "tests/integration_reconciliation/",
     "scripts/build_release_manifest.py",
+    "scripts/run_transition_benchmark.py",
+    "tools/release_manifest/",
     "scripts/run_registered_fhn.py",
     "scripts/validate_research_cycle_preflight.py",
 )
