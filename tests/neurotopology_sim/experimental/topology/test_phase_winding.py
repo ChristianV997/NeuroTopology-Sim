@@ -200,6 +200,8 @@ def test_floor_convention_matches_mission_formula():
     assert np.array_equal(n, expected_n)
     assert np.all(omega >= -np.pi)
     assert np.all(omega < np.pi)
+    # Invariant required for integer face charge: omega = raw - 2π n.
+    assert np.allclose(omega, raw - TWO_PI * n.astype(float), rtol=0.0, atol=1e-12)
 
 
 def test_zero_charge_smooth_field():
