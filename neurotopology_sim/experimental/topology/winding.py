@@ -5,7 +5,8 @@ HOLD / SYNTHETIC_ONLY
 This module computes an algebraic integer winding / face-charge descriptor on an
 oriented 2-complex from vertex phases and integer incidence matrices. It is
 **not** evidence of cortical propagation, biological vortices, consciousness, or
-any clinical claim. Gemini Revision 8 and related research notes are unverified
+any clinical claim. Graph/complex winding here is not spatial charge or
+biological winding. Gemini Revision 8 and related research notes are unverified
 inputs; this code implements only the stated discrete convention.
 
 Orientation convention
@@ -233,10 +234,25 @@ def branch_index_floor(raw: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
     by ``±2π``, then recomputes ``omega = raw - 2π n`` so the pair stays
     consistent (required for ``q = -d1 @ n`` to match ``(d1 @ omega) / 2π``).
     Exact ``+π`` still maps to ``−π`` via ``omega >= π`` → ``n += 1``.
+
+    The branch index is stored as signed int64. Inputs whose ideal branch
+    index is not representable, or whose float remainder cannot be brought
+    into ``[-π, π)`` by the bounded hardening below, raise ``WindingError``.
     """
     raw_arr = _as_1d_float("raw", raw)
-    # floor of float; cast to int64 afterwards (core branch index stays integer).
-    n = np.floor((raw_arr + np.pi) / TWO_PI).astype(np.int64)
+    # Validate before conversion: float-to-int overflow can otherwise produce
+    # a sentinel/wrapped integer and a wildly out-of-range principal value.
+    n_float = np.floor((raw_arr + np.pi) / TWO_PI)
+    int64_info = np.iinfo(np.int64)
+    int64_min_float = float(int64_info.min)  # exactly representable
+    int64_upper_exclusive = float(2**63)  # int64 max itself rounds to this
+    if (
+        not np.all(np.isfinite(n_float))
+        or np.any(n_float < int64_min_float)
+        or np.any(n_float >= int64_upper_exclusive)
+    ):
+        raise WindingError("raw phase requires a branch index outside the int64 range")
+    n = n_float.astype(np.int64)
     omega = raw_arr - TWO_PI * n.astype(float)
     # Harden into [-π, π) while keeping omega = raw - 2π n.
     # Two passes cover residual float overshoot after the first adjust.
@@ -245,8 +261,16 @@ def branch_index_floor(raw: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
         low = omega < -np.pi
         if not (np.any(high) or np.any(low)):
             break
+        would_overflow_high = high & (n == int64_info.max)
+        would_overflow_low = low & (n == int64_info.min)
+        if np.any(would_overflow_high) or np.any(would_overflow_low):
+            raise WindingError("interval hardening would overflow the int64 branch index")
         n = (n + high.astype(np.int64) - low.astype(np.int64)).astype(np.int64)
         omega = raw_arr - TWO_PI * n.astype(float)
+    if np.any(omega < -np.pi) or np.any(omega >= np.pi):
+        raise WindingError(
+            "float precision cannot place raw phase inside the principal interval [-pi, pi)"
+        )
     return n, omega
 
 
@@ -282,7 +306,8 @@ def phase_winding(
 
     Raises:
         WindingError: On malformed shapes, non-finite phases, invalid incidence,
-            dimension mismatch, or failed ``d1 @ d0 == 0`` identity.
+            dimension mismatch, unsafe int64 branch-index range/precision, or
+            failed ``d1 @ d0 == 0`` identity.
     """
     _validate_wrap_interval(wrap_interval)
     if tie_tol < 0.0 or not np.isfinite(tie_tol):

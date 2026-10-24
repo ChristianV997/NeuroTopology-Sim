@@ -6,7 +6,8 @@
 
 Algebraic sensor-space descriptor on an oriented 2-complex. **Not** evidence of
 cortical propagation, a biological singularity, consciousness, or any ontology
-claim. Passing unit tests does **not** establish physical topology.
+claim. Graph/complex winding here is not spatial charge and does not establish
+biological winding. Passing unit tests does **not** establish physical topology.
 
 No production callers outside this package yet; consumers pass dense incidence
 and phases explicitly. Hodge (#423) accepts a separate edge 1-cochain `omega`
@@ -100,6 +101,8 @@ reported, not silently resolved.
 Raises `WindingError` (subclass of `ValueError`) for:
 
 - non-1-D / non-finite phases
+- branch indices outside signed-int64 range, or float remainders that cannot be
+  placed in `[-π, π)` by bounded interval hardening
 - wrong `|V|` or edge-dimension mismatch between `d0` and `d1`
 - non-dense / non-integer / out-of-`{-1,0,+1}` incidence
 - `d1 @ d0 != 0` (exact integer identity required)
@@ -108,7 +111,10 @@ Raises `WindingError` (subclass of `ValueError`) for:
 ### Incidence vs embedding
 
 `D1 @ D0 == 0` is a **cochain / incidence** identity. It does **not** certify a
-valid planar geometric mesh. Geometric validation belongs to the geometry module.
+valid planar geometric mesh. This API has no semantic edge IDs, so it also
+cannot distinguish parallel edges from accidental duplicate rows or determine
+whether an expected edge/face was omitted. Those completeness and embedding
+checks belong to the caller's topology/geometry contract.
 
 ### Discrete identity and integer winding
 
