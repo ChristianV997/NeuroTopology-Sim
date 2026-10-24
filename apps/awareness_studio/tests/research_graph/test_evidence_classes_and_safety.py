@@ -1,6 +1,8 @@
 """Tests for evidence class classification, safety labels, and promotion guardrails."""
 from __future__ import annotations
 
+import pytest
+
 from awareness_studio.research_graph import (
     DiagnosticCode,
     DiagnosticSeverity,
@@ -214,6 +216,7 @@ def test_source_claiming_empirical_without_verification_is_flagged():
     node = graph.get_node("src-unverified-empirical")
     assert node is not None
     assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -234,6 +237,9 @@ def test_source_claiming_empirical_with_verification_is_not_flagged():
         ]
     }
     graph = load_from_dict(manifest)
+    node = graph.get_node("src-verified-empirical")
+    assert node is not None
+    assert node.status == NodeStatus.ACTIVE.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -247,6 +253,9 @@ def test_source_claiming_formal_without_verification_is_flagged():
         ]
     }
     graph = load_from_dict(manifest)
+    node = graph.get_node("src-unverified-formal")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
     violations = [
         d for d in graph.diagnostics if d.code == DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value
     ]
@@ -302,3 +311,145 @@ def test_claim_declaring_recognized_evidence_class_still_classifies_correctly():
     node = graph.get_node("clm-proxy")
     assert node is not None
     assert node.evidence_class == EvidenceClass.PROXY.value
+
+
+def test_source_without_evidence_signal_is_review_required_not_active():
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-bare", "title": "Bare Source", "source_type": "journal_article"},
+        ],
+    })
+
+    node = graph.get_node("src-bare")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.UNKNOWN.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+@pytest.mark.parametrize("declared", ["rejected", "falsified", "contradicted", "weakened", "inconclusive"])
+def test_negative_source_status_is_kept_without_evidence_signal(declared):
+    # Regression: _source_status downgraded every declared status outside disputed/retracted/superseded to
+    # review_required. A source declared rejected or falsified then read as merely pending review. main keeps it.
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-negative", "title": "Negative Source", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-negative")
+    assert node is not None
+    assert node.status == declared
+
+
+@pytest.mark.parametrize("declared", [None, "", "   "])
+def test_missing_source_status_is_review_required_not_a_literal_string(declared):
+    # Regression: an explicit null status was stringified to the literal "None" and escaped the downgrade.
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-blank", "title": "Blank Status", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-blank")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+@pytest.mark.parametrize("declared", ["active", "proposed", "provisional", "supported"])
+def test_unverified_positive_source_status_is_downgraded_without_evidence_signal(declared):
+    graph = load_from_dict({
+        "sources": [
+            {"source_id": "src-positive", "title": "Positive Source", "source_type": "journal_article", "status": declared},
+        ],
+    })
+
+    node = graph.get_node("src-positive")
+    assert node is not None
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_unrecognized_source_status_cannot_claim_empirical_verification():
+    graph = load_from_dict({
+        "sources": [
+            {
+                "source_id": "src-unrecognized-status",
+                "title": "Unrecognized Status Source",
+                "data_mode": "empirical",
+                "status": "verified",
+            },
+        ],
+    })
+
+    node = graph.get_node("src-unrecognized-status")
+    assert node is not None
+    assert node.evidence_class == EvidenceClass.EMPIRICAL.value
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_pass_validation_stays_pending_without_independent_adjudication():
+    graph = load_from_dict({
+        "validations": [
+            {
+                "validation_id": "val-self-attested-pass",
+                "hypothesis_id": "hyp-001",
+                "verdict": "PASS",
+                "data_mode": "empirical",
+                "evidence_class": "formal",
+                "preregistered": True,
+                "held_out_split_locked": True,
+                "provenance_status": "complete",
+                "artifact_lineage_complete": True,
+                "labels_verified": True,
+                "null_models_complete": True,
+                "multiplicity_corrected": True,
+                "human_review_gate": {"passed": True, "reviewer": "fixture-reviewer"},
+            },
+            {
+                "validation_id": "val-synthetic-pass",
+                "hypothesis_id": "hyp-001",
+                "verdict": "PASS",
+                "data_mode": "synthetic",
+                "is_synthetic": True,
+            },
+        ],
+    })
+
+    for validation_id in ("val-self-attested-pass", "val-synthetic-pass"):
+        node = graph.get_node(validation_id)
+        assert node is not None
+        assert node.status == NodeStatus.REVIEW_REQUIRED.value
+        assert SafetyLabel.REVIEW_REQUIRED.value in node.safety_labels
+        assert not any(
+            edge.source_id == validation_id and edge.edge_type == EdgeType.SUPPORTS.value
+            for edge in graph.edges
+        )
+
+    synthetic = graph.get_node("val-synthetic-pass")
+    assert synthetic is not None
+    assert synthetic.evidence_class == EvidenceClass.SYNTHETIC.value
+    assert SafetyLabel.SYNTHETIC_ONLY.value in synthetic.safety_labels
+
+
+@pytest.mark.parametrize(
+    "review_metadata",
+    [
+        {"human_review_gate": {"passed": "false", "reviewer": "fixture-reviewer"}},
+        {"human_review_passed": "false", "human_reviewer": "fixture-reviewer"},
+        {"human_review_gate": {"passed": True, "reviewer": "   "}},
+        {"human_review_passed": True, "human_reviewer": "   "},
+    ],
+)
+def test_unverified_human_review_does_not_authorize_supported_claim(review_metadata):
+    graph = load_from_dict({
+        "claims": [{
+            "claim_id": "clm-string-false-review",
+            "claim_text": "synthetic-only fixture",
+            "claim_status": "supported",
+            **review_metadata,
+        }],
+    })
+
+    assert any(
+        diagnostic.code == DiagnosticCode.UNSUPPORTED_PROMOTION.value
+        for diagnostic in graph.diagnostics
+    )

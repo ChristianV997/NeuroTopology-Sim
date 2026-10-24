@@ -23,15 +23,25 @@ from .types import (
 )
 
 
+# Declared statuses that assert nothing verified. A source without an evidence signal cannot keep one of these.
+_UNVERIFIED_SOURCE_STATUSES = frozenset({
+    NodeStatus.ACTIVE.value,
+    NodeStatus.PROPOSED.value,
+    NodeStatus.PROVISIONAL.value,
+    NodeStatus.SUPPORTED.value,
+})
+_KNOWN_SOURCE_STATUSES = frozenset(status.value for status in NodeStatus)
+
+
 def _classify_evidence(data: Mapping[str, Any]) -> str:
     """Infer evidence class from record metadata without claim promotion."""
-    if data.get("is_synthetic") or data.get("data_mode") == "synthetic":
+    if data.get("is_synthetic") is True or data.get("data_mode") == "synthetic":
         return EvidenceClass.SYNTHETIC.value
-    if data.get("is_proxy") or data.get("data_type") == "proxy_bayes_factor":
+    if data.get("is_proxy") is True or data.get("data_type") == "proxy_bayes_factor":
         return EvidenceClass.PROXY.value
-    if data.get("is_formal") or data.get("evidence_class") == "formal":
+    if data.get("is_formal") is True or data.get("evidence_class") == "formal":
         # Only true formal if preregistered, held out locked, and not synthetic
-        if data.get("preregistered", False) and data.get("held_out_split_locked", False):
+        if data.get("preregistered") is True and data.get("held_out_split_locked") is True:
             return EvidenceClass.FORMAL.value
         return EvidenceClass.EMPIRICAL.value
     if data.get("data_mode") == "empirical" or data.get("data_type") == "empirical_dataset":
@@ -40,6 +50,96 @@ def _classify_evidence(data: Mapping[str, Any]) -> str:
     if ev_cls in (e.value for e in EvidenceClass):
         return ev_cls
     return EvidenceClass.UNKNOWN.value
+
+
+def _source_status(source: Mapping[str, Any], evidence_class: str) -> str:
+    """Expose missing verification without softening a declared negative or terminal status."""
+    raw = source.get("status")
+    declared = NodeStatus.ACTIVE.value if raw is None or not str(raw).strip() else str(raw)
+    normalized_status = declared.strip().lower()
+    if normalized_status not in _KNOWN_SOURCE_STATUSES:
+        return NodeStatus.REVIEW_REQUIRED.value
+    verified = (
+        source.get("verification_status") == "verified"
+        or source.get("peer_review_status") == "peer_reviewed"
+        or source.get("review_status") == "reviewed_accepted"
+        or (source.get("preregistered") is True and source.get("held_out_split_locked") is True)
+    )
+    # Synthetic and proxy records can never carry a promotion status, whatever
+    # verification flags they declare; empirical and formal ones need verification.
+    unverified_claim = evidence_class in {
+        EvidenceClass.SYNTHETIC.value,
+        EvidenceClass.PROXY.value,
+    } or (evidence_class in {EvidenceClass.EMPIRICAL.value, EvidenceClass.FORMAL.value} and not verified)
+    if (
+        normalized_status in _UNVERIFIED_SOURCE_STATUSES
+        and (evidence_class == EvidenceClass.UNKNOWN.value or unverified_claim)
+    ):
+        return NodeStatus.REVIEW_REQUIRED.value
+    return normalized_status
+
+
+# Node types whose declared status is a verification-bearing claim about evidence.
+_STATUS_GATED_NODE_TYPES = frozenset({
+    NodeType.SOURCE_SNAPSHOT.value,
+    NodeType.CLAIM.value,
+    NodeType.EVIDENCE_RECORD.value,
+    NodeType.EXPERIMENT.value,
+    NodeType.ARTIFACT.value,
+    NodeType.RUN.value,
+})
+
+
+def _run_status(run: Mapping[str, Any]) -> str:
+    """A run verdict is evidence to review: it passes the same status gate as
+    other evidence, and a failing verdict is recorded as falsified."""
+    verdict = run.get("verdict")
+    if isinstance(verdict, str) and verdict.strip().upper() in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+        return NodeStatus.FALSIFIED.value
+    declared = verdict if isinstance(verdict, str) and verdict.strip() else NodeStatus.ACTIVE.value
+    return _source_status({**run, "status": declared}, _classify_evidence(run))
+
+
+def _direct_node_projection(
+    raw_node: Mapping[str, Any],
+) -> tuple[Any, Any, Any, Any]:
+    node_type = str(raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value)).strip().lower()
+    raw_properties = raw_node.get("properties", {})
+    metadata = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+    metadata.update(raw_node)
+    # A declared evidence_class is never trusted directly, for any node type.
+    # It goes through the same preregistration/held-out gate as manifest claims.
+    evidence_class = _classify_evidence(metadata)
+    status = raw_node.get("status", NodeStatus.ACTIVE.value)
+    properties = raw_properties
+    if node_type in _STATUS_GATED_NODE_TYPES:
+        status = _source_status(metadata, evidence_class)
+    if node_type == NodeType.SOURCE_SNAPSHOT.value:
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
+    elif node_type == NodeType.VALIDATION.value:
+        raw_verdict = metadata.get("verdict")
+        verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
+        status = (
+            NodeStatus.FALSIFIED.value
+            if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}
+            else NodeStatus.REVIEW_REQUIRED.value
+        )
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
+    elif node_type == NodeType.CLAIM.value:
+        properties = dict(raw_properties) if isinstance(raw_properties, Mapping) else {}
+        properties.update({key: value for key, value in raw_node.items() if key not in {
+            "node_id", "node_type", "label", "status", "safety_labels", "properties",
+            "source_id", "checksum", "tags",
+        }})
+    return node_type, status, evidence_class, properties
 
 
 def load_from_dict(
@@ -56,15 +156,16 @@ def load_from_dict(
         for raw_node in data["nodes"]:
             if not isinstance(raw_node, dict) or "node_id" not in raw_node:
                 continue
+            node_type, status, evidence_class, properties = _direct_node_projection(raw_node)
             builder.add_node(
                 GraphNode(
                     node_id=str(raw_node["node_id"]),
-                    node_type=raw_node.get("node_type", NodeType.EVIDENCE_RECORD.value),
+                    node_type=node_type,
                     label=raw_node.get("label", str(raw_node["node_id"])),
-                    status=raw_node.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=raw_node.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    status=status,
+                    evidence_class=evidence_class,
                     safety_labels=raw_node.get("safety_labels", []),
-                    properties=raw_node.get("properties", {}),
+                    properties=properties,
                     source_id=raw_node.get("source_id"),
                     checksum=raw_node.get("checksum", ""),
                     tags=raw_node.get("tags", []),
@@ -92,13 +193,14 @@ def load_from_dict(
             if not isinstance(s, dict) or "source_id" not in s:
                 continue
             sid = str(s["source_id"])
+            evidence_class = _classify_evidence(s)
             builder.add_node(
                 GraphNode(
                     node_id=sid,
                     node_type=NodeType.SOURCE_SNAPSHOT.value,
                     label=s.get("title") or sid,
-                    status=s.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=_classify_evidence(s),
+                    status=_source_status(s, evidence_class),
+                    evidence_class=evidence_class,
                     properties=s,
                     source_id=sid,
                     tags=list(s.get("tags", [])),
@@ -193,7 +295,7 @@ def load_from_dict(
                     node_id=rid,
                     node_type=NodeType.RUN.value,
                     label=f"Run {rid} ({r.get('data_mode', 'sim')})",
-                    status=r.get("verdict", NodeStatus.ACTIVE.value).lower(),
+                    status=_run_status(r),
                     evidence_class=_classify_evidence(r),
                     properties=r,
                 )
@@ -245,13 +347,12 @@ def load_from_dict(
             vid = str(val["validation_id"])
             raw_verdict = val.get("verdict")
             verdict = str(raw_verdict).strip().upper() if raw_verdict is not None else None
-            if verdict == "PASS":
-                status = NodeStatus.SUPPORTED.value
-            elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+            if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
                 status = NodeStatus.FALSIFIED.value
             else:
-                # An absent or unrecognized verdict is an unresolved
-                # validation record, never an implicit scientific PASS.
+                # A graph loader is a metadata projection, not an independent
+                # evidence adjudicator.  Even a literal PASS must remain pending
+                # artifact, provenance, null-model, split, and human review.
                 status = NodeStatus.REVIEW_REQUIRED.value
             evidence_class = _classify_evidence(val)
             builder.add_node(
@@ -269,9 +370,7 @@ def load_from_dict(
                 builder.link(EdgeType.VALIDATES, vid, target, label="validates_target")
             if val.get("hypothesis_id"):
                 hid = str(val["hypothesis_id"])
-                if verdict == "PASS":
-                    builder.link(EdgeType.SUPPORTS, vid, hid, label="validation_passed")
-                elif verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
+                if verdict in {"FAIL", "FAILED", "FALSIFIED", "REJECTED"}:
                     builder.link(EdgeType.CONTRADICTS, vid, hid, label="validation_failed")
 
     # 10. Theory Revisions
@@ -364,15 +463,16 @@ def load_from_jsonl(
                 metadata=record.get("metadata"),
             )
         elif "node_type" in record and "node_id" in record:
+            node_type, status, evidence_class, properties = _direct_node_projection(record)
             builder.add_node(
                 GraphNode(
                     node_id=str(record["node_id"]),
-                    node_type=record["node_type"],
+                    node_type=node_type,
                     label=record.get("label", str(record["node_id"])),
-                    status=record.get("status", NodeStatus.ACTIVE.value),
-                    evidence_class=record.get("evidence_class", EvidenceClass.UNKNOWN.value),
+                    status=status,
+                    evidence_class=evidence_class,
                     safety_labels=record.get("safety_labels", []),
-                    properties=record.get("properties", {}),
+                    properties=properties,
                     source_id=record.get("source_id"),
                     checksum=record.get("checksum", ""),
                     tags=record.get("tags", []),

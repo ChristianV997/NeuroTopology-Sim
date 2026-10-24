@@ -42,6 +42,7 @@ def test_to_markdown_contains_key_sections():
     md = to_markdown(manifest)
     assert "Release Candidate Manifest" in md
     assert "Merge state" in md
+    assert "Release state" in md
     assert "CI classifications" in md
     assert "Scientific gate" in md
 

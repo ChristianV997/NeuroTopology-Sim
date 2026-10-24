@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import ci_classifier, git_source, github_source, ownership, scientific_gate
-from .merge_state import MergeStateContext, classify_merge_state
+from .merge_state import MergeStateContext, classify_merge_state, classify_release_state
 from .models import (
     ChangedFileOwnership,
     Evidence,
@@ -103,6 +103,8 @@ def build_manifest(
 
     ctx = MergeStateContext(
         commit_resolves=commit_resolves,
+        source_commit=resolved,
+        target_branch=target_branch,
         is_current_head_of_target=is_head_of_target,
         is_ancestor_of_target=is_ancestor_of_target,
         is_current_head_of_integration=is_head_of_integration,
@@ -114,9 +116,18 @@ def build_manifest(
         dependency_blockers=tuple(dependency_blockers),
     )
     merge_state, blockers = classify_merge_state(ctx)
+    release_state, release_blockers = classify_release_state(
+        ctx,
+        merge_state=merge_state,
+        scientific_gate_value=sci_evidence.value,
+    )
     manifest.merge_state = merge_state
-    manifest.blockers = [*blockers, *sci_findings]
+    manifest.release_state = release_state
+    manifest.blockers = list(dict.fromkeys([*blockers, *sci_findings, *release_blockers]))
+    # This legacy field is only a technical ancestry fact.  Use
+    # release_eligibility for a decision to publish or call a release ready.
     manifest.merge_eligibility = merge_state == "merged_into_main"
+    manifest.release_eligibility = release_state == "ready_for_release"
 
     manifest.governance_status = Evidence("not evaluated by this tool", "out of scope for release_manifest")
     manifest.dashboard_isolation_status = Evidence("not evaluated by this tool", "out of scope for release_manifest")

@@ -1,17 +1,9 @@
 # Release Candidate Manifest
 
-Branch: `claude/release-candidate-manifest`, based on latest `origin/main`
-(`62aa8fee786abf916ab0aa2b7e7b91c570fee119`). Owns exclusively:
-`tools/release_manifest/**`, `scripts/build_release_manifest.py`,
-`tests/release_manifest/**`, `docs/release/release_candidate_manifest.md`.
-Touches nothing in `governance/merge_gate.py`, `tools/integration_state/**`,
-`tools/integration_reconciliation/**`, `docs/release/merge_matrix.md`, any
-PR-reconciliation code, GitHub workflows, scientific modules, or dashboard
-routes — all of those are owned by sibling branches running in parallel
-this round (`claude/integration-state-lock`, `claude/merge-gate-policy`,
-`claude/integration-reconciliation`, `claude/integrated-scientific-release-audit`,
-`claude/ecosystem-integration`), none of which this branch waited for,
-rebased onto, or read from.
+This document describes the read-only release-candidate manifest builder in
+`tools/release_manifest`. The builder uses local Git facts and an optional
+pre-fetched JSON snapshot for GitHub-side facts; it does not contact GitHub or
+any other network service.
 
 ## What this is
 
@@ -38,6 +30,7 @@ duplicate_file_findings: list, ci_classifications: dict,
 test_summary: dict|null, governance_status: Evidence,
 scientific_gate_status: Evidence, dashboard_isolation_status: Evidence,
 memory_timeout_status: Evidence, merge_state: str, merge_eligibility: bool,
+release_state: str, release_eligibility: bool,
 blockers: list[str], github_state: "available"|"unavailable",
 provenance: dict, generated_at: str|null   # only populated when explicitly requested
 ```
@@ -50,6 +43,26 @@ dashboard/timeout code (owned by sibling branches), so it never fabricates
 a verdict for them; a caller that has that data can overwrite those fields
 before serializing.
 
+## Integration State Is Not Release Readiness
+
+`merge_state` and the legacy `merge_eligibility` field describe technical
+target-branch reachability only. They answer whether git ancestry or a
+GitHub snapshot shows that a commit landed; they are not a scientific or
+operational approval.
+
+`release_state` and `release_eligibility` are independent fields. A commit
+that is technically `merged_into_main` remains `blocked_by_scientific_review`,
+`blocked_by_ci`, `blocked_by_infrastructure`, `blocked_by_dependency`, or
+`inconclusive` until its independent gates are admissible. The current
+metadata-only scientific gate intentionally cannot emit `ready_for_release`.
+Verdict strings are canonicalized before evaluation: invisible format
+characters, surrounding whitespace, casing, and `-` or space separators are
+ignored, so `PASS`, `pass`, and `Pass` are one unverified literal, and
+`NOT_SUPPORTED`, `not supported`, `FAIL`, `FALSIFIED`, and `REJECTED` all block.
+Release readiness also requires classified CI to be `passing`; `pending`,
+`skipped`, and `unavailable` CI states remain `inconclusive` rather than being
+treated as a release pass.
+
 ## The 11 merge states, and their priority order
 
 Full rationale lives as a module docstring in
@@ -58,7 +71,7 @@ Full rationale lives as a module docstring in
 | Priority | State | Meaning |
 |---|---|---|
 | 1 | `unknown` (commit unresolvable) | The claimed commit is not a real git object — includes the fabricated-hash case. Nothing else is evaluated once identity itself is unverifiable. |
-| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot's own `merged` field is `True`. A disagreement between the two is recorded as a blocker note, never silently resolved, but the release is still reported merged when it plainly landed. |
+| 2 | `merged_into_main` | Real ancestry places the commit on `target_branch`, **or** the PR snapshot reports `merged=True`, its `base_ref` matches `target_branch`, and its `head_sha` exactly matches `source_commit` (including a matching squash-merge snapshot). A merge into another or unspecified base, or a snapshot for a different/missing PR head, is not evidence that this commit integrated into the target. |
 | 3 | `duplicate` | This work's changed-file set overlaps another concurrent owner's above the Jaccard/shared-file threshold (and isn't already merged). |
 | 4 | `blocked_by_scientific_review` | The scientific gate reports a genuinely evidenced negative verdict (not merely missing data). |
 | 5 | `blocked_by_ci` | Worst classified CI check is `failing`. |
@@ -79,6 +92,8 @@ in this effort:
 - CI: `passing`, `failing`, `pending`, `skipped`, `infrastructure_blocked`,
   `unavailable`. A bare `"failure"` conclusion with no
   `failure_signature` evidence is `failing`, never silently downgraded.
+- Unknown CI-state values are rejected with `ValueError`; they are never
+  coerced into a passing or otherwise recognized state.
 - Commit: `current_head`, `ancestor`, `stale`, `unknown` — surfaced here
   via `branch_ancestry`'s `is_current_head_of_*` / `is_ancestor_of_*`
   booleans plus `verified_head_commit`'s null-on-unresolvable behavior,
@@ -89,13 +104,13 @@ in this effort:
 
 `merge_state.classify_merge_state` treats a direct `git merge-base
 --is-ancestor` check against the real `target_branch` ref as a hard fact
-(not a heuristic), which is the one case where local git evidence alone
-is sufficient to call `merged_into_main`. A commit-message *search* for
-`"#NNN"` (`git_source.find_merge_commit_for_pr_number`) is explicitly
-documented as evidence code landed, never evidence a PR's own `merged`
-field is `True`, and this function is not wired into the merge-state
-decision for exactly that reason — only `is_ancestor` and the PR
-snapshot's own `merged` field feed the classifier.
+(not a heuristic), which is sufficient to call `merged_into_main`. A PR
+snapshot can also establish a squash merge when `merged=True` and its
+`base_ref` matches `target_branch`; a missing or different base is recorded
+as a blocker and cannot promote the commit to target-merged. A commit-message
+*search* for `"#NNN"` (`git_source.find_merge_commit_for_pr_number`) is
+evidence code landed on a branch, never evidence that the PR merged into
+this target.
 
 ## The `^{commit}` fix, applied from the first draft
 
@@ -141,54 +156,22 @@ wrong top-level bucket.
 `json.dumps(..., allow_nan=False)` — `json.dumps` alone would otherwise
 silently emit non-standard `NaN`/`Infinity` tokens into the output.
 
-## Manual dry-run against the real PR #236 (2026-09-07)
+## CLI usage
 
-Using the real PR #236 snapshot already captured in this session
-(`ChristianV997/NeuroTopology-Sim`, head
-`af3ac584419148ddcfc57cb565c416eba6328725`, base `main`, `merged: false`,
-its `required-checks` failing with an infrastructure `failure_signature`):
+The optional snapshot is a pre-fetched JSON file supplied by the caller; it is not obtained by this CLI.
 
 ```bash
-python scripts/build_release_manifest.py \
-  --repo-path . \
-  --repository ChristianV997/NeuroTopology-Sim \
-  --target-branch origin/main \
-  --integration-branch origin/codex/integration-all-open-prs \
-  --source-commit af3ac584419148ddcfc57cb565c416eba6328725 \
-  --pr-snapshot /tmp/pr236_snapshot.json
+python scripts/build_release_manifest.py --repo-path . --repository OWNER/REPOSITORY --target-branch origin/main --integration-branch origin/integration --source-commit COMMIT_SHA --pr-snapshot path/to/pr-snapshot.json --json-out outputs/release_candidate.json --markdown-out outputs/release_candidate.md
 ```
 
-Result: `merge_state=blocked_by_infrastructure`,
-`merge_eligibility=False`, `github_state=available`,
-`ci_classifications["required-checks"].value == "infrastructure_blocked"`.
-The PR is correctly **never** reported as `merged_into_main` — it is
-open, its own `merged` field is `false`, and it is not an ancestor of
-`origin/main` in this checkout.
 
-Separately, feeding the PR body's own claimed "final commit"
-(`af3ac584277747ae29882d3f5a39af5c4a436f22` — a fabricated hash sharing
-only the real head's 8-character prefix) as `--source-commit` with no
-`--pr-snapshot` produces `merge_state=unknown` and
-`verified_head_commit.value == None`, with the evidence string stating
-plainly that the hash does not resolve to any real git object in this
-repository — exactly the fabricated-hash guarantee this tool must uphold.
 
 ## Test commands
 
 ```bash
-PYTHONPATH=. python -m pytest tests/release_manifest -q       # 60 passed
+PYTHONPATH=. python -m pytest tests/release_manifest -q
 python -m compileall -q tools/release_manifest scripts/build_release_manifest.py tests/release_manifest
-python -m governance.validate                                  # 4/4 specs pass (baseline, unaffected)
-python -m pytest tests/integration_reconciliation -q           # 132 passed (pre-existing, unaffected)
 ```
-
-`tools/integration_state/**` and `governance/merge_gate.py` do not exist
-on this branch's base (`origin/main` at `62aa8fee...`) — both are owned
-by sibling branches (`claude/integration-state-lock`,
-`claude/merge-gate-policy`) still in flight in this same parallel round,
-per this task's explicit instruction not to wait for, rebase onto, or
-read another agent's branch. Their tests could not be run from this
-checkout for that reason, not because of any failure.
 
 No test in `tests/release_manifest/` opens a socket: `conftest.py` builds
 real, local-only git fixture repos via subprocess `git`, every GitHub-side

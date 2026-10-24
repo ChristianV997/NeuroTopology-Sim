@@ -4,6 +4,7 @@ import socket
 import pytest
 
 from tools.release_manifest.manifest_builder import build_manifest
+from tools.release_manifest.merge_state import MergeStateContext, classify_release_state
 from tools.release_manifest.models import ChangedFileOwnership, ScientificGateInput
 from tests.release_manifest.conftest import commit_of
 
@@ -25,7 +26,24 @@ def test_verified_merge_reports_merged_into_main(git_repo):
     )
     assert manifest.merge_state == "merged_into_main"
     assert manifest.merge_eligibility is True
+    assert manifest.release_state == "inconclusive"
+    assert manifest.release_eligibility is False
     assert manifest.verified_head_commit.value == head
+
+
+def test_bare_scientific_pass_does_not_make_release_ready():
+    ctx = MergeStateContext(
+        commit_resolves=True,
+        is_ancestor_of_target=True,
+        worst_ci_state="passing",
+    )
+    state, blockers = classify_release_state(
+        ctx,
+        merge_state="merged_into_main",
+        scientific_gate_value="pass",
+    )
+    assert state == "inconclusive"
+    assert blockers
 
 
 def test_integration_only_is_never_reported_as_merged(git_repo_with_integration_branch):
@@ -140,7 +158,26 @@ def test_synthetic_scientific_result_is_not_blocking(git_repo_with_integration_b
     )
     assert manifest.scientific_gate_status.value == "blocked"
     assert manifest.merge_state == "blocked_by_scientific_review"
+    assert manifest.release_state == "blocked_by_scientific_review"
+    assert manifest.release_eligibility is False
     assert any("unverified_scientific_pass" in b for b in manifest.blockers)
+
+
+def test_merged_commit_with_scientific_block_is_not_release_eligible(git_repo):
+    repo = git_repo
+    head = commit_of(repo, "main")
+    manifest = build_manifest(
+        repo_path=repo,
+        repository="ChristianV997/NeuroTopology-Sim",
+        target_branch="main",
+        integration_branch="main",
+        source_commit=head,
+        scientific_gate_input=ScientificGateInput(data_mode="synthetic", verdict="PASS"),
+    )
+    assert manifest.merge_state == "merged_into_main"
+    assert manifest.merge_eligibility is True
+    assert manifest.release_state == "blocked_by_scientific_review"
+    assert manifest.release_eligibility is False
 
 
 def test_missing_github_snapshot_reports_unavailable(git_repo):
