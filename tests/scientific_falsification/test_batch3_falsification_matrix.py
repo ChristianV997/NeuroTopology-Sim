@@ -1021,6 +1021,17 @@ def test_claim_evidence_class_must_come_from_declared_vocabulary() -> None:
         assert report["scientific_pass"] is False
 
 
+def test_claim_category_must_come_from_declared_vocabulary() -> None:
+    """Claim categories are the versioned vocabulary, not any free string."""
+    for value in ("scientific_PASS", "empirical_validated", "PASS", "formal"):
+        doc = load_matrix()
+        doc["claims"][0]["category"] = value
+        report = evaluate(doc)
+        assert report["complete"] is False, value
+        assert report["scientific_pass"] is False
+        assert any("category is not in the versioned claim vocabulary" in issue for issue in report["issues"])
+
+
 def test_explicit_empty_claim_requirement_lists_fail_closed() -> None:
     """An explicitly empty baseline, control or instrument list declares nothing and must fail."""
     for key in ("required_baselines", "required_controls", "required_instruments"):
