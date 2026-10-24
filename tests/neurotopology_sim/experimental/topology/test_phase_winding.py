@@ -398,3 +398,64 @@ def test_omega_in_principal_interval():
         assert np.all(result.omega < np.pi)
         # Identity residual
         assert result.identity_residual_max_abs < 1e-10
+
+
+def test_branch_index_omega_consistent_after_interval_hardening():
+    """Float hardening must keep omega = raw - 2π n (invariant for q = -d1@n).
+
+    Regression: nextafter(+π, -∞) made floor((raw+π)/(2π)) return 1 while the
+    hardened omega stayed near +π, desynchronizing n and omega by a full turn.
+    """
+    raw_near_pi = float(np.nextafter(np.pi, -np.inf))
+    adversarial = np.array(
+        [
+            raw_near_pi,
+            float(np.nextafter(np.pi, np.inf)),
+            float(np.nextafter(-np.pi, np.inf)),
+            float(np.nextafter(3.0 * np.pi, -np.inf)),
+            float(np.nextafter(5.0 * np.pi, -np.inf)),
+            0.0,
+            -0.5,
+            float(np.pi),
+            float(-np.pi),
+        ]
+    )
+    n, omega = branch_index_floor(adversarial)
+    assert np.all(omega >= -np.pi)
+    assert np.all(omega < np.pi)
+    reconstructed = adversarial - TWO_PI * n.astype(float)
+    assert np.allclose(omega, reconstructed, rtol=0.0, atol=1e-12)
+
+
+def test_face_charge_matches_circulation_near_branch_cut():
+    """Integer q must match d1@omega / 2π when a single edge sits just below +π."""
+    d0, d1 = _standard_triangle_incidence()
+    raw0 = float(np.nextafter(np.pi, -np.inf))
+    # Smooth lift except edge (0,1) near the cut; d1@d0 still 0 so circulation
+    # is an integer multiple of 2π determined by the wrapped 1-cochain.
+    theta = np.array([0.0, raw0, raw0 + 0.1])
+    result = phase_winding(theta, d0, d1)
+    circ = float(np.asarray(d1.astype(float) @ result.omega).reshape(()))
+    q_from_circ = circ / TWO_PI
+    assert result.identity_residual_max_abs < 1e-10
+    assert result.face_charge.dtype == np.int64
+    assert result.face_charge.tolist() == [int(round(q_from_circ))]
+    assert abs(q_from_circ - float(result.face_charge[0])) < 1e-10
+    # Explicit oracle for this fixture: circulation is one full turn.
+    assert result.face_charge.tolist() == [1]
+
+
+def test_ulp_neighborhoods_of_odd_pi_keep_n_omega_synced():
+    """Several odd multiples of π (ulp neighborhoods) must not desync n/omega."""
+    hits = []
+    for k in range(0, 12):
+        base = (2 * k + 1) * np.pi
+        for sign in (-1, 1):
+            x = float(base)
+            for _ in range(6):
+                x = float(np.nextafter(x, np.inf if sign > 0 else -np.inf))
+                n, omega = branch_index_floor([x])
+                cons = abs(float(omega[0]) - (x - TWO_PI * float(n[0])))
+                if cons > 1e-9:
+                    hits.append((k, x, int(n[0]), float(omega[0]), cons))
+    assert hits == []
