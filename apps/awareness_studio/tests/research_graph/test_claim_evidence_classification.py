@@ -7,6 +7,9 @@ rejects unknown class strings. Synthetic provenance must not be relabelled.
 """
 from __future__ import annotations
 
+import pytest
+
+from awareness_studio.research_graph.diagnostics import run_graph_diagnostics
 from awareness_studio.research_graph.loader import load_from_dict, load_from_jsonl
 from awareness_studio.research_graph.types import DiagnosticCode, EvidenceClass, NodeStatus
 
@@ -199,3 +202,45 @@ def test_jsonl_formal_claim_uses_claim_evidence_gates():
     node = graph.nodes["claim-jsonl-formal"]
     assert node.evidence_class == EvidenceClass.EMPIRICAL.value
     assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def _direct_node(raw: dict):
+    graph = load_from_dict({"nodes": [raw]})
+    return graph.nodes[raw["node_id"]], run_graph_diagnostics(graph)
+
+
+@pytest.mark.parametrize("node_type", ["evidence_record", "experiment", "artifact", "hypothesis"])
+def test_direct_nodes_cannot_self_declare_formal_evidence(node_type):
+    # Regression (#357 remediation): direct nodes of every type route the declared class through the same gate.
+    node, _ = _direct_node({"node_id": "n-formal", "node_type": node_type, "evidence_class": "formal", "status": "active"})
+    assert node.evidence_class != EvidenceClass.FORMAL.value
+
+
+@pytest.mark.parametrize("node_type", ["evidence_record", "experiment", "artifact"])
+def test_unverified_supported_direct_nodes_are_review_required(node_type):
+    node, _ = _direct_node({"node_id": "n-sup", "node_type": node_type, "evidence_class": "empirical", "status": "supported"})
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_unverified_empirical_evidence_record_is_flagged_like_claims():
+    _, diagnostics = _direct_node({"node_id": "n-emp", "node_type": "evidence_record", "evidence_class": "empirical"})
+    assert DiagnosticCode.EMPIRICAL_CLAIM_WITHOUT_VERIFICATION.value in {d.code for d in diagnostics}
+
+
+def test_jsonl_evidence_record_uses_the_same_gate():
+    line = '{"node_id": "j-formal", "node_type": "evidence_record", "evidence_class": "formal", "status": "active"}\n'
+    graph = load_from_jsonl(line)
+    assert graph.nodes["j-formal"].evidence_class != EvidenceClass.FORMAL.value
+
+
+def test_manifest_claim_supported_without_verification_is_review_required():
+    # Regression (#357 remediation): manifest claims and direct claims share one status gate.
+    node = _claim_node({"claim_id": "c-sup", "claim_text": "unverified", "claim_status": "supported", "data_mode": "empirical"})
+    assert node.status == NodeStatus.REVIEW_REQUIRED.value
+
+
+def test_run_verdict_pass_is_not_surfaced_as_a_bare_pass_status():
+    graph = load_from_dict({"runs": [{"run_id": "r-pass", "verdict": "PASS", "data_mode": "empirical"}]})
+    assert graph.nodes["r-pass"].status != "pass"
+    assert graph.nodes["r-pass"].status == NodeStatus.REVIEW_REQUIRED.value
+
