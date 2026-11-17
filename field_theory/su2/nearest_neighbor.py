@@ -636,6 +636,14 @@ def _unit_geodesic_perturbation(
     return changed
 
 
+def _accumulate_scaled_forward_gradient(
+    gradient: np.ndarray, scaled_derivative: np.ndarray, axis: int
+) -> None:
+    """Apply a transpose forward-difference stencil to an already scaled term."""
+    gradient -= scaled_derivative
+    gradient += np.roll(scaled_derivative, 1, axis=axis)
+
+
 def _accumulate_forward_derivative_gradient(
     gradient: np.ndarray,
     derivative: np.ndarray,
@@ -652,8 +660,53 @@ def _accumulate_forward_derivative_gradient(
         denominator_factors=(spacing,),
         name="nearest-neighbor gradient contribution",
     )
-    gradient -= scaled
-    gradient += np.roll(scaled, 1, axis=axis)
+    _accumulate_scaled_forward_gradient(gradient, scaled, axis)
+
+
+def _scaled_quartic_gradient_contributions(
+    a: np.ndarray,
+    b: np.ndarray,
+    *,
+    cell_volume: float,
+    transverse: np.ndarray,
+    coefficient: float,
+    spacing_a: float,
+    spacing_b: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Form scaled quartic-link derivatives without raw cubic intermediates."""
+    gradient_a = np.zeros_like(a)
+    gradient_b = np.zeros_like(b)
+    scale = (cell_volume, transverse[..., None], coefficient)
+    for component in range(a.shape[-1]):
+        a_component = a[..., component, None]
+        b_component = b[..., component, None]
+        term_a_1 = _scaled_product_quotient(
+            a,
+            numerator_factors=(*scale, b_component, b_component),
+            denominator_factors=(spacing_a,),
+            name="quartic gradient a term",
+        )
+        term_a_2 = _scaled_product_quotient(
+            a_component,
+            numerator_factors=(*scale, b_component, b),
+            denominator_factors=(spacing_a,),
+            name="quartic gradient a term",
+        )
+        term_b_1 = _scaled_product_quotient(
+            b,
+            numerator_factors=(*scale, a_component, a_component),
+            denominator_factors=(spacing_b,),
+            name="quartic gradient b term",
+        )
+        term_b_2 = _scaled_product_quotient(
+            a_component,
+            numerator_factors=(*scale, a_component, b_component),
+            denominator_factors=(spacing_b,),
+            name="quartic gradient b term",
+        )
+        gradient_a += term_a_1 - term_a_2
+        gradient_b += term_b_1 - term_b_2
+    return gradient_a, gradient_b
 
 
 def nearest_neighbor_energy_gradient(
@@ -709,30 +762,48 @@ def nearest_neighbor_energy_gradient(
             transverse = _transverse_weights(values.shape[:3], (i, j), field.boundary)
             a = differences[i]
             b = differences[j]
-            with np.errstate(over="raise", invalid="raise"):
-                dot = np.sum(a * b, axis=-1)
-                norm_a_squared = np.sum(a * a, axis=-1)
-                norm_b_squared = np.sum(b * b, axis=-1)
-                grad_a = norm_b_squared[..., None] * a - dot[..., None] * b
-                grad_b = norm_a_squared[..., None] * b - dot[..., None] * a
-            grad_a[~valid] = 0.0
-            grad_b[~valid] = 0.0
-            _accumulate_forward_derivative_gradient(
-                gradient,
-                grad_a,
-                i,
-                field.spacing[i],
-                skyrme_gradient_coefficient,
-                scale_factors=(cell_volume, transverse[..., None]),
-            )
-            _accumulate_forward_derivative_gradient(
-                gradient,
-                grad_b,
-                j,
-                field.spacing[j],
-                skyrme_gradient_coefficient,
-                scale_factors=(cell_volume, transverse[..., None]),
-            )
+            try:
+                with np.errstate(over="raise", under="raise", invalid="raise"):
+                    dot = np.sum(a * b, axis=-1)
+                    norm_a_squared = np.sum(a * a, axis=-1)
+                    norm_b_squared = np.sum(b * b, axis=-1)
+                    grad_a = norm_b_squared[..., None] * a - dot[..., None] * b
+                    grad_b = norm_a_squared[..., None] * b - dot[..., None] * a
+            except FloatingPointError:
+                # The raw cubic polynomial is faster in its ordinary range.
+                # Retry in exponent space if an intermediate over/underflows.
+                grad_a, grad_b = _scaled_quartic_gradient_contributions(
+                    a,
+                    b,
+                    cell_volume=cell_volume,
+                    transverse=transverse,
+                    coefficient=skyrme_gradient_coefficient,
+                    spacing_a=field.spacing[i],
+                    spacing_b=field.spacing[j],
+                )
+                grad_a[~valid] = 0.0
+                grad_b[~valid] = 0.0
+                _accumulate_scaled_forward_gradient(gradient, grad_a, i)
+                _accumulate_scaled_forward_gradient(gradient, grad_b, j)
+            else:
+                grad_a[~valid] = 0.0
+                grad_b[~valid] = 0.0
+                _accumulate_forward_derivative_gradient(
+                    gradient,
+                    grad_a,
+                    i,
+                    field.spacing[i],
+                    skyrme_gradient_coefficient,
+                    scale_factors=(cell_volume, transverse[..., None]),
+                )
+                _accumulate_forward_derivative_gradient(
+                    gradient,
+                    grad_b,
+                    j,
+                    field.spacing[j],
+                    skyrme_gradient_coefficient,
+                    scale_factors=(cell_volume, transverse[..., None]),
+                )
 
     gradient -= values * np.sum(values * gradient, axis=-1, keepdims=True)
     gradient[~active] = 0.0

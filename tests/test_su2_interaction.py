@@ -719,6 +719,27 @@ def test_sigma_energy_and_gradient_preserve_tiny_links_with_large_finite_couplin
     assert float(np.max(np.abs(gradient))) > 0.0
 
 
+def test_quartic_gradient_uses_scaled_fallback_for_tiny_link_products():
+    alpha = np.linspace(0.0, 0.4, 5)[:, None, None]
+    beta = np.linspace(0.0, 0.6, 5)[None, :, None]
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(alpha) * np.cos(beta)
+    components[..., 1] = np.sin(alpha)
+    components[..., 2] = np.cos(alpha) * np.sin(beta)
+    field = SU2GridField(
+        components,
+        spacing=(1.0e200, 1.0e200, 1.0e-100),
+        boundary="periodic",
+    )
+
+    gradient = nearest_neighbor_energy_gradient(
+        field, f_pi=1.0e-5, e=1.0e-154
+    )
+
+    assert np.all(np.isfinite(gradient))
+    assert float(np.max(np.abs(gradient))) > 0.0
+
+
 def test_gradient_avoids_overflow_before_small_coefficient_and_spacing_scale():
     theta = np.arange(5, dtype=np.float64)[:, None, None] * 1.0e-10
     components = np.zeros((5, 5, 5, 4), dtype=np.float64)
