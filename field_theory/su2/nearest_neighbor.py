@@ -113,6 +113,17 @@ class NearestNeighborRelaxationResult:
     minimum_certified: bool
 
 
+def _stable_norm(values: np.ndarray, axis: int | None = None) -> float | np.ndarray:
+    """Compute an L2 norm without squaring tiny or huge components directly."""
+    magnitudes = np.abs(np.asarray(values, dtype=np.float64))
+    if axis is None:
+        flattened = magnitudes.ravel()
+        if flattened.size == 0:
+            return 0.0
+        return float(np.hypot.reduce(flattened))
+    return np.hypot.reduce(magnitudes, axis=axis)
+
+
 def _positive_real(value: object, name: str) -> float:
     raw = np.asarray(value)
     if raw.ndim != 0 or raw.dtype.kind not in "fiu":
@@ -183,6 +194,21 @@ def _transverse_weights(
             reshape[axis] = shape[axis]
             weights *= line.reshape(reshape)
     return weights
+
+
+def _cell_volume(spacing: tuple[float, float, float]) -> float:
+    """Return a representable positive binary64 grid-cell volume."""
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        volume = float(
+            np.float64(spacing[0])
+            * np.float64(spacing[1])
+            * np.float64(spacing[2])
+        )
+    if not np.isfinite(volume) or volume <= 0.0:
+        raise ValueError(
+            "grid spacings must produce a finite positive binary64 cell volume"
+        )
+    return volume
 
 
 def _forward_differences(
@@ -259,7 +285,7 @@ def _energy_components(
     e: float,
 ) -> tuple[float, float]:
     shape = values.shape[:3]
-    cell_volume = spacing[0] * spacing[1] * spacing[2]
+    cell_volume = _cell_volume(spacing)
     sigma_sum = 0.0
     for axis in range(3):
         valid = _link_mask(shape, (axis,), boundary)
@@ -295,7 +321,7 @@ def _topological_charge(
 ) -> float:
     columns = np.stack((values, *differences), axis=-1)
     determinant = np.linalg.det(columns)
-    cell_volume = spacing[0] * spacing[1] * spacing[2]
+    cell_volume = _cell_volume(spacing)
     valid = _link_mask(values.shape[:3], (0, 1, 2), boundary)
     return float(np.sum(determinant[valid]) * cell_volume / (2.0 * np.pi**2))
 
@@ -551,7 +577,7 @@ def nearest_neighbor_energy_gradient(
     sigma_gradient_coefficient, skyrme_gradient_coefficient = _gradient_coefficients(
         f_value, e_value
     )
-    cell_volume = float(np.prod(field.spacing))
+    cell_volume = _cell_volume(field.spacing)
 
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
@@ -656,14 +682,14 @@ def nearest_neighbor_energy_gradient_finite_difference(
 def _descending_step(
     values: np.ndarray, gradient: np.ndarray, active: np.ndarray, step: float
 ) -> np.ndarray:
-    lengths = np.linalg.norm(gradient, axis=-1)
+    lengths = _stable_norm(gradient, axis=-1)
     angles = step * lengths
     with np.errstate(over="raise", invalid="raise"):
         factors = np.full_like(lengths, step)
         np.divide(np.sin(angles), lengths, out=factors, where=lengths > 0.0)
         candidate = values * np.cos(angles)[..., None] - gradient * factors[..., None]
     candidate[~active] = values[~active]
-    norms = np.linalg.norm(candidate, axis=-1)
+    norms = _stable_norm(candidate, axis=-1)
     if not np.all(np.isfinite(candidate)) or np.any(norms[active] <= 0.0):
         raise FloatingPointError("non-finite field produced by nearest-neighbor step")
     candidate[active] /= norms[active, None]
@@ -717,7 +743,7 @@ def relax_skyrme_field_nearest_neighbor(
             finite_difference_step=fd_step,
             fixed_mask=fixed_sites,
         )
-        gradient_norm = float(np.linalg.norm(gradient[active]))
+        gradient_norm = float(_stable_norm(gradient[active]))
         if not np.isfinite(gradient_norm):
             raise FloatingPointError("non-finite nearest-neighbor gradient norm")
         if gradient_norm <= tolerance:

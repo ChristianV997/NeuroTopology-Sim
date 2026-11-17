@@ -12,8 +12,10 @@ from field_theory.su2.field import SU2GridField
 from field_theory.su2.generators import multi_hedgehog, vacuum
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
 from field_theory.su2.nearest_neighbor import (
+    _cell_volume,
     _energy_coefficients,
     _gradient_coefficients,
+    _stable_norm,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient,
     nearest_neighbor_energy_gradient_finite_difference,
@@ -665,6 +667,44 @@ def test_stable_coefficients_accept_extreme_but_representable_couplings():
     )
     assert diagnostic.energy_total == 0.0
     assert np.isfinite(diagnostic.energy_total)
+
+
+@pytest.mark.parametrize(
+    "spacing",
+    [(1.0e-200, 1.0e-200, 1.0e-100), (1.0e200, 1.0e200, 1.0)],
+)
+def test_cell_volume_underflow_or_overflow_is_rejected(spacing):
+    with pytest.raises(ValueError, match="finite positive binary64 cell volume"):
+        _cell_volume(spacing)
+
+
+def test_stable_norm_preserves_small_and_large_gradient_scales():
+    tiny = np.array([1.0e-200, -1.0e-200])
+    huge = np.array([1.0e200, -1.0e200])
+
+    assert _stable_norm(tiny) == pytest.approx(np.sqrt(2.0) * 1.0e-200)
+    assert _stable_norm(huge) == pytest.approx(np.sqrt(2.0) * 1.0e200)
+    per_row = _stable_norm(np.array([tiny, huge]), axis=1)
+    np.testing.assert_allclose(
+        per_row,
+        np.array([np.sqrt(2.0) * 1.0e-200, np.sqrt(2.0) * 1.0e200]),
+    )
+
+
+@pytest.mark.parametrize(
+    "spacing",
+    [(1.0e-200, 1.0e-200, 1.0e-100), (1.0e200, 1.0e200, 1.0)],
+)
+def test_constrained_runner_preflights_cell_volume_before_fields(monkeypatch, spacing):
+    kwargs = _kwargs()
+    kwargs["spacing"] = spacing
+
+    def fail_if_building(*args, **kwargs):
+        pytest.fail("unrepresentable cell volume must fail before field construction")
+
+    monkeypatch.setattr(runner, "multi_hedgehog", fail_if_building)
+    with pytest.raises(ValueError, match="finite positive binary64 cell volume"):
+        run_constrained_two_hedgehog_relaxation(**kwargs)
 
 
 def test_gradient_coefficients_support_extremes_and_fail_closed():

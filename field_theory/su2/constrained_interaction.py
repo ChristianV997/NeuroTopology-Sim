@@ -17,6 +17,7 @@ import numpy as np
 from .field import SU2GridField, validate_spacing
 from .generators import multi_hedgehog
 from .nearest_neighbor import (
+    _cell_volume,
     _gradient_coefficients,
     _forward_differences,
     _link_mask,
@@ -457,6 +458,7 @@ def run_constrained_two_hedgehog_relaxation(
     grid_shape = _shape3(shape)
     node_count = prod(grid_shape)
     grid_spacing = validate_spacing(spacing)
+    _cell_volume(grid_spacing)
     length_radius = _real_scalar(radius, "radius", positive=True)
     patch_radius = _real_scalar(anchor_radius, "anchor_radius", positive=True)
     if patch_radius >= length_radius:
