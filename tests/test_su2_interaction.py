@@ -694,11 +694,12 @@ def test_scaled_product_quotient_preserves_representable_extremes_and_rejects_lo
     assert 0.0 < subnormal[0] < np.finfo(np.float64).tiny
     assert subnormal[0] == pytest.approx(5.0e-312, rel=0.2)
 
-    with pytest.raises(FloatingPointError, match="underflowed to zero"):
+    with pytest.raises(FloatingPointError, match="underflowed entirely to zero"):
         _scaled_product_quotient(
             np.array([1.0e-320]),
             numerator_factors=(1.0e-100,),
             name="unrepresentable test scaling",
+            fail_if_all_zero=True,
         )
 
 

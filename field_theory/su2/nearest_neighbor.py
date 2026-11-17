@@ -202,6 +202,7 @@ def _scaled_product_quotient(
     numerator_factors: Sequence[object] = (),
     denominator_factors: Sequence[object] = (),
     name: str,
+    fail_if_all_zero: bool = False,
 ) -> np.ndarray:
     """Scale products and quotients in exponent space, failing on lost results."""
     factors = [np.asarray(values, dtype=np.float64)]
@@ -242,7 +243,11 @@ def _scaled_product_quotient(
         result = np.ldexp(mantissa, exponent + exponent_adjustment)
     if not np.all(np.isfinite(result)):
         raise FloatingPointError(f"{name} overflowed binary64")
-    if np.any(expected_nonzero) and not np.any(result != 0.0):
+    if (
+        fail_if_all_zero
+        and np.any(expected_nonzero)
+        and not np.any(result != 0.0)
+    ):
         raise FloatingPointError(
             f"{name} underflowed entirely to zero in binary64"
         )
@@ -356,10 +361,12 @@ def _energy_components(
     cell_volume = _cell_volume(spacing)
     sigma_coefficient, skyrme_coefficient = _energy_coefficients(f_pi, e)
     energy_sigma = 0.0
+    sigma_has_nonzero_links = False
     for axis in range(3):
         valid = _link_mask(shape, (axis,), boundary)
         transverse = _transverse_weights(shape, (axis,), boundary)
         link_norm = _stable_norm(differences[axis], axis=-1)
+        sigma_has_nonzero_links |= bool(np.any(link_norm[valid] != 0.0))
         terms = _scaled_product_quotient(
             link_norm[valid],
             numerator_factors=(
@@ -375,18 +382,23 @@ def _energy_components(
         if not np.isfinite(energy_sigma):
             raise FloatingPointError("non-finite sigma energy")
 
+    if sigma_has_nonzero_links and energy_sigma == 0.0:
+        raise FloatingPointError("sigma energy underflowed entirely to zero")
+
     energy_skyrme = 0.0
+    quartic_has_nonzero_minors = False
     for i in range(3):
         for j in range(i + 1, 3):
             valid = _link_mask(shape, (i, j), boundary)
             transverse = _transverse_weights(shape, (i, j), boundary)
             for a in range(4):
                 for b in range(a + 1, 4):
-                    with np.errstate(over="raise", invalid="raise"):
+                    with np.errstate(over="raise", under="raise", invalid="raise"):
                         minor = (
                             differences[i][..., a] * differences[j][..., b]
                             - differences[i][..., b] * differences[j][..., a]
                         )
+                    quartic_has_nonzero_minors |= bool(np.any(minor[valid] != 0.0))
                     terms = _scaled_product_quotient(
                         minor[valid],
                         numerator_factors=(
@@ -401,6 +413,8 @@ def _energy_components(
                         energy_skyrme += float(np.sum(terms))
                     if not np.isfinite(energy_skyrme):
                         raise FloatingPointError("non-finite quartic energy")
+    if quartic_has_nonzero_minors and energy_skyrme == 0.0:
+        raise FloatingPointError("quartic energy underflowed entirely to zero")
     return energy_sigma, energy_skyrme
 
 
@@ -695,7 +709,7 @@ def nearest_neighbor_energy_gradient(
             transverse = _transverse_weights(values.shape[:3], (i, j), field.boundary)
             a = differences[i]
             b = differences[j]
-            with np.errstate(over="raise", under="raise", invalid="raise"):
+            with np.errstate(over="raise", invalid="raise"):
                 dot = np.sum(a * b, axis=-1)
                 norm_a_squared = np.sum(a * a, axis=-1)
                 norm_b_squared = np.sum(b * b, axis=-1)
