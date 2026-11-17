@@ -10,7 +10,10 @@ import pytest
 from field_theory.su2 import constrained_interaction as runner
 from field_theory.su2.generators import multi_hedgehog, vacuum
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
-from field_theory.su2.nearest_neighbor import compute_nearest_neighbor_diagnostics
+from field_theory.su2.nearest_neighbor import (
+    _energy_coefficients,
+    compute_nearest_neighbor_diagnostics,
+)
 from field_theory.su2.constrained_interaction import (
     run_constrained_two_hedgehog_relaxation,
     serialize_constrained_result,
@@ -645,6 +648,14 @@ def test_rejects_unrepresentable_derived_energy_coefficients(monkeypatch, name, 
 
 
 def test_stable_coefficients_accept_extreme_but_representable_couplings():
+    sigma_coefficient, skyrme_coefficient = _energy_coefficients(
+        f_pi=2.0e154, e=1.0e160
+    )
+    assert np.isfinite(sigma_coefficient)
+    assert sigma_coefficient > 0.0
+    assert np.isfinite(skyrme_coefficient)
+    assert 0.0 < skyrme_coefficient < np.finfo(np.float64).tiny
+
     diagnostic = compute_nearest_neighbor_diagnostics(
         vacuum((3, 3, 3)), f_pi=2.0e154, e=1.0e160
     )
@@ -732,12 +743,43 @@ def test_low_level_diagnostics_rejects_unrepresentable_energy_coefficients():
             compute_nearest_neighbor_diagnostics(field, **kwargs)
 
 
+@pytest.mark.parametrize("stage", ["initial", "optimization", "final"])
 @pytest.mark.parametrize("error_type", [TypeError, ValueError])
-def test_programming_errors_are_not_hidden_as_numerical_failures(monkeypatch, error_type):
+def test_programming_errors_propagate_at_each_stage(monkeypatch, stage, error_type):
     def programming_bug(*args, **kwargs):
         raise error_type("injected programming error")
 
-    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", programming_bug)
+    if stage == "initial":
+        monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", programming_bug)
+    elif stage == "optimization":
+        monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", programming_bug)
+    else:
+        original_diagnostics = runner.compute_nearest_neighbor_diagnostics
+        calls = 0
+
+        def final_programming_bug(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                programming_bug(*args, **kwargs)
+            return original_diagnostics(*args, **kwargs)
+
+        def converged_stub(field, **kwargs):
+            return SimpleNamespace(
+                field=field,
+                energy_history=(1.0, 0.5),
+                topological_charge_history=(0.0, 0.0),
+                iterations=1,
+                termination="gradient_tolerance",
+                stationarity_status="first_order_stationary",
+                curvature_diagnostics=None,
+            )
+
+        monkeypatch.setattr(
+            runner, "compute_nearest_neighbor_diagnostics", final_programming_bug
+        )
+        monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", converged_stub)
+
     with pytest.raises(error_type, match="injected programming error"):
         runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
 
