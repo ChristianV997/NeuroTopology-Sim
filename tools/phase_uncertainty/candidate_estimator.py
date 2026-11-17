@@ -233,8 +233,21 @@ def estimate_narrowband_phase_uncertainty(
 
     # 4. Instantaneous SNR-derived term
     # At high SNR, phase noise variance ~ sigma_noise^2 / (2 * A^2)
-    safe_amp = np.maximum(amp, cfg.min_amplitude_floor)
-    sigma_snr = sigma_noise_est / (np.sqrt(2.0) * (safe_amp / np.median(safe_amp)))
+    zero_amp_mask = (amp <= 0.0)
+    median_amp = float(np.median(amp))
+    if median_amp <= 0.0:
+        positive_amps = amp[~zero_amp_mask]
+        ref_median_amp = float(np.median(positive_amps)) if positive_amps.size > 0 else 1.0
+    else:
+        ref_median_amp = median_amp
+
+    safe_amp = np.where(zero_amp_mask, cfg.min_amplitude_floor, amp)
+    rel_amp = safe_amp / ref_median_amp
+    sigma_snr = np.where(
+        zero_amp_mask,
+        UNIFORM_CIRCULAR_STD_CEILING,
+        sigma_noise_est / (np.sqrt(2.0) * rel_amp),
+    )
 
     # 5. Local circular phase jitter over sliding window
     w = cfg.jitter_window_len
@@ -256,11 +269,15 @@ def estimate_narrowband_phase_uncertainty(
     # 6. Combined uncertainty
     phase_std_raw = np.sqrt(sigma_snr ** 2 + local_jitter ** 2)
 
-    # Cap at pi / sqrt(3) if configured
+    # Cap at pi / sqrt(3) if configured; zero-amplitude frames always report ceiling
     if cfg.cap_at_uniform_std:
-        phase_std = np.minimum(phase_std_raw, UNIFORM_CIRCULAR_STD_CEILING)
+        phase_std = np.where(
+            zero_amp_mask,
+            UNIFORM_CIRCULAR_STD_CEILING,
+            np.minimum(phase_std_raw, UNIFORM_CIRCULAR_STD_CEILING),
+        )
     else:
-        phase_std = phase_std_raw
+        phase_std = np.where(zero_amp_mask, UNIFORM_CIRCULAR_STD_CEILING, phase_std_raw)
 
     # Instantaneous frequency in Hz
     inst_freq = np.zeros(n, dtype=np.float64)
