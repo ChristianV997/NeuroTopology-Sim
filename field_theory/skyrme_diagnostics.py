@@ -34,6 +34,10 @@ vacuum; it uses vacuum ghost values, a node grid including the boundary, and
 tensor-product trapezoidal quadrature.  Neither discretization enforces an
 integer charge at finite resolution.  The returned charge is a convergence
 diagnostic, not a proof of a continuum topological sector.
+
+Centered finite differences are projected onto the tangent space of S^3 at
+each grid node. This removes discrete radial components and preserves the
+declared equivalence between the four-vector and SU(2) trace energies.
 """
 
 from __future__ import annotations
@@ -208,9 +212,13 @@ def compute_skyrme_diagnostics(
 
     try:
         with np.errstate(over="raise", invalid="raise", divide="raise"):
-            derivatives = tuple(
+            raw_derivatives = tuple(
                 _derivative(values, axis, h[axis], boundary, vacuum_value)
                 for axis in range(3)
+            )
+            derivatives = tuple(
+                derivative - values * np.sum(values * derivative, axis=-1, keepdims=True)
+                for derivative in raw_derivatives
             )
             weights = _quadrature_weights(values.shape[:3], boundary)
             volume_element = h[0] * h[1] * h[2]

@@ -128,6 +128,35 @@ def test_declared_energy_coefficients_have_expected_scaling() -> None:
     assert doubled_e.energy_skyrme == pytest.approx(baseline.energy_skyrme / 4.0)
 
 
+def test_quartic_energy_matches_independent_pauli_matrix_trace() -> None:
+    rng = np.random.default_rng(77)
+    raw = rng.normal(size=(5, 5, 5, 4))
+    field = raw / np.linalg.norm(raw, axis=-1, keepdims=True)
+    h, e = 0.7, 1.3
+    sigma = np.asarray([
+        [[0, 1], [1, 0]], [[0, -1j], [1j, 0]], [[1, 0], [0, -1]]
+    ], dtype=complex)
+    identity = np.eye(2, dtype=complex)
+
+    def matrix(n):
+        return n[..., 0, None, None] * identity + 1j * np.einsum("...a,aij->...ij", n[..., 1:], sigma)
+
+    U = matrix(field)
+    Udag = U.conj().swapaxes(-1, -2)
+    derivatives = [(np.roll(field, -1, axis=i) - np.roll(field, 1, axis=i)) / (2 * h) for i in range(3)]
+    currents = []
+    for dn in derivatives:
+        dU = dn[..., 0, None, None] * identity + 1j * np.einsum("...a,aij->...ij", dn[..., 1:], sigma)
+        currents.append(Udag @ dU)
+    trace_energy = 0.0
+    for i in range(3):
+        for j in range(i + 1, 3):
+            comm = currents[i] @ currents[j] - currents[j] @ currents[i]
+            trace_energy += np.sum(-np.trace(comm @ comm, axis1=-2, axis2=-1).real) * h**3 / (16 * e**2)
+    result = compute_skyrme_diagnostics(field, h, boundary="periodic", e=e)
+    assert result.energy_skyrme == pytest.approx(trace_energy, rel=1e-12, abs=1e-12)
+
+
 def test_non_unit_field_and_implicit_boundary_are_rejected() -> None:
     bad_field = np.zeros((5, 5, 5, 4), dtype=np.float64)
     bad_field[..., 0] = 2.0
