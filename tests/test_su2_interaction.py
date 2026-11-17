@@ -523,7 +523,7 @@ def test_constrained_pair_rejects_anchor_mismatch_above_tolerance(monkeypatch):
     monkeypatch.setattr(runner, "multi_hedgehog", perturbed_isolated)
     with pytest.raises(ValueError, match="disagree beyond tolerance"):
         runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
-    assert call_count == 2
+    assert call_count == 3
 
 
 def test_constrained_pair_rejects_nonfinite_anchor_mismatch(monkeypatch):
@@ -548,4 +548,4 @@ def test_constrained_pair_rejects_nonfinite_anchor_mismatch(monkeypatch):
     monkeypatch.setattr(runner, "multi_hedgehog", nonfinite_isolated)
     with pytest.raises(ValueError, match="anchor mismatch must be finite"):
         runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
-    assert call_count == 2
+    assert call_count == 3
