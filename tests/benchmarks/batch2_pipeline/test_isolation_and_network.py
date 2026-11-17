@@ -45,6 +45,7 @@ def test_isolated_cli(capsys):
     report = json.loads(out)
     assert report["mode"] == "isolated"
     assert report["config"]["max_workers"] == 1
+    assert report["config"]["targets"] == sorted(TARGETS)
     assert report["num_targets"] == len(TARGETS)
     assert report["evidence_class"] == "performance_only"
     assert rc in (0, 1)
@@ -99,6 +100,18 @@ def test_no_network_execution():
     assert not _string_references_remote_host("https://evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("//evilopenneuro.org.attacker.example/x")
     assert not _string_references_remote_host("notes mentioning openneuro.org in prose")
+    assert not _string_references_remote_host(
+        "https://example.org/docs/openneuro.org/datasets"
+    )
+    assert _string_references_remote_host(
+        "Dataset source: https://openneuro.org/datasets/ds000001."
+    )
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org/datasets/ds000001"
+    )
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org:8443/datasets/ds000001"
+    )
 
     poisoned = dict(report)
     poisoned["notes"] = ["https://openneuro.org/datasets/ds000001"]
@@ -108,7 +121,445 @@ def test_no_network_execution():
     poisoned_protocol_relative["notes"] = ["//openneuro.org/datasets/ds000001"]
     assert "remote_data_reference" in validate_report(poisoned_protocol_relative)["violations"]
 
+    poisoned_prose = dict(report)
+    poisoned_prose["notes"] = [
+        "Dataset source: (https://openneuro.org/datasets/ds000001)."
+    ]
+    assert "remote_data_reference" in validate_report(poisoned_prose)["violations"]
+
+    poisoned_schemeless_url = dict(report)
+    poisoned_schemeless_url["notes"] = [
+        "Dataset source: openneuro.org/datasets/ds000001"
+    ]
+    assert "remote_data_reference" in validate_report(poisoned_schemeless_url)["violations"]
+
+
+def test_validator_rejects_non_synthetic_result_row():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["synthetic"] = False
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "row_synthetic_flag_mismatch:full_recording_reread" in validation["violations"]
+
+
+def test_validator_rejects_budget_pass_with_missing_configured_measurement():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    budget = report["results"][0]["deterministic"]["budget"]
+    report["budgets"]["disk_bytes"] = 1
+    budget["budgets"]["disk_bytes"] = 1
+    budget["checks"]["disk_within_budget"] = True
+    budget["within_budget"] = True
+    report["all_within_budget"] = True
+    assert report["results"][0]["telemetry"]["candidate"]["disk_bytes"] is None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+
+
+def test_validator_and_cli_reject_row_budget_relaxation():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=1, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    metric = row["telemetry"]["candidate"]["tracemalloc_peak_bytes"]
+    assert metric is not None
+    budget = row["deterministic"]["budget"]
+    budget["budgets"]["memory_bytes"] = metric + 1
+    budget["checks"]["memory_within_budget"] = True
+    budget["within_budget"] = True
+    row["status"] = "ok"
+    report["summary"] = {"ok": 1}
+    report["all_within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_rejects_row_evidence_class_mismatch():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["evidence_class"] = "empirical"
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "row_evidence_class:full_recording_reread" in validation["violations"]
+
+
+def test_validator_and_cli_reject_telemetry_check_mismatch():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    row["telemetry"]["candidate"]["tracemalloc_peak_bytes"] = 10**12 + 1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_negative_unbudgeted_telemetry():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    candidate = report["results"][0]["telemetry"]["candidate"]
+    candidate["tracemalloc_peak_bytes"] = -1
+    candidate["disk_bytes"] = -1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_advisory_success_without_measurements():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(runtime_s=1.0, rss_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    candidate = row["telemetry"]["candidate"]
+    candidate["runtime_best_s"] = None
+    candidate["rss_after_bytes"] = None
+    checks = row["deterministic"]["budget"]["checks"]
+    checks["runtime_within_budget"] = True
+    checks["rss_within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_zero_memory_measurement():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["telemetry"]["candidate"]["tracemalloc_peak_bytes"] = 0
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_unrecognized_budget_map_mismatch():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["budgets"]["unrecognized_limit"] = 1
+    report["results"][0]["deterministic"]["budget"]["budgets"]["unrecognized_limit"] = 999
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_worker_count_above_runner_cap():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    budget = row["deterministic"]["budget"]
+    report["budgets"]["max_workers"] = 2
+    budget["budgets"]["max_workers"] = 2
+    row["telemetry"]["candidate"]["worker_count"] = 2
+    budget["checks"]["workers_within_budget"] = True
+    budget["within_budget"] = True
+
+    validation = validate_report(report)
+
+    assert report["config"]["max_workers"] == 1
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_validator_and_cli_reject_missing_worker_count_under_execution_cap():
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(memory_bytes=10**12, max_workers=None),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    row = report["results"][0]
+    row["telemetry"]["candidate"].pop("worker_count")
+
+    validation = validate_report(report)
+
+    assert report["config"]["max_workers"] == 1
+    assert validation["ok"] is False
+    assert "budget_checks_mismatch:full_recording_reread" in validation["violations"]
+    assert _cli_exit_code(report) != 0
+
+
+def test_scheme_less_remote_host_with_trailing_dns_dot_is_detected():
+    from tools.benchmarks.batch2_pipeline.validator import _string_references_remote_host
+
+    assert _string_references_remote_host(
+        "Dataset source: openneuro.org./datasets/ds000001"
+    )
+
+
+def test_remote_authority_with_explicit_port_is_detected():
+    from tools.benchmarks.batch2_pipeline.validator import _string_references_remote_host
+
+    assert _string_references_remote_host("Dataset source: openneuro.org:443")
+
+
+def test_empty_report_is_not_valid():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    empty_report = {
+        **report,
+        "config": {**report["config"], "targets": []},
+        "num_targets": 0,
+        "summary": {},
+        "all_equivalent": None,
+        "all_within_budget": None,
+        "bottleneck_ranking": [],
+        "optimization_candidates": [],
+        "results": [],
+    }
+
+    validation = validate_report(empty_report)
+
+    assert validation["ok"] is False
+    assert "empty_results" in validation["violations"]
+
+
+def test_validator_rejects_unknown_config_target():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"]["targets"] = ["not_a_registered_target"]
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "unknown_target" in validation["violations"]
+
+
+def test_validator_rejects_non_object_config():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"] = []
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "invalid_config" in validation["violations"]
+
+
+def test_validator_rejects_missing_target_selection():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["config"].pop("targets")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "missing_target_selection" in validation["violations"]
+
+
+def test_validator_rejects_malformed_record_status():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["status"] = "malformed_record"
+    report["summary"]["ok"] -= 1
+    report["summary"]["malformed_record"] = 1
+    report["all_equivalent"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("malformed_record:") for item in validation["violations"])
+
+
+def test_validator_rejects_unknown_record_status():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["status"] = "unrecognized_status"
+    report["summary"]["ok"] -= 1
+    report["summary"]["unrecognized_status"] = 1
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any("unknown_status" in item for item in validation["violations"])
+
+
+def test_validator_rejects_success_status_without_matching_checksum():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["deterministic"]["checksum_match"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("success_without_checksum:") for item in validation["violations"])
+
+
+def test_validator_rejects_non_boolean_equivalence_verdict():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["all_equivalent"] = "yes"
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert "invalid_equivalence_verdict" in validation["violations"]
+
+
+def test_validator_rejects_non_boolean_budget_measurement():
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(ResourceBudgets(max_workers=1), seed=0, size=8, repetitions=1)
+    report["results"][0]["deterministic"]["budget"]["within_budget"] = "yes"
+    report["all_within_budget"] = None
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("invalid_budget_verdict:") for item in validation["violations"])
+
 
 def test_cli_rejects_unbounded_workers():
     rc = cli.main(["--max-workers", "4", "--size", "4", "--repetitions", "1"])
     assert rc == 2
+
+
+def test_validator_fail_closes_on_non_finite_telemetry_without_raising():
+    """In-memory NaN/Inf must become violations, not a JSON encoder crash."""
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["results"][0]["telemetry"]["candidate"]["runtime_best_s"] = float("nan")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(
+        item.startswith("non_finite:") or item == "non_finite_json_encode" or item.startswith("invalid_telemetry_metric:")
+        for item in validation["violations"]
+    )
+
+
+def test_validator_and_cli_reject_non_finite_report_fields():
+    """CLI must not return success when the validator would reject Inf/NaN."""
+    from scripts.benchmark_batch2_pipeline import _cli_exit_code
+    from tools.benchmarks.batch2_pipeline.validator import validate_report
+
+    report = run_all(
+        ResourceBudgets(max_workers=1),
+        seed=0,
+        size=8,
+        repetitions=1,
+        targets=["full_recording_reread"],
+    )
+    report["debug_score"] = float("inf")
+
+    validation = validate_report(report)
+
+    assert validation["ok"] is False
+    assert any(item.startswith("non_finite:") for item in validation["violations"])
+    assert _cli_exit_code(report) != 0

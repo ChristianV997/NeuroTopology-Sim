@@ -12,7 +12,13 @@ import tools.benchmarks.batch2_pipeline.telemetry as telemetry
 
 def test_budget_pass():
     huge = ResourceBudgets(memory_bytes=10**12, disk_bytes=10**12, max_workers=1)
-    rec = run_target(TARGETS["full_recording_reread"], huge, seed=0, size=8, repetitions=1)
+    rec = run_target(
+        TARGETS["subject_loop_disk_staging"],
+        huge,
+        seed=0,
+        size=8,
+        repetitions=1,
+    )
     assert rec["deterministic"]["budget"]["within_budget"] is True
     assert rec["status"] == "ok"
 
@@ -50,7 +56,9 @@ def test_runtime_and_rss_budgets_are_advisory_not_status_gates():
     """Regression: brittle wall-clock/RSS thresholds must not set budget_overrun."""
     tiny_timing = ResourceBudgets(
         memory_bytes=10**12,
-        disk_bytes=10**12,
+        # This workload has no disk measurement; keep the test scoped to the
+        # advisory runtime/RSS limits instead of expecting a disk-budget pass.
+        disk_bytes=None,
         runtime_s=1e-18,
         rss_bytes=1,
         max_workers=1,
