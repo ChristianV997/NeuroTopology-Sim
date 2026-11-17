@@ -197,6 +197,11 @@ def _transverse_weights(
 
 
 def _scaled_product_quotient(
+
+def _exact_zero_wedge_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Identify exact equal or opposite vectors whose exterior product is zero."""
+    return np.all(a == b, axis=-1) | np.all(a == -b, axis=-1)
+
     values: np.ndarray | float,
     *,
     numerator_factors: Sequence[object] = (),
@@ -409,6 +414,16 @@ def _energy_components(
             a_links = differences[i][valid]
             b_links = differences[j][valid]
             transverse_links = transverse[valid]
+            # Exact equal/opposite link vectors have zero wedge. Recognize
+            # them before multiplying extreme components that would overflow
+            # even though their determinant is exactly zero.
+            zero_wedge = _exact_zero_wedge_rows(a_links, b_links)
+            if np.all(zero_wedge):
+                continue
+            included = ~zero_wedge
+            a_links = a_links[included]
+            b_links = b_links[included]
+            transverse_links = transverse_links[included]
             for a in range(4):
                 for b in range(a + 1, 4):
                     with np.errstate(over="raise", under="raise", invalid="raise"):
@@ -781,25 +796,34 @@ def nearest_neighbor_energy_gradient(
             a = differences[i][valid]
             b = differences[j][valid]
             transverse_links = transverse[valid]
+            zero_wedge = _exact_zero_wedge_rows(a, b)
+            if np.all(zero_wedge):
+                continue
+            included = ~zero_wedge
+            a_included = a[included]
+            b_included = b[included]
+            transverse_included = transverse_links[included]
             try:
                 with np.errstate(over="raise", under="raise", invalid="raise"):
-                    dot = np.sum(a * b, axis=-1)
-                    norm_a_squared = np.sum(a * a, axis=-1)
-                    norm_b_squared = np.sum(b * b, axis=-1)
-                    grad_a_links = (
-                        norm_b_squared[..., None] * a - dot[..., None] * b
+                    dot = np.sum(a_included * b_included, axis=-1)
+                    norm_a_squared = np.sum(a_included * a_included, axis=-1)
+                    norm_b_squared = np.sum(b_included * b_included, axis=-1)
+                    grad_a_included = (
+                        norm_b_squared[..., None] * a_included
+                        - dot[..., None] * b_included
                     )
-                    grad_b_links = (
-                        norm_a_squared[..., None] * b - dot[..., None] * a
+                    grad_b_included = (
+                        norm_a_squared[..., None] * b_included
+                        - dot[..., None] * a_included
                     )
             except FloatingPointError:
                 # Retry only included links: excluded fixed-vacuum wrap
-                # anchors are not part of the discrete objective.
-                grad_a_links, grad_b_links = _scaled_quartic_gradient_contributions(
-                    a,
-                    b,
+                # anchors and exact zero-wedge rows have no contribution.
+                grad_a_included, grad_b_included = _scaled_quartic_gradient_contributions(
+                    a_included,
+                    b_included,
                     cell_volume=cell_volume,
-                    transverse=transverse_links,
+                    transverse=transverse_included,
                     coefficient=skyrme_gradient_coefficient,
                     spacing_a=field.spacing[i],
                     spacing_b=field.spacing[j],
@@ -808,6 +832,10 @@ def nearest_neighbor_energy_gradient(
             else:
                 use_scaled_fallback = False
 
+            grad_a_links = np.zeros_like(a)
+            grad_b_links = np.zeros_like(b)
+            grad_a_links[included] = grad_a_included
+            grad_b_links[included] = grad_b_included
             grad_a = np.zeros_like(differences[i])
             grad_b = np.zeros_like(differences[j])
             grad_a[valid] = grad_a_links
