@@ -6,6 +6,8 @@ import pytest
 from field_theory.skyrme_diagnostics import compute_skyrme_diagnostics
 from field_theory.su2 import SU2GridField, hedgehog
 from field_theory.su2.nearest_neighbor import (
+    _energy_components,
+    _forward_differences,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient_finite_difference,
     nearest_neighbor_energy_gradient,
@@ -382,3 +384,33 @@ def test_fixed_mask_active_gradient_matches_reference_and_is_tangent():
     tangent_residual = np.sum(field.components * analytic, axis=-1)
     assert np.max(np.abs(tangent_residual[active])) < 1.0e-10
     assert np.any(np.linalg.norm(analytic[active], axis=-1) > 1.0e-10)
+
+
+def test_extreme_exact_parallel_links_keep_quartic_energy_and_gradient_finite():
+    vectors = np.array(
+        [
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0, 0.0),
+            (0.0, -1.0, 0.0, 0.0),
+        ],
+        dtype=np.float64,
+    )
+    x, y = np.indices((4, 4))
+    components = np.repeat(vectors[(x + y) % 4][:, :, None, :], 2, axis=2)
+    spacing = (1.0e-200, 1.0e-200, 1.0e200)
+    field = SU2GridField(components, spacing=spacing, boundary="periodic")
+    f_pi = np.sqrt(8.0e-200)
+    differences = _forward_differences(components, spacing, "periodic")
+
+    energy_sigma, energy_skyrme = _energy_components(
+        components, differences, spacing, "periodic", f_pi, 1.0
+    )
+    gradient_e1 = nearest_neighbor_energy_gradient(field, f_pi=f_pi, e=1.0)
+    gradient_e2 = nearest_neighbor_energy_gradient(field, f_pi=f_pi, e=2.0)
+
+    assert energy_sigma == pytest.approx(128.0, rel=1.0e-12)
+    assert energy_skyrme == 0.0
+    assert np.all(np.isfinite(gradient_e1))
+    assert np.all(np.isfinite(gradient_e2))
+    np.testing.assert_array_equal(gradient_e1, gradient_e2)
