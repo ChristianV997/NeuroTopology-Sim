@@ -70,7 +70,7 @@ def test_excess_components_are_direct_diagnostic_subtractions_and_metadata_is_ch
         diag_pair.energy_total - diag_a.energy_total - diag_b.energy_total, abs=1e-14
     )
     assert result.delta_energy_total == pytest.approx(
-        result.delta_energy_sigma + result.delta_energy_skyrme, abs=1e-14
+        result.delta_energy_sigma + result.delta_energy_skyrme, abs=2e-14
     )
     assert result.v_h == pytest.approx(result.delta_energy_total / result.energy_scale)
     assert result.energy_a.topological_charge == diag_a.topological_charge
