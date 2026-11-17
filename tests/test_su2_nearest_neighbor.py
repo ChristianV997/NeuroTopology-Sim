@@ -351,3 +351,34 @@ def test_fixed_site_mask_rejects_wrong_shape_or_non_boolean_values(mask):
     field = _small_hedgehog()
     with pytest.raises(ValueError, match="fixed_mask"):
         relax_skyrme_field_nearest_neighbor(field, fixed_mask=mask)
+
+def test_fixed_mask_active_gradient_matches_reference_and_is_tangent():
+    field = _small_hedgehog()
+    fixed_mask = np.zeros(field.components.shape[:3], dtype=bool)
+    fixed_mask[2, 2, 2] = True
+    fixed_mask[1, 2, 2] = True
+    fixed_mask[2, 1, 2] = True
+    f_pi = 1.3
+    e = 0.7
+
+    analytic = nearest_neighbor_energy_gradient(
+        field, f_pi=f_pi, e=e, fixed_mask=fixed_mask
+    )
+    reference = nearest_neighbor_energy_gradient_finite_difference(
+        field, f_pi=f_pi, e=e, fixed_mask=fixed_mask
+    )
+    active = np.ones(fixed_mask.shape, dtype=bool)
+    active[[0, -1], :, :] = False
+    active[:, [0, -1], :] = False
+    active[:, :, [0, -1]] = False
+    active &= ~fixed_mask
+
+    np.testing.assert_allclose(
+        analytic[active], reference[active], rtol=2.0e-4, atol=2.0e-5
+    )
+    np.testing.assert_array_equal(
+        analytic[fixed_mask], np.zeros_like(analytic[fixed_mask])
+    )
+    tangent_residual = np.sum(field.components * analytic, axis=-1)
+    assert np.max(np.abs(tangent_residual[active])) < 1.0e-10
+    assert np.any(np.linalg.norm(analytic[active], axis=-1) > 1.0e-10)

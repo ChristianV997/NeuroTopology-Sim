@@ -489,6 +489,12 @@ def test_success_path_uses_final_energies_with_nonidentity_rotation(monkeypatch)
 def test_constrained_pair_rejects_anchor_mismatch_above_tolerance(monkeypatch):
     from field_theory.su2 import constrained_interaction as runner
 
+    def fail_if_relaxed(*args, **kwargs):
+        pytest.fail("relaxation must not run after failed anchor preflight")
+
+    monkeypatch.setattr(
+        runner, "relax_skyrme_field_nearest_neighbor", fail_if_relaxed
+    )
     original = runner.multi_hedgehog
     call_count = 0
 
@@ -531,6 +537,10 @@ def test_constrained_pair_rejects_nonfinite_anchor_mismatch(monkeypatch):
 
     from field_theory.su2 import constrained_interaction as runner
 
+    def fail_if_relaxed(*args, **kwargs):
+        pytest.fail("relaxation must not run after failed anchor preflight")
+
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", fail_if_relaxed)
     original = runner.multi_hedgehog
     call_count = 0
 
@@ -549,3 +559,44 @@ def test_constrained_pair_rejects_nonfinite_anchor_mismatch(monkeypatch):
     with pytest.raises(ValueError, match="anchor mismatch must be finite"):
         runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
     assert call_count == 3
+
+
+@pytest.mark.parametrize(
+    "termination",
+    ["iteration_limit", "line_search_stalled"],
+)
+def test_constrained_pair_withholds_comparison_for_nonconverged_termination(
+    monkeypatch, termination
+):
+    from types import SimpleNamespace
+
+    from field_theory.su2 import constrained_interaction as runner
+
+    def nonconverged_stub(field, *, f_pi, e, **kwargs):
+        diagnostic = runner.compute_nearest_neighbor_diagnostics(
+            field, f_pi=f_pi, e=e
+        )
+        return SimpleNamespace(
+            field=field,
+            energy_history=(diagnostic.energy_total,),
+            topological_charge_history=(diagnostic.topological_charge,),
+            iterations=0,
+            termination=termination,
+            stationarity_status="not_established",
+            curvature_diagnostics=None,
+        )
+
+    monkeypatch.setattr(
+        runner, "relax_skyrme_field_nearest_neighbor", nonconverged_stub
+    )
+    result = runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert (
+        result["comparison"]["available_only_if_all_three_converged_and_constraints_pass"]
+        is False
+    )
+    assert all(
+        run["status"] == "NOT_CONVERGED" for run in result["runs"].values()
+    )
