@@ -50,6 +50,7 @@ REASON_CODES: tuple[str, ...] = (
     "MISSING_PROVENANCE",
     "INCOMPLETE_PROVENANCE",
     "INVALID_PROVENANCE",
+    "PLACEHOLDER_PROVENANCE",
     "SYNTHETIC_NOT_EMPIRICAL",
     "SYNTHETIC_NOT_BIOLOGICAL",
     "PROXY_NOT_CAUSAL",
@@ -84,6 +85,49 @@ _FORMAL_METHODS = frozenset(
 )
 _PROXY_METHODS = frozenset(
     {"proxy", "aic", "aicc", "bic", "aicc_ratio", "bic_ratio", "rss", "regression_proxy"}
+)
+_PLACEHOLDER_PROVENANCE_VALUES = frozenset(
+    {
+        "none",
+        "unknown",
+        "unknown_source",
+        "unknown-source",
+        "derived_from_ledger",
+        "derived-from-ledger",
+        "not_provided",
+        "not-provided",
+        "placeholder",
+        "tbd",
+        "n/a",
+        "na",
+        "pass",
+        "passed",
+        "fail",
+        "failed",
+        "ok",
+        "true",
+        "false",
+        "yes",
+        "no",
+        "null",
+        "nan",
+        "undefined",
+        "unspecified",
+        "rejected",
+        "inconclusive",
+        "error",
+        "blocked",
+        "supported",
+        "confirmed",
+        "validated",
+        "verified",
+        "accepted",
+        "approved",
+        "admissible",
+        "complete",
+        "success",
+        "falsified",
+    }
 )
 
 
@@ -209,7 +253,8 @@ def validate_provenance(provenance: ProvenanceRecord | Mapping[str, Any] | str |
     intentionally not complete provenance.
     """
     try:
-        record = provenance if isinstance(provenance, ProvenanceRecord) else ProvenanceRecord.from_value(provenance)
+        source = provenance.to_dict() if isinstance(provenance, ProvenanceRecord) else provenance
+        record = ProvenanceRecord.from_value(source)
     except ClaimInputError:
         return ProvenanceValidation("invalid", reason_code="INVALID_PROVENANCE")
     if not any((record.source_id, record.source_uri, record.checksum, record.acquisition, record.dataset_version)):
@@ -223,6 +268,13 @@ def validate_provenance(provenance: ProvenanceRecord | Mapping[str, Any] | str |
     missing = tuple(name for name, value in required.items() if not value)
     if missing:
         return ProvenanceValidation("incomplete", missing, "INCOMPLETE_PROVENANCE")
+    placeholders = tuple(
+        name
+        for name, value in required.items()
+        if isinstance(value, str) and value.strip().lower() in _PLACEHOLDER_PROVENANCE_VALUES
+    )
+    if placeholders:
+        return ProvenanceValidation("invalid", placeholders, "PLACEHOLDER_PROVENANCE")
     if record.checksum and not re.fullmatch(r"[0-9a-fA-F]{64}", record.checksum):
         return ProvenanceValidation("invalid", ("checksum",), "INVALID_PROVENANCE")
     return ProvenanceValidation("complete")
@@ -482,7 +534,7 @@ def _evaluate_valid(record: ClaimRecord) -> ClaimGateResult:
         decision, severity, recommended = "CLAIM_REJECTED", "critical", None
     elif "SYNTHETIC_NOT_EMPIRICAL" in codes:
         decision, severity, recommended = "CLAIM_SYNTHETIC_ONLY", "error", "synthetic_demonstration"
-    elif any(code in {"MISSING_PROVENANCE", "INCOMPLETE_PROVENANCE", "INVALID_PROVENANCE"} for code in codes):
+    elif any(code in {"MISSING_PROVENANCE", "INCOMPLETE_PROVENANCE", "INVALID_PROVENANCE", "PLACEHOLDER_PROVENANCE"} for code in codes):
         decision, severity, recommended = "CLAIM_PROVENANCE_INVALID", "error", "proxy_inference" if proxy else "hypothesis"
     elif any(code in {"PROXY_NOT_CAUSAL", "PROXY_NOT_MECHANISTIC", "PROXY_NOT_FORMAL_BAYESIAN", "FORMAL_METHOD_NOT_VALIDATED"} for code in codes):
         decision, severity, recommended = "CLAIM_DOWNGRADED", "warning", "proxy_inference"
@@ -495,10 +547,10 @@ def _evaluate_valid(record: ClaimRecord) -> ClaimGateResult:
     else:
         decision, severity, recommended = "CLAIM_ADMISSIBLE", "info", None
 
-    # Eligibility is a reporting-contract property, never a scientific PASS.
-    eligible = decision == "CLAIM_ADMISSIBLE" and not synthetic and claim_class in {"engineering_fact", "benchmark_result", "descriptive_empirical", "formal_statistical_evidence", "proxy_inference"}
-    if decision == "CLAIM_SYNTHETIC_ONLY":
-        eligible = False
+    # This offline metadata gate cannot establish scientific eligibility.  It
+    # may classify a report as internally admissible, but independent source,
+    # statistical, and domain review are always still required.
+    eligible = False
     return ClaimGateResult(
         schema_version=SCHEMA_VERSION,
         claim_id=record.claim_id,

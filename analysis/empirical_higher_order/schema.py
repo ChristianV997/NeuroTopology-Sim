@@ -61,7 +61,12 @@ def local_path(value: Any, base: Path, *, required: bool = True) -> Path | None:
     path = Path(raw)
     if not path.is_absolute():
         path = base / path
-    return path.resolve()
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(base.resolve())
+    except ValueError as exc:
+        raise ManifestError("local path escapes the manifest root") from exc
+    return resolved
 
 
 def load_manifest(path: str | Path) -> dict[str, Any]:

@@ -19,6 +19,7 @@ def complete_manifest_data() -> dict:
                 "doi": "10.1016/j.neuroimage.2024.120001",
                 "source_type": "journal_article",
                 "evidence_tier": "T1_verified_primary",
+                "verification_status": "verified",
                 "status": "active",
                 "tags": ["topology", "eeg"],
             },

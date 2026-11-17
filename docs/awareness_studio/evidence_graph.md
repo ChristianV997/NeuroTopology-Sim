@@ -35,7 +35,7 @@ flowchart TD
     RUN -->|tests| EXP
     ART -->|generated_by| RUN
     VAL -->|validates| RUN
-    VAL -->|supports / contradicts| HYP
+    VAL -->|contradicts when falsified| HYP
     EV -->|derived_from| EXP
     EV -->|supports / contradicts| HYP
     REV -->|revises| HYP
@@ -68,7 +68,7 @@ Linkages express directed epistemic and causal relationships:
 
 | Edge Type | Source Node -> Target Node | Epistemic Meaning |
 |---|---|---|
-| `supports` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Empirical observation or passed validation supporting target proposition. |
+| `supports` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Empirical observation or independently reviewed validation supporting the target proposition. A validation `PASS` alone is pending review. |
 | `contradicts` | `evidence_record` / `validation` -> `hypothesis` / `claim` | Evidentiary conflict or failed validation falsifying target proposition. |
 | `tests` | `experiment` / `run` -> `hypothesis` / `claim` | Operational execution designed to test target hypothesis. |
 | `generated_by` | `artifact` -> `run` / `experiment` | Provenance trace showing which execution produced an artifact. |
@@ -83,12 +83,54 @@ Linkages express directed epistemic and causal relationships:
 
 ## 4. Evidence Classification & Safety Gating
 
-The projection segregates evidence into 4 non-interchangeable tiers:
+The projection recognizes four evidence labels. They describe declared input
+metadata; they are not independent evidence grades or adjudications:
 
-1. **`synthetic`**: Output of mathematical simulations, surrogate models, or generative baselines. Tagged with `SYNTHETIC_ONLY`. Can never claim biological proof.
-2. **`proxy`**: Heuristic proxy metrics (e.g. proxy Bayes factors, surrogate statistical distances). Tagged with `PROXY_METRIC`. Cannot serve as formal evidence.
-3. **`empirical`**: Real-world biological or observational time series without preregistered held-out data lock.
-4. **`formal`**: Held-out locked, preregistered empirical executions with signed human review.
+1. **`synthetic`**: A record declares synthetic mode or synthetic origin. Tagged with `SYNTHETIC_ONLY`; this label cannot support biological proof.
+2. **`proxy`**: A record declares a proxy metric or proxy data type. Tagged with `PROXY_METRIC`; it is not formal evidence.
+3. **`empirical`**: A record declares empirical mode/type/class. This loader does not verify that the source is real-world data.
+4. **`formal`**: A record declares formal evidence and both preregistration and a locked held-out split. Missing either declaration downgrades the label to `empirical`; the loader does not independently verify these declarations or human review.
+
+Missing or unrecognized evidence signals classify as `unknown`.
+
+### Projection Admission Boundary
+
+The loader is intentionally not an evidence adjudicator. A source with no
+recognized evidence signal remains `unknown`. Positive source statuses
+(`active`, `proposed`, `provisional`, or `supported`) become `REVIEW_REQUIRED`
+when the evidence class is unknown, or when an empirical/formal label lacks
+a declared verification marker
+(`verification_status: verified`, `peer_review_status: peer_reviewed`,
+`review_status: reviewed_accepted`, or both preregistration and locked-split
+flags set to the JSON boolean `true`; strings such as `"false"` do not count).
+Recognized negative and terminal statuses are preserved; an
+unrecognized status becomes `REVIEW_REQUIRED`. These rules project declared
+fields only and do not verify a source, registration, or reviewer independently.
+
+Direct `nodes[]` entries and JSONL node records use the same source, claim, and
+validation gates as section-based records. Direct claims normalize evidence
+classes through the same preregistration/locked-split checks; missing or
+unrecognized evidence remains unknown and unverified positive statuses become
+`REVIEW_REQUIRED`. A direct source with missing or unknown evidence remains
+`REVIEW_REQUIRED`; a validation `PASS` remains pending review and does not
+create support.
+
+Likewise, a literal validation `verdict: PASS` is recorded as
+`REVIEW_REQUIRED` and does not create a `supports` edge. Run verdicts follow
+the same rule: a `PASS` run is `REVIEW_REQUIRED`, a failing run is
+`FALSIFIED`, and no run node is ever given a bare `pass` status. The declared
+`evidence_class` is recomputed for every node type, so a node cannot
+self-declare `formal` without the preregistration and held-out flags.
+Node types and status values are case-normalized before these gates apply. The projection does
+not adjudicate provenance, artifact lineage, labels, nulls, multiplicity, or
+split integrity; those require independent review before any scientific
+interpretation. A metadata declaration alone is not scientific support.
+
+The unsupported-promotion diagnostic accepts only the JSON boolean
+`human_review_gate.passed: true` (or `human_review_passed: true`) and a
+nonblank reviewer identifier. Truthy strings and whitespace-only reviewer
+values do not satisfy this metadata check; it is not an independent signature
+verification.
 
 ### Safety States
 - `PROVISIONAL`: Initial state for proposed hypotheses and unreviewed claims.
@@ -136,5 +178,5 @@ python scripts/build_awareness_evidence_graph.py \
 
 1. **No Clinical Claims**: The evidence graph projection models topological and dynamical simulations and literature claims. It makes no medical, therapeutic, or diagnostic claims.
 2. **No Ontology Promotion**: Graph nodes represent computational representations, not metaphysical truth or physical ontologies.
-3. **No Proof Framing**: Mathematical and empirical findings are reported with confidence bounds and falsification thresholds; no theory-of-everything or definitive consciousness solution is asserted.
+3. **No Proof Framing**: The projection does not establish confidence bounds, falsification thresholds, or scientific confirmation. It makes no theory-of-everything or definitive consciousness claim.
 4. **Offline and Solver-Free**: The subsystem uses Python standard library only; no torch, scipy, or external solvers are imported.

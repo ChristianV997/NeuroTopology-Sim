@@ -1,5 +1,8 @@
-from tools.release_manifest.merge_state import MergeStateContext, classify_merge_state
-from tools.release_manifest.models import PRSnapshot
+import pytest
+
+from tools.release_manifest.merge_state import MergeStateContext, classify_merge_state, classify_release_state
+from tools.release_manifest.models import PRSnapshot, ScientificGateInput
+from tools.release_manifest.scientific_gate import evaluate_scientific_gate
 
 
 def test_unresolvable_commit_is_unknown():
@@ -15,12 +18,46 @@ def test_ancestor_of_target_is_merged_into_main():
     assert state == "merged_into_main"
 
 
-def test_pr_snapshot_merged_true_overrides_missing_ancestry():
-    pr = PRSnapshot(number=1, state="closed", merged=True)
-    ctx = MergeStateContext(commit_resolves=True, pr_snapshot=pr)
+def test_pr_snapshot_matching_head_preserves_squash_merge_without_ancestry():
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha=source_commit)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
     state, blockers = classify_merge_state(ctx)
     assert state == "merged_into_main"
     assert any("contradiction" in b for b in blockers)
+
+
+def test_pr_merged_to_different_base_is_not_merged_into_target():
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="release", head_sha=source_commit)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("target_branch" in blocker for blocker in blockers)
+
+
+@pytest.mark.parametrize("head_sha", [None, "b" * 40])
+def test_pr_snapshot_for_different_or_missing_head_cannot_merge_source_commit(head_sha):
+    source_commit = "a" * 40
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha=head_sha)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", source_commit=source_commit, pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("head_sha" in blocker for blocker in blockers)
+
+
+def test_pr_snapshot_cannot_merge_when_claimed_source_commit_is_missing():
+    pr = PRSnapshot(number=1, state="closed", merged=True, base_ref="main", head_sha="a" * 40)
+    ctx = MergeStateContext(commit_resolves=True, target_branch="main", pr_snapshot=pr)
+
+    state, blockers = classify_merge_state(ctx)
+
+    assert state != "merged_into_main"
+    assert any("source_commit None" in blocker for blocker in blockers)
 
 
 def test_pr_snapshot_says_not_merged_but_ancestry_says_merged_ancestry_wins():
@@ -103,8 +140,81 @@ def test_merged_into_main_outranks_duplicate():
 
 
 def test_invalid_ci_state_raises():
-    import pytest
-
     ctx = MergeStateContext(commit_resolves=True, worst_ci_state="not-a-real-state")
     with pytest.raises(ValueError):
         classify_merge_state(ctx)
+    with pytest.raises(ValueError):
+        classify_release_state(
+            ctx,
+            merge_state="open_unintegrated",
+            scientific_gate_value="insufficient_data",
+        )
+
+
+def test_release_state_is_independent_from_technical_merge_state():
+    ctx = MergeStateContext(commit_resolves=True, is_ancestor_of_target=True, scientific_blocking=True)
+    merge_state, _ = classify_merge_state(ctx)
+    release_state, blockers = classify_release_state(
+        ctx,
+        merge_state=merge_state,
+        scientific_gate_value="blocked",
+    )
+    assert merge_state == "merged_into_main"
+    assert release_state == "blocked_by_scientific_review"
+    assert blockers
+
+
+def test_merged_commit_without_independent_evidence_is_release_inconclusive():
+    ctx = MergeStateContext(commit_resolves=True, is_ancestor_of_target=True)
+    merge_state, _ = classify_merge_state(ctx)
+    release_state, blockers = classify_release_state(
+        ctx,
+        merge_state=merge_state,
+        scientific_gate_value="insufficient_data",
+    )
+    assert merge_state == "merged_into_main"
+    assert release_state == "inconclusive"
+    assert blockers
+
+
+@pytest.mark.parametrize("ci_state", ["unavailable", "pending", "skipped"])
+def test_release_is_not_ready_until_required_ci_is_passing(ci_state):
+    ctx = MergeStateContext(
+        commit_resolves=True,
+        is_ancestor_of_target=True,
+        worst_ci_state=ci_state,
+    )
+
+    release_state, blockers = classify_release_state(
+        ctx,
+        merge_state="merged_into_main",
+        scientific_gate_value="pass",
+    )
+
+    assert release_state == "inconclusive"
+    assert blockers
+
+
+@pytest.mark.parametrize("verdict", ["NOT_SUPPORTED", "not_supported", " Not_Supported "])
+def test_negative_scientific_verdict_blocks_regardless_of_casing(verdict):
+    # Regression (#357 remediation): a negative verdict must block whatever its casing or padding.
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert blocking is True
+    assert evidence.value == "blocked"
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "pass", "Pass", "none"])
+def test_bare_pass_or_none_verdict_never_promotes_release(verdict):
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert evidence.value != "pass"
+    ctx = MergeStateContext(commit_resolves=True, is_ancestor_of_target=True, worst_ci_state="passing")
+    release_state, _ = classify_release_state(ctx, merge_state="merged_into_main", scientific_gate_value=evidence.value)
+    assert release_state != "ready_for_release"
+
+
+@pytest.mark.parametrize("verdict", ["PASS\u200b", "NOT_SUPPORTED\u200b", "FAIL", "Falsified", "NOT SUPPORTED", "rejected"])
+def test_obfuscated_or_negative_verdicts_block_rather_than_fall_through(verdict):
+    # Regression (#357 review): zero-width padding and negative vocabulary must not leave a verdict non-blocking.
+    evidence, blocking, _ = evaluate_scientific_gate(ScientificGateInput(verdict=verdict))
+    assert evidence.value == "blocked" or blocking is True
+    assert evidence.value != "pass"

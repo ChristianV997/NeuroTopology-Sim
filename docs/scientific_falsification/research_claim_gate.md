@@ -27,9 +27,9 @@ The closed vocabulary is:
 | `CLAIM_NOT_COMPARABLE` | An input explicitly declares that its feature families or estimands are incompatible; current hard topology/causal mismatches are rejected with reason codes. |
 
 The gate never emits a scientific `PASS`, a formal Bayes factor, or a causal
-conclusion by inference. `scientific_pass` is always `false`. An admissible
-record means only that the declared reporting class and metadata pass this
-contract.
+conclusion by inference. `scientific_pass` and `scientific_eligibility` are
+always `false`. An admissible record means only that the declared reporting
+class and metadata pass this contract; independent review is still required.
 
 ## Provenance and evidence
 
@@ -39,6 +39,14 @@ fixtures are useful engineering demonstrations but cannot be promoted to
 empirical, biological, or mental-state evidence. A proxy metric remains a
 proxy: RSS/AIC/AICc/BIC ratios cannot be called formal Bayesian evidence,
 causal influence, or a mechanism.
+
+Placeholder identities such as `none`, `unknown_source`, `derived_from_ledger`,
+and `TBD`, and bare verdict or status words such as `pass`, `fail`, `ok`,
+`true`, `null`, `rejected`, `supported`, and `verified`, are rejected as invalid
+provenance in any required field. A verdict or status word is never a source
+identity, acquisition record, or dataset version. A syntactically complete checksum
+is not independently verified by this offline gate and therefore cannot create
+a scientific-evidence status.
 
 Unknown `n_tests` is never interpreted as one test. More than one test requires
 an explicit multiplicity-correction status. Missing null controls, uncertainty,

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Mapping, Optional, Sequence
 
@@ -32,6 +32,8 @@ CONTROL_KEYS = (
 
 
 class ForecastStatus(str, Enum):
+    # Retained for parsing older artifacts only. This local benchmark never
+    # emits this status because a predictive score is not independent evidence.
     FORMAL_FORECAST_EVIDENCE = "FORMAL_FORECAST_EVIDENCE"
     NO_INCREMENTAL_GAIN = "NO_INCREMENTAL_GAIN"
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
@@ -58,6 +60,9 @@ class BenchmarkDataset:
     controls: Mapping[str, np.ndarray] = field(default_factory=dict)
     feature_times: Mapping[str, np.ndarray] = field(default_factory=dict)
     synthetic: bool = False
+    # Declarations are retained for auditability, but are never sufficient to
+    # promote a local benchmark to formal or scientific evidence.
+    adjudication_metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def validate(self) -> None:
         n = len(np.asarray(self.target))
@@ -75,6 +80,11 @@ class BenchmarkDataset:
         for name, value in arrays.items():
             if len(np.asarray(value)) != n:
                 raise ValueError(f"{name} length does not match target")
+        timestamps = np.asarray(self.timestamps, dtype=float)
+        if timestamps.shape != (n,) or not np.all(np.isfinite(timestamps)):
+            raise ValueError("timestamps must be a finite row-aligned vector")
+        if np.any(np.diff(timestamps) < 0):
+            raise ValueError("timestamps must be monotonic non-decreasing")
         for name, value in self.features.items():
             matrix = np.asarray(value, dtype=float)
             if matrix.ndim != 2 or matrix.shape[0] != n:
@@ -85,11 +95,24 @@ class BenchmarkDataset:
             arr = np.asarray(value, dtype=float)
             if arr.ndim not in (1, 2) or arr.shape[0] != n or not np.all(np.isfinite(arr)):
                 raise ValueError(f"control {name!r} must be finite and row-aligned")
-        for name, value in self.feature_times.items():
+        if not isinstance(self.feature_times, Mapping):
+            raise ValueError("feature_times must be a mapping for every feature block")
+        feature_names = set(self.features)
+        time_names = set(self.feature_times)
+        missing_times = sorted(feature_names - time_names)
+        unexpected_times = sorted(time_names - feature_names)
+        if missing_times:
+            raise ValueError(f"immutable feature-time lineage is required; missing feature_times for {missing_times}")
+        if unexpected_times:
+            raise ValueError(f"feature_times contains unknown feature blocks: {unexpected_times}")
+        for name in sorted(feature_names):
+            value = self.feature_times[name]
             arr = np.asarray(value, dtype=float)
             if arr.shape != (n,) or not np.all(np.isfinite(arr)):
                 raise ValueError(f"feature_times[{name!r}] must be a finite row-aligned vector")
-            if np.any(arr > np.asarray(self.timestamps, dtype=float)):
+            if np.any(np.diff(arr) < 0):
+                raise ValueError(f"feature_times[{name!r}] must be monotonic non-decreasing")
+            if np.any(arr > timestamps):
                 raise LeakageDetected(f"future-window feature detected for {name}")
 
     @property
@@ -97,12 +120,24 @@ class BenchmarkDataset:
         return len(np.asarray(self.target))
 
     def checksum(self) -> str:
+        feature_times = self.feature_times if isinstance(self.feature_times, Mapping) else {}
+        controls = self.controls if isinstance(self.controls, Mapping) else {}
         payload = {
+            "schema_version": SCHEMA_VERSION,
             "target": np.asarray(self.target).tolist(),
             "subjects": np.asarray(self.subjects).tolist(),
             "sessions": np.asarray(self.sessions).tolist(),
             "timestamps": np.asarray(self.timestamps, dtype=float).tolist(),
             "features": {k: np.asarray(self.features[k], dtype=float).tolist() for k in sorted(self.features)},
+            # Bind each output to the exact feature-time lineage used to
+            # establish the causal forecasting boundary.
+            "feature_times": {k: np.asarray(feature_times[k], dtype=float).tolist() for k in sorted(feature_times)},
+            "controls": {k: np.asarray(controls[k], dtype=float).tolist() for k in sorted(controls)},
+            "prediction_horizon": self.prediction_horizon,
+            "target_definition": self.target_definition,
+            "provenance": self.provenance,
+            "synthetic": self.synthetic,
+            "adjudication_metadata": self.adjudication_metadata,
         }
         return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
 
@@ -147,6 +182,8 @@ class BenchmarkReport:
     formal_bayes_factor: None = None
     scientific_pass: bool = False
     evidence_class: str = "forecast_benchmark"
+    adjudication: Mapping[str, Any] = field(default_factory=dict)
+    dataset_checksum: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         data = {
@@ -168,6 +205,8 @@ class BenchmarkReport:
             "formal_bayes_factor": None,
             "scientific_pass": False,
             "evidence_class": "forecast_benchmark",
+            "adjudication": dict(self.adjudication),
+            "dataset_checksum": self.dataset_checksum,
         }
         return _finite(data)
 
@@ -176,6 +215,10 @@ class BenchmarkReport:
 
 
 def _finite(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _finite(value.tolist())
+    if isinstance(value, np.generic):
+        return _finite(value.item())
     if isinstance(value, Mapping):
         return {str(k): _finite(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -191,12 +234,88 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(_finite(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def _safe_dataset_checksum(dataset: BenchmarkDataset) -> str:
+    """Return a stable identity when possible without masking an invalid input."""
+    try:
+        return dataset.checksum()
+    except (TypeError, ValueError, KeyError):
+        return ""
+
+
+def _with_report_checksum(report: BenchmarkReport) -> BenchmarkReport:
+    payload = report.to_dict()
+    payload.pop("checksum", None)
+    checksum = hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+    return replace(report, checksum=checksum)
+
+
 def _failure_report(dataset: BenchmarkDataset, status: ForecastStatus, message: str) -> BenchmarkReport:
-    return BenchmarkReport(
+    report = BenchmarkReport(
         SCHEMA_VERSION, status.value, {**dataset.provenance, "message": message}, {},
         float(dataset.prediction_horizon), dataset.target_definition, "deterministic_logistic",
-        (), {}, {}, dataset.checksum() if len(np.asarray(dataset.target)) else "", bool(dataset.synthetic),
+        (), {}, {}, "", bool(dataset.synthetic),
+        adjudication={
+            "status": "BLOCKED",
+            "external_independent_adjudication_required": True,
+            "formal_evidence_emitted": False,
+            "scientific_pass_emitted": False,
+            "reason": message,
+        },
+        dataset_checksum=_safe_dataset_checksum(dataset) if len(np.asarray(dataset.target)) else "",
     )
+    return _with_report_checksum(report)
+
+
+def _metadata_is_missing(value: Any) -> bool:
+    """Treat absent, empty, and explicitly unknown declarations as missing."""
+    if value is None or value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"", "unknown", "missing", "not_provided", "none", "unavailable"}
+    if isinstance(value, Mapping):
+        # A declaration is complete only when every field carries a value.
+        return not value or any(_metadata_is_missing(item) for item in value.values())
+    if isinstance(value, Sequence):
+        return not value or any(_metadata_is_missing(item) for item in value)
+    return False
+
+
+def _adjudication_summary(dataset: BenchmarkDataset, split: LockedSplit) -> dict[str, Any]:
+    """Describe what this local benchmark cannot adjudicate by itself.
+
+    The fields are declarations for downstream reviewers, not authority to emit
+    formal evidence. A caller cannot self-attest its way out of this boundary.
+    """
+    metadata = dataset.adjudication_metadata if isinstance(dataset.adjudication_metadata, Mapping) else {}
+    required = {
+        "null_models": "null_models",
+        "calibration": "calibration",
+        "locked_split": "locked_split",
+        "multiplicity": "multiplicity",
+    }
+    missing = [label for label, key in required.items() if _metadata_is_missing(metadata.get(key))]
+    formal_keys = {
+        "formal_bayes_factor",
+        "scientific_pass",
+        "formal_forecast_evidence",
+        "formal_evidence",
+        "evidence_adjudicated",
+    }
+    ignored = sorted(
+        key for source in (dataset.provenance, metadata)
+        if isinstance(source, Mapping)
+        for key in source
+        if str(key) in formal_keys and not _metadata_is_missing(source[key])
+    )
+    return {
+        "status": "INCONCLUSIVE" if missing else "EXTERNAL_INDEPENDENT_ADJUDICATION_REQUIRED",
+        "missing_requirements": missing,
+        "locked_split_strategy": split.strategy,
+        "external_independent_adjudication_required": True,
+        "formal_evidence_emitted": False,
+        "scientific_pass_emitted": False,
+        "caller_formal_metadata_ignored": ignored,
+    }
 
 
 def _validate_preprocessing_fit(train: Sequence[int], fit_indices: Optional[Sequence[int]]) -> None:
@@ -281,11 +400,16 @@ def _auroc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
     y = np.asarray(y, dtype=int)
     if len(np.unique(y)) < 2:
         return None
-    order = np.argsort(np.asarray(p), kind="mergesort")
-    ranks = np.empty(len(order), dtype=float)
-    ranks[order] = np.arange(1, len(order) + 1)
+    scores = np.asarray(p, dtype=float)
+    _, inverse, counts = np.unique(scores, return_inverse=True, return_counts=True)
+    average_ranks = np.cumsum(counts) - (counts - 1) / 2.0
     positives = y == 1
-    return float((ranks[positives].sum() - positives.sum() * (positives.sum() + 1) / 2) / (positives.sum() * (len(y) - positives.sum())))
+    positive_count = int(positives.sum())
+    positive_rank_sum = float(average_ranks[inverse[positives]].sum())
+    return float(
+        (positive_rank_sum - positive_count * (positive_count + 1) / 2)
+        / (positive_count * (len(y) - positive_count))
+    )
 
 
 def _auprc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
@@ -293,10 +417,15 @@ def _auprc(y: np.ndarray, p: np.ndarray) -> Optional[float]:
     positives = int(y.sum())
     if positives == 0:
         return None
-    order = np.argsort(-np.asarray(p), kind="mergesort")
-    hits = np.cumsum(y[order])
-    precision = hits / np.arange(1, len(y) + 1)
-    return float(np.sum(precision[y[order] == 1]) / positives)
+    scores = np.asarray(p)
+    order = np.argsort(-scores, kind="mergesort")
+    sorted_scores = scores[order]
+    sorted_y = y[order]
+    group_ends = np.flatnonzero(np.r_[sorted_scores[1:] != sorted_scores[:-1], True])
+    cumulative_hits = np.cumsum(sorted_y)[group_ends]
+    group_positive_counts = np.diff(np.r_[0, cumulative_hits])
+    precision_at_threshold = cumulative_hits / (group_ends + 1)
+    return float(np.sum(group_positive_counts * precision_at_threshold) / positives)
 
 
 def _ece(y: np.ndarray, p: np.ndarray, bins: int = 10) -> float:
@@ -404,9 +533,14 @@ def run_benchmark(
         loss = _log_loss(y[test], p)
         gain = None if prior_loss is None else float(prior_loss - loss)
         beats_previous = prior_loss is None or loss < prior_loss
-        status = ForecastStatus.NO_INCREMENTAL_GAIN.value if not beats_previous else (
-            ForecastStatus.SYNTHETIC_DEMO_ONLY.value if dataset.synthetic else ForecastStatus.FORMAL_FORECAST_EVIDENCE.value
-        )
+        if not beats_previous:
+            status = ForecastStatus.NO_INCREMENTAL_GAIN.value
+        elif dataset.synthetic:
+            status = ForecastStatus.SYNTHETIC_DEMO_ONLY.value
+        else:
+            # A held-out proper-score improvement is useful benchmark output,
+            # but cannot establish a formal, causal, or scientific conclusion.
+            status = ForecastStatus.INCONCLUSIVE.value
         baseline_prediction = p if prior_loss is None else predictions[LADDER[index - 1]]
         p_value = None if prior_loss is None else _gain_p_value(y[test], baseline_prediction, p, gain or 0.0, seed + index)
         ci = None if prior_loss is None else _bootstrap_ci(y[test], baseline_prediction, p, seed + 100 + index)
@@ -427,20 +561,26 @@ def run_benchmark(
     for kind in ("label-permutation", "circular-time-shift", "block-shuffle", "matched-variance-surrogate", "matched-autocorrelation-surrogate"):
         surrogate = _null_target(y[test], kind, seed + len(nulls))
         nulls[kind] = {"log_loss": _log_loss(surrogate, predictions[LADDER[-1]]), "synthetic": bool(dataset.synthetic)}
-    overall = ForecastStatus.SYNTHETIC_DEMO_ONLY.value if dataset.synthetic else (
-        ForecastStatus.FORMAL_FORECAST_EVIDENCE.value if all(
-            r.status == ForecastStatus.FORMAL_FORECAST_EVIDENCE.value for r in results[1:]
-        ) else ForecastStatus.NO_INCREMENTAL_GAIN.value
-    )
+    adjudication = _adjudication_summary(dataset, split)
+    if dataset.synthetic:
+        overall = ForecastStatus.SYNTHETIC_DEMO_ONLY.value
+    elif adjudication["missing_requirements"] or any(
+        result.status == ForecastStatus.INCONCLUSIVE.value for result in results
+    ):
+        overall = ForecastStatus.INCONCLUSIVE.value
+    else:
+        overall = ForecastStatus.NO_INCREMENTAL_GAIN.value
     split_data = split.to_dict()
     split_data["nested_validation"] = True
-    report_checksum = hashlib.sha256(_canonical_json({"dataset": dataset.checksum(), "results": [r.to_dict() for r in results]}).encode()).hexdigest()
     missingness = {r.feature_family: r.missingness for r in results}
-    return BenchmarkReport(
+    report = BenchmarkReport(
         SCHEMA_VERSION, overall, dataset.provenance, split_data, float(dataset.prediction_horizon),
         dataset.target_definition, "deterministic_logistic", tuple(results), nulls, missingness,
-        report_checksum, bool(dataset.synthetic),
+        "", bool(dataset.synthetic),
+        adjudication=adjudication,
+        dataset_checksum=dataset.checksum(),
     )
+    return _with_report_checksum(report)
 
 
 def null_target(target: np.ndarray, kind: str, seed: int = 0) -> np.ndarray:

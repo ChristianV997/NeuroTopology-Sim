@@ -11,6 +11,7 @@ from tools.research_claim_gate.gate import (
     CLAIM_CLASSES,
     DECISION_STATES,
     ClaimGateResult,
+    ProvenanceRecord,
     evaluate_claim,
     evaluate_claim_batch,
     serialize_json,
@@ -62,6 +63,12 @@ def test_admissible_engineering_fact():
     result = evaluate_claim({"claim_id": "eng", "text": "The parser is deterministic.", "claim_class": "engineering_fact", "data_mode": "not_applicable"})
     assert result.decision == "CLAIM_ADMISSIBLE"
     assert result.scientific_pass is False
+
+
+def test_metadata_gate_never_marks_a_claim_scientifically_eligible():
+    result = evaluate_claim(good_claim())
+    assert result.decision == "CLAIM_ADMISSIBLE"
+    assert result.scientific_eligibility is False
 
 
 def test_requires_review_for_unknown_multiplicity_and_missing_controls():
@@ -161,3 +168,61 @@ def test_provenance_validation_is_explicit():
     assert validate_provenance({"source_id": "x"}).status == "incomplete"
     assert validate_provenance(GOOD_PROVENANCE).status == "complete"
     assert validate_provenance({**GOOD_PROVENANCE, "checksum": "fake"}).status == "invalid"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("source_id", "unknown_source"),
+    ("source_id", "none"),
+    ("acquisition", "derived_from_ledger"),
+    ("acquisition", "none"),
+    ("dataset_version", "TBD"),
+    ("dataset_version", "none"),
+])
+def test_placeholder_provenance_cannot_be_treated_as_complete(field, value):
+    provenance = {**GOOD_PROVENANCE, field: value}
+    validation = validate_provenance(provenance)
+    assert validation.status == "invalid"
+    assert validation.reason_code == "PLACEHOLDER_PROVENANCE"
+    result = evaluate_claim(good_claim(provenance=provenance))
+    assert result.decision == "CLAIM_PROVENANCE_INVALID"
+
+
+@pytest.mark.parametrize("field", ["identity", "checksum", "acquisition", "dataset_version"])
+def test_typed_provenance_whitespace_fields_are_incomplete(field):
+    values = {
+        "source_id": "fixture-dataset",
+        "source_uri": "local://fixture-dataset",
+        "checksum": "a" * 64,
+        "acquisition": "fixture",
+        "dataset_version": "v1",
+    }
+    if field == "identity":
+        values["source_id"] = "   "
+        values["source_uri"] = "   "
+    else:
+        values[field] = "   "
+
+    result = validate_provenance(ProvenanceRecord(**values))
+
+    assert result.status == "incomplete"
+    assert ("source_id" if field == "identity" else field) in result.missing_fields
+
+
+@pytest.mark.parametrize("field", ["source_id", "acquisition", "dataset_version"])
+@pytest.mark.parametrize("token", ["pass", "PASS", "passed", "fail", "ok", "true", "yes", "null"])
+def test_bare_verdict_tokens_cannot_serve_as_complete_provenance(field, token):
+    # Regression (#357 remediation): a bare verdict-like token must not complete provenance
+    # and promote an empirical claim to CLAIM_ADMISSIBLE.
+    provenance = {**GOOD_PROVENANCE, field: token}
+    assert validate_provenance(provenance).status == "invalid"
+    result = evaluate_claim(good_claim(provenance=provenance))
+    assert result.decision == "CLAIM_PROVENANCE_INVALID"
+
+
+@pytest.mark.parametrize("field", ["source_id", "acquisition", "dataset_version"])
+@pytest.mark.parametrize("token", ["rejected", "inconclusive", "error", "blocked", "supported", "verified", "accepted", "success"])
+def test_verdict_and_status_words_cannot_serve_as_provenance(field, token):
+    # Regression (#357 review): verdict and status vocabulary is not a source identity.
+    provenance = {**GOOD_PROVENANCE, field: token}
+    assert validate_provenance(provenance).status == "invalid"
+    assert evaluate_claim(good_claim(provenance=provenance)).decision == "CLAIM_PROVENANCE_INVALID"
