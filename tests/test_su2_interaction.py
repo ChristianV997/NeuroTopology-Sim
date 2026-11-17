@@ -712,9 +712,11 @@ def test_gradient_applies_subnormal_coefficients_after_cell_volume_scaling():
     )
 
     assert np.all(np.isfinite(gradient))
-    assert np.linalg.norm(gradient) > 0.0
-    assert np.linalg.norm(reference) > 0.0
-    relative_error = np.linalg.norm(gradient - reference) / np.linalg.norm(reference)
+    gradient_scale = float(np.max(np.abs(gradient)))
+    reference_scale = float(np.max(np.abs(reference)))
+    assert gradient_scale > 0.0
+    assert reference_scale > 0.0
+    relative_error = float(np.max(np.abs(gradient - reference))) / reference_scale
     assert relative_error < 5.0e-3
 
 
