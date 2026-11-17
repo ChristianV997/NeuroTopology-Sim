@@ -183,16 +183,16 @@ class Round6DiscoveryTests(unittest.TestCase):
     def test_workflow_keeps_diff_checkout_and_workflow_commits_separate(self):
         workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha || github.event.pull_request.base.sha || github.event.before }}",
+            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
             workflow,
         )
         self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha || github.event.pull_request.head.sha || github.sha }}",
+            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
             workflow,
         )
-        self.assertIn("diff_base_sha:\n        description:", workflow)
-        self.assertIn("diff_head_sha:\n        description:", workflow)
-        self.assertIn("required: true\n        type: string", workflow)
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", workflow)
+        self.assertNotIn("inputs.diff_head_sha", workflow)
         self.assertIn("TESTED_CHECKOUT_SHA: ${{ github.sha }}", workflow)
         self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", workflow)
         helper_source = HELPER_PATH.read_text(encoding="utf-8")
@@ -200,6 +200,189 @@ class Round6DiscoveryTests(unittest.TestCase):
             "candidate diff head is not an ancestor of the tested checkout",
             helper_source,
         )
+
+    def test_no_cache_jobs_do_not_call_unavailable_pip_cache_commands(self):
+        for workflow_name in ("ci.yml", "required-checks.yml"):
+            workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            with self.subTest(workflow=workflow_name):
+                self.assertRegex(workflow, r"(?m)^\s+PIP_NO_CACHE_DIR: \"1\"$")
+                self.assertNotRegex(workflow, r"(?m)^\s+python -m pip cache\b")
+                self.assertNotRegex(workflow, r"(?m)^\s*-\s*uses:\s*actions/cache@")
+                self.assertNotRegex(
+                    workflow,
+                    r"(?im)^\s+cache:\s*(['\"]?)(?:pip|true)\1\s*(?:#.*)?$",
+                )
+
+    def test_quoted_candidate_paths_cannot_become_not_applicable(self):
+        helper = _helper()
+        candidate_path = "tools/higher_order_runtime/review_λ.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root, with_candidate=False)
+            _git(root, "config", "core.quotePath", "true")
+            _write(root, candidate_path, "# unregistered candidate fixture\n")
+            head = _commit(root, "quoted candidate path fixture")
+            raw_name = _git(root, "diff", "--name-only", f"{base}...{head}")
+            report_path = root / "outputs/report.json"
+            with redirect_stdout(io.StringIO()):
+                result = helper.run(
+                    root,
+                    base,
+                    head,
+                    report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=head,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(raw_name.startswith('"'), raw_name)
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["changed_paths"], [candidate_path])
+        self.assertEqual(report["unmapped_candidate_paths"], [candidate_path])
+
+    def test_git_changed_paths_reject_absolute_and_traversal_paths(self):
+        helper = _helper()
+        invalid_paths = (
+            "../tools/surrogate_nulls/nulls.py",
+            "tools/surrogate_nulls/../../outside.py",
+            "/tools/surrogate_nulls/nulls.py",
+            r"C:\tools\surrogate_nulls\nulls.py",
+            r"tests\fixtures\..\..\tools\surrogate_nulls\nulls.py",
+        )
+        for path in invalid_paths:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValueError, "relative repository path"):
+                    helper.normalize_repo_path(path)
+
+        self.assertEqual(
+            helper.normalize_repo_path("./tests/surrogate_nulls/test_phase_nulls.py"),
+            "tests/surrogate_nulls/test_phase_nulls.py",
+        )
+
+        malicious_git_output = b"../tools/surrogate_nulls/nulls.py\0"
+        with patch.object(
+            helper.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0, stdout=malicious_git_output),
+        ):
+            with self.assertRaisesRegex(ValueError, "relative repository path"):
+                helper.collect_changed_paths("a" * 40, "b" * 40, Path.cwd())
+
+    def test_renamed_registered_implementation_cannot_hide_candidate_removal(self):
+        helper = _helper()
+        moved = "tools/simulation_runtime/relocated_grid_plan.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = _repo(root)
+            _git(root, "mv", IMPLEMENTATION, moved)
+            head = _commit(root, "move registered candidate out of its registered path")
+            changed = helper.collect_changed_paths(base, head, root)
+            self.assertIn(IMPLEMENTATION, changed)
+            self.assertIn(moved, changed)
+            self.assertIn("simulation_grid_planner", helper.select_components(changed))
+            report_path = root / "outputs/report.json"
+            with redirect_stdout(io.StringIO()):
+                result = helper.run(
+                    root,
+                    base,
+                    head,
+                    report_path,
+                    tested_checkout_sha=head,
+                    workflow_sha=head,
+                    event_name="pull_request",
+                    require_checkout_match=True,
+                )
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertNotEqual(report["status"], "NOT_APPLICABLE")
+        self.assertEqual(result, 1)
+
+    def test_backslash_named_git_path_is_not_aliased_to_registered_candidate(self):
+        helper = _helper()
+        malicious_git_output = b"tools\\simulation_runtime\\grid_plan.py\0"
+        with patch.object(
+            helper.subprocess,
+            "run",
+            return_value=SimpleNamespace(returncode=0, stdout=malicious_git_output),
+        ):
+            with self.assertRaisesRegex(ValueError, "backslash"):
+                helper.collect_changed_paths("a" * 40, "b" * 40, Path.cwd())
+
+    def test_docker_candidate_scope_detects_renamed_dockerignore_removal(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        self.assertTrue(
+            "git diff --no-renames --name-only" in workflow,
+            "Docker candidate scope must list deleted and renamed-away paths",
+        )
+
+    def test_required_checks_disables_manual_candidate_dispatch(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.", workflow)
+        self.assertNotIn("candidate-source", workflow)
+        first_checkout = re.search(
+            r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(first_checkout)
+        self.assertIn("persist-credentials: false", first_checkout.group(1))
+
+        candidate_step = re.search(
+            r"(?ms)^      - name: Discover and run changed Round 6 candidate suites\n"
+            r"(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(candidate_step)
+        self.assertIn(
+            "TESTED_CHECKOUT_SHA: ${{ github.sha }}",
+            candidate_step.group(1),
+        )
+        self.assertNotIn("candidate_root", candidate_step.group(1))
+        self.assertNotIn("--root", candidate_step.group(1))
+        self.assertIn("WORKFLOW_SHA: ${{ github.workflow_sha }}", candidate_step.group(1))
+
+    def test_core_suite_keeps_merged_surrogate_null_regressions(self):
+        workflow = (ROOT / ".github/workflows/required-checks.yml").read_text(encoding="utf-8")
+        core_step = re.search(
+            r"(?ms)^      - name: Run core tests in isolated batches\n(.*?)(?=^      - name:|\Z)",
+            workflow,
+        )
+        self.assertIsNotNone(core_step)
+        self.assertIn("run: >", core_step.group(1))
+        run_scalar = core_step.group(1).split("run: >", 1)[1]
+        self.assertNotIn("# Merged #417 regressions", run_scalar)
+        expected = (
+            "tests/surrogate_nulls/test_phase_nulls.py",
+            "tests/surrogate_nulls/test_cholesky_csd.py",
+            "tests/surrogate_nulls/test_mv_iaaft.py",
+            "tests/surrogate_nulls/test_edge_cases.py",
+            "tests/surrogate_nulls/test_csd_estimators.py",
+            "tests/surrogate_nulls/test_hardening_diagnostics.py",
+            "tests/surrogate_nulls/test_real_part_and_validity.py",
+        )
+        for test_path in expected:
+            with self.subTest(test_path=test_path):
+                self.assertIn(test_path, run_scalar)
+
+    def test_every_workflow_checkout_discards_persisted_credentials(self):
+        expected_counts = {
+            "required-checks.yml": 3,
+            "ci.yml": 4,
+        }
+        for workflow_name, expected_count in expected_counts.items():
+            workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            checkout_blocks = re.findall(
+                r"(?ms)^      - uses: actions/checkout@v7\n(.*?)(?=^      - |\Z)",
+                workflow,
+            )
+            with self.subTest(workflow=workflow_name):
+                self.assertEqual(len(checkout_blocks), expected_count)
+            for index, block in enumerate(checkout_blocks, start=1):
+                with self.subTest(workflow=workflow_name, checkout=index):
+                    self.assertRegex(block, r"(?m)^\s+persist-credentials: false\s*$")
 
     def test_optional_eeg_profile_discovers_only_changed_mne_candidate_paths(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -219,10 +402,17 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("tools/mne_csd_reference_audit/(kkt|legendre|montages|pin)", eeg_job)
         self.assertIn("--only-component mne_csd_reference_audit", eeg_job)
         self.assertIn("outputs/mne_csd_reference_audit_eeg_report.json", eeg_job)
-        self.assertIn("diff_base_sha:", workflow)
-        self.assertIn("diff_head_sha:", workflow)
-        self.assertIn("inputs.diff_base_sha", eeg_job)
-        self.assertIn("inputs.diff_head_sha", eeg_job)
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", eeg_job)
+        self.assertNotIn("inputs.diff_head_sha", eeg_job)
+        self.assertIn(
+            "DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}",
+            eeg_job,
+        )
+        self.assertIn(
+            "DIFF_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+            eeg_job,
+        )
         self.assertEqual(
             _helper().COMPONENTS["mne_signal_blocks"]["external_test_paths"][
                 "tests/adapters/mne_signal_blocks/test_mne_signal_blocks.py"
@@ -456,39 +646,30 @@ class Round6DiscoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unsupported pytest marker"):
                 helper.run(root, "0" * 40, "1" * 40, root / "outputs/b.json", pytest_marker="optional")
 
-    def test_workflow_dispatch_without_explicit_diff_shas_fails_closed(self):
+    def test_workflow_dispatch_candidate_execution_is_rejected_even_with_explicit_shas(self):
         helper = _helper()
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             _repo(root)
-            with self.assertRaisesRegex(ValueError, "workflow_dispatch requires an explicit"):
+            commit_sha = _git(root, "rev-parse", "HEAD")
+            with patch.object(
+                helper.subprocess,
+                "run",
+                side_effect=AssertionError("manual dispatch must be rejected before git execution"),
+            ), self.assertRaisesRegex(ValueError, "workflow_dispatch candidate execution is disabled"):
                 helper.run(
-                    root, "", "", root / "outputs/report.json",
-                    tested_checkout_sha="1" * 40,
-                    workflow_sha="2" * 40,
+                    root, commit_sha, commit_sha, root / "outputs/report.json",
+                    tested_checkout_sha=commit_sha,
+                    workflow_sha=commit_sha,
                     event_name="workflow_dispatch",
                 )
 
-    def test_ci_manual_dispatch_requires_explicit_candidate_diff_shas(self):
+    def test_ci_workflow_disables_manual_candidate_dispatch(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        dispatch = re.search(r"(?ms)^  workflow_dispatch:\n    inputs:\n(.*?)(?=^\S|\Z)", workflow)
-        self.assertIsNotNone(dispatch)
-        inputs = dispatch.group(1)
-        for name in ("diff_base_sha", "diff_head_sha"):
-            with self.subTest(input=name):
-                block = re.search(
-                    rf"(?ms)^      {re.escape(name)}:\n(.*?)(?=^      [^ ]|\Z)", inputs
-                )
-                self.assertIsNotNone(block)
-                self.assertRegex(block.group(1), r"(?m)^        required: true$")
-        self.assertIn(
-            "DIFF_BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_base_sha",
-            workflow,
-        )
-        self.assertIn(
-            "DIFF_HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.diff_head_sha",
-            workflow,
-        )
+        self.assertNotRegex(workflow, r"(?m)^  workflow_dispatch:")
+        self.assertNotIn("inputs.diff_base_sha", workflow)
+        self.assertNotIn("inputs.diff_head_sha", workflow)
+        self.assertNotIn("github.event_name == 'workflow_dispatch'", workflow)
 
     def test_candidate_head_not_in_tested_checkout_is_blocked_before_execution(self):
         helper = _helper()
@@ -506,7 +687,7 @@ class Round6DiscoveryTests(unittest.TestCase):
                 root, candidate_base, candidate_head, report_path,
                 tested_checkout_sha=tested_checkout,
                 workflow_sha=candidate_base,
-                event_name="workflow_dispatch",
+                event_name="pull_request",
                 require_checkout_match=True,
             )
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -538,7 +719,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn("DIFF_BASE_SHA", job)
         self.assertIn("DIFF_HEAD_SHA", job)
         self.assertIn("git merge-base --is-ancestor", job)
-        self.assertIn('git diff --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
+        self.assertIn('git diff --no-renames --name-only "$DIFF_BASE_SHA...$DIFF_HEAD_SHA"', job)
         self.assertIn("registered engine test is absent", job)
         self.assertIn("if: steps.candidate_scope.outputs.docker_context_changed == 'true'", job)
         self.assertIn(
@@ -548,7 +729,7 @@ class Round6DiscoveryTests(unittest.TestCase):
         self.assertIn('helper["validate_docker_engine_test_artifacts"]', job)
         self.assertIn("Upload Docker-context diagnostics", job)
         self.assertLess(
-            job.index("git diff --name-only"),
+            job.index("git diff --no-renames --name-only"),
             job.index("git merge-base --is-ancestor"),
         )
 
@@ -588,6 +769,24 @@ class Round6DiscoveryTests(unittest.TestCase):
                 "failures": 0, "errors": 0, "timeouts": 0,
             })
             json.dumps(evidence, sort_keys=True, allow_nan=False)
+
+            for outcome, expected_status in (
+                ("failure", "FAIL"),
+                ("cancelled", "BLOCKED"),
+                ("skipped", "BLOCKED"),
+                ("unknown", "BLOCKED"),
+            ):
+                with self.subTest(execution_outcome=outcome):
+                    non_success = helper.docker_engine_candidate_evidence(
+                        root,
+                        telemetry_path,
+                        junit_path,
+                        **{**metadata, "execution_outcome": outcome},
+                    )
+                    self.assertEqual(non_success["status"], expected_status)
+                    self.assertIn(outcome, non_success["failure_reason"])
+                    self.assertEqual(non_success["counts"]["collected"], 1)
+                    json.dumps(non_success, sort_keys=True, allow_nan=False)
 
             junit_path.write_text(
                 '<testsuite tests="1" skipped="1" failures="0" errors="0">'
@@ -1021,27 +1220,40 @@ def test_fixture():
         self.assertEqual(helper.select_components(workflow_owned_changes), [])
         self.assertEqual(helper._unmapped_candidate_paths(workflow_owned_changes), [])
 
-    def test_dmd_production_bridge_is_paired_but_oracle_only_change_blocks(self):
+    def test_dmd_oracle_is_reference_support_for_the_production_bridge(self):
         helper = _helper()
         implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
         oracle_test = "tests/dmd_ep2_oracle/test_oracle.py"
         bridge_test = "tests/dmd_ep2_oracle/test_production_bridge.py"
-        self.assertEqual(
-            helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"][-1],
-            {"implementation": implementation, "test": bridge_test},
-        )
+        spec = helper.COMPONENTS["dmd_crouzeix"]
         self.assertNotIn(
             oracle_test,
-            {pair["test"] for pair in helper.COMPONENTS["dmd_crouzeix"]["candidate_pairs"]},
+            {pair["test"] for pair in spec["candidate_pairs"]},
+        )
+        self.assertIn(oracle_test, spec["tests"])
+        self.assertNotIn(oracle_test, spec["triggers"])
+        self.assertIn(oracle_test, spec["independent_reference_tests"])
+        self.assertEqual(spec["support_files"][oracle_test], (bridge_test,))
+        self.assertEqual(spec["support_file_requires_changed"][oracle_test], (bridge_test,))
+        self.assertEqual(
+            {pair["test"] for pair in spec["candidate_pairs"]},
+            {
+                "tests/dmd_crouzeix_contract/test_production_contract.py",
+                "tests/experimental/test_dmd_crouzeix.py",
+                bridge_test,
+            },
         )
         self.assertEqual(
-            helper.COMPONENTS["dmd_crouzeix"]["environment_overrides"],
+            spec["environment_overrides"],
             {"DMD_EP2_REQUIRE_PRODUCTION": "1"},
         )
         self.assertEqual(helper.select_components({oracle_test}), [])
         self.assertEqual(helper._unmapped_candidate_paths({oracle_test}), [oracle_test])
         self.assertEqual(helper.select_components({bridge_test}), ["dmd_crouzeix"])
         self.assertEqual(helper._unmapped_candidate_paths({bridge_test}), [])
+        paired_changes = {oracle_test, bridge_test}
+        self.assertEqual(helper.select_components(paired_changes), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths(paired_changes), [])
         self.assertEqual(
             helper._unmapped_candidate_paths({"tests/dmd_ep2_oracle/test_unregistered_extra.py"}),
             ["tests/dmd_ep2_oracle/test_unregistered_extra.py"],
@@ -1051,10 +1263,31 @@ def test_fixture():
             root = Path(td)
             _repo(root, with_candidate=False)
             _write(root, implementation, "def marker(): return 'fixture'\n")
-            _write(root, oracle_test, "def oracle_fixture(): return 1\n")
-            base = _commit(root, "DMD production implementation and stable oracle fixture")
+            base = _commit(root, "DMD implementation before oracle-only change")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            head = _commit(root, "unpaired oracle-only change")
+            report_path = root / "outputs/report.json"
+            exit_code = helper.run(root, base, head, report_path)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertEqual(report["selected_components"], [])
+        self.assertEqual(report["unmapped_candidate_paths"], [oracle_test])
+        self.assertEqual(report["executed_commands"], [])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            base = _commit(root, "DMD production implementation without oracle-only candidate")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
             _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
-            head = _commit(root, "DMD production bridge candidate test")
+            head = _commit(root, "DMD paired production bridge and reference tests")
+            changed_paths = helper.collect_changed_paths(base, head, root)
+            self.assertEqual(changed_paths, {oracle_test, bridge_test})
+            self.assertIn(oracle_test, helper._active_support_paths(spec, changed_paths))
+            inspection = helper.inspect_component("dmd_crouzeix", root, changed_paths)
+            self.assertEqual(inspection["tests_to_run"], [bridge_test, oracle_test])
             report_path = root / "outputs/report.json"
             observed_environments = []
 
@@ -1070,10 +1303,48 @@ def test_fixture():
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["selected_components"], ["dmd_crouzeix"])
         component = report["components"][0]
-        self.assertEqual(component["tests_to_run"], [bridge_test])
-        self.assertEqual(observed_environments, ["1"])
+        self.assertEqual(report["changed_paths"], sorted({bridge_test, oracle_test}))
+        self.assertEqual(component["tests_to_run"], [bridge_test, oracle_test])
+        self.assertEqual(observed_environments, ["1", "1"])
         self.assertTrue(all(item["environment_overrides"] == {"DMD_EP2_REQUIRE_PRODUCTION": "1"}
                             for item in component["executions"]))
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            inspection = helper.inspect_component("dmd_crouzeix", root, {oracle_test})
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertEqual(inspection["unmapped_candidate_paths"], [oracle_test])
+        self.assertNotIn(oracle_test, inspection["tests_to_run"])
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, implementation, "def marker(): return 'fixture'\n")
+            _write(root, oracle_test, "def test_oracle_fixture(): assert True\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            with patch.dict(
+                helper.COMPONENTS["dmd_crouzeix"],
+                {"support_file_requires_changed": {oracle_test: ("tests/not_registered.py",)}},
+            ):
+                inspection = helper.inspect_component(
+                    "dmd_crouzeix", root, {oracle_test, bridge_test}
+                )
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertIn(
+            "support-file changed-path prerequisite mapping is invalid",
+            inspection["blockers"],
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, oracle_test, "def oracle_fixture(): return 1\n")
+            _write(root, bridge_test, "def test_bridge_fixture(): assert True\n")
+            inspection = helper.inspect_component("dmd_crouzeix", root, {oracle_test})
+        self.assertEqual(inspection["status"], "BLOCKED")
+        self.assertEqual(inspection["missing_implementations"], [implementation])
 
     def test_candidate_environment_overrides_are_allowlisted_and_do_not_echo_secrets(self):
         helper = _helper()
@@ -1565,6 +1836,50 @@ def test_fixture():
             "errors": 0,
             "timeouts": 0,
         })
+
+        # Matching the allowed delta alone must not accept a smaller unverified baseline.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _repo(root, with_candidate=False)
+            for implementation in MNE_SIGNAL_IMPLEMENTATIONS:
+                _write(root, implementation, "# synthetic MNE signal-block module fixture\n")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True\n")
+            base = _commit(root, "registered MNE signal-block candidate fixture")
+            _write(root, MNE_SIGNAL_TEST, "def test_signal_block_contract():\n    assert True  # candidate change\n")
+            head = _commit(root, "same delta with an undercounted JUnit baseline")
+            report_path = root / "outputs/report.json"
+
+            def undercount_runner(command, **kwargs):
+                if "scripts/run_tests_isolated.py" not in command:
+                    return _REAL_SUBPROCESS_RUN(command, **kwargs)
+                telemetry = json.loads(_valid_telemetry(command[-1]))
+                telemetry["batches"][0]["stdout_tail"] = "pytest output captured by isolated runner\n"
+                return _fake_runner(
+                    command,
+                    telemetry=json.dumps(telemetry),
+                    junit_xml=(
+                        '<testsuite tests="13" skipped="0" failures="0" errors="0">'
+                        "<testcase/></testsuite>"
+                    ),
+                    **kwargs,
+                )
+
+            with (
+                patch.object(
+                    helper, "_git_tree_blob_sha",
+                    return_value=helper.REGISTERED_JUNIT_SUBTEST_DELTAS[MNE_SIGNAL_TEST]["blob_sha"],
+                ),
+                patch.object(helper.subprocess, "run", side_effect=undercount_runner),
+            ):
+                result = helper.run(root, base, head, report_path, tested_checkout_sha=head)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        execution = report["components"][0]["executions"][0]
+        self.assertEqual(result, 1)
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(execution["junit_reconciliation"], "mismatch")
+        self.assertIn("source-bound verified counts", execution["junit_error"])
+        self.assertEqual(execution["registered_subtest_contract"]["observed_delta"], 12)
 
         # A count mismatch beyond the exact reviewed subtest contract is not pass evidence.
         junit_delta = 13
@@ -2174,7 +2489,7 @@ def test_fixture():
                 "tests/release_readiness/batch2_security/test_artifact_states.py",
             ),
             "higher_order_runtime": (
-                377,
+                377, 450,
                 "tools/higher_order_runtime/stream_contract.py",
                 "tests/higher_order_runtime_contract/test_chunk_boundaries.py",
             ),
@@ -2229,12 +2544,27 @@ def test_fixture():
                 "tests/source_mining_integration/test_source_mining_evidence_boundary.py",
             ),
             "measurement_hypothesis_contract": (
-                384,
+                384, 357,
                 "shared/measurement_hypothesis/validate.py",
                 "tests/measurement_hypothesis/test_gate_reference_and_promotion.py",
             ),
+            "empirical_higher_order": (
+                357,
+                "analysis/empirical_higher_order/runner.py",
+                "tests/empirical_higher_order/test_runner.py",
+            ),
+            "transition_forecasting_benchmark": (
+                357,
+                "analysis/transition_forecasting/benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+            ),
+            "release_manifest": (
+                357,
+                "tools/release_manifest/manifest_builder.py",
+                "tests/release_manifest/test_manifest_builder.py",
+            ),
             "batch2_pipeline_benchmark": (
-                371,
+                371, 445,
                 "tools/benchmarks/batch2_pipeline/harness.py",
                 "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
             ),
@@ -2244,7 +2574,7 @@ def test_fixture():
                 "tests/physics/test_four_sphere_oracle.py",
             ),
             "phase_winding": (
-                413,
+                413, 453,
                 "neurotopology_sim/experimental/topology/winding.py",
                 "tests/neurotopology_sim/experimental/topology/test_phase_winding.py",
             ),
@@ -2254,7 +2584,7 @@ def test_fixture():
                 "tests/surrogate_nulls/test_adversarial_contracts.py",
             ),
             "dmd_crouzeix": (
-                415, 420, 400,
+                415, 420, 400, 452,
                 "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py",
                 "tests/dmd_ep2_oracle/test_production_bridge.py",
             ),
@@ -2385,6 +2715,73 @@ def test_fixture():
             measurement["package_initializers"]["shared/measurement_hypothesis/__init__.py"],
             tuple(measurement["tests"]),
         )
+
+    def test_pr357_source_only_changes_select_exact_release_and_forecasting_tests(self):
+        helper = _helper()
+        source_pairs = {
+            "empirical_higher_order": (
+                ("analysis/empirical_higher_order/runner.py", "tests/empirical_higher_order/test_runner.py"),
+                ("analysis/empirical_higher_order/schema.py", "tests/empirical_higher_order/test_runner.py"),
+                ("analysis/empirical_higher_order/validation.py", "tests/empirical_higher_order/test_runner.py"),
+            ),
+            "transition_forecasting_benchmark": (
+                ("analysis/transition_forecasting/benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                ("scripts/run_transition_benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+            ),
+            "release_manifest": (
+                ("tools/release_manifest/manifest_builder.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_merge_state.py"),
+                ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_manifest_builder.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_merge_state.py"),
+                ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
+                ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
+                ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                ("tools/release_manifest/scientific_gate.py", "tests/release_manifest/test_scientific_gate.py"),
+                ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+            ),
+        }
+        for component, expected_pairs in source_pairs.items():
+            with self.subTest(component=component):
+                spec = helper.COMPONENTS[component]
+                self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (357,))
+                self.assertTrue(
+                    {tuple(pair) for pair in expected_pairs}
+                    <= {
+                        (pair["implementation"], pair["test"])
+                        for pair in spec["candidate_pairs"]
+                    }
+                )
+                for implementation, test_path in expected_pairs:
+                    with self.subTest(implementation=implementation, test_path=test_path):
+                        self.assertEqual(
+                            helper.select_components({implementation}),
+                            [component],
+                            "a changed PR #357 implementation must not disappear as NOT_APPLICABLE",
+                        )
+                        self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
+                        selected_tests = list(dict.fromkeys(
+                            test for source, test in expected_pairs if source == implementation
+                        ))
+
+                        with tempfile.TemporaryDirectory() as td:
+                            root = Path(td)
+                            _write(root, implementation, "# source fixture\\n")
+                            for selected_test in selected_tests:
+                                _write(root, selected_test, "def test_contract_fixture():\\n    assert True\\n")
+                            inspection = helper.inspect_component(component, root, {implementation})
+                        self.assertEqual(inspection["status"], "READY_TO_RUN")
+                        self.assertEqual(inspection["tests_to_run"], selected_tests)
+
+                        with tempfile.TemporaryDirectory() as td:
+                            root = Path(td)
+                            _write(root, implementation, "# source fixture\\n")
+                            inspection = helper.inspect_component(component, root, {implementation})
+                        self.assertEqual(inspection["status"], "BLOCKED")
+                        self.assertEqual(
+                            set(inspection["missing_required_tests"]),
+                            set(selected_tests),
+                        )
 
         self.assertIn(
             {"implementation": "tools/surrogate_nulls/nulls.py", "test": "tests/surrogate_nulls/test_adversarial_contracts.py"},
@@ -2605,14 +3002,229 @@ def test_fixture():
             helper.COMPONENTS["dandi_nwb_bounded"]["implementation_roots"],
         )
 
-    def test_report_only_replication_suites_remain_unmapped_and_fail_closed(self):
+    def test_replication_artifact_contracts_are_mapped_without_report_only_fanout(self):
         helper = _helper()
         paths = {
+            "reports/batch3/grok_chat_b/dataset_candidates.json",
             "tests/research/batch3/test_replication_dataset_feasibility.py",
+            "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
             "tests/research/batch3/test_dataset_metadata_audit.py",
         }
-        self.assertEqual(helper.select_components(paths), [])
-        self.assertEqual(helper._unmapped_candidate_paths(paths), sorted(paths))
+        self.assertEqual(
+            helper.select_components(paths),
+            ["batch3_dataset_feasibility_artifact", "batch3_metadata_audit_artifact"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(paths), [])
+        for component, support_path in (
+            (
+                "batch3_dataset_feasibility_artifact",
+                "docs/research/batch3/replication_dataset_feasibility.md",
+            ),
+            (
+                "batch3_metadata_audit_artifact",
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            ),
+            ("whitening_audit", "tools/whitening_audit/__init__.py"),
+            ("whitening_audit", "tests/whitening_audit/__init__.py"),
+        ):
+            spec = helper.COMPONENTS[component]
+            self.assertIn(support_path, spec["support_files"])
+            self.assertEqual(helper.select_components({support_path}), [component])
+            self.assertEqual(helper._unmapped_candidate_paths({support_path}), [])
+        sibling = "tests/research/batch3/test_claim_matrix_supplement.py"
+        self.assertEqual(helper.select_components({sibling}), [])
+        self.assertEqual(helper._unmapped_candidate_paths({sibling}), [sibling])
+
+    def test_artifact_contract_pairs_require_the_real_artifact_and_exact_test(self):
+        helper = _helper()
+        cases = (
+            (
+                "oss_compatibility_inventory_artifact",
+                "docs/oss_compat/compatibility_inventory_20261017.json",
+                "tests/oss_compat/test_compatibility_inventory.py",
+                None,
+            ),
+            (
+                "batch3_dataset_feasibility_artifact",
+                "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+                "docs/research/batch3/replication_dataset_feasibility.md",
+            ),
+            (
+                "batch3_metadata_audit_artifact",
+                "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+            ),
+        )
+        for component, artifact, test_path, support_path in cases:
+            with self.subTest(component=component):
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    _write(root, artifact, "{}\n")
+                    _write(root, test_path, "def test_artifact_contract(): pass\n")
+                    changed = {artifact, test_path}
+                    if support_path:
+                        _write(root, support_path, "# documented artifact contract\n")
+                        changed.add(support_path)
+                    ready = helper.inspect_component(component, root, changed)
+                    self.assertEqual(ready["status"], "READY_TO_RUN")
+                    self.assertEqual(ready["tests_to_run"], [test_path])
+
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    _write(root, artifact, "{}\n")
+                    changed = {artifact}
+                    if support_path:
+                        _write(root, support_path, "# documented artifact contract\n")
+                        changed.add(support_path)
+                    blocked = helper.inspect_component(component, root, changed)
+                    self.assertEqual(blocked["status"], "BLOCKED")
+                    self.assertEqual(blocked["missing_required_tests"], [test_path])
+
+    def test_pr357_scientific_gate_uses_direct_existing_test_pair(self):
+        helper = _helper()
+        implementation = "tools/release_manifest/scientific_gate.py"
+        test_path = "tests/release_manifest/test_scientific_gate.py"
+        component = "release_manifest"
+        self.assertIn(
+            {"implementation": implementation, "test": test_path},
+            helper.COMPONENTS[component]["candidate_pairs"],
+        )
+        self.assertEqual(helper.select_components({implementation}), [component])
+        self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for path in helper.COMPONENTS[component]["implementation_roots"]:
+                _write(root, path, "# release-manifest source fixture\\n")
+            for path in helper.COMPONENTS[component]["tests"]:
+                _write(root, path, "def test_contract_fixture():\\n    assert True\\n")
+            inspection = helper.inspect_component(component, root, {implementation})
+
+        self.assertEqual(inspection["status"], "READY_TO_RUN")
+        self.assertIn(test_path, inspection["tests_to_run"])
+        self.assertEqual(inspection["missing_required_tests"], [])
+
+    def test_pr447_falsification_matrix_test_only_change_keeps_exact_owner_pair(self):
+        helper = _helper()
+        component = "batch3_falsification_matrix_artifact"
+        matrix = "configs/scientific_falsification/batch3_falsification_matrix.yaml"
+        test_path = "tests/scientific_falsification/test_batch3_falsification_matrix.py"
+        changed = {
+            "docs/scientific_falsification/batch3_adversarial_review.md",
+            test_path,
+        }
+        self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (376, 444, 447))
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write(root, matrix, "schema: fixture\n")
+            _write(root, test_path, "def test_matrix_contract(): pass\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertEqual(result["tests_to_run"], [test_path])
+
+    def test_malformed_component_owner_registry_blocks_candidate_selection(self):
+        helper = _helper()
+        component = "simulation_grid_planner"
+        pair = helper.COMPONENTS[component]["candidate_pairs"][0]
+        malformed_owner_mappings = (
+            (),
+            [],
+            None,
+            (True,),
+            ("424",),
+            (424, 424),
+            (0,),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            _write(root, pair["implementation"], "# fixture implementation\n")
+            _write(root, pair["test"], "# fixture test\n")
+            for owners in malformed_owner_mappings:
+                with self.subTest(owners=owners):
+                    with patch.dict(helper.COMPONENT_OWNER_PRS, {component: owners}):
+                        result = helper.inspect_component(component, root)
+                    self.assertEqual(result["status"], "BLOCKED")
+                    self.assertIn(
+                        "component owner mapping is invalid", result["blockers"]
+                    )
+                    self.assertFalse(result["owner_mapping_valid"])
+                    self.assertEqual(result["owner_prs"], [])
+                    json.dumps(result, allow_nan=False)
+
+            with patch.dict(helper.COMPONENT_OWNER_PRS):
+                del helper.COMPONENT_OWNER_PRS[component]
+                missing = helper.inspect_component(component, root)
+            self.assertEqual(missing["status"], "BLOCKED")
+            self.assertEqual(
+                missing["owner_mapping_error"], "component_owner_mapping_is_missing"
+            )
+
+            with patch.object(helper, "COMPONENT_OWNER_PRS", None):
+                malformed_registry = helper.inspect_component(component, root)
+            self.assertEqual(malformed_registry["status"], "BLOCKED")
+            self.assertEqual(
+                malformed_registry["owner_mapping_error"],
+                "owner_registry_must_be_a_mapping",
+            )
+
+    def test_live_planner_followup_has_an_exact_new_pair(self):
+        helper = _helper()
+        component = "higher_order_runtime"
+        implementation = "tools/higher_order_runtime/planner.py"
+        test_path = "tests/higher_order_runtime_contract/test_bounds_and_failures.py"
+        changed = {implementation, test_path}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((implementation, test_path), pairs)
+        self.assertIn(450, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+
+    def test_offline_serialization_followup_keeps_the_exact_contract_pair(self):
+        helper = _helper()
+        component = "batch3_offline_integration"
+        implementation = "tools/batch3_offline_integration/serialization.py"
+        test_path = "tests/tools/batch3_offline_integration/test_offline_integration.py"
+        changed = {implementation, test_path}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((implementation, test_path), pairs)
+        self.assertIn(449, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [])
+
+    def test_oss_batch_update_is_paired_but_uncovered_ingestion_source_blocks(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        batch_source = "oss_opportunities/opportunity_batch.py"
+        batch_test = "tests/test_oss_opportunity_batch.py"
+        untested_source = "oss_opportunities/source_ingestion.py"
+        changed = {batch_source, batch_test, untested_source}
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn((batch_source, batch_test), pairs)
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(helper._unmapped_candidate_paths(changed), [untested_source])
+
+    def test_nuisance_factory_followup_has_exact_pair_and_owner(self):
+        helper = _helper()
+        component = "nuisance_scenarios"
+        implementation = "sim/nuisance_scenarios/factory.py"
+        test_path = "tests/nuisance_scenarios/test_factory_and_grid.py"
+        self.assertIn(448, helper.COMPONENT_OWNER_PRS[component])
+        self.assertEqual(helper.select_components({implementation, test_path}), [component])
+        self.assertEqual(helper._unmapped_candidate_paths({implementation, test_path}), [])
 
     def test_workflow_benchmark_contract_runs_in_core_without_self_selecting(self):
         helper = _helper()
@@ -2658,13 +3270,24 @@ def test_fixture():
             [item["test_file"] for item in component["executions"]],
             ["tests/docker_context/test_build_context_policy.py"],
         )
-        for test_path in (
-            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
-            "tests/oss_compat/test_compatibility_inventory.py",  # PR #406
-            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-        ):
-            self.assertIn(test_path, helper._unmapped_candidate_paths({test_path}))
-
+        # The selector's research artifact contracts are narrow; unrelated
+        # sibling reports do not inherit those mappings.
+        self.assertEqual(
+            helper.select_components({"docs/oss_compat/compatibility_inventory_20261017.json"}),
+            ["oss_compatibility_inventory_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"docs/research/batch3/replication_dataset_feasibility.md"}),
+            ["batch3_dataset_feasibility_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"docs/research/batch3/grok_chat_b_dataset_feasibility.md"}),
+            ["batch3_metadata_audit_artifact"],
+        )
+        self.assertEqual(
+            helper.select_components({"tests/research/batch3/test_claim_matrix_supplement.py"}),
+            [],
+        )
         source_mining_path = (
             "tests/source_mining_integration/test_source_mining_evidence_boundary.py"
         )
@@ -2913,14 +3536,6 @@ def test_fixture():
     def test_unmapped_open_pr_candidate_gaps_are_fail_closed(self):
         helper = _helper()
         current_open_pr_gaps = (
-            (411, "tests/research/batch3/test_dataset_metadata_audit.py"),
-            (406, "tests/oss_compat/test_compatibility_inventory.py"),
-            (394, "tests/research/batch3/test_replication_dataset_feasibility.py"),
-            (386, "oss_opportunities/opportunity_batch.py"),
-            # PR #400's standalone mathematical oracle does not exercise the
-            # registered production DMD implementation; do not relabel it as
-            # production coverage merely because the same PR adds a bridge test.
-            (400, "tests/dmd_ep2_oracle/test_oracle.py"),
             (400, "tests/dmd_ep2_oracle/test_unregistered_extra.py"),
         )
         for pr_number, path in current_open_pr_gaps:
@@ -2931,10 +3546,7 @@ def test_fixture():
     def test_report_only_candidate_tests_remain_unmapped(self):
         helper = _helper()
         report_only_paths = (
-            "tests/research/batch3/test_replication_dataset_feasibility.py",  # PR #394
-            "tests/research/batch3/test_dataset_metadata_audit.py",  # PR #411
             "tests/research/batch3/test_claim_matrix_supplement.py",  # unregistered sibling
-            "tests/dmd_ep2_oracle/test_oracle.py",  # PR #400 standalone oracle
         )
         for path in report_only_paths:
             with self.subTest(path=path):
@@ -2987,6 +3599,10 @@ def test_fixture():
             "level_t_missingness": (
                 373,
                 {
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds001787_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds003816_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds003969_t_real_topology.py"),
+                    ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/btc_icft/test_ds005620_t_real_topology.py"),
                     ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_base_real_topology_missingness.py"),
                     ("sciencer_d/btc_icft/level_t/base_real_topology.py", "tests/test_cohort_missingness.py"),
                 },
@@ -2995,6 +3611,89 @@ def test_fixture():
                 375,
                 {
                     ("configs/research/batch3_source_registry.yaml", "tests/research/test_batch3_source_registry.py"),
+                },
+            ),
+            "oss_adoption_gates": (
+                386,
+                {
+                    ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
+                    ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+                    ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+                    ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
+                },
+            ),
+            "oss_compatibility_inventory_artifact": (
+                406,
+                {
+                    (
+                        "docs/oss_compat/compatibility_inventory_20261017.json",
+                        "tests/oss_compat/test_compatibility_inventory.py",
+                    ),
+                },
+            ),
+            "batch3_dataset_feasibility_artifact": (
+                394,
+                {
+                    (
+                        "reports/batch3/grok_chat_b/dataset_candidates.json",
+                        "tests/research/batch3/test_replication_dataset_feasibility.py",
+                    ),
+                },
+            ),
+            "batch3_metadata_audit_artifact": (
+                411,
+                {
+                    (
+                        "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                        "tests/research/batch3/test_dataset_metadata_audit.py",
+                    ),
+                },
+            ),
+            "empirical_higher_order": (
+                357,
+                {
+                    ("analysis/empirical_higher_order/runner.py", "tests/empirical_higher_order/test_runner.py"),
+                    ("analysis/empirical_higher_order/schema.py", "tests/empirical_higher_order/test_runner.py"),
+                    ("analysis/empirical_higher_order/validation.py", "tests/empirical_higher_order/test_runner.py"),
+                },
+            ),
+            "transition_forecasting_benchmark": (
+                357,
+                {
+                    ("analysis/transition_forecasting/benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                    ("scripts/run_transition_benchmark.py", "tests/transition_forecasting/test_benchmark.py"),
+                },
+            ),
+            "release_manifest": (
+                357,
+                {
+                    ("tools/release_manifest/manifest_builder.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_merge_state.py"),
+                    ("tools/release_manifest/merge_state.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_manifest_builder.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_merge_state.py"),
+                    ("tools/release_manifest/models.py", "tests/release_manifest/test_reporting.py"),
+                    ("tools/release_manifest/reporting.py", "tests/release_manifest/test_reporting.py"),
+                    ("tools/release_manifest/reporting.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                    ("tools/release_manifest/scientific_gate.py", "tests/release_manifest/test_scientific_gate.py"),
+                    ("scripts/build_release_manifest.py", "tests/release_manifest/test_build_release_manifest_cli.py"),
+                },
+            ),
+            "whitening_audit": (
+                407,
+                {
+                    ("scripts/audit_round6_whitening.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/audit_reporter.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/leakage_detector.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/matrix_ops.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/synthetic_data.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/types.py", "tests/whitening_audit/test_whitening_audit.py"),
+                    ("tools/whitening_audit/whitening_verifier.py", "tests/whitening_audit/test_whitening_audit.py"),
                 },
             ),
             "research_plan_quality_eval": (
@@ -3010,7 +3709,7 @@ def test_fixture():
                 },
             ),
             "forward_model_contract": (
-                388,
+                446,
                 {
                     ("dual_engine/forward_model_contract.py", "tests/forward_model_contract/test_forward_model_contract.py"),
                 },
@@ -3067,14 +3766,84 @@ def test_fixture():
                     for pair in spec["candidate_pairs"]
                 }
                 self.assertTrue(expected.issubset(pairs))
-                self.assertEqual(helper.COMPONENT_OWNER_PRS[component], (owner_pr,))
+                self.assertIn(owner_pr, helper.COMPONENT_OWNER_PRS[component])
                 for implementation, test_path in expected:
+                    self.assertIn(test_path, spec["tests"])
+                    self.assertTrue(
+                        any(
+                            test_path == root
+                            or (root.endswith("/") and test_path.startswith(root))
+                            for root in spec["candidate_test_roots"]
+                        ),
+                        f"{test_path} is not under a registered candidate test root",
+                    )
                     self.assertEqual(helper.select_components({implementation}), [component])
                     self.assertEqual(helper.select_components({test_path}), [component])
                     self.assertEqual(helper._unmapped_candidate_paths({implementation}), [])
                     self.assertEqual(helper._unmapped_candidate_paths({test_path}), [])
 
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["batch3_falsification_matrix_artifact"],
+            (376, 444, 447),
+        )
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["batch2_pipeline_benchmark"],
+            (371, 445),
+        )
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],
+            (384, 357),
+        )
+        self.assertEqual(helper.COMPONENT_OWNER_PRS["forward_model_contract"], (388, 446))
+        falsification_followup = {
+            "docs/scientific_falsification/batch3_adversarial_review.md",
+            "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+        }
+        self.assertEqual(
+            helper.select_components(falsification_followup),
+            ["batch3_falsification_matrix_artifact"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(falsification_followup), [])
+        benchmark_followup = {
+            "scripts/benchmark_batch2_pipeline.py",
+            "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+            "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+            "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+            "tools/benchmarks/batch2_pipeline/budgets.py",
+            "tools/benchmarks/batch2_pipeline/harness.py",
+            "tools/benchmarks/batch2_pipeline/validator.py",
+        }
+        self.assertEqual(
+            helper.select_components(benchmark_followup),
+            ["batch2_pipeline_benchmark"],
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(benchmark_followup), [])
+
         exact_candidate_diffs = {
+            "empirical_higher_order": {
+                "analysis/empirical_higher_order/runner.py",
+                "analysis/empirical_higher_order/schema.py",
+                "analysis/empirical_higher_order/validation.py",
+                "tests/empirical_higher_order/test_runner.py",
+            },
+            "transition_forecasting_benchmark": {
+                "analysis/transition_forecasting/benchmark.py",
+                "scripts/run_transition_benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+            },
+            "release_manifest": {
+                "tools/release_manifest/manifest_builder.py",
+                "tools/release_manifest/merge_state.py",
+                "tools/release_manifest/models.py",
+                "tools/release_manifest/reporting.py",
+                "tools/release_manifest/scientific_gate.py",
+                "scripts/build_release_manifest.py",
+                "tests/release_manifest/test_build_release_manifest_cli.py",
+                "tests/release_manifest/test_manifest_builder.py",
+                "tests/release_manifest/test_merge_state.py",
+                "tests/release_manifest/test_reporting.py",
+                "tests/release_manifest/test_scientific_gate.py",
+            },
             "bids_adapter": {
                 "data/bids_ingest.py",
                 "data/openneuro_loader.py",
@@ -3093,6 +3862,10 @@ def test_fixture():
             },
             "level_t_missingness": {
                 "sciencer_d/btc_icft/level_t/base_real_topology.py",
+                "tests/btc_icft/test_ds001787_t_real_topology.py",
+                "tests/btc_icft/test_ds003816_t_real_topology.py",
+                "tests/btc_icft/test_ds003969_t_real_topology.py",
+                "tests/btc_icft/test_ds005620_t_real_topology.py",
                 "tests/test_base_real_topology_missingness.py",
                 "tests/test_cohort_missingness.py",
             },
@@ -3175,10 +3948,57 @@ def test_fixture():
                 "reports/batch3/grok_chat_a/claim_matrix.json",
                 "tests/research/batch3/test_claim_matrix.py",
             },
+            "oss_adoption_gates": {
+                "docs/oss_opportunity_candidate_review_20261016.md",
+                "docs/oss_opportunity_pipeline.md",
+                "oss_opportunities/opportunity_batch.py",
+                "oss_opportunities/repository_candidate.py",
+                "oss_opportunities/scoring.py",
+                "tests/test_oss_opportunity_batch.py",
+                "oss_opportunities/validation.py",
+                "tests/test_oss_adoption_gates.py",
+            },
+            "oss_compatibility_inventory_artifact": {
+                "docs/oss_compat/batch1_compatibility_audit_20261017.md",
+                "docs/oss_compat/compatibility_inventory_20261017.json",
+                "tests/oss_compat/test_compatibility_inventory.py",
+            },
+            "batch3_dataset_feasibility_artifact": {
+                "docs/research/batch3/replication_dataset_feasibility.md",
+                "reports/batch3/grok_chat_b/dataset_candidates.json",
+                "tests/research/batch3/test_replication_dataset_feasibility.py",
+            },
+            "batch3_metadata_audit_artifact": {
+                "docs/research/batch3/grok_chat_b_dataset_feasibility.md",
+                "reports/batch3/grok_chat_b/dataset_candidates_metadata_audit.json",
+                "tests/research/batch3/test_dataset_metadata_audit.py",
+            },
+            "whitening_audit": {
+                "docs/statistics/round6_whitening_audit.md",
+                "scripts/audit_round6_whitening.py",
+                "tests/whitening_audit/__init__.py",
+                "tests/whitening_audit/test_whitening_audit.py",
+                "tools/whitening_audit/__init__.py",
+                "tools/whitening_audit/audit_reporter.py",
+                "tools/whitening_audit/leakage_detector.py",
+                "tools/whitening_audit/matrix_ops.py",
+                "tools/whitening_audit/synthetic_data.py",
+                "tools/whitening_audit/types.py",
+                "tools/whitening_audit/whitening_verifier.py",
+            },
             "batch3_falsification_matrix_artifact": {
                 "configs/scientific_falsification/batch3_falsification_matrix.yaml",
                 "docs/scientific_falsification/batch3_adversarial_review.md",
                 "tests/scientific_falsification/test_batch3_falsification_matrix.py",
+            },
+            "batch2_pipeline_benchmark": {
+                "scripts/benchmark_batch2_pipeline.py",
+                "tests/benchmarks/batch2_pipeline/test_cli_and_reporting.py",
+                "tests/benchmarks/batch2_pipeline/test_harness_and_targets.py",
+                "tests/benchmarks/batch2_pipeline/test_isolation_and_network.py",
+                "tools/benchmarks/batch2_pipeline/budgets.py",
+                "tools/benchmarks/batch2_pipeline/harness.py",
+                "tools/benchmarks/batch2_pipeline/validator.py",
             },
         }
         for component, paths in exact_candidate_diffs.items():
@@ -3186,15 +4006,289 @@ def test_fixture():
                 self.assertEqual(helper.select_components(paths), [component])
                 self.assertEqual(helper._unmapped_candidate_paths(paths), [])
 
+        pr357_candidate_paths = (
+            set().union(*(exact_candidate_diffs[key] for key in (
+                "empirical_higher_order",
+                "transition_forecasting_benchmark",
+                "release_manifest",
+            )))
+            | {"tools/research_claim_gate/gate.py", "tests/research_claim_gate/test_claim_gate.py"}
+        )
+        self.assertEqual(
+            set(helper.select_components(pr357_candidate_paths)),
+            {
+                "empirical_higher_order",
+                "transition_forecasting_benchmark",
+                "release_manifest",
+                "measurement_hypothesis_contract",
+            },
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(pr357_candidate_paths), [])
+
+    def test_current_dmd_and_winding_followups_select_their_exact_contract_pairs(self):
+        helper = _helper()
+        dmd_implementation = "neurotopology_sim/experimental/dynamics/dmd_crouzeix.py"
+        dmd_contract = "tests/dmd_crouzeix_contract/test_production_contract.py"
+        dmd_spec = helper.COMPONENTS["dmd_crouzeix"]
+        self.assertIn(452, helper.COMPONENT_OWNER_PRS["dmd_crouzeix"])
+        self.assertIn(
+            {"implementation": dmd_implementation, "test": dmd_contract},
+            dmd_spec["candidate_pairs"],
+        )
+        dmd_paths = {dmd_implementation, dmd_contract}
+        self.assertEqual(helper.select_components(dmd_paths), ["dmd_crouzeix"])
+        self.assertEqual(helper._unmapped_candidate_paths(dmd_paths), [])
+
+        winding_implementation = "neurotopology_sim/experimental/topology/winding.py"
+        winding_test = "tests/neurotopology_sim/experimental/topology/test_phase_winding.py"
+        self.assertIn(453, helper.COMPONENT_OWNER_PRS["phase_winding"])
+        self.assertIn(
+            {"implementation": winding_implementation, "test": winding_test},
+            helper.COMPONENTS["phase_winding"]["candidate_pairs"],
+        )
+        winding_paths = {winding_implementation, winding_test}
+        self.assertEqual(
+            set(helper.select_components(winding_paths)),
+            {"phase_winding", "winding_charge_audit"},
+        )
+        self.assertEqual(helper._unmapped_candidate_paths(winding_paths), [])
+
+    def test_pr357_exact_component_roots_do_not_claim_unknown_siblings(self):
+        helper = _helper()
+        fixtures = {
+            "empirical_higher_order": (
+                "analysis/empirical_higher_order/runner.py",
+                "tests/empirical_higher_order/test_runner.py",
+                "analysis/empirical_higher_order/unregistered_extension.py",
+                "tests/empirical_higher_order/test_unregistered_extension.py",
+            ),
+            "transition_forecasting_benchmark": (
+                "analysis/transition_forecasting/benchmark.py",
+                "tests/transition_forecasting/test_benchmark.py",
+                "analysis/transition_forecasting/unregistered_extension.py",
+                "tests/transition_forecasting/test_unregistered_extension.py",
+            ),
+            "release_manifest": (
+                "tools/release_manifest/manifest_builder.py",
+                "tests/release_manifest/test_manifest_builder.py",
+                "tools/release_manifest/unregistered_extension.py",
+                "tests/release_manifest/test_unregistered_extension.py",
+            ),
+        }
+        for component, (source, test_path, unknown_source, unknown_test) in fixtures.items():
+            with self.subTest(component=component):
+                changed = {source, test_path, unknown_source, unknown_test}
+                self.assertEqual(
+                    helper._changed_candidate_paths(helper.COMPONENTS[component], changed),
+                    [],
+                )
+                self.assertEqual(
+                    set(helper._unmapped_candidate_paths(changed)),
+                    {unknown_source, unknown_test},
+                )
+
+    def test_oss_adoption_mapping_runs_the_verified_owner_suite(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        spec = helper.COMPONENTS[component]
+        tests = (
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_license_review.py",
+            "tests/test_oss_opportunity_batch.py",
+            "tests/test_oss_opportunity_scoring.py",
+            "tests/test_oss_repository_candidate.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        )
+        self.assertEqual(spec["tests"], tests)
+        self.assertEqual(
+            spec["suite_companion_tests"],
+            (
+                "tests/test_oss_license_review.py",
+                "tests/test_oss_integration_planner.py",
+            ),
+        )
+        expected_pairs = {
+            ("oss_opportunities/opportunity_batch.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/opportunity_batch.py", "tests/test_oss_opportunity_batch.py"),
+            ("oss_opportunities/repository_candidate.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/repository_candidate.py", "tests/test_oss_repository_candidate.py"),
+            ("oss_opportunities/scoring.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/scoring.py", "tests/test_oss_opportunity_scoring.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_adoption_gates.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_opportunity_scoring.py"),
+            ("oss_opportunities/validation.py", "tests/test_oss_integration_opportunity.py"),
+            ("oss_opportunities/integration_opportunity.py", "tests/test_oss_integration_opportunity.py"),
+            ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
+            ("oss_opportunities/license_review.py", "tests/test_oss_license_review.py"),
+        }
+        pairs = {(item["implementation"], item["test"]) for item in spec["candidate_pairs"]}
+        self.assertEqual(pairs, expected_pairs)
+
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+            "tests/test_oss_opportunity_batch.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in (*changed, *tests, *spec["implementation_roots"]):
+                _write(root, path, "# offline fixture\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "READY_TO_RUN")
+        self.assertCountEqual(result["tests_to_run"], tests)
+        self.assertEqual(len(result["tests_to_run"]), len(tests))
+        self.assertEqual(result["missing_required_tests"], [])
+
+    def test_live_pr386_changed_paths_pair_integration_and_planner_sources(self):
+        helper = _helper()
+        changed = {
+            "oss_opportunities/integration_opportunity.py",
+            "oss_opportunities/planner.py",
+            "oss_opportunities/source_ingestion.py",
+            "tests/test_oss_integration_opportunity.py",
+            "tests/test_oss_integration_planner.py",
+        }
+        component = "oss_adoption_gates"
+        pairs = {
+            (pair["implementation"], pair["test"])
+            for pair in helper.COMPONENTS[component]["candidate_pairs"]
+        }
+        self.assertIn(
+            (
+                "oss_opportunities/integration_opportunity.py",
+                "tests/test_oss_integration_opportunity.py",
+            ),
+            pairs,
+        )
+        self.assertIn(
+            ("oss_opportunities/planner.py", "tests/test_oss_integration_planner.py"),
+            pairs,
+        )
+        self.assertEqual(helper.select_components(changed), [component])
+        self.assertEqual(
+            helper._unmapped_candidate_paths(changed),
+            ["oss_opportunities/source_ingestion.py"],
+        )
+        spec = helper.COMPONENTS[component]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            for path in (*spec["implementation_roots"], *spec["tests"]):
+                _write(root, path, "# offline candidate fixture\n")
+            result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(
+            result["unmapped_candidate_paths"],
+            ["oss_opportunities/source_ingestion.py"],
+        )
+        self.assertEqual(result["missing_required_tests"], [])
+
+    def test_oss_adoption_mapping_blocks_when_suite_companion_is_missing(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["oss_adoption_gates"]
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        companion = "tests/test_oss_license_review.py"
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                if path != companion:
+                    _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/license_review.py", "# offline fixture\n")
+            result = helper.inspect_component("oss_adoption_gates", root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn(companion, result["missing_required_tests"])
+
+    def test_oss_adoption_mapping_rejects_unregistered_suite_companion(self):
+        helper = _helper()
+        component = "oss_adoption_gates"
+        spec = helper.COMPONENTS[component]
+        invalid_spec = dict(spec)
+        invalid_spec["suite_companion_tests"] = ("tests/not_registered.py",)
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/license_review.py", "# offline fixture\n")
+            with patch.dict(helper.COMPONENTS, {component: invalid_spec}):
+                result = helper.inspect_component(component, root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(
+            result["invalid_suite_companion_tests"],
+            ["tests/not_registered.py"],
+        )
+
+    def test_oss_adoption_suite_companion_requires_its_paired_implementation(self):
+        helper = _helper()
+        spec = helper.COMPONENTS["oss_adoption_gates"]
+        changed = {
+            "oss_opportunities/opportunity_batch.py",
+            "oss_opportunities/repository_candidate.py",
+            "oss_opportunities/scoring.py",
+            "oss_opportunities/validation.py",
+            "tests/test_oss_adoption_gates.py",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for path in changed:
+                _write(root, path, "# offline fixture\n")
+            for path in spec["tests"]:
+                _write(root, path, "# offline fixture\n")
+            _write(root, "oss_opportunities/repository_candidate.py", "# offline fixture\n")
+            _write(root, "oss_opportunities/scoring.py", "# offline fixture\n")
+            _write(root, "oss_opportunities/validation.py", "# offline fixture\n")
+            result = helper.inspect_component("oss_adoption_gates", root, changed)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn(
+            "oss_opportunities/license_review.py",
+            result["missing_implementations"],
+        )
+
+    def test_pr357_claim_gate_pair_does_not_hide_unmapped_candidate_paths(self):
+        helper = _helper()
+        implementation = "tools/research_claim_gate/gate.py"
+        test_path = "tests/research_claim_gate/test_claim_gate.py"
+        unmapped_implementation = "analysis/empirical_higher_order/unregistered_extension.py"
+        changed = {implementation, test_path, unmapped_implementation}
+        self.assertEqual(
+            helper.COMPONENT_OWNER_PRS["measurement_hypothesis_contract"],
+            (384, 357),
+        )
+        self.assertEqual(helper.select_components(changed), ["measurement_hypothesis_contract"])
+        unmapped = helper._unmapped_candidate_paths(changed)
+        self.assertIn(unmapped_implementation, unmapped)
+        self.assertNotIn(implementation, unmapped)
+        self.assertNotIn(test_path, unmapped)
+
         # A changed source that declares multiple required tests is blocked
         # when its candidate checkout contains only one companion test.
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             implementation = "sciencer_d/btc_icft/level_t/base_real_topology.py"
-            first_test = "tests/test_base_real_topology_missingness.py"
             missing_test = "tests/test_cohort_missingness.py"
             _write(root, implementation, "# source fixture\n")
-            _write(root, first_test, "def test_fixture(): pass\n")
+            for test_path in helper.COMPONENTS["level_t_missingness"]["tests"]:
+                if test_path != missing_test:
+                    _write(root, test_path, "def test_fixture(): pass\n")
             result = helper.inspect_component(
                 "level_t_missingness", root, {implementation}
             )
