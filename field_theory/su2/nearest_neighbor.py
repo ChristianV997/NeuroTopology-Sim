@@ -553,11 +553,14 @@ def nearest_neighbor_energy_gradient(
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
         transverse = _transverse_weights(values.shape[:3], (axis,), field.boundary)
+        # Combine the geometric and derivative factors before the coupling
+        # coefficient so a tiny coefficient is not erased by cell_volume when
+        # the full gradient contribution is still representable.
         derivative_gradient = (
-            sigma_gradient_coefficient
-            * cell_volume
-            * transverse[..., None]
+            cell_volume
             * differences[axis]
+            * transverse[..., None]
+            * sigma_gradient_coefficient
         )
         derivative_gradient[~valid] = 0.0
         _accumulate_forward_derivative_gradient(
@@ -573,12 +576,19 @@ def nearest_neighbor_energy_gradient(
             dot = np.sum(a * b, axis=-1)
             norm_a_squared = np.sum(a * a, axis=-1)
             norm_b_squared = np.sum(b * b, axis=-1)
-            weight = (cell_volume * skyrme_gradient_coefficient) * transverse
-            grad_a = weight[..., None] * (
-                norm_b_squared[..., None] * a - dot[..., None] * b
+            # Multiply the spatial derivative expression by cell volume
+            # before the potentially subnormal coupling coefficient.
+            grad_a = (
+                cell_volume
+                * (norm_b_squared[..., None] * a - dot[..., None] * b)
+                * transverse[..., None]
+                * skyrme_gradient_coefficient
             )
-            grad_b = weight[..., None] * (
-                norm_a_squared[..., None] * b - dot[..., None] * a
+            grad_b = (
+                cell_volume
+                * (norm_a_squared[..., None] * b - dot[..., None] * a)
+                * transverse[..., None]
+                * skyrme_gradient_coefficient
             )
             grad_a[~valid] = 0.0
             grad_b[~valid] = 0.0

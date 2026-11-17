@@ -16,6 +16,7 @@ from field_theory.su2.nearest_neighbor import (
     _gradient_coefficients,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient,
+    nearest_neighbor_energy_gradient_finite_difference,
 )
 from field_theory.su2.constrained_interaction import (
     run_constrained_two_hedgehog_relaxation,
@@ -689,6 +690,32 @@ def test_gradient_uses_scaled_coefficients_for_representable_extremes():
     )
     assert np.all(np.isfinite(gradient))
     assert np.max(np.abs(gradient)) > 0.0
+
+
+def test_gradient_applies_subnormal_coefficients_after_cell_volume_scaling():
+    alpha = np.linspace(-0.4, 0.4, 5)[:, None, None]
+    beta = np.linspace(-0.4, 0.4, 5)[None, :, None]
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(alpha)
+    components[..., 1] = np.sin(alpha) * np.cos(beta)
+    components[..., 2] = np.sin(alpha) * np.sin(beta)
+    field = SU2GridField(
+        components,
+        spacing=(1.0e-100, 1.0, 1.0),
+        boundary="periodic",
+    )
+
+    couplings = {"f_pi": 1.0e-160, "e": 1.0e160}
+    gradient = nearest_neighbor_energy_gradient(field, **couplings)
+    reference = nearest_neighbor_energy_gradient_finite_difference(
+        field, **couplings
+    )
+
+    assert np.all(np.isfinite(gradient))
+    assert np.linalg.norm(gradient) > 0.0
+    assert np.linalg.norm(reference) > 0.0
+    relative_error = np.linalg.norm(gradient - reference) / np.linalg.norm(reference)
+    assert relative_error < 5.0e-3
 
 
 def test_constrained_pair_preflights_unrepresentable_gradient_coefficient(monkeypatch):
