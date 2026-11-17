@@ -4,6 +4,7 @@ import builtins
 import hashlib
 import json
 import math
+from copy import copy
 from dataclasses import replace
 from pathlib import Path
 import subprocess
@@ -13,6 +14,7 @@ import pytest
 
 from field_theory.su2.interaction_sweep import (
     InteractionGridLevel,
+    SWEEP_SCHEMA_VERSION,
     TwoHedgehogSweepSpec,
     run_two_hedgehog_interaction_sweep,
 )
@@ -46,6 +48,22 @@ def _rehash_point_payload(point, payload):
         evaluator_result_json=result_json,
         result_sha256=result_sha256,
     )
+
+
+def _sweep_id_for_points(result, points):
+    payload = {
+        "schema_version": SWEEP_SCHEMA_VERSION,
+        "spec": result.spec.to_dict(),
+        "point_result_sha256": [point.result_sha256 for point in points],
+    }
+    canonical = json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 @pytest.fixture(scope="module")
@@ -129,6 +147,56 @@ def test_plot_data_is_deterministic_and_does_not_import_matplotlib(
     first = build_interaction_sweep_plot_data(sweep_result)
     second = build_interaction_sweep_plot_data(sweep_result)
     assert first == second
+
+
+def test_plot_data_rejects_stale_sweep_id(sweep_result):
+    tampered = replace(sweep_result, sweep_id="0" * 64)
+
+    with pytest.raises(ValueError, match="sweep_id"):
+        build_interaction_sweep_plot_data(tampered)
+
+
+def test_plot_data_is_invariant_to_point_tuple_order(sweep_result):
+    expected = build_interaction_sweep_plot_data(sweep_result)
+    reordered = replace(
+        sweep_result,
+        points=tuple(reversed(sweep_result.points)),
+    )
+
+    actual = build_interaction_sweep_plot_data(reordered)
+    assert reordered.sweep_id == expected["sweep_id"]
+    assert actual == expected
+
+
+def test_plot_data_rejects_point_ids_reassigned_by_storage_position(sweep_result):
+    reordered_points = tuple(reversed(sweep_result.points))
+    reassigned = tuple(
+        replace(point, point_id=f"point-{index:04d}")
+        for index, point in enumerate(reordered_points)
+    )
+    assert all(
+        point.result_sha256 == original.result_sha256
+        and point.evaluator_result_json == original.evaluator_result_json
+        for point, original in zip(reassigned, reordered_points)
+    )
+    tampered = replace(sweep_result, points=reassigned)
+    tampered = replace(
+        tampered,
+        sweep_id=_sweep_id_for_points(tampered, reassigned),
+    )
+
+    with pytest.raises(ValueError, match="canonical axis keys"):
+        build_interaction_sweep_plot_data(tampered)
+
+
+def test_plot_data_rejects_grid_levels_with_inconsistent_box_extents(sweep_result):
+    coarse, fine = sweep_result.spec.grid_levels
+    changed_fine = replace(fine, spacing=(0.6, 0.5, 0.5))
+    changed_spec = copy(sweep_result.spec)
+    object.__setattr__(changed_spec, "grid_levels", (coarse, changed_fine))
+
+    with pytest.raises(ValueError, match="same box extent"):
+        build_interaction_sweep_plot_data(replace(sweep_result, spec=changed_spec))
 
 
 def test_fresh_module_import_succeeds_with_matplotlib_blocked():
