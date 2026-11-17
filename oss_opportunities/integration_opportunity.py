@@ -17,7 +17,9 @@ from typing import Any, Union
 
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
+    reject_forbidden_claim_fields,
     SCORING_VERSION,
+    strict_json_loads,
     validate_integration_opportunity,
 )
 
@@ -40,6 +42,7 @@ class OpenSourceIntegrationOpportunityV1:
     repo_full_name: str = ""
     candidate_id: str = ""
     license_review_id: str = ""
+    scoring_version: str = SCORING_VERSION
     leverage_category: str = "reject_or_defer"
     recommended_action: str = "defer"
     blocked_actions: list[str] = field(default_factory=list)
@@ -75,10 +78,13 @@ class OpenSourceIntegrationOpportunityV1:
         )
         return cls(
             opportunity_id=opportunity_id, repo_full_name=repo_full_name,
-            candidate_id=candidate_id, license_review_id=license_review_id, **kwargs,
+            candidate_id=candidate_id, license_review_id=license_review_id,
+            scoring_version=scoring_version, **kwargs,
         )
 
-    def recompute_id(self, *, scoring_version: str = SCORING_VERSION) -> str:
+    def recompute_id(self, *, scoring_version: str | None = None) -> str:
+        if scoring_version is None:
+            scoring_version = self.scoring_version
         return compute_opportunity_id(
             repo_full_name=self.repo_full_name, candidate_id=self.candidate_id, scoring_version=scoring_version,
         )
@@ -90,6 +96,7 @@ class OpenSourceIntegrationOpportunityV1:
             "repo_full_name": self.repo_full_name,
             "candidate_id": self.candidate_id,
             "license_review_id": self.license_review_id,
+            "scoring_version": self.scoring_version,
             "leverage_category": self.leverage_category,
             "recommended_action": self.recommended_action,
             "blocked_actions": list(self.blocked_actions),
@@ -113,12 +120,22 @@ class OpenSourceIntegrationOpportunityV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "OpenSourceIntegrationOpportunityV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("opportunity payload must be a mapping")
+        reject_forbidden_claim_fields(d, "opportunity payload")
+        for key in ("blocked_actions", "integration_surface", "emulation_surface", "limitations"):
+            if key in d and not isinstance(d[key], list):
+                raise OssOpportunityValidationError(f"opportunity {key} must be a list")
+        for key in ("score_components", "metadata"):
+            if key in d and not isinstance(d[key], dict):
+                raise OssOpportunityValidationError(f"opportunity {key} must be a mapping")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             opportunity_id=d.get("opportunity_id", ""),
             repo_full_name=d.get("repo_full_name", ""),
             candidate_id=d.get("candidate_id", ""),
             license_review_id=d.get("license_review_id", ""),
+            scoring_version=d.get("scoring_version", SCORING_VERSION),
             leverage_category=d.get("leverage_category", "reject_or_defer"),
             recommended_action=d.get("recommended_action", "defer"),
             blocked_actions=list(d.get("blocked_actions") or []),
@@ -134,18 +151,19 @@ class OpenSourceIntegrationOpportunityV1:
             maintenance_signal=d.get("maintenance_signal", "unknown"),
             implementation_complexity=d.get("implementation_complexity", "unknown"),
             score_components=dict(d.get("score_components") or {}),
-            total_score=float(d.get("total_score", 0.0)),
+            total_score=d.get("total_score", 0.0),
             limitations=list(d.get("limitations") or []),
             provenance=d.get("provenance", ""),
             metadata=dict(d.get("metadata") or {}),
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "OpenSourceIntegrationOpportunityV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)

@@ -67,8 +67,18 @@ def test_unknown_license_lowers_score_vs_permissive():
     assert result_unknown["score_components"]["license_safety"] < result_mit["score_components"]["license_safety"]
 
 
-def test_sparse_candidate_falls_back_to_reject_or_defer():
+def test_sparse_candidate_with_unknown_license_requires_license_review():
+    """Unresolved license outranks category-based reject/defer."""
     c = make_sparse_candidate()
+    result = score_opportunity(c, _review_for(c))
+    assert result["leverage_category"] == "reject_or_defer"
+    assert result["recommended_action"] == "license_review_required"
+
+
+def test_sparse_candidate_with_resolved_license_falls_back_to_reject_or_defer():
+    c = make_sparse_candidate()
+    c.license_spdx = "MIT"
+    c.license_name = "MIT License"
     result = score_opportunity(c, _review_for(c))
     assert result["leverage_category"] == "reject_or_defer"
     assert result["recommended_action"] in ("reject", "defer")
@@ -101,6 +111,41 @@ def test_weak_copyleft_document_ingestion_uses_external_tool_record_not_optional
     review = _review_for(c)
     assert review.license_risk == "weak_copyleft_medium"
     result = score_opportunity(c, review)
+    assert result["recommended_action"] == "integrate_as_external_tool_record"
+
+
+def test_docs_reference_only_license_never_routes_to_external_tool_record():
+    candidate = make_document_ingestion_candidate("some/fair-code-repo")
+    candidate.license_spdx = "ELv2"
+    candidate.license_name = "Elastic License 2.0"
+    candidate.candidate_id = candidate.recompute_id()
+
+    review = _review_for(candidate)
+    assert review.commercial_core_policy == "docs_reference_only"
+    result = score_opportunity(candidate, review)
+    assert result["recommended_action"] == "create_docs_reference"
+
+
+def test_docs_reference_only_policy_applies_to_every_external_record_category():
+    candidate = make_document_ingestion_candidate("some/fair-code-data-catalog")
+    candidate.name = "data-catalog"
+    candidate.description = "Catalog of public datasets"
+    candidate.topics = ["dataset", "data-catalog"]
+    candidate.license_spdx = "ELv2"
+    candidate.license_name = "Elastic License 2.0"
+    candidate.candidate_id = candidate.recompute_id()
+
+    result = score_opportunity(candidate, _review_for(candidate))
+    assert result["leverage_category"] == "dataset_discovery"
+    assert result["recommended_action"] == "create_docs_reference"
+
+
+def test_explicit_non_copy_policy_is_honored_by_direct_scoring():
+    candidate = make_document_ingestion_candidate("some/restricted-policy-repo")
+    review = _review_for(candidate)
+    review.commercial_core_policy = "external_process_only"
+
+    result = score_opportunity(candidate, review)
     assert result["recommended_action"] == "integrate_as_external_tool_record"
 
 

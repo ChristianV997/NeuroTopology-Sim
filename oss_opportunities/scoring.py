@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from oss_opportunities.license_review import RepositoryLicenseReviewV1
+from oss_opportunities.license_review import RepositoryLicenseReviewV1, classify_license_risk
 from oss_opportunities.repository_candidate import OpenSourceRepositoryCandidateV1
-from oss_opportunities.validation import REQUIRED_BLOCKED_ACTIONS
+from oss_opportunities.validation import OssOpportunityValidationError, REQUIRED_BLOCKED_ACTIONS
 
 # ── keyword -> leverage_category hints (topics/description substring
 # match only, never a claim about what the repository actually does) ────
@@ -91,6 +91,28 @@ def score_opportunity(
     """Return a plain dict with every field
     `oss_opportunities.opportunity_batch.build_opportunities_from_candidates`
     needs to construct an `OpenSourceIntegrationOpportunityV1`."""
+    if not isinstance(candidate, OpenSourceRepositoryCandidateV1):
+        raise OssOpportunityValidationError("candidate must be an OpenSourceRepositoryCandidateV1")
+    candidate_errors = candidate.validate()
+    if candidate_errors:
+        raise OssOpportunityValidationError(f"candidate failed validation: {'; '.join(candidate_errors)}")
+    if not isinstance(license_review, RepositoryLicenseReviewV1):
+        raise OssOpportunityValidationError("license_review must be a RepositoryLicenseReviewV1")
+    review_errors = license_review.validate()
+    if review_errors:
+        raise OssOpportunityValidationError(f"license review failed validation: {'; '.join(review_errors)}")
+
+    def normalize_evidence(value: str | None) -> str:
+        return (value or "unknown").strip().casefold()
+
+    if normalize_evidence(license_review.repo_full_name) != normalize_evidence(candidate.repo_full_name):
+        raise OssOpportunityValidationError("license review does not match candidate repository")
+    if normalize_evidence(license_review.license_spdx) != normalize_evidence(candidate.license_spdx):
+        raise OssOpportunityValidationError("license review does not match candidate license evidence")
+    derived_risk = classify_license_risk(license_review.license_spdx)
+    if license_review.license_risk != derived_risk:
+        raise OssOpportunityValidationError("license review risk does not match its license evidence")
+
     leverage_category = infer_leverage_category(candidate)
     language = (candidate.primary_language or "").strip().lower()
     is_non_python_core = language in _NON_PYTHON_CORE_LANGUAGES
@@ -106,7 +128,16 @@ def score_opportunity(
     frontend_saas_leverage = 1.5 if leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack") else 0.0
     infra_observability_leverage = 1.0 if leverage_category == "infra_observability_stack" else 0.0
 
-    adapter_surface_clarity = 1.0 if leverage_category not in ("reject_or_defer", "security_compliance") else 0.0
+    # Adapter-surface credit needs more than keyword overlap. A documented
+    # surface (homepage or an explicit adapter docs URL) earns full credit; a
+    # category inferred only from description/topics earns half credit.
+    documented_surface = bool(candidate.homepage_url) or bool((candidate.metadata or {}).get("adapter_docs_url"))
+    if leverage_category in ("reject_or_defer", "security_compliance"):
+        adapter_surface_clarity = 0.0
+    elif documented_surface:
+        adapter_surface_clarity = 1.0
+    else:
+        adapter_surface_clarity = 0.5
 
     # Trending/stars widen maintenance/documentation signal only -- a
     # discovery-priority nudge, never a correctness/license signal.
@@ -157,30 +188,39 @@ def score_opportunity(
     total_score = round(sum(score_components.values()), 2)
 
     # ── recommended_action + blocked_actions ────────────────────────────
+    # Unresolved license evidence outranks category-based reject/defer.
+    # Otherwise a keyword-less (reject_or_defer) observation with conflicting
+    # or unknown SPDX labels is ranked away as reject/defer and never reaches
+    # the planner's license_review_queue — a fail-open for review routing.
+    unresolved_license_evidence = (
+        (license_review.metadata or {}).get("license_observation_status") == "conflict"
+        or license_review.commercial_core_policy in ("blocked_pending_review", "blocked")
+        or license_review.license_risk in ("missing_high", "proprietary_or_unknown_high")
+    )
     blocked = leverage_category == "reject_or_defer"
 
-    if blocked:
-        recommended_action = "reject" if total_score < 0 else "defer"
-    elif license_review.license_risk == "missing_high":
+    if unresolved_license_evidence:
         recommended_action = "license_review_required"
+    elif blocked:
+        recommended_action = "reject" if total_score < 0 else "defer"
     elif leverage_category == "security_compliance":
         recommended_action = "security_review_required"
     elif is_non_python_core or leverage_category in ("frontend_stack", "backend_api_stack", "database_data_stack", "infra_observability_stack"):
         recommended_action = "emulate_architecture_pattern"
     elif leverage_category in ("document_ingestion", "web_literature_acquisition"):
-        # High-value categories always get a real integration path: only a
-        # permissive_low license (the one risk tier whose default
-        # commercial_core_policy is copy-permitting, see
-        # oss_opportunities.license_review._DEFAULT_POLICY_BY_RISK) can be
-        # an in-process optional adapter. Every other risk tier -- weak
-        # copyleft, strong copyleft, source-available/fair-code,
-        # proprietary/unknown (e.g. an AGPL scraping library) -- is still
-        # worth using, just only as an external process/service adapter,
-        # never as copied-in code (rule 8).
-        if license_review.license_risk == "permissive_low":
+        # Route from the explicit policy, not the license-risk label alone:
+        # in particular, docs_reference_only must not become an external
+        # tool-record recommendation, and caller policy overrides must be
+        # respected after license-review validation.
+        policy = license_review.commercial_core_policy
+        if policy == "allowed_with_attribution" and license_review.license_risk == "permissive_low":
             recommended_action = "integrate_as_optional_adapter"
-        else:
+        elif policy in ("adapter_only", "external_process_only"):
             recommended_action = "integrate_as_external_tool_record"
+        elif policy == "docs_reference_only":
+            recommended_action = "create_docs_reference"
+        else:
+            recommended_action = "license_review_required"
     elif leverage_category in ("code_graph_memory", "research_memory", "agent_harness", "workflow_orchestration"):
         recommended_action = "emulate_architecture_pattern"
     elif leverage_category == "report_visualization":
@@ -195,6 +235,23 @@ def score_opportunity(
     # on top of validate_opportunity_against_license_review's cross-check).
     if recommended_action == "integrate_as_optional_adapter" and license_review.license_risk not in ("permissive_low",):
         recommended_action = "integrate_as_external_tool_record"
+
+    # Apply docs-reference-only policy to every category that otherwise
+    # proposes an external record, not just document-ingestion categories.
+    if (
+        recommended_action == "integrate_as_external_tool_record"
+        and license_review.commercial_core_policy == "docs_reference_only"
+    ):
+        recommended_action = "create_docs_reference"
+
+    # Credentialed adoption is never a direct adapter or tool-record path: it
+    # waits for security review first. credential_required_execution stays in
+    # blocked_actions regardless.
+    if (candidate.metadata or {}).get("requires_credentials") and recommended_action in (
+        "integrate_as_optional_adapter",
+        "integrate_as_external_tool_record",
+    ):
+        recommended_action = "security_review_required"
 
     blocked_actions = sorted(REQUIRED_BLOCKED_ACTIONS)
 

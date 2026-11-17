@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -26,6 +26,8 @@ from oss_opportunities.scoring import score_opportunity
 from oss_opportunities.validation import (
     OssOpportunityValidationError,
     SCORING_VERSION,
+    reject_forbidden_claim_fields,
+    strict_json_loads,
     validate_leverage_batch,
     validate_opportunity_against_license_review,
 )
@@ -37,6 +39,11 @@ _SCHEMA_VERSION = "1"
 # opportunities_ranked and moved to opportunities_rejected -- never
 # silently dropped.
 _MIN_RANKED_SCORE = 0.0
+
+# Review-required actions must remain visible to the planner even when the
+# heuristic total_score is negative. Dropping them would hide unresolved
+# license/security evidence behind a score threshold.
+_MUST_SURFACE_ACTIONS = frozenset({"license_review_required", "security_review_required"})
 
 
 def _repo_commit() -> str:
@@ -64,6 +71,7 @@ def compute_batch_id(*, opportunity_ids: list[str], sources_scanned: list[str], 
 class OpenSourceLeverageBatchV1:
     schema_version: str = _SCHEMA_VERSION
     batch_id: str = ""
+    scoring_version: str = SCORING_VERSION
     sources_scanned: list[str] = field(default_factory=list)
     candidates_seen: int = 0
     opportunities_ranked: list[dict[str, Any]] = field(default_factory=list)
@@ -83,6 +91,7 @@ class OpenSourceLeverageBatchV1:
         return {
             "schema_version": self.schema_version,
             "batch_id": self.batch_id,
+            "scoring_version": self.scoring_version,
             "sources_scanned": list(self.sources_scanned),
             "candidates_seen": self.candidates_seen,
             "opportunities_ranked": list(self.opportunities_ranked),
@@ -101,11 +110,35 @@ class OpenSourceLeverageBatchV1:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "OpenSourceLeverageBatchV1":
+        if not isinstance(d, dict):
+            raise OssOpportunityValidationError("batch payload must be a mapping")
+        try:
+            return cls._from_dict(d)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise OssOpportunityValidationError(f"malformed batch payload: {exc}") from exc
+
+    @classmethod
+    def _from_dict(cls, d: dict[str, Any]) -> "OpenSourceLeverageBatchV1":
+        reject_forbidden_claim_fields(d, "batch payload")
+        list_fields = (
+            "opportunities_ranked", "opportunities_rejected", "sources_scanned", "limitations",
+            "top_immediate_adapters", "top_architecture_emulation", "top_docs_references", "top_rejections",
+        )
+        for key in list_fields:
+            if d.get(key) is not None and not isinstance(d[key], list):
+                raise TypeError(f"{key} has the wrong type")
+        for key in ("metadata", "top_by_category"):
+            if d.get(key) is not None and not isinstance(d[key], dict):
+                raise TypeError(f"{key} has the wrong type")
+        candidates_seen = d.get("candidates_seen", 0)
+        if not isinstance(candidates_seen, int) or isinstance(candidates_seen, bool):
+            raise TypeError("candidates_seen must be an integer")
         return cls(
             schema_version=d.get("schema_version", _SCHEMA_VERSION),
             batch_id=d.get("batch_id", ""),
+            scoring_version=d.get("scoring_version", SCORING_VERSION),
             sources_scanned=list(d.get("sources_scanned") or []),
-            candidates_seen=int(d.get("candidates_seen", 0)),
+            candidates_seen=candidates_seen,
             opportunities_ranked=list(d.get("opportunities_ranked") or []),
             opportunities_rejected=list(d.get("opportunities_rejected") or []),
             top_by_category=dict(d.get("top_by_category") or {}),
@@ -121,11 +154,12 @@ class OpenSourceLeverageBatchV1:
         )
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=False)
+        self.validate_or_raise()
+        return json.dumps(self.to_dict(), indent=2, sort_keys=False, allow_nan=False)
 
     @classmethod
     def from_json(cls, text: str) -> "OpenSourceLeverageBatchV1":
-        return cls.from_dict(json.loads(text))
+        return cls.from_dict(strict_json_loads(text))
 
     def write_json(self, path: Union[str, Path]) -> Path:
         path = Path(path)
@@ -153,28 +187,103 @@ def build_opportunities_from_candidates(
     `OpenSourceLeverageBatchV1`. Never clones a repository, never installs
     a dependency, and never executes external code -- operates only on
     already-constructed `OpenSourceRepositoryCandidateV1` objects."""
-    if not candidate_records:
-        raise OssOpportunityValidationError("candidate_records must be non-empty -- nothing to score")
+    if not isinstance(candidate_records, (list, tuple)) or not candidate_records:
+        raise OssOpportunityValidationError("candidate_records must be a non-empty list of candidates -- nothing to score")
+    if not isinstance(scoring_version, str) or not scoring_version.strip():
+        raise OssOpportunityValidationError("scoring_version must be a non-empty string")
+    if top_n is not None and (not isinstance(top_n, int) or isinstance(top_n, bool) or top_n < 0):
+        raise OssOpportunityValidationError("top_n must be a non-negative integer or None")
 
-    for c in candidate_records:
+    for index, c in enumerate(candidate_records):
+        if not isinstance(c, OpenSourceRepositoryCandidateV1):
+            raise OssOpportunityValidationError(
+                f"candidate at index {index} is not an OpenSourceRepositoryCandidateV1 ({type(c).__name__})"
+            )
         errs = c.validate()
         if errs:
-            raise OssOpportunityValidationError(f"candidate {c.candidate_id!r} failed validation: {'; '.join(errs)}")
+            raise OssOpportunityValidationError(f"candidate at index {index} failed validation: {'; '.join(errs)}")
+
+    # A duplicate repository with conflicting observed SPDX labels is not
+    # resolved by choosing the higher-scoring observation. Normalize case
+    # and surrounding whitespace only; do not attempt to parse SPDX
+    # expressions or infer that different labels are equivalent.
+    observations_by_repo: dict[str, list[OpenSourceRepositoryCandidateV1]] = {}
+    for candidate in candidate_records:
+        observations_by_repo.setdefault(candidate.repo_full_name.casefold(), []).append(candidate)
+    license_conflicts: dict[str, tuple[list[str], list[str]]] = {}
+    for repo_key, observations in observations_by_repo.items():
+        normalized = {
+            (candidate.license_spdx or "unknown").strip().casefold()
+            for candidate in observations
+        }
+        source_marks_conflict = any(
+            (candidate.metadata or {}).get("license_observation_status") == "conflict"
+            for candidate in observations
+        )
+        if len(normalized) > 1 or source_marks_conflict:
+            observed_values = sorted(
+                {(candidate.license_spdx or "unknown").strip() or "unknown" for candidate in observations},
+                key=str.casefold,
+            )
+            candidate_ids = sorted({candidate.candidate_id for candidate in observations})
+            license_conflicts[repo_key] = (observed_values, candidate_ids)
+
+    # Credential evidence on any observation of a repository applies to the
+    # repository: a higher-scoring uncredentialed duplicate must not hide it.
+    credentialed_repos = {
+        c.repo_full_name.casefold() for c in candidate_records if (c.metadata or {}).get("requires_credentials")
+    }
 
     ts = (_now or datetime.now(timezone.utc)).isoformat()
     sources_scanned = sorted({c.source for c in candidate_records if c.source})
 
     scored: list[tuple[OpenSourceRepositoryCandidateV1, RepositoryLicenseReviewV1, OpenSourceIntegrationOpportunityV1]] = []
     for candidate in candidate_records:
-        license_review = RepositoryLicenseReviewV1.make(
-            repo_full_name=candidate.repo_full_name, license_spdx=candidate.license_spdx,
-            license_name=candidate.license_name,
-            provenance=f"classified from candidate_id={candidate.candidate_id} via oss_opportunities.license_review.classify_license_risk",
-            limitations=["offline SPDX-string classification only; not legal review"],
-        )
+        conflict = license_conflicts.get(candidate.repo_full_name.casefold())
+        if conflict is None:
+            scoring_candidate = candidate
+            license_review = RepositoryLicenseReviewV1.make(
+                repo_full_name=candidate.repo_full_name, license_spdx=candidate.license_spdx,
+                license_name=candidate.license_name,
+                provenance=f"classified from candidate_id={candidate.candidate_id} via oss_opportunities.license_review.classify_license_risk",
+                limitations=["offline SPDX-string classification only; not legal review"],
+            )
+        else:
+            observed_values, candidate_ids = conflict
+            scoring_candidate = replace(
+                candidate,
+                license_spdx="unknown",
+                license_name="conflicting license observations",
+            )
+            license_review = RepositoryLicenseReviewV1.make(
+                repo_full_name=candidate.repo_full_name,
+                license_spdx="unknown",
+                license_name="conflicting license observations",
+                provenance=(
+                    "conflicting license labels observed across candidate_ids="
+                    + ",".join(candidate_ids)
+                    + "; routed to license review without resolving the source evidence"
+                ),
+                limitations=[
+                    "conflicting observed license labels require review",
+                    "offline license classification is not legal review",
+                ],
+                metadata={
+                    "license_observation_status": "conflict",
+                    "observed_license_spdx": observed_values,
+                    "candidate_ids": candidate_ids,
+                },
+            )
         license_review.validate_or_raise()
+        if (
+            candidate.repo_full_name.casefold() in credentialed_repos
+            and not (scoring_candidate.metadata or {}).get("requires_credentials")
+        ):
+            scoring_candidate = replace(
+                scoring_candidate, metadata={**(scoring_candidate.metadata or {}), "requires_credentials": True}
+            )
 
-        components = score_opportunity(candidate, license_review)
+        components = score_opportunity(scoring_candidate, license_review)
         opportunity = OpenSourceIntegrationOpportunityV1.make(
             repo_full_name=candidate.repo_full_name, candidate_id=candidate.candidate_id,
             license_review_id=license_review.license_review_id, scoring_version=scoring_version,
@@ -182,6 +291,7 @@ def build_opportunities_from_candidates(
             limitations=[
                 "leverage-ranking opportunity only; not a completed or attempted integration",
                 "score reflects engineering-leverage heuristics only, not repository quality or correctness",
+                "engineering-priority output does not establish scientific validity, security certification, legal approval, compatibility, or authorization to adopt",
             ],
             **components,
         )
@@ -194,12 +304,32 @@ def build_opportunities_from_candidates(
 
     scored.sort(key=lambda triple: (-triple[2].total_score, triple[0].repo_full_name, triple[2].opportunity_id))
 
+    # Duplicate detection. The same repository (case-insensitive
+    # repo_full_name) can arrive from several sources or snapshots. `scored` is
+    # already sorted best-first, so the first observation per repository is the
+    # primary opportunity. Every other observation is kept in
+    # opportunities_rejected with a duplicate_of reason -- never ranked twice,
+    # never silently dropped.
+    primary_by_repo: dict[str, str] = {}
+    unique_scored = []
+    duplicate_observations = []
+    for triple in scored:
+        key = triple[0].repo_full_name.casefold()
+        if key in primary_by_repo:
+            duplicate_observations.append((triple[2], primary_by_repo[key]))
+        else:
+            primary_by_repo[key] = triple[2].opportunity_id
+            unique_scored.append(triple)
+
     ranked: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
-    for candidate, license_review, opportunity in scored:
+    for candidate, license_review, opportunity in unique_scored:
         entry = opportunity.to_dict()
         entry["license_review"] = license_review.to_dict()
-        if opportunity.total_score >= _MIN_RANKED_SCORE and opportunity.recommended_action != "reject":
+        must_surface = opportunity.recommended_action in _MUST_SURFACE_ACTIONS
+        if must_surface or (
+            opportunity.total_score >= _MIN_RANKED_SCORE and opportunity.recommended_action != "reject"
+        ):
             ranked.append(entry)
         else:
             rejected.append(
@@ -215,8 +345,33 @@ def build_opportunities_from_candidates(
                 }
             )
 
+    for duplicate, primary_id in duplicate_observations:
+        rejected.append(
+            {
+                "repo_full_name": duplicate.repo_full_name,
+                "total_score": duplicate.total_score,
+                "reason": f"duplicate_of:{primary_id} (same repo_full_name observed from another source or snapshot)",
+                "duplicate_of": primary_id,
+            }
+        )
+
     if top_n is not None:
-        ranked = ranked[:top_n]
+        required = [entry for entry in ranked if entry["recommended_action"] in _MUST_SURFACE_ACTIONS]
+        ordinary = [entry for entry in ranked if entry["recommended_action"] not in _MUST_SURFACE_ACTIONS]
+        retained_ordinary = ordinary[: max(0, top_n - len(required))]
+        retained_ids = {id(entry) for entry in required + retained_ordinary}
+        omitted = [entry for entry in ranked if id(entry) not in retained_ids]
+        ranked = [entry for entry in ranked if id(entry) in retained_ids]
+        for entry in omitted:
+            rejected.append(
+                {
+                    "opportunity_id": entry["opportunity_id"],
+                    "repo_full_name": entry["repo_full_name"],
+                    "total_score": entry["total_score"],
+                    "reason": f"top_n_limit:{top_n}",
+                    "omitted_by_top_n": True,
+                }
+            )
 
     top_by_category: dict[str, list[str]] = {}
     for entry in ranked:
@@ -228,13 +383,14 @@ def build_opportunities_from_candidates(
     ]
     top_architecture_emulation = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "emulate_architecture_pattern"]
     top_docs_references = [e["repo_full_name"] for e in ranked if e["recommended_action"] == "create_docs_reference"]
-    top_rejections = [e["repo_full_name"] for e in rejected]
+    top_rejections = [e["repo_full_name"] for e in rejected if "duplicate_of" not in e and not e.get("omitted_by_top_n")]
 
     opportunity_ids = [e["opportunity_id"] for e in ranked]
     batch_id = compute_batch_id(opportunity_ids=opportunity_ids, sources_scanned=sources_scanned, scoring_version=scoring_version)
 
     batch = OpenSourceLeverageBatchV1(
         batch_id=batch_id,
+        scoring_version=scoring_version,
         sources_scanned=sources_scanned,
         candidates_seen=len(candidate_records),
         opportunities_ranked=ranked,
@@ -249,9 +405,14 @@ def build_opportunities_from_candidates(
         limitations=[
             "this batch ranks open-source leverage opportunities; it does not perform any integration",
             "trending/star counts are a discovery-priority signal only, never proof of quality or license safety",
+            "engineering-priority output does not establish scientific validity, security certification, legal approval, compatibility, or authorization to adopt",
             "no repository was cloned, no dependency was installed, no external code was executed",
         ],
         provenance=f"built from {len(candidate_records)} candidate(s) via oss_opportunities.opportunity_batch.build_opportunities_from_candidates",
+        metadata={
+            "duplicate_observations": len(duplicate_observations),
+            **({"license_conflicts": len(license_conflicts)} if license_conflicts else {}),
+        },
     )
     batch.validate_or_raise()
     return batch
