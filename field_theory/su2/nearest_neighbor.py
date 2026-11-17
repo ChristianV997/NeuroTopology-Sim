@@ -196,12 +196,12 @@ def _transverse_weights(
     return weights
 
 
-def _scaled_product_quotient(
 
 def _exact_zero_wedge_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Identify exact equal or opposite vectors whose exterior product is zero."""
     return np.all(a == b, axis=-1) | np.all(a == -b, axis=-1)
 
+def _scaled_product_quotient(
     values: np.ndarray | float,
     *,
     numerator_factors: Sequence[object] = (),
