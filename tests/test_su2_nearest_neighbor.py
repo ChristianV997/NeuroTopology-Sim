@@ -315,3 +315,39 @@ def test_resolved_hedgehog_charge_drift_is_small_over_one_relaxation_step():
                 np.take(result.field.components, index, axis=axis),
                 np.take(field.components, index, axis=axis),
             )
+
+
+def test_fixed_site_mask_pins_interior_values_and_zeros_masked_gradient():
+    field = _small_hedgehog()
+    mask = np.zeros(field.components.shape[:3], dtype=bool)
+    mask[2, 2, 2] = True
+
+    analytic = nearest_neighbor_energy_gradient(field, fixed_mask=mask)
+    reference = nearest_neighbor_energy_gradient_finite_difference(field, fixed_mask=mask)
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        fixed_mask=mask,
+        max_iterations=2,
+        initial_step=1.0e-4,
+        gradient_tolerance=1.0e-12,
+    )
+
+    np.testing.assert_array_equal(analytic[mask], np.zeros_like(analytic[mask]))
+    np.testing.assert_array_equal(reference[mask], np.zeros_like(reference[mask]))
+    np.testing.assert_array_equal(
+        result.field.components[mask], field.components[mask]
+    )
+    assert result.minimum_certified is False
+
+
+@pytest.mark.parametrize(
+    "mask",
+    [
+        np.zeros((2, 2, 2), dtype=bool),
+        np.zeros((5, 5, 5), dtype=np.uint8),
+    ],
+)
+def test_fixed_site_mask_rejects_wrong_shape_or_non_boolean_values(mask):
+    field = _small_hedgehog()
+    with pytest.raises(ValueError, match="fixed_mask"):
+        relax_skyrme_field_nearest_neighbor(field, fixed_mask=mask)

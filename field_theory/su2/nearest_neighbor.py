@@ -297,7 +297,22 @@ def compute_nearest_neighbor_diagnostics(
         raise FloatingPointError("non-finite nearest-neighbor Skyrme diagnostic") from None
 
 
-def _active_mask(field: SU2GridField) -> np.ndarray:
+def _validate_fixed_mask(
+    field: SU2GridField, fixed_mask: np.ndarray | None
+) -> np.ndarray:
+    """Return a copy of an exact-shape boolean fixed-site mask."""
+    shape = field.components.shape[:3]
+    if fixed_mask is None:
+        return np.zeros(shape, dtype=bool)
+    raw = np.asarray(fixed_mask)
+    if raw.shape != shape or raw.dtype.kind != "b":
+        raise ValueError("fixed_mask must be a boolean array matching the grid shape")
+    return np.array(raw, dtype=bool, copy=True)
+
+
+def _active_mask(
+    field: SU2GridField, fixed_mask: np.ndarray | None = None
+) -> np.ndarray:
     active = np.ones(field.components.shape[:3], dtype=bool)
     if field.boundary == "fixed_vacuum":
         active[0, :, :] = False
@@ -306,6 +321,7 @@ def _active_mask(field: SU2GridField) -> np.ndarray:
         active[:, -1, :] = False
         active[:, :, 0] = False
         active[:, :, -1] = False
+    active &= ~_validate_fixed_mask(field, fixed_mask)
     return active
 
 
@@ -343,6 +359,7 @@ def probe_nearest_neighbor_curvature(
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     probe_step: float = 5.0e-3,
     negative_curvature_tolerance: float = 1.0e-6,
+    fixed_mask: np.ndarray | None = None,
 ) -> CurvatureProbeDiagnostics:
     """Probe at most 16 normalized tangent directions for negative curvature.
 
@@ -363,7 +380,7 @@ def probe_nearest_neighbor_curvature(
     if step > 0.1:
         raise ValueError("probe_step must not exceed 0.1")
 
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     shape = values.shape[:3]
     patterns = [np.ones(shape, dtype=np.float64)]
     for axis, size in enumerate(shape):
@@ -449,13 +466,15 @@ def nearest_neighbor_energy_gradient(
     e: float = 1.0,
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     finite_difference_step: float | None = None,
+    fixed_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return the analytic tangent gradient of the nearest-link objective.
 
     The Euclidean derivative is assembled from the transpose of each forward
     difference operator, including the exact masks and quadrature weights used
     by the energy. It is then projected onto the tangent space of S^3 at every
-    node. ``finite_difference_step`` is accepted for compatibility with the
+    node. Optional ``fixed_mask`` sites are excluded from the active tangent
+    space and receive an exactly zero gradient. ``finite_difference_step`` is accepted for compatibility with the
     earlier implementation but does not affect this analytic result; use
     :func:`nearest_neighbor_energy_gradient_finite_difference` when a numeric
     reference gradient is needed.
@@ -465,7 +484,7 @@ def nearest_neighbor_energy_gradient(
     e_value = _positive_real(e, "e")
     if finite_difference_step is not None:
         _positive_real(finite_difference_step, "finite_difference_step")
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
     differences = _forward_differences(values, field.spacing)
     cell_volume = float(np.prod(field.spacing))
@@ -523,6 +542,7 @@ def nearest_neighbor_energy_gradient_finite_difference(
     e: float = 1.0,
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     finite_difference_step: float = 1.0e-5,
+    fixed_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return a slow sitewise finite-difference reference gradient.
 
@@ -535,7 +555,7 @@ def nearest_neighbor_energy_gradient_finite_difference(
     f_value = _positive_real(f_pi, "f_pi")
     e_value = _positive_real(e, "e")
     step = _positive_real(finite_difference_step, "finite_difference_step")
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
 
     def energy(candidate: np.ndarray) -> float:
@@ -589,12 +609,14 @@ def relax_skyrme_field_nearest_neighbor(
     finite_difference_step: float = 1.0e-5,
     gradient_tolerance: float = 1.0e-7,
     max_backtracks: int = 12,
+    fixed_mask: np.ndarray | None = None,
 ) -> NearestNeighborRelaxationResult:
     """Minimize the forward-link objective by monotone backtracking steps.
 
     ``finite_difference_step`` is retained for compatibility with the
     previous reference-gradient implementation; the optimizer now uses the
-    analytic gradient and does not depend on that step size.
+    analytic gradient and does not depend on that step size. Optional
+    ``fixed_mask`` sites remain exactly equal to their initial values.
     """
     values, vacuum_values = _validate_field_and_vacuum(initial, vacuum)
     f_value = _positive_real(f_pi, "f_pi")
@@ -604,7 +626,8 @@ def relax_skyrme_field_nearest_neighbor(
     tolerance = _positive_real(gradient_tolerance, "gradient_tolerance")
     iteration_limit = _integer(max_iterations, "max_iterations", minimum=1)
     backtrack_limit = _integer(max_backtracks, "max_backtracks", minimum=0)
-    active = _active_mask(initial)
+    fixed_sites = _validate_fixed_mask(initial, fixed_mask)
+    active = _active_mask(initial, fixed_sites)
     initial_diagnostics = _diagnostics_from_values(values, initial, f_pi=f_value, e=e_value)
     energies = [initial_diagnostics.energy_total]
     charges = [initial_diagnostics.topological_charge]
@@ -620,6 +643,7 @@ def relax_skyrme_field_nearest_neighbor(
             e=e_value,
             vacuum=vacuum_values,
             finite_difference_step=fd_step,
+            fixed_mask=fixed_sites,
         )
         gradient_norm = float(np.linalg.norm(gradient[active]))
         if not np.isfinite(gradient_norm):
@@ -638,6 +662,7 @@ def relax_skyrme_field_nearest_neighbor(
                 f_pi=f_value,
                 e=e_value,
                 vacuum=vacuum_values,
+                fixed_mask=fixed_sites,
             )
             break
 

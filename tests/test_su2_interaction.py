@@ -9,6 +9,10 @@ import pytest
 from field_theory.su2.generators import multi_hedgehog
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
 from field_theory.su2.nearest_neighbor import compute_nearest_neighbor_diagnostics
+from field_theory.su2.constrained_interaction import (
+    run_constrained_two_hedgehog_relaxation,
+    serialize_constrained_result,
+)
 
 
 def test_excess_components_are_direct_diagnostic_subtractions_and_metadata_is_checksummed():
@@ -339,3 +343,78 @@ def test_rejects_supports_that_do_not_strictly_fit_inside_every_face():
             radius=1.0,
             separation_vector=(2.0, 0.0, 0.0),
         )
+
+
+
+def _constrained_run_kwargs():
+    return {
+        "shape": (17, 17, 17),
+        "spacing": (0.25, 0.25, 0.25),
+        "radius": 0.8,
+        "separation_vector": (1.5, 0.0, 0.0),
+        "relative_isorotation": (1.0, 0.0, 0.0, 0.0),
+        "anchor_radius": 0.3,
+        "code_revision": "a" * 40,
+        "max_iterations": 1,
+        "initial_step": 1.0e-4,
+        "gradient_tolerance": 1.0e-16,
+        "max_backtracks": 2,
+    }
+
+
+def test_constrained_pair_run_is_deterministic_and_withholds_unconverged_comparison():
+    first = run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    second = run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+
+    assert serialize_constrained_result(first) == serialize_constrained_result(second)
+    assert first["evidence_class"] == "synthetic_constrained_lattice_optimization"
+    assert first["scientific_pass"] is False
+    assert first["claim_scope"] == (
+        "finite-grid, finite-box excess energy conditional on the specified frozen anchor patches"
+    )
+    assert first["status"] == "COMPARISON_WITHHELD"
+    assert first["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert all(
+        run["constraints"]["fixed_sites_unchanged"]
+        for run in first["runs"].values()
+    )
+    assert all(run["minimum_certified"] is False for run in first["runs"].values())
+
+
+def test_initial_pair_minus_isolated_arithmetic_matches_recorded_initial_energies():
+    result = run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    runs = result["runs"]
+    expected = (
+        runs["pair"]["initial_energy"]
+        - runs["isolated_a"]["initial_energy"]
+        - runs["isolated_b"]["initial_energy"]
+    )
+    assert result["comparison"]["initial_pair_minus_isolated_energy"] == pytest.approx(expected)
+
+
+def test_constrained_pair_rejects_overlapping_anchor_patches_and_nonfinite_inputs():
+    kwargs = _constrained_run_kwargs()
+    kwargs["separation_vector"] = (1.0, 0.0, 0.0)
+    with pytest.raises(ValueError, match="anchor patches"):
+        run_constrained_two_hedgehog_relaxation(**kwargs)
+
+    kwargs = _constrained_run_kwargs()
+    kwargs["spacing"] = (float("nan"), 0.25, 0.25)
+    with pytest.raises(ValueError):
+        run_constrained_two_hedgehog_relaxation(**kwargs)
+
+
+def test_constrained_pair_enforces_bounded_iteration_and_work_limits():
+    kwargs = _constrained_run_kwargs()
+    kwargs["max_iterations"] = 101
+    with pytest.raises(ValueError, match="max_iterations"):
+        run_constrained_two_hedgehog_relaxation(**kwargs)
+
+
+def test_constrained_pair_rejects_excessive_estimated_work():
+    kwargs = _constrained_run_kwargs()
+    kwargs["shape"] = (32, 32, 32)
+    kwargs["max_iterations"] = 100
+    kwargs["max_backtracks"] = 12
+    with pytest.raises(ValueError, match="estimated work"):
+        run_constrained_two_hedgehog_relaxation(**kwargs)

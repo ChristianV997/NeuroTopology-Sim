@@ -13,3 +13,12 @@ interpretation or evidence of consciousness is calculated by this package.
 
 Run: `python -m pytest tests/test_su2_field_foundation.py -q`.
 
+
+
+## Constrained pair-relaxation prototype
+
+`field_theory.su2.constrained_interaction` provides a bounded synthetic comparison between a two-hedgehog product field and the two corresponding isolated fields. All three use the same fixed-vacuum grid, forward-link objective, couplings, line-search settings, and per-run iteration budget. Small local anchor balls are frozen with exact Dirichlet values; anchors must be separated from one another, the opposite soliton support, and the box boundary by a stencil margin. Anchor pion vectors must span at least two non-collinear directions.
+
+The versioned JSON result records input and result checksums, code revision, numerical status, energy and approximate-charge histories, constraint checks, weighted SO(3) anchor-patch fits, and work limits. Final pair-minus-isolated energy is withheld unless all three runs reach the declared first-order gradient tolerance and satisfy the anchor checks. This is only a **finite-grid, finite-box excess energy conditional on the specified frozen anchor patches**. The fixed patches do not establish a fixed-separation/fixed-isorotation collective-coordinate minimum; first-order stationarity and the bounded curvature screen do not certify a minimum.
+
+Approximate per-core charge is a grid-anchor Voronoi partition diagnostic, not an integer-sector proof. Excessive declared charge drift lowers topological-sector confidence. Multistart runs, grid refinement, and anchor-size/placement sensitivity are still required before interpreting a negative excess as binding-like. The output is not a force, free-pair potential, physical energy, or physical time evolution. It is synthetic engineering evidence only.
