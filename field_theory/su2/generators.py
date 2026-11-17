@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .field import SU2GridField
+from .field import SU2GridField, validate_spacing
 
 
 def _shape(shape: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -28,31 +28,33 @@ def fixed_axis(theta: np.ndarray, axis=(0., 0., 1.), *, spacing=(1., 1., 1.), bo
     axis = np.asarray(axis, dtype=float)
     if axis.shape != (3,) or not np.isfinite(axis).all():
         raise ValueError("axis must contain three finite values")
-    norm = np.linalg.norm(axis)
-    if not np.isfinite(norm) or norm < 1e-12:
-        raise ValueError("axis must be nonzero with finite norm")
+    scale = np.max(np.abs(axis))
+    if scale == 0:
+        raise ValueError("axis must be nonzero")
+    axis = axis / scale
+    axis = axis / np.linalg.norm(axis)
     n = np.empty(theta.shape + (4,), dtype=float)
     n[..., 0] = np.cos(theta)
-    n[..., 1:] = np.sin(theta)[..., None] * (axis / norm)
+    n[..., 1:] = np.sin(theta)[..., None] * axis
     return SU2GridField(n, spacing, boundary, length_unit)
 
 
 def hedgehog(shape: tuple[int, int, int], *, radius: float, spacing=(1., 1., 1.), length_unit="dimensionless") -> SU2GridField:
-    """Compact profile f(r)=pi(1-r/R) for r<R, zero otherwise.
+    """Compact C1 profile f(r)=pi(1-r/R)^2 for r<R, zero otherwise.
 
     Grid coordinates are centered; radius must fit strictly inside every box face.
     This is an initializer, not an energy-minimized Skyrmion.
     """
     shape = _shape(shape)
-    spacing_arr = np.asarray(spacing, dtype=float)
-    if spacing_arr.shape != (3,) or not np.isfinite(spacing_arr).all() or np.any(spacing_arr <= 0):
-        raise ValueError("spacing must contain three positive finite values")
+    spacing_arr = np.asarray(validate_spacing(spacing))
+    if isinstance(radius, (bool, np.bool_)):
+        raise ValueError("radius must be a positive finite length")
     if not np.isfinite(radius) or radius <= 0 or radius >= np.min((np.array(shape) - 1) * spacing_arr / 2):
         raise ValueError("radius must be positive and fit strictly inside the grid")
     coords = [(np.arange(size) - (size - 1) / 2) * dx for size, dx in zip(shape, spacing_arr)]
     xyz = np.stack(np.meshgrid(*coords, indexing="ij"), axis=-1)
     r = np.linalg.norm(xyz, axis=-1)
-    f = np.pi * np.maximum(1.0 - r / radius, 0.0)
+    f = np.pi * np.maximum(1.0 - r / radius, 0.0) ** 2
     direction = np.zeros_like(xyz)
     np.divide(xyz, r[..., None], out=direction, where=r[..., None] > 0)
     n = np.empty(shape + (4,), dtype=float)

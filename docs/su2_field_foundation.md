@@ -7,7 +7,7 @@ and length units are explicit metadata. The `fixed_vacuum` boundary label record
 the intended model boundary; the general field constructor does not enforce the
 field value on a boundary. The hedgehog initializer does have vacuum-valued faces.
 
-The compact radial profile used by `hedgehog` is an initial configuration, not a
+The compact C1 radial profile used by `hedgehog` is an initial configuration, not a
 numerical solution of the Skyrme equations. No energy, topological charge, neural
 interpretation or evidence of consciousness is calculated by this package.
 
