@@ -699,7 +699,7 @@ def _scaled_quartic_gradient_contributions(
             name="quartic gradient b term",
         )
         term_b_2 = _scaled_product_quotient(
-            a_component,
+            a,
             numerator_factors=(*scale, a_component, b_component),
             denominator_factors=(spacing_b,),
             name="quartic gradient b term",

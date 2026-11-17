@@ -18,6 +18,7 @@ from field_theory.su2.nearest_neighbor import (
     _gradient_coefficients,
     _stable_norm,
     _scaled_product_quotient,
+    _scaled_quartic_gradient_contributions,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient,
     nearest_neighbor_energy_gradient_finite_difference,
@@ -717,6 +718,47 @@ def test_sigma_energy_and_gradient_preserve_tiny_links_with_large_finite_couplin
     assert diagnostic.energy_sigma > 0.0
     assert np.all(np.isfinite(gradient))
     assert float(np.max(np.abs(gradient))) > 0.0
+
+
+def test_scaled_quartic_gradient_fallback_matches_analytic_polynomial():
+    rng = np.random.default_rng(42)
+    a = rng.normal(scale=0.2, size=(2, 3, 4))
+    b = rng.normal(scale=0.15, size=(2, 3, 4))
+    transverse = np.array([[0.5, 1.0, 0.5], [1.0, 0.5, 1.0]])
+    cell_volume = 0.7
+    coefficient = 0.8
+    spacing_a = 1.2
+    spacing_b = 0.9
+
+    actual_a, actual_b = _scaled_quartic_gradient_contributions(
+        a,
+        b,
+        cell_volume=cell_volume,
+        transverse=transverse,
+        coefficient=coefficient,
+        spacing_a=spacing_a,
+        spacing_b=spacing_b,
+    )
+    dot = np.sum(a * b, axis=-1, keepdims=True)
+    norm_a_squared = np.sum(a * a, axis=-1, keepdims=True)
+    norm_b_squared = np.sum(b * b, axis=-1, keepdims=True)
+    expected_a = (
+        cell_volume
+        * transverse[..., None]
+        * coefficient
+        / spacing_a
+        * (norm_b_squared * a - dot * b)
+    )
+    expected_b = (
+        cell_volume
+        * transverse[..., None]
+        * coefficient
+        / spacing_b
+        * (norm_a_squared * b - dot * a)
+    )
+
+    np.testing.assert_allclose(actual_a, expected_a, rtol=1.0e-14, atol=1.0e-16)
+    np.testing.assert_allclose(actual_b, expected_b, rtol=1.0e-14, atol=1.0e-16)
 
 
 def test_quartic_gradient_uses_scaled_fallback_for_tiny_link_products():
