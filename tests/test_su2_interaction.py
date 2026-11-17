@@ -418,3 +418,24 @@ def test_constrained_pair_rejects_excessive_estimated_work():
     kwargs["max_backtracks"] = 12
     with pytest.raises(ValueError, match="estimated work"):
         run_constrained_two_hedgehog_relaxation(**kwargs)
+
+
+def test_serializer_rejects_mutated_result_with_stale_checksum():
+    result = run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    mutated = dict(result)
+    mutated["status"] = "ALTERED_AFTER_HASHING"
+
+    with pytest.raises(ValueError, match="checksum"):
+        serialize_constrained_result(mutated)
+
+
+def test_component_charge_drift_is_not_labeled_sector_confidence():
+    result = run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+
+    for run in result["runs"].values():
+        assert "charge_drift_status" in run
+        assert "topological_sector_confidence" not in run
+        assert run["charge_drift_status"] in {
+            "DRIFT_WITHIN_DECLARED_SCREEN",
+            "DRIFT_EXCEEDS_DECLARED_SCREEN",
+        }
