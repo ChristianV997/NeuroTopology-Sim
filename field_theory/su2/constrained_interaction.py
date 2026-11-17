@@ -17,6 +17,7 @@ import numpy as np
 from .field import SU2GridField, validate_spacing
 from .generators import multi_hedgehog
 from .nearest_neighbor import (
+    _energy_coefficients,
     _forward_differences,
     _link_mask,
     compute_nearest_neighbor_diagnostics,
@@ -32,6 +33,12 @@ _MAX_ESTIMATED_NODE_VISITS = 75_000_000
 _ANCHOR_MATCH_ABS_TOLERANCE = 1.0e-12
 _VACUUM = (1.0, 0.0, 0.0, 0.0)
 _IDENTITY = (1.0, 0.0, 0.0, 0.0)
+_NUMERICAL_EXCEPTIONS = (
+    FloatingPointError,
+    np.linalg.LinAlgError,
+    ZeroDivisionError,
+    OverflowError,
+)
 
 
 def _canonical_json(value: object) -> str:
@@ -214,6 +221,21 @@ def _component_charges(
     return charges
 
 
+def _mark_numerical_failure(
+    result: dict[str, object], stage: str, error: BaseException
+) -> dict[str, object]:
+    """Return a finite, serializable run record for a numerical failure."""
+    result.update(
+        {
+            "status": "NUMERICAL_FAILURE",
+            "failure_class": type(error).__name__,
+            "termination": stage,
+            "final_energy": None,
+        }
+    )
+    return result
+
+
 def _one_relaxation(
     name: str,
     field: SU2GridField,
@@ -234,15 +256,13 @@ def _one_relaxation(
     max_backtracks: int,
 ) -> dict[str, object]:
     initial = field.components.copy()
-    initial_diagnostics = compute_nearest_neighbor_diagnostics(field, f_pi=f_pi, e=e)
-    initial_charges = _component_charges(field, charge_centers)
     base: dict[str, object] = {
         "name": name,
-        "initial_energy": float(initial_diagnostics.energy_total),
-        "initial_total_approximate_charge": float(initial_diagnostics.topological_charge),
-        "initial_component_approximate_charges": list(initial_charges),
-        "energy_history": [float(initial_diagnostics.energy_total)],
-        "total_approximate_charge_history": [float(initial_diagnostics.topological_charge)],
+        "initial_energy": None,
+        "initial_total_approximate_charge": None,
+        "initial_component_approximate_charges": None,
+        "energy_history": [],
+        "total_approximate_charge_history": [],
         "iterations": 0,
         "termination": "not_run",
         "stationarity_status": "not_established",
@@ -255,7 +275,32 @@ def _one_relaxation(
         "orientation_fits": [],
         "component_charge_drift": None,
         "charge_drift_status": "NOT_ASSESSED",
+        "final_energy": None,
+        "final_total_approximate_charge": None,
+        "final_component_approximate_charges": None,
+        "curvature_screen": None,
+        "relative_anchor_frame_change_rad": None,
     }
+
+    try:
+        initial_diagnostics = compute_nearest_neighbor_diagnostics(field, f_pi=f_pi, e=e)
+        initial_energy = float(initial_diagnostics.energy_total)
+        initial_charge = float(initial_diagnostics.topological_charge)
+        if not np.all(np.isfinite((initial_energy, initial_charge))):
+            raise FloatingPointError("non-finite initial diagnostic")
+        base.update(
+            {
+                "initial_energy": initial_energy,
+                "initial_total_approximate_charge": initial_charge,
+                "energy_history": [initial_energy],
+                "total_approximate_charge_history": [initial_charge],
+            }
+        )
+        initial_charges = _component_charges(field, charge_centers)
+        base["initial_component_approximate_charges"] = list(initial_charges)
+    except _NUMERICAL_EXCEPTIONS as exc:
+        return _mark_numerical_failure(base, "initial_diagnostics_failure", exc)
+
     try:
         relaxed = relax_skyrme_field_nearest_neighbor(
             field,
@@ -267,103 +312,117 @@ def _one_relaxation(
             max_backtracks=max_backtracks,
             fixed_mask=fixed_mask,
         )
-    except (FloatingPointError, np.linalg.LinAlgError) as exc:
+    except _NUMERICAL_EXCEPTIONS as exc:
+        return _mark_numerical_failure(base, "optimization_failure", exc)
+
+    try:
+        final = relaxed.field.components
+        fixed_values = final[fixed_mask] - initial[fixed_mask]
+        maximum_deviation = (
+            0.0 if fixed_values.size == 0 else float(np.max(np.abs(fixed_values)))
+        )
+        if not np.isfinite(maximum_deviation):
+            raise FloatingPointError("non-finite fixed-site deviation")
+        fixed_unchanged = bool(np.array_equal(final[fixed_mask], initial[fixed_mask]))
+        fits = []
+        rotations = []
+        for mask, center in zip(anchor_masks, anchor_centers):
+            rotation, fit = _fit_anchor_rotation(
+                initial, final, mask, coordinates, center, anchor_radius
+            )
+            fits.append(fit)
+            rotations.append(rotation)
+        relative_angle = None
+        if len(rotations) == 2:
+            relative_change = rotations[1] @ rotations[0].T
+            relative_angle = float(
+                np.arccos(
+                    np.clip((np.trace(relative_change) - 1.0) / 2.0, -1.0, 1.0)
+                )
+            )
+            if not np.isfinite(relative_angle):
+                raise FloatingPointError("non-finite relative anchor orientation diagnostic")
+        orientation_ok = all(
+            float(item["rotation_angle_rad"]) <= orientation_tolerance_rad
+            and float(item["weighted_relative_residual"]) <= residual_tolerance
+            for item in fits
+        ) and (relative_angle is None or relative_angle <= orientation_tolerance_rad)
+
+        final_diagnostics = compute_nearest_neighbor_diagnostics(
+            relaxed.field, f_pi=f_pi, e=e
+        )
+        final_energy = float(final_diagnostics.energy_total)
+        final_total_charge = float(final_diagnostics.topological_charge)
+        if not np.all(np.isfinite((final_energy, final_total_charge))):
+            raise FloatingPointError("non-finite final diagnostic")
+        final_charges = _component_charges(relaxed.field, charge_centers)
+        drifts = tuple(
+            final_value - initial_value
+            for final_value, initial_value in zip(final_charges, initial_charges)
+        )
+        if not np.all(np.isfinite(drifts)):
+            raise FloatingPointError("non-finite component charge drift")
+        drift_status = (
+            "DRIFT_EXCEEDS_DECLARED_SCREEN"
+            if any(abs(value) > charge_drift_tolerance for value in drifts)
+            else "DRIFT_WITHIN_DECLARED_SCREEN"
+        )
+        converged = (
+            relaxed.termination == "gradient_tolerance"
+            and relaxed.stationarity_status == "first_order_stationary"
+        )
+        if not fixed_unchanged:
+            status = "CONSTRAINT_FAILURE"
+        elif not orientation_ok:
+            status = "ORIENTATION_UNVERIFIED"
+        elif not converged:
+            status = "NOT_CONVERGED"
+        else:
+            status = "CONVERGED_TO_DECLARED_FIRST_ORDER_TOLERANCE"
+
+        energy_history = [float(value) for value in relaxed.energy_history]
+        charge_history = [float(value) for value in relaxed.topological_charge_history]
+        if not energy_history or not np.all(np.isfinite(energy_history)):
+            raise FloatingPointError("non-finite relaxation energy history")
+        if not charge_history or not np.all(np.isfinite(charge_history)):
+            raise FloatingPointError("non-finite relaxation charge history")
         base.update(
             {
-                "status": "NUMERICAL_FAILURE",
-                "failure_class": type(exc).__name__,
-                "final_energy": None,
+                "status": status,
+                "initial_energy": energy_history[0],
+                "final_energy": final_energy,
+                "energy_history": energy_history,
+                "total_approximate_charge_history": charge_history,
+                "final_total_approximate_charge": final_total_charge,
+                "final_component_approximate_charges": list(final_charges),
+                "component_charge_drift": list(drifts),
+                "charge_drift_status": drift_status,
+                "iterations": int(relaxed.iterations),
+                "termination": relaxed.termination,
+                "stationarity_status": relaxed.stationarity_status,
+                "minimum_certified": False,
+                "curvature_screen": (
+                    None
+                    if relaxed.curvature_diagnostics is None
+                    else {
+                        "assessment": relaxed.curvature_diagnostics.assessment,
+                        "probe_count": relaxed.curvature_diagnostics.probe_count,
+                        "most_negative_directional_curvature": relaxed.curvature_diagnostics.most_negative_directional_curvature,
+                        "minimum_certified": False,
+                    }
+                ),
+                "constraints": {
+                    "fixed_site_count": int(np.count_nonzero(fixed_mask)),
+                    "fixed_sites_unchanged": fixed_unchanged,
+                    "maximum_fixed_site_absolute_deviation": maximum_deviation,
+                },
+                "orientation_fits": fits,
+                "relative_anchor_frame_change_rad": relative_angle,
             }
         )
-        return base
+    except _NUMERICAL_EXCEPTIONS as exc:
+        return _mark_numerical_failure(base, "final_diagnostics_failure", exc)
 
-    final = relaxed.field.components
-    fixed_values = final[fixed_mask] - initial[fixed_mask]
-    maximum_deviation = (
-        0.0 if fixed_values.size == 0 else float(np.max(np.abs(fixed_values)))
-    )
-    fixed_unchanged = bool(np.array_equal(final[fixed_mask], initial[fixed_mask]))
-    fits = []
-    rotations = []
-    for mask, center in zip(anchor_masks, anchor_centers):
-        rotation, fit = _fit_anchor_rotation(
-            initial, final, mask, coordinates, center, anchor_radius
-        )
-        fits.append(fit)
-        rotations.append(rotation)
-    relative_angle = None
-    if len(rotations) == 2:
-        relative_change = rotations[1] @ rotations[0].T
-        relative_angle = float(
-            np.arccos(
-                np.clip((np.trace(relative_change) - 1.0) / 2.0, -1.0, 1.0)
-            )
-        )
-    orientation_ok = all(
-        float(item["rotation_angle_rad"]) <= orientation_tolerance_rad
-        and float(item["weighted_relative_residual"]) <= residual_tolerance
-        for item in fits
-    ) and (relative_angle is None or relative_angle <= orientation_tolerance_rad)
-
-    final_diagnostics = compute_nearest_neighbor_diagnostics(
-        relaxed.field, f_pi=f_pi, e=e
-    )
-    final_charges = _component_charges(relaxed.field, charge_centers)
-    drifts = tuple(final - initial for final, initial in zip(final_charges, initial_charges))
-    drift_status = (
-        "DRIFT_EXCEEDS_DECLARED_SCREEN"
-        if any(abs(value) > charge_drift_tolerance for value in drifts)
-        else "DRIFT_WITHIN_DECLARED_SCREEN"
-    )
-    converged = (
-        relaxed.termination == "gradient_tolerance"
-        and relaxed.stationarity_status == "first_order_stationary"
-    )
-    if not fixed_unchanged:
-        status = "CONSTRAINT_FAILURE"
-    elif not orientation_ok:
-        status = "ORIENTATION_UNVERIFIED"
-    elif not converged:
-        status = "NOT_CONVERGED"
-    else:
-        status = "CONVERGED_TO_DECLARED_FIRST_ORDER_TOLERANCE"
-
-    base.update(
-        {
-            "status": status,
-            "initial_energy": float(relaxed.energy_history[0]),
-            "final_energy": float(final_diagnostics.energy_total),
-            "energy_history": [float(value) for value in relaxed.energy_history],
-            "total_approximate_charge_history": [
-                float(value) for value in relaxed.topological_charge_history
-            ],
-            "final_total_approximate_charge": float(final_diagnostics.topological_charge),
-            "final_component_approximate_charges": list(final_charges),
-            "component_charge_drift": list(drifts),
-            "charge_drift_status": drift_status,
-            "iterations": int(relaxed.iterations),
-            "termination": relaxed.termination,
-            "stationarity_status": relaxed.stationarity_status,
-            "minimum_certified": False,
-            "curvature_screen": (
-                None
-                if relaxed.curvature_diagnostics is None
-                else {
-                    "assessment": relaxed.curvature_diagnostics.assessment,
-                    "probe_count": relaxed.curvature_diagnostics.probe_count,
-                    "most_negative_directional_curvature": relaxed.curvature_diagnostics.most_negative_directional_curvature,
-                    "minimum_certified": False,
-                }
-            ),
-            "constraints": {
-                "fixed_site_count": int(np.count_nonzero(fixed_mask)),
-                "fixed_sites_unchanged": fixed_unchanged,
-                "maximum_fixed_site_absolute_deviation": maximum_deviation,
-            },
-            "orientation_fits": fits,
-            "relative_anchor_frame_change_rad": relative_angle,
-        }
-    )
     return base
 
 
@@ -406,6 +465,7 @@ def run_constrained_two_hedgehog_relaxation(
     supplied_rotation, used_rotation = _unit_quaternion(relative_isorotation)
     coupling_f_pi = _real_scalar(f_pi, "f_pi", positive=True)
     coupling_e = _real_scalar(e, "e", positive=True)
+    _energy_coefficients(coupling_f_pi, coupling_e)
     step = _real_scalar(initial_step, "initial_step", positive=True)
     tolerance = _real_scalar(gradient_tolerance, "gradient_tolerance", positive=True)
     angle_tolerance = _real_scalar(
@@ -590,14 +650,43 @@ def run_constrained_two_hedgehog_relaxation(
         item.get("status") == "CONVERGED_TO_DECLARED_FIRST_ORDER_TOLERANCE"
         for item in runs.values()
     )
-    initial_excess = float(
-        runs["pair"]["initial_energy"]
-        - runs["isolated_a"]["initial_energy"]
-        - runs["isolated_b"]["initial_energy"]
+    initial_energies = (
+        runs["pair"].get("initial_energy"),
+        runs["isolated_a"].get("initial_energy"),
+        runs["isolated_b"].get("initial_energy"),
     )
+    initial_available = all(
+        value is not None and bool(np.isfinite(value))
+        for value in initial_energies
+    )
+    initial_excess = (
+        float(initial_energies[0] - initial_energies[1] - initial_energies[2])
+        if initial_available
+        else None
+    )
+    if initial_excess is not None and not np.isfinite(initial_excess):
+        initial_excess = None
+
+    final_energies = (
+        runs["pair"].get("final_energy"),
+        runs["isolated_a"].get("final_energy"),
+        runs["isolated_b"].get("final_energy"),
+    )
+    comparison_available = all_converged and all(
+        value is not None and bool(np.isfinite(value))
+        for value in final_energies
+    )
+    final_excess = (
+        float(final_energies[0] - final_energies[1] - final_energies[2])
+        if comparison_available
+        else None
+    )
+    if final_excess is not None and not np.isfinite(final_excess):
+        final_excess = None
+        comparison_available = False
     result: dict[str, object] = {
         "schema_version": _RESULT_SCHEMA,
-        "status": "COMPARISON_AVAILABLE" if all_converged else "COMPARISON_WITHHELD",
+        "status": "COMPARISON_AVAILABLE" if comparison_available else "COMPARISON_WITHHELD",
         "evidence_class": "synthetic_constrained_lattice_optimization",
         "scientific_pass": False,
         "claim_scope": "finite-grid, finite-box excess energy conditional on the specified frozen anchor patches",
@@ -606,16 +695,8 @@ def run_constrained_two_hedgehog_relaxation(
         "runs": runs,
         "comparison": {
             "initial_pair_minus_isolated_energy": initial_excess,
-            "final_pair_minus_isolated_energy": (
-                float(
-                    runs["pair"]["final_energy"]
-                    - runs["isolated_a"]["final_energy"]
-                    - runs["isolated_b"]["final_energy"]
-                )
-                if all_converged
-                else None
-            ),
-            "available_only_if_all_three_converged_and_constraints_pass": all_converged,
+            "final_pair_minus_isolated_energy": final_excess,
+            "available_only_if_all_three_converged_and_constraints_pass": comparison_available,
         },
         "limitations": [
             "frozen local Dirichlet patches are not a fixed-separation/fixed-isorotation collective-coordinate minimum",
@@ -645,3 +726,5 @@ def serialize_constrained_result(result: dict[str, object]) -> str:
     if not isinstance(expected, str) or expected != _sha256(payload):
         raise ValueError("result checksum mismatch")
     return _canonical_json(result)
+
+

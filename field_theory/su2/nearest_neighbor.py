@@ -57,6 +57,7 @@ stationarity only and never certifies a minimum or continuum stability.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Literal, Sequence
 
 import numpy as np
@@ -193,6 +194,41 @@ def _forward_differences(
     )  # type: ignore[return-value]
 
 
+
+def _energy_coefficients(f_pi: float, e: float) -> tuple[float, float]:
+    """Return finite, nonzero binary64 coefficients for the two Skyrme terms.
+
+    Inputs are checked by the public callers. Log-domain preflight avoids an
+    overflowing intermediate when the final coefficient is representable;
+    the final checks reject overflow or underflow-to-zero rather than silently
+    changing the objective.
+    """
+    f_value = float(f_pi)
+    e_value = float(e)
+    if not np.isfinite(f_value) or f_value <= 0.0 or not np.isfinite(e_value) or e_value <= 0.0:
+        raise ValueError("f_pi and e must be finite and positive")
+
+    log_max = math.log(np.finfo(np.float64).max)
+    sigma_log = 2.0 * math.log(f_value) - math.log(8.0)
+    skyrme_log = -math.log(2.0) - 2.0 * math.log(e_value)
+    if sigma_log > log_max or skyrme_log > log_max:
+        raise ValueError("couplings produce an unrepresentable binary64 energy coefficient")
+
+    with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+        sigma_coefficient = float(np.square(np.float64(f_value) / np.sqrt(np.float64(8.0))))
+        skyrme_coefficient = float(
+            np.square(np.float64(1.0) / (np.sqrt(np.float64(2.0)) * np.float64(e_value)))
+        )
+    if (
+        not np.isfinite(sigma_coefficient)
+        or sigma_coefficient <= 0.0
+        or not np.isfinite(skyrme_coefficient)
+        or skyrme_coefficient <= 0.0
+    ):
+        raise ValueError("couplings produce an unrepresentable binary64 energy coefficient")
+    return sigma_coefficient, skyrme_coefficient
+
+
 def _energy_components(
     values: np.ndarray,
     differences: tuple[np.ndarray, np.ndarray, np.ndarray],
@@ -209,7 +245,8 @@ def _energy_components(
         transverse = _transverse_weights(shape, (axis,), boundary)
         norm_squared = np.sum(differences[axis] ** 2, axis=-1)
         sigma_sum += float(np.sum(norm_squared[valid] * transverse[valid])) * cell_volume
-    energy_sigma = (f_pi * f_pi / 8.0) * sigma_sum
+    sigma_coefficient, skyrme_coefficient = _energy_coefficients(f_pi, e)
+    energy_sigma = sigma_coefficient * sigma_sum
 
     quartic_sum = 0.0
     for i in range(3):
@@ -225,7 +262,7 @@ def _energy_components(
                     )
                     wedge_squared += minor * minor
             quartic_sum += float(np.sum(wedge_squared[valid] * transverse[valid])) * cell_volume
-    energy_skyrme = quartic_sum / (2.0 * e * e)
+    energy_skyrme = skyrme_coefficient * quartic_sum
     return energy_sigma, energy_skyrme
 
 
@@ -712,3 +749,5 @@ def relax_skyrme_field_nearest_neighbor(
         curvature_diagnostics=curvature_diagnostics,
         minimum_certified=False,
     )
+
+

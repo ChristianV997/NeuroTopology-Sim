@@ -2,11 +2,13 @@
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from field_theory.su2.generators import multi_hedgehog
+from field_theory.su2 import constrained_interaction as runner
+from field_theory.su2.generators import multi_hedgehog, vacuum
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
 from field_theory.su2.nearest_neighbor import compute_nearest_neighbor_diagnostics
 from field_theory.su2.constrained_interaction import (
@@ -600,3 +602,248 @@ def test_constrained_pair_withholds_comparison_for_nonconverged_termination(
     assert all(
         run["status"] == "NOT_CONVERGED" for run in result["runs"].values()
     )
+
+
+# Numerical boundary and failure-contract regressions for constrained runs.
+
+
+def _kwargs():
+    return {
+        "shape": (17, 17, 17),
+        "spacing": (0.25, 0.25, 0.25),
+        "radius": 0.8,
+        "separation_vector": (1.5, 0.0, 0.0),
+        "relative_isorotation": (0.7071067811865476, 0.0, 0.0, 0.7071067811865476),
+        "anchor_radius": 0.3,
+        "code_revision": "a" * 40,
+        "max_iterations": 1,
+        "initial_step": 1.0e-4,
+        "gradient_tolerance": 1.0e-16,
+        "max_backtracks": 2,
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("f_pi", 1.0e308),
+        ("f_pi", 1.0e-308),
+        ("e", 1.0e-308),
+        ("e", 1.0e308),
+    ],
+)
+def test_rejects_unrepresentable_derived_energy_coefficients(monkeypatch, name, value):
+    kwargs = _kwargs()
+    kwargs[name] = value
+
+    def fail_if_building(*args, **kwargs):
+        pytest.fail("unrepresentable couplings must be rejected before field construction")
+
+    monkeypatch.setattr(runner, "multi_hedgehog", fail_if_building)
+    with pytest.raises(ValueError, match="unrepresentable binary64 energy coefficient"):
+        runner.run_constrained_two_hedgehog_relaxation(**kwargs)
+
+
+def test_stable_coefficients_accept_extreme_but_representable_couplings():
+    diagnostic = compute_nearest_neighbor_diagnostics(
+        vacuum((3, 3, 3)), f_pi=2.0e154, e=1.0e160
+    )
+    assert diagnostic.energy_total == 0.0
+    assert np.isfinite(diagnostic.energy_total)
+
+
+def test_initial_diagnostic_numerical_failure_is_structured(monkeypatch):
+    def fail(*args, **kwargs):
+        raise FloatingPointError("injected initial failure")
+
+    monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", fail)
+    result = runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["comparison"]["initial_pair_minus_isolated_energy"] is None
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert all(run["status"] == "NUMERICAL_FAILURE" for run in result["runs"].values())
+    assert all(
+        run["termination"] == "initial_diagnostics_failure"
+        for run in result["runs"].values()
+    )
+    serialized = runner.serialize_constrained_result(result)
+    assert json.loads(serialized)["runs"]["isolated_a"]["initial_energy"] is None
+
+
+def test_optimizer_zero_division_is_structured(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ZeroDivisionError("injected optimizer failure")
+
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", fail)
+    result = runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert all(run["status"] == "NUMERICAL_FAILURE" for run in result["runs"].values())
+    assert all(run["termination"] == "optimization_failure" for run in result["runs"].values())
+    runner.serialize_constrained_result(result)
+
+
+def test_final_diagnostic_numerical_failure_is_structured_and_withholds_comparison(monkeypatch):
+    original_diagnostics = runner.compute_nearest_neighbor_diagnostics
+    calls = 0
+
+    def diagnostics_with_final_failure(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise FloatingPointError("injected final diagnostic failure")
+        return original_diagnostics(*args, **kwargs)
+
+    def converged_stub(field, **kwargs):
+        return SimpleNamespace(
+            field=field,
+            energy_history=(1.0, 0.5),
+            topological_charge_history=(0.0, 0.0),
+            iterations=1,
+            termination="gradient_tolerance",
+            stationarity_status="first_order_stationary",
+            curvature_diagnostics=None,
+        )
+
+    monkeypatch.setattr(
+        runner,
+        "compute_nearest_neighbor_diagnostics",
+        diagnostics_with_final_failure,
+    )
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", converged_stub)
+    result = runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert calls == 6
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["runs"]["isolated_a"]["status"] == "NUMERICAL_FAILURE"
+    assert result["runs"]["isolated_a"]["termination"] == "final_diagnostics_failure"
+    assert result["runs"]["isolated_a"]["failure_class"] == "FloatingPointError"
+    assert result["runs"]["isolated_a"]["final_energy"] is None
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    runner.serialize_constrained_result(result)
+
+
+def test_low_level_diagnostics_rejects_unrepresentable_energy_coefficients():
+    field = vacuum((3, 3, 3))
+    for kwargs in ({"f_pi": 1.0e308}, {"e": 1.0e-308}, {"e": 1.0e308}):
+        with pytest.raises(ValueError, match="unrepresentable binary64 energy coefficient"):
+            compute_nearest_neighbor_diagnostics(field, **kwargs)
+
+
+@pytest.mark.parametrize("error_type", [TypeError, ValueError])
+def test_programming_errors_are_not_hidden_as_numerical_failures(monkeypatch, error_type):
+    def programming_bug(*args, **kwargs):
+        raise error_type("injected programming error")
+
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", programming_bug)
+    with pytest.raises(error_type, match="injected programming error"):
+        runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+
+def test_overflowing_finite_energy_subtraction_withholds_comparison(monkeypatch):
+    energies = [1.7e308, 1.7e308, 1.7e308, 1.7e308, 0.0, 0.0]
+    current_energy = 0.0
+
+    def finite_diagnostics(*args, **kwargs):
+        nonlocal current_energy
+        current_energy = energies.pop(0)
+        return SimpleNamespace(energy_total=current_energy, topological_charge=0.0)
+
+    def converged_stub(field, **kwargs):
+        return SimpleNamespace(
+            field=field,
+            energy_history=(current_energy,),
+            topological_charge_history=(0.0,),
+            iterations=1,
+            termination="gradient_tolerance",
+            stationarity_status="first_order_stationary",
+            curvature_diagnostics=None,
+        )
+
+    monkeypatch.setattr(
+        runner, "compute_nearest_neighbor_diagnostics", finite_diagnostics
+    )
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", converged_stub)
+    result = runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert all(np.isfinite(run["final_energy"]) for run in result["runs"].values())
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["comparison"]["initial_pair_minus_isolated_energy"] is None
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert (
+        result["comparison"]["available_only_if_all_three_converged_and_constraints_pass"]
+        is False
+    )
+    runner.serialize_constrained_result(result)
+
+
+@pytest.mark.parametrize(
+    ("stage", "error_type"),
+    [
+        ("initial", np.linalg.LinAlgError),
+        ("initial", OverflowError),
+        ("optimization", np.linalg.LinAlgError),
+        ("optimization", OverflowError),
+        ("final", np.linalg.LinAlgError),
+        ("final", OverflowError),
+    ],
+)
+def test_numeric_exception_classes_are_structured_at_each_stage(
+    monkeypatch, stage, error_type
+):
+    error_stage = {
+        "initial": "initial_diagnostics_failure",
+        "optimization": "optimization_failure",
+        "final": "final_diagnostics_failure",
+    }[stage]
+    injected = error_type("injected numeric failure")
+
+    if stage == "initial":
+        def fail_initial(*args, **kwargs):
+            raise injected
+
+        monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", fail_initial)
+    elif stage == "optimization":
+        def fail_optimization(*args, **kwargs):
+            raise injected
+
+        monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", fail_optimization)
+    else:
+        original_diagnostics = runner.compute_nearest_neighbor_diagnostics
+        calls = 0
+
+        def fail_final(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise injected
+            return original_diagnostics(*args, **kwargs)
+
+        def converged_stub(field, **kwargs):
+            return SimpleNamespace(
+                field=field,
+                energy_history=(1.0,),
+                topological_charge_history=(0.0,),
+                iterations=1,
+                termination="gradient_tolerance",
+                stationarity_status="first_order_stationary",
+                curvature_diagnostics=None,
+            )
+
+        monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", fail_final)
+        monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", converged_stub)
+
+    result = runner.run_constrained_two_hedgehog_relaxation(**_kwargs())
+    failures = [run for run in result["runs"].values() if run["status"] == "NUMERICAL_FAILURE"]
+
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert failures
+    assert all(run["failure_class"] == error_type.__name__ for run in failures)
+    assert all(run["termination"] == error_stage for run in failures)
+    assert all(run["final_energy"] is None for run in failures)
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    runner.serialize_constrained_result(result)
+
+

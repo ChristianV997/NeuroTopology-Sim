@@ -28,3 +28,9 @@ The serializer verifies the canonical SHA-256 of the input record and the result
 
 
 Pair-to-isolated initial anchor values are matched with a recorded maximum absolute tolerance of 1e-12 in unit-field components. This accommodates floating-point roundoff from the SU(2) product/conjugation operations; larger discrepancies are rejected before relaxation. Each run then freezes its own matched anchor values exactly.
+
+### Numerical failure contract
+
+The constrained runner preflights the derived binary64 energy coefficients before constructing fields. It rejects couplings whose coefficients overflow or underflow to zero rather than clipping them. Numeric failures in initial diagnostics, optimization, or post-optimization evaluation are returned as per-run `NUMERICAL_FAILURE` records with `failure_class`, a stage-specific `termination`, and `null` for unavailable metrics; the top-level final comparison is withheld. Only numerical exception classes are converted this way. Input and programming errors such as `ValueError` and `TypeError` continue to propagate.
+
+The initial pair-minus-isolated value is a direct arithmetic comparison of the initial fields and may remain available when those three initial energies are finite, even if a later solve fails. It is not a relaxed-energy result. The final value is emitted only when all three runs satisfy the declared convergence and constraint checks and the subtraction remains finite. Failure records remain inside the v1 result envelope; consumers should branch on status and treat unavailable numerical fields as nullable. Canonical serialization rejects NaN and infinity and rechecks the result hash.
