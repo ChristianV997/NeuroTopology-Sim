@@ -16,9 +16,11 @@ from typing import Any
 
 from .interaction_sweep import (
     InteractionGridLevel,
+    SWEEP_SCHEMA_VERSION,
     TwoHedgehogSweepPoint,
     TwoHedgehogSweepResult,
     TwoHedgehogSweepSpec,
+    _validate_spec,
 )
 
 
@@ -86,54 +88,6 @@ def _canonical_sha256(value: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
-
-
-def _validate_spec_for_plot(spec: TwoHedgehogSweepSpec) -> None:
-    radius = _finite_number(spec.radius, "sweep radius")
-    f_pi = _finite_number(spec.f_pi, "sweep f_pi")
-    coupling = _finite_number(spec.e, "sweep e")
-    if radius <= 0.0 or f_pi <= 0.0 or coupling <= 0.0:
-        raise ValueError("sweep radius and couplings must be positive")
-    direction = _numeric_sequence(spec.separation_direction, "separation direction", 3)
-    direction_norm = math.hypot(math.hypot(direction[0], direction[1]), direction[2])
-    if not math.isclose(direction_norm, 1.0, rel_tol=0.0, abs_tol=1.0e-10):
-        raise ValueError("sweep separation direction must be a unit vector")
-    if not spec.separation_values or not spec.relative_isorotations or not spec.grid_levels:
-        raise ValueError("sweep axes must be nonempty")
-    separations = tuple(
-        _finite_number(value, "sweep separation") for value in spec.separation_values
-    )
-    if any(value < 0.0 for value in separations) or len(set(separations)) != len(separations):
-        raise ValueError("sweep separations must be unique and nonnegative")
-    for orientation in spec.relative_isorotations:
-        quaternion = _numeric_sequence(orientation, "relative isorotation", 4)
-        norm = math.hypot(
-            math.hypot(quaternion[0], quaternion[1]),
-            math.hypot(quaternion[2], quaternion[3]),
-        )
-        if not math.isclose(norm, 1.0, rel_tol=0.0, abs_tol=1.0e-10):
-            raise ValueError("sweep relative isorotations must be unit quaternions")
-    for level in spec.grid_levels:
-        if not isinstance(level, InteractionGridLevel):
-            raise ValueError("sweep grid levels must be InteractionGridLevel values")
-        if (
-            len(level.shape) != 3
-            or any(isinstance(size, bool) or not isinstance(size, int) or size < 2 for size in level.shape)
-        ):
-            raise ValueError("sweep grid shapes must contain three integers >= 2")
-        spacing = _numeric_sequence(level.spacing, "grid spacing", 3)
-        if any(step <= 0.0 for step in spacing):
-            raise ValueError("sweep grid spacings must be positive")
-        extent = tuple((size - 1) * step for size, step in zip(level.shape, spacing))
-        if not all(math.isfinite(value) and value > 0.0 for value in extent):
-            raise ValueError("sweep grid extents must be finite and positive")
-    dimensionless_controls = (
-        coupling * f_pi,
-        f_pi / coupling,
-        coupling * f_pi * radius,
-    )
-    if not all(math.isfinite(value) and value > 0.0 for value in dimensionless_controls):
-        raise ValueError("sweep dimensionless controls must be finite and positive")
 
 
 def _validate_point_metadata(
@@ -319,14 +273,20 @@ def build_interaction_sweep_plot_data(
 
     One curve is produced for each declared relative isorotation and grid
     level. Samples are sorted by dimensionless separation ``s=d/R`` even if
-    the input separation axis was declared in another order.
+    the input separation axis was declared in another order. The sweep ID is
+    the deterministic digest of the schema version, declared spec, and
+    point-result checksums ordered by canonical axis keys after validation. It
+    identifies canonical axis-keyed logical content, not the byte-for-byte
+    order of the point array serialized by ``TwoHedgehogSweepResult.to_json``;
+    this builder is invariant to point storage order. The ID does not
+    authenticate code or the runtime environment.
     """
     if not isinstance(result, TwoHedgehogSweepResult):
         raise ValueError("result must be a TwoHedgehogSweepResult")
     spec = result.spec
     if not isinstance(spec, TwoHedgehogSweepSpec):
         raise ValueError("result must contain a TwoHedgehogSweepSpec")
-    _validate_spec_for_plot(spec)
+    _validate_spec(spec)
 
     orientations = tuple(tuple(value) for value in spec.relative_isorotations)
     levels = tuple(spec.grid_levels)
@@ -345,8 +305,21 @@ def build_interaction_sweep_plot_data(
         for level in levels
         for separation in separations
     }
+    canonical_point_keys = [
+        (orientation, level.level_id, separation)
+        for separation in separations
+        for orientation in orientations
+        for level in levels
+    ]
+    point_id_by_key = {
+        key: f"point-{index:04d}"
+        for index, key in enumerate(canonical_point_keys)
+    }
     seen: set[tuple[tuple[float, ...], str, float]] = set()
     seen_point_ids: set[str] = set()
+    points_by_key: dict[
+        tuple[tuple[float, ...], str, float], TwoHedgehogSweepPoint
+    ] = {}
 
     for point in result.points:
         if not isinstance(point, TwoHedgehogSweepPoint):
@@ -376,10 +349,7 @@ def build_interaction_sweep_plot_data(
         key = (orientation, point.grid_level.level_id, separation)
         if key not in expected or key in seen:
             raise ValueError("result contains an unexpected or duplicate sweep point")
-        if not isinstance(point.point_id, str) or point.point_id in seen_point_ids:
-            raise ValueError("sweep point ids must be unique strings")
         seen.add(key)
-        seen_point_ids.add(point.point_id)
 
         evaluator_result = point.evaluator_result
         expected_vector = tuple(
@@ -415,6 +385,13 @@ def build_interaction_sweep_plot_data(
         input_sha256 = evaluator_result.get("input_sha256")
         if not isinstance(input_sha256, str):
             raise ValueError("evaluator result is missing its input checksum")
+        expected_point_id = point_id_by_key[key]
+        if not isinstance(point.point_id, str) or point.point_id != expected_point_id:
+            raise ValueError("sweep point ids must match canonical axis keys")
+        if point.point_id in seen_point_ids:
+            raise ValueError("sweep point ids must be unique strings")
+        seen_point_ids.add(point.point_id)
+        points_by_key[key] = point
         groups[(orientation, point.grid_level.level_id)].append(
             (
                 s_value,
@@ -429,6 +406,20 @@ def build_interaction_sweep_plot_data(
 
     if seen != expected:
         raise ValueError("result points do not form the declared Cartesian sweep")
+
+    expected_sweep_id = _canonical_sha256(
+        {
+            "schema_version": SWEEP_SCHEMA_VERSION,
+            "spec": spec.to_dict(),
+            "point_result_sha256": [
+                points_by_key[key].result_sha256 for key in canonical_point_keys
+            ],
+        }
+    )
+    if result.sweep_id != expected_sweep_id:
+        raise ValueError(
+            "result sweep_id does not match the declared spec and ordered point checksums"
+        )
 
     curves: list[dict[str, Any]] = []
     for orientation_index, orientation in enumerate(orientations):
