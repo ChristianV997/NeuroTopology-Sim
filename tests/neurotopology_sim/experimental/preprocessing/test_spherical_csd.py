@@ -176,6 +176,53 @@ def test_rejects_non_finite_guard_tolerances():
         SphericalCSDConfig(sphere=(0, 0, 0, 0.1), avg_ref_null_rtol=-1.0).validated()
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("lambda2", "0.01"),
+        ("lambda2", None),
+        ("lambda2", False),
+        ("stiffness", "4"),
+        ("stiffness", None),
+        ("stiffness", True),
+    ],
+)
+def test_rejects_coerced_non_numeric_mne_parameters(field, value):
+    """MNE's numeric parameter contract rejects strings and booleans."""
+    with pytest.raises(SphericalCSDError, match=field):
+        SphericalCSDConfig(
+            sphere=(0, 0, 0, 0.1), **{field: value}
+        ).validated()
+
+
+def test_accepts_numpy_numeric_mne_parameters():
+    """NumPy floating and integer scalars remain valid numeric parameters."""
+    config = SphericalCSDConfig(
+        sphere=(0, 0, 0, 0.1), lambda2=np.float64(1e-5), stiffness=np.int64(4)
+    ).validated()
+    assert config.lambda2 == 1e-5
+    assert config.stiffness == 4.0
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [
+        [[0.1, 0.0, 0.0], [0.0, 0.1]],
+        [["not-a-coordinate", 0.0, 0.0], [0.0, 0.1, 0.0]],
+        [[10**400, 0.0, 0.0], [0.0, 0.1, 0.0]],
+    ],
+    ids=["ragged", "nonnumeric", "overflow"],
+)
+def test_malformed_position_conversion_raises_module_error(positions):
+    with pytest.raises(SphericalCSDError, match="positions must be a numeric array"):
+        compute_spherical_csd_transform(positions, _cfg())
+
+
+def test_overflowing_sphere_component_raises_module_error():
+    with pytest.raises(SphericalCSDError, match="sphere components"):
+        SphericalCSDConfig(sphere=(10**400, 0, 0, 0.1)).validated()
+
+
 # Regression (2026-10-21, #414 audit): stiffness=inf was accepted. Every kernel factor underflowed to 0, the transform
 # came back as all zeros, and no error was raised. Non-finite stiffness must fail closed.
 @pytest.mark.parametrize("stiffness", [float("inf"), float("nan")])
@@ -212,6 +259,35 @@ def test_null_check_is_scale_invariant(scale):
     result = compute_spherical_csd_transform(pos, _cfg(radius=0.095 * scale))
     peak = float(np.max(np.abs(result.transform)))
     assert result.diagnostics["avg_ref_null_inf"] / peak < 1e-10
+
+
+def test_null_guard_uses_matrix_infinity_norm():
+    """The relative null guard uses the documented induced matrix infinity norm."""
+    pos = _asymmetric_cap(8, seed=5) * 0.095
+    unchecked = compute_spherical_csd_transform(
+        pos, _cfg(enforce_avg_ref_null=False)
+    )
+    matrix = unchecked.transform
+    residual_inf = float(np.linalg.norm(matrix @ np.ones(8), ord=np.inf))
+    matrix_inf = float(np.linalg.norm(matrix, ord=np.inf))
+    element_peak = float(np.max(np.abs(matrix)))
+
+    assert residual_inf > 0.0
+    assert matrix_inf > element_peak
+    # This boundary passes the documented test but fails if the denominator is
+    # incorrectly reduced to the largest single matrix element.
+    rtol = 0.5 * (residual_inf / matrix_inf + residual_inf / element_peak)
+    result = compute_spherical_csd_transform(
+        pos, _cfg(avg_ref_null_rtol=rtol)
+    )
+
+    expected_relative_residual = residual_inf / matrix_inf
+    assert np.isclose(
+        result.diagnostics["avg_ref_null_rel"],
+        expected_relative_residual,
+        rtol=1e-12,
+        atol=0.0,
+    )
 
 
 # ---------------------------------------------------------------------------
