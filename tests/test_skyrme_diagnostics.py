@@ -49,6 +49,15 @@ def test_constant_vacuum_has_zero_energy_and_degree() -> None:
     assert result.topological_charge == 0.0
 
 
+def test_centered_periodic_difference_has_documented_checkerboard_blind_spot() -> None:
+    # This is a known numerical limitation, not a physically valid stability test.
+    field = np.zeros((8, 4, 4, 4))
+    field[..., 0] = ((-1.0) ** np.arange(8))[:, None, None]
+    result = compute_skyrme_diagnostics(field, 1.0, boundary="periodic")
+    assert result.energy_total == 0.0
+    assert not np.all(field[0] == field[1])
+
+
 def test_fixed_axis_map_has_zero_degree_and_no_quartic_energy() -> None:
     size = 16
     phase = 2.0 * np.pi * np.arange(size) / size

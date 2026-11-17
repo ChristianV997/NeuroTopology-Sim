@@ -37,7 +37,12 @@ diagnostic, not a proof of a continuum topological sector.
 
 Centered finite differences are projected onto the tangent space of S^3 at
 each grid node. This removes discrete radial components and preserves the
-declared equivalence between the four-vector and SU(2) trace energies.
+declared equivalence between the four-vector and SU(2) commutator energies.
+At finite resolution the projected sigma energy need not equal the trace of
+unprojected centered matrix derivatives; they converge for smooth fields.
+Periodic centered differences have a Nyquist checkerboard blind spot: a
+grid-alternating field can report zero energy despite varying between nodes.
+Do not interpret a zero numerical energy alone as evidence of stability.
 """
 
 from __future__ import annotations
