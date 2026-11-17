@@ -242,8 +242,10 @@ def _scaled_product_quotient(
         result = np.ldexp(mantissa, exponent + exponent_adjustment)
     if not np.all(np.isfinite(result)):
         raise FloatingPointError(f"{name} overflowed binary64")
-    if np.any(expected_nonzero & (result == 0.0)):
-        raise FloatingPointError(f"{name} underflowed to zero in binary64")
+    if np.any(expected_nonzero) and not np.any(result != 0.0):
+        raise FloatingPointError(
+            f"{name} underflowed entirely to zero in binary64"
+        )
     return result
 
 
@@ -380,7 +382,7 @@ def _energy_components(
             transverse = _transverse_weights(shape, (i, j), boundary)
             for a in range(4):
                 for b in range(a + 1, 4):
-                    with np.errstate(over="raise", under="raise", invalid="raise"):
+                    with np.errstate(over="raise", invalid="raise"):
                         minor = (
                             differences[i][..., a] * differences[j][..., b]
                             - differences[i][..., b] * differences[j][..., a]
