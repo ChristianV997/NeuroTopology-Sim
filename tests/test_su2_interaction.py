@@ -8,11 +8,14 @@ import numpy as np
 import pytest
 
 from field_theory.su2 import constrained_interaction as runner
+from field_theory.su2.field import SU2GridField
 from field_theory.su2.generators import multi_hedgehog, vacuum
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
 from field_theory.su2.nearest_neighbor import (
     _energy_coefficients,
+    _gradient_coefficients,
     compute_nearest_neighbor_diagnostics,
+    nearest_neighbor_energy_gradient,
 )
 from field_theory.su2.constrained_interaction import (
     run_constrained_two_hedgehog_relaxation,
@@ -661,6 +664,43 @@ def test_stable_coefficients_accept_extreme_but_representable_couplings():
     )
     assert diagnostic.energy_total == 0.0
     assert np.isfinite(diagnostic.energy_total)
+
+
+def test_gradient_coefficients_support_extremes_and_fail_closed():
+    sigma_gradient, skyrme_gradient = _gradient_coefficients(
+        f_pi=2.0e154, e=1.0e160
+    )
+    assert sigma_gradient == pytest.approx(1.0e308, rel=1.0e-14)
+    assert 0.0 < skyrme_gradient < np.finfo(np.float64).tiny
+
+    with pytest.raises(ValueError, match="unrepresentable binary64 gradient coefficient"):
+        _gradient_coefficients(f_pi=3.0e154, e=1.0)
+
+
+def test_gradient_uses_scaled_coefficients_for_representable_extremes():
+    theta = np.linspace(-0.01, 0.01, 5)[:, None, None]
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(theta)
+    components[..., 1] = np.sin(theta)
+    field = SU2GridField(components, boundary="periodic")
+
+    gradient = nearest_neighbor_energy_gradient(
+        field, f_pi=2.0e154, e=1.0e160
+    )
+    assert np.all(np.isfinite(gradient))
+    assert np.max(np.abs(gradient)) > 0.0
+
+
+def test_constrained_pair_preflights_unrepresentable_gradient_coefficient(monkeypatch):
+    kwargs = _kwargs()
+    kwargs["f_pi"] = 3.0e154
+
+    def fail_if_building(*args, **kwargs):
+        pytest.fail("unrepresentable gradient coefficients must fail before field construction")
+
+    monkeypatch.setattr(runner, "multi_hedgehog", fail_if_building)
+    with pytest.raises(ValueError, match="unrepresentable binary64 gradient coefficient"):
+        runner.run_constrained_two_hedgehog_relaxation(**kwargs)
 
 
 def test_initial_diagnostic_numerical_failure_is_structured(monkeypatch):

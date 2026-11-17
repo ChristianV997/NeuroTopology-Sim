@@ -17,7 +17,7 @@ import numpy as np
 from .field import SU2GridField, validate_spacing
 from .generators import multi_hedgehog
 from .nearest_neighbor import (
-    _energy_coefficients,
+    _gradient_coefficients,
     _forward_differences,
     _link_mask,
     compute_nearest_neighbor_diagnostics,
@@ -465,7 +465,7 @@ def run_constrained_two_hedgehog_relaxation(
     supplied_rotation, used_rotation = _unit_quaternion(relative_isorotation)
     coupling_f_pi = _real_scalar(f_pi, "f_pi", positive=True)
     coupling_e = _real_scalar(e, "e", positive=True)
-    _energy_coefficients(coupling_f_pi, coupling_e)
+    _gradient_coefficients(coupling_f_pi, coupling_e)
     step = _real_scalar(initial_step, "initial_step", positive=True)
     tolerance = _real_scalar(gradient_tolerance, "gradient_tolerance", positive=True)
     angle_tolerance = _real_scalar(

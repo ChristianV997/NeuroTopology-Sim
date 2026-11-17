@@ -229,6 +229,27 @@ def _energy_coefficients(f_pi: float, e: float) -> tuple[float, float]:
     return sigma_coefficient, skyrme_coefficient
 
 
+def _gradient_coefficients(f_pi: float, e: float) -> tuple[float, float]:
+    """Return finite, nonzero coefficients used by the analytic energy gradient.
+
+    The gradient weights are twice the corresponding energy coefficients.
+    Reuse the scaled energy preflight instead of squaring raw couplings, then
+    reject a gradient coefficient that cannot be represented in binary64.
+    """
+    sigma_energy, skyrme_energy = _energy_coefficients(f_pi, e)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        sigma_gradient = float(np.float64(2.0) * np.float64(sigma_energy))
+        skyrme_gradient = float(np.float64(2.0) * np.float64(skyrme_energy))
+    if (
+        not np.isfinite(sigma_gradient)
+        or sigma_gradient <= 0.0
+        or not np.isfinite(skyrme_gradient)
+        or skyrme_gradient <= 0.0
+    ):
+        raise ValueError("couplings produce an unrepresentable binary64 gradient coefficient")
+    return sigma_gradient, skyrme_gradient
+
+
 def _energy_components(
     values: np.ndarray,
     differences: tuple[np.ndarray, np.ndarray, np.ndarray],
@@ -524,13 +545,16 @@ def nearest_neighbor_energy_gradient(
     active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
     differences = _forward_differences(values, field.spacing)
+    sigma_gradient_coefficient, skyrme_gradient_coefficient = _gradient_coefficients(
+        f_value, e_value
+    )
     cell_volume = float(np.prod(field.spacing))
 
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
         transverse = _transverse_weights(values.shape[:3], (axis,), field.boundary)
         derivative_gradient = (
-            (f_value * f_value / 4.0)
+            sigma_gradient_coefficient
             * cell_volume
             * transverse[..., None]
             * differences[axis]
@@ -549,7 +573,7 @@ def nearest_neighbor_energy_gradient(
             dot = np.sum(a * b, axis=-1)
             norm_a_squared = np.sum(a * a, axis=-1)
             norm_b_squared = np.sum(b * b, axis=-1)
-            weight = (cell_volume / (e_value * e_value)) * transverse
+            weight = (cell_volume * skyrme_gradient_coefficient) * transverse
             grad_a = weight[..., None] * (
                 norm_b_squared[..., None] * a - dot[..., None] * b
             )
