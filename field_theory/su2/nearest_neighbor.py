@@ -279,11 +279,22 @@ def _cell_volume(spacing: tuple[float, float, float]) -> float:
 
 
 def _forward_differences(
-    values: np.ndarray, spacing: tuple[float, float, float]
+    values: np.ndarray,
+    spacing: tuple[float, float, float],
+    boundary: Boundary = "periodic",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return forward derivatives, zeroing excluded fixed-vacuum links."""
+    if boundary not in {"periodic", "fixed_vacuum"}:
+        raise ValueError("unsupported boundary")
     differences = []
     for axis in range(3):
         raw_difference = np.roll(values, -1, axis=axis) - values
+        if boundary == "fixed_vacuum":
+            # The last-index forward link leaves the grid and is absent from
+            # the objective. Zero it before division so an unused link cannot
+            # overflow at an otherwise valid grid spacing.
+            valid = _link_mask(values.shape[:3], (axis,), boundary)
+            raw_difference[~valid] = 0.0
         differences.append(
             _scaled_product_quotient(
                 raw_difference,
@@ -445,7 +456,7 @@ def _diagnostics_from_values(
     f_pi: float,
     e: float,
 ) -> NearestNeighborDiagnostics:
-    differences = _forward_differences(values, field.spacing)
+    differences = _forward_differences(values, field.spacing, field.boundary)
     energy_sigma, energy_skyrme = _energy_components(
         values, differences, field.spacing, field.boundary, f_pi, e
     )
@@ -524,7 +535,7 @@ def _active_mask(
 def _total_energy_for_values(
     values: np.ndarray, field: SU2GridField, f_pi: float, e: float
 ) -> float:
-    differences = _forward_differences(values, field.spacing)
+    differences = _forward_differences(values, field.spacing, field.boundary)
     sigma, quartic = _energy_components(
         values, differences, field.spacing, field.boundary, f_pi, e
     )
@@ -743,7 +754,7 @@ def nearest_neighbor_energy_gradient(
         _positive_real(finite_difference_step, "finite_difference_step")
     active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
-    differences = _forward_differences(values, field.spacing)
+    differences = _forward_differences(values, field.spacing, field.boundary)
     sigma_gradient_coefficient, skyrme_gradient_coefficient = _gradient_coefficients(
         f_value, e_value
     )
@@ -767,34 +778,44 @@ def nearest_neighbor_energy_gradient(
         for j in range(i + 1, 3):
             valid = _link_mask(values.shape[:3], (i, j), field.boundary)
             transverse = _transverse_weights(values.shape[:3], (i, j), field.boundary)
-            a = differences[i]
-            b = differences[j]
+            a = differences[i][valid]
+            b = differences[j][valid]
+            transverse_links = transverse[valid]
             try:
                 with np.errstate(over="raise", under="raise", invalid="raise"):
                     dot = np.sum(a * b, axis=-1)
                     norm_a_squared = np.sum(a * a, axis=-1)
                     norm_b_squared = np.sum(b * b, axis=-1)
-                    grad_a = norm_b_squared[..., None] * a - dot[..., None] * b
-                    grad_b = norm_a_squared[..., None] * b - dot[..., None] * a
+                    grad_a_links = (
+                        norm_b_squared[..., None] * a - dot[..., None] * b
+                    )
+                    grad_b_links = (
+                        norm_a_squared[..., None] * b - dot[..., None] * a
+                    )
             except FloatingPointError:
-                # The raw cubic polynomial is faster in its ordinary range.
-                # Retry in exponent space if an intermediate over/underflows.
-                grad_a, grad_b = _scaled_quartic_gradient_contributions(
+                # Retry only included links: excluded fixed-vacuum wrap
+                # anchors are not part of the discrete objective.
+                grad_a_links, grad_b_links = _scaled_quartic_gradient_contributions(
                     a,
                     b,
                     cell_volume=cell_volume,
-                    transverse=transverse,
+                    transverse=transverse_links,
                     coefficient=skyrme_gradient_coefficient,
                     spacing_a=field.spacing[i],
                     spacing_b=field.spacing[j],
                 )
-                grad_a[~valid] = 0.0
-                grad_b[~valid] = 0.0
+                use_scaled_fallback = True
+            else:
+                use_scaled_fallback = False
+
+            grad_a = np.zeros_like(differences[i])
+            grad_b = np.zeros_like(differences[j])
+            grad_a[valid] = grad_a_links
+            grad_b[valid] = grad_b_links
+            if use_scaled_fallback:
                 _accumulate_scaled_forward_gradient(gradient, grad_a, i)
                 _accumulate_scaled_forward_gradient(gradient, grad_b, j)
             else:
-                grad_a[~valid] = 0.0
-                grad_b[~valid] = 0.0
                 _accumulate_forward_derivative_gradient(
                     gradient,
                     grad_a,

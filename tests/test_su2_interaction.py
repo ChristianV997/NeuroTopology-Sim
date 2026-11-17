@@ -19,6 +19,7 @@ from field_theory.su2.nearest_neighbor import (
     _stable_norm,
     _scaled_product_quotient,
     _scaled_quartic_gradient_contributions,
+    _forward_differences,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient,
     nearest_neighbor_energy_gradient_finite_difference,
@@ -716,6 +717,43 @@ def test_sigma_energy_and_gradient_preserve_tiny_links_with_large_finite_couplin
 
     assert diagnostic.energy_sigma == pytest.approx(2.44140625e-91, rel=1.0e-12)
     assert diagnostic.energy_sigma > 0.0
+    assert np.all(np.isfinite(gradient))
+    assert float(np.max(np.abs(gradient))) > 0.0
+
+
+def test_fixed_vacuum_forward_differences_mask_excluded_wrap_before_scaling():
+    values = np.zeros((3, 2, 2, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    values[1, ..., 1] = 2.5e-9
+    values[2, ..., 1] = 5.0e-9
+    spacing = (
+        0.75 * 5.0e-9 / np.finfo(np.float64).max,
+        1.0e158,
+        1.0e158,
+    )
+
+    fixed = _forward_differences(values, spacing, boundary="fixed_vacuum")
+
+    assert np.all(np.isfinite(fixed[0]))
+    assert np.all(fixed[0][-1] == 0.0)
+    assert np.max(np.abs(fixed[0][:-1])) < np.finfo(np.float64).max
+    with pytest.raises(FloatingPointError, match="forward difference overflowed"):
+        _forward_differences(values, spacing, boundary="periodic")
+
+
+def test_fixed_vacuum_gradient_ignores_excluded_wrap_quartic_overflow():
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = 1.0
+    components[0, :, :, 1] = 1.0e-9
+    components[-1, 2, 2, 2] = 1.0e-9
+    field = SU2GridField(
+        components,
+        spacing=(1.0e-209, 1.0e-209, 1.0e308),
+        boundary="fixed_vacuum",
+    )
+
+    gradient = nearest_neighbor_energy_gradient(field)
+
     assert np.all(np.isfinite(gradient))
     assert float(np.max(np.abs(gradient))) > 0.0
 
