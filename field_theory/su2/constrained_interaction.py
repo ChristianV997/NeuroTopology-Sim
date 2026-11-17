@@ -253,7 +253,7 @@ def _one_relaxation(
         },
         "orientation_fits": [],
         "component_charge_drift": None,
-        "topological_sector_confidence": "NOT_ASSESSED",
+        "charge_drift_status": "NOT_ASSESSED",
     }
     try:
         relaxed = relax_skyrme_field_nearest_neighbor(
@@ -339,7 +339,7 @@ def _one_relaxation(
             "final_total_approximate_charge": float(final_diagnostics.topological_charge),
             "final_component_approximate_charges": list(final_charges),
             "component_charge_drift": list(drifts),
-            "topological_sector_confidence": sector_confidence,
+            "charge_drift_status": sector_confidence,
             "iterations": int(relaxed.iterations),
             "termination": relaxed.termination,
             "stationarity_status": relaxed.stationarity_status,
@@ -624,7 +624,14 @@ def run_constrained_two_hedgehog_relaxation(
 
 
 def serialize_constrained_result(result: dict[str, object]) -> str:
-    """Serialize a generated result deterministically and reject non-finite JSON."""
-    if result.get("schema_version") != _RESULT_SCHEMA:
+    """Verify the self-excluding SHA-256 and serialize finite JSON deterministically."""
+    if not isinstance(result, dict) or result.get("schema_version") != _RESULT_SCHEMA:
         raise ValueError("unsupported constrained-relaxation result schema")
+    input_record = result.get("input")
+    if not isinstance(input_record, dict) or result.get("input_sha256") != _sha256(input_record):
+        raise ValueError("input checksum mismatch")
+    expected = result.get("result_sha256")
+    payload = {key: value for key, value in result.items() if key != "result_sha256"}
+    if not isinstance(expected, str) or expected != _sha256(payload):
+        raise ValueError("result checksum mismatch")
     return _canonical_json(result)

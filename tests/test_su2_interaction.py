@@ -352,7 +352,7 @@ def _constrained_run_kwargs():
         "spacing": (0.25, 0.25, 0.25),
         "radius": 0.8,
         "separation_vector": (1.5, 0.0, 0.0),
-        "relative_isorotation": (1.0, 0.0, 0.0, 0.0),
+        "relative_isorotation": (0.7071067811865476, 0.0, 0.0, 0.7071067811865476),
         "anchor_radius": 0.3,
         "code_revision": "a" * 40,
         "max_iterations": 1,
@@ -439,3 +439,34 @@ def test_component_charge_drift_is_not_labeled_sector_confidence():
             "DRIFT_WITHIN_DECLARED_SCREEN",
             "DRIFT_EXCEEDS_DECLARED_SCREEN",
         }
+
+
+def test_success_path_arithmetic_with_nonidentity_rotation_is_orchestration_only(monkeypatch):
+    """Exercise comparison gating; the stub is not a relaxation test."""
+    from types import SimpleNamespace
+
+    from field_theory.su2 import constrained_interaction as runner
+
+    def stationary_stub(field, *, f_pi, e, **kwargs):
+        diagnostic = compute_nearest_neighbor_diagnostics(field, f_pi=f_pi, e=e)
+        return SimpleNamespace(
+            field=field,
+            energy_history=(diagnostic.energy_total,),
+            topological_charge_history=(diagnostic.topological_charge,),
+            iterations=0,
+            termination="gradient_tolerance",
+            stationarity_status="first_order_stationary",
+            curvature_diagnostics=None,
+        )
+
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", stationary_stub)
+    result = runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    runs = result["runs"]
+
+    assert result["status"] == "COMPARISON_AVAILABLE"
+    assert result["input"]["relative_isorotation_used"] != [1.0, 0.0, 0.0, 0.0]
+    assert result["comparison"]["final_pair_minus_isolated_energy"] == pytest.approx(
+        runs["pair"]["final_energy"]
+        - runs["isolated_a"]["final_energy"]
+        - runs["isolated_b"]["final_energy"]
+    )
