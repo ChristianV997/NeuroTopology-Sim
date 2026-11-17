@@ -196,29 +196,95 @@ def _transverse_weights(
     return weights
 
 
+def _scaled_product_quotient(
+    values: np.ndarray | float,
+    *,
+    numerator_factors: Sequence[object] = (),
+    denominator_factors: Sequence[object] = (),
+    name: str,
+) -> np.ndarray:
+    """Scale products and quotients in exponent space, failing on lost results."""
+    factors = [np.asarray(values, dtype=np.float64)]
+    numerators = [np.asarray(factor, dtype=np.float64) for factor in numerator_factors]
+    denominators = [np.asarray(factor, dtype=np.float64) for factor in denominator_factors]
+    try:
+        broadcast = np.broadcast_arrays(*factors, *numerators, *denominators)
+    except ValueError as exc:
+        raise ValueError(f"{name} factors are not broadcast-compatible") from exc
+
+    value_array = broadcast[0]
+    numerator_arrays = broadcast[1 : 1 + len(numerators)]
+    denominator_arrays = broadcast[1 + len(numerators) :]
+    if not np.all(np.isfinite(value_array)):
+        raise FloatingPointError(f"{name} has non-finite input values")
+    if any(not np.all(np.isfinite(factor)) for factor in numerator_arrays):
+        raise FloatingPointError(f"{name} has non-finite scale factors")
+    if any(
+        not np.all(np.isfinite(factor)) or np.any(factor == 0.0)
+        for factor in denominator_arrays
+    ):
+        raise FloatingPointError(f"{name} has invalid divisor factors")
+
+    mantissa, exponent = np.frexp(value_array)
+    expected_nonzero = value_array != 0.0
+    for factor in numerator_arrays:
+        factor_mantissa, factor_exponent = np.frexp(factor)
+        mantissa = mantissa * factor_mantissa
+        exponent = exponent + factor_exponent
+        expected_nonzero &= factor != 0.0
+    for factor in denominator_arrays:
+        factor_mantissa, factor_exponent = np.frexp(factor)
+        mantissa = mantissa / factor_mantissa
+        exponent = exponent - factor_exponent
+
+    mantissa, exponent_adjustment = np.frexp(mantissa)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        result = np.ldexp(mantissa, exponent + exponent_adjustment)
+    if not np.all(np.isfinite(result)):
+        raise FloatingPointError(f"{name} overflowed binary64")
+    if np.any(expected_nonzero & (result == 0.0)):
+        raise FloatingPointError(f"{name} underflowed to zero in binary64")
+    return result
+
+
 def _cell_volume(spacing: tuple[float, float, float]) -> float:
     """Return a representable positive binary64 grid-cell volume."""
-    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-        volume = float(
-            np.float64(spacing[0])
-            * np.float64(spacing[1])
-            * np.float64(spacing[2])
-        )
-    if not np.isfinite(volume) or volume <= 0.0:
+    spacing_values = np.asarray(spacing, dtype=np.float64)
+    if (
+        spacing_values.shape != (3,)
+        or not np.all(np.isfinite(spacing_values))
+        or np.any(spacing_values <= 0.0)
+    ):
+        raise ValueError("grid spacings must produce a finite positive binary64 cell volume")
+    try:
+        volume = _scaled_product_quotient(
+            1.0,
+            numerator_factors=tuple(spacing_values),
+            name="grid-cell volume",
+        ).item()
+    except FloatingPointError as exc:
         raise ValueError(
             "grid spacings must produce a finite positive binary64 cell volume"
-        )
-    return volume
+        ) from exc
+    if not np.isfinite(volume) or volume <= 0.0:
+        raise ValueError("grid spacings must produce a finite positive binary64 cell volume")
+    return float(volume)
 
 
 def _forward_differences(
     values: np.ndarray, spacing: tuple[float, float, float]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    return tuple(
-        (np.roll(values, -1, axis=axis) - values) / spacing[axis]
-        for axis in range(3)
-    )  # type: ignore[return-value]
-
+    differences = []
+    for axis in range(3):
+        raw_difference = np.roll(values, -1, axis=axis) - values
+        differences.append(
+            _scaled_product_quotient(
+                raw_difference,
+                denominator_factors=(spacing[axis],),
+                name="forward difference",
+            )
+        )
+    return tuple(differences)  # type: ignore[return-value]
 
 
 def _energy_coefficients(f_pi: float, e: float) -> tuple[float, float]:
@@ -286,30 +352,53 @@ def _energy_components(
 ) -> tuple[float, float]:
     shape = values.shape[:3]
     cell_volume = _cell_volume(spacing)
-    sigma_sum = 0.0
+    sigma_coefficient, skyrme_coefficient = _energy_coefficients(f_pi, e)
+    energy_sigma = 0.0
     for axis in range(3):
         valid = _link_mask(shape, (axis,), boundary)
         transverse = _transverse_weights(shape, (axis,), boundary)
-        norm_squared = np.sum(differences[axis] ** 2, axis=-1)
-        sigma_sum += float(np.sum(norm_squared[valid] * transverse[valid])) * cell_volume
-    sigma_coefficient, skyrme_coefficient = _energy_coefficients(f_pi, e)
-    energy_sigma = sigma_coefficient * sigma_sum
+        link_norm = _stable_norm(differences[axis], axis=-1)
+        terms = _scaled_product_quotient(
+            link_norm[valid],
+            numerator_factors=(
+                link_norm[valid],
+                transverse[valid],
+                cell_volume,
+                sigma_coefficient,
+            ),
+            name="sigma energy contribution",
+        )
+        with np.errstate(over="ignore", invalid="ignore"):
+            energy_sigma += float(np.sum(terms))
+        if not np.isfinite(energy_sigma):
+            raise FloatingPointError("non-finite sigma energy")
 
-    quartic_sum = 0.0
+    energy_skyrme = 0.0
     for i in range(3):
         for j in range(i + 1, 3):
             valid = _link_mask(shape, (i, j), boundary)
             transverse = _transverse_weights(shape, (i, j), boundary)
-            wedge_squared = np.zeros(shape, dtype=np.float64)
             for a in range(4):
                 for b in range(a + 1, 4):
-                    minor = (
-                        differences[i][..., a] * differences[j][..., b]
-                        - differences[i][..., b] * differences[j][..., a]
+                    with np.errstate(over="raise", under="raise", invalid="raise"):
+                        minor = (
+                            differences[i][..., a] * differences[j][..., b]
+                            - differences[i][..., b] * differences[j][..., a]
+                        )
+                    terms = _scaled_product_quotient(
+                        minor[valid],
+                        numerator_factors=(
+                            minor[valid],
+                            transverse[valid],
+                            cell_volume,
+                            skyrme_coefficient,
+                        ),
+                        name="quartic energy contribution",
                     )
-                    wedge_squared += minor * minor
-            quartic_sum += float(np.sum(wedge_squared[valid] * transverse[valid])) * cell_volume
-    energy_skyrme = skyrme_coefficient * quartic_sum
+                    with np.errstate(over="ignore", invalid="ignore"):
+                        energy_skyrme += float(np.sum(terms))
+                    if not np.isfinite(energy_skyrme):
+                        raise FloatingPointError("non-finite quartic energy")
     return energy_sigma, energy_skyrme
 
 
@@ -533,15 +622,20 @@ def _unit_geodesic_perturbation(
 
 def _accumulate_forward_derivative_gradient(
     gradient: np.ndarray,
-    derivative_gradient: np.ndarray,
+    derivative: np.ndarray,
     axis: int,
     spacing: float,
     coefficient: float = 1.0,
+    *,
+    scale_factors: Sequence[object] = (),
 ) -> None:
-    """Apply the scaled transpose of the forward-difference operator in-place."""
-    # Apply the transpose's 1/h factor before a potentially subnormal coupling
-    # coefficient; otherwise a contribution can underflow before this scaling.
-    scaled = (derivative_gradient / spacing) * coefficient
+    """Apply a safely scaled transpose forward-difference stencil in-place."""
+    scaled = _scaled_product_quotient(
+        derivative,
+        numerator_factors=(*scale_factors, coefficient),
+        denominator_factors=(spacing,),
+        name="nearest-neighbor gradient contribution",
+    )
     gradient -= scaled
     gradient += np.roll(scaled, 1, axis=axis)
 
@@ -582,18 +676,15 @@ def nearest_neighbor_energy_gradient(
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
         transverse = _transverse_weights(values.shape[:3], (axis,), field.boundary)
-        # Keep the coupling coefficient out until the transpose stencil has
-        # applied its spacing factor; this preserves representable subnormal terms.
-        derivative_gradient = (
-            cell_volume * differences[axis] * transverse[..., None]
-        )
-        derivative_gradient[~valid] = 0.0
+        derivative = differences[axis].copy()
+        derivative[~valid] = 0.0
         _accumulate_forward_derivative_gradient(
             gradient,
-            derivative_gradient,
+            derivative,
             axis,
             field.spacing[axis],
             sigma_gradient_coefficient,
+            scale_factors=(cell_volume, transverse[..., None]),
         )
 
     for i in range(3):
@@ -602,28 +693,29 @@ def nearest_neighbor_energy_gradient(
             transverse = _transverse_weights(values.shape[:3], (i, j), field.boundary)
             a = differences[i]
             b = differences[j]
-            dot = np.sum(a * b, axis=-1)
-            norm_a_squared = np.sum(a * a, axis=-1)
-            norm_b_squared = np.sum(b * b, axis=-1)
-            # Keep the coupling coefficient out until the transpose stencil
-            # has divided by spacing, avoiding premature subnormal underflow.
-            grad_a = (
-                cell_volume
-                * (norm_b_squared[..., None] * a - dot[..., None] * b)
-                * transverse[..., None]
-            )
-            grad_b = (
-                cell_volume
-                * (norm_a_squared[..., None] * b - dot[..., None] * a)
-                * transverse[..., None]
-            )
+            with np.errstate(over="raise", under="raise", invalid="raise"):
+                dot = np.sum(a * b, axis=-1)
+                norm_a_squared = np.sum(a * a, axis=-1)
+                norm_b_squared = np.sum(b * b, axis=-1)
+                grad_a = norm_b_squared[..., None] * a - dot[..., None] * b
+                grad_b = norm_a_squared[..., None] * b - dot[..., None] * a
             grad_a[~valid] = 0.0
             grad_b[~valid] = 0.0
             _accumulate_forward_derivative_gradient(
-                gradient, grad_a, i, field.spacing[i], skyrme_gradient_coefficient
+                gradient,
+                grad_a,
+                i,
+                field.spacing[i],
+                skyrme_gradient_coefficient,
+                scale_factors=(cell_volume, transverse[..., None]),
             )
             _accumulate_forward_derivative_gradient(
-                gradient, grad_b, j, field.spacing[j], skyrme_gradient_coefficient
+                gradient,
+                grad_b,
+                j,
+                field.spacing[j],
+                skyrme_gradient_coefficient,
+                scale_factors=(cell_volume, transverse[..., None]),
             )
 
     gradient -= values * np.sum(values * gradient, axis=-1, keepdims=True)

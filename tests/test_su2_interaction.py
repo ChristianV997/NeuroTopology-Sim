@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from field_theory.su2 import constrained_interaction as runner
+from field_theory.su2 import interaction as interaction_module
 from field_theory.su2.field import SU2GridField
 from field_theory.su2.generators import multi_hedgehog, vacuum
 from field_theory.su2.interaction import evaluate_two_hedgehog_interaction
@@ -16,6 +17,7 @@ from field_theory.su2.nearest_neighbor import (
     _energy_coefficients,
     _gradient_coefficients,
     _stable_norm,
+    _scaled_product_quotient,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient,
     nearest_neighbor_energy_gradient_finite_difference,
@@ -669,6 +671,84 @@ def test_stable_coefficients_accept_extreme_but_representable_couplings():
     assert np.isfinite(diagnostic.energy_total)
 
 
+
+def test_cell_volume_uses_scaled_product_when_an_intermediate_would_underflow():
+    assert _cell_volume((1.0e-200, 1.0e-200, 1.0e300)) == pytest.approx(1.0e-100)
+
+
+def test_scaled_product_quotient_preserves_representable_extremes_and_rejects_loss():
+    huge = _scaled_product_quotient(
+        np.array([1.0e210]),
+        numerator_factors=(1.0e-10,),
+        denominator_factors=(1.0e-100,),
+        name="test scaling",
+    )
+    assert huge[0] == pytest.approx(1.0e300, rel=1.0e-14)
+
+    subnormal = _scaled_product_quotient(
+        np.array([5.0e-2]),
+        numerator_factors=(1.0e-323, 1.0e-309),
+        denominator_factors=(1.0e-322,),
+        name="subnormal test scaling",
+    )
+    assert 0.0 < subnormal[0] < np.finfo(np.float64).tiny
+    assert subnormal[0] == pytest.approx(5.0e-312, rel=0.2)
+
+    with pytest.raises(FloatingPointError, match="underflowed to zero"):
+        _scaled_product_quotient(
+            np.array([1.0e-320]),
+            numerator_factors=(1.0e-100,),
+            name="unrepresentable test scaling",
+        )
+
+
+def test_sigma_energy_and_gradient_preserve_tiny_links_with_large_finite_coupling():
+    theta = np.linspace(0.0, 1.0e-200, 5)[:, None, None]
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(theta)
+    components[..., 1] = np.sin(theta)
+    field = SU2GridField(components, boundary="periodic")
+
+    diagnostic = compute_nearest_neighbor_diagnostics(field, f_pi=2.5e154, e=1.0)
+    gradient = nearest_neighbor_energy_gradient(field, f_pi=2.5e154, e=1.0)
+
+    assert diagnostic.energy_sigma == pytest.approx(2.44140625e-91, rel=1.0e-12)
+    assert diagnostic.energy_sigma > 0.0
+    assert np.all(np.isfinite(gradient))
+    assert float(np.max(np.abs(gradient))) > 0.0
+
+
+def test_gradient_avoids_overflow_before_small_coefficient_and_spacing_scale():
+    theta = np.arange(5, dtype=np.float64)[:, None, None] * 1.0e-10
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(theta)
+    components[..., 1] = np.sin(theta)
+    field = SU2GridField(
+        components,
+        spacing=(1.0e-100, 1.0e110, 1.0e110),
+        boundary="periodic",
+    )
+
+    gradient = nearest_neighbor_energy_gradient(field, f_pi=2.0e-5, e=1.0)
+
+    assert np.all(np.isfinite(gradient))
+    assert float(np.max(np.abs(gradient))) > 1.0e299
+
+
+def test_interaction_preflights_unrepresentable_cell_volume_before_fields(monkeypatch):
+    def fail_if_building(*args, **kwargs):
+        pytest.fail("invalid cell volume must fail before field construction")
+
+    monkeypatch.setattr(interaction_module, "multi_hedgehog", fail_if_building)
+    with pytest.raises(ValueError, match="finite positive binary64 cell volume"):
+        evaluate_two_hedgehog_interaction(
+            shape=(5, 5, 5),
+            spacing=(1.0e-200, 1.0e-200, 1.0e-100),
+            radius=0.5,
+            separation_vector=(0.5, 0.0, 0.0),
+        )
+
+
 @pytest.mark.parametrize(
     "spacing",
     [(1.0e-200, 1.0e-200, 1.0e-100), (1.0e200, 1.0e200, 1.0)],
@@ -684,6 +764,8 @@ def test_stable_norm_preserves_small_and_large_gradient_scales():
 
     assert _stable_norm(tiny) == pytest.approx(np.sqrt(2.0) * 1.0e-200)
     assert _stable_norm(huge) == pytest.approx(np.sqrt(2.0) * 1.0e200)
+    smallest = np.nextafter(0.0, 1.0)
+    assert _stable_norm(np.array([smallest, 0.0])) == smallest
     per_row = _stable_norm(np.array([tiny, huge]), axis=1)
     np.testing.assert_allclose(
         per_row,
