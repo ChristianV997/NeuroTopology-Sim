@@ -40,6 +40,20 @@ def test_rejects_boolean_geometry():
         vacuum((3, 3, 3), spacing=(True, 1, 1))
     with pytest.raises(ValueError):
         hedgehog((17, 17, 17), radius=True)
+    with pytest.raises(ValueError):
+        fixed_axis(np.zeros((3, 3, 3)), axis=(True, False, False))
+    with pytest.raises(ValueError):
+        vacuum((3, 3, 3), spacing=("1", "1", "1"))
+
+
+def test_rejects_complex_inputs_and_preserves_immutable_components():
+    field = vacuum((3, 3, 3))
+    with pytest.raises(ValueError):
+        SU2GridField(field.components.astype(complex) + 1j)
+    with pytest.raises(ValueError):
+        fixed_axis(np.ones((3, 3, 3), dtype=complex))
+    with pytest.raises(ValueError):
+        field.components.setflags(write=True)
 
 
 def test_hedgehog_profile_has_flat_support_edge():

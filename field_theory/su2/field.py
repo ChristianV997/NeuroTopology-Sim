@@ -7,6 +7,7 @@ This representation describes a mathematical field, not measured neural tissue.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Real
 
 import numpy as np
 
@@ -14,7 +15,7 @@ import numpy as np
 def validate_spacing(spacing) -> tuple[float, float, float]:
     """Validate geometric spacing without treating booleans as lengths."""
     raw = np.asarray(spacing, dtype=object)
-    if raw.shape != (3,) or any(isinstance(x, (bool, np.bool_)) for x in raw):
+    if raw.shape != (3,) or any(isinstance(x, (bool, np.bool_)) or not isinstance(x, Real) for x in raw):
         raise ValueError("spacing must contain three positive finite values")
     try:
         values = np.asarray(raw, dtype=float)
@@ -35,7 +36,10 @@ class SU2GridField:
     length_unit: str = "dimensionless"
 
     def __post_init__(self) -> None:
-        n = np.array(self.components, dtype=float, copy=True)
+        raw = np.asarray(self.components)
+        if raw.dtype.kind not in "fiu":
+            raise ValueError("components must be a real numeric array")
+        n = np.array(raw, dtype=float, copy=True)
         if n.ndim != 4 or n.shape[-1] != 4 or min(n.shape[:3]) < 2:
             raise ValueError("components must have shape (nx, ny, nz, 4), nx,ny,nz >= 2")
         if not np.isfinite(n).all():
@@ -47,7 +51,8 @@ class SU2GridField:
             raise ValueError("unsupported boundary")
         if not isinstance(self.length_unit, str) or not self.length_unit.strip():
             raise ValueError("length_unit must be a nonempty string")
-        n.setflags(write=False)
+        # Immutable bytes-backed storage prevents callers re-enabling write access.
+        n = np.frombuffer(n.tobytes(), dtype=n.dtype).reshape(n.shape)
         object.__setattr__(self, "components", n)
         object.__setattr__(self, "spacing", spacing)
 
