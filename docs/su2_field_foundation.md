@@ -25,3 +25,6 @@ Approximate per-core charge is a grid-anchor Voronoi partition diagnostic, not a
 
 
 The serializer verifies the canonical SHA-256 of the input record and the result payload before serialization. The result hash scope excludes only the \`result_sha256\` field itself. These hashes detect accidental inconsistency; they do not authenticate the source, protect against a caller recomputing hashes, or establish scientific validity.
+
+
+Pair-to-isolated initial anchor values are matched with a recorded maximum absolute tolerance of 1e-12 in unit-field components. This accommodates floating-point roundoff from the SU(2) product/conjugation operations; larger discrepancies are rejected before relaxation. Each run then freezes its own matched anchor values exactly.

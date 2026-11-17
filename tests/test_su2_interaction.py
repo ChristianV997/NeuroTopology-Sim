@@ -374,6 +374,9 @@ def test_constrained_pair_run_is_deterministic_and_withholds_unconverged_compari
     )
     assert first["status"] == "COMPARISON_WITHHELD"
     assert first["comparison"]["final_pair_minus_isolated_energy"] is None
+    assert max(first["input"]["anchor_pair_isolated_max_abs_deviation"]) <= (
+        first["input"]["anchor_pair_isolated_match_abs_tolerance"]
+    )
     assert all(
         run["constraints"]["fixed_sites_unchanged"]
         for run in first["runs"].values()

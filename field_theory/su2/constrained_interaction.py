@@ -29,6 +29,7 @@ _MAX_GRID_NODES = 32_768
 _MAX_ITERATIONS = 100
 _MAX_BACKTRACKS = 12
 _MAX_ESTIMATED_NODE_VISITS = 75_000_000
+_ANCHOR_MATCH_ABS_TOLERANCE = 1.0e-12
 _VACUUM = (1.0, 0.0, 0.0, 0.0)
 _IDENTITY = (1.0, 0.0, 0.0, 0.0)
 
@@ -481,6 +482,7 @@ def run_constrained_two_hedgehog_relaxation(
 
     masks = _anchor_masks(grid_shape, grid_spacing, centers, patch_radius)
     coordinates = _coordinates(grid_shape, grid_spacing)
+    anchor_match_deviations = []
     for index, isolated in enumerate((isolated_a, isolated_b)):
         if not np.any(masks[index]):
             raise ValueError("each anchor patch must contain sampled grid sites")
@@ -492,8 +494,12 @@ def run_constrained_two_hedgehog_relaxation(
             centers[index],
             patch_radius,
         )
-        if not np.array_equal(pair.components[masks[index]], isolated.components[masks[index]]):
-            raise ValueError("pair and isolated initial fields disagree inside an anchor patch")
+        deviation = float(
+            np.max(np.abs(pair.components[masks[index]] - isolated.components[masks[index]]))
+        )
+        anchor_match_deviations.append(deviation)
+        if deviation > _ANCHOR_MATCH_ABS_TOLERANCE:
+            raise ValueError("pair and isolated initial anchor patches disagree beyond tolerance")
 
     pair_mask = masks[0] | masks[1]
     input_record: dict[str, object] = {
@@ -514,6 +520,8 @@ def run_constrained_two_hedgehog_relaxation(
         "centers": [list(centers[0]), list(centers[1])],
         "relative_isorotation_input": list(supplied_rotation),
         "relative_isorotation_used": list(used_rotation),
+        "anchor_pair_isolated_match_abs_tolerance": _ANCHOR_MATCH_ABS_TOLERANCE,
+        "anchor_pair_isolated_max_abs_deviation": anchor_match_deviations,
         "f_pi": coupling_f_pi,
         "e": coupling_e,
         "solver": "nearest_neighbor_forward_link_v1",
