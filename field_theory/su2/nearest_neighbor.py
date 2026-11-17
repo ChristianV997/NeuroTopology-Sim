@@ -510,9 +510,12 @@ def _accumulate_forward_derivative_gradient(
     derivative_gradient: np.ndarray,
     axis: int,
     spacing: float,
+    coefficient: float = 1.0,
 ) -> None:
-    """Apply the transpose of the forward-difference operator in-place."""
-    scaled = derivative_gradient / spacing
+    """Apply the scaled transpose of the forward-difference operator in-place."""
+    # Apply the transpose's 1/h factor before a potentially subnormal coupling
+    # coefficient; otherwise a contribution can underflow before this scaling.
+    scaled = (derivative_gradient / spacing) * coefficient
     gradient -= scaled
     gradient += np.roll(scaled, 1, axis=axis)
 
@@ -553,18 +556,18 @@ def nearest_neighbor_energy_gradient(
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
         transverse = _transverse_weights(values.shape[:3], (axis,), field.boundary)
-        # Combine the geometric and derivative factors before the coupling
-        # coefficient so a tiny coefficient is not erased by cell_volume when
-        # the full gradient contribution is still representable.
+        # Keep the coupling coefficient out until the transpose stencil has
+        # applied its spacing factor; this preserves representable subnormal terms.
         derivative_gradient = (
-            cell_volume
-            * differences[axis]
-            * transverse[..., None]
-            * sigma_gradient_coefficient
+            cell_volume * differences[axis] * transverse[..., None]
         )
         derivative_gradient[~valid] = 0.0
         _accumulate_forward_derivative_gradient(
-            gradient, derivative_gradient, axis, field.spacing[axis]
+            gradient,
+            derivative_gradient,
+            axis,
+            field.spacing[axis],
+            sigma_gradient_coefficient,
         )
 
     for i in range(3):
@@ -576,27 +579,25 @@ def nearest_neighbor_energy_gradient(
             dot = np.sum(a * b, axis=-1)
             norm_a_squared = np.sum(a * a, axis=-1)
             norm_b_squared = np.sum(b * b, axis=-1)
-            # Multiply the spatial derivative expression by cell volume
-            # before the potentially subnormal coupling coefficient.
+            # Keep the coupling coefficient out until the transpose stencil
+            # has divided by spacing, avoiding premature subnormal underflow.
             grad_a = (
                 cell_volume
                 * (norm_b_squared[..., None] * a - dot[..., None] * b)
                 * transverse[..., None]
-                * skyrme_gradient_coefficient
             )
             grad_b = (
                 cell_volume
                 * (norm_a_squared[..., None] * b - dot[..., None] * a)
                 * transverse[..., None]
-                * skyrme_gradient_coefficient
             )
             grad_a[~valid] = 0.0
             grad_b[~valid] = 0.0
             _accumulate_forward_derivative_gradient(
-                gradient, grad_a, i, field.spacing[i]
+                gradient, grad_a, i, field.spacing[i], skyrme_gradient_coefficient
             )
             _accumulate_forward_derivative_gradient(
-                gradient, grad_b, j, field.spacing[j]
+                gradient, grad_b, j, field.spacing[j], skyrme_gradient_coefficient
             )
 
     gradient -= values * np.sum(values * gradient, axis=-1, keepdims=True)

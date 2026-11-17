@@ -720,6 +720,34 @@ def test_gradient_applies_subnormal_coefficients_after_cell_volume_scaling():
     assert relative_error < 5.0e-3
 
 
+def test_gradient_applies_subnormal_coefficients_after_spacing_transpose():
+    alpha = np.linspace(-2.0e-4, 2.0e-4, 5)[:, None, None]
+    beta = np.linspace(-0.4, 0.4, 5)[None, :, None]
+    components = np.zeros((5, 5, 5, 4), dtype=np.float64)
+    components[..., 0] = np.cos(alpha)
+    components[..., 1] = np.sin(alpha) * np.cos(beta)
+    components[..., 2] = np.sin(alpha) * np.sin(beta)
+    field = SU2GridField(
+        components,
+        spacing=(1.0e-100, 1.0, 1.0),
+        boundary="periodic",
+    )
+
+    couplings = {"f_pi": 1.0e-160, "e": 1.0e160}
+    gradient = nearest_neighbor_energy_gradient(field, **couplings)
+    reference = nearest_neighbor_energy_gradient_finite_difference(
+        field, finite_difference_step=1.0e-7, **couplings
+    )
+
+    assert np.all(np.isfinite(gradient))
+    gradient_scale = float(np.max(np.abs(gradient)))
+    reference_scale = float(np.max(np.abs(reference)))
+    assert gradient_scale > 0.0
+    assert reference_scale > 0.0
+    relative_error = float(np.max(np.abs(gradient - reference))) / reference_scale
+    assert relative_error < 5.0e-3
+
+
 def test_constrained_pair_preflights_unrepresentable_gradient_coefficient(monkeypatch):
     kwargs = _kwargs()
     kwargs["f_pi"] = 3.0e154
