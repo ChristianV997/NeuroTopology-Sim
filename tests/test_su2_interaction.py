@@ -720,6 +720,30 @@ def test_sigma_energy_and_gradient_preserve_tiny_links_with_large_finite_couplin
     assert float(np.max(np.abs(gradient))) > 0.0
 
 
+def test_fixed_vacuum_quartic_energy_masks_excluded_wrap_links_before_products():
+    components = np.zeros((6, 6, 6, 4), dtype=np.float64)
+    components[..., 0] = 1.0
+
+    angle = 0.2
+    components[2, 2, 2] = (np.cos(angle), np.sin(angle), 0.0, 0.0)
+    components[3, 2, 2] = (np.cos(angle), 0.0, np.sin(angle), 0.0)
+    components[2, 3, 2] = (np.cos(angle), 0.0, 0.0, np.sin(angle))
+
+    # Each perturbation is within the accepted fixed-vacuum tolerance. At the
+    # excluded x-wrap anchor, the x and y link components form a nonzero minor
+    # of order 1e-400, which must not be evaluated.
+    epsilon = 1.0e-200
+    components[0, 1, 2, 1] = epsilon
+    components[-1, 2, 2, 2] = epsilon
+    field = SU2GridField(components, boundary="fixed_vacuum")
+
+    diagnostic = compute_nearest_neighbor_diagnostics(field, f_pi=1.0, e=1.0)
+
+    assert np.isfinite(diagnostic.energy_sigma)
+    assert np.isfinite(diagnostic.energy_skyrme)
+    assert diagnostic.energy_skyrme > 0.0
+
+
 def test_scaled_quartic_gradient_fallback_matches_analytic_polynomial():
     rng = np.random.default_rng(42)
     a = rng.normal(scale=0.2, size=(2, 3, 4))

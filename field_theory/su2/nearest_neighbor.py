@@ -204,7 +204,7 @@ def _scaled_product_quotient(
     name: str,
     fail_if_all_zero: bool = False,
 ) -> np.ndarray:
-    """Scale products and quotients in exponent space, failing on lost results."""
+    """Scale in exponent space; optionally fail if all nonzero results round to zero."""
     factors = [np.asarray(values, dtype=np.float64)]
     numerators = [np.asarray(factor, dtype=np.float64) for factor in numerator_factors]
     denominators = [np.asarray(factor, dtype=np.float64) for factor in denominator_factors]
@@ -391,19 +391,26 @@ def _energy_components(
         for j in range(i + 1, 3):
             valid = _link_mask(shape, (i, j), boundary)
             transverse = _transverse_weights(shape, (i, j), boundary)
+            # Excluded fixed-vacuum wrap links must not participate in
+            # arithmetic: tiny tolerated boundary residuals can underflow
+            # while forming their quartic minors even though they are masked
+            # out of the objective.
+            a_links = differences[i][valid]
+            b_links = differences[j][valid]
+            transverse_links = transverse[valid]
             for a in range(4):
                 for b in range(a + 1, 4):
                     with np.errstate(over="raise", under="raise", invalid="raise"):
                         minor = (
-                            differences[i][..., a] * differences[j][..., b]
-                            - differences[i][..., b] * differences[j][..., a]
+                            a_links[:, a] * b_links[:, b]
+                            - a_links[:, b] * b_links[:, a]
                         )
-                    quartic_has_nonzero_minors |= bool(np.any(minor[valid] != 0.0))
+                    quartic_has_nonzero_minors |= bool(np.any(minor != 0.0))
                     terms = _scaled_product_quotient(
-                        minor[valid],
+                        minor,
                         numerator_factors=(
-                            minor[valid],
-                            transverse[valid],
+                            minor,
+                            transverse_links,
                             cell_volume,
                             skyrme_coefficient,
                         ),
