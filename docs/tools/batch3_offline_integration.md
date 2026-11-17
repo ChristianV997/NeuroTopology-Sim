@@ -57,9 +57,15 @@ represented by a clearly marked fixture substitute with
   post-open `stat.S_ISREG` check. This is not a defense against hostile
   concurrent replacement of parent directories (TOCTOU), hardlinks into a
   compromised checkout, or a replaced fixture directory.
+- The FIFO-specific no-hang test requires POSIX `mkfifo` and `SIGALRM`; it is
+  explicitly skipped on platforms without those facilities. The regular-file
+  check remains the production behavior on every platform.
 - Malformed, duplicate-key, non-finite, non-object, or oversized fixtures
   produce a rejected stage and a nonzero CLI status; rejected external paths are
   represented as `<rejected>` in reports.
+- Report serialization and canonical checksums reject non-finite floating-point
+  values. They are not silently rewritten to JSON `null`; the report writer
+  serializes before opening or truncating the destination.
 - An empty stage selection, a duplicate stage selection, or an unknown
   forced-failure stage are invalid API inputs rather than successful runs.
 - A bounded API stage selection is diagnostic/partial only. The overall
@@ -79,7 +85,11 @@ represented by a clearly marked fixture substitute with
   `bayes_factor_emitted is False`. Required stages cannot satisfy downstream
   dependencies via `fixture_substituted`.
 - The runner creates no intermediate or temporary files. `--output` is an
-  explicit caller-selected report destination.
+  explicit caller-selected report destination and is not confined to a root.
+  Callers are responsible for selecting a trusted destination; filesystem path
+  resolution for the output path follows normal platform semantics (including
+  symlinked path components). The fixture reader's containment checks do not
+  apply to output destinations.
 - The no-network guard (`no_network()`) replaces Python socket entry points
   (`socket.socket`, `socket.create_connection`, `socket.getaddrinfo`) during
   execution. It is an in-process Python guard, not an operating-system sandbox;
