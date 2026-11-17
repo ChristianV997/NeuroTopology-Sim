@@ -444,32 +444,108 @@ def test_component_charge_drift_is_not_labeled_sector_confidence():
         }
 
 
-def test_success_path_arithmetic_with_nonidentity_rotation_is_orchestration_only(monkeypatch):
-    """Exercise comparison gating; the stub is not a relaxation test."""
+def test_success_path_uses_final_energies_with_nonidentity_rotation(monkeypatch):
+    """Use controlled diagnostics to verify final-energy subtraction independently."""
     from types import SimpleNamespace
 
     from field_theory.su2 import constrained_interaction as runner
 
-    def stationary_stub(field, *, f_pi, e, **kwargs):
-        diagnostic = compute_nearest_neighbor_diagnostics(field, f_pi=f_pi, e=e)
+    initial_energies = (100.0, 20.0, 200.0)  # isolated A, isolated B, pair
+    final_energies = (11.0, 3.0, 42.0)
+    diagnostic_energies = iter((100.0, 11.0, 20.0, 3.0, 200.0, 42.0))
+    relaxation_index = iter(range(3))
+
+    def diagnostics_stub(field, *, f_pi, e):
+        return SimpleNamespace(
+            energy_total=next(diagnostic_energies),
+            topological_charge=0.0,
+        )
+
+    def converged_stub(field, *, f_pi, e, **kwargs):
+        index = next(relaxation_index)
         return SimpleNamespace(
             field=field,
-            energy_history=(diagnostic.energy_total,),
-            topological_charge_history=(diagnostic.topological_charge,),
-            iterations=0,
+            energy_history=(initial_energies[index], final_energies[index]),
+            topological_charge_history=(0.0, 0.0),
+            iterations=1,
             termination="gradient_tolerance",
             stationarity_status="first_order_stationary",
             curvature_diagnostics=None,
         )
 
-    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", stationary_stub)
+    monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", diagnostics_stub)
+    monkeypatch.setattr(runner, "relax_skyrme_field_nearest_neighbor", converged_stub)
     result = runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
-    runs = result["runs"]
 
     assert result["status"] == "COMPARISON_AVAILABLE"
     assert result["input"]["relative_isorotation_used"] != [1.0, 0.0, 0.0, 0.0]
-    assert result["comparison"]["final_pair_minus_isolated_energy"] == pytest.approx(
-        runs["pair"]["final_energy"]
-        - runs["isolated_a"]["final_energy"]
-        - runs["isolated_b"]["final_energy"]
+    assert result["comparison"]["initial_pair_minus_isolated_energy"] == pytest.approx(80.0)
+    assert result["comparison"]["final_pair_minus_isolated_energy"] == pytest.approx(28.0)
+    assert result["comparison"]["final_pair_minus_isolated_energy"] != pytest.approx(
+        result["comparison"]["initial_pair_minus_isolated_energy"]
     )
+
+
+def test_constrained_pair_rejects_anchor_mismatch_above_tolerance(monkeypatch):
+    from field_theory.su2 import constrained_interaction as runner
+
+    original = runner.multi_hedgehog
+    call_count = 0
+
+    def perturbed_isolated(*args, **kwargs):
+        nonlocal call_count
+        field = original(*args, **kwargs)
+        call_count += 1
+        if call_count != 2:
+            return field
+
+        components = field.components.copy()
+        center = kwargs["centers"][0]
+        axes = tuple(
+            (np.arange(size, dtype=float) - (size - 1) / 2.0) * step
+            for size, step in zip(components.shape[:3], field.spacing)
+        )
+        index = tuple(int(np.argmin(np.abs(axis - value))) for axis, value in zip(axes, center))
+        first_pair = components[index][[0, 1]]
+        second_pair = components[index][[2, 3]]
+        a, b = (0, 1) if np.linalg.norm(first_pair) >= np.linalg.norm(second_pair) else (2, 3)
+        cosine, sine = np.cos(1.0e-10), np.sin(1.0e-10)
+        x, y = components[index][a], components[index][b]
+        components[index][a] = cosine * x - sine * y
+        components[index][b] = sine * x + cosine * y
+        return type(field)(
+            components=components,
+            spacing=field.spacing,
+            boundary=field.boundary,
+            length_unit=field.length_unit,
+        )
+
+    monkeypatch.setattr(runner, "multi_hedgehog", perturbed_isolated)
+    with pytest.raises(ValueError, match="disagree beyond tolerance"):
+        runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    assert call_count == 2
+
+
+def test_constrained_pair_rejects_nonfinite_anchor_mismatch(monkeypatch):
+    from types import SimpleNamespace
+
+    from field_theory.su2 import constrained_interaction as runner
+
+    original = runner.multi_hedgehog
+    call_count = 0
+
+    def nonfinite_isolated(*args, **kwargs):
+        nonlocal call_count
+        field = original(*args, **kwargs)
+        call_count += 1
+        if call_count != 2:
+            return field
+
+        components = field.components.copy()
+        components[5, 8, 8, 0] = np.nan
+        return SimpleNamespace(components=components)
+
+    monkeypatch.setattr(runner, "multi_hedgehog", nonfinite_isolated)
+    with pytest.raises(ValueError, match="anchor mismatch must be finite"):
+        runner.run_constrained_two_hedgehog_relaxation(**_constrained_run_kwargs())
+    assert call_count == 2

@@ -310,7 +310,7 @@ def _one_relaxation(
     )
     final_charges = _component_charges(relaxed.field, charge_centers)
     drifts = tuple(final - initial for final, initial in zip(final_charges, initial_charges))
-    sector_confidence = (
+    drift_status = (
         "DRIFT_EXCEEDS_DECLARED_SCREEN"
         if any(abs(value) > charge_drift_tolerance for value in drifts)
         else "DRIFT_WITHIN_DECLARED_SCREEN"
@@ -340,7 +340,7 @@ def _one_relaxation(
             "final_total_approximate_charge": float(final_diagnostics.topological_charge),
             "final_component_approximate_charges": list(final_charges),
             "component_charge_drift": list(drifts),
-            "charge_drift_status": sector_confidence,
+            "charge_drift_status": drift_status,
             "iterations": int(relaxed.iterations),
             "termination": relaxed.termination,
             "stationarity_status": relaxed.stationarity_status,
@@ -498,6 +498,8 @@ def run_constrained_two_hedgehog_relaxation(
             np.max(np.abs(pair.components[masks[index]] - isolated.components[masks[index]]))
         )
         anchor_match_deviations.append(deviation)
+        if not np.isfinite(deviation):
+            raise ValueError("pair and isolated initial anchor mismatch must be finite")
         if deviation > _ANCHOR_MATCH_ABS_TOLERANCE:
             raise ValueError("pair and isolated initial anchor patches disagree beyond tolerance")
 
@@ -621,7 +623,7 @@ def run_constrained_two_hedgehog_relaxation(
             "no multistart or grid-refinement study is performed",
             "anchor-size and anchor-placement sensitivity remain required validation",
             "approximate component charges use a grid-anchor Voronoi partition and are not integer-sector proofs",
-            "charge drift beyond the declared screen lowers topological-sector confidence",
+            "approximate charge drift is compared only with a declared numerical screen and does not establish integer-sector preservation",
             "not a force, free-pair potential, binding energy, physical energy, or physical time evolution",
             "synthetic engineering evidence only; no biological or empirical inference",
         ],
