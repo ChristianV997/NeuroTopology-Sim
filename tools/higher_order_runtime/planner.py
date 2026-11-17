@@ -8,8 +8,10 @@ process RSS (which additionally includes interpreter/import memory). Self-contai
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import asdict, dataclass
 from enum import Enum
+from numbers import Integral
 from typing import Any, Dict
 
 
@@ -50,27 +52,45 @@ class MemoryPlan:
         return data
 
 
-def _validate(r: PlanRequest) -> None:
-    if r.n_samples < 1:
-        raise ValueError("n_samples must be >= 1")
-    if r.n_channels < 1:
-        raise ValueError("n_channels must be >= 1")
-    if r.dtype_itemsize < 1:
-        raise ValueError("dtype_itemsize must be >= 1")
-    if r.target_budget_bytes <= 0:
-        raise ValueError("target_budget_bytes must be > 0")
-    if r.min_chunk < 1:
-        raise ValueError("min_chunk must be >= 1")
-    if r.max_chunk < r.min_chunk:
+def _counter(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise ValueError(f"{name} must be an integer counter")
+    normalized = int(value)
+    if normalized < 1:
+        raise ValueError(f"{name} must be >= 1")
+    if normalized > sys.maxsize:
+        raise ValueError(f"{name} exceeds the platform index range")
+    return normalized
+
+
+def _validate(r: PlanRequest) -> PlanRequest:
+    if not isinstance(r, PlanRequest):
+        raise ValueError("request must be a PlanRequest")
+    if not isinstance(r.surrogates, bool):
+        raise ValueError("surrogates must be a boolean")
+
+    counters = {
+        name: _counter(getattr(r, name), name=name)
+        for name in (
+            "n_samples",
+            "n_channels",
+            "dtype_itemsize",
+            "target_budget_bytes",
+            "min_chunk",
+            "max_chunk",
+            "op_multiplier",
+        )
+    }
+    if counters["max_chunk"] < counters["min_chunk"]:
         raise ValueError("max_chunk must be >= min_chunk")
-    if r.op_multiplier < 1:
-        raise ValueError("op_multiplier must be >= 1")
+    # Normalize NumPy integer scalars to Python ints before arithmetic so their
+    # fixed-width multiplication cannot wrap the byte estimate.
+    return PlanRequest(**counters, surrogates=r.surrogates)
 
 
 def plan_chunk(request: PlanRequest) -> MemoryPlan:
     """Pick the largest in-bounds chunk whose working-set estimate fits budget."""
-    _validate(request)
-    r = request
+    r = _validate(request)
     bytes_per_row = r.n_channels * r.dtype_itemsize
     # Fixed transient overhead (beyond the resident input signal):
     #   - covariance co-moment accumulator M2 (C x C);

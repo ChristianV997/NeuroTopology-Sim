@@ -57,6 +57,26 @@ def test_covariance_parity_chunk_sizes_1_short_uneven_exact():
     assert all(diff <= 1e-8 for _size, _ok, diff in results)
 
 
+def test_stream_session_covariance_is_invariant_to_bounded_chunk_partitions(bounds):
+    """Small seeded partition sweep guards batch/session boundary invariance."""
+    rng = np.random.default_rng(37)
+    for n_samples in (2, 5, 11, 23):
+        for n_channels in (1, 2, 4):
+            signal = rng.standard_normal((n_samples, n_channels))
+            expected = np.cov(signal, rowvar=False, ddof=1)
+            if n_channels == 1:
+                expected = np.asarray(expected).reshape((1, 1))
+
+            for chunk_size in (1, 2, 5, n_samples):
+                session = StreamSession(n_channels, bounds, "property-run")
+                for start in range(0, n_samples, chunk_size):
+                    session.update(signal[start : start + chunk_size])
+                np.testing.assert_allclose(
+                    session.cov.matrix(), expected, atol=1e-8, rtol=0.0
+                )
+                assert session.samples_seen == n_samples
+
+
 def test_bounded_vs_full_feature_parity_declared_tolerance():
     """Where batch and streaming are mathematically expected to agree, check 1e-9."""
     cfg = WorkloadConfig(
