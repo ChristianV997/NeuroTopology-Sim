@@ -177,6 +177,34 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         for value in per_grid
     )
 
+    temporal_field_orders = {}
+    temporal_velocity_orders = {}
+    for samples in _GRID_SIZES:
+        field_coarse, field_fine = temporal_field_differences[samples]
+        velocity_coarse, velocity_fine = temporal_velocity_differences[samples]
+        assert (
+            math.isfinite(field_coarse)
+            and math.isfinite(field_fine)
+            and 0.0 < field_fine < field_coarse
+        ), (
+            f"grid n={samples} has no decreasing finite temporal field-difference "
+            f"sequence: {temporal_field_differences[samples]}"
+        )
+        assert (
+            math.isfinite(velocity_coarse)
+            and math.isfinite(velocity_fine)
+            and 0.0 < velocity_fine < velocity_coarse
+        ), (
+            f"grid n={samples} has no decreasing finite temporal velocity-difference "
+            f"sequence: {temporal_velocity_differences[samples]}"
+        )
+        temporal_field_orders[samples] = _observed_order(
+            field_coarse, field_fine
+        )
+        temporal_velocity_orders[samples] = _observed_order(
+            velocity_coarse, velocity_fine
+        )
+
     # Compare dt_h/4 endpoints at coincident nodes. Every second fine-grid
     # sample coincides with the corresponding coarse-grid coordinate.
     field_spatial_differences = []
@@ -286,7 +314,9 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         f"n={_GRID_SIZES}, dt={time_steps}, "
         f"cumulative_stage_site_work={cumulative_stage_site_work}, "
         f"temporal_field_differences={temporal_field_differences}, "
+        f"temporal_field_orders={temporal_field_orders}, "
         f"temporal_velocity_differences={temporal_velocity_differences}, "
+        f"temporal_velocity_orders={temporal_velocity_orders}, "
         f"temporal_field_to_spatial={temporal_field_to_spatial}, "
         f"temporal_velocity_to_spatial={temporal_velocity_to_spatial}, "
         f"field_spatial_differences={field_spatial_differences}, "
