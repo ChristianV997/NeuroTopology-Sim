@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from field_theory.su2 import SU2GridField
+from field_theory.su2 import SU2GridField, hedgehog
 import field_theory.su2.lorentzian as lorentzian_module
 from field_theory.su2.lorentzian import (
     compute_lorentzian_diagnostics,
@@ -419,3 +419,60 @@ def test_acceleration_satisfies_discrete_lagrange_dalembert_residual(boundary):
         checked_directions += 1
     assert checked_directions >= 3
 
+def test_public_hedgehog_completes_bounded_lorentzian_handoff():
+    """Exercise the public initializer through the solver, not a relaxed soliton."""
+    field = hedgehog(
+        (5, 5, 5),
+        radius=0.8,
+        spacing=(0.5, 0.5, 0.5),
+    )
+    zero_velocity = np.zeros_like(field.components)
+
+    # 125 sites * 2 steps * 4 RK stages; three snapshots use 24,000 bytes.
+    result = evolve_lorentzian_skyrme(
+        field,
+        zero_velocity,
+        dt=1e-3,
+        steps=2,
+        save_every=1,
+        max_grid_nodes=125,
+        max_steps=2,
+        max_rk_stage_site_evaluations=1_000,
+        max_snapshots=3,
+        max_snapshot_bytes=24_000,
+    )
+
+    assert result.termination == "completed"
+    assert result.hyperbolicity_status == "not_certified"
+    assert len(result.fields) == len(result.velocities) == 3
+    assert np.isfinite(result.linearized_cfl_indicator)
+    assert 0.0 < result.linearized_cfl_indicator < 2.5
+
+    for snapshot, velocity in zip(result.fields, result.velocities):
+        q = snapshot.components
+        assert np.all(np.isfinite(q))
+        assert np.all(np.isfinite(velocity))
+        np.testing.assert_allclose(
+            np.sum(q * q, axis=-1), 1.0, rtol=0.0, atol=1e-10
+        )
+        assert np.max(np.abs(np.sum(q * velocity, axis=-1))) < 1e-10
+        assert snapshot.boundary == "fixed_vacuum"
+        identity = np.array((1.0, 0.0, 0.0, 0.0))
+        for axis in range(3):
+            for index in (0, -1):
+                assert np.all(np.take(q, index, axis=axis) == identity)
+
+    histories = (
+        result.energy_sigma_history,
+        result.energy_skyrme_history,
+        result.kinetic_sigma_history,
+        result.kinetic_skyrme_history,
+        result.total_energy_history,
+        result.dissipated_energy_history,
+        result.energy_balance_residual_history,
+        result.approximate_charge_history,
+        result.time_kinetic_min_eigenvalue_history,
+        result.time_kinetic_max_condition_history,
+    )
+    assert all(np.all(np.isfinite(history)) for history in histories)
+    assert np.all(np.asarray(result.time_kinetic_min_eigenvalue_history) > 0.0)
