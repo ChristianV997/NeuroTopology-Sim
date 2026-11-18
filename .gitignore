@@ -19,3 +19,7 @@ artifacts/
 data/empirical/
 apps/awareness_studio/inputs/sim_artifacts/
 =2.3
+
+# SU(2)/Skyrme experiment layer local outputs (large / reproducible)
+experiments/su2_skyrme/outputs/
+*.su2_skyrme_result.json.bak
