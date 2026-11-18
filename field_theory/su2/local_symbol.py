@@ -127,6 +127,19 @@ def _tangent_basis(unit_field: np.ndarray) -> np.ndarray:
     return basis
 
 
+def _as_exact_fraction(value: float | Fraction, name: str) -> Fraction:
+    """Interpret a float64 input as its exact binary rational value."""
+    if isinstance(value, Fraction):
+        return value
+    try:
+        scalar = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
+    if not math.isfinite(scalar):
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    return Fraction.from_float(scalar)
+
+
 def _fraction_to_finite_float(value: Fraction, name: str) -> float:
     """Round an exact rational once to float64, rejecting overflow and underflow."""
     try:
@@ -141,58 +154,201 @@ def _fraction_to_finite_float(value: Fraction, name: str) -> float:
 
 
 def _product_fraction_over_denominator(
-    left: float,
-    right: float,
-    denominator: float,
+    left: float | Fraction,
+    right: float | Fraction,
+    denominator: float | Fraction,
     *,
     name: str,
 ) -> Fraction:
     """Return the exact rational left*right/denominator for float64 inputs."""
-    if not all(math.isfinite(value) for value in (left, right, denominator)):
+    left_fraction = _as_exact_fraction(left, name)
+    right_fraction = _as_exact_fraction(right, name)
+    denominator_fraction = _as_exact_fraction(denominator, name)
+    if denominator_fraction <= 0:
         raise ValueError(f"{name} is outside the finite diagnostic range")
-    if denominator <= 0.0:
-        raise ValueError(f"{name} is outside the finite diagnostic range")
-    return (
-        Fraction.from_float(float(left))
-        * Fraction.from_float(float(right))
-        / Fraction.from_float(float(denominator))
-    )
+    return left_fraction * right_fraction / denominator_fraction
 
 
 def _weighted_product_fraction(
-    left: float,
-    right: float,
-    denominator: float,
+    left: float | Fraction,
+    right: float | Fraction,
+    denominator: float | Fraction,
     *,
-    extra_factors: tuple[float, ...],
-    coefficient_sign: float,
+    extra_factors: tuple[float | Fraction, ...],
+    coefficient_sign: float | Fraction,
     name: str,
 ) -> Fraction:
     """Return an exact weighted product before any float64 rounding."""
-    factors = (left, right, *extra_factors, coefficient_sign, denominator)
-    if not all(math.isfinite(value) for value in factors):
-        raise ValueError(f"{name} is outside the finite diagnostic range")
-    if denominator <= 0.0 or any(value < 0.0 for value in extra_factors):
+    left_fraction = _as_exact_fraction(left, name)
+    right_fraction = _as_exact_fraction(right, name)
+    denominator_fraction = _as_exact_fraction(denominator, name)
+    coefficient_fraction = _as_exact_fraction(coefficient_sign, name)
+    extra_fraction = [_as_exact_fraction(value, name) for value in extra_factors]
+    if denominator_fraction <= 0 or any(value < 0 for value in extra_fraction):
         raise ValueError(f"{name} is outside the finite diagnostic range")
 
-    result = (
-        Fraction.from_float(float(left))
-        * Fraction.from_float(float(right))
-        * Fraction.from_float(float(coefficient_sign))
-    )
-    for factor in extra_factors:
-        result *= Fraction.from_float(float(factor))
-    denominator_fraction = Fraction.from_float(float(denominator))
-    return result / (denominator_fraction * denominator_fraction)
+    product = left_fraction * right_fraction * coefficient_fraction
+    for factor in extra_fraction:
+        product *= factor
+    return product / (denominator_fraction * denominator_fraction)
+
+
+def _sum_fraction_terms(terms: list[Fraction], name: str) -> Fraction:
+    try:
+        return sum(terms, Fraction(0, 1))
+    except (OverflowError, ValueError, ZeroDivisionError) as exc:
+        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
 
 
 def _finite_exact_sum(terms: list[Fraction], name: str) -> float:
     """Accumulate exact products, then round the complete coefficient once."""
-    try:
-        exact_sum = sum(terms, Fraction(0, 1))
-    except (OverflowError, ValueError, ZeroDivisionError) as exc:
-        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
-    return _fraction_to_finite_float(exact_sum, name)
+    return _fraction_to_finite_float(_sum_fraction_terms(terms, name), name)
+
+
+def _zero_fraction_matrix() -> list[list[Fraction]]:
+    return [[Fraction(0, 1) for _ in range(3)] for _ in range(3)]
+
+
+def _scaled_identity_fraction(scale: Fraction) -> list[list[Fraction]]:
+    result = _zero_fraction_matrix()
+    for index in range(3):
+        result[index][index] = scale
+    return result
+
+
+def _accumulate_fraction_matrix(
+    target: list[list[Fraction]],
+    source: list[list[Fraction]],
+    *,
+    coefficient: Fraction = Fraction(1, 1),
+) -> None:
+    """Accumulate a small matrix exactly before its eventual float conversion."""
+    for row in range(3):
+        for column in range(3):
+            target[row][column] += coefficient * source[row][column]
+
+
+def _fraction_matrix_to_float(
+    matrix: list[list[Fraction]],
+    name: str,
+) -> np.ndarray:
+    return np.array(
+        [
+            [_fraction_to_finite_float(value, name) for value in row]
+            for row in matrix
+        ],
+        dtype=np.float64,
+    )
+
+
+def _weighted_wedge_fraction(
+    vector: np.ndarray | list[float | Fraction],
+    denominator: float | Fraction,
+    *,
+    amplitude: float | Fraction = 1.0,
+) -> list[list[Fraction]]:
+    """Return W(vector)*amplitude**2/denominator**2 exactly."""
+    values = [_as_exact_fraction(value, "weighted wedge vector") for value in vector]
+    if len(values) != 3:
+        raise ValueError("weighted wedge vector must have length 3")
+    denominator_fraction = _as_exact_fraction(denominator, "weighted wedge denominator")
+    amplitude_fraction = _as_exact_fraction(amplitude, "weighted wedge amplitude")
+    if denominator_fraction <= 0 or amplitude_fraction < 0:
+        raise ValueError("weighted wedge scaling is outside the finite diagnostic range")
+    result = _zero_fraction_matrix()
+    if amplitude_fraction == 0 or not any(values):
+        return result
+
+    for row in range(3):
+        diagonal_terms = [
+            _weighted_product_fraction(
+                values[column],
+                values[column],
+                denominator_fraction,
+                extra_factors=(amplitude_fraction, amplitude_fraction),
+                coefficient_sign=1.0,
+                name="weighted wedge diagonal",
+            )
+            for column in range(3)
+            if column != row
+        ]
+        result[row][row] = _sum_fraction_terms(
+            diagonal_terms, "weighted wedge diagonal"
+        )
+        for column in range(row + 1, 3):
+            result[row][column] = _weighted_product_fraction(
+                values[row],
+                values[column],
+                denominator_fraction,
+                extra_factors=(amplitude_fraction, amplitude_fraction),
+                coefficient_sign=-1.0,
+                name="weighted wedge off-diagonal",
+            )
+            result[column][row] = result[row][column]
+    return result
+
+
+def _weighted_mixed_fraction(
+    left: np.ndarray,
+    right: np.ndarray,
+    denominator: float,
+    direction_component: float,
+) -> list[list[Fraction]]:
+    """Return direction_component*K(left,right)/denominator**2 exactly."""
+    left_values = [_as_exact_fraction(value, "weighted mixed left vector") for value in left]
+    right_values = [_as_exact_fraction(value, "weighted mixed right vector") for value in right]
+    if len(left_values) != 3 or len(right_values) != 3:
+        raise ValueError("weighted mixed vectors must have length 3")
+    denominator_fraction = _as_exact_fraction(denominator, "weighted mixed denominator")
+    direction_fraction = _as_exact_fraction(
+        direction_component, "weighted mixed direction"
+    )
+    if denominator_fraction <= 0:
+        raise ValueError("weighted mixed denominator is outside the finite diagnostic range")
+    result = _zero_fraction_matrix()
+    if direction_fraction == 0 or not any(left_values) or not any(right_values):
+        return result
+
+    direction_sign = Fraction(1, 1) if direction_fraction > 0 else Fraction(-1, 1)
+    direction_magnitude = abs(direction_fraction)
+    for row in range(3):
+        diagonal_terms = [
+            _weighted_product_fraction(
+                left_values[column],
+                right_values[column],
+                denominator_fraction,
+                extra_factors=(direction_magnitude, Fraction(2, 1)),
+                coefficient_sign=-direction_sign,
+                name="weighted mixed diagonal",
+            )
+            for column in range(3)
+            if column != row
+        ]
+        result[row][row] = _sum_fraction_terms(
+            diagonal_terms, "weighted mixed diagonal"
+        )
+        for column in range(row + 1, 3):
+            term_ab = _weighted_product_fraction(
+                left_values[row],
+                right_values[column],
+                denominator_fraction,
+                extra_factors=(direction_magnitude,),
+                coefficient_sign=direction_sign,
+                name="weighted mixed off-diagonal",
+            )
+            term_ba = _weighted_product_fraction(
+                right_values[row],
+                left_values[column],
+                denominator_fraction,
+                extra_factors=(direction_magnitude,),
+                coefficient_sign=direction_sign,
+                name="weighted mixed off-diagonal",
+            )
+            result[row][column] = _sum_fraction_terms(
+                [term_ab, term_ba], "weighted mixed off-diagonal"
+            )
+            result[column][row] = result[row][column]
+    return result
 
 
 def _weighted_wedge_metric(
@@ -202,45 +358,11 @@ def _weighted_wedge_metric(
     *,
     amplitude: float = 1.0,
 ) -> np.ndarray:
-    """Return W(vector)*amplitude**2/denominator**2 using exact float inputs."""
-    if amplitude == 0.0 or not np.any(vector):
-        return np.zeros_like(identity)
-
-    result = np.zeros_like(identity)
-    for row in range(3):
-        diagonal_terms = [
-            _weighted_product_fraction(
-                float(vector[column]),
-                float(vector[column]),
-                denominator,
-                extra_factors=(float(amplitude), float(amplitude)),
-                coefficient_sign=1.0,
-                name="weighted wedge diagonal",
-            )
-            for column in range(3)
-            if column != row
-        ]
-        result[row, row] = _finite_exact_sum(
-            diagonal_terms, "weighted wedge diagonal"
-        )
-        for column in range(row + 1, 3):
-            result[row, column] = _finite_exact_sum(
-                [
-                    _weighted_product_fraction(
-                        float(vector[row]),
-                        float(vector[column]),
-                        denominator,
-                        extra_factors=(float(amplitude), float(amplitude)),
-                        coefficient_sign=-1.0,
-                        name="weighted wedge off-diagonal",
-                    )
-                ],
-                "weighted wedge off-diagonal",
-            )
-            result[column, row] = result[row, column]
-    if not np.all(np.isfinite(result)):
-        raise ValueError("local symbol is outside the finite diagnostic range")
-    return result
+    """Return W(vector)*amplitude**2/denominator**2 entrywise and robustly."""
+    return _fraction_matrix_to_float(
+        _weighted_wedge_fraction(vector, denominator, amplitude=amplitude),
+        "local symbol",
+    )
 
 
 def _weighted_mixed_form(
@@ -251,52 +373,10 @@ def _weighted_mixed_form(
     identity: np.ndarray,
 ) -> np.ndarray:
     """Return direction_component*K(left,right)/denominator**2 exactly."""
-    if direction_component == 0.0 or not np.any(left) or not np.any(right):
-        return np.zeros_like(identity)
-
-    direction_sign = math.copysign(1.0, direction_component)
-    direction_magnitude = abs(float(direction_component))
-    result = np.zeros_like(identity)
-    for row in range(3):
-        diagonal_terms = [
-            _weighted_product_fraction(
-                float(left[column]),
-                float(right[column]),
-                denominator,
-                extra_factors=(direction_magnitude, 2.0),
-                coefficient_sign=-direction_sign,
-                name="weighted mixed diagonal",
-            )
-            for column in range(3)
-            if column != row
-        ]
-        result[row, row] = _finite_exact_sum(
-            diagonal_terms, "weighted mixed diagonal"
-        )
-        for column in range(row + 1, 3):
-            term_ab = _weighted_product_fraction(
-                float(left[row]),
-                float(right[column]),
-                denominator,
-                extra_factors=(direction_magnitude,),
-                coefficient_sign=direction_sign,
-                name="weighted mixed off-diagonal",
-            )
-            term_ba = _weighted_product_fraction(
-                float(right[row]),
-                float(left[column]),
-                denominator,
-                extra_factors=(direction_magnitude,),
-                coefficient_sign=direction_sign,
-                name="weighted mixed off-diagonal",
-            )
-            result[row, column] = _finite_exact_sum(
-                [term_ab, term_ba], "weighted mixed off-diagonal"
-            )
-            result[column, row] = result[row, column]
-    if not np.all(np.isfinite(result)):
-        raise ValueError("local symbol is outside the finite diagnostic range")
-    return result
+    return _fraction_matrix_to_float(
+        _weighted_mixed_fraction(left, right, denominator, direction_component),
+        "local symbol",
+    )
 
 
 def _sorted_roots(roots: np.ndarray) -> tuple[complex, ...]:
@@ -424,51 +504,57 @@ def analyze_local_skyrme_principal_symbol(
         raise ValueError("couplings or derivative data exceed finite diagnostic range")
 
     identity = np.eye(3, dtype=np.float64)
-    try:
-        with np.errstate(over="raise", invalid="raise", divide="raise"):
-            time_block = alpha * identity
-            for gradient in g:
-                time_block += _weighted_wedge_metric(gradient, e_value, identity)
+    alpha_fraction = _as_exact_fraction(alpha, "Skyrme quadratic coefficient")
+    time_fraction = _scaled_identity_fraction(alpha_fraction)
+    for gradient in g:
+        _accumulate_fraction_matrix(
+            time_fraction, _weighted_wedge_fraction(gradient, e_value)
+        )
 
-            mixed_block = np.zeros((3, 3), dtype=np.float64)
-            for axis, component in enumerate(direction):
-                mixed_block += _weighted_mixed_form(
-                    g[axis], v, e_value, float(component), identity
-                )
+    mixed_fraction = _zero_fraction_matrix()
+    for axis, component in enumerate(direction):
+        _accumulate_fraction_matrix(
+            mixed_fraction,
+            _weighted_mixed_fraction(g[axis], v, e_value, float(component)),
+        )
 
-            spatial_block = -alpha * identity
-            for component in direction:
-                spatial_block += _weighted_wedge_metric(
-                    v, e_value, identity, amplitude=abs(float(component))
+    spatial_fraction = _scaled_identity_fraction(-alpha_fraction)
+    for component in direction:
+        _accumulate_fraction_matrix(
+            spatial_fraction,
+            _weighted_wedge_fraction(
+                v, e_value, amplitude=abs(float(component))
+            ),
+        )
+    for first in range(3):
+        for second in range(first + 1, 3):
+            # Form each area component/e exactly, then keep its W contribution
+            # exact while assembling C(d). This avoids both raw-product
+            # underflow and cancellation between separately rounded matrices.
+            area_gradient_over_coupling = [
+                _product_fraction_over_denominator(
+                    float(direction[first]),
+                    float(g[second, component]),
+                    e_value,
+                    name="scaled area-gradient component",
                 )
-            for first in range(3):
-                for second in range(first + 1, 3):
-                    # Scale each product before subtraction; the raw area-gradient
-                    # component can underflow even when W(area_gradient)/e**2 is
-                    # representable. Since W is quadratic, W(area/e) is the same
-                    # weighted coefficient without materializing area itself.
-                    area_gradient_over_coupling = np.empty(3, dtype=np.float64)
-                    for component in range(3):
-                        first_term = _product_fraction_over_denominator(
-                            float(direction[first]),
-                            float(g[second, component]),
-                            e_value,
-                            name="scaled area-gradient component",
-                        )
-                        second_term = _product_fraction_over_denominator(
-                            float(direction[second]),
-                            float(g[first, component]),
-                            e_value,
-                            name="scaled area-gradient component",
-                        )
-                        area_gradient_over_coupling[component] = _fraction_to_finite_float(
-                            first_term - second_term, "scaled area-gradient component"
-                        )
-                    spatial_block -= _weighted_wedge_metric(
-                        area_gradient_over_coupling, 1.0, identity
-                    )
-    except FloatingPointError as exc:
-        raise ValueError("local symbol is outside the finite diagnostic range") from exc
+                - _product_fraction_over_denominator(
+                    float(direction[second]),
+                    float(g[first, component]),
+                    e_value,
+                    name="scaled area-gradient component",
+                )
+                for component in range(3)
+            ]
+            _accumulate_fraction_matrix(
+                spatial_fraction,
+                _weighted_wedge_fraction(area_gradient_over_coupling, 1.0),
+                coefficient=Fraction(-1, 1),
+            )
+
+    time_block = _fraction_matrix_to_float(time_fraction, "time-kinetic block")
+    mixed_block = _fraction_matrix_to_float(mixed_fraction, "mixed block")
+    spatial_block = _fraction_matrix_to_float(spatial_fraction, "spatial block")
 
     # These coefficients are symmetric analytically; remove only roundoff skew.
     time_block = 0.5 * (time_block + time_block.T)
