@@ -4,6 +4,7 @@ import pytest
 from field_theory.su2.local_symbol import (
     _assemble_local_symbol_blocks,
     _classify_characteristic_roots,
+    _real_array,
     _weighted_mixed_form,
     _weighted_wedge_metric,
     analyze_local_skyrme_principal_symbol,
@@ -337,6 +338,38 @@ def test_rejects_integer_array_values_not_exactly_representable_as_float64():
 
     with pytest.raises(ValueError, match="not exactly representable as float64"):
         analyze(velocity=velocity)
+
+
+@pytest.mark.parametrize(
+    "dtype, value",
+    [
+        (np.int64, np.iinfo(np.int64).max),
+        (np.uint64, np.iinfo(np.uint64).max),
+    ],
+)
+def test_rejects_integer_array_endpoints_not_exactly_representable(dtype, value):
+    velocity = np.array([0, value, 0, 0], dtype=dtype)
+
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
+        analyze(velocity=velocity)
+
+
+@pytest.mark.parametrize(
+    "dtype, value",
+    [
+        (np.int64, np.iinfo(np.int64).min),
+        (np.uint64, 2**64 - 2048),
+    ],
+)
+def test_accepts_integer_array_values_exactly_representable_as_float64(dtype, value):
+    converted = _real_array(np.array([value], dtype=dtype), "value", (1,))
+
+    assert int(converted[0]) == int(value)
+
+
+def test_positive_scalar_rejects_lossy_integer_conversion():
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        analyze(e=np.uint64(2**53 + 1))
 
 
 def test_inputs_are_not_mutated():
