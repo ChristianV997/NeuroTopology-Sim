@@ -158,3 +158,18 @@ def test_tangency_tolerance_boundary(normal_speed, accepted):
                 [1.0, 0.0, 0.0, 0.0], velocity, f_pi=1.0, e=1.0
             )
 
+
+@pytest.mark.parametrize("normal_speed, accepted", [(1.5e-10, True), (2.5e-10, False)])
+def test_tangency_tolerance_scales_with_velocity_magnitude(normal_speed, accepted):
+    velocity = [normal_speed, 2.0, 0.0, 0.0]
+    if accepted:
+        result = analyze_uniform_geodesic_transverse_symbol(
+            [1.0, 0.0, 0.0, 0.0], velocity, f_pi=1.0, e=1.0
+        )
+        assert result.background_speed == pytest.approx(2.0)
+    else:
+        with pytest.raises(ValueError, match="tangent"):
+            analyze_uniform_geodesic_transverse_symbol(
+                [1.0, 0.0, 0.0, 0.0], velocity, f_pi=1.0, e=1.0
+            )
+
