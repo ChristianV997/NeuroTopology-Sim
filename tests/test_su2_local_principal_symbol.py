@@ -126,17 +126,19 @@ def test_small_complex_split_is_unresolved_when_eigenbasis_is_ill_conditioned():
 
 
 def test_mixed_collinear_discriminant_zero_is_numerically_unresolved():
-    threshold_speed = np.sqrt(1.25)
+    # F_pi=2, e=1, g=3/4, v=5/4 gives an exactly zero discriminant
+    # and repeated transverse speed -3/5 using exactly representable inputs.
     result = analyze(
-        velocity=[0.0, threshold_speed, 0.0, 0.0],
-        gradients=[[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+        velocity=[0.0, 1.25, 0.0, 0.0],
+        gradients=[[0.0, 0.75, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                    [0.0, 0.0, 0.0, 0.0]],
+        f_pi=2.0,
+        e=1.0,
     )
 
-    repeated_speed = -threshold_speed / 1.25
     assert_root_multiset(
         result.characteristic_speeds,
-        [-1.0, 1.0] + [repeated_speed] * 4,
+        [-1.0, 1.0] + [-0.6] * 4,
         atol=3e-6,
     )
     assert result.eigenvector_condition_warning is True
@@ -314,6 +316,26 @@ def test_rejects_extended_precision_input_that_underflows_to_float64_zero():
 
     velocity = np.array([0.0, value, 0.0, 0.0], dtype=np.longdouble)
     with pytest.raises(ValueError, match="underflow when converted to float64"):
+        analyze(velocity=velocity)
+
+
+def test_rejects_extended_precision_input_that_rounds_to_a_different_float64():
+    value = np.longdouble(1.0) + np.longdouble(2.0) ** np.longdouble(-60)
+    if value == np.longdouble(1.0) or float(value) != 1.0:
+        pytest.skip("platform longdouble has no extra precision at this value")
+
+    velocity = np.array([0.0, value, 0.0, 0.0], dtype=np.longdouble)
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
+        analyze(velocity=velocity)
+
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        analyze(e=value)
+
+
+def test_rejects_integer_array_values_not_exactly_representable_as_float64():
+    velocity = np.array([0, 2**53 + 1, 0, 0], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
         analyze(velocity=velocity)
 
 
