@@ -382,3 +382,51 @@ def test_headless_plot_renderers_write_files_when_matplotlib_is_available(
     assert trajectory_png.is_file() and trajectory_png.stat().st_size > 0
     assert slices_png.is_file() and slices_png.stat().st_size > 0
     assert sweep_png.is_file() and sweep_png.stat().st_size > 0
+
+def test_solver_output_times_must_match_requested_save_cadence(monkeypatch):
+    import field_theory.su2.trajectory_sweep as sweep_module
+
+    field, velocity = _field_and_velocity()
+    original_solver = evolve_lorentzian_skyrme
+
+    def shifted_time_solver(*args, **kwargs):
+        trajectory = original_solver(*args, **kwargs)
+        return replace(trajectory, time_history=(0.0, 0.002, 0.005))
+
+    monkeypatch.setattr(sweep_module, "evolve_lorentzian_skyrme", shifted_time_solver)
+    spec = LorentzianSweepSpec(
+        dt_values=(0.001,), final_time=0.005, max_saved_snapshots_per_point=3
+    )
+    with pytest.raises(RuntimeError, match="point-0000") as error:
+        run_lorentzian_sweep(field, velocity, spec)
+    assert "save cadence" in str(error.value.__cause__)
+
+
+@pytest.mark.parametrize(
+    "bad_history",
+    [("0.0", "1.0", "2.0"), (False, True, False)],
+    ids=["numeric-strings", "booleans"],
+)
+def test_trajectory_plot_data_rejects_coerced_history_types(bad_history):
+    field, velocity = _field_and_velocity()
+    trajectory = evolve_lorentzian_skyrme(field, velocity, dt=0.001, steps=2, save_every=1)
+    malformed = replace(trajectory, total_energy_history=bad_history)
+    with pytest.raises(ValueError, match="finite numeric history"):
+        build_lorentzian_trajectory_plot_data(malformed)
+
+
+@pytest.mark.parametrize(
+    "bad_history",
+    [("0.0", "1.0", "2.0"), (False, True, False)],
+    ids=["numeric-strings", "booleans"],
+)
+def test_sweep_plot_data_rejects_coerced_history_types(bad_history):
+    field, velocity = _field_and_velocity()
+    result = run_lorentzian_sweep(
+        field, velocity,
+        LorentzianSweepSpec(damping_values=(0.0, 0.1), dt_values=(0.001,), final_time=0.002),
+    )
+    points = (replace(result.points[0], total_energy_history=bad_history), result.points[1])
+    malformed = replace(result, points=points)
+    with pytest.raises(ValueError, match="finite numeric history"):
+        build_lorentzian_sweep_plot_data(malformed, x_parameter="damping")
