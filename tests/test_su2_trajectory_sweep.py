@@ -36,6 +36,42 @@ def _field_and_velocity(size=3, spacing=(1.0, 1.0, 1.0)):
     )
 
 
+def _compact_hedgehog_field_and_velocity(spacing=1.0):
+    """Small periodic 3-D texture with vacuum at the boundary seam."""
+    size = 17
+    coordinate = np.arange(size, dtype=float) - size // 2
+    x, y, z = np.meshgrid(coordinate, coordinate, coordinate, indexing="ij")
+    radius = np.sqrt(x * x + y * y + z * z)
+    profile = np.pi * (1.0 - np.minimum(radius / 5.0, 1.0)) ** 3
+    scaled_radius = np.minimum(radius / 5.0, 1.0)
+    profile *= 1.0 + 2.0 * scaled_radius + 3.0 * scaled_radius**2
+
+    radial = np.zeros_like(radius)
+    nonzero = radius > 0.0
+    radial[nonzero] = np.sin(profile[nonzero]) / radius[nonzero]
+    components = np.stack(
+        (np.cos(profile), radial * x, radial * y, radial * z), axis=-1
+    )
+    components[radius == 0.0] = (-1.0, 0.0, 0.0, 0.0)
+    field = SU2GridField(
+        components,
+        spacing=(spacing, spacing, spacing),
+        boundary="periodic",
+    )
+
+    tangent = np.stack(
+        (
+            -components[..., 1],
+            components[..., 0],
+            np.zeros_like(radius),
+            np.zeros_like(radius),
+        ),
+        axis=-1,
+    )
+    velocity = 0.03 * (1.0 - components[..., 0] ** 2)[..., None] * tangent
+    return field, velocity
+
+
 def test_dt_sweep_uses_common_final_time_and_deterministic_strict_json(tmp_path):
     field, velocity = _field_and_velocity()
     spec = LorentzianSweepSpec(
@@ -123,9 +159,9 @@ def test_equal_inverse_length_scale_has_expected_energy_prefactor_covariance():
 
 
 def test_cross_inverse_length_scale_mapped_histories_are_covariant():
-    base_field, base_velocity = _field_and_velocity()
-    scaled_field, scaled_velocity = _field_and_velocity(
-        spacing=(0.5, 0.5, 0.5)
+    base_field, base_velocity = _compact_hedgehog_field_and_velocity()
+    scaled_field, scaled_velocity = _compact_hedgehog_field_and_velocity(
+        spacing=0.5
     )
     np.testing.assert_array_equal(
         scaled_field.components, base_field.components
@@ -192,6 +228,10 @@ def test_cross_inverse_length_scale_mapped_histories_are_covariant():
             rtol=1e-9,
             atol=1e-12,
         )
+    # This compact 3-D texture gives a nonzero but noninteger finite-grid
+    # charge; only scale covariance, not quantization or conservation, is tested.
+    assert abs(base.approximate_charge_history[0]) > 0.5
+    assert abs(scaled.approximate_charge_history[0]) > 0.5
     np.testing.assert_allclose(
         scaled.approximate_charge_history,
         base.approximate_charge_history,
