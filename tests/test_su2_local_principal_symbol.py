@@ -1,7 +1,10 @@
 import numpy as np
 import pytest
 
-from field_theory.su2.local_symbol import analyze_local_skyrme_principal_symbol
+from field_theory.su2.local_symbol import (
+    _classify_characteristic_roots,
+    analyze_local_skyrme_principal_symbol,
+)
 
 
 FIELD = np.array([1.0, 0.0, 0.0, 0.0])
@@ -82,6 +85,25 @@ def test_mixed_collinear_background_exposes_complex_roots_missed_by_geodesic_scr
     )
 
 
+def test_small_nonreal_root_is_not_hidden_by_a_larger_root_scale():
+    roots = np.array([1.0e20 + 0.0j, 1.0e-4 + 1.0e-8j])
+
+    status, reported_tolerance = _classify_characteristic_roots(
+        roots, condition_warning=False
+    )
+
+    assert status == "nonreal_roots_detected"
+    assert reported_tolerance > 1.0e6
+
+
+def test_small_complex_split_is_unresolved_when_eigenbasis_is_ill_conditioned():
+    roots = np.array([-0.89442719 + 1.0e-8j, -0.89442719 - 1.0e-8j])
+
+    status, _ = _classify_characteristic_roots(roots, condition_warning=True)
+
+    assert status == "numerically_unresolved"
+
+
 def test_reversing_spatial_covector_reverses_all_characteristic_speeds():
     args = dict(
         velocity=[0.0, 0.8, 0.0, 0.0],
@@ -157,19 +179,24 @@ def test_time_kinetic_block_matches_solver_hessian_formula():
         ({"field": [1.0, 0.0, 0.0]}, "field"),
         ({"field": [2.0, 0.0, 0.0, 0.0]}, "unit norm"),
         ({"field": [True, False, False, False]}, "field"),
+        ({"field": [True, 0.0, 0.0, 0.0]}, "field"),
         ({"field": [1.0 + 0.0j, 0.0, 0.0, 0.0]}, "field"),
         ({"velocity": [np.nan, 0.0, 0.0, 0.0]}, "finite"),
         ({"velocity": [0.1, 0.0, 0.0, 0.0]}, "tangent"),
         ({"velocity": [True, False, False, False]}, "velocity"),
+        ({"velocity": [False, 0.4, 0.0, 0.0]}, "velocity"),
         ({"velocity": [1.0 + 0.0j, 0.0, 0.0, 0.0]}, "velocity"),
         ({"gradients": [[0.1, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                         [0.0, 0.0, 0.0, 0.0]]}, "tangent"),
+        ({"gradients": [[False, 0.3, 0.0, 0.0], [0.0, 0.2, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0]]}, "gradients"),
         ({"gradients": [[0.0, np.inf, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                         [0.0, 0.0, 0.0, 0.0]]}, "finite"),
         ({"gradients": np.zeros((2, 4))}, "shape"),
         ({"covector": [0.0, 0.0, 0.0]}, "nonzero"),
         ({"covector": [1.0, np.inf, 0.0]}, "finite"),
         ({"covector": [True, False, False]}, "covector"),
+        ({"covector": [True, 0.0, 0.0]}, "covector"),
         ({"f_pi": 0.0}, "f_pi"),
         ({"f_pi": True}, "f_pi"),
         ({"e": -1.0}, "e"),
@@ -184,6 +211,24 @@ def test_rejects_invalid_inputs(kwargs, message):
 def test_rejects_finite_inputs_that_overflow_the_symbol():
     with pytest.raises((ValueError, FloatingPointError), match="finite|range|symbol"):
         analyze(velocity=[0.0, 1.0e200, 0.0, 0.0])
+
+
+def test_coupling_weight_is_applied_before_raw_derivative_squares_can_underflow():
+    result = analyze(
+        velocity=[0.0, 1.0e-170, 0.0, 0.0],
+        gradients=[[0.0, 1.0e-170, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 0.0]],
+        f_pi=1.0e-161,
+        e=1.0e-154,
+    )
+
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0] * 5 + [1.0],
+        atol=2e-6,
+    )
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
 
 
 def test_inputs_are_not_mutated():
