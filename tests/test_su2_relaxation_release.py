@@ -91,6 +91,64 @@ def test_cold_release_drops_only_interior_anchor_mask_and_keeps_outer_faces(monk
     assert np.allclose(np.linalg.norm(final, axis=-1), 1.0, rtol=0.0, atol=1e-12)
 
 
+
+def test_cold_release_moves_while_retained_anchor_stays_fixed(monkeypatch):
+    field, mask = _anchored_seed()
+    field = SU2GridField(
+        field.components, spacing=(1.0, 1.0, 1.0), boundary="fixed_vacuum"
+    )
+    real_evolve = release_module.evolve_lorentzian_skyrme
+    runs = {}
+
+    def capture_and_run(field, velocity, **kwargs):
+        policy = "released" if kwargs["fixed_mask"] is None else "retained"
+        trajectory = real_evolve(field, velocity, **kwargs)
+        runs[policy] = {
+            "mask": kwargs["fixed_mask"],
+            "velocity": np.array(velocity, copy=True),
+            "initial": trajectory.fields[0].components.copy(),
+            "final": trajectory.fields[-1].components.copy(),
+        }
+        return trajectory
+
+    monkeypatch.setattr(release_module, "evolve_lorentzian_skyrme", capture_and_run)
+    common = {
+        "f_pi": 1.0,
+        "e": 1.0,
+        "dt": 1.0e-3,
+        "steps": 1,
+        "save_every": 1,
+        "damping": 0.0,
+    }
+    released = _run(field, mask, anchor_policy="cold_release", **common)
+    retained = _run(field, mask, anchor_policy="retain", **common)
+
+    assert released.status == retained.status == "COMPLETED"
+    assert released.released_anchor_count == 27
+    assert retained.released_anchor_count == 0
+    assert runs["released"]["mask"] is None
+    np.testing.assert_array_equal(runs["retained"]["mask"], mask)
+    np.testing.assert_array_equal(runs["released"]["velocity"], np.zeros_like(field.components))
+    np.testing.assert_array_equal(runs["retained"]["velocity"], np.zeros_like(field.components))
+
+    center = (3, 3, 3)
+    released_motion = np.linalg.norm(
+        runs["released"]["final"][center] - runs["released"]["initial"][center]
+    )
+    assert released_motion > 1.0e-9
+    np.testing.assert_array_equal(
+        runs["retained"]["final"][center], runs["retained"]["initial"][center]
+    )
+
+    vacuum = np.array([1.0, 0.0, 0.0, 0.0])
+    for policy in ("released", "retained"):
+        final = runs[policy]["final"]
+        for axis in range(3):
+            for side in (0, -1):
+                face = np.take(final, side, axis=axis)
+                assert np.array_equal(face, np.broadcast_to(vacuum, face.shape))
+        assert np.allclose(np.linalg.norm(final, axis=-1), 1.0, rtol=0.0, atol=1e-12)
+
 def test_retain_policy_passes_the_same_interior_mask_to_evolution(monkeypatch):
     field, mask = _anchored_seed()
     real_evolve = release_module.evolve_lorentzian_skyrme
