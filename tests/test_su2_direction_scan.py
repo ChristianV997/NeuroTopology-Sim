@@ -163,5 +163,5 @@ def test_invalid_scan_budgets_fail_closed(kwargs):
 
 
 def test_invalid_shared_jet_fails_closed_instead_of_returning_a_partial_scan():
-    with pytest.raises(ValueError, match="field must have shape"):
+    with pytest.raises(ValueError, match="velocity must have shape"):
         scan(velocity=np.zeros(3), max_directions=12)
