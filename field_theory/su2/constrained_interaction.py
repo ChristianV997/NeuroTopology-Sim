@@ -278,6 +278,8 @@ def _one_relaxation(
             "active_site_count": None,
             "raw_euclidean_norm": None,
             "continuum_l2_residual": None,
+            "active_l2_measure": None,
+            "active_l2_rms_residual": None,
         },
         "minimum_certified": False,
         "constraints": {
@@ -407,6 +409,8 @@ def _one_relaxation(
                 "active_site_count": getattr(relaxed, "active_site_count", None),
                 "raw_euclidean_norm": getattr(relaxed, "raw_gradient_norm", None),
                 "continuum_l2_residual": getattr(relaxed, "continuum_l2_residual", None),
+                "active_l2_measure": getattr(relaxed, "active_l2_measure", None),
+                "active_l2_rms_residual": getattr(relaxed, "active_l2_rms_residual", None),
             }
         )
         base.update(
@@ -635,6 +639,8 @@ def run_constrained_two_hedgehog_relaxation(
             if descent_metric == "continuum_l2"
             else "legacy_unscaled_euclidean_trial_step"
         ),
+        "active_l2_measure_definition": "active_site_count_times_cell_volume_lumped_quadrature_measure",
+        "active_l2_rms_residual_definition": "continuum_l2_residual_div_sqrt_active_l2_measure",
         "max_iterations_per_run": iteration_limit,
         "initial_step": step,
         "gradient_tolerance": tolerance,

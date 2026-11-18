@@ -115,6 +115,8 @@ class NearestNeighborRelaxationResult:
     minimum_certified: bool
     raw_gradient_norm: float
     continuum_l2_residual: float
+    active_l2_measure: float
+    active_l2_rms_residual: float
     stationarity_metric: StationarityMetric
     descent_metric: DescentMetric
     gradient_tolerance: float
@@ -948,15 +950,24 @@ def _metric_choice(value: object, name: str) -> StationarityMetric:
 
 def _gradient_norms(
     gradient: np.ndarray, active: np.ndarray, cell_volume: float
-) -> tuple[float, float]:
+) -> tuple[float, float, float, float]:
     selected = np.asarray(gradient, dtype=np.float64)[active]
-    if selected.size == 0:
+    active_site_count = int(np.count_nonzero(active))
+    if selected.size == 0 or active_site_count == 0:
         raise ValueError("relaxation requires at least one active site")
     raw_norm = float(_stable_norm(selected))
     if not np.isfinite(raw_norm):
         raise FloatingPointError("non-finite nearest-neighbor gradient norm")
+    active_l2_measure = float(
+        _scaled_product_quotient(
+            active_site_count,
+            numerator_factors=(cell_volume,),
+            name="active L2 measure",
+            fail_if_all_zero=True,
+        ).item()
+    )
     if raw_norm == 0.0:
-        return 0.0, 0.0
+        return 0.0, 0.0, active_l2_measure, 0.0
     continuum_residual = float(
         _scaled_product_quotient(
             raw_norm,
@@ -965,7 +976,15 @@ def _gradient_norms(
             fail_if_all_zero=True,
         ).item()
     )
-    return raw_norm, continuum_residual
+    active_rms_residual = float(
+        _scaled_product_quotient(
+            continuum_residual,
+            denominator_factors=(math.sqrt(active_l2_measure),),
+            name="active-volume RMS gradient residual",
+            fail_if_all_zero=True,
+        ).item()
+    )
+    return raw_norm, continuum_residual, active_l2_measure, active_rms_residual
 
 
 def _descent_gradient(
@@ -1046,7 +1065,7 @@ def relax_skyrme_field_nearest_neighbor(
             finite_difference_step=fd_step,
             fixed_mask=fixed_sites,
         )
-        raw_gradient_norm, continuum_l2_residual = _gradient_norms(
+        raw_gradient_norm, continuum_l2_residual, active_l2_measure, active_l2_rms_residual = _gradient_norms(
             gradient, active, cell_volume
         )
         stationarity_norm = (
@@ -1131,6 +1150,8 @@ def relax_skyrme_field_nearest_neighbor(
         minimum_certified=False,
         raw_gradient_norm=raw_gradient_norm,
         continuum_l2_residual=continuum_l2_residual,
+        active_l2_measure=active_l2_measure,
+        active_l2_rms_residual=active_l2_rms_residual,
         stationarity_metric=stationarity_choice,
         descent_metric=descent_choice,
         gradient_tolerance=tolerance,

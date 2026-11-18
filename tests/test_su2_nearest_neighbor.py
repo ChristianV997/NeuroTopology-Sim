@@ -490,6 +490,10 @@ def test_continuum_l2_residual_is_mesh_consistent_and_uses_anisotropic_cell_volu
     assert fine.raw_gradient_norm == pytest.approx(0.125 / np.sqrt(8.0))
     assert coarse.active_site_count == 4**3
     assert fine.active_site_count == 8**3
+    assert coarse.active_l2_measure == pytest.approx(1.0)
+    assert fine.active_l2_measure == pytest.approx(1.0)
+    assert coarse.active_l2_rms_residual == pytest.approx(1.0)
+    assert fine.active_l2_rms_residual == pytest.approx(1.0)
 
     anisotropic = evaluate((4, 5, 6), (0.25, 0.5, 0.125))
     expected_volume = 0.25 * 0.5 * 0.125
@@ -498,6 +502,8 @@ def test_continuum_l2_residual_is_mesh_consistent_and_uses_anisotropic_cell_volu
         np.sqrt(4 * 5 * 6 * expected_volume)
     )
     assert anisotropic.active_site_count == 4 * 5 * 6
+    assert anisotropic.active_l2_measure == pytest.approx(4 * 5 * 6 * expected_volume)
+    assert anisotropic.active_l2_rms_residual == pytest.approx(1.0)
 
 
 def test_continuum_l2_descent_rescales_steps_and_preserves_pinned_sites():
@@ -524,6 +530,12 @@ def test_continuum_l2_descent_rescales_steps_and_preserves_pinned_sites():
     assert euclidean.active_site_count == continuum.active_site_count == 26
     assert continuum.continuum_l2_residual == pytest.approx(
         continuum.raw_gradient_norm / np.sqrt(continuum.cell_volume)
+    )
+    assert continuum.active_l2_measure == pytest.approx(
+        continuum.active_site_count * continuum.cell_volume
+    )
+    assert continuum.active_l2_rms_residual == pytest.approx(
+        continuum.continuum_l2_residual / np.sqrt(continuum.active_l2_measure)
     )
     np.testing.assert_array_equal(euclidean.field.components[fixed], field.components[fixed])
     np.testing.assert_array_equal(continuum.field.components[fixed], field.components[fixed])
@@ -577,4 +589,6 @@ def test_zero_gradient_reports_zero_mesh_residual_without_vacuous_mask():
     assert result.raw_gradient_norm == 0.0
     assert result.continuum_l2_residual == 0.0
     assert result.active_site_count == 4**3
+    assert result.active_l2_measure == pytest.approx(1.0)
+    assert result.active_l2_rms_residual == 0.0
 

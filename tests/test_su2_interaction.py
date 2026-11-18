@@ -1253,6 +1253,12 @@ def test_constrained_runner_records_mesh_metric_definitions_and_solver_residuals
     assert result["input"]["descent_interpretation"] == (
         "cell_volume_rescales_trial_step_without_changing_direction_on_uniform_grids"
     )
+    assert result["input"]["active_l2_measure_definition"] == (
+        "active_site_count_times_cell_volume_lumped_quadrature_measure"
+    )
+    assert result["input"]["active_l2_rms_residual_definition"] == (
+        "continuum_l2_residual_div_sqrt_active_l2_measure"
+    )
     for run in result["runs"].values():
         diagnostics = run["gradient_diagnostics"]
         assert diagnostics["stationarity_metric"] == "continuum_l2"
@@ -1262,6 +1268,12 @@ def test_constrained_runner_records_mesh_metric_definitions_and_solver_residuals
         assert diagnostics["raw_euclidean_norm"] >= 0.0
         assert diagnostics["continuum_l2_residual"] == pytest.approx(
             diagnostics["raw_euclidean_norm"] / np.sqrt(diagnostics["cell_volume"])
+        )
+        assert diagnostics["active_l2_measure"] == pytest.approx(
+            diagnostics["active_site_count"] * diagnostics["cell_volume"]
+        )
+        assert diagnostics["active_l2_rms_residual"] == pytest.approx(
+            diagnostics["continuum_l2_residual"] / np.sqrt(diagnostics["active_l2_measure"])
         )
     assert serialize_constrained_result(result)
 
