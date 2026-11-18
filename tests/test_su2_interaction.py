@@ -1302,3 +1302,29 @@ def test_constrained_runner_records_mesh_metric_definitions_and_solver_residuals
         )
     assert serialize_constrained_result(result)
 
+
+def test_active_l2_measure_overflow_is_structured_before_relaxation(monkeypatch):
+    maximum = float(np.finfo(np.float64).max)
+    monkeypatch.setattr(runner, "_cell_volume", lambda _spacing: maximum)
+
+    def fail_if_relaxing(*args, **kwargs):
+        pytest.fail("active-volume overflow must stop before optimization")
+
+    monkeypatch.setattr(
+        runner, "relax_skyrme_field_nearest_neighbor", fail_if_relaxing
+    )
+    result = run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert result["status"] == "COMPARISON_WITHHELD"
+    assert result["comparison"]["initial_pair_minus_isolated_energy"] is None
+    assert result["comparison"]["final_pair_minus_isolated_energy"] is None
+    for run in result["runs"].values():
+        assert run["status"] == "NUMERICAL_FAILURE"
+        assert run["failure_class"] == "FloatingPointError"
+        assert run["termination"] == "preflight_gradient_measure_failure"
+        assert run["final_energy"] is None
+        diagnostics = run["gradient_diagnostics"]
+        assert diagnostics["active_site_count"] > 1
+        assert diagnostics["cell_volume"] == maximum
+        assert diagnostics["active_l2_measure"] is None
+    assert serialize_constrained_result(result)
