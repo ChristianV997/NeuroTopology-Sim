@@ -8,6 +8,7 @@ on:
       - 'tests/test_su2_lorentzian_convergence.py'
       - 'tests/test_su2_trajectory_sweep.py'
       - 'tests/test_su2_hyperbolicity.py'
+      - 'tests/test_su2_lorentzian_spatial_refinement.py'
       - 'docs/su2_lorentzian_dynamics.md'
       - 'docs/su2_lorentzian_trajectory_sweeps.md'
       - 'docs/su2_uniform_geodesic_hyperbolicity.md'
@@ -20,6 +21,7 @@ on:
       - 'tests/test_su2_lorentzian_convergence.py'
       - 'tests/test_su2_trajectory_sweep.py'
       - 'tests/test_su2_hyperbolicity.py'
+      - 'tests/test_su2_lorentzian_spatial_refinement.py'
       - 'docs/su2_lorentzian_dynamics.md'
       - 'docs/su2_lorentzian_trajectory_sweeps.md'
       - 'docs/su2_uniform_geodesic_hyperbolicity.md'
@@ -40,7 +42,7 @@ jobs:
       - name: Install focused test dependencies
         run: python -m pip install 'numpy>=1.24.0' 'pytest>=7.0.0' 'pytest-timeout>=2.3'
       - name: Run Lorentzian dynamics, convergence, sweep, and principal-symbol tests
-        run: python -m pytest tests/test_su2_lorentzian.py tests/test_su2_lorentzian_convergence.py tests/test_su2_trajectory_sweep.py tests/test_su2_hyperbolicity.py -q -s -p no:cacheprovider
+        run: python -m pytest tests/test_su2_lorentzian.py tests/test_su2_lorentzian_convergence.py tests/test_su2_trajectory_sweep.py tests/test_su2_hyperbolicity.py tests/test_su2_lorentzian_spatial_refinement.py -q -s -p no:cacheprovider
 
   headless-visualization-tests:
     runs-on: ubuntu-latest
