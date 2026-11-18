@@ -45,6 +45,17 @@ _NUMERICAL_EXCEPTIONS = (
 )
 
 
+class NumericalPreflightError(ValueError):
+    """A numerical failure before valid initial fields exist."""
+
+    def __init__(self, stage: str, cause: BaseException) -> None:
+        self.stage = stage
+        self.failure_class = type(cause).__name__
+        super().__init__(
+            f"numerical failure during {stage}: {self.failure_class}: {cause}"
+        )
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
@@ -548,15 +559,29 @@ def run_constrained_two_hedgehog_relaxation(
     if estimated_visits > _MAX_ESTIMATED_NODE_VISITS:
         raise ValueError("estimated work exceeds the bounded node-visit budget")
 
-    half_extents = np.asarray(
-        [(size - 1) * step_size / 2.0 for size, step_size in zip(grid_shape, grid_spacing)],
-        dtype=np.float64,
-    )
-    distance = float(np.hypot(np.hypot(*separation[:2]), separation[2]))
-    centers = (
-        tuple(-component / 2.0 for component in separation),
-        tuple(component / 2.0 for component in separation),
-    )
+    try:
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            half_extents = np.asarray(
+                [
+                    (size - 1) * step_size / 2.0
+                    for size, step_size in zip(grid_shape, grid_spacing)
+                ],
+                dtype=np.float64,
+            )
+            distance = float(np.hypot(np.hypot(*separation[:2]), separation[2]))
+            centers = (
+                tuple(-component / 2.0 for component in separation),
+                tuple(component / 2.0 for component in separation),
+            )
+    except _NUMERICAL_EXCEPTIONS as exc:
+        raise NumericalPreflightError("geometry", exc) from exc
+    if (
+        not np.all(np.isfinite(half_extents))
+        or not np.isfinite(distance)
+        or not np.all(np.isfinite(centers))
+    ):
+        error = FloatingPointError("derived grid geometry is not finite in binary64")
+        raise NumericalPreflightError("geometry", error) from error
     stencil_margin = max(grid_spacing)
     if distance <= 2.0 * patch_radius + 2.0 * stencil_margin:
         raise ValueError("anchor patches must not overlap within the stencil margin")
@@ -568,54 +593,69 @@ def run_constrained_two_hedgehog_relaxation(
             raise ValueError("anchor patches must clear every box boundary by a stencil margin")
 
     identity = _IDENTITY
-    pair = multi_hedgehog(
-        grid_shape,
-        centers=centers,
-        radii=(length_radius, length_radius),
-        spacing=grid_spacing,
-        isorotations=(identity, used_rotation),
-        length_unit="dimensionless",
-        allow_overlaps=True,
-    )
-    isolated_a = multi_hedgehog(
-        grid_shape,
-        centers=(centers[0],),
-        radii=(length_radius,),
-        spacing=grid_spacing,
-        isorotations=(identity,),
-        length_unit="dimensionless",
-    )
-    isolated_b = multi_hedgehog(
-        grid_shape,
-        centers=(centers[1],),
-        radii=(length_radius,),
-        spacing=grid_spacing,
-        isorotations=(used_rotation,),
-        length_unit="dimensionless",
-    )
+    try:
+        pair = multi_hedgehog(
+            grid_shape,
+            centers=centers,
+            radii=(length_radius, length_radius),
+            spacing=grid_spacing,
+            isorotations=(identity, used_rotation),
+            length_unit="dimensionless",
+            allow_overlaps=True,
+        )
+        isolated_a = multi_hedgehog(
+            grid_shape,
+            centers=(centers[0],),
+            radii=(length_radius,),
+            spacing=grid_spacing,
+            isorotations=(identity,),
+            length_unit="dimensionless",
+        )
+        isolated_b = multi_hedgehog(
+            grid_shape,
+            centers=(centers[1],),
+            radii=(length_radius,),
+            spacing=grid_spacing,
+            isorotations=(used_rotation,),
+            length_unit="dimensionless",
+        )
+    except _NUMERICAL_EXCEPTIONS as exc:
+        raise NumericalPreflightError("field construction", exc) from exc
 
-    masks = _anchor_masks(grid_shape, grid_spacing, centers, patch_radius)
-    coordinates = _coordinates(grid_shape, grid_spacing)
-    anchor_match_deviations = []
-    for index, isolated in enumerate((isolated_a, isolated_b)):
-        if not np.any(masks[index]):
-            raise ValueError("each anchor patch must contain sampled grid sites")
-        _fit_anchor_rotation(
-            pair.components,
-            pair.components,
-            masks[index],
-            coordinates,
-            centers[index],
-            patch_radius,
-        )
-        deviation = float(
-            np.max(np.abs(pair.components[masks[index]] - isolated.components[masks[index]]))
-        )
-        anchor_match_deviations.append(deviation)
-        if not np.isfinite(deviation):
-            raise ValueError("pair and isolated initial anchor mismatch must be finite")
-        if deviation > _ANCHOR_MATCH_ABS_TOLERANCE:
-            raise ValueError("pair and isolated initial anchor patches disagree beyond tolerance")
+    try:
+        masks = _anchor_masks(grid_shape, grid_spacing, centers, patch_radius)
+        coordinates = _coordinates(grid_shape, grid_spacing)
+        anchor_match_deviations = []
+        for index, isolated in enumerate((isolated_a, isolated_b)):
+            if not np.any(masks[index]):
+                raise ValueError("each anchor patch must contain sampled grid sites")
+            _fit_anchor_rotation(
+                pair.components,
+                pair.components,
+                masks[index],
+                coordinates,
+                centers[index],
+                patch_radius,
+            )
+            deviation = float(
+                np.max(
+                    np.abs(
+                        pair.components[masks[index]]
+                        - isolated.components[masks[index]]
+                    )
+                )
+            )
+            anchor_match_deviations.append(deviation)
+            if not np.isfinite(deviation):
+                raise ValueError(
+                    "pair and isolated initial anchor mismatch must be finite"
+                )
+            if deviation > _ANCHOR_MATCH_ABS_TOLERANCE:
+                raise ValueError(
+                    "pair and isolated initial anchor patches disagree beyond tolerance"
+                )
+    except _NUMERICAL_EXCEPTIONS as exc:
+        raise NumericalPreflightError("anchor preflight", exc) from exc
 
     pair_mask = masks[0] | masks[1]
     input_record: dict[str, object] = {

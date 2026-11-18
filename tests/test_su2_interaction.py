@@ -1328,3 +1328,45 @@ def test_active_l2_measure_overflow_is_structured_before_relaxation(monkeypatch)
         assert diagnostics["cell_volume"] == maximum
         assert diagnostics["active_l2_measure"] is None
     assert serialize_constrained_result(result)
+
+def test_geometry_overflow_is_reported_as_numerical_preflight_error():
+    kwargs = _kwargs()
+    kwargs["shape"] = (5, 5, 5)
+    kwargs["spacing"] = (1.0e308, 1.0e-308, 0.1)
+
+    with pytest.raises(runner.NumericalPreflightError, match="during geometry") as exc_info:
+        run_constrained_two_hedgehog_relaxation(**kwargs)
+
+    assert exc_info.value.stage == "geometry"
+    assert exc_info.value.failure_class == "FloatingPointError"
+    assert isinstance(exc_info.value.__cause__, FloatingPointError)
+
+
+def test_field_construction_numeric_failure_is_stage_specific(monkeypatch):
+    def fail(*args, **kwargs):
+        raise FloatingPointError("injected field-construction overflow")
+
+    monkeypatch.setattr(runner, "multi_hedgehog", fail)
+    with pytest.raises(
+        runner.NumericalPreflightError, match="during field construction"
+    ) as exc_info:
+        run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert exc_info.value.stage == "field construction"
+    assert exc_info.value.failure_class == "FloatingPointError"
+    assert isinstance(exc_info.value.__cause__, FloatingPointError)
+
+
+def test_anchor_preflight_numeric_failure_is_stage_specific(monkeypatch):
+    def fail(*args, **kwargs):
+        raise np.linalg.LinAlgError("injected anchor-fit failure")
+
+    monkeypatch.setattr(runner, "_fit_anchor_rotation", fail)
+    with pytest.raises(
+        runner.NumericalPreflightError, match="during anchor preflight"
+    ) as exc_info:
+        run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert exc_info.value.stage == "anchor preflight"
+    assert exc_info.value.failure_class == "LinAlgError"
+    assert isinstance(exc_info.value.__cause__, np.linalg.LinAlgError)
