@@ -77,6 +77,8 @@ v^2>g^2+\left(\frac{eF_\pi}{2}\right)^2.
 
 For `F_pi=e=1, g=1, v=1.2`, the roots are `-0.96 ± 0.17436 i` (each twice), alongside the longitudinal `±1` pair. This is a dimensionless model counterexample, not a calibrated physical parameter claim. The background `n=(cos(v t+g x), sin(v t+g x),0,0)` has collinear derivatives; its Skyrme wedge density vanishes, while its transverse perturbations still feel the mixed principal coefficients.
 
+At the discriminant-zero boundary `v=sqrt(g^2+(e*F_pi/2)^2)`, each transverse polynomial has a repeated root `s=-beta*v*g/(alpha+beta*g^2)`. For `F_pi=e=g=1`, this is `s=-sqrt(1.25)/1.25`; the companion eigenbasis is defective, so the diagnostic should return `numerically_unresolved`. The exact mixed-threshold regression tests that behavior.
+
 ## Numerical and epistemic contract
 
 - The function accepts exactly one field value, one velocity, three spatial derivative rows, and one nonzero spatial covector. It is not a trajectory-array API.
@@ -84,7 +86,8 @@ For `F_pi=e=1, g=1, v=1.2`, the roots are `-0.96 ± 0.17436 i` (each twice), alo
 - Tangency residuals within a relative `1e-10` tolerance are explicitly projected away and the maximum original residual is returned; larger violations are rejected. Inputs are copied and not mutated.
 - The spatial covector is normalized stably, so positive rescaling does not change the returned speeds.
 - Coupling-weighted quadratic and bilinear coefficients use binary-scaled products so a raw derivative square does not underflow before multiplication by `e^-2`. A nonzero weighted coefficient that is itself unrepresentable is rejected instead of silently erased.
-- Root imaginary-part checks use each root's own scale, so a large root cannot set the tolerance for every smaller root. If the companion eigenbasis is ill-conditioned, small imaginary splittings within a conservative `16*sqrt(machine epsilon)` relative guard are reported as numerically unresolved. This is a heuristic sensitivity guard, not a certified eigenvalue error bound; clearly resolved complex roots remain flagged.
+- Root imaginary-part checks use each root's own scale, so a large root cannot set the tolerance for every smaller root. The exposed scalar `root_classification_tolerance` reports the maximum of the per-root machine tolerances; it is informational and is not a shared cutoff.
+- If the companion eigenbasis is ill-conditioned, imaginary splittings no larger than `16*sqrt(machine epsilon)*max(1, |s|)` are reported as numerically unresolved. Because of the `max(1, |s|)` term, this guard has an absolute floor for roots with magnitude below one. It is a heuristic sensitivity guard, not a certified eigenvalue error bound; clearly resolved complex roots remain flagged.
 - A finite set of local states or directions can discover a counterexample. It cannot prove real roots for all covectors, completeness of a uniform eigenbasis, strong hyperbolicity, nonlinear stability, solver convergence, or physical calibration.
 - The continuum local symbol is not the exact principal analysis of the finite-difference lattice. Lattice snapshots require a separately justified tangent-derivative reconstruction before being passed to this API.
 - No consciousness, biological, enlightenment, psi, or rebirth inference follows from this numerical model.
