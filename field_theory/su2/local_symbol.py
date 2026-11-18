@@ -191,9 +191,9 @@ def analyze_local_skyrme_principal_symbol(
         with np.errstate(over="raise", invalid="raise", divide="raise"):
             v = basis.T @ tangent_derivatives[0]
             g = np.stack([basis.T @ item for item in tangent_derivatives[1:]])
-            alpha = (0.5 * f_value) ** 2
-            beta = (1.0 / e_value) ** 2
-    except FloatingPointError as exc:
+        alpha = (0.5 * f_value) ** 2
+        beta = (1.0 / e_value) ** 2
+    except (FloatingPointError, OverflowError, ZeroDivisionError) as exc:
         raise ValueError("couplings or derivative data exceed finite diagnostic range") from exc
     if (
         not np.all(np.isfinite(v))
