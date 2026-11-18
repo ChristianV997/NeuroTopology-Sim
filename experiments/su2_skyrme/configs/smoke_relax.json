@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1.0",
+  "experiment_id": "su2-skyrme-smoke-relax-001",
+  "mode": "nearest_neighbor_relax",
+  "seed": 0,
+  "discretization": {
+    "shape": [4, 4, 4],
+    "spacing": [1.0, 1.0, 1.0],
+    "boundary": "fixed_vacuum",
+    "length_unit": "dimensionless"
+  },
+  "initial_condition": {
+    "kind": "hedgehog",
+    "radius": 1.0
+  },
+  "model": {
+    "f_pi": 1.0,
+    "e": 1.0,
+    "damping": 0.0
+  },
+  "solver": {
+    "max_iterations": 2,
+    "initial_step": 0.001,
+    "gradient_tolerance": 1e-07,
+    "max_backtracks": 4,
+    "stationarity_metric": "euclidean",
+    "descent_metric": "euclidean"
+  },
+  "notes": "Local smoke relax. Tiny grid; engineering check only."
+}
