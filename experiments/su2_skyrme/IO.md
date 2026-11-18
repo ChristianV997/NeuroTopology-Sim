@@ -67,15 +67,17 @@ See `schema.py` / `configs/smoke_*.json`:
 ### Seed / multi-seed staging
 
 `vacuum` and `hedgehog` initial conditions are fully deterministic on the live
-solver path: changing `seed` does **not** change the IC field. Seed still:
+solver path: they do **not** consume RNG. Therefore:
 
-- enters `config_sha256` / `provenance.seed`
-- drives stub-backend synthetic diagnostics when `--allow-stub` is used
+- live adapter **rejects** unused nonzero `seed` for these ICs (fail closed)
+- keep `seed: 0` for live smoke configs
+- stub backend (`--allow-stub`) may still fold nonzero `seed` into synthetic
+  diagnostics for contract / replay tests
+- `seed` always enters `config_sha256` / `provenance.seed`
 
-There is no `seed` sweep axis. Multi-seed campaigns are staged as separate
-configs (or repeated runs) with distinct `seed` values. That changes provenance
-identity always; live IC fields stay seed-independent until a stochastic IC
-kind is accepted by this schema.
+There is no `seed` sweep axis. Stub multi-seed campaigns are staged as separate
+configs (or repeated runs) with distinct `seed` values. Live stochastic ICs are
+unavailable until accepted by this schema.
 
 ## Result contract for visualization
 

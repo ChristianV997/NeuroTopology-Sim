@@ -73,15 +73,18 @@ viz-facing schema.
 ## Seed contract
 
 Supported live ICs (`vacuum`, `hedgehog`) are **deterministic and seed-independent**.
-`seed` is still required in the config for:
+On the **live** solver path, a nonzero `seed` with these ICs is **rejected**
+(unused RNG would otherwise be a silent no-op). Keep `seed: 0` for live smoke.
 
-1. provenance identity (`provenance.seed` + `config_sha256`)
-2. synthetic variation in the stub backend (`--allow-stub`)
+`seed` remains in the config for:
 
-Multi-seed staging is **not** a sweep axis yet. Run separate configs (or repeat
-the CLI) with distinct `seed` values when you want a multi-seed campaign; on the
-live path those seeds change provenance only, not the IC field. A future seed
-axis would be additive and labeled when wired.
+1. provenance identity (`provenance.seed` + `config_sha256`) when `seed=0`
+2. synthetic variation in the stub backend (`--allow-stub`), which may use
+   nonzero seeds for contract / replay hashing
+
+Multi-seed staging is **not** a sweep axis yet. For stub campaigns, run separate
+configs with distinct `seed` values. A future stochastic IC / seed axis would be
+additive and labeled when wired.
 
 ## Runtime / memory (staged path)
 
@@ -89,7 +92,7 @@ axis would be additive and labeled when wired.
 |---|---|---|---|---|
 | Local smoke (stub) | 4³ | 1–4 | Contract + CLI | ≪1 s, ≪50 MB |
 | Local smoke (live relax) | 4³ | 1–4 | Import + tiny relax | typically seconds, ≪100 MB |
-| Multi-seed (staged) | 4³–8³ | N configs × axes | Provenance / stub stability | linear in seeds × points; live IC unchanged |
+| Multi-seed (stub) | 4³–8³ | N configs × axes | Stub synthetic / hash stability | linear in seeds × points; live rejects unused nonzero seed |
 | Grid refinement | 8³–16³ | few | Resolution sensitivity | memory ~ O(N³); keep sweeps narrow |
 
 Hard caps in this layer: ≤4096 nodes per config, ≤64 sweep points. Larger

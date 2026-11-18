@@ -21,6 +21,8 @@ SUPPORTED_MODES = frozenset(
 )
 
 SUPPORTED_IC_KINDS = frozenset({"vacuum", "hedgehog"})
+# Live generators for these kinds ignore RNG; nonzero seed is rejected on live path.
+DETERMINISTIC_IC_KINDS = frozenset({"vacuum", "hedgehog"})
 
 CLAIM_GUARDRAIL = (
     "Research simulator only. Outputs are finite-grid numerical diagnostics, "
@@ -360,10 +362,10 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> ExperimentConfig:
         )
 
     seed = _as_nonnegative_int(data.get("seed", 0), "seed")
-    # Seed semantics: vacuum/hedgehog ICs are deterministic and seed-independent on
-    # the live solver path. Seed still participates in provenance / config hash and
-    # drives synthetic stub diagnostics. Multi-seed staging = separate configs (or
-    # repeated runs) with distinct seed values; there is no seed sweep axis yet.
+    # Seed semantics: vacuum/hedgehog ICs are deterministic. Live adapter rejects
+    # unused nonzero seed for those kinds; stub may still fold seed into synthetic
+    # diagnostics. Seed always participates in provenance / config hash. There is
+    # no seed sweep axis yet.
 
     disc_raw = _require_mapping(data.get("discretization", {}), "discretization")
     discretization = DiscretizationConfig(

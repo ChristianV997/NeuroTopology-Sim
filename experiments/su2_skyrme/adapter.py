@@ -16,7 +16,14 @@ import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Mapping, Protocol, runtime_checkable
 
-from .schema import DiscretizationConfig, ExperimentConfig, InitialConditionConfig, ModelConfig, SolverSettings
+from .schema import (
+    DETERMINISTIC_IC_KINDS,
+    DiscretizationConfig,
+    ExperimentConfig,
+    InitialConditionConfig,
+    ModelConfig,
+    SolverSettings,
+)
 
 
 def filter_supported_kwargs(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> dict[str, Any]:
@@ -275,12 +282,30 @@ class SolverUnavailableError(RuntimeError):
     """Raised when a live solver call is requested but the API is missing."""
 
 
+def enforce_live_seed_contract(request: AdapterRunRequest) -> None:
+    """Reject unused nonzero seeds for live deterministic initial conditions.
+
+    Stub backends may still fold ``seed`` into synthetic diagnostics. Live
+    ``vacuum`` / ``hedgehog`` generators ignore RNG, so a nonzero seed would be
+    a silent no-op — fail closed instead.
+    """
+    if request.seed == 0:
+        return
+    kind = request.initial_condition.kind
+    if kind in DETERMINISTIC_IC_KINDS:
+        raise ValueError(
+            f"seed={request.seed} is unused for deterministic live IC kind {kind!r}; "
+            "set seed=0 (smoke default), use --allow-stub for synthetic seed-folded "
+            "diagnostics, or wait for a stochastic IC kind in this schema"
+        )
+
+
 class LiveSolverBackend:
     """Adapter that imports and calls the public solver API only.
 
     Seed note: supported live ICs (``vacuum``, ``hedgehog``) are deterministic
-    and do **not** consume ``request.seed``. Seed is recorded for provenance and
-    multi-seed campaign identity; it only affects synthetic stub diagnostics.
+    and do **not** consume ``request.seed``. Nonzero seed is rejected on this
+    live path; stub backends may still use seed for synthetic diagnostics.
     """
 
     name = "field_theory.su2"
@@ -296,9 +321,9 @@ class LiveSolverBackend:
     def run(self, request: AdapterRunRequest) -> AdapterRunPayload:
         from field_theory.su2 import hedgehog, vacuum  # type: ignore
 
+        enforce_live_seed_contract(request)
         disc = request.discretization
         ic = request.initial_condition
-        # Live vacuum/hedgehog generators are seed-independent; seed is provenance-only.
         if ic.kind == "vacuum":
             field = vacuum(
                 disc.shape,

@@ -14,6 +14,7 @@ from experiments.su2_skyrme.adapter import (
     REQUIRED_LORENTZIAN_SYMBOLS,
     REQUIRED_RELAX_SYMBOLS,
     SolverAvailability,
+    enforce_live_seed_contract,
     filter_supported_kwargs,
     probe_solver_availability,
 )
@@ -190,3 +191,18 @@ def test_probe_missing_symbols_are_unique():
     assert len(combined) > len(set(combined))
     if availability.import_status == "unavailable":
         assert set(availability.missing_symbols) == set(combined)
+
+
+def test_live_seed_contract_rejects_unused_nonzero_seed():
+    with pytest.raises(ValueError, match="unused for deterministic live IC"):
+        enforce_live_seed_contract(
+            AdapterRunRequest(
+                mode="nearest_neighbor_relax",
+                discretization=DiscretizationConfig(shape=(4, 4, 4)),
+                initial_condition=InitialConditionConfig(kind="hedgehog", radius=1.0),
+                model=ModelConfig(),
+                solver=SolverSettings(max_iterations=1),
+                seed=7,
+            )
+        )
+    enforce_live_seed_contract(_request())  # seed=0 ok
