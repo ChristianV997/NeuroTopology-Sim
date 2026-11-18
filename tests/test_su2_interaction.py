@@ -1370,3 +1370,28 @@ def test_anchor_preflight_numeric_failure_is_stage_specific(monkeypatch):
     assert exc_info.value.stage == "anchor preflight"
     assert exc_info.value.failure_class == "LinAlgError"
     assert isinstance(exc_info.value.__cause__, np.linalg.LinAlgError)
+
+@pytest.mark.parametrize(
+    ("stage", "error_type"),
+    [
+        ("field", ValueError),
+        ("field", TypeError),
+        ("anchor", ValueError),
+        ("anchor", TypeError),
+    ],
+)
+def test_preflight_input_and_programming_errors_propagate_unchanged(
+    monkeypatch, stage, error_type
+):
+    injected = error_type("injected preflight error")
+
+    def fail(*args, **kwargs):
+        raise injected
+
+    target = "multi_hedgehog" if stage == "field" else "_fit_anchor_rotation"
+    monkeypatch.setattr(runner, target, fail)
+
+    with pytest.raises(error_type, match="injected preflight error") as exc_info:
+        run_constrained_two_hedgehog_relaxation(**_kwargs())
+
+    assert exc_info.value is injected
