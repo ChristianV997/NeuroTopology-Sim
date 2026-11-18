@@ -5,6 +5,7 @@ This is a diagnostic for a validated local 1-jet, not a solver certificate.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from fractions import Fraction
 import math
 import sys
 from typing import Literal
@@ -122,81 +123,39 @@ def _tangent_basis(unit_field: np.ndarray) -> np.ndarray:
     householder = np.eye(4, dtype=np.float64) - 2.0 * np.outer(reflector, reflector)
     basis = householder[:, 1:]
     if not np.all(np.isfinite(basis)):
-        raise ValueError("field does not define a finite tangent basis")
-    return basis
-
-
-def _scaled_product_over_square(
-    left: float,
-    right: float,
-    denominator: float,
-    *,
-    extra_factors: tuple[float, ...] = (),
-    name: str,
-) -> float:
-    """Evaluate left*right*prod(extra_factors)/denominator**2 by binary scaling."""
-    factors = (left, right, *extra_factors)
-    if any(not math.isfinite(factor) or factor < 0.0 for factor in factors):
-        raise ValueError(f"{name} is outside the finite diagnostic range")
-    if not math.isfinite(denominator) or denominator <= 0.0:
-        raise ValueError(f"{name} is outside the finite diagnostic range")
-    if any(factor == 0.0 for factor in factors):
-        return 0.0
-
-    mantissa = 1.0
-    exponent = 0
-    for factor in factors:
-        factor_mantissa, factor_exponent = math.frexp(factor)
-        mantissa *= factor_mantissa
-        exponent += factor_exponent
-    denominator_mantissa, denominator_exponent = math.frexp(denominator)
-    mantissa /= denominator_mantissa * denominator_mantissa
-    exponent -= 2 * denominator_exponent
+        raise ValueError("field does not define a finite tangdef _fraction_to_finite_float(value: Fraction, name: str) -> float:
+    """Round an exact rational once to float64, rejecting overflow and underflow."""
     try:
-        result = math.ldexp(mantissa, exponent)
-    except OverflowError as exc:
+        result = float(value)
+    except (OverflowError, ValueError) as exc:
         raise ValueError(f"{name} exceeds the finite diagnostic range") from exc
     if not math.isfinite(result):
         raise ValueError(f"{name} exceeds the finite diagnostic range")
-    if result == 0.0:
+    if value and result == 0.0:
         raise ValueError(f"{name} underflows the finite diagnostic range")
     return result
 
 
-def _scaled_signed_product_over_denominator(
+def _product_fraction_over_denominator(
     left: float,
     right: float,
     denominator: float,
     *,
     name: str,
-) -> float:
-    """Evaluate left*right/denominator before an underflowing raw product."""
+) -> Fraction:
+    """Return the exact rational left*right/denominator for float64 inputs."""
     if not all(math.isfinite(value) for value in (left, right, denominator)):
         raise ValueError(f"{name} is outside the finite diagnostic range")
     if denominator <= 0.0:
         raise ValueError(f"{name} is outside the finite diagnostic range")
-    if left == 0.0 or right == 0.0:
-        return 0.0
-
-    left_mantissa, left_exponent = math.frexp(abs(left))
-    right_mantissa, right_exponent = math.frexp(abs(right))
-    denominator_mantissa, denominator_exponent = math.frexp(denominator)
-    mantissa = left_mantissa * right_mantissa / denominator_mantissa
-    exponent = left_exponent + right_exponent - denominator_exponent
-    try:
-        magnitude = math.ldexp(mantissa, exponent)
-    except OverflowError as exc:
-        raise ValueError(f"{name} exceeds the finite diagnostic range") from exc
-    if not math.isfinite(magnitude):
-        raise ValueError(f"{name} exceeds the finite diagnostic range")
-    if magnitude == 0.0:
-        raise ValueError(f"{name} underflows the finite diagnostic range")
-
-    sign = math.copysign(1.0, left) * math.copysign(1.0, right)
-    return math.copysign(magnitude, sign)
+    return (
+        Fraction.from_float(float(left))
+        * Fraction.from_float(float(right))
+        / Fraction.from_float(float(denominator))
+    )
 
 
-def _weighted_signed_product(
+def _weighted_product_fraction(
     left: float,
     right: float,
     denominator: float,
@@ -204,30 +163,32 @@ def _weighted_signed_product(
     extra_factors: tuple[float, ...],
     coefficient_sign: float,
     name: str,
-) -> float:
-    """Return a signed scaled product without raw products or cancellation."""
-    if left == 0.0 or right == 0.0 or any(factor == 0.0 for factor in extra_factors):
-        return 0.0
-    magnitude = _scaled_product_over_square(
-        abs(left),
-        abs(right),
-        denominator,
-        extra_factors=extra_factors,
-        name=name,
-    )
-    sign = math.copysign(1.0, left) * math.copysign(1.0, right)
-    sign *= math.copysign(1.0, coefficient_sign)
-    return math.copysign(magnitude, sign)
-
-
-def _finite_sum(terms: list[float], name: str) -> float:
-    try:
-        result = math.fsum(terms)
-    except (OverflowError, ValueError) as exc:
-        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
-    if not math.isfinite(result):
+) -> Fraction:
+    """Return an exact weighted product before any float64 rounding."""
+    factors = (left, right, *extra_factors, coefficient_sign, denominator)
+    if not all(math.isfinite(value) for value in factors):
         raise ValueError(f"{name} is outside the finite diagnostic range")
-    return result
+    if denominator <= 0.0 or any(value < 0.0 for value in extra_factors):
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+
+    result = (
+        Fraction.from_float(float(left))
+        * Fraction.from_float(float(right))
+        * Fraction.from_float(float(coefficient_sign))
+    )
+    for factor in extra_factors:
+        result *= Fraction.from_float(float(factor))
+    denominator_fraction = Fraction.from_float(float(denominator))
+    return result / (denominator_fraction * denominator_fraction)
+
+
+def _finite_exact_sum(terms: list[Fraction], name: str) -> float:
+    """Accumulate exact products, then round the complete coefficient once."""
+    try:
+        exact_sum = sum(terms, Fraction(0, 1))
+    except (OverflowError, ValueError, ZeroDivisionError) as exc:
+        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
+    return _fraction_to_finite_float(exact_sum, name)
 
 
 def _weighted_wedge_metric(
@@ -237,33 +198,40 @@ def _weighted_wedge_metric(
     *,
     amplitude: float = 1.0,
 ) -> np.ndarray:
-    """Return W(vector)*amplitude**2/denominator**2 entrywise and robustly."""
+    """Return W(vector)*amplitude**2/denominator**2 using exact float inputs."""
     if amplitude == 0.0 or not np.any(vector):
         return np.zeros_like(identity)
 
     result = np.zeros_like(identity)
     for row in range(3):
         diagonal_terms = [
-            _weighted_signed_product(
+            _weighted_product_fraction(
                 float(vector[column]),
                 float(vector[column]),
                 denominator,
-                extra_factors=(amplitude, amplitude),
+                extra_factors=(float(amplitude), float(amplitude)),
                 coefficient_sign=1.0,
                 name="weighted wedge diagonal",
             )
             for column in range(3)
             if column != row
         ]
-        result[row, row] = _finite_sum(diagonal_terms, "weighted wedge diagonal")
+        result[row, row] = _finite_exact_sum(
+            diagonal_terms, "weighted wedge diagonal"
+        )
         for column in range(row + 1, 3):
-            result[row, column] = _weighted_signed_product(
-                float(vector[row]),
-                float(vector[column]),
-                denominator,
-                extra_factors=(amplitude, amplitude),
-                coefficient_sign=-1.0,
-                name="weighted wedge off-diagonal",
+            result[row, column] = _finite_exact_sum(
+                [
+                    _weighted_product_fraction(
+                        float(vector[row]),
+                        float(vector[column]),
+                        denominator,
+                        extra_factors=(float(amplitude), float(amplitude)),
+                        coefficient_sign=-1.0,
+                        name="weighted wedge off-diagonal",
+                    )
+                ],
+                "weighted wedge off-diagonal",
             )
             result[column, row] = result[row, column]
     if not np.all(np.isfinite(result)):
@@ -278,16 +246,16 @@ def _weighted_mixed_form(
     direction_component: float,
     identity: np.ndarray,
 ) -> np.ndarray:
-    """Return direction_component*K(left,right)/denominator**2 entrywise."""
+    """Return direction_component*K(left,right)/denominator**2 exactly."""
     if direction_component == 0.0 or not np.any(left) or not np.any(right):
         return np.zeros_like(identity)
 
     direction_sign = math.copysign(1.0, direction_component)
-    direction_magnitude = abs(direction_component)
+    direction_magnitude = abs(float(direction_component))
     result = np.zeros_like(identity)
     for row in range(3):
         diagonal_terms = [
-            _weighted_signed_product(
+            _weighted_product_fraction(
                 float(left[column]),
                 float(right[column]),
                 denominator,
@@ -298,9 +266,11 @@ def _weighted_mixed_form(
             for column in range(3)
             if column != row
         ]
-        result[row, row] = _finite_sum(diagonal_terms, "weighted mixed diagonal")
+        result[row, row] = _finite_exact_sum(
+            diagonal_terms, "weighted mixed diagonal"
+        )
         for column in range(row + 1, 3):
-            term_ab = _weighted_signed_product(
+            term_ab = _weighted_product_fraction(
                 float(left[row]),
                 float(right[column]),
                 denominator,
@@ -308,7 +278,7 @@ def _weighted_mixed_form(
                 coefficient_sign=direction_sign,
                 name="weighted mixed off-diagonal",
             )
-            term_ba = _weighted_signed_product(
+            term_ba = _weighted_product_fraction(
                 float(right[row]),
                 float(left[column]),
                 denominator,
@@ -316,7 +286,7 @@ def _weighted_mixed_form(
                 coefficient_sign=direction_sign,
                 name="weighted mixed off-diagonal",
             )
-            result[row, column] = _finite_sum(
+            result[row, column] = _finite_exact_sum(
                 [term_ab, term_ba], "weighted mixed off-diagonal"
             )
             result[column, row] = result[row, column]
@@ -475,20 +445,20 @@ def analyze_local_skyrme_principal_symbol(
                     # weighted coefficient without materializing area itself.
                     area_gradient_over_coupling = np.empty(3, dtype=np.float64)
                     for component in range(3):
-                        first_term = _scaled_signed_product_over_denominator(
+                        first_term = _product_fraction_over_denominator(
                             float(direction[first]),
                             float(g[second, component]),
                             e_value,
                             name="scaled area-gradient component",
                         )
-                        second_term = _scaled_signed_product_over_denominator(
+                        second_term = _product_fraction_over_denominator(
                             float(direction[second]),
                             float(g[first, component]),
                             e_value,
                             name="scaled area-gradient component",
                         )
-                        area_gradient_over_coupling[component] = _finite_sum(
-                            [first_term, -second_term], "scaled area-gradient component"
+                        area_gradient_over_coupling[component] = _fraction_to_finite_float(
+                            first_term - second_term, "scaled area-gradient component"
                         )
                     spatial_block -= _weighted_wedge_metric(
                         area_gradient_over_coupling, 1.0, identity
