@@ -1,7 +1,11 @@
 """Synthetic checks for the checkerboard-safe forward-link objective."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+
+import field_theory.su2.nearest_neighbor as nearest_neighbor_module
 
 from field_theory.skyrme_diagnostics import compute_skyrme_diagnostics
 from field_theory.su2 import SU2GridField, hedgehog
@@ -592,3 +596,119 @@ def test_zero_gradient_reports_zero_mesh_residual_without_vacuous_mask():
     assert result.active_l2_measure == pytest.approx(1.0)
     assert result.active_l2_rms_residual == 0.0
 
+
+
+
+@pytest.mark.parametrize(
+    ("metric", "final_norms", "expected_stationary"),
+    [
+        ("euclidean", (0.0, 2.0, 1.0, 0.0), True),
+        ("continuum_l2", (2.0, 0.0, 1.0, 0.0), True),
+        ("euclidean", (2.0, 0.0, 1.0, 0.0), False),
+        ("continuum_l2", (0.0, 2.0, 1.0, 0.0), False),
+    ],
+)
+def test_final_accepted_step_uses_selected_stationarity_metric(
+    monkeypatch, metric, final_norms, expected_stationary
+):
+    values = np.zeros((3, 3, 3, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    field = SU2GridField(values, spacing=(1.0, 1.0, 1.0), boundary="periodic")
+    norm_results = iter(((1.0, 1.0, 1.0, 1.0), final_norms))
+    energy_results = iter(
+        (
+            SimpleNamespace(energy_total=2.0, topological_charge=0.0),
+            SimpleNamespace(energy_total=1.0, topological_charge=0.0),
+        )
+    )
+    curvature = SimpleNamespace(assessment="test curvature result")
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "nearest_neighbor_energy_gradient",
+        lambda current, **kwargs: np.zeros_like(current.components),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module, "_gradient_norms", lambda *args: next(norm_results)
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_diagnostics_from_values",
+        lambda *args, **kwargs: next(energy_results),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_descending_step",
+        lambda current, *args, **kwargs: current,
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "probe_nearest_neighbor_curvature",
+        lambda *args, **kwargs: curvature,
+    )
+
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        max_iterations=1,
+        gradient_tolerance=1.0e-7,
+        stationarity_metric=metric,
+    )
+
+    expected_termination = (
+        "gradient_tolerance" if expected_stationary else "iteration_limit"
+    )
+    expected_status = (
+        "first_order_stationary" if expected_stationary else "not_established"
+    )
+    assert result.iterations == 1
+    assert result.termination == expected_termination
+    assert result.stationarity_status == expected_status
+    assert (result.curvature_diagnostics is curvature) is expected_stationary
+    assert result.minimum_certified is False
+
+
+def test_line_search_stall_is_not_promoted_by_small_final_residual(monkeypatch):
+    values = np.zeros((3, 3, 3, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    field = SU2GridField(values, spacing=(1.0, 1.0, 1.0), boundary="periodic")
+    norm_results = iter(((1.0, 1.0, 1.0, 1.0), (0.0, 0.0, 0.0, 0.0)))
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "nearest_neighbor_energy_gradient",
+        lambda current, **kwargs: np.zeros_like(current.components),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module, "_gradient_norms", lambda *args: next(norm_results)
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_diagnostics_from_values",
+        lambda *args, **kwargs: SimpleNamespace(
+            energy_total=1.0, topological_charge=0.0
+        ),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_descending_step",
+        lambda current, *args, **kwargs: current,
+    )
+    curvature_calls = []
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "probe_nearest_neighbor_curvature",
+        lambda *args, **kwargs: curvature_calls.append(True),
+    )
+
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        max_iterations=1,
+        max_backtracks=0,
+        gradient_tolerance=1.0e-7,
+    )
+
+    assert result.iterations == 0
+    assert result.termination == "line_search_stalled"
+    assert result.stationarity_status == "not_established"
+    assert result.raw_gradient_norm == 0.0
+    assert result.curvature_diagnostics is None
+    assert curvature_calls == []
+    assert result.minimum_certified is False
