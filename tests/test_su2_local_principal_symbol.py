@@ -1,0 +1,474 @@
+import numpy as np
+import pytest
+
+from field_theory.su2.local_symbol import (
+    _assemble_local_symbol_blocks,
+    _classify_characteristic_roots,
+    _real_array,
+    _weighted_mixed_form,
+    _weighted_wedge_metric,
+    analyze_local_skyrme_principal_symbol,
+)
+
+
+FIELD = np.array([1.0, 0.0, 0.0, 0.0])
+
+
+def analyze(*, velocity=None, gradients=None, covector=(1.0, 0.0, 0.0), f_pi=1.0, e=1.0,
+            field=FIELD):
+    if velocity is None:
+        velocity = np.zeros(4)
+    if gradients is None:
+        gradients = np.zeros((3, 4))
+    return analyze_local_skyrme_principal_symbol(
+        field,
+        velocity,
+        gradients,
+        covector,
+        f_pi=f_pi,
+        e=e,
+    )
+
+
+def assert_root_multiset(actual, expected, atol=2e-9):
+    remaining = list(actual)
+    assert len(remaining) == len(expected)
+    for target in expected:
+        index = min(range(len(remaining)), key=lambda i: abs(remaining[i] - target))
+        assert abs(remaining.pop(index) - target) <= atol
+
+
+def test_vacuum_has_three_copies_of_each_unit_characteristic_speed():
+    result = analyze(covector=(2.0, -3.0, 6.0))
+
+    assert result.scope == "continuum_local_tangent_symbol_one_point_one_direction_only"
+    assert result.status == "real_roots_at_sampled_direction"
+    assert result.general_system_hyperbolicity_status == "not_certified"
+    assert result.time_kinetic_min_eigenvalue == pytest.approx(0.25)
+    assert_root_multiset(result.characteristic_speeds, [-1.0] * 3 + [1.0] * 3)
+
+
+@pytest.mark.parametrize(
+    "speed, expected_transverse",
+    [
+        (0.4, 0.6),
+        (0.6, 1j * np.sqrt(0.44)),
+    ],
+)
+def test_zero_spatial_gradient_recovers_uniform_geodesic_speeds(speed, expected_transverse):
+    result = analyze(velocity=[0.0, speed, 0.0, 0.0])
+
+    assert result.general_system_hyperbolicity_status == "not_certified"
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0, 1.0, -expected_transverse, -expected_transverse,
+         expected_transverse, expected_transverse],
+    )
+
+
+def test_mixed_collinear_background_exposes_complex_roots_missed_by_geodesic_screen():
+    # n=(cos(v*t+g*x), sin(v*t+g*x), 0, 0) has V=v*e1 and G1=g*e1.
+    result = analyze(
+        velocity=[0.0, 1.2, 0.0, 0.0],
+        gradients=[[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 0.0]],
+    )
+
+    assert result.status == "nonreal_roots_detected"
+    assert result.general_system_hyperbolicity_status == "not_certified"
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [
+            -1.0,
+            1.0,
+            complex(-0.96, -np.sqrt(0.19) / 2.5),
+            complex(-0.96, -np.sqrt(0.19) / 2.5),
+            complex(-0.96, np.sqrt(0.19) / 2.5),
+            complex(-0.96, np.sqrt(0.19) / 2.5),
+        ],
+    )
+
+
+def test_weighted_wedge_diagonal_preserves_small_representable_entry():
+    vector = np.array([1.0, 1.0e-200, 0.0])
+    weighted = _weighted_wedge_metric(vector, 1.0e-150, np.eye(3))
+
+    assert weighted[0, 0] == pytest.approx(1.0e-100, rel=1e-12, abs=0.0)
+    assert weighted[1, 1] == pytest.approx(1.0e300, rel=1e-12)
+    assert weighted[0, 1] == pytest.approx(-1.0e100, rel=1e-12)
+
+
+def test_weighted_mixed_diagonal_preserves_small_representable_entry():
+    vector = np.array([1.0, 1.0e-200, 0.0])
+    weighted = _weighted_mixed_form(vector, vector, 1.0e-150, 1.0, np.eye(3))
+
+    assert weighted[0, 0] == pytest.approx(-2.0e-100, rel=1e-12, abs=0.0)
+    assert weighted[1, 1] == pytest.approx(-2.0e300, rel=1e-12)
+    assert weighted[0, 1] == pytest.approx(2.0e100, rel=1e-12)
+
+
+def test_small_nonreal_root_is_not_hidden_by_a_larger_root_scale():
+    roots = np.array([1.0e20 + 0.0j, 1.0e-4 + 1.0e-8j])
+
+    status, reported_tolerance = _classify_characteristic_roots(
+        roots, condition_warning=False
+    )
+
+    assert status == "nonreal_roots_detected"
+    assert reported_tolerance > 1.0e6
+
+
+def test_small_complex_split_is_unresolved_when_eigenbasis_is_ill_conditioned():
+    roots = np.array([-0.89442719 + 1.0e-8j, -0.89442719 - 1.0e-8j])
+
+    status, _ = _classify_characteristic_roots(roots, condition_warning=True)
+
+    assert status == "numerically_unresolved"
+
+
+def test_mixed_collinear_discriminant_zero_is_numerically_unresolved():
+    # F_pi=2, e=1, g=3/4, v=5/4 gives an exactly zero discriminant
+    # and repeated transverse speed -3/5 using exactly representable inputs.
+    result = analyze(
+        velocity=[0.0, 1.25, 0.0, 0.0],
+        gradients=[[0.0, 0.75, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 0.0]],
+        f_pi=2.0,
+        e=1.0,
+    )
+
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0, 1.0] + [-0.6] * 4,
+        atol=3e-6,
+    )
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
+
+
+def test_reversing_spatial_covector_reverses_all_characteristic_speeds():
+    args = dict(
+        velocity=[0.0, 0.8, 0.0, 0.0],
+        gradients=[[0.0, 0.4, 0.0, 0.0], [0.0, 0.0, 0.3, 0.0],
+                   [0.0, 0.0, 0.0, 0.2]],
+    )
+    forward = analyze(**args, covector=(1.0, 2.0, -1.0))
+    reverse = analyze(**args, covector=(-1.0, -2.0, 1.0))
+
+    assert_root_multiset(reverse.characteristic_speeds, [-x for x in forward.characteristic_speeds])
+
+
+def test_positive_covector_rescaling_does_not_change_speeds():
+    args = dict(
+        velocity=[0.0, 0.8, 0.0, 0.0],
+        gradients=[[0.0, 0.4, 0.0, 0.0], [0.0, 0.0, 0.3, 0.0],
+                   [0.0, 0.0, 0.0, 0.2]],
+    )
+    one = analyze(**args, covector=(1.0, 2.0, -1.0))
+    scaled = analyze(**args, covector=(10.0, 20.0, -10.0))
+
+    assert_root_multiset(scaled.characteristic_speeds, one.characteristic_speeds)
+
+
+def _plane_rotation(i, j, angle):
+    matrix = np.eye(4)
+    c, s = np.cos(angle), np.sin(angle)
+    matrix[i, i] = c
+    matrix[j, j] = c
+    matrix[i, j] = -s
+    matrix[j, i] = s
+    return matrix
+
+
+def test_internal_orthogonal_rotation_preserves_root_multiset():
+    field = np.array([1.0, 0.0, 0.0, 0.0])
+    velocity = np.array([0.0, 0.8, 0.0, 0.0])
+    gradients = np.array(
+        [[0.0, 0.4, 0.0, 0.0], [0.0, 0.0, 0.3, 0.0], [0.0, 0.0, 0.0, 0.2]]
+    )
+    rotation = _plane_rotation(0, 2, 0.37) @ _plane_rotation(1, 3, -0.61)
+    original = analyze(field=field, velocity=velocity, gradients=gradients,
+                       covector=(1.0, 2.0, -1.0))
+    rotated = analyze(field=rotation @ field, velocity=rotation @ velocity,
+                      gradients=gradients @ rotation.T, covector=(1.0, 2.0, -1.0))
+
+    assert_root_multiset(rotated.characteristic_speeds, original.characteristic_speeds)
+
+
+def test_time_kinetic_block_matches_solver_hessian_formula():
+    velocity = np.array([0.0, 0.4, 0.2, 0.0])
+    gradients = np.array(
+        [[0.0, 0.3, -0.1, 0.0], [0.0, 0.0, 0.2, 0.1], [0.0, -0.1, 0.0, 0.2]]
+    )
+    result = analyze(velocity=velocity, gradients=gradients, f_pi=1.2, e=0.8)
+    alpha = 1.2**2 / 4.0
+    beta = 1.0 / 0.8**2
+    tangent_gradients = gradients[:, 1:]
+    matrix = alpha * np.eye(3)
+    for gradient in tangent_gradients:
+        matrix += beta * (
+            np.dot(gradient, gradient) * np.eye(3) - np.outer(gradient, gradient)
+        )
+
+    assert result.time_kinetic_min_eigenvalue == pytest.approx(
+        np.linalg.eigvalsh(matrix)[0]
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"field": [1.0, 0.0, 0.0]}, "field"),
+        ({"field": [2.0, 0.0, 0.0, 0.0]}, "unit norm"),
+        ({"field": [True, False, False, False]}, "field"),
+        ({"field": [True, 0.0, 0.0, 0.0]}, "field"),
+        ({"field": [1.0 + 0.0j, 0.0, 0.0, 0.0]}, "field"),
+        ({"velocity": [np.nan, 0.0, 0.0, 0.0]}, "finite"),
+        ({"velocity": [0.1, 0.0, 0.0, 0.0]}, "tangent"),
+        ({"velocity": [True, False, False, False]}, "velocity"),
+        ({"velocity": [False, 0.4, 0.0, 0.0]}, "velocity"),
+        ({"velocity": [1.0 + 0.0j, 0.0, 0.0, 0.0]}, "velocity"),
+        ({"gradients": [[0.1, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0]]}, "tangent"),
+        ({"gradients": [[False, 0.3, 0.0, 0.0], [0.0, 0.2, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0]]}, "gradients"),
+        ({"gradients": [[0.0, np.inf, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0]]}, "finite"),
+        ({"gradients": np.zeros((2, 4))}, "shape"),
+        ({"covector": [0.0, 0.0, 0.0]}, "nonzero"),
+        ({"covector": [1.0, np.inf, 0.0]}, "finite"),
+        ({"covector": [True, False, False]}, "covector"),
+        ({"covector": [True, 0.0, 0.0]}, "covector"),
+        ({"f_pi": 0.0}, "f_pi"),
+        ({"f_pi": True}, "f_pi"),
+        ({"e": -1.0}, "e"),
+        ({"e": "1.0"}, "e"),
+    ],
+)
+def test_rejects_invalid_inputs(kwargs, message):
+    with pytest.raises(ValueError, match=message):
+        analyze(**kwargs)
+
+
+def test_rejects_finite_inputs_that_overflow_the_symbol():
+    with pytest.raises((ValueError, FloatingPointError), match="finite|range|symbol"):
+        analyze(velocity=[0.0, 1.0e200, 0.0, 0.0])
+
+
+def test_coupling_weight_is_applied_before_raw_derivative_squares_can_underflow():
+    result = analyze(
+        velocity=[0.0, 1.0e-170, 0.0, 0.0],
+        gradients=[[0.0, 1.0e-170, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 0.0]],
+        f_pi=1.0e-161,
+        e=1.0e-154,
+    )
+
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0] * 5 + [1.0],
+        atol=2e-6,
+    )
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
+
+
+def test_large_coupling_keeps_correctly_rounded_full_blocks_finite():
+    result = analyze(
+        gradients=[
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ],
+        e=1.0e308,
+    )
+
+    assert result.status == "real_roots_at_sampled_direction"
+    assert_root_multiset(result.characteristic_speeds, [-1.0] * 3 + [1.0] * 3)
+
+
+def test_full_spatial_block_preserves_cross_matrix_cancellation_residual():
+    epsilon = 2.0**-52
+    velocity = np.array([1.0, 1.0, 0.0])
+    gradients = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0 + epsilon, 1.0 - epsilon, 0.0],
+            [0.0, 0.0, 0.0],
+        ]
+    )
+
+    _, _, spatial = _assemble_local_symbol_blocks(
+        velocity,
+        gradients,
+        np.array([1.0, 0.0, 0.0]),
+        1.0,
+        0.25,
+    )
+
+    # W(v)[0,1] - W(g_1)[0,1] = -1 - (-(1-epsilon**2)).
+    assert spatial[0, 1] == -(2.0**-104)
+
+
+def test_rejects_extended_precision_input_that_underflows_to_float64_zero():
+    value = np.longdouble(2.0) ** np.longdouble(-1075)
+    if value == 0 or float(value) != 0.0:
+        pytest.skip("platform longdouble does not preserve values below float64 range")
+
+    velocity = np.array([0.0, value, 0.0, 0.0], dtype=np.longdouble)
+    with pytest.raises(ValueError, match="underflow when converted to float64"):
+        analyze(velocity=velocity)
+
+
+def test_rejects_extended_precision_input_that_rounds_to_a_different_float64():
+    value = np.longdouble(1.0) + np.longdouble(2.0) ** np.longdouble(-60)
+    if value == np.longdouble(1.0) or float(value) != 1.0:
+        pytest.skip("platform longdouble has no extra precision at this value")
+
+    velocity = np.array([0.0, value, 0.0, 0.0], dtype=np.longdouble)
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
+        analyze(velocity=velocity)
+
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        analyze(e=value)
+
+
+def test_rejects_integer_array_values_not_exactly_representable_as_float64():
+    velocity = np.array([0, 2**53 + 1, 0, 0], dtype=np.int64)
+
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
+        analyze(velocity=velocity)
+
+
+@pytest.mark.parametrize(
+    "dtype, value",
+    [
+        (np.int64, np.iinfo(np.int64).max),
+        (np.uint64, np.iinfo(np.uint64).max),
+    ],
+)
+def test_rejects_integer_array_endpoints_not_exactly_representable(dtype, value):
+    velocity = np.array([0, value, 0, 0], dtype=dtype)
+
+    with pytest.raises(ValueError, match="not exactly representable as float64"):
+        analyze(velocity=velocity)
+
+
+@pytest.mark.parametrize(
+    "dtype, value",
+    [
+        (np.int64, np.iinfo(np.int64).min),
+        (np.uint64, 2**64 - 2048),
+    ],
+)
+def test_accepts_integer_array_values_exactly_representable_as_float64(dtype, value):
+    converted = _real_array(np.array([value], dtype=dtype), "value", (1,))
+
+    assert int(converted[0]) == int(value)
+
+
+def test_positive_scalar_rejects_lossy_integer_conversion():
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        analyze(e=np.uint64(2**53 + 1))
+
+
+def test_rejects_lossy_integer_hidden_by_mixed_sequence_coercion():
+    # NumPy otherwise promotes this list to float64 and rounds 2**53 + 1.
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        _real_array([0.0, 2**53 + 1], "value", (2,))
+
+
+def test_accepts_exact_integer_hidden_in_mixed_sequence():
+    converted = _real_array([0.0, 2**53 + 2], "value", (2,))
+
+    np.testing.assert_array_equal(converted, np.array([0.0, float(2**53 + 2)]))
+
+
+def test_inputs_are_not_mutated():
+    field = FIELD.copy()
+    velocity = np.array([0.0, 0.4, 0.0, 0.0])
+    gradients = np.zeros((3, 4))
+    covector = np.array([1.0, 2.0, -1.0])
+    before = [x.copy() for x in (field, velocity, gradients, covector)]
+
+    analyze(field=field, velocity=velocity, gradients=gradients, covector=covector)
+
+    for actual, expected in zip((field, velocity, gradients, covector), before):
+        np.testing.assert_array_equal(actual, expected)
+
+
+
+def test_threshold_keeps_zero_speed_multiplicity_and_flags_defective_reduction():
+    result = analyze(velocity=[0.0, 0.5, 0.0, 0.0])
+
+    assert_root_multiset(result.characteristic_speeds, [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
+    assert result.general_system_hyperbolicity_status == "not_certified"
+
+
+@pytest.mark.parametrize(
+    "kwargs, gradients",
+    [
+        ({"f_pi": 1.0e308}, np.zeros((3, 4))),
+        ({"f_pi": 1.0e-300}, np.zeros((3, 4))),
+        ({"e": 1.0e-320}, [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                           [0.0, 0.0, 0.0, 0.0]]),
+    ],
+)
+def test_rejects_coupling_combinations_with_unrepresentable_symbol(kwargs, gradients):
+    with pytest.raises(ValueError, match="finite diagnostic range"):
+        analyze(**kwargs, gradients=gradients)
+
+
+@pytest.mark.parametrize(
+    "normal_component, accepted",
+    [(1.5e-10, True), (2.5e-10, False)],
+)
+def test_velocity_tangency_tolerance_scales_with_velocity_norm(normal_component, accepted):
+    velocity = [normal_component, 2.0, 0.0, 0.0]
+    if accepted:
+        result = analyze(velocity=velocity)
+        assert result.max_derivative_tangency_residual == pytest.approx(normal_component)
+    else:
+        with pytest.raises(ValueError, match="tangent"):
+            analyze(velocity=velocity)
+
+def test_area_gradient_products_are_scaled_before_they_underflow():
+    # d_1*g_0 is about 1e-325 and rounds to zero in float64, but
+    # (d_1*g_0/e)**2 is representable and contributes to the pencil.
+    gradient = 1.0e-318
+    direction_component = 1.0e-7
+    coupling = 1.0e-318
+    result = analyze(
+        velocity=np.zeros(4),
+        gradients=[
+            [0.0, gradient, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ],
+        covector=(1.0, direction_component, 0.0),
+        f_pi=2.0e-7,
+        e=coupling,
+    )
+
+    transverse_speed = np.sqrt(2.0) * direction_component
+    assert result.status == "real_roots_at_sampled_direction"
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0, 1.0, -transverse_speed, -transverse_speed,
+         transverse_speed, transverse_speed],
+        atol=1.0e-12,
+    )
+
+def test_weighted_mixed_diagonal_preserves_residual_after_cancellation():
+    epsilon = 2.0**-52
+    left = np.array([0.0, 1.0 + epsilon, 1.0])
+    right = np.array([0.0, 1.0 - epsilon, -1.0])
+
+    weighted = _weighted_mixed_form(
+        left, right, epsilon, 1.0, np.eye(3)
+    )
+
+    # -2*((1+eps)*(1-eps) - 1)/eps**2 is exactly 2.
+    assert weighted[0, 0] == 2.0
