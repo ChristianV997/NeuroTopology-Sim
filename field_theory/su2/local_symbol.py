@@ -163,6 +163,40 @@ def _scaled_product_over_square(
     return result
 
 
+def _weighted_signed_product(
+    left: float,
+    right: float,
+    denominator: float,
+    *,
+    extra_factors: tuple[float, ...],
+    coefficient_sign: float,
+    name: str,
+) -> float:
+    """Return a signed scaled product without raw products or cancellation."""
+    if left == 0.0 or right == 0.0 or any(factor == 0.0 for factor in extra_factors):
+        return 0.0
+    magnitude = _scaled_product_over_square(
+        abs(left),
+        abs(right),
+        denominator,
+        extra_factors=extra_factors,
+        name=name,
+    )
+    sign = math.copysign(1.0, left) * math.copysign(1.0, right)
+    sign *= math.copysign(1.0, coefficient_sign)
+    return math.copysign(magnitude, sign)
+
+
+def _finite_sum(terms: list[float], name: str) -> float:
+    try:
+        result = math.fsum(terms)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{name} is outside the finite diagnostic range") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    return result
+
+
 def _weighted_wedge_metric(
     vector: np.ndarray,
     denominator: float,
@@ -170,19 +204,37 @@ def _weighted_wedge_metric(
     *,
     amplitude: float = 1.0,
 ) -> np.ndarray:
-    """Return W(vector)*amplitude**2/denominator**2 without squaring raw inputs."""
-    norm = _stable_norm(vector)
-    if norm == 0.0 or amplitude == 0.0:
+    """Return W(vector)*amplitude**2/denominator**2 entrywise and robustly."""
+    if amplitude == 0.0 or not np.any(vector):
         return np.zeros_like(identity)
-    unit_vector = vector / norm
-    coefficient = _scaled_product_over_square(
-        norm,
-        norm,
-        denominator,
-        extra_factors=(amplitude, amplitude),
-        name="weighted wedge coefficient",
-    )
-    result = coefficient * (identity - np.outer(unit_vector, unit_vector))
+
+    result = np.zeros_like(identity)
+    for row in range(3):
+        diagonal_terms = [
+            _weighted_signed_product(
+                float(vector[column]),
+                float(vector[column]),
+                denominator,
+                extra_factors=(amplitude, amplitude),
+                coefficient_sign=1.0,
+                name="weighted wedge diagonal",
+            )
+            for column in range(3)
+            if column != row
+        ]
+        result[row, row] = _finite_sum(diagonal_terms, "weighted wedge diagonal")
+        for column in range(row + 1, 3):
+            result[row, column] = _weighted_signed_product(
+                float(vector[row]),
+                float(vector[column]),
+                denominator,
+                extra_factors=(amplitude, amplitude),
+                coefficient_sign=-1.0,
+                name="weighted wedge off-diagonal",
+            ) * math.copysign(1.0, float(vector[row])) * math.copysign(
+                1.0, float(vector[column])
+            )
+            result[column, row] = result[row, column]
     if not np.all(np.isfinite(result)):
         raise ValueError("local symbol is outside the finite diagnostic range")
     return result
@@ -195,27 +247,48 @@ def _weighted_mixed_form(
     direction_component: float,
     identity: np.ndarray,
 ) -> np.ndarray:
-    """Return direction_component*K(left,right)/denominator**2 robustly."""
-    left_norm = _stable_norm(left)
-    right_norm = _stable_norm(right)
-    if left_norm == 0.0 or right_norm == 0.0 or direction_component == 0.0:
+    """Return direction_component*K(left,right)/denominator**2 entrywise."""
+    if direction_component == 0.0 or not np.any(left) or not np.any(right):
         return np.zeros_like(identity)
-    left_unit = left / left_norm
-    right_unit = right / right_norm
-    dot = _stable_dot(left_unit, right_unit, "normalized mixed-form dot product")
-    form = (
-        np.outer(left_unit, right_unit)
-        + np.outer(right_unit, left_unit)
-        - 2.0 * dot * identity
-    )
-    coefficient = _scaled_product_over_square(
-        left_norm,
-        right_norm,
-        denominator,
-        extra_factors=(abs(direction_component),),
-        name="weighted mixed coefficient",
-    )
-    result = math.copysign(coefficient, direction_component) * form
+
+    direction_sign = math.copysign(1.0, direction_component)
+    direction_magnitude = abs(direction_component)
+    result = np.zeros_like(identity)
+    for row in range(3):
+        diagonal_terms = [
+            _weighted_signed_product(
+                float(left[column]),
+                float(right[column]),
+                denominator,
+                extra_factors=(direction_magnitude, 2.0),
+                coefficient_sign=-direction_sign,
+                name="weighted mixed diagonal",
+            )
+            for column in range(3)
+            if column != row
+        ]
+        result[row, row] = _finite_sum(diagonal_terms, "weighted mixed diagonal")
+        for column in range(row + 1, 3):
+            term_ab = _weighted_signed_product(
+                float(left[row]),
+                float(right[column]),
+                denominator,
+                extra_factors=(direction_magnitude,),
+                coefficient_sign=direction_sign,
+                name="weighted mixed off-diagonal",
+            )
+            term_ba = _weighted_signed_product(
+                float(right[row]),
+                float(left[column]),
+                denominator,
+                extra_factors=(direction_magnitude,),
+                coefficient_sign=direction_sign,
+                name="weighted mixed off-diagonal",
+            )
+            result[row, column] = _finite_sum(
+                [term_ab, term_ba], "weighted mixed off-diagonal"
+            )
+            result[column, row] = result[row, column]
     if not np.all(np.isfinite(result)):
         raise ValueError("local symbol is outside the finite diagnostic range")
     return result
