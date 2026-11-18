@@ -17,10 +17,13 @@ check. It is a QC layer only:
   (`adapters.mne_bids_feature_recipe_schema`), under the key `channel_qc`.
 - No label inference, no clinical claims, no composite score or detector.
 
-Unit policy (voltage channel types only): allowed units are ``V``, ``mV`` and
-``µV`` (``uV`` accepted as an ASCII alias of ``µV``). ``n/a``, empty or missing
-units produce an explicit ``UNITS_MISSING`` flag and are never assumed.
-Anything else produces ``UNIT_NOT_ALLOWED``.
+Unit policy (voltage channel types only): before validation, aliases are
+normalised to ``µV`` (U+00B5): ``uV``, ``µV``, ``μV`` (U+03BC) and ``microV``
+(case-insensitive). ``mV`` and ``V`` are accepted as written; ``millivolt`` and
+``volt`` (case-insensitive) map to ``mV`` / ``V``. ``n/a``, empty or missing
+units produce an explicit ``UNITS_MISSING`` flag and are never assumed; any
+other string produces ``UNITS_UNKNOWN``. The raw unit is always recorded next to
+the normalised one (``unit_trace``) so the source can be traced.
 
 Sampling-rate policy: the ``SamplingFrequency`` in ``*_eeg.json`` must equal
 the recording header rate; a mismatch raises
@@ -38,9 +41,27 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 
 QC_SUMMARY_KEY = "channel_qc"
 
-# Allowed unit strings -> scale to volts. "uV" is an ASCII alias of "µV" (U+00B5).
-ALLOWED_VOLTAGE_UNITS: Mapping[str, float] = {"V": 1.0, "mV": 1e-3, "\u00b5V": 1e-6, "uV": 1e-6}
-CANONICAL_UNIT: Mapping[str, str] = {"V": "V", "mV": "mV", "\u00b5V": "\u00b5V", "uV": "\u00b5V"}
+MICROVOLT = "\u00b5V"  # U+00B5 MICRO SIGN + V
+# Canonical units -> scale to volts.
+ALLOWED_VOLTAGE_UNITS: Mapping[str, float] = {"V": 1.0, "mV": 1e-3, MICROVOLT: 1e-6}
+# Exact-spelling aliases (case-sensitive) -> canonical unit.
+UNIT_ALIASES_EXACT: Mapping[str, str] = {
+    "V": "V",
+    "mV": "mV",
+    MICROVOLT: MICROVOLT,
+    "uV": MICROVOLT,
+    "\u03bcV": MICROVOLT,  # GREEK SMALL LETTER MU + V
+}
+# Case-insensitive aliases (matched on str.lower()) -> canonical unit.
+UNIT_ALIASES_CASEFOLD: Mapping[str, str] = {"microv": MICROVOLT, "millivolt": "mV", "volt": "V"}
+
+
+def normalise_unit(unit: str) -> Optional[str]:
+    """Return the canonical unit for an alias, or None if unknown."""
+    text = unit.strip()
+    if text in UNIT_ALIASES_EXACT:
+        return UNIT_ALIASES_EXACT[text]
+    return UNIT_ALIASES_CASEFOLD.get(text.lower())
 MISSING_UNIT_TOKENS: frozenset[str] = frozenset({"", "n/a", "na", "none", "null"})
 
 # BIDS EEG channels.tsv `type` vocabulary (upper-case in BIDS).
@@ -78,7 +99,7 @@ class ChannelQCReport:
     units_declared: dict[str, Optional[str]]
     units_canonical: dict[str, Optional[str]]
     scale_to_volts: dict[str, Optional[float]]
-    unit_qc_flags: dict[str, str]  # channel -> OK | UNITS_MISSING | UNIT_NOT_ALLOWED | NOT_VOLTAGE_TYPE
+    unit_qc_flags: dict[str, str]  # channel -> OK | UNITS_MISSING | UNITS_UNKNOWN | NOT_VOLTAGE_TYPE
     expected_channels: list[str]
     missing_channel_mask: dict[str, bool]  # expected channel -> True if absent
     missing_channels: list[str]
@@ -102,6 +123,10 @@ class ChannelQCReport:
             "units_canonical": dict(self.units_canonical),
             "scale_to_volts": dict(self.scale_to_volts),
             "unit_qc_flags": dict(self.unit_qc_flags),
+            "unit_trace": {
+                n: {"raw": self.units_declared.get(n), "normalised": self.units_canonical.get(n), "flag": self.unit_qc_flags.get(n)}
+                for n in self.channel_names
+            },
             "expected_channels": list(self.expected_channels),
             "missing_channel_mask": dict(self.missing_channel_mask),
             "missing_channels": list(self.missing_channels),
@@ -128,9 +153,10 @@ def check_unit(unit: Any, channel_type: str) -> tuple[str, Optional[str], Option
     text = "" if unit is None or (isinstance(unit, float) and math.isnan(unit)) else str(unit).strip()
     if text.lower() in MISSING_UNIT_TOKENS:
         return "UNITS_MISSING", None, None
-    if text not in ALLOWED_VOLTAGE_UNITS:
-        return "UNIT_NOT_ALLOWED", None, None
-    return "OK", CANONICAL_UNIT[text], ALLOWED_VOLTAGE_UNITS[text]
+    canon = normalise_unit(text)
+    if canon is None:
+        return "UNITS_UNKNOWN", None, None
+    return "OK", canon, ALLOWED_VOLTAGE_UNITS[canon]
 
 
 def check_sampling_frequency(sidecar_hz: Any, header_hz: Optional[float]) -> tuple[Optional[float], bool, list[QCFlag]]:
@@ -188,7 +214,7 @@ def build_channel_qc(
         declared[name] = None if raw_unit is None else str(raw_unit)
         uflag, canon, scale = check_unit(raw_unit, ctype)
         unit_flags[name], canonical[name], scales[name] = uflag, canon, scale
-        if uflag in {"UNITS_MISSING", "UNIT_NOT_ALLOWED"}:
+        if uflag in {"UNITS_MISSING", "UNITS_UNKNOWN"}:
             flags.append(QCFlag(uflag, name, f"units={raw_unit!r}"))
         if str(row.get("status", "") or "").strip().lower() == "bad":
             bads.append(name)

@@ -51,9 +51,26 @@ def _qc(**kw):
 # ── units ────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("unit,canon,scale", [("V", "V", 1.0), ("mV", "mV", 1e-3), ("\u00b5V", "\u00b5V", 1e-6), ("uV", "\u00b5V", 1e-6)])
-def test_allowed_units_normalise_to_volts(unit, canon, scale):
+@pytest.mark.parametrize("unit,canon,scale", [
+    ("V", "V", 1.0),
+    ("mV", "mV", 1e-3),
+    ("\u00b5V", "\u00b5V", 1e-6),  # micro sign
+    ("uV", "\u00b5V", 1e-6),
+    ("\u03bcV", "\u00b5V", 1e-6),  # greek mu
+    ("microV", "\u00b5V", 1e-6),  # ds001787 spelling
+    ("microv", "\u00b5V", 1e-6),
+    ("MICROV", "\u00b5V", 1e-6),
+    (" microV ", "\u00b5V", 1e-6),
+    ("millivolt", "mV", 1e-3),
+    ("Volt", "V", 1.0),
+])
+def test_unit_aliases_normalise_to_canonical_and_volts(unit, canon, scale):
     assert check_unit(unit, "EEG") == ("OK", canon, scale)
+
+
+def test_microvolt_canonical_is_micro_sign():
+    assert check_unit("\u03bcV", "EEG")[1] == "\u00b5V"
+    assert check_unit("microV", "EEG")[1].encode("utf-8") == b"\xc2\xb5V"
 
 
 @pytest.mark.parametrize("unit", ["n/a", "N/A", "", None, float("nan")])
@@ -61,9 +78,33 @@ def test_missing_units_are_flagged_not_assumed(unit):
     assert check_unit(unit, "EEG") == ("UNITS_MISSING", None, None)
 
 
-@pytest.mark.parametrize("unit", ["microvolts", "nV", "mv", "uv", "\u03bcV", "volts"])
-def test_units_outside_allow_list_rejected(unit):
-    assert check_unit(unit, "EEG")[0] == "UNIT_NOT_ALLOWED"
+@pytest.mark.parametrize("unit", ["microvolts", "nV", "mv", "uv", "volts", "furlongs", "\u00b5S"])
+def test_unknown_units_flagged(unit):
+    assert check_unit(unit, "EEG") == ("UNITS_UNKNOWN", None, None)
+
+
+def test_raw_unit_recorded_next_to_normalised():
+    units = ["microV", "uV", "\u03bcV", "\u00b5V", "mV", "V", "n/a", "bogus"]
+    body = _qc(channel_rows=_rows(units=units)).to_qc_summary()[QC_SUMMARY_KEY]
+    trace = body["unit_trace"]
+    assert trace["F3"] == {"raw": "microV", "normalised": "\u00b5V", "flag": "OK"}
+    assert trace["C3"] == {"raw": "\u03bcV", "normalised": "\u00b5V", "flag": "OK"}
+    assert trace["O1"] == {"raw": "n/a", "normalised": None, "flag": "UNITS_MISSING"}
+    assert trace["O2"] == {"raw": "bogus", "normalised": None, "flag": "UNITS_UNKNOWN"}
+
+
+def test_alias_spellings_do_not_count_as_mixed_units():
+    units = ["microV", "uV", "\u03bcV", "\u00b5V"] * 2
+    rep = _qc(channel_rows=_rows(units=units))
+    assert rep.status == "pass"
+    assert set(rep.units_canonical.values()) == {"\u00b5V"}
+
+
+def test_empty_and_unknown_units_raise_distinct_flags():
+    units = ["", "n/a", "bogus"] + ["\u00b5V"] * 5
+    rep = _qc(channel_rows=_rows(units=units))
+    codes = {f.channel: f.code for f in rep.flags if f.code.startswith("UNITS_")}
+    assert codes == {"F3": "UNITS_MISSING", "F4": "UNITS_MISSING", "C3": "UNITS_UNKNOWN"}
 
 
 def test_non_voltage_channel_units_not_checked():
