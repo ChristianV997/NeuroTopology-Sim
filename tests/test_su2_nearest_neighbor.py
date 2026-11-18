@@ -1,11 +1,17 @@
 """Synthetic checks for the checkerboard-safe forward-link objective."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+
+import field_theory.su2.nearest_neighbor as nearest_neighbor_module
 
 from field_theory.skyrme_diagnostics import compute_skyrme_diagnostics
 from field_theory.su2 import SU2GridField, hedgehog
 from field_theory.su2.nearest_neighbor import (
+    _energy_components,
+    _forward_differences,
     compute_nearest_neighbor_diagnostics,
     nearest_neighbor_energy_gradient_finite_difference,
     nearest_neighbor_energy_gradient,
@@ -275,6 +281,47 @@ def test_smooth_hedgehog_energy_and_charge_converge_to_independent_radial_quadra
     assert errors[-1][2] < 0.1
 
 
+
+def test_anisotropic_hedgehog_charge_converges_and_reverses_under_spatial_reflection():
+    """Check charge refinement with unequal spacings and reversed domain orientation."""
+    radius = 0.83
+    refinement_levels = (
+        ((17, 9, 5), (0.125, 0.25, 0.5)),
+        ((33, 17, 9), (0.0625, 0.125, 0.25)),
+        ((65, 33, 17), (0.03125, 0.0625, 0.125)),
+        ((129, 65, 33), (0.015625, 0.03125, 0.0625)),
+    )
+    # For F(0)=pi and F(r>=R)=0, the continuum degree is
+    # (2/pi) * integral_0^R F'(r) sin(F(r))**2 dr = -1.
+    # Reflecting x reverses domain orientation and therefore gives +1.
+    charge_errors = []
+    for shape, spacing in refinement_levels:
+        field = hedgehog(shape, radius=radius, spacing=spacing)
+        np.testing.assert_allclose(
+            (np.asarray(shape) - 1) * np.asarray(spacing),
+            (2.0, 2.0, 2.0),
+            rtol=0.0,
+            atol=1.0e-15,
+        )
+        reflected = SU2GridField(
+            np.flip(field.components, axis=0).copy(),
+            spacing=field.spacing,
+            boundary=field.boundary,
+        )
+
+        charge = compute_nearest_neighbor_diagnostics(field).topological_charge
+        reflected_charge = compute_nearest_neighbor_diagnostics(
+            reflected
+        ).topological_charge
+        assert charge < 0.0
+        assert reflected_charge > 0.0
+        charge_errors.append((abs(charge + 1.0), abs(reflected_charge - 1.0)))
+
+    errors = np.asarray(charge_errors)
+    assert np.all(np.diff(errors, axis=0) < 0.0)
+    assert errors[-1, 0] < 0.04
+    assert errors[-1, 1] < 0.04
+
 def test_fixed_vacuum_energy_includes_nonzero_normal_boundary_derivatives():
     samples = 9
     coordinates = np.linspace(-1.0, 1.0, samples)
@@ -315,3 +362,353 @@ def test_resolved_hedgehog_charge_drift_is_small_over_one_relaxation_step():
                 np.take(result.field.components, index, axis=axis),
                 np.take(field.components, index, axis=axis),
             )
+
+
+def test_fixed_site_mask_pins_interior_values_and_zeros_masked_gradient():
+    field = _small_hedgehog()
+    mask = np.zeros(field.components.shape[:3], dtype=bool)
+    mask[2, 2, 2] = True
+
+    analytic = nearest_neighbor_energy_gradient(field, fixed_mask=mask)
+    reference = nearest_neighbor_energy_gradient_finite_difference(field, fixed_mask=mask)
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        fixed_mask=mask,
+        max_iterations=2,
+        initial_step=1.0e-4,
+        gradient_tolerance=1.0e-12,
+    )
+
+    np.testing.assert_array_equal(analytic[mask], np.zeros_like(analytic[mask]))
+    np.testing.assert_array_equal(reference[mask], np.zeros_like(reference[mask]))
+    np.testing.assert_array_equal(
+        result.field.components[mask], field.components[mask]
+    )
+    assert result.minimum_certified is False
+
+
+@pytest.mark.parametrize(
+    "mask",
+    [
+        np.zeros((2, 2, 2), dtype=bool),
+        np.zeros((5, 5, 5), dtype=np.uint8),
+    ],
+)
+def test_fixed_site_mask_rejects_wrong_shape_or_non_boolean_values(mask):
+    field = _small_hedgehog()
+    with pytest.raises(ValueError, match="fixed_mask"):
+        relax_skyrme_field_nearest_neighbor(field, fixed_mask=mask)
+
+def test_fixed_mask_active_gradient_matches_reference_and_is_tangent():
+    field = _small_hedgehog()
+    fixed_mask = np.zeros(field.components.shape[:3], dtype=bool)
+    fixed_mask[2, 2, 2] = True
+    fixed_mask[1, 2, 2] = True
+    fixed_mask[2, 1, 2] = True
+    f_pi = 1.3
+    e = 0.7
+
+    analytic = nearest_neighbor_energy_gradient(
+        field, f_pi=f_pi, e=e, fixed_mask=fixed_mask
+    )
+    reference = nearest_neighbor_energy_gradient_finite_difference(
+        field, f_pi=f_pi, e=e, fixed_mask=fixed_mask
+    )
+    active = np.ones(fixed_mask.shape, dtype=bool)
+    active[[0, -1], :, :] = False
+    active[:, [0, -1], :] = False
+    active[:, :, [0, -1]] = False
+    active &= ~fixed_mask
+
+    np.testing.assert_allclose(
+        analytic[active], reference[active], rtol=2.0e-4, atol=2.0e-5
+    )
+    np.testing.assert_array_equal(
+        analytic[fixed_mask], np.zeros_like(analytic[fixed_mask])
+    )
+    tangent_residual = np.sum(field.components * analytic, axis=-1)
+    assert np.max(np.abs(tangent_residual[active])) < 1.0e-10
+    assert np.any(np.linalg.norm(analytic[active], axis=-1) > 1.0e-10)
+
+
+def test_extreme_exact_parallel_links_keep_quartic_energy_and_gradient_finite():
+    vectors = np.array(
+        [
+            (1.0, 0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0, 0.0),
+            (0.0, -1.0, 0.0, 0.0),
+        ],
+        dtype=np.float64,
+    )
+    x, y = np.indices((4, 4))
+    components = np.repeat(vectors[(x + y) % 4][:, :, None, :], 2, axis=2)
+    spacing = (1.0e-200, 1.0e-200, 1.0e200)
+    field = SU2GridField(components, spacing=spacing, boundary="periodic")
+    f_pi = np.sqrt(8.0e-200)
+    differences = _forward_differences(components, spacing, "periodic")
+
+    energy_sigma, energy_skyrme = _energy_components(
+        components, differences, spacing, "periodic", f_pi, 1.0
+    )
+    gradient_e1 = nearest_neighbor_energy_gradient(field, f_pi=f_pi, e=1.0)
+    gradient_e2 = nearest_neighbor_energy_gradient(field, f_pi=f_pi, e=2.0)
+
+    assert energy_sigma == pytest.approx(128.0, rel=1.0e-12)
+    assert energy_skyrme == 0.0
+    assert np.all(np.isfinite(gradient_e1))
+    assert np.all(np.isfinite(gradient_e2))
+    np.testing.assert_array_equal(gradient_e1, gradient_e2)
+
+def test_continuum_l2_residual_is_mesh_consistent_and_uses_anisotropic_cell_volume(monkeypatch):
+    from field_theory.su2 import nearest_neighbor as module
+
+    def evaluate(shape, spacing):
+        values = np.zeros((*shape, 4), dtype=np.float64)
+        values[..., 0] = 1.0
+        field = SU2GridField(values, spacing=spacing, boundary="periodic")
+        cell_volume = float(np.prod(spacing))
+
+        def manufactured_gradient(current, **kwargs):
+            gradient = np.zeros_like(current.components)
+            gradient[..., 1] = cell_volume
+            return gradient
+
+        monkeypatch.setattr(module, "nearest_neighbor_energy_gradient", manufactured_gradient)
+        return module.relax_skyrme_field_nearest_neighbor(
+            field,
+            max_iterations=1,
+            max_backtracks=0,
+            initial_step=1.0e-8,
+            gradient_tolerance=0.5,
+            stationarity_metric="continuum_l2",
+        )
+
+    coarse = evaluate((4, 4, 4), (0.25, 0.25, 0.25))
+    fine = evaluate((8, 8, 8), (0.125, 0.125, 0.125))
+    assert coarse.cell_volume == pytest.approx(0.25**3)
+    assert fine.cell_volume == pytest.approx(0.125**3)
+    assert coarse.continuum_l2_residual == pytest.approx(1.0)
+    assert fine.continuum_l2_residual == pytest.approx(1.0)
+    assert coarse.raw_gradient_norm == pytest.approx(0.125)
+    assert fine.raw_gradient_norm == pytest.approx(0.125 / np.sqrt(8.0))
+    assert coarse.active_site_count == 4**3
+    assert fine.active_site_count == 8**3
+    assert coarse.active_l2_measure == pytest.approx(1.0)
+    assert fine.active_l2_measure == pytest.approx(1.0)
+    assert coarse.active_l2_rms_residual == pytest.approx(1.0)
+    assert fine.active_l2_rms_residual == pytest.approx(1.0)
+
+    anisotropic = evaluate((4, 5, 6), (0.25, 0.5, 0.125))
+    expected_volume = 0.25 * 0.5 * 0.125
+    assert anisotropic.cell_volume == pytest.approx(expected_volume)
+    assert anisotropic.continuum_l2_residual == pytest.approx(
+        np.sqrt(4 * 5 * 6 * expected_volume)
+    )
+    assert anisotropic.active_site_count == 4 * 5 * 6
+    assert anisotropic.active_l2_measure == pytest.approx(4 * 5 * 6 * expected_volume)
+    assert anisotropic.active_l2_rms_residual == pytest.approx(1.0)
+
+
+def test_continuum_l2_descent_rescales_steps_and_preserves_pinned_sites():
+    field = _small_hedgehog()
+    fixed = np.zeros(field.components.shape[:3], dtype=bool)
+    fixed[2, 2, 2] = True
+    kwargs = {
+        "fixed_mask": fixed,
+        "max_iterations": 1,
+        "initial_step": 1.0e-6,
+        "gradient_tolerance": 1.0e-16,
+        "stationarity_metric": "euclidean",
+    }
+    euclidean = relax_skyrme_field_nearest_neighbor(
+        field, descent_metric="euclidean", **kwargs
+    )
+    continuum = relax_skyrme_field_nearest_neighbor(
+        field, descent_metric="continuum_l2", **kwargs
+    )
+    assert euclidean.energy_history[-1] < euclidean.energy_history[0]
+    assert continuum.energy_history[-1] < continuum.energy_history[0]
+    assert continuum.descent_metric == "continuum_l2"
+    assert continuum.stationarity_metric == "euclidean"
+    assert euclidean.active_site_count == continuum.active_site_count == 26
+    assert continuum.continuum_l2_residual == pytest.approx(
+        continuum.raw_gradient_norm / np.sqrt(continuum.cell_volume)
+    )
+    assert continuum.active_l2_measure == pytest.approx(
+        continuum.active_site_count * continuum.cell_volume
+    )
+    assert continuum.active_l2_rms_residual == pytest.approx(
+        continuum.continuum_l2_residual / np.sqrt(continuum.active_l2_measure)
+    )
+    np.testing.assert_array_equal(euclidean.field.components[fixed], field.components[fixed])
+    np.testing.assert_array_equal(continuum.field.components[fixed], field.components[fixed])
+    assert not np.array_equal(euclidean.field.components, continuum.field.components)
+
+
+def test_default_optimizer_trajectory_matches_explicit_legacy_metrics():
+    field = _small_hedgehog()
+    kwargs = {
+        "max_iterations": 2,
+        "initial_step": 1.0e-4,
+        "gradient_tolerance": 1.0e-10,
+        "max_backtracks": 4,
+    }
+    default = relax_skyrme_field_nearest_neighbor(field, **kwargs)
+    explicit = relax_skyrme_field_nearest_neighbor(
+        field,
+        stationarity_metric="euclidean",
+        descent_metric="euclidean",
+        **kwargs,
+    )
+    np.testing.assert_array_equal(default.field.components, explicit.field.components)
+    assert default.energy_history == explicit.energy_history
+    assert default.termination == explicit.termination
+    assert default.raw_gradient_norm == explicit.raw_gradient_norm
+
+
+def test_relaxation_rejects_empty_active_set_and_invalid_metric():
+    field = _small_hedgehog()
+    with pytest.raises(ValueError, match="no active sites"):
+        relax_skyrme_field_nearest_neighbor(
+            field, fixed_mask=np.ones(field.components.shape[:3], dtype=bool)
+        )
+    with pytest.raises(ValueError, match="stationarity_metric"):
+        relax_skyrme_field_nearest_neighbor(field, stationarity_metric="bad")
+    with pytest.raises(ValueError, match="descent_metric"):
+        relax_skyrme_field_nearest_neighbor(field, descent_metric="bad")
+
+
+def test_zero_gradient_reports_zero_mesh_residual_without_vacuous_mask():
+    values = np.zeros((4, 4, 4, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    field = SU2GridField(values, spacing=(0.5, 0.25, 0.125), boundary="periodic")
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        stationarity_metric="continuum_l2",
+        gradient_tolerance=1.0e-12,
+    )
+    assert result.termination == "gradient_tolerance"
+    assert result.stationarity_status == "first_order_stationary"
+    assert result.raw_gradient_norm == 0.0
+    assert result.continuum_l2_residual == 0.0
+    assert result.active_site_count == 4**3
+    assert result.active_l2_measure == pytest.approx(1.0)
+    assert result.active_l2_rms_residual == 0.0
+
+
+
+
+@pytest.mark.parametrize(
+    ("metric", "final_norms", "expected_stationary"),
+    [
+        ("euclidean", (0.0, 2.0, 1.0, 0.0), True),
+        ("continuum_l2", (2.0, 0.0, 1.0, 0.0), True),
+        ("euclidean", (2.0, 0.0, 1.0, 0.0), False),
+        ("continuum_l2", (0.0, 2.0, 1.0, 0.0), False),
+    ],
+)
+def test_final_accepted_step_uses_selected_stationarity_metric(
+    monkeypatch, metric, final_norms, expected_stationary
+):
+    values = np.zeros((3, 3, 3, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    field = SU2GridField(values, spacing=(1.0, 1.0, 1.0), boundary="periodic")
+    norm_results = iter(((1.0, 1.0, 1.0, 1.0), final_norms))
+    energy_results = iter(
+        (
+            SimpleNamespace(energy_total=2.0, topological_charge=0.0),
+            SimpleNamespace(energy_total=1.0, topological_charge=0.0),
+        )
+    )
+    curvature = SimpleNamespace(assessment="test curvature result")
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "nearest_neighbor_energy_gradient",
+        lambda current, **kwargs: np.zeros_like(current.components),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module, "_gradient_norms", lambda *args: next(norm_results)
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_diagnostics_from_values",
+        lambda *args, **kwargs: next(energy_results),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_descending_step",
+        lambda current, *args, **kwargs: current,
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "probe_nearest_neighbor_curvature",
+        lambda *args, **kwargs: curvature,
+    )
+
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        max_iterations=1,
+        gradient_tolerance=1.0e-7,
+        stationarity_metric=metric,
+    )
+
+    expected_termination = (
+        "gradient_tolerance" if expected_stationary else "iteration_limit"
+    )
+    expected_status = (
+        "first_order_stationary" if expected_stationary else "not_established"
+    )
+    assert result.iterations == 1
+    assert result.termination == expected_termination
+    assert result.stationarity_status == expected_status
+    assert (result.curvature_diagnostics is curvature) is expected_stationary
+    assert result.minimum_certified is False
+
+
+def test_line_search_stall_is_not_promoted_by_small_final_residual(monkeypatch):
+    values = np.zeros((3, 3, 3, 4), dtype=np.float64)
+    values[..., 0] = 1.0
+    field = SU2GridField(values, spacing=(1.0, 1.0, 1.0), boundary="periodic")
+    norm_results = iter(((1.0, 1.0, 1.0, 1.0), (0.0, 0.0, 0.0, 0.0)))
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "nearest_neighbor_energy_gradient",
+        lambda current, **kwargs: np.zeros_like(current.components),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module, "_gradient_norms", lambda *args: next(norm_results)
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_diagnostics_from_values",
+        lambda *args, **kwargs: SimpleNamespace(
+            energy_total=1.0, topological_charge=0.0
+        ),
+    )
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "_descending_step",
+        lambda current, *args, **kwargs: current,
+    )
+    curvature_calls = []
+    monkeypatch.setattr(
+        nearest_neighbor_module,
+        "probe_nearest_neighbor_curvature",
+        lambda *args, **kwargs: curvature_calls.append(True),
+    )
+
+    result = relax_skyrme_field_nearest_neighbor(
+        field,
+        max_iterations=1,
+        max_backtracks=0,
+        gradient_tolerance=1.0e-7,
+    )
+
+    assert result.iterations == 0
+    assert result.termination == "line_search_stalled"
+    assert result.stationarity_status == "not_established"
+    assert result.raw_gradient_norm == 0.0
+    assert result.curvature_diagnostics is None
+    assert curvature_calls == []
+    assert result.minimum_certified is False

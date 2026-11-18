@@ -19,6 +19,7 @@ from .field import validate_spacing
 from .generators import multi_hedgehog
 from .nearest_neighbor import (
     NearestNeighborDiagnostics,
+    _cell_volume,
     _link_mask,
     compute_nearest_neighbor_diagnostics,
 )
@@ -221,6 +222,7 @@ def evaluate_two_hedgehog_interaction(
     if node_count > _MAX_GRID_NODES:
         raise ValueError(f"grid exceeds the {_MAX_GRID_NODES}-node interaction limit")
     grid_spacing = validate_spacing(spacing)
+    _cell_volume(grid_spacing)
     length_radius = _positive_real(radius, "radius")
     separation = _real_vector(separation_vector, "separation_vector", 3)
     rotation_input, rotation_used = _rotation(relative_isorotation)

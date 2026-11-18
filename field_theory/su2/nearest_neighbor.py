@@ -57,6 +57,7 @@ stationarity only and never certifies a minimum or continuum stability.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Literal, Sequence
 
 import numpy as np
@@ -66,6 +67,8 @@ from .field import SU2GridField
 Boundary = Literal["periodic", "fixed_vacuum"]
 Termination = Literal["gradient_tolerance", "line_search_stalled", "iteration_limit"]
 StationarityStatus = Literal["not_established", "first_order_stationary"]
+StationarityMetric = Literal["euclidean", "continuum_l2"]
+DescentMetric = Literal["euclidean", "continuum_l2"]
 CurvatureAssessment = Literal[
     "negative_curvature_detected",
     "no_negative_curvature_in_probe_set",
@@ -110,6 +113,26 @@ class NearestNeighborRelaxationResult:
     stationarity_status: StationarityStatus
     curvature_diagnostics: CurvatureProbeDiagnostics | None
     minimum_certified: bool
+    raw_gradient_norm: float
+    continuum_l2_residual: float
+    active_l2_measure: float
+    active_l2_rms_residual: float
+    stationarity_metric: StationarityMetric
+    descent_metric: DescentMetric
+    gradient_tolerance: float
+    cell_volume: float
+    active_site_count: int
+
+
+def _stable_norm(values: np.ndarray, axis: int | None = None) -> float | np.ndarray:
+    """Compute an L2 norm without squaring tiny or huge components directly."""
+    magnitudes = np.abs(np.asarray(values, dtype=np.float64))
+    if axis is None:
+        flattened = magnitudes.ravel()
+        if flattened.size == 0:
+            return 0.0
+        return float(np.hypot.reduce(flattened))
+    return np.hypot.reduce(magnitudes, axis=axis)
 
 
 def _positive_real(value: object, name: str) -> float:
@@ -184,13 +207,173 @@ def _transverse_weights(
     return weights
 
 
+def _exact_zero_wedge_rows(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Identify exact equal or opposite vectors whose exterior product is zero."""
+    return np.all(a == b, axis=-1) | np.all(a == -b, axis=-1)
+
+
+def _scaled_product_quotient(
+    values: np.ndarray | float,
+    *,
+    numerator_factors: Sequence[object] = (),
+    denominator_factors: Sequence[object] = (),
+    name: str,
+    fail_if_all_zero: bool = False,
+) -> np.ndarray:
+    """Scale in exponent space; optionally fail if all nonzero results round to zero."""
+    factors = [np.asarray(values, dtype=np.float64)]
+    numerators = [np.asarray(factor, dtype=np.float64) for factor in numerator_factors]
+    denominators = [np.asarray(factor, dtype=np.float64) for factor in denominator_factors]
+    try:
+        broadcast = np.broadcast_arrays(*factors, *numerators, *denominators)
+    except ValueError as exc:
+        raise ValueError(f"{name} factors are not broadcast-compatible") from exc
+
+    value_array = broadcast[0]
+    numerator_arrays = broadcast[1 : 1 + len(numerators)]
+    denominator_arrays = broadcast[1 + len(numerators) :]
+    if not np.all(np.isfinite(value_array)):
+        raise FloatingPointError(f"{name} has non-finite input values")
+    if any(not np.all(np.isfinite(factor)) for factor in numerator_arrays):
+        raise FloatingPointError(f"{name} has non-finite scale factors")
+    if any(
+        not np.all(np.isfinite(factor)) or np.any(factor == 0.0)
+        for factor in denominator_arrays
+    ):
+        raise FloatingPointError(f"{name} has invalid divisor factors")
+
+    mantissa, exponent = np.frexp(value_array)
+    expected_nonzero = value_array != 0.0
+    for factor in numerator_arrays:
+        factor_mantissa, factor_exponent = np.frexp(factor)
+        mantissa = mantissa * factor_mantissa
+        exponent = exponent + factor_exponent
+        expected_nonzero &= factor != 0.0
+    for factor in denominator_arrays:
+        factor_mantissa, factor_exponent = np.frexp(factor)
+        mantissa = mantissa / factor_mantissa
+        exponent = exponent - factor_exponent
+
+    mantissa, exponent_adjustment = np.frexp(mantissa)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        result = np.ldexp(mantissa, exponent + exponent_adjustment)
+    if not np.all(np.isfinite(result)):
+        raise FloatingPointError(f"{name} overflowed binary64")
+    if (
+        fail_if_all_zero
+        and np.any(expected_nonzero)
+        and not np.any(result != 0.0)
+    ):
+        raise FloatingPointError(
+            f"{name} underflowed entirely to zero in binary64"
+        )
+    return result
+
+
+def _cell_volume(spacing: tuple[float, float, float]) -> float:
+    """Return a representable positive binary64 grid-cell volume."""
+    spacing_values = np.asarray(spacing, dtype=np.float64)
+    if (
+        spacing_values.shape != (3,)
+        or not np.all(np.isfinite(spacing_values))
+        or np.any(spacing_values <= 0.0)
+    ):
+        raise ValueError("grid spacings must produce a finite positive binary64 cell volume")
+    try:
+        volume = _scaled_product_quotient(
+            1.0,
+            numerator_factors=tuple(spacing_values),
+            name="grid-cell volume",
+        ).item()
+    except FloatingPointError as exc:
+        raise ValueError(
+            "grid spacings must produce a finite positive binary64 cell volume"
+        ) from exc
+    if not np.isfinite(volume) or volume <= 0.0:
+        raise ValueError("grid spacings must produce a finite positive binary64 cell volume")
+    return float(volume)
+
+
 def _forward_differences(
-    values: np.ndarray, spacing: tuple[float, float, float]
+    values: np.ndarray,
+    spacing: tuple[float, float, float],
+    boundary: Boundary = "periodic",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    return tuple(
-        (np.roll(values, -1, axis=axis) - values) / spacing[axis]
-        for axis in range(3)
-    )  # type: ignore[return-value]
+    """Return forward derivatives, zeroing excluded fixed-vacuum links."""
+    if boundary not in {"periodic", "fixed_vacuum"}:
+        raise ValueError("unsupported boundary")
+    differences = []
+    for axis in range(3):
+        raw_difference = np.roll(values, -1, axis=axis) - values
+        if boundary == "fixed_vacuum":
+            # The last-index forward link leaves the grid and is absent from
+            # the objective. Zero it before division so an unused link cannot
+            # overflow at an otherwise valid grid spacing.
+            valid = _link_mask(values.shape[:3], (axis,), boundary)
+            raw_difference[~valid] = 0.0
+        differences.append(
+            _scaled_product_quotient(
+                raw_difference,
+                denominator_factors=(spacing[axis],),
+                name="forward difference",
+            )
+        )
+    return tuple(differences)  # type: ignore[return-value]
+
+
+def _energy_coefficients(f_pi: float, e: float) -> tuple[float, float]:
+    """Return finite, nonzero binary64 coefficients for the two Skyrme terms.
+
+    Inputs are checked by the public callers. Log-domain preflight avoids an
+    overflowing intermediate when the final coefficient is representable;
+    the final checks reject overflow or underflow-to-zero rather than silently
+    changing the objective.
+    """
+    f_value = float(f_pi)
+    e_value = float(e)
+    if not np.isfinite(f_value) or f_value <= 0.0 or not np.isfinite(e_value) or e_value <= 0.0:
+        raise ValueError("f_pi and e must be finite and positive")
+
+    log_max = math.log(np.finfo(np.float64).max)
+    sigma_log = 2.0 * math.log(f_value) - math.log(8.0)
+    skyrme_log = -math.log(2.0) - 2.0 * math.log(e_value)
+    if sigma_log > log_max or skyrme_log > log_max:
+        raise ValueError("couplings produce an unrepresentable binary64 energy coefficient")
+
+    with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+        sigma_coefficient = float(np.square(np.float64(f_value) / np.sqrt(np.float64(8.0))))
+        skyrme_coefficient = float(
+            np.square(np.float64(1.0) / (np.sqrt(np.float64(2.0)) * np.float64(e_value)))
+        )
+    if (
+        not np.isfinite(sigma_coefficient)
+        or sigma_coefficient <= 0.0
+        or not np.isfinite(skyrme_coefficient)
+        or skyrme_coefficient <= 0.0
+    ):
+        raise ValueError("couplings produce an unrepresentable binary64 energy coefficient")
+    return sigma_coefficient, skyrme_coefficient
+
+
+def _gradient_coefficients(f_pi: float, e: float) -> tuple[float, float]:
+    """Return finite, nonzero coefficients used by the analytic energy gradient.
+
+    The gradient weights are twice the corresponding energy coefficients.
+    Reuse the scaled energy preflight instead of squaring raw couplings, then
+    reject a gradient coefficient that cannot be represented in binary64.
+    """
+    sigma_energy, skyrme_energy = _energy_coefficients(f_pi, e)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        sigma_gradient = float(np.float64(2.0) * np.float64(sigma_energy))
+        skyrme_gradient = float(np.float64(2.0) * np.float64(skyrme_energy))
+    if (
+        not np.isfinite(sigma_gradient)
+        or sigma_gradient <= 0.0
+        or not np.isfinite(skyrme_gradient)
+        or skyrme_gradient <= 0.0
+    ):
+        raise ValueError("couplings produce an unrepresentable binary64 gradient coefficient")
+    return sigma_gradient, skyrme_gradient
 
 
 def _energy_components(
@@ -202,30 +385,80 @@ def _energy_components(
     e: float,
 ) -> tuple[float, float]:
     shape = values.shape[:3]
-    cell_volume = spacing[0] * spacing[1] * spacing[2]
-    sigma_sum = 0.0
+    cell_volume = _cell_volume(spacing)
+    sigma_coefficient, skyrme_coefficient = _energy_coefficients(f_pi, e)
+    energy_sigma = 0.0
+    sigma_has_nonzero_links = False
     for axis in range(3):
         valid = _link_mask(shape, (axis,), boundary)
         transverse = _transverse_weights(shape, (axis,), boundary)
-        norm_squared = np.sum(differences[axis] ** 2, axis=-1)
-        sigma_sum += float(np.sum(norm_squared[valid] * transverse[valid])) * cell_volume
-    energy_sigma = (f_pi * f_pi / 8.0) * sigma_sum
+        link_norm = _stable_norm(differences[axis], axis=-1)
+        sigma_has_nonzero_links |= bool(np.any(link_norm[valid] != 0.0))
+        terms = _scaled_product_quotient(
+            link_norm[valid],
+            numerator_factors=(
+                link_norm[valid],
+                transverse[valid],
+                cell_volume,
+                sigma_coefficient,
+            ),
+            name="sigma energy contribution",
+        )
+        with np.errstate(over="ignore", invalid="ignore"):
+            energy_sigma += float(np.sum(terms))
+        if not np.isfinite(energy_sigma):
+            raise FloatingPointError("non-finite sigma energy")
 
-    quartic_sum = 0.0
+    if sigma_has_nonzero_links and energy_sigma == 0.0:
+        raise FloatingPointError("sigma energy underflowed entirely to zero")
+
+    energy_skyrme = 0.0
+    quartic_has_nonzero_minors = False
     for i in range(3):
         for j in range(i + 1, 3):
             valid = _link_mask(shape, (i, j), boundary)
             transverse = _transverse_weights(shape, (i, j), boundary)
-            wedge_squared = np.zeros(shape, dtype=np.float64)
+            # Excluded fixed-vacuum wrap links must not participate in
+            # arithmetic: tiny tolerated boundary residuals can underflow
+            # while forming their quartic minors even though they are masked
+            # out of the objective.
+            a_links = differences[i][valid]
+            b_links = differences[j][valid]
+            transverse_links = transverse[valid]
+            # Exact equal/opposite link vectors have zero wedge. Recognize
+            # them before multiplying extreme components that would overflow
+            # even though their determinant is exactly zero.
+            zero_wedge = _exact_zero_wedge_rows(a_links, b_links)
+            if np.all(zero_wedge):
+                continue
+            included = ~zero_wedge
+            a_links = a_links[included]
+            b_links = b_links[included]
+            transverse_links = transverse_links[included]
             for a in range(4):
                 for b in range(a + 1, 4):
-                    minor = (
-                        differences[i][..., a] * differences[j][..., b]
-                        - differences[i][..., b] * differences[j][..., a]
+                    with np.errstate(over="raise", under="raise", invalid="raise"):
+                        minor = (
+                            a_links[:, a] * b_links[:, b]
+                            - a_links[:, b] * b_links[:, a]
+                        )
+                    quartic_has_nonzero_minors |= bool(np.any(minor != 0.0))
+                    terms = _scaled_product_quotient(
+                        minor,
+                        numerator_factors=(
+                            minor,
+                            transverse_links,
+                            cell_volume,
+                            skyrme_coefficient,
+                        ),
+                        name="quartic energy contribution",
                     )
-                    wedge_squared += minor * minor
-            quartic_sum += float(np.sum(wedge_squared[valid] * transverse[valid])) * cell_volume
-    energy_skyrme = quartic_sum / (2.0 * e * e)
+                    with np.errstate(over="ignore", invalid="ignore"):
+                        energy_skyrme += float(np.sum(terms))
+                    if not np.isfinite(energy_skyrme):
+                        raise FloatingPointError("non-finite quartic energy")
+    if quartic_has_nonzero_minors and energy_skyrme == 0.0:
+        raise FloatingPointError("quartic energy underflowed entirely to zero")
     return energy_sigma, energy_skyrme
 
 
@@ -237,7 +470,7 @@ def _topological_charge(
 ) -> float:
     columns = np.stack((values, *differences), axis=-1)
     determinant = np.linalg.det(columns)
-    cell_volume = spacing[0] * spacing[1] * spacing[2]
+    cell_volume = _cell_volume(spacing)
     valid = _link_mask(values.shape[:3], (0, 1, 2), boundary)
     return float(np.sum(determinant[valid]) * cell_volume / (2.0 * np.pi**2))
 
@@ -249,7 +482,7 @@ def _diagnostics_from_values(
     f_pi: float,
     e: float,
 ) -> NearestNeighborDiagnostics:
-    differences = _forward_differences(values, field.spacing)
+    differences = _forward_differences(values, field.spacing, field.boundary)
     energy_sigma, energy_skyrme = _energy_components(
         values, differences, field.spacing, field.boundary, f_pi, e
     )
@@ -297,7 +530,22 @@ def compute_nearest_neighbor_diagnostics(
         raise FloatingPointError("non-finite nearest-neighbor Skyrme diagnostic") from None
 
 
-def _active_mask(field: SU2GridField) -> np.ndarray:
+def _validate_fixed_mask(
+    field: SU2GridField, fixed_mask: np.ndarray | None
+) -> np.ndarray:
+    """Return a copy of an exact-shape boolean fixed-site mask."""
+    shape = field.components.shape[:3]
+    if fixed_mask is None:
+        return np.zeros(shape, dtype=bool)
+    raw = np.asarray(fixed_mask)
+    if raw.shape != shape or raw.dtype.kind != "b":
+        raise ValueError("fixed_mask must be a boolean array matching the grid shape")
+    return np.array(raw, dtype=bool, copy=True)
+
+
+def _active_mask(
+    field: SU2GridField, fixed_mask: np.ndarray | None = None
+) -> np.ndarray:
     active = np.ones(field.components.shape[:3], dtype=bool)
     if field.boundary == "fixed_vacuum":
         active[0, :, :] = False
@@ -306,13 +554,14 @@ def _active_mask(field: SU2GridField) -> np.ndarray:
         active[:, -1, :] = False
         active[:, :, 0] = False
         active[:, :, -1] = False
+    active &= ~_validate_fixed_mask(field, fixed_mask)
     return active
 
 
 def _total_energy_for_values(
     values: np.ndarray, field: SU2GridField, f_pi: float, e: float
 ) -> float:
-    differences = _forward_differences(values, field.spacing)
+    differences = _forward_differences(values, field.spacing, field.boundary)
     sigma, quartic = _energy_components(
         values, differences, field.spacing, field.boundary, f_pi, e
     )
@@ -343,6 +592,7 @@ def probe_nearest_neighbor_curvature(
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     probe_step: float = 5.0e-3,
     negative_curvature_tolerance: float = 1.0e-6,
+    fixed_mask: np.ndarray | None = None,
 ) -> CurvatureProbeDiagnostics:
     """Probe at most 16 normalized tangent directions for negative curvature.
 
@@ -363,7 +613,7 @@ def probe_nearest_neighbor_curvature(
     if step > 0.1:
         raise ValueError("probe_step must not exceed 0.1")
 
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     shape = values.shape[:3]
     patterns = [np.ones(shape, dtype=np.float64)]
     for axis, size in enumerate(shape):
@@ -430,16 +680,77 @@ def _unit_geodesic_perturbation(
     return changed
 
 
+def _accumulate_scaled_forward_gradient(
+    gradient: np.ndarray, scaled_derivative: np.ndarray, axis: int
+) -> None:
+    """Apply a transpose forward-difference stencil to an already scaled term."""
+    gradient -= scaled_derivative
+    gradient += np.roll(scaled_derivative, 1, axis=axis)
+
+
 def _accumulate_forward_derivative_gradient(
     gradient: np.ndarray,
-    derivative_gradient: np.ndarray,
+    derivative: np.ndarray,
     axis: int,
     spacing: float,
+    coefficient: float = 1.0,
+    *,
+    scale_factors: Sequence[object] = (),
 ) -> None:
-    """Apply the transpose of the forward-difference operator in-place."""
-    scaled = derivative_gradient / spacing
-    gradient -= scaled
-    gradient += np.roll(scaled, 1, axis=axis)
+    """Apply a safely scaled transpose forward-difference stencil in-place."""
+    scaled = _scaled_product_quotient(
+        derivative,
+        numerator_factors=(*scale_factors, coefficient),
+        denominator_factors=(spacing,),
+        name="nearest-neighbor gradient contribution",
+    )
+    _accumulate_scaled_forward_gradient(gradient, scaled, axis)
+
+
+def _scaled_quartic_gradient_contributions(
+    a: np.ndarray,
+    b: np.ndarray,
+    *,
+    cell_volume: float,
+    transverse: np.ndarray,
+    coefficient: float,
+    spacing_a: float,
+    spacing_b: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Form scaled quartic-link derivatives without raw cubic intermediates."""
+    gradient_a = np.zeros_like(a)
+    gradient_b = np.zeros_like(b)
+    scale = (cell_volume, transverse[..., None], coefficient)
+    for component in range(a.shape[-1]):
+        a_component = a[..., component, None]
+        b_component = b[..., component, None]
+        term_a_1 = _scaled_product_quotient(
+            a,
+            numerator_factors=(*scale, b_component, b_component),
+            denominator_factors=(spacing_a,),
+            name="quartic gradient a term",
+        )
+        term_a_2 = _scaled_product_quotient(
+            a_component,
+            numerator_factors=(*scale, b_component, b),
+            denominator_factors=(spacing_a,),
+            name="quartic gradient a term",
+        )
+        term_b_1 = _scaled_product_quotient(
+            b,
+            numerator_factors=(*scale, a_component, a_component),
+            denominator_factors=(spacing_b,),
+            name="quartic gradient b term",
+        )
+        term_b_2 = _scaled_product_quotient(
+            a,
+            numerator_factors=(*scale, a_component, b_component),
+            denominator_factors=(spacing_b,),
+            name="quartic gradient b term",
+        )
+        gradient_a += term_a_1 - term_a_2
+        gradient_b += term_b_1 - term_b_2
+    return gradient_a, gradient_b
 
 
 def nearest_neighbor_energy_gradient(
@@ -449,13 +760,15 @@ def nearest_neighbor_energy_gradient(
     e: float = 1.0,
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     finite_difference_step: float | None = None,
+    fixed_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return the analytic tangent gradient of the nearest-link objective.
 
     The Euclidean derivative is assembled from the transpose of each forward
     difference operator, including the exact masks and quadrature weights used
     by the energy. It is then projected onto the tangent space of S^3 at every
-    node. ``finite_difference_step`` is accepted for compatibility with the
+    node. Optional ``fixed_mask`` sites are excluded from the active tangent
+    space and receive an exactly zero gradient. ``finite_difference_step`` is accepted for compatibility with the
     earlier implementation but does not affect this analytic result; use
     :func:`nearest_neighbor_energy_gradient_finite_difference` when a numeric
     reference gradient is needed.
@@ -465,49 +778,99 @@ def nearest_neighbor_energy_gradient(
     e_value = _positive_real(e, "e")
     if finite_difference_step is not None:
         _positive_real(finite_difference_step, "finite_difference_step")
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
-    differences = _forward_differences(values, field.spacing)
-    cell_volume = float(np.prod(field.spacing))
+    differences = _forward_differences(values, field.spacing, field.boundary)
+    sigma_gradient_coefficient, skyrme_gradient_coefficient = _gradient_coefficients(
+        f_value, e_value
+    )
+    cell_volume = _cell_volume(field.spacing)
 
     for axis in range(3):
         valid = _link_mask(values.shape[:3], (axis,), field.boundary)
         transverse = _transverse_weights(values.shape[:3], (axis,), field.boundary)
-        derivative_gradient = (
-            (f_value * f_value / 4.0)
-            * cell_volume
-            * transverse[..., None]
-            * differences[axis]
-        )
-        derivative_gradient[~valid] = 0.0
+        derivative = differences[axis].copy()
+        derivative[~valid] = 0.0
         _accumulate_forward_derivative_gradient(
-            gradient, derivative_gradient, axis, field.spacing[axis]
+            gradient,
+            derivative,
+            axis,
+            field.spacing[axis],
+            sigma_gradient_coefficient,
+            scale_factors=(cell_volume, transverse[..., None]),
         )
 
     for i in range(3):
         for j in range(i + 1, 3):
             valid = _link_mask(values.shape[:3], (i, j), field.boundary)
             transverse = _transverse_weights(values.shape[:3], (i, j), field.boundary)
-            a = differences[i]
-            b = differences[j]
-            dot = np.sum(a * b, axis=-1)
-            norm_a_squared = np.sum(a * a, axis=-1)
-            norm_b_squared = np.sum(b * b, axis=-1)
-            weight = (cell_volume / (e_value * e_value)) * transverse
-            grad_a = weight[..., None] * (
-                norm_b_squared[..., None] * a - dot[..., None] * b
-            )
-            grad_b = weight[..., None] * (
-                norm_a_squared[..., None] * b - dot[..., None] * a
-            )
-            grad_a[~valid] = 0.0
-            grad_b[~valid] = 0.0
-            _accumulate_forward_derivative_gradient(
-                gradient, grad_a, i, field.spacing[i]
-            )
-            _accumulate_forward_derivative_gradient(
-                gradient, grad_b, j, field.spacing[j]
-            )
+            a = differences[i][valid]
+            b = differences[j][valid]
+            transverse_links = transverse[valid]
+            zero_wedge = _exact_zero_wedge_rows(a, b)
+            if np.all(zero_wedge):
+                continue
+            included = ~zero_wedge
+            a_included = a[included]
+            b_included = b[included]
+            transverse_included = transverse_links[included]
+            try:
+                with np.errstate(over="raise", under="raise", invalid="raise"):
+                    dot = np.sum(a_included * b_included, axis=-1)
+                    norm_a_squared = np.sum(a_included * a_included, axis=-1)
+                    norm_b_squared = np.sum(b_included * b_included, axis=-1)
+                    grad_a_included = (
+                        norm_b_squared[..., None] * a_included
+                        - dot[..., None] * b_included
+                    )
+                    grad_b_included = (
+                        norm_a_squared[..., None] * b_included
+                        - dot[..., None] * a_included
+                    )
+            except FloatingPointError:
+                # Retry only included links: excluded fixed-vacuum wrap
+                # anchors and exact zero-wedge rows have no contribution.
+                grad_a_included, grad_b_included = _scaled_quartic_gradient_contributions(
+                    a_included,
+                    b_included,
+                    cell_volume=cell_volume,
+                    transverse=transverse_included,
+                    coefficient=skyrme_gradient_coefficient,
+                    spacing_a=field.spacing[i],
+                    spacing_b=field.spacing[j],
+                )
+                use_scaled_fallback = True
+            else:
+                use_scaled_fallback = False
+
+            grad_a_links = np.zeros_like(a)
+            grad_b_links = np.zeros_like(b)
+            grad_a_links[included] = grad_a_included
+            grad_b_links[included] = grad_b_included
+            grad_a = np.zeros_like(differences[i])
+            grad_b = np.zeros_like(differences[j])
+            grad_a[valid] = grad_a_links
+            grad_b[valid] = grad_b_links
+            if use_scaled_fallback:
+                _accumulate_scaled_forward_gradient(gradient, grad_a, i)
+                _accumulate_scaled_forward_gradient(gradient, grad_b, j)
+            else:
+                _accumulate_forward_derivative_gradient(
+                    gradient,
+                    grad_a,
+                    i,
+                    field.spacing[i],
+                    skyrme_gradient_coefficient,
+                    scale_factors=(cell_volume, transverse[..., None]),
+                )
+                _accumulate_forward_derivative_gradient(
+                    gradient,
+                    grad_b,
+                    j,
+                    field.spacing[j],
+                    skyrme_gradient_coefficient,
+                    scale_factors=(cell_volume, transverse[..., None]),
+                )
 
     gradient -= values * np.sum(values * gradient, axis=-1, keepdims=True)
     gradient[~active] = 0.0
@@ -523,6 +886,7 @@ def nearest_neighbor_energy_gradient_finite_difference(
     e: float = 1.0,
     vacuum: Sequence[float] = (1.0, 0.0, 0.0, 0.0),
     finite_difference_step: float = 1.0e-5,
+    fixed_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Return a slow sitewise finite-difference reference gradient.
 
@@ -535,7 +899,7 @@ def nearest_neighbor_energy_gradient_finite_difference(
     f_value = _positive_real(f_pi, "f_pi")
     e_value = _positive_real(e, "e")
     step = _positive_real(finite_difference_step, "finite_difference_step")
-    active = _active_mask(field)
+    active = _active_mask(field, fixed_mask)
     gradient = np.zeros_like(values)
 
     def energy(candidate: np.ndarray) -> float:
@@ -564,18 +928,76 @@ def nearest_neighbor_energy_gradient_finite_difference(
 def _descending_step(
     values: np.ndarray, gradient: np.ndarray, active: np.ndarray, step: float
 ) -> np.ndarray:
-    lengths = np.linalg.norm(gradient, axis=-1)
+    lengths = _stable_norm(gradient, axis=-1)
     angles = step * lengths
     with np.errstate(over="raise", invalid="raise"):
         factors = np.full_like(lengths, step)
         np.divide(np.sin(angles), lengths, out=factors, where=lengths > 0.0)
         candidate = values * np.cos(angles)[..., None] - gradient * factors[..., None]
     candidate[~active] = values[~active]
-    norms = np.linalg.norm(candidate, axis=-1)
+    norms = _stable_norm(candidate, axis=-1)
     if not np.all(np.isfinite(candidate)) or np.any(norms[active] <= 0.0):
         raise FloatingPointError("non-finite field produced by nearest-neighbor step")
     candidate[active] /= norms[active, None]
     return candidate
+
+
+def _metric_choice(value: object, name: str) -> StationarityMetric:
+    if not isinstance(value, str) or value not in {"euclidean", "continuum_l2"}:
+        raise ValueError(f"{name} must be 'euclidean' or 'continuum_l2'")
+    return value  # type: ignore[return-value]
+
+
+def _gradient_norms(
+    gradient: np.ndarray, active: np.ndarray, cell_volume: float
+) -> tuple[float, float, float, float]:
+    selected = np.asarray(gradient, dtype=np.float64)[active]
+    active_site_count = int(np.count_nonzero(active))
+    if selected.size == 0 or active_site_count == 0:
+        raise ValueError("relaxation requires at least one active site")
+    raw_norm = float(_stable_norm(selected))
+    if not np.isfinite(raw_norm):
+        raise FloatingPointError("non-finite nearest-neighbor gradient norm")
+    active_l2_measure = float(
+        _scaled_product_quotient(
+            active_site_count,
+            numerator_factors=(cell_volume,),
+            name="active L2 measure",
+            fail_if_all_zero=True,
+        ).item()
+    )
+    if raw_norm == 0.0:
+        return 0.0, 0.0, active_l2_measure, 0.0
+    continuum_residual = float(
+        _scaled_product_quotient(
+            raw_norm,
+            denominator_factors=(math.sqrt(cell_volume),),
+            name="continuum L2 gradient residual",
+            fail_if_all_zero=True,
+        ).item()
+    )
+    active_rms_residual = float(
+        _scaled_product_quotient(
+            continuum_residual,
+            denominator_factors=(math.sqrt(active_l2_measure),),
+            name="active-volume RMS gradient residual",
+            fail_if_all_zero=True,
+        ).item()
+    )
+    return raw_norm, continuum_residual, active_l2_measure, active_rms_residual
+
+
+def _descent_gradient(
+    gradient: np.ndarray, cell_volume: float, metric: DescentMetric
+) -> np.ndarray:
+    if metric == "euclidean":
+        return gradient
+    return _scaled_product_quotient(
+        gradient,
+        denominator_factors=(cell_volume,),
+        name="continuum L2 descent gradient",
+        fail_if_all_zero=True,
+    )
 
 
 def relax_skyrme_field_nearest_neighbor(
@@ -589,12 +1011,26 @@ def relax_skyrme_field_nearest_neighbor(
     finite_difference_step: float = 1.0e-5,
     gradient_tolerance: float = 1.0e-7,
     max_backtracks: int = 12,
+    fixed_mask: np.ndarray | None = None,
+    stationarity_metric: StationarityMetric = "euclidean",
+    descent_metric: DescentMetric = "euclidean",
 ) -> NearestNeighborRelaxationResult:
     """Minimize the forward-link objective by monotone backtracking steps.
 
     ``finite_difference_step`` is retained for compatibility with the
     previous reference-gradient implementation; the optimizer now uses the
-    analytic gradient and does not depend on that step size.
+    analytic gradient and does not depend on that step size. Optional
+    ``fixed_mask`` sites remain exactly equal to their initial values.
+
+    Metric choices are independent: Euclidean stationarity preserves the
+    historical stopping rule, while continuum_l2 uses the raw derivative L2
+    norm divided by sqrt(Vc). Continuum_l2 descent uses (dE/dq)/Vc, the Riesz
+    gradient for the discrete L2 inner product. Since Vc is constant on this
+    uniform grid, this rescales trial-step magnitude but not direction; it is
+    exposed for resolution-portable step sizing, not as new physics. These
+    scalar-volume formulas assume a uniform-cell Cartesian grid; a nonuniform
+    mesh requires a mass-matrix Riesz map. The raw derivative API and default
+    optimization trajectory are preserved.
     """
     values, vacuum_values = _validate_field_and_vacuum(initial, vacuum)
     f_value = _positive_real(f_pi, "f_pi")
@@ -604,7 +1040,14 @@ def relax_skyrme_field_nearest_neighbor(
     tolerance = _positive_real(gradient_tolerance, "gradient_tolerance")
     iteration_limit = _integer(max_iterations, "max_iterations", minimum=1)
     backtrack_limit = _integer(max_backtracks, "max_backtracks", minimum=0)
-    active = _active_mask(initial)
+    fixed_sites = _validate_fixed_mask(initial, fixed_mask)
+    active = _active_mask(initial, fixed_sites)
+    active_site_count = int(np.count_nonzero(active))
+    if active_site_count == 0:
+        raise ValueError("fixed_mask and boundary conditions leave no active sites")
+    stationarity_choice = _metric_choice(stationarity_metric, "stationarity_metric")
+    descent_choice = _metric_choice(descent_metric, "descent_metric")
+    cell_volume = _cell_volume(initial.spacing)
     initial_diagnostics = _diagnostics_from_values(values, initial, f_pi=f_value, e=e_value)
     energies = [initial_diagnostics.energy_total]
     charges = [initial_diagnostics.topological_charge]
@@ -620,11 +1063,17 @@ def relax_skyrme_field_nearest_neighbor(
             e=e_value,
             vacuum=vacuum_values,
             finite_difference_step=fd_step,
+            fixed_mask=fixed_sites,
         )
-        gradient_norm = float(np.linalg.norm(gradient[active]))
-        if not np.isfinite(gradient_norm):
-            raise FloatingPointError("non-finite nearest-neighbor gradient norm")
-        if gradient_norm <= tolerance:
+        raw_gradient_norm, continuum_l2_residual, active_l2_measure, active_l2_rms_residual = _gradient_norms(
+            gradient, active, cell_volume
+        )
+        stationarity_norm = (
+            raw_gradient_norm
+            if stationarity_choice == "euclidean"
+            else continuum_l2_residual
+        )
+        if stationarity_norm <= tolerance:
             termination = "gradient_tolerance"
             stationarity_status = "first_order_stationary"
             stationary_field = SU2GridField(
@@ -638,6 +1087,7 @@ def relax_skyrme_field_nearest_neighbor(
                 f_pi=f_value,
                 e=e_value,
                 vacuum=vacuum_values,
+                fixed_mask=fixed_sites,
             )
             break
 
@@ -646,7 +1096,8 @@ def relax_skyrme_field_nearest_neighbor(
         floor = 8.0 * np.finfo(np.float64).eps * max(1.0, abs(energies[-1]))
         for _ in range(backtrack_limit + 1):
             try:
-                candidate = _descending_step(values, gradient, active, step)
+                descent = _descent_gradient(gradient, cell_volume, descent_choice)
+                candidate = _descending_step(values, descent, active, step)
                 candidate_diagnostics = _diagnostics_from_values(
                     candidate,
                     initial,
@@ -671,12 +1122,42 @@ def relax_skyrme_field_nearest_neighbor(
             termination = "line_search_stalled"
             break
 
+    final_gradient = nearest_neighbor_energy_gradient(
+        SU2GridField(values, initial.spacing, initial.boundary, initial.length_unit),
+        f_pi=f_value,
+        e=e_value,
+        vacuum=vacuum_values,
+        finite_difference_step=fd_step,
+        fixed_mask=fixed_sites,
+    )
+    raw_gradient_norm, continuum_l2_residual, active_l2_measure, active_l2_rms_residual = _gradient_norms(
+        final_gradient, active, cell_volume
+    )
     result_field = SU2GridField(
         values,
         spacing=initial.spacing,
         boundary=initial.boundary,
         length_unit=initial.length_unit,
     )
+    final_stationarity_norm = (
+        raw_gradient_norm
+        if stationarity_choice == "euclidean"
+        else continuum_l2_residual
+    )
+    if termination == "iteration_limit" and final_stationarity_norm <= tolerance:
+        # The final accepted step may satisfy the criterion exactly at the
+        # iteration limit. Classify the returned field from its final gradient,
+        # not only the pre-step one. A stalled line search retains its failure
+        # status even if its final residual happens to be small.
+        termination = "gradient_tolerance"
+        stationarity_status = "first_order_stationary"
+        curvature_diagnostics = probe_nearest_neighbor_curvature(
+            result_field,
+            f_pi=f_value,
+            e=e_value,
+            vacuum=vacuum_values,
+            fixed_mask=fixed_sites,
+        )
     return NearestNeighborRelaxationResult(
         field=result_field,
         energy_history=tuple(float(value) for value in energies),
@@ -686,4 +1167,15 @@ def relax_skyrme_field_nearest_neighbor(
         stationarity_status=stationarity_status,
         curvature_diagnostics=curvature_diagnostics,
         minimum_certified=False,
+        raw_gradient_norm=raw_gradient_norm,
+        continuum_l2_residual=continuum_l2_residual,
+        active_l2_measure=active_l2_measure,
+        active_l2_rms_residual=active_l2_rms_residual,
+        stationarity_metric=stationarity_choice,
+        descent_metric=descent_choice,
+        gradient_tolerance=tolerance,
+        cell_volume=cell_volume,
+        active_site_count=active_site_count,
     )
+
+
