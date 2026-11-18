@@ -1233,4 +1233,35 @@ def test_numeric_exception_classes_are_structured_at_each_stage(
     assert result["comparison"]["final_pair_minus_isolated_energy"] is None
     runner.serialize_constrained_result(result)
 
+def test_constrained_runner_records_mesh_metric_definitions_and_solver_residuals():
+    kwargs = _constrained_run_kwargs()
+    kwargs.update(
+        stationarity_metric="continuum_l2",
+        descent_metric="continuum_l2",
+    )
+    result = run_constrained_two_hedgehog_relaxation(**kwargs)
+    assert result["schema_version"] == "su2.constrained_pair_relaxation.result.v2"
+    assert result["input"]["schema_version"] == "su2.constrained_pair_relaxation.input.v2"
+    assert result["input"]["stationarity_metric"] == "continuum_l2"
+    assert result["input"]["descent_metric"] == "continuum_l2"
+    assert result["input"]["gradient_tolerance_definition"] == (
+        "raw_derivative_euclidean_l2_norm_div_sqrt_cell_volume"
+    )
+    assert result["input"]["descent_definition"] == (
+        "discrete_l2_riesz_gradient_derivative_over_cell_volume"
+    )
+    assert result["input"]["descent_interpretation"] == (
+        "cell_volume_rescales_trial_step_without_changing_direction_on_uniform_grids"
+    )
+    for run in result["runs"].values():
+        diagnostics = run["gradient_diagnostics"]
+        assert diagnostics["stationarity_metric"] == "continuum_l2"
+        assert diagnostics["descent_metric"] == "continuum_l2"
+        assert diagnostics["cell_volume"] == pytest.approx(0.25**3)
+        assert diagnostics["active_site_count"] > 0
+        assert diagnostics["raw_euclidean_norm"] >= 0.0
+        assert diagnostics["continuum_l2_residual"] == pytest.approx(
+            diagnostics["raw_euclidean_norm"] / np.sqrt(diagnostics["cell_volume"])
+        )
+    assert serialize_constrained_result(result)
 

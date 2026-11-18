@@ -67,6 +67,8 @@ from .field import SU2GridField
 Boundary = Literal["periodic", "fixed_vacuum"]
 Termination = Literal["gradient_tolerance", "line_search_stalled", "iteration_limit"]
 StationarityStatus = Literal["not_established", "first_order_stationary"]
+StationarityMetric = Literal["euclidean", "continuum_l2"]
+DescentMetric = Literal["euclidean", "continuum_l2"]
 CurvatureAssessment = Literal[
     "negative_curvature_detected",
     "no_negative_curvature_in_probe_set",
@@ -111,6 +113,13 @@ class NearestNeighborRelaxationResult:
     stationarity_status: StationarityStatus
     curvature_diagnostics: CurvatureProbeDiagnostics | None
     minimum_certified: bool
+    raw_gradient_norm: float
+    continuum_l2_residual: float
+    stationarity_metric: StationarityMetric
+    descent_metric: DescentMetric
+    gradient_tolerance: float
+    cell_volume: float
+    active_site_count: int
 
 
 def _stable_norm(values: np.ndarray, axis: int | None = None) -> float | np.ndarray:
@@ -931,6 +940,47 @@ def _descending_step(
     return candidate
 
 
+def _metric_choice(value: object, name: str) -> StationarityMetric:
+    if not isinstance(value, str) or value not in {"euclidean", "continuum_l2"}:
+        raise ValueError(f"{name} must be 'euclidean' or 'continuum_l2'")
+    return value  # type: ignore[return-value]
+
+
+def _gradient_norms(
+    gradient: np.ndarray, active: np.ndarray, cell_volume: float
+) -> tuple[float, float]:
+    selected = np.asarray(gradient, dtype=np.float64)[active]
+    if selected.size == 0:
+        raise ValueError("relaxation requires at least one active site")
+    raw_norm = float(_stable_norm(selected))
+    if not np.isfinite(raw_norm):
+        raise FloatingPointError("non-finite nearest-neighbor gradient norm")
+    if raw_norm == 0.0:
+        return 0.0, 0.0
+    continuum_residual = float(
+        _scaled_product_quotient(
+            raw_norm,
+            denominator_factors=(math.sqrt(cell_volume),),
+            name="continuum L2 gradient residual",
+            fail_if_all_zero=True,
+        ).item()
+    )
+    return raw_norm, continuum_residual
+
+
+def _descent_gradient(
+    gradient: np.ndarray, cell_volume: float, metric: DescentMetric
+) -> np.ndarray:
+    if metric == "euclidean":
+        return gradient
+    return _scaled_product_quotient(
+        gradient,
+        denominator_factors=(cell_volume,),
+        name="continuum L2 descent gradient",
+        fail_if_all_zero=True,
+    )
+
+
 def relax_skyrme_field_nearest_neighbor(
     initial: SU2GridField,
     *,
@@ -943,6 +993,8 @@ def relax_skyrme_field_nearest_neighbor(
     gradient_tolerance: float = 1.0e-7,
     max_backtracks: int = 12,
     fixed_mask: np.ndarray | None = None,
+    stationarity_metric: StationarityMetric = "euclidean",
+    descent_metric: DescentMetric = "euclidean",
 ) -> NearestNeighborRelaxationResult:
     """Minimize the forward-link objective by monotone backtracking steps.
 
@@ -950,6 +1002,16 @@ def relax_skyrme_field_nearest_neighbor(
     previous reference-gradient implementation; the optimizer now uses the
     analytic gradient and does not depend on that step size. Optional
     ``fixed_mask`` sites remain exactly equal to their initial values.
+
+    Metric choices are independent: Euclidean stationarity preserves the
+    historical stopping rule, while continuum_l2 uses the raw derivative L2
+    norm divided by sqrt(Vc). Continuum_l2 descent uses (dE/dq)/Vc, the Riesz
+    gradient for the discrete L2 inner product. Since Vc is constant on this
+    uniform grid, this rescales trial-step magnitude but not direction; it is
+    exposed for resolution-portable step sizing, not as new physics. These
+    scalar-volume formulas assume a uniform-cell Cartesian grid; a nonuniform
+    mesh requires a mass-matrix Riesz map. The raw derivative API and default
+    optimization trajectory are preserved.
     """
     values, vacuum_values = _validate_field_and_vacuum(initial, vacuum)
     f_value = _positive_real(f_pi, "f_pi")
@@ -961,6 +1023,12 @@ def relax_skyrme_field_nearest_neighbor(
     backtrack_limit = _integer(max_backtracks, "max_backtracks", minimum=0)
     fixed_sites = _validate_fixed_mask(initial, fixed_mask)
     active = _active_mask(initial, fixed_sites)
+    active_site_count = int(np.count_nonzero(active))
+    if active_site_count == 0:
+        raise ValueError("fixed_mask and boundary conditions leave no active sites")
+    stationarity_choice = _metric_choice(stationarity_metric, "stationarity_metric")
+    descent_choice = _metric_choice(descent_metric, "descent_metric")
+    cell_volume = _cell_volume(initial.spacing)
     initial_diagnostics = _diagnostics_from_values(values, initial, f_pi=f_value, e=e_value)
     energies = [initial_diagnostics.energy_total]
     charges = [initial_diagnostics.topological_charge]
@@ -978,10 +1046,15 @@ def relax_skyrme_field_nearest_neighbor(
             finite_difference_step=fd_step,
             fixed_mask=fixed_sites,
         )
-        gradient_norm = float(_stable_norm(gradient[active]))
-        if not np.isfinite(gradient_norm):
-            raise FloatingPointError("non-finite nearest-neighbor gradient norm")
-        if gradient_norm <= tolerance:
+        raw_gradient_norm, continuum_l2_residual = _gradient_norms(
+            gradient, active, cell_volume
+        )
+        stationarity_norm = (
+            raw_gradient_norm
+            if stationarity_choice == "euclidean"
+            else continuum_l2_residual
+        )
+        if stationarity_norm <= tolerance:
             termination = "gradient_tolerance"
             stationarity_status = "first_order_stationary"
             stationary_field = SU2GridField(
@@ -1004,7 +1077,8 @@ def relax_skyrme_field_nearest_neighbor(
         floor = 8.0 * np.finfo(np.float64).eps * max(1.0, abs(energies[-1]))
         for _ in range(backtrack_limit + 1):
             try:
-                candidate = _descending_step(values, gradient, active, step)
+                descent = _descent_gradient(gradient, cell_volume, descent_choice)
+                candidate = _descending_step(values, descent, active, step)
                 candidate_diagnostics = _diagnostics_from_values(
                     candidate,
                     initial,
@@ -1029,6 +1103,17 @@ def relax_skyrme_field_nearest_neighbor(
             termination = "line_search_stalled"
             break
 
+    final_gradient = nearest_neighbor_energy_gradient(
+        SU2GridField(values, initial.spacing, initial.boundary, initial.length_unit),
+        f_pi=f_value,
+        e=e_value,
+        vacuum=vacuum_values,
+        finite_difference_step=fd_step,
+        fixed_mask=fixed_sites,
+    )
+    raw_gradient_norm, continuum_l2_residual = _gradient_norms(
+        final_gradient, active, cell_volume
+    )
     result_field = SU2GridField(
         values,
         spacing=initial.spacing,
@@ -1044,6 +1129,13 @@ def relax_skyrme_field_nearest_neighbor(
         stationarity_status=stationarity_status,
         curvature_diagnostics=curvature_diagnostics,
         minimum_certified=False,
+        raw_gradient_norm=raw_gradient_norm,
+        continuum_l2_residual=continuum_l2_residual,
+        stationarity_metric=stationarity_choice,
+        descent_metric=descent_choice,
+        gradient_tolerance=tolerance,
+        cell_volume=cell_volume,
+        active_site_count=active_site_count,
     )
 
 

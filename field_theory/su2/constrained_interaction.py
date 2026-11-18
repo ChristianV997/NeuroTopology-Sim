@@ -10,7 +10,7 @@ import hashlib
 import json
 import re
 from math import prod
-from typing import Sequence
+from typing import Literal, Sequence
 
 import numpy as np
 
@@ -25,8 +25,9 @@ from .nearest_neighbor import (
     relax_skyrme_field_nearest_neighbor,
 )
 
-_INPUT_SCHEMA = "su2.constrained_pair_relaxation.input.v1"
-_RESULT_SCHEMA = "su2.constrained_pair_relaxation.result.v1"
+_INPUT_SCHEMA = "su2.constrained_pair_relaxation.input.v2"
+_RESULT_SCHEMA = "su2.constrained_pair_relaxation.result.v2"
+_METRICS = {"euclidean", "continuum_l2"}
 _MAX_GRID_NODES = 32_768
 _MAX_ITERATIONS = 100
 _MAX_BACKTRACKS = 12
@@ -255,6 +256,8 @@ def _one_relaxation(
     initial_step: float,
     gradient_tolerance: float,
     max_backtracks: int,
+    stationarity_metric: str,
+    descent_metric: str,
 ) -> dict[str, object]:
     initial = field.components.copy()
     base: dict[str, object] = {
@@ -267,6 +270,15 @@ def _one_relaxation(
         "iterations": 0,
         "termination": "not_run",
         "stationarity_status": "not_established",
+        "gradient_diagnostics": {
+            "stationarity_metric": stationarity_metric,
+            "descent_metric": descent_metric,
+            "gradient_tolerance": gradient_tolerance,
+            "cell_volume": _cell_volume(field.spacing),
+            "active_site_count": None,
+            "raw_euclidean_norm": None,
+            "continuum_l2_residual": None,
+        },
         "minimum_certified": False,
         "constraints": {
             "fixed_site_count": int(np.count_nonzero(fixed_mask)),
@@ -312,6 +324,8 @@ def _one_relaxation(
             gradient_tolerance=gradient_tolerance,
             max_backtracks=max_backtracks,
             fixed_mask=fixed_mask,
+            stationarity_metric=stationarity_metric,
+            descent_metric=descent_metric,
         )
     except _NUMERICAL_EXCEPTIONS as exc:
         return _mark_numerical_failure(base, "optimization_failure", exc)
@@ -387,8 +401,17 @@ def _one_relaxation(
             raise FloatingPointError("non-finite relaxation energy history")
         if not charge_history or not np.all(np.isfinite(charge_history)):
             raise FloatingPointError("non-finite relaxation charge history")
+        gradient_diagnostics = dict(base["gradient_diagnostics"])
+        gradient_diagnostics.update(
+            {
+                "active_site_count": getattr(relaxed, "active_site_count", None),
+                "raw_euclidean_norm": getattr(relaxed, "raw_gradient_norm", None),
+                "continuum_l2_residual": getattr(relaxed, "continuum_l2_residual", None),
+            }
+        )
         base.update(
             {
+                "gradient_diagnostics": gradient_diagnostics,
                 "status": status,
                 "initial_energy": energy_history[0],
                 "final_energy": final_energy,
@@ -445,6 +468,8 @@ def run_constrained_two_hedgehog_relaxation(
     orientation_tolerance_rad: float = 1.0e-6,
     orientation_residual_tolerance: float = 1.0e-8,
     charge_drift_tolerance: float = 0.25,
+    stationarity_metric: Literal["euclidean", "continuum_l2"] = "euclidean",
+    descent_metric: Literal["euclidean", "continuum_l2"] = "euclidean",
 ) -> dict[str, object]:
     """Relax a two-hedgehog field and two corresponding isolated controls.
 
@@ -479,6 +504,10 @@ def run_constrained_two_hedgehog_relaxation(
     charge_tolerance = _real_scalar(
         charge_drift_tolerance, "charge_drift_tolerance", positive=True
     )
+    if not isinstance(stationarity_metric, str) or stationarity_metric not in _METRICS:
+        raise ValueError("stationarity_metric must be 'euclidean' or 'continuum_l2'")
+    if not isinstance(descent_metric, str) or descent_metric not in _METRICS:
+        raise ValueError("descent_metric must be 'euclidean' or 'continuum_l2'")
     iteration_limit = _integer(
         max_iterations, "max_iterations", minimum=1, maximum=_MAX_ITERATIONS
     )
@@ -588,7 +617,24 @@ def run_constrained_two_hedgehog_relaxation(
         "anchor_pair_isolated_max_abs_deviation": anchor_match_deviations,
         "f_pi": coupling_f_pi,
         "e": coupling_e,
-        "solver": "nearest_neighbor_forward_link_v1",
+        "solver": "nearest_neighbor_forward_link_v2",
+        "stationarity_metric": stationarity_metric,
+        "descent_metric": descent_metric,
+        "gradient_tolerance_definition": (
+            "raw_derivative_euclidean_l2_norm_div_sqrt_cell_volume"
+            if stationarity_metric == "continuum_l2"
+            else "raw_euclidean_derivative_norm"
+        ),
+        "descent_definition": (
+            "raw_euclidean_derivative"
+            if descent_metric == "euclidean"
+            else "discrete_l2_riesz_gradient_derivative_over_cell_volume"
+        ),
+        "descent_interpretation": (
+            "cell_volume_rescales_trial_step_without_changing_direction_on_uniform_grids"
+            if descent_metric == "continuum_l2"
+            else "legacy_unscaled_euclidean_trial_step"
+        ),
         "max_iterations_per_run": iteration_limit,
         "initial_step": step,
         "gradient_tolerance": tolerance,
@@ -615,6 +661,8 @@ def run_constrained_two_hedgehog_relaxation(
         initial_step=step,
         gradient_tolerance=tolerance,
         max_backtracks=backtrack_limit,
+        stationarity_metric=stationarity_metric,
+        descent_metric=descent_metric,
     )
     runs = {
         "isolated_a": _one_relaxation(
@@ -703,6 +751,9 @@ def run_constrained_two_hedgehog_relaxation(
         "limitations": [
             "frozen local Dirichlet patches are not a fixed-separation/fixed-isorotation collective-coordinate minimum",
             "first-order stationarity and the bounded curvature screen do not certify a local or global minimum",
+            "mesh-normalized stationarity is an opt-in discrete L2 residual and does not establish continuum convergence",
+            "scalar cell-volume normalization applies only to uniform-cell Cartesian grids; nonuniform grids require a mass-matrix Riesz map",
+            "continuum_l2 descent rescales trial-step magnitude on uniform grids but does not change direction or minimizers",
             "no multistart or grid-refinement study is performed",
             "anchor-size and anchor-placement sensitivity remain required validation",
             "approximate component charges use a grid-anchor Voronoi partition and are not integer-sector proofs",
