@@ -66,7 +66,7 @@ def test_projected_solver_temporal_refinement_converges_at_fixed_final_time():
     trajectories = []
     for dt in time_steps:
         steps = round(final_time / dt)
-        assert steps * dt == final_time
+        assert math.isclose(steps * dt, final_time, rel_tol=0.0, abs_tol=1e-15)
         trajectories.append(
             evolve_lorentzian_skyrme(
                 field,
@@ -108,6 +108,7 @@ def test_projected_solver_temporal_refinement_converges_at_fixed_final_time():
     )
 
     residual_floor = 128.0 * np.finfo(np.float64).eps * max(1.0, initial_energy)
+    energy_orders = None
     if min(energy_residuals[:3]) > residual_floor:
         energy_orders = _observed_orders(energy_residuals[:3])
         assert min(energy_orders) > 0.5, (
@@ -117,3 +118,9 @@ def test_projected_solver_temporal_refinement_converges_at_fixed_final_time():
     else:
         # At roundoff scale, an order estimate is not meaningful.
         assert energy_residuals[-1] <= residual_tolerance
+
+    print(
+        "temporal convergence: "
+        f"field_orders={field_orders}, velocity_orders={velocity_orders}, "
+        f"energy_residuals={energy_residuals}, energy_orders={energy_orders}"
+    )
