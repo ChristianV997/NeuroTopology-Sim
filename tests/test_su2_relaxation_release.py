@@ -25,16 +25,16 @@ def _anchored_seed():
 
 
 def _run(field, mask, **kwargs):
-    return run_relaxation_then_cold_release(
-        field,
-        fixed_mask=mask,
-        max_iterations=2,
-        max_backtracks=2,
-        dt=1.0e-4,
-        steps=2,
-        save_every=1,
-        **kwargs,
-    )
+    params = {
+        "fixed_mask": mask,
+        "max_iterations": 2,
+        "max_backtracks": 2,
+        "dt": 1.0e-4,
+        "steps": 2,
+        "save_every": 1,
+    }
+    params.update(kwargs)
+    return run_relaxation_then_cold_release(field, **params)
 
 
 def test_real_optimizer_to_lorentzian_cold_release_path_is_finite_and_compact():

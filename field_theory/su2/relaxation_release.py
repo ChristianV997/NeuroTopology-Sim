@@ -425,7 +425,7 @@ def run_relaxation_then_cold_release(
         max_snapshots=_MAX_SNAPSHOTS,
         max_snapshot_bytes=snapshot_budget,
     )
-    static = compute_nearest_neighbor_diagnostics(relaxed.field, f_pi=f_value, e=e_value)
+    static = compute_nearest_neighbor_diagnostics(trajectory.fields[0], f_pi=f_value, e=e_value)
     initial_lorentzian = float(trajectory.total_energy_history[0])
     difference = initial_lorentzian - float(static.energy_total)
     if initial_lorentzian != float(static.energy_total):
