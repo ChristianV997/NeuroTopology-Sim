@@ -712,3 +712,57 @@ def test_line_search_stall_is_not_promoted_by_small_final_residual(monkeypatch):
     assert result.curvature_diagnostics is None
     assert curvature_calls == []
     assert result.minimum_certified is False
+
+
+def test_public_hedgehog_is_unit_norm_exact_vacuum_and_deterministic():
+    shape = (9, 7, 5)
+    spacing = (0.2, 0.2, 0.2)
+    first = hedgehog(shape, radius=0.35, spacing=spacing)
+    second = hedgehog(shape, radius=0.35, spacing=spacing)
+
+    np.testing.assert_allclose(
+        np.sum(first.components * first.components, axis=-1),
+        1.0,
+        rtol=0.0,
+        atol=2e-15,
+    )
+    assert first.components.shape == shape + (4,)
+    assert first.boundary == "fixed_vacuum"
+    assert first.length_unit == "dimensionless"
+    assert np.array_equal(first.components, second.components)
+    identity = np.array((1.0, 0.0, 0.0, 0.0))
+    for axis in range(3):
+        for index in (0, -1):
+            face = np.take(first.components, index, axis=axis)
+            assert np.all(face == identity)
+
+
+def test_public_hedgehog_center_has_the_analytic_radial_limit():
+    shape = (81, 81, 81)
+    spacing = (0.0025, 0.0025, 0.0025)
+    radius = 0.09
+    field = hedgehog(shape, radius=radius, spacing=spacing)
+    center = tuple((size - 1) // 2 for size in shape)
+
+    np.testing.assert_array_equal(
+        field.components[center], np.array((-1.0, 0.0, 0.0, 0.0))
+    )
+    # For F=pi(1-r/R)^2, sin(F(r))/r tends to 2*pi/R.
+    # The first centered lattice sample has an O(h/R) profile correction.
+    for axis in range(3):
+        offset = [0, 0, 0]
+        offset[axis] = 1
+        positive = tuple(center[i] + offset[i] for i in range(3))
+        radial_component = axis + 1
+        quotient = field.components[positive][radial_component] / spacing[axis]
+        assert quotient == pytest.approx(2.0 * np.pi / radius, rel=0.02)
+
+
+def test_public_hedgehog_radius_must_fit_strictly_inside_every_face():
+    shape = (5, 5, 5)
+    spacing = (0.5, 0.5, 0.5)
+    # The half-extent is 1.0 on each axis, and the strict interior radius is accepted.
+    accepted = hedgehog(shape, radius=np.nextafter(1.0, 0.0), spacing=spacing)
+    assert accepted.boundary == "fixed_vacuum"
+    with pytest.raises(ValueError, match="fit strictly inside"):
+        hedgehog(shape, radius=1.0, spacing=spacing)
