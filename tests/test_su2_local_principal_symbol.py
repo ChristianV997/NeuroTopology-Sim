@@ -320,3 +320,30 @@ def test_velocity_tangency_tolerance_scales_with_velocity_norm(normal_component,
     else:
         with pytest.raises(ValueError, match="tangent"):
             analyze(velocity=velocity)
+
+def test_area_gradient_products_are_scaled_before_they_underflow():
+    # d_1*g_0 is about 1e-325 and rounds to zero in float64, but
+    # (d_1*g_0/e)**2 is representable and contributes to the pencil.
+    gradient = 1.0e-318
+    direction_component = 1.0e-7
+    coupling = 1.0e-318
+    result = analyze(
+        velocity=np.zeros(4),
+        gradients=[
+            [0.0, gradient, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ],
+        covector=(1.0, direction_component, 0.0),
+        f_pi=2.0e-7,
+        e=coupling,
+    )
+
+    transverse_speed = np.sqrt(2.0) * direction_component
+    assert result.status == "real_roots_at_sampled_direction"
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0, 1.0, -transverse_speed, -transverse_speed,
+         transverse_speed, transverse_speed],
+        atol=1.0e-12,
+    )
