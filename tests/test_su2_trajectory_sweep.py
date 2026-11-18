@@ -122,6 +122,100 @@ def test_equal_inverse_length_scale_has_expected_energy_prefactor_covariance():
     )
 
 
+def test_cross_inverse_length_scale_mapped_histories_are_covariant():
+    base_field, base_velocity = _field_and_velocity()
+    scaled_field, scaled_velocity = _field_and_velocity(
+        spacing=(0.5, 0.5, 0.5)
+    )
+    np.testing.assert_array_equal(
+        scaled_field.components, base_field.components
+    )
+    scaled_velocity *= 2.0
+
+    # lambda=e*f_pi doubles, mu=f_pi/e doubles: preserve dimensionless
+    # geometry and horizon by halving lengths and times, and scale v,gamma
+    # with lambda. The finite-grid classical trajectory should map exactly.
+    base = evolve_lorentzian_skyrme(
+        base_field,
+        base_velocity,
+        dt=0.001,
+        steps=3,
+        save_every=1,
+        f_pi=1.0,
+        e=1.0,
+        damping=0.1,
+    )
+    scaled = evolve_lorentzian_skyrme(
+        scaled_field,
+        scaled_velocity,
+        dt=0.0005,
+        steps=3,
+        save_every=1,
+        f_pi=2.0,
+        e=1.0,
+        damping=0.2,
+    )
+
+    np.testing.assert_allclose(
+        scaled.time_history,
+        np.asarray(base.time_history) / 2.0,
+        rtol=1e-12,
+        atol=1e-15,
+    )
+    for field_base, field_scaled in zip(base.fields, scaled.fields):
+        np.testing.assert_allclose(
+            field_scaled.components,
+            field_base.components,
+            rtol=1e-10,
+            atol=1e-12,
+        )
+    for velocity_base, velocity_scaled in zip(base.velocities, scaled.velocities):
+        np.testing.assert_allclose(
+            velocity_scaled,
+            2.0 * velocity_base,
+            rtol=1e-10,
+            atol=1e-12,
+        )
+
+    for name in (
+        "energy_sigma_history",
+        "energy_skyrme_history",
+        "kinetic_sigma_history",
+        "kinetic_skyrme_history",
+        "total_energy_history",
+        "dissipated_energy_history",
+        "energy_balance_residual_history",
+    ):
+        np.testing.assert_allclose(
+            getattr(scaled, name),
+            2.0 * np.asarray(getattr(base, name)),
+            rtol=1e-9,
+            atol=1e-12,
+        )
+    np.testing.assert_allclose(
+        scaled.approximate_charge_history,
+        base.approximate_charge_history,
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        scaled.time_kinetic_min_eigenvalue_history,
+        4.0 * np.asarray(base.time_kinetic_min_eigenvalue_history),
+        rtol=1e-9,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        scaled.time_kinetic_max_condition_history,
+        base.time_kinetic_max_condition_history,
+        rtol=1e-9,
+        atol=1e-12,
+    )
+    assert scaled.cell_volume == pytest.approx(base.cell_volume / 8.0)
+    assert scaled.linearized_cfl_indicator == pytest.approx(
+        base.linearized_cfl_indicator
+    )
+
+
 def test_work_budget_rejects_before_any_solver_call(monkeypatch):
     import field_theory.su2.trajectory_sweep as sweep_module
 
