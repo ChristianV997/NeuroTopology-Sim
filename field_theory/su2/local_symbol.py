@@ -163,6 +163,39 @@ def _scaled_product_over_square(
     return result
 
 
+def _scaled_signed_product_over_denominator(
+    left: float,
+    right: float,
+    denominator: float,
+    *,
+    name: str,
+) -> float:
+    """Evaluate left*right/denominator before an underflowing raw product."""
+    if not all(math.isfinite(value) for value in (left, right, denominator)):
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    if denominator <= 0.0:
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    if left == 0.0 or right == 0.0:
+        return 0.0
+
+    left_mantissa, left_exponent = math.frexp(abs(left))
+    right_mantissa, right_exponent = math.frexp(abs(right))
+    denominator_mantissa, denominator_exponent = math.frexp(denominator)
+    mantissa = left_mantissa * right_mantissa / denominator_mantissa
+    exponent = left_exponent + right_exponent - denominator_exponent
+    try:
+        magnitude = math.ldexp(mantissa, exponent)
+    except OverflowError as exc:
+        raise ValueError(f"{name} exceeds the finite diagnostic range") from exc
+    if not math.isfinite(magnitude):
+        raise ValueError(f"{name} exceeds the finite diagnostic range")
+    if magnitude == 0.0:
+        raise ValueError(f"{name} underflows the finite diagnostic range")
+
+    sign = math.copysign(1.0, left) * math.copysign(1.0, right)
+    return math.copysign(magnitude, sign)
+
+
 def _weighted_signed_product(
     left: float,
     right: float,
@@ -436,11 +469,29 @@ def analyze_local_skyrme_principal_symbol(
                 )
             for first in range(3):
                 for second in range(first + 1, 3):
-                    area_gradient = (
-                        direction[first] * g[second] - direction[second] * g[first]
-                    )
+                    # Scale each product before subtraction; the raw area-gradient
+                    # component can underflow even when W(area_gradient)/e**2 is
+                    # representable. Since W is quadratic, W(area/e) is the same
+                    # weighted coefficient without materializing area itself.
+                    area_gradient_over_coupling = np.empty(3, dtype=np.float64)
+                    for component in range(3):
+                        first_term = _scaled_signed_product_over_denominator(
+                            float(direction[first]),
+                            float(g[second, component]),
+                            e_value,
+                            name="scaled area-gradient component",
+                        )
+                        second_term = _scaled_signed_product_over_denominator(
+                            float(direction[second]),
+                            float(g[first, component]),
+                            e_value,
+                            name="scaled area-gradient component",
+                        )
+                        area_gradient_over_coupling[component] = _finite_sum(
+                            [first_term, -second_term], "scaled area-gradient component"
+                        )
                     spatial_block -= _weighted_wedge_metric(
-                        area_gradient, e_value, identity
+                        area_gradient_over_coupling, 1.0, identity
                     )
     except FloatingPointError as exc:
         raise ValueError("local symbol is outside the finite diagnostic range") from exc
