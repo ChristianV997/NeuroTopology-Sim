@@ -205,6 +205,48 @@ def test_fixed_box_refinement_separates_temporal_contamination():
             velocity_coarse, velocity_fine
         )
 
+    # Empirical Richardson tails estimate the remaining dt_h/4 error from the
+    # adjacent dt_h/2-to-dt_h/4 difference and its observed order. This is a
+    # diagnostic under an asymptotic-error assumption, not a rigorous bound.
+    temporal_field_tails = {}
+    temporal_velocity_tails = {}
+    for samples in _GRID_SIZES:
+        for differences, orders, tails, label in (
+            (
+                temporal_field_differences[samples],
+                temporal_field_orders[samples],
+                temporal_field_tails,
+                "field",
+            ),
+            (
+                temporal_velocity_differences[samples],
+                temporal_velocity_orders[samples],
+                temporal_velocity_tails,
+                "velocity",
+            ),
+        ):
+            fine_difference = differences[-1]
+            try:
+                denominator = math.expm1(orders * math.log(2.0))
+                tail = fine_difference / denominator
+            except (OverflowError, ZeroDivisionError):
+                denominator = math.inf
+                tail = math.nan
+            assert (
+                math.isfinite(orders)
+                and orders > 0.0
+                and math.isfinite(denominator)
+                and denominator > 1.0e-6
+                and math.isfinite(tail)
+                and tail > 0.0
+            ), (
+                f"grid n={samples} has an ill-conditioned empirical "
+                f"Richardson {label} tail: order={orders}, "
+                f"fine_difference={fine_difference}, "
+                f"denominator={denominator}, tail={tail}"
+            )
+            tails[samples] = tail
+
     # Compare dt_h/4 endpoints at coincident nodes. Every second fine-grid
     # sample coincides with the corresponding coarse-grid coordinate.
     field_spatial_differences = []
@@ -239,12 +281,12 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         assert math.isfinite(velocity_space) and velocity_space > 0.0
 
         field_temporal_estimate = max(
-            temporal_field_differences[coarse_n][-1],
-            temporal_field_differences[fine_n][-1],
+            temporal_field_tails[coarse_n],
+            temporal_field_tails[fine_n],
         )
         velocity_temporal_estimate = max(
-            temporal_velocity_differences[coarse_n][-1],
-            temporal_velocity_differences[fine_n][-1],
+            temporal_velocity_tails[coarse_n],
+            temporal_velocity_tails[fine_n],
         )
         temporal_field_to_spatial.append(field_temporal_estimate / field_space)
         temporal_velocity_to_spatial.append(
@@ -252,18 +294,16 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         )
 
     assert max(temporal_field_to_spatial) <= 0.10, (
-        "temporal field differences exceed 10% of intergrid differences; "
+        "estimated temporal field tail exceeds 10% of intergrid differences; "
         "no spatial-order estimate is justified: "
-        f"ratios={temporal_field_to_spatial}, "
-        f"temporal={temporal_field_differences}, "
-        f"spatial={field_spatial_differences}"
+        f"tail_ratios={temporal_field_to_spatial}, "
+        f"tails={temporal_field_tails}, spatial={field_spatial_differences}"
     )
     assert max(temporal_velocity_to_spatial) <= 0.10, (
-        "temporal velocity differences exceed 10% of intergrid differences; "
+        "estimated temporal velocity tail exceeds 10% of intergrid differences; "
         "no spatial-order estimate is justified: "
-        f"ratios={temporal_velocity_to_spatial}, "
-        f"temporal={temporal_velocity_differences}, "
-        f"spatial={velocity_spatial_differences}"
+        f"tail_ratios={temporal_velocity_to_spatial}, "
+        f"tails={temporal_velocity_tails}, spatial={velocity_spatial_differences}"
     )
 
     # Require decreasing intergrid differences, but do not impose a universal
@@ -315,10 +355,12 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         f"cumulative_stage_site_work={cumulative_stage_site_work}, "
         f"temporal_field_differences={temporal_field_differences}, "
         f"temporal_field_orders={temporal_field_orders}, "
+        f"temporal_field_richardson_tails={temporal_field_tails}, "
         f"temporal_velocity_differences={temporal_velocity_differences}, "
         f"temporal_velocity_orders={temporal_velocity_orders}, "
-        f"temporal_field_to_spatial={temporal_field_to_spatial}, "
-        f"temporal_velocity_to_spatial={temporal_velocity_to_spatial}, "
+        f"temporal_velocity_richardson_tails={temporal_velocity_tails}, "
+        f"temporal_field_tail_to_spatial={temporal_field_to_spatial}, "
+        f"temporal_velocity_tail_to_spatial={temporal_velocity_to_spatial}, "
         f"field_spatial_differences={field_spatial_differences}, "
         f"field_observed_order={field_order}, "
         f"velocity_spatial_differences={velocity_spatial_differences}, "
