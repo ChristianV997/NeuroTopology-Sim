@@ -5,14 +5,22 @@ on:
     paths:
       - 'field_theory/su2/**'
       - 'tests/test_su2_lorentzian.py'
+      - 'tests/test_su2_trajectory_sweep.py'
+      - 'tests/test_su2_hyperbolicity.py'
       - 'docs/su2_lorentzian_dynamics.md'
+      - 'docs/su2_lorentzian_trajectory_sweeps.md'
+      - 'docs/su2_uniform_geodesic_hyperbolicity.md'
       - '.github/workflows/su2-lorentzian.yml'
   push:
     branches: [main]
     paths:
       - 'field_theory/su2/**'
       - 'tests/test_su2_lorentzian.py'
+      - 'tests/test_su2_trajectory_sweep.py'
+      - 'tests/test_su2_hyperbolicity.py'
       - 'docs/su2_lorentzian_dynamics.md'
+      - 'docs/su2_lorentzian_trajectory_sweeps.md'
+      - 'docs/su2_uniform_geodesic_hyperbolicity.md'
       - '.github/workflows/su2-lorentzian.yml'
 
 permissions:
@@ -29,5 +37,18 @@ jobs:
           python-version: '3.11'
       - name: Install focused test dependencies
         run: python -m pip install 'numpy>=1.24.0' 'pytest>=7.0.0' 'pytest-timeout>=2.3'
-      - name: Run Lorentzian dynamics tests
-        run: python -m pytest tests/test_su2_lorentzian.py -q -p no:cacheprovider
+      - name: Run Lorentzian dynamics, sweep, and principal-symbol tests
+        run: python -m pytest tests/test_su2_lorentzian.py tests/test_su2_trajectory_sweep.py tests/test_su2_hyperbolicity.py -q -p no:cacheprovider
+
+  headless-visualization-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Install optional visualization dependencies
+        run: python -m pip install 'numpy>=1.24.0' 'pytest>=7.0.0' 'pytest-timeout>=2.3' 'matplotlib>=3.8'
+      - name: Run headless trajectory sweep tests with rendering enabled
+        run: python -m pytest tests/test_su2_trajectory_sweep.py -q -p no:cacheprovider

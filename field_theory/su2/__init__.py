@@ -9,6 +9,12 @@ from .lorentzian import (
     evolve_lorentzian_skyrme,
     linearized_lattice_frequency,
 )
+from .trajectory_sweep import (
+    LorentzianSweepPoint,
+    LorentzianSweepResult,
+    LorentzianSweepSpec,
+    run_lorentzian_sweep,
+)
 
 __all__ = [
     "SU2GridField",
@@ -21,4 +27,8 @@ __all__ = [
     "compute_lorentzian_diagnostics",
     "evolve_lorentzian_skyrme",
     "linearized_lattice_frequency",
+    "LorentzianSweepPoint",
+    "LorentzianSweepResult",
+    "LorentzianSweepSpec",
+    "run_lorentzian_sweep",
 ]
