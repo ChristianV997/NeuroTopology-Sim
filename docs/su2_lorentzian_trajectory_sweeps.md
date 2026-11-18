@@ -23,9 +23,12 @@ The sweep records scale proxies motivated by the static energy scaling:
 combinations, not calibrated physical scales. Since this first sweep keeps
 the input grid and profile fixed, varying \(\lambda\) changes their
 dimensionless geometry, time horizon \(\bar T=\lambda T\), and initial speed
-\(\bar v_0=v_0/\lambda\); these proxies are recorded per point. It does not
-perform the resampling needed for a controlled fixed-dimensionless-geometry
-comparison.
+\(\bar v_0=v_0/\lambda\); these proxies are recorded per point. The reported
+RMS speed is \(\sqrt{N^{-1}\sum_{i\in\text{all grid sites}}|v_i|^2}/\lambda\);
+the maximum is the largest sitewise speed divided by \(\lambda\). Thus
+fixed-vacuum boundary sites are included in the RMS and contribute zero.
+The sweep does not perform the resampling needed for a controlled
+fixed-dimensionless-geometry comparison.
 
 The model-parameter axes are caller-defined and have no empirically calibrated
 ranges. An illustrative exploration might use a few dimensionless values

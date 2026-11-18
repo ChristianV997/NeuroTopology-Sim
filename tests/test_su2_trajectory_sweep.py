@@ -98,6 +98,10 @@ def test_equal_inverse_length_scale_has_expected_energy_prefactor_covariance():
         np.testing.assert_allclose(
             field_a.components, field_b.components, rtol=1e-10, atol=1e-12
         )
+    for velocity_a, velocity_b in zip(first.velocities, second.velocities):
+        np.testing.assert_allclose(
+            velocity_a, velocity_b, rtol=1e-10, atol=1e-12
+        )
     np.testing.assert_allclose(
         second.total_energy_history,
         4.0 * np.asarray(first.total_energy_history),
