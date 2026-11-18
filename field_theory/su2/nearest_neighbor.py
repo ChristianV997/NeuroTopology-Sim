@@ -1130,7 +1130,7 @@ def relax_skyrme_field_nearest_neighbor(
         finite_difference_step=fd_step,
         fixed_mask=fixed_sites,
     )
-    raw_gradient_norm, continuum_l2_residual = _gradient_norms(
+    raw_gradient_norm, continuum_l2_residual, active_l2_measure, active_l2_rms_residual = _gradient_norms(
         final_gradient, active, cell_volume
     )
     result_field = SU2GridField(
