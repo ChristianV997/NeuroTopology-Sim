@@ -22,12 +22,18 @@ class LorentzianVisualizationUnavailable(ImportError):
 
 def _finite_history(values: object, name: str, length: int) -> tuple[float, ...]:
     try:
-        raw = np.asarray(values, dtype=np.float64)
+        raw = np.asarray(values)
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"{name} must be a finite numeric history") from exc
-    if raw.ndim != 1 or len(raw) != length or not np.all(np.isfinite(raw)):
+    if raw.ndim != 1 or raw.dtype.kind not in "fiu":
+        raise ValueError(f"{name} must be a finite numeric history")
+    try:
+        converted = np.asarray(raw, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a finite numeric history") from exc
+    if len(converted) != length or not np.all(np.isfinite(converted)):
         raise ValueError(f"{name} must be a finite history matching time_history")
-    return tuple(float(value) for value in raw)
+    return tuple(float(value) for value in converted)
 
 
 def _trajectory_histories(
