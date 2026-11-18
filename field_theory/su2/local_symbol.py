@@ -60,9 +60,33 @@ def _contains_boolean(value: object) -> bool:
     return False
 
 
+def _validate_sequence_integer_values(value: object, name: str) -> None:
+    """Check integer leaves before NumPy can promote a mixed sequence to float."""
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _validate_sequence_integer_values(item, name)
+        return
+    if isinstance(value, np.ndarray):
+        if value.dtype.kind in "iu":
+            for item in value.flat:
+                _validate_sequence_integer_values(item, name)
+        elif value.dtype.kind == "O":
+            for item in value.flat:
+                _validate_sequence_integer_values(item, name)
+        return
+    if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
+        try:
+            converted = float(value)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f"{name} contains values not exactly representable as float64") from exc
+        if not math.isfinite(converted) or int(converted) != int(value):
+            raise ValueError(f"{name} contains values not exactly representable as float64")
+
+
 def _real_array(value: object, name: str, shape: tuple[int, ...]) -> np.ndarray:
     if _contains_boolean(value):
         raise ValueError(f"{name} must be a finite real array with shape {shape}, not booleans")
+    _validate_sequence_integer_values(value, name)
     try:
         array = np.asarray(value)
     except (TypeError, ValueError) as exc:
