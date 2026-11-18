@@ -233,6 +233,20 @@ def test_invalid_velocity_is_rejected_before_evolution(monkeypatch):
 
 
 
+
+def test_timestep_endpoint_tolerance_matches_preflight_ratio_tolerance():
+    field, velocity = _field_and_velocity()
+    result = run_lorentzian_sweep(
+        field,
+        velocity,
+        LorentzianSweepSpec(dt_values=(0.33333333334,), final_time=1.0),
+    )
+    point = result.points[0]
+    assert point.steps == 3
+    assert point.time_history[-1] == pytest.approx(1.00000000002, rel=1e-12)
+
+
+
 def test_underflowed_positive_scale_proxy_rejected_before_evolution(monkeypatch):
     import field_theory.su2.trajectory_sweep as sweep_module
 
@@ -255,8 +269,8 @@ def test_underflowed_positive_scale_proxy_rejected_before_evolution(monkeypatch)
         )
 
 
-@pytest.mark.parametrize("corruption", ["history", "final_field"])
-def test_nonfinite_solver_output_is_rejected_with_point_id(monkeypatch, corruption):
+@pytest.mark.parametrize(("corruption", "error_fragment"), [("history", "non-finite"), ("final_field", "non-finite"), ("string_history", "numeric")])
+def test_invalid_solver_output_is_rejected_with_point_id(monkeypatch, corruption, error_fragment):
     import field_theory.su2.trajectory_sweep as sweep_module
 
     field, velocity = _field_and_velocity()
@@ -267,6 +281,10 @@ def test_nonfinite_solver_output_is_rejected_with_point_id(monkeypatch, corrupti
         if corruption == "history":
             values = list(trajectory.total_energy_history)
             values[-1] = float("nan")
+            return replace(trajectory, total_energy_history=tuple(values))
+        if corruption == "string_history":
+            values = list(trajectory.total_energy_history)
+            values[-1] = str(values[-1])
             return replace(trajectory, total_energy_history=tuple(values))
         bad_field = copy(trajectory.fields[-1])
         components = np.array(bad_field.components, copy=True)
@@ -285,7 +303,7 @@ def test_nonfinite_solver_output_is_rejected_with_point_id(monkeypatch, corrupti
             LorentzianSweepSpec(dt_values=(0.001,), final_time=0.001),
         )
     assert isinstance(error.value.__cause__, ValueError)
-    assert "non-finite" in str(error.value.__cause__)
+    assert error_fragment in str(error.value.__cause__)
 
 
 

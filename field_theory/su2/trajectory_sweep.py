@@ -34,6 +34,7 @@ MAX_SWEEP_SNAPSHOTS_PER_POINT = 32
 MAX_SWEEP_SNAPSHOT_BYTES_PER_POINT = 128 * 1024 * 1024
 MAX_GRID_NODES = 32_768
 MAX_STEPS = 100_000
+_STEP_RATIO_REL_TOLERANCE = 1.0e-10
 
 
 def _bounded_reals(
@@ -91,7 +92,7 @@ def _steps_for(final_time: float, dt: float) -> int:
     if not math.isfinite(ratio) or ratio < 1.0 or ratio > MAX_STEPS:
         raise ValueError(f"final_time/dt must give between 1 and {MAX_STEPS} steps")
     steps = int(round(ratio))
-    tolerance = 1.0e-10 * max(1.0, abs(ratio))
+    tolerance = _STEP_RATIO_REL_TOLERANCE * max(1.0, abs(ratio))
     if steps < 1 or abs(ratio - steps) > tolerance:
         raise ValueError("each dt must divide final_time into an integer step count")
     return steps
@@ -539,6 +540,26 @@ def _validate_velocity(field: SU2GridField, initial_velocity: object) -> np.ndar
     return velocity
 
 
+def _finite_real_vector(values: object, name: str) -> np.ndarray:
+    raw = np.asarray(values)
+    if raw.ndim != 1 or raw.dtype.kind not in "fiu":
+        raise ValueError(f"solver returned malformed or non-real numeric {name}")
+    converted = np.asarray(raw, dtype=np.float64)
+    if not np.isfinite(converted).all():
+        raise ValueError(f"solver returned non-finite {name}")
+    return converted
+
+
+def _finite_real_scalar(value: object, name: str) -> float:
+    raw = np.asarray(value)
+    if raw.ndim != 0 or raw.dtype.kind not in "fiu":
+        raise ValueError(f"solver returned non-real numeric {name}")
+    converted = float(raw)
+    if not math.isfinite(converted):
+        raise ValueError(f"solver returned non-finite {name}")
+    return converted
+
+
 def _validate_trajectory_output(
     trajectory: LorentzianSkyrmeTrajectory,
     *,
@@ -553,16 +574,16 @@ def _validate_trajectory_output(
     """Reject malformed or non-finite solver results before a point is recorded."""
     if not isinstance(trajectory, LorentzianSkyrmeTrajectory):
         raise ValueError("solver returned an unexpected trajectory type")
-    times = np.asarray(trajectory.time_history, dtype=np.float64)
-    if times.ndim != 1 or times.size < 2 or not np.isfinite(times).all():
-        raise ValueError("solver returned a non-finite or malformed time history")
+    times = _finite_real_vector(trajectory.time_history, "time history")
+    if times.size < 2:
+        raise ValueError("solver returned a malformed time history")
     if times[0] != 0.0 or any(right <= left for left, right in zip(times, times[1:])):
         raise ValueError("solver time history must start at zero and increase strictly")
     if not math.isclose(
         float(times[-1]),
         final_time,
-        rel_tol=1.0e-12,
-        abs_tol=1.0e-12 * max(1.0, abs(final_time)),
+        rel_tol=_STEP_RATIO_REL_TOLERANCE,
+        abs_tol=0.0,
     ):
         raise ValueError("solver time history does not reach the requested final time")
     if trajectory.dt != dt or trajectory.steps != steps:
@@ -587,9 +608,9 @@ def _validate_trajectory_output(
         "time_kinetic_max_condition_history",
     )
     for name in histories:
-        values = np.asarray(getattr(trajectory, name), dtype=np.float64)
-        if values.ndim != 1 or values.size != times.size or not np.isfinite(values).all():
-            raise ValueError(f"solver returned malformed or non-finite {name}")
+        values = _finite_real_vector(getattr(trajectory, name), name)
+        if values.size != times.size:
+            raise ValueError(f"solver returned malformed {name}")
 
     if len(trajectory.fields) != times.size or len(trajectory.velocities) != times.size:
         raise ValueError("solver snapshots do not match diagnostic history length")
@@ -603,20 +624,25 @@ def _validate_trajectory_output(
             or field.length_unit != initial.length_unit
         ):
             raise ValueError("solver field snapshot metadata changed during evolution")
-        if not np.isfinite(field.components).all():
-            raise ValueError("solver returned a non-finite field snapshot")
-        velocity_array = np.asarray(velocity, dtype=np.float64)
-        if velocity_array.shape != initial.components.shape or not np.isfinite(velocity_array).all():
+        components = np.asarray(field.components)
+        if components.dtype.kind not in "fiu" or not np.isfinite(components).all():
+            raise ValueError("solver returned a malformed or non-finite field snapshot")
+        raw_velocity = np.asarray(velocity)
+        if (
+            raw_velocity.dtype.kind not in "fiu"
+            or raw_velocity.shape != initial.components.shape
+            or not np.isfinite(raw_velocity).all()
+        ):
             raise ValueError("solver returned a malformed or non-finite velocity snapshot")
 
-    scalars = (
-        trajectory.max_unit_norm_error,
-        trajectory.max_tangency_error,
-        trajectory.cell_volume,
-        trajectory.linearized_cfl_indicator,
+    scalar_diagnostics = (
+        (trajectory.max_unit_norm_error, "max_unit_norm_error"),
+        (trajectory.max_tangency_error, "max_tangency_error"),
+        (trajectory.cell_volume, "cell_volume"),
+        (trajectory.linearized_cfl_indicator, "linearized_cfl_indicator"),
     )
-    if not all(math.isfinite(float(value)) for value in scalars):
-        raise ValueError("solver returned non-finite scalar diagnostics")
+    for value, name in scalar_diagnostics:
+        _finite_real_scalar(value, name)
 
 def _sweep_id(
     field_checksum: str, velocity_checksum: str, spec: LorentzianSweepSpec
