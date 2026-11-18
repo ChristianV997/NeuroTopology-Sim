@@ -70,11 +70,16 @@ def _real_array(value: object, name: str, shape: tuple[int, ...]) -> np.ndarray:
     if array.shape != shape or array.dtype.kind not in "fiu":
         raise ValueError(f"{name} must be a finite real array with shape {shape}")
     try:
-        result = np.array(array, dtype=np.float64, copy=True)
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            result = np.array(array, dtype=np.float64, copy=True)
     except (OverflowError, TypeError, ValueError) as exc:
         raise ValueError(f"{name} must be representable as finite float64 values") from exc
     if not np.all(np.isfinite(result)):
         raise ValueError(f"{name} must contain only finite values")
+    if array.dtype.kind == "f" and np.any((array != 0) & (result == 0)):
+        raise ValueError(
+            f"{name} contains nonzero values that underflow when converted to float64"
+        )
     return result
 
 
@@ -379,6 +384,72 @@ def _weighted_mixed_form(
     )
 
 
+
+def _assemble_local_symbol_blocks(
+    velocity: np.ndarray,
+    gradients: np.ndarray,
+    direction: np.ndarray,
+    coupling: float,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build the complete A, D, C blocks exactly, rounding each block once."""
+    alpha_fraction = _as_exact_fraction(alpha, "Skyrme quadratic coefficient")
+    time_fraction = _scaled_identity_fraction(alpha_fraction)
+    for gradient in gradients:
+        _accumulate_fraction_matrix(
+            time_fraction, _weighted_wedge_fraction(gradient, coupling)
+        )
+
+    mixed_fraction = _zero_fraction_matrix()
+    for axis, component in enumerate(direction):
+        _accumulate_fraction_matrix(
+            mixed_fraction,
+            _weighted_mixed_fraction(
+                gradients[axis], velocity, coupling, float(component)
+            ),
+        )
+
+    spatial_fraction = _scaled_identity_fraction(-alpha_fraction)
+    for component in direction:
+        _accumulate_fraction_matrix(
+            spatial_fraction,
+            _weighted_wedge_fraction(
+                velocity, coupling, amplitude=abs(float(component))
+            ),
+        )
+    for first in range(3):
+        for second in range(first + 1, 3):
+            # Form each area component/e exactly, then keep its W contribution
+            # exact while assembling C(d). This avoids raw-product underflow
+            # and cancellation both within and across coefficient matrices.
+            area_gradient_over_coupling = [
+                _product_fraction_over_denominator(
+                    float(direction[first]),
+                    float(gradients[second, component]),
+                    coupling,
+                    name="scaled area-gradient component",
+                )
+                - _product_fraction_over_denominator(
+                    float(direction[second]),
+                    float(gradients[first, component]),
+                    coupling,
+                    name="scaled area-gradient component",
+                )
+                for component in range(3)
+            ]
+            _accumulate_fraction_matrix(
+                spatial_fraction,
+                _weighted_wedge_fraction(area_gradient_over_coupling, 1.0),
+                coefficient=Fraction(-1, 1),
+            )
+
+    return (
+        _fraction_matrix_to_float(time_fraction, "time-kinetic block"),
+        _fraction_matrix_to_float(mixed_fraction, "mixed block"),
+        _fraction_matrix_to_float(spatial_fraction, "spatial block"),
+    )
+
+
 def _sorted_roots(roots: np.ndarray) -> tuple[complex, ...]:
     result = tuple(complex(float(root.real), float(root.imag)) for root in roots)
     return tuple(sorted(result, key=lambda root: (root.real, root.imag)))
@@ -504,57 +575,9 @@ def analyze_local_skyrme_principal_symbol(
         raise ValueError("couplings or derivative data exceed finite diagnostic range")
 
     identity = np.eye(3, dtype=np.float64)
-    alpha_fraction = _as_exact_fraction(alpha, "Skyrme quadratic coefficient")
-    time_fraction = _scaled_identity_fraction(alpha_fraction)
-    for gradient in g:
-        _accumulate_fraction_matrix(
-            time_fraction, _weighted_wedge_fraction(gradient, e_value)
-        )
-
-    mixed_fraction = _zero_fraction_matrix()
-    for axis, component in enumerate(direction):
-        _accumulate_fraction_matrix(
-            mixed_fraction,
-            _weighted_mixed_fraction(g[axis], v, e_value, float(component)),
-        )
-
-    spatial_fraction = _scaled_identity_fraction(-alpha_fraction)
-    for component in direction:
-        _accumulate_fraction_matrix(
-            spatial_fraction,
-            _weighted_wedge_fraction(
-                v, e_value, amplitude=abs(float(component))
-            ),
-        )
-    for first in range(3):
-        for second in range(first + 1, 3):
-            # Form each area component/e exactly, then keep its W contribution
-            # exact while assembling C(d). This avoids both raw-product
-            # underflow and cancellation between separately rounded matrices.
-            area_gradient_over_coupling = [
-                _product_fraction_over_denominator(
-                    float(direction[first]),
-                    float(g[second, component]),
-                    e_value,
-                    name="scaled area-gradient component",
-                )
-                - _product_fraction_over_denominator(
-                    float(direction[second]),
-                    float(g[first, component]),
-                    e_value,
-                    name="scaled area-gradient component",
-                )
-                for component in range(3)
-            ]
-            _accumulate_fraction_matrix(
-                spatial_fraction,
-                _weighted_wedge_fraction(area_gradient_over_coupling, 1.0),
-                coefficient=Fraction(-1, 1),
-            )
-
-    time_block = _fraction_matrix_to_float(time_fraction, "time-kinetic block")
-    mixed_block = _fraction_matrix_to_float(mixed_fraction, "mixed block")
-    spatial_block = _fraction_matrix_to_float(spatial_fraction, "spatial block")
+    time_block, mixed_block, spatial_block = _assemble_local_symbol_blocks(
+        v, g, direction, e_value, alpha
+    )
 
     # These coefficients are symmetric analytically; remove only roundoff skew.
     time_block = 0.5 * (time_block + time_block.T)
