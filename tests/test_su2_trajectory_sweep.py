@@ -503,6 +503,7 @@ def test_sweep_plot_data_is_dimensionless_and_axis_keyed():
     [
         ("dt", "0.001"),
         ("dt", float("nan")),
+        ("dt", 10**400),
         ("dt", 0.0),
         ("steps", True),
         ("steps", 2.0),
@@ -529,6 +530,7 @@ def test_trajectory_plot_data_rejects_coerced_metadata(metadata_name, bad_value)
     [
         ("f_pi", "1.0", "real numeric scalar"),
         ("f_pi", float("nan"), "finite"),
+        ("f_pi", 10**400, "finite"),
         ("e", True, "real numeric scalar"),
         ("e", -1.0, "positive"),
         ("damping", False, "real numeric scalar"),
