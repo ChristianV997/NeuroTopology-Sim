@@ -2,8 +2,9 @@
 
 This layer composes the finite-grid Lorentzian solver with bounded, reproducible
 parameter sweeps and optional headless plots. It adds no new field equations.
-All outputs remain dimensionless engineering diagnostics unless an external,
-validated unit conversion is supplied.
+Outputs remain dimensionless engineering diagnostics. A future unit conversion
+could assign units, but would not validate the field equations, parameter mapping,
+or initial and boundary conditions as a physical model.
 
 ## What is swept
 
