@@ -231,8 +231,6 @@ def _weighted_wedge_metric(
                 extra_factors=(amplitude, amplitude),
                 coefficient_sign=-1.0,
                 name="weighted wedge off-diagonal",
-            ) * math.copysign(1.0, float(vector[row])) * math.copysign(
-                1.0, float(vector[column])
             )
             result[column, row] = result[row, column]
     if not np.all(np.isfinite(result)):
