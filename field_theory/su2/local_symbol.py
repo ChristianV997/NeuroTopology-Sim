@@ -123,7 +123,11 @@ def _tangent_basis(unit_field: np.ndarray) -> np.ndarray:
     householder = np.eye(4, dtype=np.float64) - 2.0 * np.outer(reflector, reflector)
     basis = householder[:, 1:]
     if not np.all(np.isfinite(basis)):
-        raise ValueError("field does not define a finite tangdef _fraction_to_finite_float(value: Fraction, name: str) -> float:
+        raise ValueError("field does not define a finite tangent basis")
+    return basis
+
+
+def _fraction_to_finite_float(value: Fraction, name: str) -> float:
     """Round an exact rational once to float64, rejecting overflow and underflow."""
     try:
         result = float(value)
