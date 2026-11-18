@@ -156,13 +156,18 @@ and any relaxation/formation mechanism needs explicit damping or energy flow.
 ## Validation included
 
 The focused test file checks: static-energy normalization against the existing
-nearest-link objective; nonzero time-space \(E_4\) kinetic energy and its
-constant-field limit; the analytic vacuum dispersion; \(S^3\) norm and
-tangency; energy-error reduction under timestep refinement; damped energy
-balance; frozen boundaries and pinned sites; invalid initial velocities;
-and preflight snapshot/CFL/aggregate-work bounds, including a mid-run failure
-that verifies the correct integration-step diagnostic. These are software and discretization
-checks on tiny synthetic grids, not a physical validation of the Skyrme model.
+nearest-link objective; nonzero time-space \\(E_4\\) kinetic energy and its
+constant-field limit; analytic vacuum dispersion; \\(S^3\\) norm and tangency;
+energy-error reduction under timestep refinement; damped energy balance;
+frozen boundaries and pinned sites; invalid initial velocities; and preflight
+snapshot/CFL/aggregate-work bounds, including a mid-run failure that verifies
+the reported integration step. A parametrized finite-difference
+Euler-Lagrange residual test covers periodic and fixed-vacuum boundaries on
+one synthetic field. Its reference reuses the production static-potential
+diagnostic, so it checks consistency with that declared energy rather than
+independently validating the potential implementation. These are software and
+discretization checks on tiny synthetic grids, not physical validation of the
+Skyrme model.
 
 Remaining numerical gates are: broaden the finite-difference
 Euler-Lagrange residual across fields, sites, and parameters (the current
