@@ -55,11 +55,30 @@ def test_rejects_unavailable_top_level_field():
         validate_experiment_config(raw)
 
 
+def test_rejects_multi_hedgehog_top_level_uses_unavailable_fields_message():
+    from experiments.su2_skyrme.schema import UNAVAILABLE_FIELDS
+
+    raw = _base_relax()
+    raw["multi_hedgehog"] = True
+    with pytest.raises(ExperimentConfigError, match="unavailable") as excinfo:
+        validate_experiment_config(raw)
+    assert UNAVAILABLE_FIELDS["multi_hedgehog"] in str(excinfo.value)
+    assert "multi_hedgehog" in UNAVAILABLE_FIELDS
+
+
 def test_rejects_multi_hedgehog_ic():
     raw = _base_relax()
     raw["initial_condition"] = {"kind": "multi_hedgehog"}
     with pytest.raises(ExperimentConfigError, match="initial_condition.kind"):
         validate_experiment_config(raw)
+
+
+def test_claim_guardrail_default_is_module_constant():
+    from experiments.su2_skyrme.schema import CLAIM_GUARDRAIL
+
+    cfg = validate_experiment_config(_base_relax())
+    assert cfg.claim_guardrail == CLAIM_GUARDRAIL
+    assert "consciousness" in CLAIM_GUARDRAIL.lower()
 
 
 def test_sweep_requires_axes_for_sweep_mode():

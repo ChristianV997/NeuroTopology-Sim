@@ -108,3 +108,44 @@ def test_unavailable_quantity_semantics():
     assert q.value is None
     assert q.availability == "unavailable"
     assert q.evidence == "unavailable"
+
+
+def test_validate_result_requires_valid_status_and_units():
+    result = ExperimentResultV1(
+        result_id="abc",
+        experiment_id="e",
+        mode="nearest_neighbor_relax",
+        status="completed",
+        config={},
+        provenance={},
+        discretization={},
+        boundary_conditions={},
+        initial_condition={},
+        model_settings={},
+        solver_settings={},
+        diagnostics=[quantity("x", 1.0, evidence="computed")],
+    )
+    payload = result.to_dict()
+    assert validate_result_dict(payload) == []
+
+    bad_status = dict(payload)
+    bad_status["status"] = "not_a_real_status"
+    assert any("invalid status" in p for p in validate_result_dict(bad_status))
+
+    missing_units = dict(payload)
+    missing_units["diagnostics"] = [
+        {"name": "x", "value": 1.0, "evidence": "computed", "availability": "present"}
+    ]
+    assert any("missing units" in p for p in validate_result_dict(missing_units))
+
+    empty_units = dict(payload)
+    empty_units["diagnostics"] = [
+        {
+            "name": "x",
+            "value": 1.0,
+            "evidence": "computed",
+            "availability": "present",
+            "units": "   ",
+        }
+    ]
+    assert any("units must be a nonempty string" in p for p in validate_result_dict(empty_units))

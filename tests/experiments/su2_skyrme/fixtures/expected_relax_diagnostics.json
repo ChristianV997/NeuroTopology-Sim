@@ -1,0 +1,45 @@
+{
+  "mode": "nearest_neighbor_relax",
+  "core_diagnostic_names": [
+    "final_energy_total",
+    "final_approximate_topological_charge",
+    "iterations",
+    "stationarity_status",
+    "minimum_certified",
+    "physical_energy_si",
+    "continuum_energy_extrapolation",
+    "consciousness_metric"
+  ],
+  "enriched_diagnostic_names": [
+    "raw_gradient_norm",
+    "continuum_l2_residual",
+    "active_l2_measure",
+    "active_l2_rms_residual",
+    "cell_volume",
+    "active_site_count"
+  ],
+  "required_diagnostic_names": [
+    "final_energy_total",
+    "final_approximate_topological_charge",
+    "iterations",
+    "raw_gradient_norm",
+    "continuum_l2_residual",
+    "active_l2_measure",
+    "active_l2_rms_residual",
+    "stationarity_status",
+    "minimum_certified",
+    "cell_volume",
+    "active_site_count",
+    "physical_energy_si",
+    "continuum_energy_extrapolation",
+    "consciousness_metric"
+  ],
+  "evidence_by_name": {
+    "physical_energy_si": "unavailable",
+    "continuum_energy_extrapolation": "speculative",
+    "consciousness_metric": "unavailable"
+  },
+  "live_backend_evidence": "computed",
+  "stub_backend_evidence": "assumed",
+  "notes": "Stub path expects required_diagnostic_names (including enriched residuals). Live foundation may omit enriched_diagnostic_names; core_diagnostic_names and evidence_by_name are always required."
+}

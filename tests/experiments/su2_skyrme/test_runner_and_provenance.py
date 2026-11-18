@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from experiments.su2_skyrme.adapter import StubSolverBackend, probe_solver_availability
-from experiments.su2_skyrme.provenance import config_sha256
+from experiments.su2_skyrme.provenance import config_sha256, detect_git_revision
 from experiments.su2_skyrme.result_contract import validate_result_dict
 from experiments.su2_skyrme.runner import iter_sweep_points, run_experiment, run_parameter_sweep
 from experiments.su2_skyrme.schema import load_experiment_config, validate_experiment_config
@@ -50,7 +50,7 @@ def test_smoke_sweep_point_count_and_order():
     config = load_experiment_config(CONFIG_DIR / "smoke_sweep.json")
     points = list(iter_sweep_points(config))
     assert len(points) == 4
-    # Stable Cartesian order: e varies before max_iterations in product nesting
+    # Stable Cartesian order: max_iterations varies fastest among e × max_iterations
     assert points[0]["e"] == 1.0 and points[0]["max_iterations"] == 1
     assert points[1]["e"] == 1.0 and points[1]["max_iterations"] == 2
     result = run_parameter_sweep(config, backend=StubSolverBackend(), allow_stub=True)
@@ -67,6 +67,57 @@ def test_smoke_sweep_point_count_and_order():
     ]
     assert energies[0] != energies[1]
     assert result.claim_tags["consciousness_interpretation"] == "forbidden"
+
+
+def test_filter_supported_kwargs_drops_unknown():
+    from experiments.su2_skyrme.adapter import filter_supported_kwargs
+
+    def foundation_relax(*, f_pi: float, e: float, max_iterations: int = 2) -> None:
+        return None
+
+    kept = filter_supported_kwargs(
+        foundation_relax,
+        {
+            "f_pi": 1.0,
+            "e": 1.5,
+            "max_iterations": 2,
+            "stationarity_metric": "euclidean",
+            "descent_metric": "euclidean",
+        },
+    )
+    assert kept == {"f_pi": 1.0, "e": 1.5, "max_iterations": 2}
+
+
+def test_relax_diagnostics_omit_missing_enriched_fields():
+    from types import SimpleNamespace
+
+    from experiments.su2_skyrme.adapter import _relax_diagnostics_from_result
+
+    foundation = SimpleNamespace(
+        energy_history=(1.0, 0.9),
+        topological_charge_history=(0.1, 0.2),
+        iterations=2,
+        stationarity_status="not_established",
+        minimum_certified=False,
+    )
+    diagnostics = _relax_diagnostics_from_result(foundation)
+    assert diagnostics["final_energy_total"] == 0.9
+    assert diagnostics["iterations"] == 2
+    assert "raw_gradient_norm" not in diagnostics
+    assert "cell_volume" not in diagnostics
+
+    enriched = SimpleNamespace(
+        **foundation.__dict__,
+        raw_gradient_norm=1.0,
+        continuum_l2_residual=0.5,
+        active_l2_measure=8.0,
+        active_l2_rms_residual=0.25,
+        cell_volume=1.0,
+        active_site_count=8,
+    )
+    rich = _relax_diagnostics_from_result(enriched)
+    assert rich["raw_gradient_norm"] == 1.0
+    assert rich["active_site_count"] == 8
 
 
 def test_solver_unavailable_without_stub():
@@ -119,3 +170,50 @@ def test_config_hash_changes_with_seed():
     raw["seed"] = 7
     b = validate_experiment_config(raw)
     assert config_sha256(a) != config_sha256(b)
+
+
+def test_untracked_files_mark_git_dirty(tmp_path: Path):
+    """git status --porcelain must treat untracked files as dirty."""
+    import os
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.check_call(["git", "init"], cwd=repo, stdout=subprocess.DEVNULL)
+    subprocess.check_call(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo
+    )
+    subprocess.check_call(["git", "config", "user.name", "test"], cwd=repo)
+    (repo / "tracked.txt").write_text("ok\n", encoding="utf-8")
+    subprocess.check_call(["git", "add", "tracked.txt"], cwd=repo)
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
+            "GIT_COMMITTER_NAME": "test",
+            "GIT_COMMITTER_EMAIL": "test@example.com",
+        }
+    )
+    subprocess.check_call(
+        ["git", "commit", "-m", "init"],
+        cwd=repo,
+        stdout=subprocess.DEVNULL,
+        env=env,
+    )
+    clean = detect_git_revision(str(repo))
+    assert clean["git_status"] == "ok"
+    assert clean["git_dirty"] is False
+
+    (repo / "untracked_only.txt").write_text("new\n", encoding="utf-8")
+    dirty = detect_git_revision(str(repo))
+    assert dirty["git_dirty"] is True
+
+
+def test_result_emits_speculative_quantity():
+    config = load_experiment_config(CONFIG_DIR / "smoke_relax.json")
+    result = run_experiment(config, backend=StubSolverBackend(), allow_stub=True)
+    speculative = [d for d in result.diagnostics if d.evidence == "speculative"]
+    assert speculative, "expected at least one speculative diagnostic"
+    assert speculative[0].name == "continuum_energy_extrapolation"
+    assert speculative[0].availability == "null"
