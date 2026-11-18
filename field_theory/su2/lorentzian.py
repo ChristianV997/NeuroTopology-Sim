@@ -48,6 +48,7 @@ from .nearest_neighbor import (
 _MODEL = "full_lorentzian_skyrme_forward_link_v1"
 _MAX_GRID_NODES = 32_768
 _MAX_STEPS = 100_000
+_MAX_RK_STAGE_SITE_EVALUATIONS = 40_000_000
 _MAX_SNAPSHOTS = 512
 _MAX_SNAPSHOT_BYTES = 128 * 1024 * 1024
 _TANGENCY_TOLERANCE = 1.0e-9
@@ -510,17 +511,18 @@ def evolve_lorentzian_skyrme(
     fixed_mask: np.ndarray | None = None,
     max_grid_nodes: int = _MAX_GRID_NODES,
     max_steps: int = _MAX_STEPS,
+    max_rk_stage_site_evaluations: int = _MAX_RK_STAGE_SITE_EVALUATIONS,
     max_snapshots: int = _MAX_SNAPSHOTS,
     max_snapshot_bytes: int = _MAX_SNAPSHOT_BYTES,
     max_linearized_cfl: float = 2.5,
 ) -> LorentzianSkyrmeTrajectory:
     """Evolve the full finite-grid Lorentzian Skyrme equations with RK4.
 
-    The explicit RK4 method is bounded by preflight node/step/snapshot caps and
-    a vacuum-linearized CFL indicator.  The CFL check is not a nonlinear
-    hyperbolicity or stability certificate.  Numerical breakdown fails
-    closed with ``FloatingPointError`` rather than returning a partial
-    trajectory as if it completed.
+    The explicit RK4 method is bounded by preflight node, step, aggregate
+    RK-stage/site-work, and snapshot caps plus a vacuum-linearized CFL
+    indicator. The CFL check is not a nonlinear hyperbolicity or stability
+    certificate. Numerical breakdown fails closed with ``FloatingPointError``
+    rather than returning a partial trajectory as if it completed.
     """
     step = _real_scalar(dt, "dt", positive=True)
     f_value = _real_scalar(f_pi, "f_pi", positive=True)
@@ -528,6 +530,12 @@ def evolve_lorentzian_skyrme(
     gamma = _real_scalar(damping, "damping", nonnegative=True)
     node_cap = _integer(max_grid_nodes, "max_grid_nodes", minimum=1, maximum=_MAX_GRID_NODES)
     step_cap = _integer(max_steps, "max_steps", minimum=1, maximum=_MAX_STEPS)
+    work_cap = _integer(
+        max_rk_stage_site_evaluations,
+        "max_rk_stage_site_evaluations",
+        minimum=1,
+        maximum=_MAX_RK_STAGE_SITE_EVALUATIONS,
+    )
     snapshot_cap = _integer(max_snapshots, "max_snapshots", minimum=1, maximum=_MAX_SNAPSHOTS)
     byte_cap = _integer(
         max_snapshot_bytes,
@@ -543,6 +551,11 @@ def evolve_lorentzian_skyrme(
     n_sites = int(np.prod(field.components.shape[:3], dtype=np.int64))
     if n_sites > node_cap:
         raise ValueError("field grid exceeds max_grid_nodes")
+    rk_stage_site_evaluations = 4 * n_sites * n_steps
+    if rk_stage_site_evaluations > work_cap:
+        raise ValueError(
+            "requested evolution exceeds max_rk_stage_site_evaluations work budget"
+        )
     fixed, active = _fixed_sites(field, fixed_mask)
     velocity = _validate_initial_velocity(
         field, initial_velocity, fixed=fixed, active=active
@@ -646,9 +659,11 @@ def evolve_lorentzian_skyrme(
         max_unit_error = max(max_unit_error, norm_error)
         max_tangent_error = max(max_tangent_error, tangent_error)
 
-    record(0.0, values, velocity, dissipated_energy)
+    current_step = 0
     try:
+        record(0.0, values, velocity, dissipated_energy)
         for index in range(1, n_steps + 1):
+            current_step = index
             k1q, k1v, k1d, _, _ = evaluate(values, velocity)
             q2, v2 = project(values + 0.5 * step * k1q, velocity + 0.5 * step * k1v)
             k2q, k2v, k2d, _, _ = evaluate(q2, v2)
@@ -670,7 +685,7 @@ def evolve_lorentzian_skyrme(
                 record(index * step, values, velocity, dissipated_energy)
     except (FloatingPointError, OverflowError, np.linalg.LinAlgError, ValueError) as exc:
         raise FloatingPointError(
-            f"full Lorentzian Skyrme evolution failed at step {len(times)}: {exc}"
+            f"full Lorentzian Skyrme evolution failed at step {current_step}: {exc}"
         ) from exc
 
     return LorentzianSkyrmeTrajectory(
