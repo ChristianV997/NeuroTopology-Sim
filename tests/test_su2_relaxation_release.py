@@ -137,7 +137,7 @@ def test_cold_release_moves_while_retained_anchor_stays_fixed(monkeypatch):
     )
     assert released_motion > 1.0e-9
     np.testing.assert_array_equal(
-        runs["retained"]["final"][center], runs["retained"]["initial"][center]
+        runs["retained"]["final"][mask], runs["retained"]["initial"][mask]
     )
 
     vacuum = np.array([1.0, 0.0, 0.0, 0.0])
