@@ -43,7 +43,24 @@ class LocalSkyrmePrincipalSymbolDiagnostic:
     general_system_hyperbolicity_status: Literal["not_certified"]
 
 
+def _contains_boolean(value: object) -> bool:
+    """Reject boolean elements before NumPy can coerce mixed sequences to numbers."""
+    if isinstance(value, (bool, np.bool_)):
+        return True
+    if isinstance(value, np.ndarray):
+        if value.dtype.kind == "b":
+            return True
+        if value.dtype.kind == "O":
+            return any(_contains_boolean(item) for item in value.flat)
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(_contains_boolean(item) for item in value)
+    return False
+
+
 def _real_array(value: object, name: str, shape: tuple[int, ...]) -> np.ndarray:
+    if _contains_boolean(value):
+        raise ValueError(f"{name} must be a finite real array with shape {shape}, not booleans")
     try:
         array = np.asarray(value)
     except (TypeError, ValueError) as exc:
@@ -108,12 +125,96 @@ def _tangent_basis(unit_field: np.ndarray) -> np.ndarray:
     return basis
 
 
-def _wedge_metric(vector: np.ndarray, identity: np.ndarray) -> np.ndarray:
-    """Matrix W(q) satisfying a.T W(q) a = |a wedge q|^2."""
-    norm_squared = float(np.dot(vector, vector))
-    if not math.isfinite(norm_squared):
+def _scaled_product_over_square(
+    left: float,
+    right: float,
+    denominator: float,
+    *,
+    extra_factors: tuple[float, ...] = (),
+    name: str,
+) -> float:
+    """Evaluate left*right*prod(extra_factors)/denominator**2 by binary scaling."""
+    factors = (left, right, *extra_factors)
+    if any(not math.isfinite(factor) or factor < 0.0 for factor in factors):
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    if not math.isfinite(denominator) or denominator <= 0.0:
+        raise ValueError(f"{name} is outside the finite diagnostic range")
+    if any(factor == 0.0 for factor in factors):
+        return 0.0
+
+    mantissa = 1.0
+    exponent = 0
+    for factor in factors:
+        factor_mantissa, factor_exponent = math.frexp(factor)
+        mantissa *= factor_mantissa
+        exponent += factor_exponent
+    denominator_mantissa, denominator_exponent = math.frexp(denominator)
+    mantissa /= denominator_mantissa * denominator_mantissa
+    exponent -= 2 * denominator_exponent
+    try:
+        result = math.ldexp(mantissa, exponent)
+    except OverflowError as exc:
+        raise ValueError(f"{name} exceeds the finite diagnostic range") from exc
+    if not math.isfinite(result):
+        raise ValueError(f"{name} exceeds the finite diagnostic range")
+    if result == 0.0:
+        raise ValueError(f"{name} underflows the finite diagnostic range")
+    return result
+
+
+def _weighted_wedge_metric(
+    vector: np.ndarray,
+    denominator: float,
+    identity: np.ndarray,
+    *,
+    amplitude: float = 1.0,
+) -> np.ndarray:
+    """Return W(vector)*amplitude**2/denominator**2 without squaring raw inputs."""
+    norm = _stable_norm(vector)
+    if norm == 0.0 or amplitude == 0.0:
+        return np.zeros_like(identity)
+    unit_vector = vector / norm
+    coefficient = _scaled_product_over_square(
+        norm,
+        norm,
+        denominator,
+        extra_factors=(amplitude, amplitude),
+        name="weighted wedge coefficient",
+    )
+    result = coefficient * (identity - np.outer(unit_vector, unit_vector))
+    if not np.all(np.isfinite(result)):
         raise ValueError("local symbol is outside the finite diagnostic range")
-    result = norm_squared * identity - np.outer(vector, vector)
+    return result
+
+
+def _weighted_mixed_form(
+    left: np.ndarray,
+    right: np.ndarray,
+    denominator: float,
+    direction_component: float,
+    identity: np.ndarray,
+) -> np.ndarray:
+    """Return direction_component*K(left,right)/denominator**2 robustly."""
+    left_norm = _stable_norm(left)
+    right_norm = _stable_norm(right)
+    if left_norm == 0.0 or right_norm == 0.0 or direction_component == 0.0:
+        return np.zeros_like(identity)
+    left_unit = left / left_norm
+    right_unit = right / right_norm
+    dot = _stable_dot(left_unit, right_unit, "normalized mixed-form dot product")
+    form = (
+        np.outer(left_unit, right_unit)
+        + np.outer(right_unit, left_unit)
+        - 2.0 * dot * identity
+    )
+    coefficient = _scaled_product_over_square(
+        left_norm,
+        right_norm,
+        denominator,
+        extra_factors=(abs(direction_component),),
+        name="weighted mixed coefficient",
+    )
+    result = math.copysign(coefficient, direction_component) * form
     if not np.all(np.isfinite(result)):
         raise ValueError("local symbol is outside the finite diagnostic range")
     return result
@@ -192,7 +293,6 @@ def analyze_local_skyrme_principal_symbol(
             v = basis.T @ tangent_derivatives[0]
             g = np.stack([basis.T @ item for item in tangent_derivatives[1:]])
         alpha = (0.5 * f_value) ** 2
-        beta = (1.0 / e_value) ** 2
     except (FloatingPointError, OverflowError, ZeroDivisionError) as exc:
         raise ValueError("couplings or derivative data exceed finite diagnostic range") from exc
     if (
@@ -200,8 +300,7 @@ def analyze_local_skyrme_principal_symbol(
         or not np.all(np.isfinite(g))
         or not math.isfinite(alpha)
         or alpha <= 0.0
-        or not math.isfinite(beta)
-        or beta <= 0.0
+        or e_value <= 0.0
     ):
         raise ValueError("couplings or derivative data exceed finite diagnostic range")
 
@@ -210,29 +309,27 @@ def analyze_local_skyrme_principal_symbol(
         with np.errstate(over="raise", invalid="raise", divide="raise"):
             time_block = alpha * identity
             for gradient in g:
-                time_block += beta * _wedge_metric(gradient, identity)
+                time_block += _weighted_wedge_metric(gradient, e_value, identity)
 
             mixed_block = np.zeros((3, 3), dtype=np.float64)
             for axis, component in enumerate(direction):
-                gradient = g[axis]
-                gradient_velocity_dot = float(np.dot(gradient, v))
-                mixed_form = (
-                    np.outer(gradient, v)
-                    + np.outer(v, gradient)
-                    - 2.0 * gradient_velocity_dot * identity
+                mixed_block += _weighted_mixed_form(
+                    g[axis], v, e_value, float(component), identity
                 )
-                mixed_block += beta * component * mixed_form
 
             spatial_block = -alpha * identity
-            velocity_metric = _wedge_metric(v, identity)
-            for axis, component in enumerate(direction):
-                spatial_block += beta * component * component * velocity_metric
+            for component in direction:
+                spatial_block += _weighted_wedge_metric(
+                    v, e_value, identity, amplitude=abs(float(component))
+                )
             for first in range(3):
                 for second in range(first + 1, 3):
                     area_gradient = (
                         direction[first] * g[second] - direction[second] * g[first]
                     )
-                    spatial_block -= beta * _wedge_metric(area_gradient, identity)
+                    spatial_block -= _weighted_wedge_metric(
+                        area_gradient, e_value, identity
+                    )
     except FloatingPointError as exc:
         raise ValueError("local symbol is outside the finite diagnostic range") from exc
 
