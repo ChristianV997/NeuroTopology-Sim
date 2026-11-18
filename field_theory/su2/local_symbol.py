@@ -14,6 +14,7 @@ import numpy as np
 
 _CONSTRAINT_TOLERANCE = 1.0e-10
 _ROOT_SIGN_TOLERANCE = 256.0 * sys.float_info.epsilon
+_ILL_CONDITIONED_ROOT_RELATIVE_TOLERANCE = 16.0 * math.sqrt(sys.float_info.epsilon)
 _EIGENVECTOR_CONDITION_LIMIT = 1.0 / math.sqrt(sys.float_info.epsilon)
 _MODEL = "local_skyrme_principal_symbol_v1"
 _SCOPE = "continuum_local_tangent_symbol_one_point_one_direction_only"
@@ -225,6 +226,46 @@ def _sorted_roots(roots: np.ndarray) -> tuple[complex, ...]:
     return tuple(sorted(result, key=lambda root: (root.real, root.imag)))
 
 
+def _classify_characteristic_roots(
+    roots: np.ndarray,
+    *,
+    condition_warning: bool,
+) -> tuple[Literal[
+    "real_roots_at_sampled_direction",
+    "nonreal_roots_detected",
+    "numerically_unresolved",
+], float]:
+    """Classify roots with per-root scales and a guard near ill-conditioned roots."""
+    root_tolerances = [
+        _ROOT_SIGN_TOLERANCE
+        * max(1.0, math.hypot(float(root.real), float(root.imag)))
+        for root in roots
+    ]
+    reported_tolerance = max(root_tolerances, default=_ROOT_SIGN_TOLERANCE)
+    robust_nonreal = False
+    ambiguous_nonreal = False
+    for root, root_tolerance in zip(roots, root_tolerances):
+        imaginary = abs(float(root.imag))
+        if imaginary <= root_tolerance:
+            continue
+        magnitude = math.hypot(float(root.real), float(root.imag))
+        sensitivity_tolerance = (
+            _ILL_CONDITIONED_ROOT_RELATIVE_TOLERANCE * max(1.0, magnitude)
+        )
+        if condition_warning and imaginary <= sensitivity_tolerance:
+            ambiguous_nonreal = True
+        else:
+            robust_nonreal = True
+
+    if robust_nonreal:
+        status = "nonreal_roots_detected"
+    elif ambiguous_nonreal or condition_warning:
+        status = "numerically_unresolved"
+    else:
+        status = "real_roots_at_sampled_direction"
+    return status, reported_tolerance
+
+
 def analyze_local_skyrme_principal_symbol(
     field: object,
     velocity: object,
@@ -369,22 +410,13 @@ def analyze_local_skyrme_principal_symbol(
     if time_eigenvalues[0] <= 0.0:
         raise ValueError("local time-kinetic block is not numerically positive definite")
 
-    maximum_root_magnitude = max(
-        (math.hypot(float(root.real), float(root.imag)) for root in roots),
-        default=0.0,
-    )
-    root_tolerance = _ROOT_SIGN_TOLERANCE * max(1.0, maximum_root_magnitude)
-    nonreal = any(abs(float(root.imag)) > root_tolerance for root in roots)
     condition_warning = (
         not math.isfinite(eigenvector_condition)
         or eigenvector_condition > _EIGENVECTOR_CONDITION_LIMIT
     )
-    if nonreal:
-        status = "nonreal_roots_detected"
-    elif condition_warning:
-        status = "numerically_unresolved"
-    else:
-        status = "real_roots_at_sampled_direction"
+    status, root_tolerance = _classify_characteristic_roots(
+        roots, condition_warning=condition_warning
+    )
 
     finite_eigenvector_condition = (
         eigenvector_condition if math.isfinite(eigenvector_condition) else None
