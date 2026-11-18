@@ -73,11 +73,13 @@ def plot_su2_field_components(
     )
     plane_axes = [candidate for candidate in range(3) if candidate != axis]
     vertical_axis, horizontal_axis = plane_axes
+    horizontal_spacing = field.spacing[horizontal_axis]
+    vertical_spacing = field.spacing[vertical_axis]
     extent = (
-        float(coordinates[horizontal_axis][0]),
-        float(coordinates[horizontal_axis][-1]),
-        float(coordinates[vertical_axis][0]),
-        float(coordinates[vertical_axis][-1]),
+        float(coordinates[horizontal_axis][0] - horizontal_spacing / 2.0),
+        float(coordinates[horizontal_axis][-1] + horizontal_spacing / 2.0),
+        float(coordinates[vertical_axis][0] - vertical_spacing / 2.0),
+        float(coordinates[vertical_axis][-1] + vertical_spacing / 2.0),
     )
 
     sliced = np.take(field.components, index, axis=axis)
