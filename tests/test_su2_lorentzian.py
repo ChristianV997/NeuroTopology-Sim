@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from field_theory.su2 import SU2GridField
+import field_theory.su2.lorentzian as lorentzian_module
 from field_theory.su2.lorentzian import (
     compute_lorentzian_diagnostics,
     evolve_lorentzian_skyrme,
@@ -204,4 +205,174 @@ def test_rejects_dt_above_declared_vacuum_linearized_rk4_limit():
     field, velocity = _texture(samples=3)
     with pytest.raises(ValueError, match="CFL"):
         evolve_lorentzian_skyrme(field, velocity, dt=1.0, steps=1)
+
+
+def _independent_forward_gradients(q, spacing, boundary):
+    gradients = []
+    for axis, step in enumerate(spacing):
+        difference = np.roll(q, -1, axis=axis) - q
+        if boundary == "fixed_vacuum":
+            selector = [slice(None)] * 4
+            selector[axis] = -1
+            difference[tuple(selector)] = 0.0
+        gradients.append(difference / step)
+    return tuple(gradients)
+
+
+def _independent_lagrangian(q, velocity, spacing, boundary, f_pi, e):
+    field = SU2GridField(q, spacing=spacing, boundary=boundary)
+    gradients = _independent_forward_gradients(q, spacing, boundary)
+    cell_volume = float(np.prod(spacing))
+    kinetic = (f_pi**2 / 8.0) * cell_volume * float(np.sum(velocity**2))
+    for gradient in gradients:
+        v2 = np.sum(velocity**2, axis=-1)
+        g2 = np.sum(gradient**2, axis=-1)
+        vg = np.sum(velocity * gradient, axis=-1)
+        kinetic += cell_volume / (2.0 * e**2) * float(
+            np.sum(v2 * g2 - vg**2)
+        )
+    potential = compute_nearest_neighbor_diagnostics(
+        field, f_pi=f_pi, e=e
+    )
+    return kinetic - potential.energy_sigma - potential.energy_skyrme
+
+
+def _independent_momentum(q, velocity, spacing, boundary, f_pi, e):
+    gradients = _independent_forward_gradients(q, spacing, boundary)
+    momentum = (f_pi**2 / 4.0) * velocity.copy()
+    for gradient in gradients:
+        g2 = np.sum(gradient**2, axis=-1, keepdims=True)
+        vg = np.sum(velocity * gradient, axis=-1, keepdims=True)
+        momentum += (g2 * velocity - vg * gradient) / e**2
+    return float(np.prod(spacing)) * momentum
+
+
+def _geodesic_position(q, velocity, delta_t):
+    speed = np.linalg.norm(velocity, axis=-1, keepdims=True)
+    angle = delta_t * speed
+    scale = np.divide(
+        np.sin(angle),
+        speed,
+        out=np.full_like(speed, delta_t),
+        where=speed > 0.0,
+    )
+    return np.cos(angle) * q + scale * velocity
+
+
+def _great_circle_perturbation(q, site, tangent_direction, epsilon):
+    varied = q.copy()
+    norm = float(np.linalg.norm(tangent_direction))
+    angle = epsilon * norm
+    varied[site] = (
+        np.cos(angle) * q[site]
+        + (np.sin(angle) / norm) * tangent_direction
+    )
+    return varied
+
+
+@pytest.mark.parametrize("boundary", ["periodic", "fixed_vacuum"])
+def test_acceleration_satisfies_discrete_lagrange_dalembert_residual(boundary):
+    """Check the assembled force against independent action differences.
+
+    The test differentiates the scalar discrete Lagrangian and canonical
+    momentum independently, then checks the tangent Euler--Lagrange residual.
+    It covers both periodic links and the fixed-vacuum boundary quadrature.
+    """
+    samples = 5
+    spacing = (0.7, 0.9, 1.1)
+    coordinates = np.linspace(0.0, 1.0, samples)
+    x, y, z = np.meshgrid(coordinates, coordinates, coordinates, indexing="ij")
+    if boundary == "periodic":
+        phase_x = 2.0 * np.pi * np.arange(samples) / samples
+        phase_y = 2.0 * np.pi * np.arange(samples) / samples
+        phase_z = 2.0 * np.pi * np.arange(samples) / samples
+        x, y, z = np.meshgrid(phase_x, phase_y, phase_z, indexing="ij")
+        envelope = np.ones_like(x)
+    else:
+        envelope = (
+            np.sin(np.pi * x) ** 2
+            * np.sin(np.pi * y) ** 2
+            * np.sin(np.pi * z) ** 2
+        )
+
+    pion = np.stack(
+        (
+            0.16 * envelope * np.sin(x),
+            0.13 * envelope * np.cos(y),
+            0.10 * envelope * np.sin(z),
+        ),
+        axis=-1,
+    )
+    q = np.concatenate(
+        (np.sqrt(1.0 - np.sum(pion**2, axis=-1, keepdims=True)), pion),
+        axis=-1,
+    )
+    fixed = np.zeros(q.shape[:3], dtype=bool)
+    if boundary == "fixed_vacuum":
+        fixed[[0, -1], :, :] = True
+        fixed[:, [0, -1], :] = True
+        fixed[:, :, [0, -1]] = True
+
+    rng = np.random.default_rng(8421)
+    raw_velocity = rng.normal(0.0, 0.015, size=q.shape)
+    velocity = raw_velocity - np.sum(
+        raw_velocity * q, axis=-1, keepdims=True
+    ) * q
+    velocity[fixed] = 0.0
+    field = SU2GridField(q, spacing=spacing, boundary=boundary)
+    f_pi, e, damping = 1.2, 0.85, 0.17
+    active = ~fixed
+    acceleration, _, _, _ = lorentzian_module._acceleration_and_dissipation(
+        field,
+        velocity,
+        f_pi=f_pi,
+        e=e,
+        damping=damping,
+        fixed_mask=fixed,
+        active=active,
+        cell_volume=float(np.prod(spacing)),
+    )
+
+    site = (2, 2, 2)
+    delta_t = 2.0e-5
+    q_time_plus = _geodesic_position(q, velocity, delta_t)
+    q_time_minus = _geodesic_position(q, velocity, -delta_t)
+    momentum_time_derivative = (
+        _independent_momentum(
+            q_time_plus, velocity, spacing, boundary, f_pi, e
+        )
+        - _independent_momentum(
+            q_time_minus, velocity, spacing, boundary, f_pi, e
+        )
+    ) / (2.0 * delta_t)
+    momentum_time_derivative += _independent_momentum(
+        q, acceleration, spacing, boundary, f_pi, e
+    )
+    momentum = _independent_momentum(q, velocity, spacing, boundary, f_pi, e)
+    residual = momentum_time_derivative + damping * momentum
+
+    epsilon = 2.0e-5
+    checked_directions = 0
+    for component in range(4):
+        direction = np.eye(4)[component] - q[site][component] * q[site]
+        if np.linalg.norm(direction) < 1.0e-8:
+            continue
+        q_plus = _great_circle_perturbation(q, site, direction, epsilon)
+        q_minus = _great_circle_perturbation(q, site, direction, -epsilon)
+        partial_lagrangian = (
+            _independent_lagrangian(
+                q_plus, velocity, spacing, boundary, f_pi, e
+            )
+            - _independent_lagrangian(
+                q_minus, velocity, spacing, boundary, f_pi, e
+            )
+        ) / (2.0 * epsilon)
+        np.testing.assert_allclose(
+            float(np.dot(residual[site], direction)),
+            partial_lagrangian,
+            rtol=3.0e-4,
+            atol=2.0e-6,
+        )
+        checked_directions += 1
+    assert checked_directions >= 3
 
