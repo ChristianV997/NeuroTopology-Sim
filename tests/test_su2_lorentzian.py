@@ -140,6 +140,42 @@ def test_damping_energy_balance_is_reported_separately():
     assert np.max(np.abs(result.energy_balance_residual_history)) < 2e-5
 
 
+def test_aggregate_rk_stage_site_budget_fails_before_evolution():
+    field, velocity = _texture(samples=3)
+    # 3^3 sites * 2 steps * 4 RK stages = 216 evaluations.
+    with pytest.raises(ValueError, match="max_rk_stage_site_evaluations"):
+        evolve_lorentzian_skyrme(
+            field,
+            velocity,
+            dt=0.001,
+            steps=2,
+            max_rk_stage_site_evaluations=215,
+        )
+
+
+def test_midrun_failure_reports_the_current_integration_step(monkeypatch):
+    field, velocity = _texture(samples=3)
+    original = lorentzian_module._acceleration_and_dissipation
+    calls = 0
+
+    def fail_on_first_stage_of_second_step(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 5:
+            raise FloatingPointError("injected stage failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        lorentzian_module,
+        "_acceleration_and_dissipation",
+        fail_on_first_stage_of_second_step,
+    )
+    with pytest.raises(FloatingPointError, match="failed at step 2"):
+        evolve_lorentzian_skyrme(
+            field, velocity, dt=0.001, steps=3, save_every=3
+        )
+
+
 def test_resource_limits_fail_before_evolution():
     field, velocity = _texture(samples=3)
     with pytest.raises(ValueError, match="snapshot|memory|limit"):
