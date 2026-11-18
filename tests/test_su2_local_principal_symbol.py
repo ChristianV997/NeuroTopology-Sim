@@ -255,17 +255,19 @@ def test_threshold_keeps_zero_speed_multiplicity_and_flags_defective_reduction()
 
 
 @pytest.mark.parametrize(
-    "kwargs",
+    "kwargs, gradients",
     [
-        {"f_pi": 1.0e308},
-        {"f_pi": 1.0e-300},
-        {"e": 1.0e-320},
-        {"e": 1.0e308},
+        ({"f_pi": 1.0e308}, np.zeros((3, 4))),
+        ({"f_pi": 1.0e-300}, np.zeros((3, 4))),
+        ({"e": 1.0e-320}, [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                           [0.0, 0.0, 0.0, 0.0]]),
+        ({"e": 1.0e308}, [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                          [0.0, 0.0, 0.0, 0.0]]),
     ],
 )
-def test_rejects_positive_couplings_outside_representable_symbol_range(kwargs):
+def test_rejects_coupling_combinations_with_unrepresentable_symbol(kwargs, gradients):
     with pytest.raises(ValueError, match="finite diagnostic range"):
-        analyze(**kwargs)
+        analyze(**kwargs, gradients=gradients)
 
 
 @pytest.mark.parametrize(
