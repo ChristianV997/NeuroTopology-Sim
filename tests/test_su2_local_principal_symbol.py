@@ -197,3 +197,41 @@ def test_inputs_are_not_mutated():
 
     for actual, expected in zip((field, velocity, gradients, covector), before):
         np.testing.assert_array_equal(actual, expected)
+
+
+
+def test_threshold_keeps_zero_speed_multiplicity_and_flags_defective_reduction():
+    result = analyze(velocity=[0.0, 0.5, 0.0, 0.0])
+
+    assert_root_multiset(result.characteristic_speeds, [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
+    assert result.general_system_hyperbolicity_status == "not_certified"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"f_pi": 1.0e308},
+        {"f_pi": 1.0e-300},
+        {"e": 1.0e-320},
+        {"e": 1.0e308},
+    ],
+)
+def test_rejects_positive_couplings_outside_representable_symbol_range(kwargs):
+    with pytest.raises(ValueError, match="finite diagnostic range"):
+        analyze(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "normal_component, accepted",
+    [(1.5e-10, True), (2.5e-10, False)],
+)
+def test_velocity_tangency_tolerance_scales_with_velocity_norm(normal_component, accepted):
+    velocity = [normal_component, 2.0, 0.0, 0.0]
+    if accepted:
+        result = analyze(velocity=velocity)
+        assert result.max_derivative_tangency_residual == pytest.approx(normal_component)
+    else:
+        with pytest.raises(ValueError, match="tangent"):
+            analyze(velocity=velocity)
