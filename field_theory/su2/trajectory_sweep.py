@@ -569,6 +569,7 @@ def _validate_trajectory_output(
     damping: float,
     dt: float,
     steps: int,
+    save_every: int,
     final_time: float,
 ) -> None:
     """Reject malformed or non-finite solver results before a point is recorded."""
@@ -579,6 +580,20 @@ def _validate_trajectory_output(
         raise ValueError("solver returned a malformed time history")
     if times[0] != 0.0 or any(right <= left for left, right in zip(times, times[1:])):
         raise ValueError("solver time history must start at zero and increase strictly")
+    saved_steps = [0]
+    saved_steps.extend(range(save_every, steps + 1, save_every))
+    if saved_steps[-1] != steps:
+        saved_steps.append(steps)
+    expected_times = tuple(float(step * dt) for step in saved_steps)
+    if times.size != len(expected_times) or any(
+        not math.isclose(
+            float(actual), expected,
+            rel_tol=_STEP_RATIO_REL_TOLERANCE,
+            abs_tol=0.0,
+        )
+        for actual, expected in zip(times, expected_times)
+    ):
+        raise ValueError("solver time history does not match requested dt and save cadence")
     if not math.isclose(
         float(times[-1]),
         final_time,
@@ -586,8 +601,12 @@ def _validate_trajectory_output(
         abs_tol=0.0,
     ):
         raise ValueError("solver time history does not reach the requested final time")
-    if trajectory.dt != dt or trajectory.steps != steps:
-        raise ValueError("solver trajectory does not match requested dt and steps")
+    if (
+        trajectory.dt != dt
+        or trajectory.steps != steps
+        or trajectory.save_every != save_every
+    ):
+        raise ValueError("solver trajectory does not match requested dt, steps, and save cadence")
     if trajectory.f_pi != f_pi or trajectory.e != e or trajectory.damping != damping:
         raise ValueError("solver trajectory does not match requested couplings")
     if trajectory.termination != "completed":
@@ -797,6 +816,7 @@ def run_lorentzian_sweep(
                 damping=damping,
                 dt=dt,
                 steps=steps,
+                save_every=save_every,
                 final_time=final_time,
             )
             final_field_checksum = _array_checksum(trajectory.fields[-1].components)
