@@ -270,8 +270,8 @@ def test_fixed_box_refinement_separates_temporal_contamination():
             )
         )
 
-    temporal_field_to_spatial = []
-    temporal_velocity_to_spatial = []
+    temporal_field_summed_tail_to_spatial = []
+    temporal_velocity_summed_tail_to_spatial = []
     for pair_index in range(len(_GRID_SIZES) - 1):
         coarse_n = _GRID_SIZES[pair_index]
         fine_n = _GRID_SIZES[pair_index + 1]
@@ -280,29 +280,32 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         assert math.isfinite(field_space) and field_space > 0.0
         assert math.isfinite(velocity_space) and velocity_space > 0.0
 
-        field_temporal_estimate = max(
-            temporal_field_tails[coarse_n],
-            temporal_field_tails[fine_n],
+        field_summed_tail = (
+            temporal_field_tails[coarse_n] + temporal_field_tails[fine_n]
         )
-        velocity_temporal_estimate = max(
-            temporal_velocity_tails[coarse_n],
-            temporal_velocity_tails[fine_n],
+        velocity_summed_tail = (
+            temporal_velocity_tails[coarse_n]
+            + temporal_velocity_tails[fine_n]
         )
-        temporal_field_to_spatial.append(field_temporal_estimate / field_space)
-        temporal_velocity_to_spatial.append(
-            velocity_temporal_estimate / velocity_space
+        assert math.isfinite(field_summed_tail) and field_summed_tail > 0.0
+        assert math.isfinite(velocity_summed_tail) and velocity_summed_tail > 0.0
+        temporal_field_summed_tail_to_spatial.append(
+            field_summed_tail / field_space
+        )
+        temporal_velocity_summed_tail_to_spatial.append(
+            velocity_summed_tail / velocity_space
         )
 
-    assert max(temporal_field_to_spatial) <= 0.10, (
-        "estimated temporal field tail exceeds 10% of intergrid differences; "
-        "no spatial-order estimate is justified: "
-        f"tail_ratios={temporal_field_to_spatial}, "
+    assert max(temporal_field_summed_tail_to_spatial) <= 0.10, (
+        "sum of coarse- and fine-grid estimated temporal field tails exceeds "
+        "10% of the intergrid difference; no spatial-order estimate is justified: "
+        f"summed_tail_ratios={temporal_field_summed_tail_to_spatial}, "
         f"tails={temporal_field_tails}, spatial={field_spatial_differences}"
     )
-    assert max(temporal_velocity_to_spatial) <= 0.10, (
-        "estimated temporal velocity tail exceeds 10% of intergrid differences; "
-        "no spatial-order estimate is justified: "
-        f"tail_ratios={temporal_velocity_to_spatial}, "
+    assert max(temporal_velocity_summed_tail_to_spatial) <= 0.10, (
+        "sum of coarse- and fine-grid estimated temporal velocity tails exceeds "
+        "10% of the intergrid difference; no spatial-order estimate is justified: "
+        f"summed_tail_ratios={temporal_velocity_summed_tail_to_spatial}, "
         f"tails={temporal_velocity_tails}, spatial={velocity_spatial_differences}"
     )
 
@@ -359,8 +362,8 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         f"temporal_velocity_differences={temporal_velocity_differences}, "
         f"temporal_velocity_orders={temporal_velocity_orders}, "
         f"temporal_velocity_richardson_tails={temporal_velocity_tails}, "
-        f"temporal_field_tail_to_spatial={temporal_field_to_spatial}, "
-        f"temporal_velocity_tail_to_spatial={temporal_velocity_to_spatial}, "
+        f"temporal_field_summed_tail_to_spatial={temporal_field_summed_tail_to_spatial}, "
+        f"temporal_velocity_summed_tail_to_spatial={temporal_velocity_summed_tail_to_spatial}, "
         f"field_spatial_differences={field_spatial_differences}, "
         f"field_observed_order={field_order}, "
         f"velocity_spatial_differences={velocity_spatial_differences}, "
