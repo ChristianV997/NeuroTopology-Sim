@@ -39,19 +39,35 @@ def test_four_component_slice_uses_selected_index_shared_scale_and_spacing_label
             (np.arange(size) - (size - 1) / 2.0) * step
             for size, step in zip(field.components.shape[:3], field.spacing)
         )
+        horizontal_spacing = field.spacing[horizontal_axis]
+        vertical_spacing = field.spacing[vertical_axis]
         expected_extent = (
-            coordinates[horizontal_axis][0],
-            coordinates[horizontal_axis][-1],
-            coordinates[vertical_axis][0],
-            coordinates[vertical_axis][-1],
+            coordinates[horizontal_axis][0] - horizontal_spacing / 2.0,
+            coordinates[horizontal_axis][-1] + horizontal_spacing / 2.0,
+            coordinates[vertical_axis][0] - vertical_spacing / 2.0,
+            coordinates[vertical_axis][-1] + vertical_spacing / 2.0,
         )
 
         for component, ax in enumerate(axes.flat):
             image = ax.images[0]
-            np.testing.assert_array_equal(np.asarray(image.get_array()), plane[..., component])
+            image_values = np.asarray(image.get_array())
+            np.testing.assert_array_equal(image_values, plane[..., component])
             assert image.get_clim() == (-1.0, 1.0)
             assert image.origin == "lower"
-            assert image.get_extent() == pytest.approx(expected_extent)
+            extent = image.get_extent()
+            assert extent == pytest.approx(expected_extent)
+            rendered_x_centers = extent[0] + (
+                np.arange(image_values.shape[1]) + 0.5
+            ) * (extent[1] - extent[0]) / image_values.shape[1]
+            rendered_y_centers = extent[2] + (
+                np.arange(image_values.shape[0]) + 0.5
+            ) * (extent[3] - extent[2]) / image_values.shape[0]
+            np.testing.assert_allclose(
+                rendered_x_centers, coordinates[horizontal_axis], atol=1e-15
+            )
+            np.testing.assert_allclose(
+                rendered_y_centers, coordinates[vertical_axis], atol=1e-15
+            )
             assert ax.get_title() == f"n{component}"
             assert ax.get_xlabel() == "z (cm)"
             assert ax.get_ylabel() == "x (cm)"
