@@ -135,8 +135,8 @@ The explicit-step preflight reports
 \(\Delta t\,2\sqrt{\sum_i h_i^{-2}}\) and rejects values above the declared
 vacuum-linearized RK4 limit (default 2.5). Nonlinear backgrounds can have
 different characteristic speeds; the indicator is not a nonlinear CFL
-proof. Grid nodes, step count, saved snapshot count, and estimated snapshot
-bytes, and RK stage-site work are capped before evolution. The aggregate
+proof. Grid nodes, step count, saved snapshot count, estimated snapshot
+bytes, and aggregate RK stage-site work are capped before evolution. The aggregate
 work proxy counts four RK stages per site per step,
 \(W=4N_{\mathrm{sites}}N_{\mathrm{steps}}\), and rejects above
 40,000,000 evaluations by default. This is a deterministic work bound, not a
