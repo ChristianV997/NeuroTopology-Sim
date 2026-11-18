@@ -177,6 +177,8 @@ def analyze_local_skyrme_principal_symbol(
     for derivative in derivatives:
         residual = _stable_dot(unit_n, derivative, "derivative tangency residual")
         derivative_norm = _stable_norm(derivative)
+        if not math.isfinite(derivative_norm):
+            raise ValueError("derivative must have a finite norm")
         tolerance = _CONSTRAINT_TOLERANCE * max(1.0, derivative_norm)
         if abs(residual) > tolerance:
             raise ValueError("velocity and spatial_gradients must be tangent to the field")
@@ -189,8 +191,8 @@ def analyze_local_skyrme_principal_symbol(
         with np.errstate(over="raise", invalid="raise", divide="raise"):
             v = basis.T @ tangent_derivatives[0]
             g = np.stack([basis.T @ item for item in tangent_derivatives[1:]])
-            alpha = (f_value * f_value) / 4.0
-            beta = 1.0 / (e_value * e_value)
+            alpha = (0.5 * f_value) ** 2
+            beta = (1.0 / e_value) ** 2
     except FloatingPointError as exc:
         raise ValueError("couplings or derivative data exceed finite diagnostic range") from exc
     if (
