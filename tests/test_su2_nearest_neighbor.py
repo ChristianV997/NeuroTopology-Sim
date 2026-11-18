@@ -738,8 +738,8 @@ def test_public_hedgehog_is_unit_norm_exact_vacuum_and_deterministic():
 
 
 def test_public_hedgehog_center_has_the_analytic_radial_limit():
-    shape = (41, 41, 41)
-    spacing = (0.005, 0.005, 0.005)
+    shape = (81, 81, 81)
+    spacing = (0.0025, 0.0025, 0.0025)
     radius = 0.09
     field = hedgehog(shape, radius=radius, spacing=spacing)
     center = tuple((size - 1) // 2 for size in shape)
@@ -755,7 +755,7 @@ def test_public_hedgehog_center_has_the_analytic_radial_limit():
         positive = tuple(center[i] + offset[i] for i in range(3))
         radial_component = axis + 1
         quotient = field.components[positive][radial_component] / spacing[axis]
-        assert quotient == pytest.approx(2.0 * np.pi / radius, rel=0.04)
+        assert quotient == pytest.approx(2.0 * np.pi / radius, rel=0.02)
 
 
 def test_public_hedgehog_radius_must_fit_strictly_inside_every_face():
