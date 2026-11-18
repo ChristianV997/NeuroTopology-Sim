@@ -3,6 +3,8 @@ import pytest
 
 from field_theory.su2.local_symbol import (
     _classify_characteristic_roots,
+    _weighted_mixed_form,
+    _weighted_wedge_metric,
     analyze_local_skyrme_principal_symbol,
 )
 
@@ -83,6 +85,24 @@ def test_mixed_collinear_background_exposes_complex_roots_missed_by_geodesic_scr
             complex(-0.96, np.sqrt(0.19) / 2.5),
         ],
     )
+
+
+def test_weighted_wedge_diagonal_preserves_small_representable_entry():
+    vector = np.array([1.0, 1.0e-200, 0.0])
+    weighted = _weighted_wedge_metric(vector, 1.0e-150, np.eye(3))
+
+    assert weighted[0, 0] == pytest.approx(1.0e-100, rel=1e-12, abs=0.0)
+    assert weighted[1, 1] == pytest.approx(1.0e300, rel=1e-12)
+    assert weighted[0, 1] == pytest.approx(-1.0e100, rel=1e-12)
+
+
+def test_weighted_mixed_diagonal_preserves_small_representable_entry():
+    vector = np.array([1.0, 1.0e-200, 0.0])
+    weighted = _weighted_mixed_form(vector, vector, 1.0e-150, 1.0, np.eye(3))
+
+    assert weighted[0, 0] == pytest.approx(-2.0e-100, rel=1e-12, abs=0.0)
+    assert weighted[1, 1] == pytest.approx(-2.0e300, rel=1e-12)
+    assert weighted[0, 1] == pytest.approx(2.0e100, rel=1e-12)
 
 
 def test_small_nonreal_root_is_not_hidden_by_a_larger_root_scale():
