@@ -525,19 +525,21 @@ def test_trajectory_plot_data_rejects_coerced_metadata(metadata_name, bad_value)
 
 
 @pytest.mark.parametrize(
-    ("metadata_name", "bad_value"),
+    ("metadata_name", "bad_value", "error_fragment"),
     [
-        ("f_pi", "1.0"),
-        ("f_pi", float("nan")),
-        ("e", True),
-        ("e", -1.0),
-        ("damping", False),
-        ("damping", -0.1),
-        ("dt", "0.001"),
-        ("dt", 0.0),
+        ("f_pi", "1.0", "real numeric scalar"),
+        ("f_pi", float("nan"), "finite"),
+        ("e", True, "real numeric scalar"),
+        ("e", -1.0, "positive"),
+        ("damping", False, "real numeric scalar"),
+        ("damping", -0.1, "nonnegative"),
+        ("dt", "0.001", "real numeric scalar"),
+        ("dt", 0.0, "positive"),
     ],
 )
-def test_sweep_plot_data_rejects_coerced_point_metadata(metadata_name, bad_value):
+def test_sweep_plot_data_rejects_coerced_point_metadata(
+    metadata_name, bad_value, error_fragment
+):
     field, velocity = _field_and_velocity()
     result = run_lorentzian_sweep(
         field,
@@ -548,7 +550,7 @@ def test_sweep_plot_data_rejects_coerced_point_metadata(metadata_name, bad_value
     )
     malformed_point = replace(result.points[0], **{metadata_name: bad_value})
     malformed = replace(result, points=(malformed_point, result.points[1]))
-    with pytest.raises(ValueError, match="real numeric scalar"):
+    with pytest.raises(ValueError, match=error_fragment):
         build_lorentzian_sweep_plot_data(malformed, x_parameter="damping")
 
 
