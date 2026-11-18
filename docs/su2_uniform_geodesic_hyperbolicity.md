@@ -72,8 +72,10 @@ The reported `normalized_time_gradient` is
 \tau=64\,\epsilon_\mathrm{mach}\max(1,\chi^2)
 \]
 only to resolve the floating-point sign near zero. It is not a physical
-uncertainty band. The result's `full_system_hyperbolicity_status` is always
-`not_assessed`.
+uncertainty band. The status may therefore be `threshold` while the retained
+unrounded margin is slightly positive or negative; returned principal roots
+always use that unrounded margin. The result's
+`full_system_hyperbolicity_status` is always `not_assessed`.
 
 This analytic screen does not establish strong hyperbolicity for arbitrary
 time-dependent or inhomogeneous fields, convergence of the finite-grid

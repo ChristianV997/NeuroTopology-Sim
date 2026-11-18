@@ -134,15 +134,21 @@ def analyze_uniform_geodesic_transverse_symbol(
     sign_tolerance = _FLOAT_SIGN_TOLERANCE * max(1.0, ratio_squared)
 
     if transverse_speed_squared > sign_tolerance:
-        root = math.sqrt(transverse_speed_squared)
         status = "real_for_uniform_geodesic_transverse_sector"
-        roots = (-complex(root, 0.0), complex(root, 0.0))
     elif transverse_speed_squared < -sign_tolerance:
-        root = math.sqrt(-transverse_speed_squared)
         status = "nonreal_for_uniform_geodesic_transverse_sector"
-        roots = (-complex(0.0, root), complex(0.0, root))
     else:
         status = "threshold_for_uniform_geodesic_transverse_sector"
+
+    # Keep roots consistent with the unrounded margin even when the separate
+    # classification is within its floating-point threshold band.
+    if transverse_speed_squared > 0.0:
+        root = math.sqrt(transverse_speed_squared)
+        roots = (-complex(root, 0.0), complex(root, 0.0))
+    elif transverse_speed_squared < 0.0:
+        root = math.sqrt(-transverse_speed_squared)
+        roots = (-complex(0.0, root), complex(0.0, root))
+    else:
         roots = (0j, 0j)
 
     return UniformGeodesicPrincipalSymbolDiagnostic(

@@ -100,8 +100,12 @@ def test_rejects_inputs_outside_diagnostic_domain(field, velocity, f_pi, e, mess
 
 def test_threshold_status_uses_only_a_small_floating_point_sign_tolerance():
     eps = np.finfo(float).eps
-    near = analyze_uniform_geodesic_transverse_symbol(
+    near_nonreal = analyze_uniform_geodesic_transverse_symbol(
         [1.0, 0.0, 0.0, 0.0], [0.0, 0.5 * (1.0 + 8 * eps), 0.0, 0.0],
+        f_pi=1.0, e=1.0,
+    )
+    near_real = analyze_uniform_geodesic_transverse_symbol(
+        [1.0, 0.0, 0.0, 0.0], [0.0, 0.5 * (1.0 - 8 * eps), 0.0, 0.0],
         f_pi=1.0, e=1.0,
     )
     beyond = analyze_uniform_geodesic_transverse_symbol(
@@ -109,7 +113,48 @@ def test_threshold_status_uses_only_a_small_floating_point_sign_tolerance():
         f_pi=1.0, e=1.0,
     )
 
-    assert near.status == "threshold_for_uniform_geodesic_transverse_sector"
-    assert near.transverse_speed_squared < 0.0
+    threshold_status = "threshold_for_uniform_geodesic_transverse_sector"
+    assert near_nonreal.status == threshold_status
+    assert near_nonreal.transverse_speed_squared < 0.0
+    assert near_nonreal.transverse_principal_roots_per_unit_wavenumber == pytest.approx(
+        (-1j * np.sqrt(-near_nonreal.transverse_speed_squared),
+         1j * np.sqrt(-near_nonreal.transverse_speed_squared))
+    )
+    assert near_real.status == threshold_status
+    assert near_real.transverse_speed_squared > 0.0
+    assert near_real.transverse_principal_roots_per_unit_wavenumber == pytest.approx(
+        (-np.sqrt(near_real.transverse_speed_squared),
+         np.sqrt(near_real.transverse_speed_squared))
+    )
     assert beyond.status == "nonreal_for_uniform_geodesic_transverse_sector"
+
+
+@pytest.mark.parametrize("norm_offset, accepted", [(5e-11, True), (2e-10, False)])
+def test_field_norm_tolerance_boundary(norm_offset, accepted):
+    field = [1.0 + norm_offset, 0.0, 0.0, 0.0]
+    if accepted:
+        result = analyze_uniform_geodesic_transverse_symbol(
+            field, [0.0, 0.1, 0.0, 0.0], f_pi=1.0, e=1.0
+        )
+        assert result.background_speed == pytest.approx(0.1)
+    else:
+        with pytest.raises(ValueError, match="unit norm"):
+            analyze_uniform_geodesic_transverse_symbol(
+                field, [0.0, 0.1, 0.0, 0.0], f_pi=1.0, e=1.0
+            )
+
+
+@pytest.mark.parametrize("normal_speed, accepted", [(5e-11, True), (2e-10, False)])
+def test_tangency_tolerance_boundary(normal_speed, accepted):
+    velocity = [normal_speed, 0.1, 0.0, 0.0]
+    if accepted:
+        result = analyze_uniform_geodesic_transverse_symbol(
+            [1.0, 0.0, 0.0, 0.0], velocity, f_pi=1.0, e=1.0
+        )
+        assert result.background_speed == pytest.approx(np.linalg.norm(velocity))
+    else:
+        with pytest.raises(ValueError, match="tangent"):
+            analyze_uniform_geodesic_transverse_symbol(
+                [1.0, 0.0, 0.0, 0.0], velocity, f_pi=1.0, e=1.0
+            )
 
