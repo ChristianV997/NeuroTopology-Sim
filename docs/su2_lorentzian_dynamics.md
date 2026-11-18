@@ -136,8 +136,13 @@ The explicit-step preflight reports
 vacuum-linearized RK4 limit (default 2.5). Nonlinear backgrounds can have
 different characteristic speeds; the indicator is not a nonlinear CFL
 proof. Grid nodes, step count, saved snapshot count, and estimated snapshot
-bytes are capped before evolution. Numerical failure raises rather than
-returning a partial trajectory marked complete.
+bytes, and RK stage-site work are capped before evolution. The aggregate
+work proxy counts four RK stages per site per step,
+\(W=4N_{\mathrm{sites}}N_{\mathrm{steps}}\), and rejects above
+40,000,000 evaluations by default. This is a deterministic work bound, not a
+wall-time guarantee. Numerical failure raises rather than returning a partial
+trajectory marked complete, and the error reports the failing integration
+step rather than the number of saved frames.
 
 All coordinates, times, and couplings are dimensionless by default. A
 physical calibration would require explicit unit conversions, a chosen
@@ -155,13 +160,15 @@ nearest-link objective; nonzero time-space \(E_4\) kinetic energy and its
 constant-field limit; the analytic vacuum dispersion; \(S^3\) norm and
 tangency; energy-error reduction under timestep refinement; damped energy
 balance; frozen boundaries and pinned sites; invalid initial velocities;
-and preflight snapshot/CFL bounds. These are software and discretization
+and preflight snapshot/CFL/aggregate-work bounds, including a mid-run failure
+that verifies the correct integration-step diagnostic. These are software and discretization
 checks on tiny synthetic grids, not a physical validation of the Skyrme model.
 
-Next useful numerical gates are: random-state finite-difference checks of the
-full semidiscrete Euler-Lagrange residual; higher-order temporal convergence;
-grid refinement for the dynamical solution and charge diagnostic; a numerical
-principal-symbol/hyperbolicity screen; then collision observables initialized
-from independently converged static solitons rather than unrelaxed hedgehog
-profiles.
+Remaining numerical gates are: broaden the finite-difference
+Euler-Lagrange residual across fields, sites, and parameters (the current
+test reuses the production static-potential diagnostic); demonstrate temporal
+order with at least three timestep sizes; grid refinement for the dynamical
+solution and charge diagnostic; a numerical principal-symbol/hyperbolicity
+screen; then collision observables initialized from independently converged
+static solitons rather than unrelaxed hedgehog profiles.
 
