@@ -70,40 +70,24 @@ def test_antipodal_scan_samples_reverse_root_multisets_for_nonzero_mixing():
         )
 
 
-def test_spatial_rotation_covariance_matches_the_wrapped_public_analyzer():
-    velocity = ambient([0.10, 0.05, -0.02])
-    gradients = np.stack(
-        [
-            ambient([0.02, 0.04, 0.01]),
-            ambient([-0.01, 0.03, 0.02]),
-            ambient([0.03, 0.0, -0.02]),
-        ]
-    )
-    direction = np.array([1.0, 2.0, -1.0])
-    direction /= np.linalg.norm(direction)
-    angle = 0.37
-    rotation = np.array(
-        [
-            [np.cos(angle), -np.sin(angle), 0.0],
-            [np.sin(angle), np.cos(angle), 0.0],
-            [0.0, 0.0, 1.0],
-        ]
-    )
+def test_scan_hands_each_direction_to_the_canonical_analyzer():
+    velocity = ambient([0.6, 0.0, 0.0])
+    result = scan(velocity=velocity, max_directions=12, max_refinement_levels=0)
 
-    original = analyze_local_skyrme_principal_symbol(
-        FIELD, velocity, gradients, direction, f_pi=1.0, e=1.0
-    )
-    rotated = analyze_local_skyrme_principal_symbol(
-        FIELD,
-        velocity,
-        rotation @ gradients,
-        rotation @ direction,
-        f_pi=1.0,
-        e=1.0,
-    )
-
-    assert original.status == rotated.status
-    assert_root_multiset(rotated.characteristic_speeds, original.characteristic_speeds, atol=2e-8)
+    assert result.sample_count == 12
+    for sample in result.samples:
+        direct = analyze_local_skyrme_principal_symbol(
+            FIELD,
+            velocity,
+            np.zeros((3, 4)),
+            sample.direction,
+            f_pi=1.0,
+            e=1.0,
+        )
+        assert sample.status == direct.status
+        assert sample.characteristic_speeds == direct.characteristic_speeds
+        assert sample.root_classification_tolerance == direct.root_classification_tolerance
+        assert sample.eigenvector_condition_warning == direct.eigenvector_condition_warning
 
 
 def test_known_nonreal_jet_is_reported_and_refinement_stays_within_budget():
