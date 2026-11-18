@@ -1217,6 +1217,15 @@ def test_numeric_exception_classes_are_structured_at_each_stage(
                 termination="gradient_tolerance",
                 stationarity_status="first_order_stationary",
                 curvature_diagnostics=None,
+                raw_gradient_norm=2.0,
+                continuum_l2_residual=3.0,
+                active_l2_measure=int(np.count_nonzero(runner._active_mask(field, kwargs["fixed_mask"])))
+                * float(np.prod(field.spacing)),
+                active_l2_rms_residual=3.0 / np.sqrt(
+                    int(np.count_nonzero(runner._active_mask(field, kwargs["fixed_mask"])))
+                    * float(np.prod(field.spacing))
+                ),
+                active_site_count=int(np.count_nonzero(runner._active_mask(field, kwargs["fixed_mask"]))),
             )
 
         monkeypatch.setattr(runner, "compute_nearest_neighbor_diagnostics", fail_final)
@@ -1230,6 +1239,22 @@ def test_numeric_exception_classes_are_structured_at_each_stage(
     assert all(run["failure_class"] == error_type.__name__ for run in failures)
     assert all(run["termination"] == error_stage for run in failures)
     assert all(run["final_energy"] is None for run in failures)
+    for run in failures:
+        diagnostics = run["gradient_diagnostics"]
+        assert diagnostics["active_site_count"] > 0
+        assert diagnostics["active_l2_measure"] == pytest.approx(
+            diagnostics["active_site_count"] * diagnostics["cell_volume"]
+        )
+        if stage == "final":
+            assert diagnostics["raw_euclidean_norm"] == pytest.approx(2.0)
+            assert diagnostics["continuum_l2_residual"] == pytest.approx(3.0)
+            assert diagnostics["active_l2_rms_residual"] == pytest.approx(
+                3.0 / np.sqrt(diagnostics["active_l2_measure"])
+            )
+        else:
+            assert diagnostics["raw_euclidean_norm"] is None
+            assert diagnostics["continuum_l2_residual"] is None
+            assert diagnostics["active_l2_rms_residual"] is None
     assert result["comparison"]["final_pair_minus_isolated_energy"] is None
     runner.serialize_constrained_result(result)
 

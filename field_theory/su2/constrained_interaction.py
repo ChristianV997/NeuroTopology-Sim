@@ -17,10 +17,12 @@ import numpy as np
 from .field import SU2GridField, validate_spacing
 from .generators import multi_hedgehog
 from .nearest_neighbor import (
+    _active_mask,
     _cell_volume,
     _gradient_coefficients,
     _forward_differences,
     _link_mask,
+    _scaled_product_quotient,
     compute_nearest_neighbor_diagnostics,
     relax_skyrme_field_nearest_neighbor,
 )
@@ -260,6 +262,8 @@ def _one_relaxation(
     descent_metric: str,
 ) -> dict[str, object]:
     initial = field.components.copy()
+    active_site_count = int(np.count_nonzero(_active_mask(field, fixed_mask)))
+    cell_volume = _cell_volume(field.spacing)
     base: dict[str, object] = {
         "name": name,
         "initial_energy": None,
@@ -274,8 +278,8 @@ def _one_relaxation(
             "stationarity_metric": stationarity_metric,
             "descent_metric": descent_metric,
             "gradient_tolerance": gradient_tolerance,
-            "cell_volume": _cell_volume(field.spacing),
-            "active_site_count": None,
+            "cell_volume": cell_volume,
+            "active_site_count": active_site_count,
             "raw_euclidean_norm": None,
             "continuum_l2_residual": None,
             "active_l2_measure": None,
@@ -296,6 +300,19 @@ def _one_relaxation(
         "curvature_screen": None,
         "relative_anchor_frame_change_rad": None,
     }
+
+    try:
+        active_l2_measure = float(
+            _scaled_product_quotient(
+                active_site_count,
+                numerator_factors=(cell_volume,),
+                name="active L2 measure",
+                fail_if_all_zero=True,
+            ).item()
+        )
+        base["gradient_diagnostics"]["active_l2_measure"] = active_l2_measure
+    except _NUMERICAL_EXCEPTIONS as exc:
+        return _mark_numerical_failure(base, "preflight_gradient_measure_failure", exc)
 
     try:
         initial_diagnostics = compute_nearest_neighbor_diagnostics(field, f_pi=f_pi, e=e)
@@ -331,6 +348,18 @@ def _one_relaxation(
         )
     except _NUMERICAL_EXCEPTIONS as exc:
         return _mark_numerical_failure(base, "optimization_failure", exc)
+
+    gradient_diagnostics = dict(base["gradient_diagnostics"])
+    gradient_diagnostics.update(
+        {
+            "active_site_count": getattr(relaxed, "active_site_count", None),
+            "raw_euclidean_norm": getattr(relaxed, "raw_gradient_norm", None),
+            "continuum_l2_residual": getattr(relaxed, "continuum_l2_residual", None),
+            "active_l2_measure": getattr(relaxed, "active_l2_measure", None),
+            "active_l2_rms_residual": getattr(relaxed, "active_l2_rms_residual", None),
+        }
+    )
+    base["gradient_diagnostics"] = gradient_diagnostics
 
     try:
         final = relaxed.field.components
@@ -403,16 +432,6 @@ def _one_relaxation(
             raise FloatingPointError("non-finite relaxation energy history")
         if not charge_history or not np.all(np.isfinite(charge_history)):
             raise FloatingPointError("non-finite relaxation charge history")
-        gradient_diagnostics = dict(base["gradient_diagnostics"])
-        gradient_diagnostics.update(
-            {
-                "active_site_count": getattr(relaxed, "active_site_count", None),
-                "raw_euclidean_norm": getattr(relaxed, "raw_gradient_norm", None),
-                "continuum_l2_residual": getattr(relaxed, "continuum_l2_residual", None),
-                "active_l2_measure": getattr(relaxed, "active_l2_measure", None),
-                "active_l2_rms_residual": getattr(relaxed, "active_l2_rms_residual", None),
-            }
-        )
         base.update(
             {
                 "gradient_diagnostics": gradient_diagnostics,
