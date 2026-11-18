@@ -131,6 +131,9 @@ def test_cold_release_moves_while_retained_anchor_stays_fixed(monkeypatch):
     np.testing.assert_array_equal(runs["released"]["velocity"], np.zeros_like(field.components))
     np.testing.assert_array_equal(runs["retained"]["velocity"], np.zeros_like(field.components))
 
+    np.testing.assert_array_equal(
+        runs["released"]["initial"], runs["retained"]["initial"]
+    )
     center = (3, 3, 3)
     released_motion = np.linalg.norm(
         runs["released"]["final"][center] - runs["released"]["initial"][center]
@@ -142,12 +145,15 @@ def test_cold_release_moves_while_retained_anchor_stays_fixed(monkeypatch):
 
     vacuum = np.array([1.0, 0.0, 0.0, 0.0])
     for policy in ("released", "retained"):
-        final = runs[policy]["final"]
-        for axis in range(3):
-            for side in (0, -1):
-                face = np.take(final, side, axis=axis)
-                assert np.array_equal(face, np.broadcast_to(vacuum, face.shape))
-        assert np.allclose(np.linalg.norm(final, axis=-1), 1.0, rtol=0.0, atol=1e-12)
+        for state in ("initial", "final"):
+            snapshot = runs[policy][state]
+            for axis in range(3):
+                for side in (0, -1):
+                    face = np.take(snapshot, side, axis=axis)
+                    assert np.array_equal(face, np.broadcast_to(vacuum, face.shape))
+            assert np.allclose(
+                np.linalg.norm(snapshot, axis=-1), 1.0, rtol=0.0, atol=1e-12
+            )
 
 def test_retain_policy_passes_the_same_interior_mask_to_evolution(monkeypatch):
     field, mask = _anchored_seed()
