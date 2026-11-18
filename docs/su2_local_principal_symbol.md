@@ -80,10 +80,11 @@ For `F_pi=e=1, g=1, v=1.2`, the roots are `-0.96 ± 0.17436 i` (each twice), alo
 ## Numerical and epistemic contract
 
 - The function accepts exactly one field value, one velocity, three spatial derivative rows, and one nonzero spatial covector. It is not a trajectory-array API.
-- Shape, finite-real dtype, S3 normalization, derivative tangency, and positive finite couplings are validated. Boolean, complex, object, and string inputs are rejected.
+- Shape, finite-real dtype, S3 normalization, derivative tangency, and positive finite couplings are validated. Boolean elements are rejected before NumPy can coerce mixed Boolean/numeric sequences; complex, object, and string inputs are rejected.
 - Tangency residuals within a relative `1e-10` tolerance are explicitly projected away and the maximum original residual is returned; larger violations are rejected. Inputs are copied and not mutated.
 - The spatial covector is normalized stably, so positive rescaling does not change the returned speeds.
-- The status's eigenvalue tolerance is floating-point sign resolution only. An eigenvector condition warning marks a real-root result as numerically unresolved near defective or poorly conditioned companion eigenbases.
+- Coupling-weighted quadratic and bilinear coefficients use binary-scaled products so a raw derivative square does not underflow before multiplication by `e^-2`. A nonzero weighted coefficient that is itself unrepresentable is rejected instead of silently erased.
+- Root imaginary-part checks use each root's own scale, so a large root cannot set the tolerance for every smaller root. If the companion eigenbasis is ill-conditioned, small imaginary splittings within a conservative `16*sqrt(machine epsilon)` relative guard are reported as numerically unresolved. This is a heuristic sensitivity guard, not a certified eigenvalue error bound; clearly resolved complex roots remain flagged.
 - A finite set of local states or directions can discover a counterexample. It cannot prove real roots for all covectors, completeness of a uniform eigenbasis, strong hyperbolicity, nonlinear stability, solver convergence, or physical calibration.
 - The continuum local symbol is not the exact principal analysis of the finite-difference lattice. Lattice snapshots require a separately justified tangent-derivative reconstruction before being passed to this API.
 - No consciousness, biological, enlightenment, psi, or rebirth inference follows from this numerical model.
