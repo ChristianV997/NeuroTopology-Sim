@@ -12,8 +12,9 @@ consciousness scores, clinical findings, or validated physical predictions.
 
 | Package | Location | Status on this base |
 |---|---|---|
-| `field_theory.su2` nearest-neighbor / sweeps | PR [#466](https://github.com/ChristianV997/NeuroTopology-Sim/pull/466) | Not merged into `antigravity/missingness-and-cohorts-20261016` |
-| Lorentzian Skyrme evolve | PR [#468](https://github.com/ChristianV997/NeuroTopology-Sim/pull/468) | Stacked on #466; not on this base |
+| `field_theory.su2` foundation (NN relax, generators) | `origin/main` | **Absent** on `antigravity/missingness-and-cohorts-20261016` — merge-main follow-up recommended for live runs |
+| Enriched NN residuals / metrics / constrained / sweeps | PR [#466](https://github.com/ChristianV997/NeuroTopology-Sim/pull/466) | Draft; adapter filters kwargs/attrs when missing |
+| Lorentzian Skyrme evolve | PR [#468](https://github.com/ChristianV997/NeuroTopology-Sim/pull/468) | Stacked on #466; labeled `solver_unavailable` if missing |
 
 Probe:
 
@@ -23,6 +24,8 @@ python -m experiments.su2_skyrme probe-solver
 
 Exit code `2` means the live API is unavailable. Use `--allow-stub` only for
 contract / CI smoke of **this** layer (stub values are tagged `assumed`).
+When `field_theory` is present (e.g. after merging `origin/main`), omit
+`--allow-stub` to exercise the live adapter; Lorentzian still needs #468.
 
 ## Reproduce a single run
 
@@ -58,7 +61,7 @@ Smoke sweep axes: `e ∈ {1.0,1.5}` × `max_iterations ∈ {1,2}` → **4 points
 
 Every result JSON includes:
 
-- `seed`, `config_sha256`, git revision / dirty flag
+- `seed`, `config_sha256`, git revision / dirty flag (untracked files count as dirty)
 - discretization, boundary conditions, IC, model/solver settings
 - run / sweep `status` and per-point diagnostics
 - evidence tags: `computed` | `assumed` | `speculative` | `unavailable`
@@ -67,13 +70,26 @@ Every result JSON includes:
 See `IO.md` for solver I/O inspection notes and `result_contract.py` for the
 viz-facing schema.
 
+## Seed contract
+
+Supported live ICs (`vacuum`, `hedgehog`) are **deterministic and seed-independent**.
+`seed` is still required in the config for:
+
+1. provenance identity (`provenance.seed` + `config_sha256`)
+2. synthetic variation in the stub backend (`--allow-stub`)
+
+Multi-seed staging is **not** a sweep axis yet. Run separate configs (or repeat
+the CLI) with distinct `seed` values when you want a multi-seed campaign; on the
+live path those seeds change provenance only, not the IC field. A future seed
+axis would be additive and labeled when wired.
+
 ## Runtime / memory (staged path)
 
 | Stage | Grid | Points | Intent | Expected cost |
 |---|---|---|---|---|
 | Local smoke (stub) | 4³ | 1–4 | Contract + CLI | ≪1 s, ≪50 MB |
 | Local smoke (live relax) | 4³ | 1–4 | Import + tiny relax | typically seconds, ≪100 MB |
-| Multi-seed | 4³–8³ | seeds × axes | Stability of diagnostics | linear in seeds × points |
+| Multi-seed (staged) | 4³–8³ | N configs × axes | Provenance / stub stability | linear in seeds × points; live IC unchanged |
 | Grid refinement | 8³–16³ | few | Resolution sensitivity | memory ~ O(N³); keep sweeps narrow |
 
 Hard caps in this layer: ≤4096 nodes per config, ≤64 sweep points. Larger

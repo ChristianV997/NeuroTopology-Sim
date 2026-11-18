@@ -121,6 +121,17 @@ def _diagnostics_from_payload(payload: AdapterRunPayload) -> list[QuantityRecord
         )
     )
     records.append(
+        quantity(
+            "continuum_energy_extrapolation",
+            None,
+            evidence="speculative",
+            notes=(
+                "Continuum-limit energy extrapolation from a single finite grid is "
+                "not performed; any such mapping would be speculative and is left null."
+            ),
+        )
+    )
+    records.append(
         QuantityRecord(
             name="consciousness_metric",
             value=None,
@@ -386,6 +397,17 @@ def run_parameter_sweep(
             evidence="computed",
             units="count",
             notes="Number of Cartesian sweep points executed.",
+        )
+    )
+    aggregate_diagnostics.append(
+        quantity(
+            "continuum_energy_extrapolation",
+            None,
+            evidence="speculative",
+            notes=(
+                "Continuum-limit energy extrapolation across sweep points is not "
+                "performed; any such mapping would be speculative and is left null."
+            ),
         )
     )
     aggregate_diagnostics.append(

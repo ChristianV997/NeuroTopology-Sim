@@ -9,9 +9,12 @@ those PR branches):
 | `codex/su2-lorentzian-skyrme-dynamics-20261117` | [#468](https://github.com/ChristianV997/NeuroTopology-Sim/pull/468) | stacked on #466 | Full Lorentzian Skyrme evolution |
 
 On base branch `antigravity/missingness-and-cohorts-20261016`, `field_theory/su2/`
-is **absent**. The experiment layer therefore ships an isolated adapter and
-records `solver_unavailable` unless the solver package is present or
-`--allow-stub` is used for contract smoke tests.
+is **absent** (it exists on `origin/main`). The experiment layer therefore ships
+an isolated adapter and records `solver_unavailable` unless the solver package
+is present or `--allow-stub` is used for contract smoke tests. Prefer merging
+`origin/main` into the experiment branch before claiming live dual-path coverage;
+the adapter filters kwargs/result attrs so the thinner main foundation and the
+richer PR #466 API both work without inventing missing residual fields.
 
 ## Public solver inputs (from PR #466 / #468)
 
@@ -60,6 +63,19 @@ See `schema.py` / `configs/smoke_*.json`:
 - discretization / BC / IC / model / solver settings
 - optional Cartesian `sweep.axes` (capped at 64 points)
 - unsupported fields rejected or labeled `unavailable` (no invented ranges)
+
+### Seed / multi-seed staging
+
+`vacuum` and `hedgehog` initial conditions are fully deterministic on the live
+solver path: changing `seed` does **not** change the IC field. Seed still:
+
+- enters `config_sha256` / `provenance.seed`
+- drives stub-backend synthetic diagnostics when `--allow-stub` is used
+
+There is no `seed` sweep axis. Multi-seed campaigns are staged as separate
+configs (or repeated runs) with distinct `seed` values. That changes provenance
+identity always; live IC fields stay seed-independent until a stochastic IC
+kind is accepted by this schema.
 
 ## Result contract for visualization
 

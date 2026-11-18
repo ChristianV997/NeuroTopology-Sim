@@ -61,14 +61,18 @@ def quantity(
     units: str = UNITS_STATUS,
     notes: str = "",
 ) -> QuantityRecord:
+    """Build a quantity record with explicit null/unavailable availability."""
     if value is None:
+        availability: Literal["null", "unavailable"] = (
+            "unavailable" if evidence == "unavailable" else "null"
+        )
         return QuantityRecord(
             name=name,
             value=None,
-            evidence=evidence if evidence == "unavailable" else evidence,
+            evidence=evidence,
             units=units,
             notes=notes or "value not available for this run",
-            availability="null" if evidence != "unavailable" else "unavailable",
+            availability=availability,
         )
     return QuantityRecord(
         name=name,
@@ -169,6 +173,20 @@ class ExperimentResultV1:
         return target
 
 
+_VALID_RUN_STATUSES = frozenset(
+    {
+        "completed",
+        "converged",
+        "iteration_limit",
+        "line_search_stalled",
+        "failed",
+        "solver_unavailable",
+        "invalid_config",
+        "numerical_failure",
+    }
+)
+
+
 def validate_result_dict(payload: Mapping[str, Any]) -> list[str]:
     """Return a list of structural problems; empty means acceptable for consumers."""
     problems: list[str] = []
@@ -190,6 +208,9 @@ def validate_result_dict(payload: Mapping[str, Any]) -> list[str]:
         problems.append(
             f"schema_version mismatch: {payload.get('schema_version')!r}"
         )
+    status = payload.get("status")
+    if "status" in payload and status not in _VALID_RUN_STATUSES:
+        problems.append(f"invalid status={status!r}; expected one of {sorted(_VALID_RUN_STATUSES)}")
     claim_tags = payload.get("claim_tags")
     if isinstance(claim_tags, Mapping):
         if claim_tags.get("consciousness_interpretation") != "forbidden":
@@ -202,10 +223,13 @@ def validate_result_dict(payload: Mapping[str, Any]) -> list[str]:
             if not isinstance(item, Mapping):
                 problems.append(f"diagnostics[{index}] must be a mapping")
                 continue
-            for key in ("name", "value", "evidence", "availability"):
+            for key in ("name", "value", "evidence", "availability", "units"):
                 if key not in item:
                     problems.append(f"diagnostics[{index}] missing {key}")
             evidence = item.get("evidence")
             if evidence not in {"computed", "assumed", "speculative", "unavailable"}:
                 problems.append(f"diagnostics[{index}] invalid evidence={evidence!r}")
+            units = item.get("units")
+            if "units" in item and (not isinstance(units, str) or not units.strip()):
+                problems.append(f"diagnostics[{index}] units must be a nonempty string")
     return problems

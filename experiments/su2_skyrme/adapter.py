@@ -1,17 +1,81 @@
 """Thin adapter over the public ``field_theory.su2`` solver API.
 
 This module intentionally contains **no** Skyrme mathematics. When the solver
-package is absent (typical on base branches that have not merged PRs #466/#468),
-availability is reported explicitly and callers may inject a test double that
-implements ``SolverBackend``.
+package is absent (typical on base branches that have not merged ``origin/main``
+or draft PRs #466/#468), availability is reported explicitly and callers may
+inject a test double that implements ``SolverBackend``.
+
+Live calls filter kwargs and result attributes by the imported callable /
+result object so both the thinner ``origin/main`` foundation and the richer
+PR #466 surface remain usable without inventing solver math here.
 """
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Callable, Literal, Mapping, Protocol, runtime_checkable
 
 from .schema import DiscretizationConfig, ExperimentConfig, InitialConditionConfig, ModelConfig, SolverSettings
+
+
+def filter_supported_kwargs(func: Callable[..., Any], kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep only kwargs accepted by ``func`` (ignores ``**kwargs`` catch-alls)."""
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return dict(kwargs)
+    accepted: set[str] = set()
+    accepts_var_keyword = False
+    for name, param in signature.parameters.items():
+        if param.kind == inspect.Parameter.VAR_KEYWORD:
+            accepts_var_keyword = True
+        elif param.kind in (
+            inspect.Parameter.KEYWORD_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ):
+            accepted.add(name)
+    if accepts_var_keyword:
+        return dict(kwargs)
+    return {key: value for key, value in kwargs.items() if key in accepted}
+
+
+def optional_result_attr(result: Any, name: str) -> Any | None:
+    """Return ``getattr(result, name)`` when present, else ``None``."""
+    if not hasattr(result, name):
+        return None
+    return getattr(result, name)
+
+
+def _relax_diagnostics_from_result(result: Any) -> dict[str, Any]:
+    """Normalize relax result fields across main vs enriched (#466) APIs.
+
+    Core fields (energy/charge histories, iterations, termination labels) are
+    required. Enriched residual / cell-volume diagnostics are omitted when the
+    result object does not expose them — callers must not invent values.
+    """
+    energy_history = optional_result_attr(result, "energy_history") or ()
+    charge_history = optional_result_attr(result, "topological_charge_history") or ()
+    diagnostics: dict[str, Any] = {
+        "final_energy_total": float(energy_history[-1]) if energy_history else None,
+        "final_approximate_topological_charge": (
+            float(charge_history[-1]) if charge_history else None
+        ),
+        "iterations": int(result.iterations),
+        "stationarity_status": str(result.stationarity_status),
+        "minimum_certified": bool(result.minimum_certified),
+    }
+    for name, caster in (
+        ("raw_gradient_norm", float),
+        ("continuum_l2_residual", float),
+        ("active_l2_measure", float),
+        ("active_l2_rms_residual", float),
+        ("cell_volume", float),
+        ("active_site_count", int),
+    ):
+        if hasattr(result, name):
+            diagnostics[name] = caster(getattr(result, name))
+    return diagnostics
 
 SolverMode = Literal[
     "nearest_neighbor_relax",
@@ -65,12 +129,13 @@ def probe_solver_availability() -> SolverAvailability:
     missing: list[str] = []
     found: list[str] = []
     blocker = (
-        "field_theory.su2 is not present on this working tree. Live solver code "
-        "currently lives on draft PRs "
+        "field_theory.su2 is not present on this working tree. The SU(2) "
+        "foundation lives on origin/main; enriched nearest-neighbor / "
+        "constrained / parameter_sweep APIs are on draft PR "
         "https://github.com/ChristianV997/NeuroTopology-Sim/pull/466 "
-        "(nearest-neighbor / constrained / parameter_sweep) and "
-        "https://github.com/ChristianV997/NeuroTopology-Sim/pull/468 "
-        "(lorentzian Skyrme evolution). Merge or install those modules before "
+        "and Lorentzian evolution on "
+        "https://github.com/ChristianV997/NeuroTopology-Sim/pull/468. "
+        "Merge main (and those PRs as needed) or install the modules before "
         "running non-stub experiments."
     )
     try:
@@ -147,12 +212,28 @@ def probe_solver_availability() -> SolverAvailability:
     )
     if status == "available" and not lorentzian_ok:
         notes += "; lorentzian evolve API unavailable (PR #468 not present)"
+    if status == "available":
+        relax_fn = symbol_sources.get("relax_skyrme_field_nearest_neighbor")
+        if relax_fn is not None:
+            relax_params = filter_supported_kwargs(
+                relax_fn,
+                {
+                    "stationarity_metric": "euclidean",
+                    "descent_metric": "euclidean",
+                },
+            )
+            if "stationarity_metric" not in relax_params:
+                notes += (
+                    "; foundation relax API (origin/main) without "
+                    "stationarity_metric/descent_metric — adapter filters kwargs"
+                )
 
+    # Preserve discovery order while guaranteeing unique symbol names.
     return SolverAvailability(
         import_status=status,
         module_path="field_theory.su2",
-        public_symbols=tuple(found),
-        missing_symbols=tuple(missing),
+        public_symbols=tuple(dict.fromkeys(found)),
+        missing_symbols=tuple(dict.fromkeys(missing)),
         notes=notes,
         dependency_blocker=dep,
     )
@@ -195,7 +276,12 @@ class SolverUnavailableError(RuntimeError):
 
 
 class LiveSolverBackend:
-    """Adapter that imports and calls the public solver API only."""
+    """Adapter that imports and calls the public solver API only.
+
+    Seed note: supported live ICs (``vacuum``, ``hedgehog``) are deterministic
+    and do **not** consume ``request.seed``. Seed is recorded for provenance and
+    multi-seed campaign identity; it only affects synthetic stub diagnostics.
+    """
 
     name = "field_theory.su2"
 
@@ -212,19 +298,32 @@ class LiveSolverBackend:
 
         disc = request.discretization
         ic = request.initial_condition
+        # Live vacuum/hedgehog generators are seed-independent; seed is provenance-only.
         if ic.kind == "vacuum":
             field = vacuum(
                 disc.shape,
-                spacing=disc.spacing,
-                boundary=disc.boundary,
-                length_unit=disc.length_unit,
+                **filter_supported_kwargs(
+                    vacuum,
+                    {
+                        "spacing": disc.spacing,
+                        "boundary": disc.boundary,
+                        "length_unit": disc.length_unit,
+                    },
+                ),
             )
         elif ic.kind == "hedgehog":
+            # Hedgehog on main/#466 does not accept boundary; filter keeps this safe.
             field = hedgehog(
                 disc.shape,
-                radius=float(ic.radius),
-                spacing=disc.spacing,
-                length_unit=disc.length_unit,
+                **filter_supported_kwargs(
+                    hedgehog,
+                    {
+                        "radius": float(ic.radius),
+                        "spacing": disc.spacing,
+                        "boundary": disc.boundary,
+                        "length_unit": disc.length_unit,
+                    },
+                ),
             )
         else:  # pragma: no cover - schema rejects other kinds
             raise ValueError(f"unsupported IC kind: {ic.kind}")
@@ -246,36 +345,21 @@ class LiveSolverBackend:
         max_iterations = int(point.get("max_iterations", request.solver.max_iterations))
         initial_step = float(point.get("initial_step", request.solver.initial_step))
 
-        result = relax_skyrme_field_nearest_neighbor(
-            field,
-            f_pi=f_pi,
-            e=e,
-            max_iterations=max_iterations,
-            initial_step=initial_step,
-            gradient_tolerance=request.solver.gradient_tolerance,
-            max_backtracks=request.solver.max_backtracks,
-            stationarity_metric=request.solver.stationarity_metric,
-            descent_metric=request.solver.descent_metric,
+        relax_kwargs = filter_supported_kwargs(
+            relax_skyrme_field_nearest_neighbor,
+            {
+                "f_pi": f_pi,
+                "e": e,
+                "max_iterations": max_iterations,
+                "initial_step": initial_step,
+                "gradient_tolerance": request.solver.gradient_tolerance,
+                "max_backtracks": request.solver.max_backtracks,
+                "stationarity_metric": request.solver.stationarity_metric,
+                "descent_metric": request.solver.descent_metric,
+            },
         )
-        diagnostics = {
-            "final_energy_total": float(result.energy_history[-1])
-            if result.energy_history
-            else None,
-            "final_approximate_topological_charge": (
-                float(result.topological_charge_history[-1])
-                if result.topological_charge_history
-                else None
-            ),
-            "iterations": int(result.iterations),
-            "raw_gradient_norm": float(result.raw_gradient_norm),
-            "continuum_l2_residual": float(result.continuum_l2_residual),
-            "active_l2_measure": float(result.active_l2_measure),
-            "active_l2_rms_residual": float(result.active_l2_rms_residual),
-            "stationarity_status": str(result.stationarity_status),
-            "minimum_certified": bool(result.minimum_certified),
-            "cell_volume": float(result.cell_volume),
-            "active_site_count": int(result.active_site_count),
-        }
+        result = relax_skyrme_field_nearest_neighbor(field, **relax_kwargs)
+        diagnostics = _relax_diagnostics_from_result(result)
         return AdapterRunPayload(
             status=str(result.termination),
             backend=self.name,

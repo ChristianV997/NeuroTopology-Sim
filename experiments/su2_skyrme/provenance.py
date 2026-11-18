@@ -29,7 +29,11 @@ def config_sha256(config: ExperimentConfig | Mapping[str, Any]) -> str:
 
 
 def detect_git_revision(repo_root: str | None = None) -> dict[str, Any]:
-    """Return git revision metadata; missing git is recorded, not invented."""
+    """Return git revision metadata; missing git is recorded, not invented.
+
+    Dirty detection uses ``git status --porcelain`` so untracked files count as
+    dirty (unlike ``git diff --quiet``, which ignores the untracked set).
+    """
     try:
         rev = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -37,11 +41,11 @@ def detect_git_revision(repo_root: str | None = None) -> dict[str, Any]:
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
-        dirty = subprocess.call(
-            ["git", "diff", "--quiet"],
+        porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
             cwd=repo_root,
-            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            text=True,
         )
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -52,7 +56,7 @@ def detect_git_revision(repo_root: str | None = None) -> dict[str, Any]:
         return {
             "git_revision": rev,
             "git_branch": branch,
-            "git_dirty": bool(dirty != 0),
+            "git_dirty": bool(porcelain.strip()),
             "git_status": "ok",
         }
     except (OSError, subprocess.SubprocessError):

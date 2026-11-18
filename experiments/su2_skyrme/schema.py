@@ -22,7 +22,13 @@ SUPPORTED_MODES = frozenset(
 
 SUPPORTED_IC_KINDS = frozenset({"vacuum", "hedgehog"})
 
+CLAIM_GUARDRAIL = (
+    "Research simulator only. Outputs are finite-grid numerical diagnostics, "
+    "not consciousness scores, clinical findings, or validated physical predictions."
+)
+
 # Documented but not wired by this experiment layer (owned by solver PRs / viz).
+# Keys must match the top-level banned field names checked in validate_experiment_config.
 UNAVAILABLE_FIELDS: dict[str, str] = {
     "constrained_pair_relaxation": (
         "Owned by field_theory.su2.constrained_interaction on PR #466; "
@@ -39,7 +45,7 @@ UNAVAILABLE_FIELDS: dict[str, str] = {
         "Visualization UI is owned by a separate lane "
         "(field_theory.su2.*_visualization on solver branches)."
     ),
-    "multi_hedgehog_ic": (
+    "multi_hedgehog": (
         "multi_hedgehog IC kind is available in the solver generators API but "
         "not yet accepted by this experiment schema (label: unavailable)."
     ),
@@ -231,10 +237,7 @@ class ExperimentConfig:
     sweep: SweepAxisConfig | None = None
     schema_version: str = SCHEMA_VERSION
     notes: str = ""
-    claim_guardrail: str = (
-        "Research simulator only. Outputs are finite-grid numerical diagnostics, "
-        "not consciousness scores, clinical findings, or validated physical predictions."
-    )
+    claim_guardrail: str = CLAIM_GUARDRAIL
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -357,6 +360,10 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> ExperimentConfig:
         )
 
     seed = _as_nonnegative_int(data.get("seed", 0), "seed")
+    # Seed semantics: vacuum/hedgehog ICs are deterministic and seed-independent on
+    # the live solver path. Seed still participates in provenance / config hash and
+    # drives synthetic stub diagnostics. Multi-seed staging = separate configs (or
+    # repeated runs) with distinct seed values; there is no seed sweep axis yet.
 
     disc_raw = _require_mapping(data.get("discretization", {}), "discretization")
     discretization = DiscretizationConfig(
@@ -475,15 +482,7 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> ExperimentConfig:
         sweep=sweep,
         schema_version=schema_version,
         notes=str(data.get("notes", "")),
-        claim_guardrail=str(
-            data.get(
-                "claim_guardrail",
-                ExperimentConfig(
-                    experiment_id="x",
-                    mode="nearest_neighbor_relax",
-                ).claim_guardrail,
-            )
-        ),
+        claim_guardrail=str(data.get("claim_guardrail", CLAIM_GUARDRAIL)),
     )
 
 
