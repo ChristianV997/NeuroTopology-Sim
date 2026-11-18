@@ -1,0 +1,16 @@
+# Large experiment outputs belong under outputs/; keep configs and code only.
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.bin
+*.zip
+*.tar
+*.tar.gz
+__pycache__/
+*.pyc
+.pytest_cache/

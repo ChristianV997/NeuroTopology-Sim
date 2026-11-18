@@ -1,0 +1,29 @@
+schema_version: su2_skyrme.experiment.config.v1
+experiment_id: smoke_grid_fpi_e
+mode: grid
+seed: 7
+output_root: outputs/experiments/su2_skyrme
+notes: >
+  Tiny two-by-two parameter grid for smoke/replay tests. Parent run aggregates
+  point manifests; per-point solver diagnostics live under points/.
+discretization:
+  shape: [4, 4, 4]
+  spacing: [1.0, 1.0, 1.0]
+  length_unit: dimensionless
+boundary_conditions: fixed_vacuum
+initial_condition:
+  kind: vacuum
+model:
+  f_pi: 1.0
+  e: 1.0
+  vacuum: [1.0, 0.0, 0.0, 0.0]
+solver:
+  backend: auto
+  max_iterations: 2
+  initial_step: 0.001
+  gradient_tolerance: 1.0e-7
+  max_backtracks: 4
+  stationarity_metric: euclidean
+grid:
+  f_pi_values: [1.0, 1.5]
+  e_values: [1.0, 2.0]

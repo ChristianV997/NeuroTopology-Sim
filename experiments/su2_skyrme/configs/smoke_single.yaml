@@ -1,0 +1,27 @@
+schema_version: su2_skyrme.experiment.config.v1
+experiment_id: smoke_single_hedgehog
+mode: single
+seed: 42
+output_root: outputs/experiments/su2_skyrme
+notes: >
+  Tiny smoke config for the experiment runner. Solver math is optional;
+  unavailable diagnostics are labeled rather than fabricated.
+discretization:
+  shape: [4, 4, 4]
+  spacing: [1.0, 1.0, 1.0]
+  length_unit: dimensionless
+boundary_conditions: fixed_vacuum
+initial_condition:
+  kind: hedgehog
+  radius: 1.0
+model:
+  f_pi: 1.0
+  e: 1.0
+  vacuum: [1.0, 0.0, 0.0, 0.0]
+solver:
+  backend: auto
+  max_iterations: 2
+  initial_step: 0.001
+  gradient_tolerance: 1.0e-7
+  max_backtracks: 4
+  stationarity_metric: euclidean

@@ -1,6 +1,8 @@
 results/
 data/raw/
 outputs/
+# SU(2)/Skyrme experiment runner artifacts (also covered by outputs/ above).
+outputs/experiments/su2_skyrme/
 obsidian/
 __pycache__/
 *.pyc
