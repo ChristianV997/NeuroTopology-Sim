@@ -140,8 +140,15 @@ def test_damping_energy_balance_is_reported_separately():
     assert np.max(np.abs(result.energy_balance_residual_history)) < 2e-5
 
 
-def test_aggregate_rk_stage_site_budget_fails_before_evolution():
+def test_aggregate_rk_stage_site_budget_fails_before_evolution(monkeypatch):
     field, velocity = _texture(samples=3)
+
+    def fail_if_rhs_runs(*args, **kwargs):
+        pytest.fail("work budget must reject before calling the evolution RHS")
+
+    monkeypatch.setattr(
+        lorentzian_module, "_acceleration_and_dissipation", fail_if_rhs_runs
+    )
     # 3^3 sites * 2 steps * 4 RK stages = 216 evaluations.
     with pytest.raises(ValueError, match="max_rk_stage_site_evaluations"):
         evolve_lorentzian_skyrme(
