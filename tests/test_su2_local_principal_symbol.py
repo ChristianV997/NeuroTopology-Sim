@@ -347,3 +347,15 @@ def test_area_gradient_products_are_scaled_before_they_underflow():
          transverse_speed, transverse_speed],
         atol=1.0e-12,
     )
+
+def test_weighted_mixed_diagonal_preserves_residual_after_cancellation():
+    epsilon = 2.0**-52
+    left = np.array([0.0, 1.0 + epsilon, 1.0])
+    right = np.array([0.0, 1.0 - epsilon, -1.0])
+
+    weighted = _weighted_mixed_form(
+        left, right, epsilon, 1.0, np.eye(3)
+    )
+
+    # -2*((1+eps)*(1-eps) - 1)/eps**2 is exactly 2.
+    assert weighted[0, 0] == 2.0
