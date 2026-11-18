@@ -372,6 +372,18 @@ def test_positive_scalar_rejects_lossy_integer_conversion():
         analyze(e=np.uint64(2**53 + 1))
 
 
+def test_rejects_lossy_integer_hidden_by_mixed_sequence_coercion():
+    # NumPy otherwise promotes this list to float64 and rounds 2**53 + 1.
+    with pytest.raises(ValueError, match="exactly representable as float64"):
+        _real_array([0.0, 2**53 + 1], "value", (2,))
+
+
+def test_accepts_exact_integer_hidden_in_mixed_sequence():
+    converted = _real_array([0.0, 2**53 + 2], "value", (2,))
+
+    np.testing.assert_array_equal(converted, np.array([0.0, float(2**53 + 2)]))
+
+
 def test_inputs_are_not_mutated():
     field = FIELD.copy()
     velocity = np.array([0.0, 0.4, 0.0, 0.0])
