@@ -20,6 +20,35 @@ from .trajectory_sweep import LorentzianSweepPoint, LorentzianSweepResult
 class LorentzianVisualizationUnavailable(ImportError):
     """Raised when optional matplotlib support is unavailable."""
 
+def _metadata_real(
+    value: object,
+    name: str,
+    *,
+    positive: bool = False,
+    nonnegative: bool = False,
+) -> float:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise ValueError(f"{name} must be a real numeric scalar")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be finite")
+    if positive and number <= 0.0:
+        raise ValueError(f"{name} must be positive")
+    if nonnegative and number < 0.0:
+        raise ValueError(f"{name} must be nonnegative")
+    return number
+
+
+def _metadata_integer(value: object, name: str, *, minimum: int = 0) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError(f"{name} must be an integer")
+    result = int(value)
+    if result < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return result
+
+
+
 
 def _finite_history(values: object, name: str, length: int) -> tuple[float, ...]:
     try:
@@ -75,15 +104,23 @@ def build_lorentzian_trajectory_plot_data(
 ) -> dict[str, Any]:
     """Build deterministic, Matplotlib-free plot data for one trajectory."""
     data = _trajectory_histories(trajectory)
+    dt = _metadata_real(trajectory.dt, "dt", positive=True)
+    steps = _metadata_integer(trajectory.steps, "steps", minimum=1)
+    damping = _metadata_real(trajectory.damping, "damping", nonnegative=True)
+    cfl_indicator = _metadata_real(
+        trajectory.linearized_cfl_indicator,
+        "linearized_cfl_indicator",
+        nonnegative=True,
+    )
     data.update(
         {
             "schema_version": "su2.lorentzian_trajectory_plot_data.v1",
             "model": trajectory.model,
-            "dt": float(trajectory.dt),
-            "steps": int(trajectory.steps),
+            "dt": dt,
+            "steps": steps,
             "final_time": data["time"][-1],
-            "damping": float(trajectory.damping),
-            "linearized_cfl_indicator": float(trajectory.linearized_cfl_indicator),
+            "damping": damping,
+            "linearized_cfl_indicator": cfl_indicator,
             "hyperbolicity_status": trajectory.hyperbolicity_status,
             "claim_scope": "dimensionless_finite_grid_diagnostics_only",
             "charge_label": "approximate finite-grid topological charge",
@@ -286,7 +323,12 @@ def plot_lorentzian_field_slices(
 
 
 def _point_key(point: LorentzianSweepPoint) -> tuple[float, float, float, float]:
-    return (float(point.f_pi), float(point.e), float(point.damping), float(point.dt))
+    return (
+        _metadata_real(point.f_pi, "f_pi", positive=True),
+        _metadata_real(point.e, "e", positive=True),
+        _metadata_real(point.damping, "damping", nonnegative=True),
+        _metadata_real(point.dt, "dt", positive=True),
+    )
 
 
 def build_lorentzian_sweep_plot_data(
