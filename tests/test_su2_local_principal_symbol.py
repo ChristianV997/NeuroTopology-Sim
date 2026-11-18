@@ -104,6 +104,24 @@ def test_small_complex_split_is_unresolved_when_eigenbasis_is_ill_conditioned():
     assert status == "numerically_unresolved"
 
 
+def test_mixed_collinear_discriminant_zero_is_numerically_unresolved():
+    threshold_speed = np.sqrt(1.25)
+    result = analyze(
+        velocity=[0.0, threshold_speed, 0.0, 0.0],
+        gradients=[[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                   [0.0, 0.0, 0.0, 0.0]],
+    )
+
+    repeated_speed = -threshold_speed / 1.25
+    assert_root_multiset(
+        result.characteristic_speeds,
+        [-1.0, 1.0] + [repeated_speed] * 4,
+        atol=3e-6,
+    )
+    assert result.eigenvector_condition_warning is True
+    assert result.status == "numerically_unresolved"
+
+
 def test_reversing_spatial_covector_reverses_all_characteristic_speeds():
     args = dict(
         velocity=[0.0, 0.8, 0.0, 0.0],
