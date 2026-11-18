@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from field_theory.su2.local_symbol import (
+    _assemble_local_symbol_blocks,
     _classify_characteristic_roots,
     _weighted_mixed_form,
     _weighted_wedge_metric,
@@ -269,6 +270,53 @@ def test_coupling_weight_is_applied_before_raw_derivative_squares_can_underflow(
     assert result.status == "numerically_unresolved"
 
 
+def test_large_coupling_keeps_correctly_rounded_full_blocks_finite():
+    result = analyze(
+        gradients=[
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ],
+        e=1.0e308,
+    )
+
+    assert result.status == "real_roots_at_sampled_direction"
+    assert_root_multiset(result.characteristic_speeds, [-1.0] * 3 + [1.0] * 3)
+
+
+def test_full_spatial_block_preserves_cross_matrix_cancellation_residual():
+    epsilon = 2.0**-52
+    velocity = np.array([1.0, 1.0, 0.0])
+    gradients = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0 + epsilon, 1.0 - epsilon, 0.0],
+            [0.0, 0.0, 0.0],
+        ]
+    )
+
+    _, _, spatial = _assemble_local_symbol_blocks(
+        velocity,
+        gradients,
+        np.array([1.0, 0.0, 0.0]),
+        1.0,
+        0.25,
+    )
+
+    # W(v)[0,1] - W(g_1)[0,1] = -1 - (-(1-epsilon**2)).
+    assert spatial[0, 1] == -(2.0**-104)
+
+
+def test_rejects_extended_precision_input_that_underflows_to_float64_zero():
+    value = np.longdouble(2.0) ** np.longdouble(-1075)
+    if value == 0 or float(value) != 0.0:
+        pytest.skip("platform longdouble does not preserve values below float64 range")
+
+    velocity = np.array([0.0, value, 0.0, 0.0], dtype=np.longdouble)
+    with pytest.raises(ValueError, match="underflow when converted to float64"):
+        analyze(velocity=velocity)
+
+
 def test_inputs_are_not_mutated():
     field = FIELD.copy()
     velocity = np.array([0.0, 0.4, 0.0, 0.0])
@@ -299,8 +347,6 @@ def test_threshold_keeps_zero_speed_multiplicity_and_flags_defective_reduction()
         ({"f_pi": 1.0e-300}, np.zeros((3, 4))),
         ({"e": 1.0e-320}, [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                            [0.0, 0.0, 0.0, 0.0]]),
-        ({"e": 1.0e308}, [[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
-                          [0.0, 0.0, 0.0, 0.0]]),
     ],
 )
 def test_rejects_coupling_combinations_with_unrepresentable_symbol(kwargs, gradients):
