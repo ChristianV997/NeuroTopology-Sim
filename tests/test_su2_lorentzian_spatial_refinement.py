@@ -168,6 +168,15 @@ def test_fixed_box_refinement_separates_temporal_contamination():
             for index in range(2)
         ]
 
+    assert all(
+        math.isfinite(value)
+        for per_grid in (
+            *temporal_field_differences.values(),
+            *temporal_velocity_differences.values(),
+        )
+        for value in per_grid
+    )
+
     # Compare dt_h/4 endpoints at coincident nodes. Every second fine-grid
     # sample coincides with the corresponding coarse-grid coordinate.
     field_spatial_differences = []
@@ -257,8 +266,11 @@ def test_fixed_box_refinement_separates_temporal_contamination():
         energy_order = _observed_order(*initial_energy_differences)
 
     energy_balance_residuals = {
-        samples: abs(grid_runs[-1].energy_balance_residual_history[-1])
+        (samples, refinement): abs(
+            trajectory.energy_balance_residual_history[-1]
+        )
         for samples, grid_runs in trajectories.items()
+        for refinement, trajectory in zip(_TEMPORAL_REFINEMENTS, grid_runs)
     }
     residual_tolerance = 2.0e-5 * max(
         1.0, abs(initial_energies[_GRID_SIZES[0]])
