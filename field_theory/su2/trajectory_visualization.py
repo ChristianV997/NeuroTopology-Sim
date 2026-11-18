@@ -14,7 +14,11 @@ from typing import Any
 import numpy as np
 
 from .lorentzian import LorentzianSkyrmeTrajectory
-from .trajectory_sweep import LorentzianSweepPoint, LorentzianSweepResult
+from .trajectory_sweep import (
+    LorentzianSweepPoint,
+    LorentzianSweepResult,
+    LorentzianSweepSpec,
+)
 
 
 class LorentzianVisualizationUnavailable(ImportError):
@@ -46,6 +50,34 @@ def _metadata_integer(value: object, name: str, *, minimum: int = 0) -> int:
     if result < minimum:
         raise ValueError(f"{name} must be at least {minimum}")
     return result
+
+
+def _validate_time_schedule(
+    times: tuple[float, ...],
+    *,
+    dt: float,
+    steps: int,
+    save_every: int,
+    name: str,
+    final_time: float | None = None,
+) -> None:
+    """Require saved samples to match the solver's initial/stride/final schedule."""
+    if save_every > steps:
+        raise ValueError(f"{name} save_every cannot exceed steps")
+    saved_steps = [0]
+    saved_steps.extend(range(save_every, steps + 1, save_every))
+    if saved_steps[-1] != steps:
+        saved_steps.append(steps)
+    expected = tuple(float(step * dt) for step in saved_steps)
+    if len(times) != len(expected) or any(
+        not math.isclose(actual, target, rel_tol=1.0e-10, abs_tol=0.0)
+        for actual, target in zip(times, expected)
+    ):
+        raise ValueError(f"{name} does not match dt, steps, and save_every")
+    if final_time is not None and not math.isclose(
+        times[-1], final_time, rel_tol=1.0e-10, abs_tol=0.0
+    ):
+        raise ValueError(f"{name} does not reach final_time")
 
 
 
@@ -106,11 +138,19 @@ def build_lorentzian_trajectory_plot_data(
     data = _trajectory_histories(trajectory)
     dt = _metadata_real(trajectory.dt, "dt", positive=True)
     steps = _metadata_integer(trajectory.steps, "steps", minimum=1)
+    save_every = _metadata_integer(trajectory.save_every, "save_every", minimum=1)
     damping = _metadata_real(trajectory.damping, "damping", nonnegative=True)
     cfl_indicator = _metadata_real(
         trajectory.linearized_cfl_indicator,
         "linearized_cfl_indicator",
         nonnegative=True,
+    )
+    _validate_time_schedule(
+        data["time"],
+        dt=dt,
+        steps=steps,
+        save_every=save_every,
+        name="trajectory time history",
     )
     data.update(
         {
@@ -341,6 +381,11 @@ def build_lorentzian_sweep_plot_data(
     if x_parameter not in allowed:
         raise ValueError("x_parameter must be one of f_pi, e, damping, or dt")
     spec = result.spec
+    if not isinstance(spec, LorentzianSweepSpec):
+        raise ValueError("result spec must be a LorentzianSweepSpec")
+    spec_final_time = _metadata_real(
+        spec.final_time, "spec.final_time", positive=True
+    )
     axes = {
         "f_pi": tuple(spec.f_pi_values),
         "e": tuple(spec.e_values),
@@ -391,6 +436,26 @@ def build_lorentzian_sweep_plot_data(
             right <= left for left, right in zip(times, times[1:])
         ):
             raise ValueError("point time histories must be strictly increasing")
+        point_dt = _metadata_real(point.dt, "point.dt", positive=True)
+        point_steps = _metadata_integer(point.steps, "point.steps", minimum=1)
+        point_save_every = _metadata_integer(
+            point.save_every, "point.save_every", minimum=1
+        )
+        point_final_time = _metadata_real(
+            point.final_time, "point.final_time", positive=True
+        )
+        if not math.isclose(
+            point_final_time, spec_final_time, rel_tol=1.0e-10, abs_tol=0.0
+        ):
+            raise ValueError("sweep point final_time does not match its spec")
+        _validate_time_schedule(
+            times,
+            dt=point_dt,
+            steps=point_steps,
+            save_every=point_save_every,
+            final_time=point_final_time,
+            name="sweep point time history",
+        )
         total = _finite_history(
             point.total_energy_history, "total_energy_history", len(times)
         )
