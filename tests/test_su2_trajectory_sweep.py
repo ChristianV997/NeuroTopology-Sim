@@ -462,9 +462,16 @@ def test_sweep_plot_data_is_dimensionless_and_axis_keyed():
     ("metadata_name", "bad_value"),
     [
         ("dt", "0.001"),
+        ("dt", float("nan")),
+        ("dt", 0.0),
         ("steps", True),
+        ("steps", 2.0),
+        ("save_every", False),
+        ("save_every", 3),
         ("damping", False),
+        ("damping", -0.1),
         ("linearized_cfl_indicator", True),
+        ("linearized_cfl_indicator", float("inf")),
     ],
 )
 def test_trajectory_plot_data_rejects_coerced_metadata(metadata_name, bad_value):
@@ -481,9 +488,13 @@ def test_trajectory_plot_data_rejects_coerced_metadata(metadata_name, bad_value)
     ("metadata_name", "bad_value"),
     [
         ("f_pi", "1.0"),
+        ("f_pi", float("nan")),
         ("e", True),
+        ("e", -1.0),
         ("damping", False),
+        ("damping", -0.1),
         ("dt", "0.001"),
+        ("dt", 0.0),
     ],
 )
 def test_sweep_plot_data_rejects_coerced_point_metadata(metadata_name, bad_value):
@@ -499,6 +510,46 @@ def test_sweep_plot_data_rejects_coerced_point_metadata(metadata_name, bad_value
     malformed = replace(result, points=(malformed_point, result.points[1]))
     with pytest.raises(ValueError, match="real numeric scalar"):
         build_lorentzian_sweep_plot_data(malformed, x_parameter="damping")
+
+
+@pytest.mark.parametrize("plot_kind", ["trajectory", "sweep"])
+def test_plot_data_rejects_off_cadence_time_samples(plot_kind):
+    field, velocity = _field_and_velocity()
+    if plot_kind == "trajectory":
+        trajectory = evolve_lorentzian_skyrme(
+            field, velocity, dt=0.001, steps=2, save_every=1
+        )
+        malformed = replace(
+            trajectory, time_history=(0.0, 0.0005, 0.002)
+        )
+        with pytest.raises(ValueError, match="dt, steps, and save_every"):
+            build_lorentzian_trajectory_plot_data(malformed)
+        return
+
+    result = run_lorentzian_sweep(
+        field,
+        velocity,
+        LorentzianSweepSpec(dt_values=(0.001,), final_time=0.002),
+    )
+    point = replace(result.points[0], time_history=(0.0, 0.0005, 0.002))
+    malformed_result = replace(result, points=(point,))
+    with pytest.raises(ValueError, match="dt, steps, and save_every"):
+        build_lorentzian_sweep_plot_data(
+            malformed_result, x_parameter="dt"
+        )
+
+
+def test_sweep_plot_data_rejects_point_final_time_mismatch():
+    field, velocity = _field_and_velocity()
+    result = run_lorentzian_sweep(
+        field,
+        velocity,
+        LorentzianSweepSpec(dt_values=(0.001,), final_time=0.002),
+    )
+    malformed_point = replace(result.points[0], final_time=0.003)
+    malformed = replace(result, points=(malformed_point,))
+    with pytest.raises(ValueError, match="does not match its spec"):
+        build_lorentzian_sweep_plot_data(malformed, x_parameter="dt")
 
 
 def test_trajectory_plot_data_uses_explicit_diagnostic_labels():
