@@ -1139,6 +1139,25 @@ def relax_skyrme_field_nearest_neighbor(
         boundary=initial.boundary,
         length_unit=initial.length_unit,
     )
+    final_stationarity_norm = (
+        raw_gradient_norm
+        if stationarity_choice == "euclidean"
+        else continuum_l2_residual
+    )
+    if termination == "iteration_limit" and final_stationarity_norm <= tolerance:
+        # The final accepted step may satisfy the criterion exactly at the
+        # iteration limit. Classify the returned field from its final gradient,
+        # not only the pre-step one. A stalled line search retains its failure
+        # status even if its final residual happens to be small.
+        termination = "gradient_tolerance"
+        stationarity_status = "first_order_stationary"
+        curvature_diagnostics = probe_nearest_neighbor_curvature(
+            result_field,
+            f_pi=f_value,
+            e=e_value,
+            vacuum=vacuum_values,
+            fixed_mask=fixed_sites,
+        )
     return NearestNeighborRelaxationResult(
         field=result_field,
         energy_history=tuple(float(value) for value in energies),
