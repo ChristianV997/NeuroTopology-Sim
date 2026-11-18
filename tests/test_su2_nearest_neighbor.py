@@ -277,6 +277,47 @@ def test_smooth_hedgehog_energy_and_charge_converge_to_independent_radial_quadra
     assert errors[-1][2] < 0.1
 
 
+
+def test_anisotropic_hedgehog_charge_converges_and_reverses_under_spatial_reflection():
+    """Check charge refinement with unequal spacings and reversed domain orientation."""
+    radius = 0.83
+    refinement_levels = (
+        ((17, 9, 5), (0.125, 0.25, 0.5)),
+        ((33, 17, 9), (0.0625, 0.125, 0.25)),
+        ((65, 33, 17), (0.03125, 0.0625, 0.125)),
+        ((129, 65, 33), (0.015625, 0.03125, 0.0625)),
+    )
+    # For F(0)=pi and F(r>=R)=0, the continuum degree is
+    # (2/pi) * integral_0^R F'(r) sin(F(r))**2 dr = -1.
+    # Reflecting x reverses domain orientation and therefore gives +1.
+    charge_errors = []
+    for shape, spacing in refinement_levels:
+        field = hedgehog(shape, radius=radius, spacing=spacing)
+        np.testing.assert_allclose(
+            (np.asarray(shape) - 1) * np.asarray(spacing),
+            (2.0, 2.0, 2.0),
+            rtol=0.0,
+            atol=1.0e-15,
+        )
+        reflected = SU2GridField(
+            np.flip(field.components, axis=0).copy(),
+            spacing=field.spacing,
+            boundary=field.boundary,
+        )
+
+        charge = compute_nearest_neighbor_diagnostics(field).topological_charge
+        reflected_charge = compute_nearest_neighbor_diagnostics(
+            reflected
+        ).topological_charge
+        assert charge < 0.0
+        assert reflected_charge > 0.0
+        charge_errors.append((abs(charge + 1.0), abs(reflected_charge - 1.0)))
+
+    errors = np.asarray(charge_errors)
+    assert np.all(np.diff(errors, axis=0) < 0.0)
+    assert errors[-1, 0] < 0.04
+    assert errors[-1, 1] < 0.04
+
 def test_fixed_vacuum_energy_includes_nonzero_normal_boundary_derivatives():
     samples = 9
     coordinates = np.linspace(-1.0, 1.0, samples)
