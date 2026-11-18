@@ -134,7 +134,7 @@ def test_cross_inverse_length_scale_mapped_histories_are_covariant():
 
     # lambda=e*f_pi doubles, mu=f_pi/e doubles: preserve dimensionless
     # geometry and horizon by halving lengths and times, and scale v,gamma
-    # with lambda. The finite-grid classical trajectory should map exactly.
+    # with lambda. The finite-grid classical trajectory should map covariantly up to floating-point error.
     base = evolve_lorentzian_skyrme(
         base_field,
         base_velocity,
@@ -401,6 +401,30 @@ def test_invalid_solver_output_is_rejected_with_point_id(monkeypatch, corruption
 
 
 
+@pytest.mark.parametrize("metadata_name", ["steps", "save_every"])
+def test_solver_output_rejects_boolean_integer_metadata(monkeypatch, metadata_name):
+    import field_theory.su2.trajectory_sweep as sweep_module
+
+    field, velocity = _field_and_velocity()
+    original_solver = sweep_module.evolve_lorentzian_skyrme
+
+    def boolean_metadata_solver(*args, **kwargs):
+        trajectory = original_solver(*args, **kwargs)
+        return replace(trajectory, **{metadata_name: True})
+
+    monkeypatch.setattr(
+        sweep_module, "evolve_lorentzian_skyrme", boolean_metadata_solver
+    )
+    with pytest.raises(RuntimeError, match="point-0000") as error:
+        run_lorentzian_sweep(
+            field,
+            velocity,
+            LorentzianSweepSpec(dt_values=(0.001,), final_time=0.001),
+        )
+    assert isinstance(error.value.__cause__, ValueError)
+    assert "metadata" in str(error.value.__cause__)
+
+
 def test_sweep_plot_data_requires_single_parameter_axis():
     field, velocity = _field_and_velocity()
     result = run_lorentzian_sweep(
@@ -498,8 +522,8 @@ def test_solver_output_times_must_match_requested_save_cadence(monkeypatch):
 
 @pytest.mark.parametrize(
     "bad_history",
-    [("0.0", "1.0", "2.0"), (False, True, False)],
-    ids=["numeric-strings", "booleans"],
+    [("0.0", "1.0", "2.0"), (False, True, False), (0.0, True, 2.0)],
+    ids=["numeric-strings", "booleans", "mixed-boolean"],
 )
 def test_trajectory_plot_data_rejects_coerced_history_types(bad_history):
     field, velocity = _field_and_velocity()
@@ -511,8 +535,8 @@ def test_trajectory_plot_data_rejects_coerced_history_types(bad_history):
 
 @pytest.mark.parametrize(
     "bad_history",
-    [("0.0", "1.0", "2.0"), (False, True, False)],
-    ids=["numeric-strings", "booleans"],
+    [("0.0", "1.0", "2.0"), (False, True, False), (0.0, True, 2.0)],
+    ids=["numeric-strings", "booleans", "mixed-boolean"],
 )
 def test_sweep_plot_data_rejects_coerced_history_types(bad_history):
     field, velocity = _field_and_velocity()

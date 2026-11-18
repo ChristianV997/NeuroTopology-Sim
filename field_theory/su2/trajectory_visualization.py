@@ -7,6 +7,7 @@ are not physical measurements or validation of the continuum model.
 from __future__ import annotations
 
 import math
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +23,13 @@ class LorentzianVisualizationUnavailable(ImportError):
 
 def _finite_history(values: object, name: str, length: int) -> tuple[float, ...]:
     try:
-        raw = np.asarray(values)
+        raw = np.asarray(values, dtype=object)
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"{name} must be a finite numeric history") from exc
-    if raw.ndim != 1 or raw.dtype.kind not in "fiu":
+    if raw.ndim != 1 or any(
+        isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+        for value in raw
+    ):
         raise ValueError(f"{name} must be a finite numeric history")
     try:
         converted = np.asarray(raw, dtype=np.float64)

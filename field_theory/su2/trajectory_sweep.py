@@ -601,6 +601,21 @@ def _validate_trajectory_output(
         abs_tol=0.0,
     ):
         raise ValueError("solver time history does not reach the requested final time")
+    real_metadata = (
+        trajectory.dt,
+        trajectory.f_pi,
+        trajectory.e,
+        trajectory.damping,
+    )
+    integer_metadata = (trajectory.steps, trajectory.save_every)
+    if any(
+        isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+        for value in real_metadata
+    ) or any(
+        isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral)
+        for value in integer_metadata
+    ):
+        raise ValueError("solver trajectory metadata has invalid numeric types")
     if (
         trajectory.dt != dt
         or trajectory.steps != steps
