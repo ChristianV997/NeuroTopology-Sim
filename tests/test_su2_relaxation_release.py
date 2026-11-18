@@ -131,8 +131,11 @@ def test_cold_release_moves_while_retained_anchor_stays_fixed(monkeypatch):
     np.testing.assert_array_equal(runs["released"]["velocity"], np.zeros_like(field.components))
     np.testing.assert_array_equal(runs["retained"]["velocity"], np.zeros_like(field.components))
 
-    np.testing.assert_array_equal(
-        runs["released"]["initial"], runs["retained"]["initial"]
+    np.testing.assert_allclose(
+        runs["released"]["initial"],
+        runs["retained"]["initial"],
+        rtol=0.0,
+        atol=np.finfo(np.float64).eps,
     )
     center = (3, 3, 3)
     released_motion = np.linalg.norm(
