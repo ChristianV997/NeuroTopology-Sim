@@ -156,8 +156,8 @@ and any relaxation/formation mechanism needs explicit damping or energy flow.
 ## Validation included
 
 The focused test file checks: static-energy normalization against the existing
-nearest-link objective; nonzero time-space \\(E_4\\) kinetic energy and its
-constant-field limit; analytic vacuum dispersion; \\(S^3\\) norm and tangency;
+nearest-link objective; nonzero time-space \(E_4\) kinetic energy and its
+constant-field limit; analytic vacuum dispersion; \(S^3\) norm and tangency;
 energy-error reduction under timestep refinement; damped energy balance;
 frozen boundaries and pinned sites; invalid initial velocities; and preflight
 snapshot/CFL/aggregate-work bounds, including a mid-run failure that verifies
