@@ -458,6 +458,49 @@ def test_sweep_plot_data_is_dimensionless_and_axis_keyed():
     assert data["claim_scope"] == "dimensionless_finite_grid_diagnostics_only"
 
 
+@pytest.mark.parametrize(
+    ("metadata_name", "bad_value"),
+    [
+        ("dt", "0.001"),
+        ("steps", True),
+        ("damping", False),
+        ("linearized_cfl_indicator", True),
+    ],
+)
+def test_trajectory_plot_data_rejects_coerced_metadata(metadata_name, bad_value):
+    field, velocity = _field_and_velocity()
+    trajectory = evolve_lorentzian_skyrme(
+        field, velocity, dt=0.001, steps=2, save_every=1
+    )
+    malformed = replace(trajectory, **{metadata_name: bad_value})
+    with pytest.raises(ValueError):
+        build_lorentzian_trajectory_plot_data(malformed)
+
+
+@pytest.mark.parametrize(
+    ("metadata_name", "bad_value"),
+    [
+        ("f_pi", "1.0"),
+        ("e", True),
+        ("damping", False),
+        ("dt", "0.001"),
+    ],
+)
+def test_sweep_plot_data_rejects_coerced_point_metadata(metadata_name, bad_value):
+    field, velocity = _field_and_velocity()
+    result = run_lorentzian_sweep(
+        field,
+        velocity,
+        LorentzianSweepSpec(
+            damping_values=(0.0, 0.1), dt_values=(0.001,), final_time=0.002
+        ),
+    )
+    malformed_point = replace(result.points[0], **{metadata_name: bad_value})
+    malformed = replace(result, points=(malformed_point, result.points[1]))
+    with pytest.raises(ValueError, match="real numeric scalar"):
+        build_lorentzian_sweep_plot_data(malformed, x_parameter="damping")
+
+
 def test_trajectory_plot_data_uses_explicit_diagnostic_labels():
     field, velocity = _field_and_velocity()
     trajectory = evolve_lorentzian_skyrme(
