@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from .field import SU2GridField, validate_spacing
-from .lorentzian import evolve_lorentzian_skyrme
+from .lorentzian import LorentzianSkyrmeTrajectory, evolve_lorentzian_skyrme
 
 
 SWEEP_SCHEMA_VERSION = "su2.lorentzian_trajectory_sweep.v1"
@@ -146,6 +146,15 @@ def _scale_proxies(
     )
     if not all(math.isfinite(value) for value in derived):
         raise ValueError("dimensionless grid, time, or damping scale proxy is not representable")
+    positive_proxies = (
+        *zip(field.spacing, dimensionless_spacing),
+        *zip(extents, dimensionless_extent),
+        (dt, dimensionless_dt),
+    )
+    if any(source > 0.0 and proxy == 0.0 for source, proxy in positive_proxies):
+        raise ValueError("a positive dimensionless grid or time proxy underflowed to zero")
+    if damping > 0.0 and dimensionless_damping == 0.0:
+        raise ValueError("positive dimensionless damping proxy underflowed to zero")
     return (
         inverse_length,
         energy_prefactor,
@@ -501,6 +510,85 @@ def _validate_velocity(field: SU2GridField, initial_velocity: object) -> np.ndar
     return velocity
 
 
+def _validate_trajectory_output(
+    trajectory: LorentzianSkyrmeTrajectory,
+    *,
+    initial: SU2GridField,
+    f_pi: float,
+    e: float,
+    damping: float,
+    dt: float,
+    steps: int,
+    final_time: float,
+) -> None:
+    """Reject malformed or non-finite solver results before a point is recorded."""
+    if not isinstance(trajectory, LorentzianSkyrmeTrajectory):
+        raise ValueError("solver returned an unexpected trajectory type")
+    times = np.asarray(trajectory.time_history, dtype=np.float64)
+    if times.ndim != 1 or times.size < 2 or not np.isfinite(times).all():
+        raise ValueError("solver returned a non-finite or malformed time history")
+    if times[0] != 0.0 or any(right <= left for left, right in zip(times, times[1:])):
+        raise ValueError("solver time history must start at zero and increase strictly")
+    if not math.isclose(
+        float(times[-1]),
+        final_time,
+        rel_tol=1.0e-12,
+        abs_tol=1.0e-12 * max(1.0, abs(final_time)),
+    ):
+        raise ValueError("solver time history does not reach the requested final time")
+    if trajectory.dt != dt or trajectory.steps != steps:
+        raise ValueError("solver trajectory does not match requested dt and steps")
+    if trajectory.f_pi != f_pi or trajectory.e != e or trajectory.damping != damping:
+        raise ValueError("solver trajectory does not match requested couplings")
+    if trajectory.termination != "completed":
+        raise ValueError("solver trajectory is not marked completed")
+    if trajectory.hyperbolicity_status != "not_certified":
+        raise ValueError("solver returned an unknown hyperbolicity status")
+
+    histories = (
+        "energy_sigma_history",
+        "energy_skyrme_history",
+        "kinetic_sigma_history",
+        "kinetic_skyrme_history",
+        "total_energy_history",
+        "dissipated_energy_history",
+        "energy_balance_residual_history",
+        "approximate_charge_history",
+        "time_kinetic_min_eigenvalue_history",
+        "time_kinetic_max_condition_history",
+    )
+    for name in histories:
+        values = np.asarray(getattr(trajectory, name), dtype=np.float64)
+        if values.ndim != 1 or values.size != times.size or not np.isfinite(values).all():
+            raise ValueError(f"solver returned malformed or non-finite {name}")
+
+    if len(trajectory.fields) != times.size or len(trajectory.velocities) != times.size:
+        raise ValueError("solver snapshots do not match diagnostic history length")
+    for field, velocity in zip(trajectory.fields, trajectory.velocities):
+        if not isinstance(field, SU2GridField):
+            raise ValueError("solver returned a field snapshot with the wrong type")
+        if (
+            field.components.shape != initial.components.shape
+            or field.spacing != initial.spacing
+            or field.boundary != initial.boundary
+            or field.length_unit != initial.length_unit
+        ):
+            raise ValueError("solver field snapshot metadata changed during evolution")
+        if not np.isfinite(field.components).all():
+            raise ValueError("solver returned a non-finite field snapshot")
+        velocity_array = np.asarray(velocity, dtype=np.float64)
+        if velocity_array.shape != initial.components.shape or not np.isfinite(velocity_array).all():
+            raise ValueError("solver returned a malformed or non-finite velocity snapshot")
+
+    scalars = (
+        trajectory.max_unit_norm_error,
+        trajectory.max_tangency_error,
+        trajectory.cell_volume,
+        trajectory.linearized_cfl_indicator,
+    )
+    if not all(math.isfinite(float(value)) for value in scalars):
+        raise ValueError("solver returned non-finite scalar diagnostics")
+
 def _sweep_id(
     field_checksum: str, velocity_checksum: str, spec: LorentzianSweepSpec
 ) -> str:
@@ -640,12 +728,22 @@ def run_lorentzian_sweep(
                 max_snapshot_bytes=snapshot_limit,
                 max_linearized_cfl=cfl_limit,
             )
+            _validate_trajectory_output(
+                trajectory,
+                initial=initial,
+                f_pi=f_pi,
+                e=e,
+                damping=damping,
+                dt=dt,
+                steps=steps,
+                final_time=final_time,
+            )
+            final_field_checksum = _array_checksum(trajectory.fields[-1].components)
         except Exception as exc:
             raise RuntimeError(
                 f"trajectory sweep failed at {point_id} "
                 f"(f_pi={f_pi:g}, e={e:g}, damping={damping:g}, dt={dt:g})"
             ) from exc
-        final_field_checksum = _array_checksum(trajectory.fields[-1].components)
         points.append(
             LorentzianSweepPoint(
                 point_id=point_id,

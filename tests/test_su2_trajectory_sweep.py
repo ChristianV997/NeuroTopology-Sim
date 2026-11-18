@@ -1,4 +1,6 @@
 import json
+from copy import copy
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -185,6 +187,63 @@ def test_invalid_velocity_is_rejected_before_evolution(monkeypatch):
             bad,
             LorentzianSweepSpec(dt_values=(0.001,), final_time=0.002),
         )
+
+
+
+def test_underflowed_positive_scale_proxy_rejected_before_evolution(monkeypatch):
+    import field_theory.su2.trajectory_sweep as sweep_module
+
+    field, velocity = _field_and_velocity(spacing=(2e-308, 1.0, 1.0))
+
+    def fail_if_called(*args, **kwargs):
+        pytest.fail("underflowed scale proxy must be rejected before evolution")
+
+    monkeypatch.setattr(sweep_module, "evolve_lorentzian_skyrme", fail_if_called)
+    with pytest.raises(ValueError, match="underflowed to zero"):
+        run_lorentzian_sweep(
+            field,
+            velocity,
+            LorentzianSweepSpec(
+                f_pi_values=(1e-10,),
+                e_values=(1e-10,),
+                dt_values=(1e-308,),
+                final_time=1e-308,
+            ),
+        )
+
+
+@pytest.mark.parametrize("corruption", ["history", "final_field"])
+def test_nonfinite_solver_output_is_rejected_with_point_id(monkeypatch, corruption):
+    import field_theory.su2.trajectory_sweep as sweep_module
+
+    field, velocity = _field_and_velocity()
+    original_solver = evolve_lorentzian_skyrme
+
+    def corrupting_solver(*args, **kwargs):
+        trajectory = original_solver(*args, **kwargs)
+        if corruption == "history":
+            values = list(trajectory.total_energy_history)
+            values[-1] = float("nan")
+            return replace(trajectory, total_energy_history=tuple(values))
+        bad_field = copy(trajectory.fields[-1])
+        components = np.array(bad_field.components, copy=True)
+        components[0, 0, 0, 0] = np.nan
+        object.__setattr__(bad_field, "components", components)
+        return replace(
+            trajectory,
+            fields=(*trajectory.fields[:-1], bad_field),
+        )
+
+    monkeypatch.setattr(sweep_module, "evolve_lorentzian_skyrme", corrupting_solver)
+    with pytest.raises(RuntimeError, match="point-0000") as error:
+        run_lorentzian_sweep(
+            field,
+            velocity,
+            LorentzianSweepSpec(dt_values=(0.001,), final_time=0.001),
+        )
+    assert isinstance(error.value.__cause__, ValueError)
+    assert "non-finite" in str(error.value.__cause__)
+
 
 
 def test_sweep_plot_data_requires_single_parameter_axis():
