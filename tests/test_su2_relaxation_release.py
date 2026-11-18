@@ -111,6 +111,8 @@ def test_retain_policy_passes_the_same_interior_mask_to_evolution(monkeypatch):
 
 def test_unconverged_relaxation_withholds_evolution_by_default(monkeypatch):
     field, _ = _anchored_seed()
+    fixed_mask = np.zeros(field.components.shape[:3], dtype=bool)
+    fixed_mask[1, 3, 3] = True
 
     def fail_if_called(*args, **kwargs):
         pytest.fail("nonconverged relaxation must not evolve by default")
@@ -118,6 +120,7 @@ def test_unconverged_relaxation_withholds_evolution_by_default(monkeypatch):
     monkeypatch.setattr(release_module, "evolve_lorentzian_skyrme", fail_if_called)
     result = run_relaxation_then_cold_release(
         field,
+        fixed_mask=fixed_mask,
         max_iterations=1,
         gradient_tolerance=1.0e-15,
         dt=1.0e-4,
@@ -128,6 +131,8 @@ def test_unconverged_relaxation_withholds_evolution_by_default(monkeypatch):
     assert result.time_history == ()
     assert result.final_field_sha256 is None
     assert result.relaxation_termination == "iteration_limit"
+    assert result.fixed_site_count == 1
+    assert result.released_anchor_count == 0
 
 
 def test_explicit_nonconverged_continuation_remains_labeled(monkeypatch):

@@ -392,7 +392,7 @@ def run_relaxation_then_cold_release(
             status="NOT_CONVERGED",
             anchor_policy=anchor_policy,
             fixed_site_count=int(np.count_nonzero(mask)),
-            released_anchor_count=released,
+            released_anchor_count=0,
             input_checksum=input_checksum,
             relaxed_checksum=_field_sha256(relaxed.field),
             relaxation=relaxed,
