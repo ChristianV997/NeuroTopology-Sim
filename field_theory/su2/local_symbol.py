@@ -76,10 +76,21 @@ def _real_array(value: object, name: str, shape: tuple[int, ...]) -> np.ndarray:
         raise ValueError(f"{name} must be representable as finite float64 values") from exc
     if not np.all(np.isfinite(result)):
         raise ValueError(f"{name} must contain only finite values")
-    if array.dtype.kind == "f" and np.any((array != 0) & (result == 0)):
-        raise ValueError(
-            f"{name} contains nonzero values that underflow when converted to float64"
-        )
+    if array.dtype.kind == "f":
+        if np.any((array != 0) & (result == 0)):
+            raise ValueError(
+                f"{name} contains nonzero values that underflow when converted to float64"
+            )
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            round_tripped = np.asarray(result, dtype=array.dtype)
+        if np.any(round_tripped != array):
+            raise ValueError(f"{name} contains values not exactly representable as float64")
+    elif array.dtype.kind in "iu":
+        if any(
+            int(original) != int(converted)
+            for original, converted in zip(array.flat, result.flat)
+        ):
+            raise ValueError(f"{name} contains values not exactly representable as float64")
     return result
 
 
@@ -96,6 +107,13 @@ def _positive_scalar(value: object, name: str) -> float:
         raise ValueError(f"{name} must be a finite positive real scalar") from exc
     if not math.isfinite(result) or result <= 0.0:
         raise ValueError(f"{name} must be a finite positive real scalar")
+    if array.dtype.kind == "f":
+        with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+            round_tripped = np.asarray(result, dtype=array.dtype).item()
+        if round_tripped != array.item():
+            raise ValueError(f"{name} must be exactly representable as float64")
+    elif array.dtype.kind in "iu" and int(array.item()) != int(result):
+        raise ValueError(f"{name} must be exactly representable as float64")
     return result
 
 
