@@ -165,6 +165,29 @@ def _scale_proxies(
     )
 
 
+def _dimensionless_initial_condition_proxies(
+    velocity: np.ndarray, inverse_length: float, final_time: float
+) -> tuple[float, float, float]:
+    """Return dimensionless horizon and RMS/max initial speed proxies."""
+    horizon = inverse_length * final_time
+    speed = np.hypot.reduce(np.abs(velocity), axis=-1)
+    maximum_speed = float(np.max(speed))
+    rms_speed = (
+        0.0
+        if maximum_speed == 0.0
+        else maximum_speed * math.sqrt(float(np.mean((speed / maximum_speed) ** 2)))
+    )
+    rms_velocity = rms_speed / inverse_length
+    maximum_velocity = maximum_speed / inverse_length
+    if not all(math.isfinite(value) for value in (horizon, rms_velocity, maximum_velocity)):
+        raise ValueError("dimensionless horizon or initial-velocity proxy is not representable")
+    if horizon <= 0.0:
+        raise ValueError("positive dimensionless time horizon underflowed to zero")
+    if maximum_speed > 0.0 and (rms_velocity == 0.0 or maximum_velocity == 0.0):
+        raise ValueError("positive dimensionless initial velocity proxy underflowed to zero")
+    return horizon, rms_velocity, maximum_velocity
+
+
 @dataclass(frozen=True)
 class LorentzianSweepSpec:
     """Declared axes for a fixed-final-time trajectory sweep.
@@ -354,6 +377,9 @@ class LorentzianSweepPoint:
     dimensionless_domain_extent_proxy: tuple[float, float, float]
     dimensionless_dt_proxy: float
     dimensionless_damping_proxy: float
+    dimensionless_final_time_proxy: float
+    dimensionless_initial_velocity_rms_proxy: float
+    dimensionless_initial_velocity_max_proxy: float
     time_history: tuple[float, ...]
     energy_sigma_history: tuple[float, ...]
     energy_skyrme_history: tuple[float, ...]
@@ -392,6 +418,9 @@ class LorentzianSweepPoint:
                     "dimensionless_domain_extent": list(self.dimensionless_domain_extent_proxy),
                     "dimensionless_dt": self.dimensionless_dt_proxy,
                     "dimensionless_damping": self.dimensionless_damping_proxy,
+                    "dimensionless_final_time": self.dimensionless_final_time_proxy,
+                    "dimensionless_initial_velocity_rms": self.dimensionless_initial_velocity_rms_proxy,
+                    "dimensionless_initial_velocity_max": self.dimensionless_initial_velocity_max_proxy,
                     "physical_calibration": "not_assessed",
                 },
             },
@@ -683,8 +712,11 @@ def run_lorentzian_sweep(
         for e in spec.e_values:
             for damping in spec.damping_values:
                 for dt in dt_values:
-                    _scale_proxies(
+                    scales = _scale_proxies(
                         initial, f_pi=f_pi, e=e, damping=damping, dt=dt
+                    )
+                    _dimensionless_initial_condition_proxies(
+                        velocity, scales[0], final_time
                     )
     requested_snapshot_bytes = spec.snapshot_bytes(n_sites)
     if requested_snapshot_bytes > snapshot_limit:
@@ -711,6 +743,9 @@ def run_lorentzian_sweep(
         save_every = spec.save_every_for(dt)
         scales = _scale_proxies(
             initial, f_pi=f_pi, e=e, damping=damping, dt=dt
+        )
+        state_proxies = _dimensionless_initial_condition_proxies(
+            velocity, scales[0], final_time
         )
         point_id = f"point-{index:04d}"
         try:
@@ -761,6 +796,9 @@ def run_lorentzian_sweep(
                 dimensionless_domain_extent_proxy=scales[3],
                 dimensionless_dt_proxy=scales[4],
                 dimensionless_damping_proxy=scales[5],
+                dimensionless_final_time_proxy=state_proxies[0],
+                dimensionless_initial_velocity_rms_proxy=state_proxies[1],
+                dimensionless_initial_velocity_max_proxy=state_proxies[2],
                 time_history=trajectory.time_history,
                 energy_sigma_history=trajectory.energy_sigma_history,
                 energy_skyrme_history=trajectory.energy_skyrme_history,

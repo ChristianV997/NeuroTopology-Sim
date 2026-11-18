@@ -22,8 +22,10 @@ The sweep records scale proxies motivated by the static energy scaling:
 \(\bar\gamma=\gamma/\lambda\). These are descriptive nondimensional
 combinations, not calibrated physical scales. Since this first sweep keeps
 the input grid and profile fixed, varying \(\lambda\) changes their
-dimensionless geometry; it does not perform the resampling needed for a
-controlled fixed-dimensionless-geometry comparison.
+dimensionless geometry, time horizon \(\bar T=\lambda T\), and initial speed
+\(\bar v_0=v_0/\lambda\); these proxies are recorded per point. It does not
+perform the resampling needed for a controlled fixed-dimensionless-geometry
+comparison.
 
 The model-parameter axes are caller-defined and have no empirically calibrated
 ranges. An illustrative exploration might use a few dimensionless values

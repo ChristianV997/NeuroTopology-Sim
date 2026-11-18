@@ -49,6 +49,9 @@ def test_dt_sweep_uses_common_final_time_and_deterministic_strict_json(tmp_path)
     assert spec.record_site_visits(27) == 27 * (3 + 2)
     assert first.points[0].dimensionless_dt_proxy == pytest.approx(0.001)
     assert first.points[0].inverse_length_scale_proxy == pytest.approx(1.0)
+    assert first.points[0].dimensionless_final_time_proxy == pytest.approx(0.002)
+    assert first.points[0].dimensionless_initial_velocity_rms_proxy == pytest.approx(0.03)
+    assert first.points[0].dimensionless_initial_velocity_max_proxy == pytest.approx(0.03)
     assert first.sweep_id == second.sweep_id
     assert first.to_json() == second.to_json()
     parsed = json.loads(first.to_json())
@@ -77,6 +80,42 @@ def test_dt_sweep_uses_common_final_time_and_deterministic_strict_json(tmp_path)
 
     written = first.write_json(tmp_path / "nested" / "sweep.json")
     assert written.read_text(encoding="utf-8") == first.to_json() + "\n"
+
+
+
+def test_equal_inverse_length_scale_has_expected_energy_prefactor_covariance():
+    field, velocity = _field_and_velocity()
+    first = evolve_lorentzian_skyrme(
+        field, velocity, dt=0.001, steps=3, save_every=1,
+        f_pi=1.0, e=1.0, damping=0.1,
+    )
+    second = evolve_lorentzian_skyrme(
+        field, velocity, dt=0.001, steps=3, save_every=1,
+        f_pi=2.0, e=0.5, damping=0.1,
+    )
+
+    for field_a, field_b in zip(first.fields, second.fields):
+        np.testing.assert_allclose(
+            field_a.components, field_b.components, rtol=1e-10, atol=1e-12
+        )
+    np.testing.assert_allclose(
+        second.total_energy_history,
+        4.0 * np.asarray(first.total_energy_history),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        second.dissipated_energy_history,
+        4.0 * np.asarray(first.dissipated_energy_history),
+        rtol=1e-10,
+        atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        second.approximate_charge_history,
+        first.approximate_charge_history,
+        rtol=1e-10,
+        atol=1e-12,
+    )
 
 
 def test_work_budget_rejects_before_any_solver_call(monkeypatch):
