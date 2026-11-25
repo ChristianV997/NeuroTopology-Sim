@@ -431,6 +431,19 @@ def _finding(
     return PolicyFinding(path, max(1, line), rule, severity, category, remediation, approved, source)
 
 
+
+_TRAVERSAL_LITERAL = re.compile(r"(?:[\"']\.\.[\"']|\.\.[\\/])")
+_TRAVERSAL_GUARD = re.compile(r"(?:==|!=)\s*[\"']\.\.[\"']|[\"']\.\.[\"']\s*(?:==|!=)")
+
+
+def _has_traversal_literal(line: str) -> bool:
+    """True when a line uses a parent-traversal literal other than in an equality guard.
+
+    ``part == ".."`` only *rejects* traversal and cannot build a path, so it is not a
+    finding; any remaining ``".."`` / ``../`` on the same line still is.
+    """
+    return bool(_TRAVERSAL_LITERAL.search(_TRAVERSAL_GUARD.sub(" ", line)))
+
 def _scan_source_patterns(source: str, path: str, policy: DataAccessPolicy) -> list[PolicyFinding]:
     findings: list[PolicyFinding] = []
     emitted: set[tuple[int, str]] = set()
@@ -450,7 +463,7 @@ def _scan_source_patterns(source: str, path: str, policy: DataAccessPolicy) -> l
         if not code_context:
             # A parent traversal in executable source is still a policy
             # concern even when it is not part of a shell command.
-            if re.search(r"(?:[\"']\.\.[\"']|\.\.[\\/])", line) and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
+            if _has_traversal_literal(line) and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
                 findings.append(PolicyFinding(path, line_number, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", False, line.strip()))
             continue
         normalized = re.sub(r"[\[\],\"'()]", " ", line)
@@ -460,7 +473,7 @@ def _scan_source_patterns(source: str, path: str, policy: DataAccessPolicy) -> l
             if match and (line_number, rule) not in emitted and not _exception_for(path, rule, policy):
                 emitted.add((line_number, rule))
                 findings.append(PolicyFinding(path, line_number, rule, severity, category, remediation, False, line.strip()))
-        if re.search(r"(?:[\"']\.\.[\"']|\.\.[\\/])", line) and (line_number, "OUTPUT_ROOT_ESCAPE") not in emitted and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
+        if _has_traversal_literal(line) and (line_number, "OUTPUT_ROOT_ESCAPE") not in emitted and not _exception_for(path, "OUTPUT_ROOT_ESCAPE", policy):
             emitted.add((line_number, "OUTPUT_ROOT_ESCAPE"))
             findings.append(PolicyFinding(path, line_number, "OUTPUT_ROOT_ESCAPE", "error", "path_containment", "Resolve output/cache candidates and reject paths outside the explicit root.", False, line.strip()))
     return findings

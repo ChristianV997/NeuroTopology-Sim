@@ -95,10 +95,14 @@ def test_dandi_run_defaults_to_offline_and_does_not_resolve_metadata(tmp_path, m
 def test_dandi_process_defaults_to_offline_before_opening_nwb(monkeypatch, tmp_path):
     import tools.stream_process_dandi000458 as streamer
 
-    def should_not_open(*args, **kwargs):
-        raise AssertionError("NWB opener must not be called without permission")
+    import sciencer_d.btc_icft.level_m.dandi000458_windows_real as dandi_windows
 
-    monkeypatch.setattr(streamer, "open_nwb_lazy", should_not_open)
+    def should_not_open(*args, **kwargs):
+        raise AssertionError("NWB reader must not be called without permission")
+
+    # The NWB reader is imported lazily inside process_asset (after the permission check);
+    # patch the reader itself so any pre-permission open would fail loudly.
+    monkeypatch.setattr(dandi_windows, "build_and_extract_real_windows", should_not_open)
     with pytest.raises(PermissionError, match="allow_network"):
         streamer.process_asset(_asset(), tmp_path, 10.0, 1, 2)
 
@@ -126,7 +130,8 @@ def test_dandi_explicit_permission_is_manifest_first_and_deterministic(tmp_path,
     monkeypatch.setattr(streamer.base_runner, "run_manifest_loop", fake_loop)
     monkeypatch.setattr(streamer, "process_asset", fake_process)
     out = tmp_path / "out"
-    assert streamer.run(str(out), 10.0, 1, 2, 1, None, allow_network=True) == 0
+    # run() now also requires an explicit approved output_root that strictly contains out_dir.
+    assert streamer.run(str(out), 10.0, 1, 2, 1, None, allow_network=True, output_root=str(tmp_path)) == 0
 
     manifest = json.loads((out / "access_manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_first"] is True
