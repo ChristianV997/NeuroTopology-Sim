@@ -259,7 +259,19 @@ def convert_in_memory_block(
 
     shape = ()
     n_samples = 0
-    if data_out is not None:
+    if data_out is None:
+        # Absent signal cannot be CONVERTED: producer would disagree with
+        # validate_block, which requires a 2-D shape when data is omitted.
+        if ReasonCode.SHAPE_MISMATCH.value not in reasons:
+            reasons.append(ReasonCode.SHAPE_MISMATCH.value)
+        warnings.append(
+            "signal data absent; incomplete block cannot be marked converted"
+        )
+        if status in {BlockStatus.CONVERTED, BlockStatus.INCONCLUSIVE}:
+            status = BlockStatus.REJECTED
+        if ReasonCode.OK.value in reasons:
+            reasons = [code for code in reasons if code != ReasonCode.OK.value]
+    else:
         try:
             import numpy as np
 
@@ -501,23 +513,45 @@ def convert_from_mne_object(
     meas_date = info.get("meas_date")
     time_origin = str(meas_date) if meas_date is not None else None
 
-    # Data slice — Raw and Epochs expose different APIs.
+    # Data slice — Raw and Epochs both expose get_data/preload in modern MNE.
+    # Distinguish by ndarray rank: 3D → Epochs (epoch 0 + time window); 2D with
+    # __getitem__ → Raw-style slicing so start/stop bounds stay authoritative.
     data = None
+    warnings_extra: list[str] = []
+    payload_events: list[Any] = []
     try:
-        if hasattr(obj, "get_data") and not hasattr(obj, "preload"):
-            # Epochs-like
-            data = obj.get_data()
-            # For multi-epoch arrays keep first epoch only when 3D, explicitly warned.
-            import numpy as np
+        import numpy as np
 
-            arr = np.asarray(data)
-            warnings_extra = []
+        if hasattr(obj, "get_data"):
+            arr = np.asarray(obj.get_data())
             if arr.ndim == 3:
                 warnings_extra.append(
                     "Epochs data is 3D; using epoch 0 only without averaging or concatenation"
                 )
-                data = arr[0]
-            payload_events = []
+                epoch0 = arr[0]
+                data = (
+                    epoch0[:, start_sample:stop_sample]
+                    if stop_sample is not None
+                    else epoch0[:, start_sample:]
+                )
+            elif arr.ndim == 2 and hasattr(obj, "__getitem__"):
+                picked = (
+                    obj[:, start_sample:stop_sample]
+                    if stop_sample is not None
+                    else obj[:, start_sample:]
+                )
+                data = picked[0]
+            elif arr.ndim == 2:
+                data = (
+                    arr[:, start_sample:stop_sample]
+                    if stop_sample is not None
+                    else arr[:, start_sample:]
+                )
+            else:
+                warnings_extra.append(
+                    f"unsupported get_data ndarray rank {arr.ndim}; expected 2 or 3"
+                )
+                data = None
         elif hasattr(obj, "__getitem__"):
             picked = (
                 obj[:, start_sample:stop_sample]
@@ -525,14 +559,11 @@ def convert_from_mne_object(
                 else obj[:, start_sample:]
             )
             data = picked[0]
-            warnings_extra = []
-            payload_events = []
         else:
-            warnings_extra = ["unsupported MNE object interface"]
-            payload_events = []
+            warnings_extra.append("unsupported MNE object interface")
             data = None
     except Exception as exc:
-        warnings_extra = [f"mne data read failed: {exc}"]
+        warnings_extra.append(f"mne data read failed: {exc}")
         payload_events = []
         data = None
 

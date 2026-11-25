@@ -510,3 +510,93 @@ def test_omitted_stop_defaults_to_source_length(_fake_mne_module) -> None:
     assert result.block.block_start_sample == 2
     assert result.block.block_end_sample == raw.n_times
     assert result.block.data_shape == (1, raw.n_times - 2)
+
+
+def test_absent_signal_data_is_rejected_not_converted() -> None:
+    """Regression: None/missing data must not be marked CONVERTED with empty shape.
+
+    Producer CONVERTED + empty ``data_shape`` disagreed with ``validate_block``,
+    which rejects omitted signal without a valid declared 2-D shape.
+    """
+    for mutate in ("none", "delete"):
+        payload = make_valid_block_payload()
+        if mutate == "none":
+            payload["data"] = None
+        else:
+            del payload["data"]
+        result = convert_in_memory_block(payload)
+        assert result.block.status == BlockStatus.REJECTED, mutate
+        assert ReasonCode.SHAPE_MISMATCH.value in result.block.reason_codes, mutate
+        assert ReasonCode.OK.value not in result.block.reason_codes, mutate
+        assert result.block.data_shape == ()
+        assert result.block.n_samples == 0
+        report = validate_block(result.block.metadata_dict())
+        assert report["status"] == BlockStatus.REJECTED.value
+        assert ReasonCode.OK.value not in report["reason_codes"]
+
+
+def test_validate_block_strips_ok_after_escalation() -> None:
+    """Regression: escalated rejected/error must not retain reason_codes OK."""
+    meta = convert_in_memory_block(make_valid_block_payload()).block.metadata_dict(
+        include_data=True
+    )
+    meta["n_channels"] = 99
+    report = validate_block(meta)
+    assert report["status"] == BlockStatus.REJECTED.value
+    assert ReasonCode.SHAPE_MISMATCH.value in report["reason_codes"]
+    assert ReasonCode.OK.value not in report["reason_codes"]
+
+    meta2 = convert_in_memory_block(make_valid_block_payload()).block.metadata_dict(
+        include_data=True
+    )
+    meta2["scientific_pass"] = True
+    report2 = validate_block(meta2)
+    assert report2["status"] == BlockStatus.ERROR.value
+    assert ReasonCode.MALFORMED_INPUT.value in report2["reason_codes"]
+    assert ReasonCode.OK.value not in report2["reason_codes"]
+    assert report2["scientific_pass"] is False
+
+
+def test_epochs_like_preload_true_uses_get_data_not_raw_slice(
+    _fake_mne_module,
+) -> None:
+    """Regression: Epochs with preload=True must use 3D get_data (epoch 0).
+
+    Prior gate ``get_data and not hasattr(preload)`` skipped real MNE Epochs
+    (which set preload=True) and fell through to Raw ``__getitem__``.
+    """
+
+    class FakeEpochs:
+        preload = True
+        n_times = 8
+        info = {
+            "ch_names": ["Fz", "Cz"],
+            "chs": [{"unit": "uV"}, {"unit": "uV"}],
+            "sfreq": 100.0,
+            "bads": [],
+            "custom_ref_applied": "average",
+        }
+        annotations = None
+        slice_calls = 0
+
+        def get_data(self):
+            return np.arange(3 * 2 * 8, dtype=float).reshape(3, 2, 8)
+
+        def __getitem__(self, key):
+            self.slice_calls += 1
+            raise AssertionError("Epochs path must not use Raw-style __getitem__")
+
+        def get_montage(self):
+            return types.SimpleNamespace(kind="synthetic-epochs")
+
+    epochs = FakeEpochs()
+    result = convert_from_mne_object(
+        epochs, source_id="synthetic-epochs", start_sample=1, stop_sample=5
+    )
+    assert epochs.slice_calls == 0
+    assert result.block.status == BlockStatus.CONVERTED
+    assert result.block.data_shape == (2, 4)
+    assert any("Epochs data is 3D" in w for w in result.block.warnings)
+    # Epoch 0, channels, samples [1:5]
+    expected = np.arange(3 * 2 * 8, dtype=float).reshape(3, 2, 8)[0, :, 1:5]
+    assert np.array_equal(np.asarray(result.block.data), expected)

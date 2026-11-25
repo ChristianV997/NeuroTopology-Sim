@@ -34,7 +34,8 @@ Channel order and names, channel types, units, sample rate, time origin, block s
 - Missing or ambiguous units, channel types, reference, or montage → explicit unknown values and status `inconclusive` (never invent `V`, average-ref, or standard montages). Literal `unknown`/`unspecified` tokens are not treated as verified declarations.
 - Channel names and unit labels must be non-empty strings. Sampling rate must be a finite positive numeric value; booleans and numeric-looking strings are not coerced into rates. Missing/invalid values remain unknown and cannot produce `converted`.
 - A montage name, or a complete finite coordinate row for every channel, is required. Null coordinate rows do not stand in for a montage when no montage name is declared.
-- Hard failures (`rejected`): empty blocks, malformed/non-numeric signal arrays, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
+- Hard failures (`rejected`): empty blocks, absent/omitted signal data on the convert path, malformed/non-numeric signal arrays, shape mismatches, non-finite values, channel-order mismatches, unsupported channel types, event sample out of range.
+- `validate_block` never retains reason code `OK` after escalating to `inconclusive` / `rejected` / `error`.
 - Never silently resample, filter, rereference, interpolate, reorder, or drop channels.
 - Input arrays and metadata mappings are not mutated; data is copied by default.
 - `scientific_pass` is always `false`.
@@ -66,7 +67,7 @@ When MNE is installed, `convert_from_mne_object` reads declared `mne.Info` field
 
 FIF integer `unit` codes are **not** mapped to SI strings here (would invent units). String units attached on channel dicts are preserved as-is. `custom_ref_applied` is an integer flag in MNE Info, not a named reference; without an explicit string, reference stays unknown.
 
-For 3D Epochs arrays, epoch 0 is taken only, with an explicit warning (no averaging/concatenation).
+For 3D Epochs arrays (including objects with `preload=True`), `get_data()` is used; epoch 0 is taken only, with an explicit warning (no averaging/concatenation). 2D `get_data()` results with `__getitem__` follow the Raw slicing path so caller `start_sample`/`stop_sample` remain authoritative.
 
 ## MNE license / docs (researched)
 

@@ -12,9 +12,10 @@ Construction (standard, not novel):
     U is unitary (U U^dagger = I) and det(U) = 1, verified numerically in the tests.
 
     For a pure U(1) phase field (the common case for EEG phase and complex scalar BEC
-    fields), n_hat = z_hat gives U = diag(e^{i theta}, e^{-i theta}); the winding number of
-    theta is then the SU(2) topological charge, computed downstream by topology_engine using
-    the already-validated core.topology winding routines.
+    fields), n_hat = z_hat gives U = diag(e^{i theta}, e^{-i theta}). The downstream
+    core.topology routines calculate phase winding on two-dimensional slices; that
+    quantity is not the three-dimensional SU(2) Skyrme degree. A smooth fixed-axis
+    lift remains in a U(1) subgroup and cannot carry nonzero 3D Skyrme degree.
 
 This module does NOT claim that EEG and quantum fields are physically the same system.
 It provides a common mathematical container so the SAME downstream topology/action code
@@ -170,3 +171,4 @@ def stack_windows_to_field(phase_windows: list[np.ndarray], provenance: str,
         raise ValueError(f"all windows must share one shape, got {shapes}")
     theta = np.stack([np.asarray(w, dtype=float) for w in phase_windows], axis=0)
     return phase_to_su2(theta, provenance=provenance, meta=meta)
+

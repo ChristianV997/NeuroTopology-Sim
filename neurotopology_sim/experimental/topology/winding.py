@@ -26,6 +26,12 @@ For each edge raw difference ``raw_e = (d0 @ theta)_e``::
 
 Exact ``+π`` maps to ``-π``; exact ``-π`` stays ``-π``.
 
+Float interval hardening: if the reconstructed ``omega`` falls outside
+``[-π, π)`` (ulp neighborhoods of odd multiples of ``π``), ``n`` is shifted
+by ``±1`` with ``omega`` and ``n`` recomputed together so
+``omega = raw - 2π n`` always holds. Desynchronizing ``n`` from ``omega``
+would silently corrupt ``q = -d1 @ n``.
+
 Discrete identity and integer face charge
 -----------------------------------------
 Because ``d1 @ d0 == 0``::
@@ -220,15 +226,27 @@ def _validate_wrap_interval(wrap_interval: str) -> None:
 def branch_index_floor(raw: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
     """Return ``(n, omega)`` with floor wrap into ``[-π, π)``.
 
-    ``n_e = floor((raw_e + π) / (2π))``, ``omega_e = raw_e - 2π n_e``.
+    Ideal arithmetic: ``n_e = floor((raw_e + π) / (2π))``,
+    ``omega_e = raw_e - 2π n_e``. In float, the floor step can disagree with
+    the reconstructed principal value near odd multiples of ``π``. Interval
+    hardening therefore shifts ``n`` by ``±1`` whenever ``omega`` is shifted
+    by ``±2π``, then recomputes ``omega = raw - 2π n`` so the pair stays
+    consistent (required for ``q = -d1 @ n`` to match ``(d1 @ omega) / 2π``).
+    Exact ``+π`` still maps to ``−π`` via ``omega >= π`` → ``n += 1``.
     """
     raw_arr = _as_1d_float("raw", raw)
     # floor of float; cast to int64 afterwards (core branch index stays integer).
     n = np.floor((raw_arr + np.pi) / TWO_PI).astype(np.int64)
     omega = raw_arr - TWO_PI * n.astype(float)
-    # Harden interval: force any residual +π (float edge) to −π.
-    omega = np.where(omega >= np.pi, omega - TWO_PI, omega)
-    omega = np.where(omega < -np.pi, omega + TWO_PI, omega)
+    # Harden into [-π, π) while keeping omega = raw - 2π n.
+    # Two passes cover residual float overshoot after the first adjust.
+    for _ in range(2):
+        high = omega >= np.pi
+        low = omega < -np.pi
+        if not (np.any(high) or np.any(low)):
+            break
+        n = (n + high.astype(np.int64) - low.astype(np.int64)).astype(np.int64)
+        omega = raw_arr - TWO_PI * n.astype(float)
     return n, omega
 
 
