@@ -19,7 +19,11 @@ optimization-cycle:
 validate-governance:
 	python -m governance.validate
 
-test-root:
+# Raw whole-tree pytest can be SIGKILLed with its process group by subprocess-heavy suites;
+# the isolated runner gives each batch its own session. Use test-root-raw for plain pytest.
+test-root: test-root-isolated
+
+test-root-raw:
 	python -m pytest tests/ -v --tb=short
 
 test-core: test-root
