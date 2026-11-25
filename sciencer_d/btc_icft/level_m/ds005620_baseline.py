@@ -31,9 +31,11 @@ class LevelMFeatureRow:
     state_label: str | None
     behavior_label: str | None
     report_label: str | None
-    signal_provenance: str = _MOCK_SIGNAL_PROVENANCE
-    evidence_class: str = _MOCK_EVIDENCE_CLASS
-    run_mode: str = _MOCK_RUN_MODE
+    # Required (no defaults) so subclasses like LevelMTFeatureRow can still
+    # append non-default topology fields without dataclass field-order errors.
+    signal_provenance: str
+    evidence_class: str
+    run_mode: str
 
 
 @dataclass(frozen=True)
