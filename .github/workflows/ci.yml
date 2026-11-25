@@ -161,6 +161,7 @@ jobs:
           tests/test_hypothesis_false_certainty.py
           tests/test_neurolib_watermarks.py
           tests/test_pipeline_csv_watermarks.py
+          tests/test_mode_csv_watermarks.py
           tests/test_topology.py
           tests/test_benchmarks_registry.py
           tests/test_transitions_governance.py

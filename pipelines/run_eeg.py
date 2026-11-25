@@ -24,6 +24,7 @@ They are controls for artifact sensitivity, not proof of validity.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import warnings
 from pathlib import Path
@@ -32,6 +33,7 @@ from typing import Mapping, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from runs.run_record import RunRecordV1, write_json
 from validation.analytic_phase import (
     DEFAULT_EEG_BANDS,
     analytic_phase_amplitude_by_band,
@@ -58,6 +60,25 @@ except Exception:
 
 NUMERICAL_STABILITY_EPSILON = 1e-12
 MIN_SEGMENT_SAMPLES = 8
+
+# Analytic-phase / temporal-phase Q/Qabs slots are proxies (channel-order
+# gradients or temporal angle), not empirical spatial topology charges.
+# Fail closed: never claim metrics_are_empirical / scientific_pass without a
+# separate promotion gate.
+_EVIDENCE_CLASS = "eeg_analytic_phase_proxy_unvalidated"
+_RUN_MODE = "eeg_analytic_proxy"
+_METRIC_KIND = "eeg_analytic_phase_proxy"
+
+
+def eeg_evidence_watermarks() -> dict:
+    """Fail-closed provenance stamps for EEG CSV/meta/RunRecord outputs."""
+    return {
+        "evidence_class": _EVIDENCE_CLASS,
+        "run_mode": _RUN_MODE,
+        "metrics_are_empirical": False,
+        "scientific_pass": False,
+        "metric_kind": _METRIC_KIND,
+    }
 
 
 # ── path metadata inference ──────────────────────────────────────────────────
@@ -492,4 +513,58 @@ def run(
 
     df = pd.DataFrame(rows, columns=base_cols)
     df.to_csv(output_csv, index=False)
+
+    marks = eeg_evidence_watermarks()
+    meta = {
+        "records": int(len(df)),
+        "dataset": dataset,
+        "input_dir": str(input_dir),
+        "csv": str(output_csv),
+        "note": (
+            "Q/Qabs columns are analytic-phase or temporal-phase proxies "
+            "(metric_kind per row); not empirical spatial topology charges."
+        ),
+        **marks,
+    }
+    Path(str(output_csv) + ".meta.json").write_text(
+        json.dumps(meta, indent=2),
+        encoding="utf-8",
+    )
+
+    metrics: dict = {
+        "n_rows": int(len(df)),
+        "metric_kind": marks["metric_kind"],
+    }
+    if len(df) and "Q" in df.columns:
+        q_finite = pd.to_numeric(df["Q"], errors="coerce")
+        if q_finite.notna().any():
+            metrics["Q_mean"] = float(q_finite.mean())
+    if len(df) and "Qabs" in df.columns:
+        qabs_finite = pd.to_numeric(df["Qabs"], errors="coerce")
+        if qabs_finite.notna().any():
+            metrics["Qabs_mean"] = float(qabs_finite.mean())
+
+    blob = json.dumps(
+        {"dataset": dataset, "input_dir": str(input_dir), "metrics": metrics},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    run_id = hashlib.sha256(blob.encode()).hexdigest()[:16]
+    record = RunRecordV1.make(
+        run_id=run_id,
+        run_kind="eeg",
+        data_mode="eeg",
+        dataset_id=dataset,
+        metrics=metrics,
+        artifacts={"csv": str(output_csv), "meta": str(output_csv) + ".meta.json"},
+        source="pipelines.run_eeg",
+        evidence_class=marks["evidence_class"],
+        run_mode=marks["run_mode"],
+        metrics_are_empirical=marks["metrics_are_empirical"],
+        scientific_pass=marks["scientific_pass"],
+        metric_kind=marks["metric_kind"],
+    )
+    record.input = {"input_dir": str(input_dir), "dataset": dataset}
+    write_json(record, output_csv.parent / "RunRecord.json")
+
     return df

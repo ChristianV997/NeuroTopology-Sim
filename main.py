@@ -1,5 +1,7 @@
 from __future__ import annotations
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -17,7 +19,24 @@ from pipelines.run_physionet import run as run_physionet
 from pipelines.run_external import run as run_external
 from pipelines.run_neurolib import run as run_neurolib
 from pipelines.run_fast_tr_validation import run as run_fast_tr_validation
+from runs.run_record import RunRecordV1, write_json
 from database.database import connect, start_run, finish_run, add_metric, add_artifact
+
+# Synthetic vortex / dynamical ground-truth checks are engineering demos only.
+_SYNTHETIC_EVIDENCE_CLASS = "synthetic_vortex_charge_demonstration"
+_SYNTHETIC_RUN_MODE = "synthetic"
+_SYNTHETIC_METRIC_KIND = "synthetic_known_charge_check"
+
+
+def synthetic_evidence_watermarks() -> dict:
+    """Fail-closed provenance stamps for main.py --mode synthetic outputs."""
+    return {
+        "evidence_class": _SYNTHETIC_EVIDENCE_CLASS,
+        "run_mode": _SYNTHETIC_RUN_MODE,
+        "metrics_are_empirical": False,
+        "scientific_pass": False,
+        "metric_kind": _SYNTHETIC_METRIC_KIND,
+    }
 
 
 def _positive_int(value: str) -> int:
@@ -60,14 +79,67 @@ def run_synthetic():
         "double_vortex": bool(validation["double_vortex_pass"]),
     }
     df["Q_expected"] = df["case"].map(expected)
+    # Engineering charge-check only — never promote to scientific_pass.
     df["pass_charge_check"] = df["case"].map(passes)
-    df.to_csv(out / "synthetic_summary.csv", index=False)
+    df["metrics_are_empirical"] = False
+    df["scientific_pass"] = False
+    df["evidence_class"] = _SYNTHETIC_EVIDENCE_CLASS
+    df["run_mode"] = _SYNTHETIC_RUN_MODE
+    df["metric_kind"] = _SYNTHETIC_METRIC_KIND
+    summary_csv = out / "synthetic_summary.csv"
+    df.to_csv(summary_csv, index=False)
     print(df)
 
     dyn = validate_dynamical_ground_truth()
     dyn_df = pd.DataFrame([dyn])
-    dyn_df.to_csv(out / "dynamical_ground_truth_summary.csv", index=False)
+    dyn_df["metrics_are_empirical"] = False
+    dyn_df["scientific_pass"] = False
+    dyn_df["evidence_class"] = _SYNTHETIC_EVIDENCE_CLASS
+    dyn_df["run_mode"] = _SYNTHETIC_RUN_MODE
+    dyn_df["metric_kind"] = "synthetic_dynamical_ground_truth"
+    dyn_csv = out / "dynamical_ground_truth_summary.csv"
+    dyn_df.to_csv(dyn_csv, index=False)
     print(dyn_df)
+
+    marks = synthetic_evidence_watermarks()
+    meta = {
+        "records": int(len(df)),
+        "csv": str(summary_csv),
+        "dynamical_csv": str(dyn_csv),
+        "note": (
+            "pass_charge_check is an engineering vortex-charge gate only; "
+            "scientific_pass remains false."
+        ),
+        **marks,
+    }
+    (out / "evidence_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+    metrics = {
+        "n_cases": int(len(df)),
+        "metric_kind": marks["metric_kind"],
+        "single_vortex_pass": bool(passes.get("single_vortex")),
+        "double_vortex_pass": bool(passes.get("double_vortex")),
+    }
+    blob = json.dumps({"metrics": metrics}, sort_keys=True, separators=(",", ":"))
+    run_id = hashlib.sha256(blob.encode()).hexdigest()[:16]
+    record = RunRecordV1.make(
+        run_id=run_id,
+        run_kind="synthetic",
+        data_mode="synthetic",
+        metrics=metrics,
+        artifacts={
+            "synthetic_summary": str(summary_csv),
+            "dynamical_summary": str(dyn_csv),
+            "evidence_meta": str(out / "evidence_meta.json"),
+        },
+        source="main.run_synthetic",
+        evidence_class=marks["evidence_class"],
+        run_mode=marks["run_mode"],
+        metrics_are_empirical=marks["metrics_are_empirical"],
+        scientific_pass=marks["scientific_pass"],
+        metric_kind=marks["metric_kind"],
+    )
+    write_json(record, out / "RunRecord.json")
 
 def run_qzt(checkpoint_dir: str):
     """Run QZT pipeline and write outputs into results root."""
