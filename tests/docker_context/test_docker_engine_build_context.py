@@ -1,9 +1,11 @@
 """Verify the root .dockerignore with a real, local Docker Engine.
 
 This test builds a network-free ``FROM scratch`` image from a temporary
-context containing only synthetic sentinel files. It deliberately fails when
-Docker or a local Docker Engine is unavailable; it is intended for the
-Docker-enabled job, not a test suite that silently skips engine coverage.
+context containing only synthetic sentinel files. In CI (``CI`` set) or strict
+mode (``NTS_STRICT_OPTIONAL_DEPS`` set) it deliberately fails when Docker or a
+local Docker Engine is unavailable, so the Docker-enabled job can never silently
+skip engine coverage. Outside CI/strict mode an unreachable engine is reported
+as a skip, matching the repository's optional-dependency policy.
 """
 
 from __future__ import annotations
@@ -117,6 +119,13 @@ def _docker_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("DOCKER_HOST", None)
     return environment
+
+
+def _engine_unavailable(message: str) -> None:
+    """Fail in CI/strict mode; skip in local developer runs without an engine."""
+    if os.environ.get("CI") or os.environ.get("NTS_STRICT_OPTIONAL_DEPS"):
+        pytest.fail(message)
+    pytest.skip(f"{message} (local run; set NTS_STRICT_OPTIONAL_DEPS=1 to require)")
 
 
 def _sanitize_docker_diagnostic(stderr: str | None) -> str:
@@ -252,9 +261,9 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
     """Prove Docker omits forbidden paths and retains the sole env exception."""
     docker_cli = shutil.which("docker")
     if docker_cli is None:
-        pytest.fail(
+        _engine_unavailable(
             "Docker CLI is required for this Docker-context test; "
-            "the test must run in a Docker-enabled job and is not skipped"
+            "the Docker-enabled CI job must not skip it"
         )
 
     if not DOCKERIGNORE.is_file():
@@ -262,16 +271,20 @@ def test_docker_engine_applies_repository_dockerignore_to_synthetic_context(
 
     # Inspect, but do not connect to, the selected Docker endpoint. Pin one
     # sanitized context for inspection, engine operations, and cleanup.
+    # Engine-availability failures (context selection or the server-version
+    # probe) fail in CI/strict mode and skip in local runs; every later Docker
+    # operation keeps its unconditional fail-closed behavior.
     try:
         _, docker_environment = _select_local_docker_context()
+        server_version = _run_docker(
+            ["version", "--format", "{{.Server.Version}}"], env=docker_environment
+        )
     except RuntimeError as exc:
-        pytest.fail(str(exc))
-
-    server_version = _run_docker(
-        ["version", "--format", "{{.Server.Version}}"], env=docker_environment
-    )
+        _engine_unavailable(str(exc))
+    except pytest.fail.Exception as exc:
+        _engine_unavailable(f"a running Docker Engine is required for this test: {exc}")
     if not server_version:
-        pytest.fail("a running Docker Engine is required for this test")
+        _engine_unavailable("a running Docker Engine is required for this test")
     request.node.user_properties.append(("docker_engine_version", server_version))
     print(f"Docker Engine server version: {server_version}")
 
