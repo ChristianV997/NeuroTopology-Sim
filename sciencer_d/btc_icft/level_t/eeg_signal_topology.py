@@ -348,6 +348,37 @@ def _compute_topology_from_channels(
 compute_topology_from_channels = _compute_topology_from_channels
 
 
+def observed_proxy_metrics(row: "EEGLevelTSignalTopologyRow") -> dict[str, float] | None:
+    """Return proxy metrics only when observed under the missingness contract.
+
+    Requires ``is_valid``, known ``metric_kind``, and non-null proxy fields.
+    Never coerces skipped/null zeros into observed winding charge.
+    Legacy ``q_*`` aliases are returned only as named proxies when valid.
+    """
+    if not getattr(row, "is_valid", False):
+        return None
+    if getattr(row, "metric_kind", None) != _METRIC_KIND:
+        return None
+    net = row.mean_diff_proxy_net
+    abs_v = row.mean_diff_proxy_abs
+    excess = row.mean_diff_proxy_excess
+    if net is None or abs_v is None or excess is None:
+        return None
+    # Guard against treating missingness-as-zero via legacy aliases alone.
+    if row.q_net is None or row.q_abs is None or row.f_dress is None:
+        return None
+    return {
+        "metric_kind": _METRIC_KIND,
+        "mean_diff_proxy_net": float(net),
+        "mean_diff_proxy_abs": float(abs_v),
+        "mean_diff_proxy_excess": float(excess),
+        # Legacy aliases mirror proxies; not spatial winding charges.
+        "q_net_alias": float(row.q_net),
+        "q_abs_alias": float(row.q_abs),
+        "f_dress_alias": float(row.f_dress),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Per-window topology extraction
 # ---------------------------------------------------------------------------
@@ -429,12 +460,18 @@ def compute_signal_topology_for_window(
         return _make_skipped("skipped_unreadable_source", f"Source file not found: {source_file!r}")
 
     try:
-        sig = parse_fixture_signal_file(source_file)
+        # Prefer file header sample_rate; never silently invent 100 Hz.
+        # Window metadata may supply an explicit caller rate (non-scientific).
+        caller_sr = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else None
+        sig = parse_fixture_signal_file(source_file, sample_rate_hz=caller_sr)
     except Exception as e:
         return _make_skipped("skipped_parse_error", f"Parse error: {e}")
 
     if not sig.readable or not sig.samples:
-        return _make_skipped("skipped_unreadable_source", f"Source file not readable: {source_file!r}")
+        reason = f"Source file not readable: {source_file!r}"
+        if sig.errors and any("missing_sample_rate_hz" in e for e in sig.errors):
+            reason = "missing_sample_rate_hz"
+        return _make_skipped("skipped_unreadable_source", reason)
 
     # Slice samples
     actual_end = min(sample_end, sig.n_samples or 0)
