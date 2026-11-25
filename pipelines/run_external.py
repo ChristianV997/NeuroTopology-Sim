@@ -25,6 +25,7 @@ def run(config_path: str | Path, output_csv: str | Path, db_path: str | Path, ma
     conn = connect(db_path)
     run_id = start_run(conn, name="external_ingest", kind="external", params={"config_path": str(config_path)})
     rows: list[dict] = []
+    status = "failed"  # recorded as failed unless every connector completes
     try:
         for cfg in connector_cfgs:
             kind = cfg.get("type", "file")
@@ -55,8 +56,9 @@ def run(config_path: str | Path, output_csv: str | Path, db_path: str | Path, ma
                 )
                 add_metric(conn, run_id, "Q", row["Q"], units="topological_charge", source=rec.sensor_id)
                 add_metric(conn, run_id, "Qabs", row["Qabs"], units="topological_charge_abs", source=rec.sensor_id)
+        status = "finished"
     finally:
-        finish_run(conn, run_id, status="finished")
+        finish_run(conn, run_id, status=status)
         conn.close()
 
     df = pd.DataFrame(rows, columns=EXTERNAL_COLUMNS)

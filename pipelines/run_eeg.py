@@ -288,6 +288,10 @@ def run(
     is implemented.
     """
     input_dir = Path(input_dir)
+    if not input_dir.is_dir():
+        # A missing root is a usage error. Returning an empty table here looks like a
+        # successful run with zero windows (a mistyped --input path would pass silently).
+        raise FileNotFoundError(f"EEG input directory does not exist: {input_dir}")
     output_csv = Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 

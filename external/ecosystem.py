@@ -49,7 +49,9 @@ class FileSensorConnector(BaseSensorConnector):
     def stream(self, max_records: int | None = None) -> Iterable[SensorRecord]:
         count = 0
         if not self.path.exists():
-            return
+            # A configured feed file that is absent is a configuration error; returning an
+            # empty stream made a missing sensor look like a successful zero-record ingest.
+            raise FileNotFoundError(f"sensor file does not exist: {self.path}")
         with self.path.open("r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()

@@ -15,6 +15,8 @@ def run(input_dir: str | Path, output_csv: str | Path) -> pd.DataFrame:
     computed on EEG/physics fields.
     """
     input_dir = Path(input_dir)
+    if not input_dir.is_dir():
+        raise FileNotFoundError(f"PhysioNet input directory does not exist: {input_dir}")
     output_csv = Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
 

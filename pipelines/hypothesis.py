@@ -100,7 +100,13 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
     out_dir.mkdir(parents=True, exist_ok=True)
 
     spec_id = spec.get("spec_id", Path(spec_path).stem)
-    sim_params = spec.get("sim_params", {})
+    data_block = spec.get("data") if isinstance(spec.get("data"), dict) else {}
+    # Governance-schema specs declare simulation parameters under data.params. Honour them
+    # when no sim_params block is given, so the run matches what the spec states.
+    sim_params = spec.get("sim_params")
+    if not sim_params:
+        declared = data_block.get("params") if isinstance(data_block.get("params"), dict) else {}
+        sim_params = {k: declared[k] for k in ("N", "n_steps", "seed") if k in declared}
     N = int(sim_params.get("N", 32))
     n_steps = int(sim_params.get("n_steps", 20))
     seed = int(sim_params.get("seed", 0))
@@ -164,7 +170,14 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
     }
 
     # ── verdict ───────────────────────────────────────────────────────────────
-    thresholds = spec.get("threshold", {})
+    # Thresholds come from the documented flat schema (`threshold:`) or the governance schema
+    # (`pass_fail.thresholds`). The same key declared twice with different values is rejected.
+    thresholds = dict(spec.get("threshold") or {})
+    pass_fail_block = spec.get("pass_fail") if isinstance(spec.get("pass_fail"), dict) else {}
+    for key, value in (pass_fail_block.get("thresholds") or {}).items():
+        if key in thresholds and thresholds[key] != value:
+            raise ValueError(f"Conflicting declarations for threshold {key!r}")
+        thresholds.setdefault(key, value)
     _KNOWN_THRESHOLD_KEYS = frozenset({"I_mean_min", "Qabs_max", "I_std_max"})
     unknown_keys = set(thresholds.keys()) - _KNOWN_THRESHOLD_KEYS
     if unknown_keys:
@@ -177,7 +190,22 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
         threshold_failures.append(f"Qabs {metrics['Qabs']:.6f} > Qabs_max {thresholds['Qabs_max']}")
     if "I_std_max" in thresholds and metrics["I_std"] > float(thresholds["I_std_max"]):
         threshold_failures.append(f"I_std {metrics['I_std']:.6f} > I_std_max {thresholds['I_std_max']}")
-    verdict = "PASS" if not threshold_failures else "FAIL"
+    # PASS requires evaluated thresholds and a data scope this runner actually executes.
+    # A failed threshold is a definitive FAIL for the run performed; anything else is 'ambiguous'.
+    # Previously a spec whose thresholds were not read got PASS with nothing checked.
+    declared_mode = data_block.get("mode") or spec.get("data_mode") or "synthetic"
+    verdict_reason = None
+    if declared_mode != "synthetic":
+        verdict_reason = (f"declared data mode {declared_mode!r} was not executed; "
+                          "this runner performs synthetic simulation only")
+    elif not thresholds:
+        verdict_reason = "no thresholds declared; nothing was evaluated"
+    if threshold_failures:
+        verdict = "FAIL"
+    elif verdict_reason is not None:
+        verdict = "ambiguous"
+    else:
+        verdict = "PASS"
 
     # ── run_id ────────────────────────────────────────────────────────────────
     blob = json.dumps(
@@ -203,6 +231,9 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
         "metrics_summary": metrics,
         "elapsed_s": round(elapsed_s, 3),
         "created_at": now.isoformat(),
+        "data_mode": "synthetic",
+        "declared_data_mode": declared_mode,
+        "verdict_reason": verdict_reason,
     }
     summary_json = out_dir / "summary.json"
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -219,7 +250,7 @@ def run(spec_path: Path, out_dir: Path, _now: Optional[datetime] = None) -> Dict
         spec_id=spec_id,
         claim_type=spec.get("claim_type"),
         layer=spec.get("layer"),
-        data_mode=spec.get("data_mode"),
+        data_mode="synthetic",  # the only mode this runner executes
         dataset_id=spec.get("dataset_id"),
         verdict=verdict,
         metrics=metrics,
@@ -355,6 +386,8 @@ def main() -> None:
     summary = run(Path(args.spec), Path(args.output))
     print(f"[hypothesis] spec={summary['spec_id']} run_id={summary['run_id']} "
           f"verdict={summary['verdict']} I_mean={summary['metrics_summary']['I_mean']}")
+    if summary.get("verdict_reason"):
+        print(f"[hypothesis] reason: {summary['verdict_reason']}")
 
 
 if __name__ == "__main__":

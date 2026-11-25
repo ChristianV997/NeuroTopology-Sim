@@ -20,6 +20,10 @@ def _safe_read_csv(path: Path) -> pd.DataFrame:
 def run(results_root: str | Path, output_csv: str | Path):
     """Aggregate available domain metrics and attach simple unsupervised clusters."""
     results_root = Path(results_root)
+    if not results_root.is_dir():
+        # Partial availability across datasets is normal and is skipped below. A missing root is
+        # a usage error and must not produce an empty comparison that looks successful.
+        raise FileNotFoundError(f"results root does not exist: {results_root}")
     output_csv = Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     rows = []

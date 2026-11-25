@@ -211,7 +211,9 @@ def test_hypothesis_run_record_keys(tmp_path):
     assert data["run_kind"] == "hypothesis"
     assert data["spec_id"] == "TEST-003"
     assert "I_mean" in data["metrics"]
-    assert data["verdict"] in ("PASS", "FAIL")
+    # `verdict_threshold` is not a recognised key, so no threshold is evaluated: the verdict must be
+    # 'ambiguous', never a PASS that checked nothing.
+    assert data["verdict"] == "ambiguous"
 
 
 def test_hypothesis_run_record_run_id_stable(tmp_path):
