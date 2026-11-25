@@ -1,0 +1,13 @@
+{
+  "oracle": "periodic_checkerboard",
+  "shape": [8, 4, 4],
+  "spacing": [1.0, 1.0, 1.0],
+  "f_pi": 1.0,
+  "e": 1.0,
+  "step_sizes": [0.02, 0.05, 0.1],
+  "n_steps": 8,
+  "curvature_probe_step": 0.005,
+  "gradient_stationarity_tol": 1e-10,
+  "seed": 0,
+  "schema_version": "fta.mode_follow.0.1.0"
+}
