@@ -13,9 +13,19 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 try:
-    from tools.export_sim_artifacts import export, _render_markdown, _out_filename
+    from tools.export_sim_artifacts import (
+        export,
+        _render_markdown,
+        _out_filename,
+        classify_evidence_stamps,
+    )
 except ModuleNotFoundError:
-    from export_sim_artifacts import export, _render_markdown, _out_filename
+    from export_sim_artifacts import (
+        export,
+        _render_markdown,
+        _out_filename,
+        classify_evidence_stamps,
+    )
 
 _RUN_ID = "deadbeef01234567"
 _RUN_KIND = "hypothesis"
@@ -62,8 +72,24 @@ def test_render_frontmatter_contains_required_keys(tmp_path):
     _make_run_record(tmp_path)
     record = json.loads((tmp_path / "artifacts" / "run1" / "RunRecord.json").read_text())
     md = _render_markdown(record)
-    for key in ("run_id", "run_kind", "spec_id", "claim_type", "layer", "created_at", "verdict"):
+    for key in (
+        "run_id",
+        "run_kind",
+        "spec_id",
+        "claim_type",
+        "layer",
+        "created_at",
+        "verdict",
+        "engineering_verdict",
+        "evidence_class",
+        "run_mode",
+        "metrics_are_empirical",
+        "scientific_pass",
+        "epistemic_status",
+    ):
         assert f"{key}:" in md, f"Missing frontmatter key: {key}"
+    # Body must not present a bare empirical Verdict headline for incomplete stamps.
+    assert "**Verdict:**" not in md
 
 
 def test_render_has_metrics_table(tmp_path):
@@ -134,7 +160,16 @@ def test_export_markdown_frontmatter_has_all_keys(tmp_path):
     out_dir = tmp_path / "out"
     written = export(tmp_path / "artifacts", out_dir)
     content = written[0].read_text()
-    for key in ("run_id", "run_kind", "spec_id", "claim_type", "layer", "created_at", "verdict"):
+    for key in (
+        "run_id",
+        "run_kind",
+        "spec_id",
+        "claim_type",
+        "layer",
+        "created_at",
+        "engineering_verdict",
+        "epistemic_status",
+    ):
         assert f"{key}:" in content, f"Missing: {key}"
 
 
@@ -186,3 +221,112 @@ def test_export_empty_artifacts_dir(tmp_path):
     (tmp_path / "artifacts").mkdir()
     written = export(tmp_path / "artifacts", tmp_path / "out")
     assert written == []
+
+
+# ── Fail-closed evidence watermark gate ───────────────────────────────────────
+
+def test_missing_watermarks_fail_closed_non_empirical():
+    stamps = classify_evidence_stamps(
+        {"run_id": "x", "verdict": "PASS", "metrics": {"I_mean": 1.0}}
+    )
+    assert stamps["treat_as_empirical"] is False
+    assert stamps["epistemic_status"] == "NON_EMPIRICAL_INCOMPLETE"
+    assert stamps["metrics_are_empirical"] is False
+    assert stamps["scientific_pass"] is False
+    assert stamps["engineering_verdict"] == "PASS"
+
+
+def test_synthetic_watermarks_are_non_empirical_not_scientific():
+    stamps = classify_evidence_stamps(
+        {
+            "verdict": "PASS",
+            "evidence_class": "synthetic_hypothesis_demonstration",
+            "run_mode": "synthetic",
+            "metrics_are_empirical": False,
+            "scientific_pass": False,
+            "metric_kind": "cgl_topology",
+        }
+    )
+    assert stamps["treat_as_empirical"] is False
+    assert stamps["epistemic_status"] == "NON_EMPIRICAL"
+    assert stamps["scientific_pass"] is False
+
+
+def test_empirical_claim_with_synthetic_run_mode_is_conflict():
+    stamps = classify_evidence_stamps(
+        {
+            "verdict": "PASS",
+            "evidence_class": "descriptive_empirical",
+            "run_mode": "synthetic",
+            "metrics_are_empirical": True,
+            "scientific_pass": False,
+        }
+    )
+    assert stamps["treat_as_empirical"] is False
+    assert stamps["epistemic_status"] == "NON_EMPIRICAL_CONFLICT"
+    assert stamps["metrics_are_empirical"] is False
+
+
+def test_complete_empirical_watermarks_declared_only_not_scientific_pass():
+    stamps = classify_evidence_stamps(
+        {
+            "verdict": "PASS",
+            "evidence_class": "descriptive_empirical",
+            "run_mode": "recorded_dataset",
+            "metrics_are_empirical": True,
+            "scientific_pass": True,  # exporter must not echo scientific confirmation
+            "metric_kind": "eeg_topology",
+        }
+    )
+    assert stamps["treat_as_empirical"] is True
+    assert stamps["epistemic_status"] == "DECLARED_EMPIRICAL_METRICS"
+    assert stamps["scientific_pass"] is False
+
+
+def test_render_stamps_pass_verdict_as_engineering_only_when_incomplete(tmp_path):
+    _make_run_record(tmp_path, verdict="PASS")  # no watermarks
+    record = json.loads((tmp_path / "artifacts" / "run1" / "RunRecord.json").read_text())
+    md = _render_markdown(record)
+    assert "NON-EMPIRICAL" in md
+    assert "NON_EMPIRICAL_INCOMPLETE" in md
+    assert "Engineering verdict" in md
+    assert "not empirical" in md.lower()
+    assert "## Evidence watermark" in md
+    # Must not present a bare empirical Verdict headline.
+    assert "**Verdict:** PASS" not in md
+
+
+def test_export_stamps_legacy_summary_pass_as_non_empirical(tmp_path):
+    art_dir = tmp_path / "artifacts" / "run_legacy"
+    art_dir.mkdir(parents=True)
+    summary = {
+        "run_id": "legacy_pass",
+        "spec_id": "HYP-LEG",
+        "verdict": "PASS",
+        "metrics_summary": {"I_mean": 0.9},
+        "created_at": "2025-01-15T12:00:00+00:00",
+    }
+    (art_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    written = export(tmp_path / "artifacts", tmp_path / "out")
+    content = written[0].read_text()
+    assert "NON-EMPIRICAL" in content
+    assert "engineering_verdict: 'PASS'" in content or 'engineering_verdict: "PASS"' in content
+    assert "metrics_are_empirical: False" in content
+
+
+def test_export_preserves_complete_non_empirical_watermarks(tmp_path):
+    _make_run_record(
+        tmp_path,
+        verdict="PASS",
+        evidence_class="synthetic_hypothesis_demonstration",
+        run_mode="synthetic",
+        metrics_are_empirical=False,
+        scientific_pass=False,
+        metric_kind="cgl_topology",
+    )
+    written = export(tmp_path / "artifacts", tmp_path / "out")
+    content = written[0].read_text()
+    assert "epistemic_status: 'NON_EMPIRICAL'" in content or 'epistemic_status: "NON_EMPIRICAL"' in content
+    assert "synthetic_hypothesis_demonstration" in content
+    assert "metrics_are_empirical: False" in content
+    assert "scientific_pass: False" in content
