@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
+from shared.canonical_json import canonical_json_text
 
 
 class InteropValidationError(ValueError):
@@ -115,13 +116,7 @@ def json_safe(value: Any) -> Any:
 
 def canonical_json(value: Any) -> str:
     """Serialize metadata deterministically and reject non-finite values."""
-    return json.dumps(
-        json_safe(value),
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+    return canonical_json_text(json_safe(value), strict=True, ensure_ascii=False)
 
 
 def sha256_bytes(value: bytes) -> str:

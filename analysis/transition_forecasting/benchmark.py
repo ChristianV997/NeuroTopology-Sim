@@ -16,6 +16,7 @@ from typing import Any, Mapping, Optional, Sequence
 import numpy as np
 
 from .splits import LockedSplit, locked_split, validate_split
+from shared.canonical_json import canonical_json_text
 
 SCHEMA_VERSION = "NTS.TransitionForecastBenchmark.v1"
 FEATURE_KEYS = {
@@ -188,7 +189,7 @@ def _finite(value: Any) -> Any:
 
 
 def _canonical_json(value: Any) -> str:
-    return json.dumps(_finite(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return canonical_json_text(_finite(value), strict=True)
 
 
 def _failure_report(dataset: BenchmarkDataset, status: ForecastStatus, message: str) -> BenchmarkReport:

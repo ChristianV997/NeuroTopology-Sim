@@ -7,6 +7,7 @@ import json
 import math
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping
+from shared.canonical_json import canonical_json_text
 
 
 REPORT_SCHEMA_VERSION = "NeuroTopologySim.Batch3ProvenanceJoin.v1"
@@ -74,13 +75,7 @@ def canonical_json(value: Any, *, ensure_ascii: bool = False) -> str:
     """ResearchCycleLedger.canonical_json-compatible compact serialization."""
     _assert_finite(value)
     try:
-        return json.dumps(
-            value,
-            ensure_ascii=ensure_ascii,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
+        return canonical_json_text(value, strict=True, ensure_ascii=ensure_ascii)
     except RecursionError as exc:
         raise ValueError("JSON nesting exceeds the serializer limit") from exc
 

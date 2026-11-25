@@ -18,6 +18,7 @@ from typing import Any, Mapping
 from tools.research_plan_quality.models import EVIDENCE_CLASSES, ResearchPlan
 
 from .errors import MalformedRecordError
+from shared.canonical_json import canonical_json_text
 
 FORBIDDEN_LABEL_KEYS: frozenset[str] = frozenset({
     "expected_overall_status",
@@ -53,7 +54,7 @@ class PlanRecord:
 
 
 def canonical_json(obj: Any) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return canonical_json_text(obj, strict=True)
 
 
 def sha256_hex(data: bytes) -> str:

@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 from urllib.parse import urlsplit
+from shared.canonical_json import canonical_json_text
 
 PACKER_VERSION = "1.2.0"
 SOURCE_MANIFEST_SCHEMA = "PublicRepoSourceManifest.v1"
@@ -934,7 +935,7 @@ def _pack_directory(
 def _canonical_json(value: Any) -> bytes:
     try:
         return (
-            json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n"
+            canonical_json_text(value, strict=True, ensure_ascii=False) + "\n"
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise SourcePackError("source-pack manifest is not finite JSON") from exc

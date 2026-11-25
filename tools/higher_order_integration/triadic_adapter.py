@@ -16,6 +16,7 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
+from shared.canonical_json import canonical_json_text
 
 
 INPUT_SCHEMA_VERSION = "triadic-functional-connectivity-input-v1"
@@ -107,13 +108,7 @@ def _json_safe(value: Any) -> Any:
 def canonical_json(value: Any) -> str:
     """Serialize JSON deterministically and reject accidental non-JSON values."""
 
-    return json.dumps(
-        _json_safe(value),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
+    return canonical_json_text(_json_safe(value), strict=True, ensure_ascii=False)
 
 
 def sha256_json(value: Any) -> str:

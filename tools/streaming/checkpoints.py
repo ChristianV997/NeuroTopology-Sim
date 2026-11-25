@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 
 from tools.streaming.bounded import StreamAggregate, StreamResult, iter_chunks
+from shared.canonical_json import canonical_json_text
 
 __all__ = [
     "CHECKPOINT_SCHEMA_VERSION",
@@ -97,7 +98,7 @@ def _json_safe(value: Any) -> Any:
 
 def _canonical_json(obj: Any) -> str:
     """Stable JSON serialization for hashing (sorted keys, no NaN)."""
-    return json.dumps(_json_safe(obj), sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return canonical_json_text(_json_safe(obj), strict=True)
 
 
 def _sha256_hex(text: str) -> str:

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
+from shared.canonical_json import canonical_json_text
 
 
 SCHEMA_VERSION = "triadic-functional-connectivity-v1"
@@ -56,7 +57,7 @@ def canonical_json(value: Any) -> str:
     """Serialize a value deterministically and reject non-finite numbers."""
 
     safe = _json_safe(value)
-    return json.dumps(safe, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return canonical_json_text(safe, strict=True, ensure_ascii=False)
 
 
 def canonical_checksum(value: Any) -> str:

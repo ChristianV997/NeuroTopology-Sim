@@ -21,6 +21,7 @@ import numpy as np
 
 from .field import validate_spacing
 from .interaction import evaluate_two_hedgehog_interaction
+from shared.canonical_json import canonical_json_text
 
 SWEEP_SCHEMA_VERSION = "su2.two_hedgehog_interaction_sweep.v1"
 MAX_SWEEP_AXIS_VALUES = 256
@@ -359,9 +360,7 @@ class TwoHedgehogSweepResult:
 
 
 def _canonical_json_sha256(value: object) -> str:
-    payload = json.dumps(
-        value, allow_nan=False, ensure_ascii=True, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    payload = canonical_json_text(value, strict=True).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

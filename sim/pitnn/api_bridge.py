@@ -9,6 +9,7 @@ import json
 import math
 from typing import Any, Iterable, Mapping
 import numpy as np
+from shared.canonical_json import canonical_json_text
 
 
 def _finite_array(value: Any, name: str, ndim: int | None = None) -> np.ndarray:
@@ -67,13 +68,7 @@ def json_safe(value: Any) -> Any:
 
 def canonical_json(value: Any) -> str:
     """Serialize an artifact deterministically with strict JSON semantics."""
-    return json.dumps(
-        json_safe(value),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
+    return canonical_json_text(json_safe(value), strict=True, ensure_ascii=False)
 
 
 _FORMAL_EVIDENCE_METHODS = {

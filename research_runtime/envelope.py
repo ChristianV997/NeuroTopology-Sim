@@ -7,10 +7,11 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any, Iterable
+from shared.canonical_json import canonical_json_text
 
 
 def canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    return canonical_json_text(value, strict=True)
 
 
 def sha256_text(value: str) -> str:
