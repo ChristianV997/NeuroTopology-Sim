@@ -24,7 +24,9 @@ def validate_target_root(target_root: Union[str, Path]) -> Path:
     `outputs/` or `data/`, contains no `..` escape segment, and resolves to
     a path actually inside the repository root. Returns the resolved
     absolute `Path` on success."""
-    raw = str(target_root).strip()
+    # Treat backslashes as separators on every platform so `outputs\\..\\x` is judged the same on
+    # POSIX and Windows (Path() on POSIX would otherwise see one opaque segment).
+    raw = str(target_root).strip().replace("\\", "/")
     if not raw:
         raise TargetRootError("target_root is required")
     if raw.startswith("/") or raw.startswith("~"):

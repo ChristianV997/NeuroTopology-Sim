@@ -65,7 +65,9 @@ def _validate_sha256(value: str | None, field_name: str) -> str | None:
 def normalize_relative_path(value: str | Path, field_name: str = "path") -> str:
     """Return a canonical POSIX relative path, rejecting traversal/absolutes."""
     if isinstance(value, Path):
-        raw = value.as_posix()
+        # On POSIX a backslash is an ordinary filename character, so a Windows-style Path
+        # keeps it in as_posix(); normalize exactly like the str branch.
+        raw = value.as_posix().replace("\\", "/")
     elif isinstance(value, str):
         raw = value.replace("\\", "/")
     else:

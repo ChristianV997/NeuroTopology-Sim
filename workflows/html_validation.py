@@ -76,7 +76,7 @@ def validate_output_root(output_root: Any) -> list[str]:
     if not output_root or not isinstance(output_root, str):
         errors.append("output_root is required (non-empty string) (rule 5)")
         return errors
-    raw = output_root.strip()
+    raw = output_root.strip().replace("\\", "/")  # backslashes are separators on every platform
     if raw.startswith("/") or raw.startswith("~") or ".." in Path(raw).parts:
         errors.append(f"output_root must be a safe relative repository path, got {output_root!r} (rule 5)")
         return errors
