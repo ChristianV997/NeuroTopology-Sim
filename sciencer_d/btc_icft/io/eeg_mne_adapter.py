@@ -114,6 +114,62 @@ class MNESignalExtractionResult:
     warnings: list[str]
     # Fail-closed watermark: false when any window had non-finite samples.
     scientific_pass: bool = False
+    # Evidence-class provenance (optional; mock / synthetic paths must stamp).
+    evidence_class: str | None = None
+    run_mode: str | None = None
+    metrics_are_empirical: bool | None = None
+
+
+_MOCK_EVIDENCE_CLASS = "mock_mne_extract_fixture"
+_MOCK_RUN_MODE = "mock"
+_LIVE_EXTRACT_EVIDENCE_CLASS = "mne_local_file_extract"
+_LIVE_EXTRACT_RUN_MODE = "mne_extract"
+
+
+def mne_extract_evidence_watermarks(*, mock_fixture: bool = False) -> dict:
+    """Fail-closed provenance stamps for MNE extract artifacts.
+
+    Mock fixtures never claim empirical metrics or scientific_pass.
+    Live extracts stay non-promoted until a separate evidence gate runs.
+    """
+    if mock_fixture:
+        return {
+            "evidence_class": _MOCK_EVIDENCE_CLASS,
+            "run_mode": _MOCK_RUN_MODE,
+            "metrics_are_empirical": False,
+            "scientific_pass": False,
+            "metric_kind": "mock_mne_signal_window",
+        }
+    return {
+        "evidence_class": _LIVE_EXTRACT_EVIDENCE_CLASS,
+        "run_mode": _LIVE_EXTRACT_RUN_MODE,
+        "metrics_are_empirical": False,
+        "scientific_pass": False,
+        "metric_kind": "mne_signal_window",
+    }
+
+
+def _result_watermarks(result: "MNESignalExtractionResult") -> dict:
+    """Resolve watermarks from result fields or fail-closed defaults."""
+    mockish = (
+        (result.run_mode or "").lower() in {"mock", "offline_fixture", "mock_e2e"}
+        or (result.evidence_class or "") == _MOCK_EVIDENCE_CLASS
+        or (result.mne_version or "") in {"mock", "mock_fixture"}
+        or any("mock" in str(w).lower() for w in (result.warnings or []))
+    )
+    base = mne_extract_evidence_watermarks(mock_fixture=mockish)
+    if result.evidence_class:
+        base["evidence_class"] = result.evidence_class
+    if result.run_mode:
+        base["run_mode"] = result.run_mode
+    if result.metrics_are_empirical is not None:
+        base["metrics_are_empirical"] = bool(result.metrics_are_empirical)
+    # Never promote scientific_pass from a False result watermark.
+    base["scientific_pass"] = bool(result.scientific_pass) and not mockish
+    if mockish:
+        base["scientific_pass"] = False
+        base["metrics_are_empirical"] = False
+    return base
 
 
 def _validate_safe_text(text: str) -> None:
@@ -602,13 +658,17 @@ def extract_mne_signal_windows(path: str, dataset_id: str, window_seconds: float
 
 def build_mne_adapter_omega_event(result: MNESignalExtractionResult) -> dict:
     _validate_safe_text(result.safe_claim)
+    marks = _result_watermarks(result)
     return {
         "event_type": "eeg_mne_adapter",
         "dataset_id": result.dataset_id,
         "source_file": result.source_file,
         "extraction_status": result.extraction_status,
         "n_windows": result.n_windows,
-        "scientific_pass": bool(result.scientific_pass),
+        "scientific_pass": bool(marks["scientific_pass"]),
+        "evidence_class": marks["evidence_class"],
+        "run_mode": marks["run_mode"],
+        "metrics_are_empirical": marks["metrics_are_empirical"],
         "safe_claim": result.safe_claim,
         "forbidden_claims": result.forbidden_claims,
     }
@@ -634,6 +694,9 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
     _validate_safe_text(result.safe_claim)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     files = {}
+    marks = _result_watermarks(result)
+    # Refresh omega so n_windows / watermarks match the final result.
+    result.omega_event = build_mne_adapter_omega_event(result)
     n_ready = _n_ready_windows(result)
     ready = result.extraction_status == "extracted" and n_ready > 0
     meta = out / "mne_signal_metadata.json"
@@ -650,7 +713,10 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
                 "channel_names": result.channel_names,
                 "duration_s": result.duration_s,
                 "extraction_status": result.extraction_status,
-                "scientific_pass": bool(result.scientific_pass),
+                "scientific_pass": bool(marks["scientific_pass"]),
+                "evidence_class": marks["evidence_class"],
+                "run_mode": marks["run_mode"],
+                "metrics_are_empirical": marks["metrics_are_empirical"],
                 "warnings": result.warnings,
             },
             indent=2,
@@ -677,6 +743,7 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
         "non_finite_samples",
         "warnings",
     ]
+    mock_run = marks["run_mode"] == _MOCK_RUN_MODE
     with csvf.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
@@ -684,7 +751,9 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
             row2 = {k: row.get(k) for k in cols}
             row2["channel_names"] = "|".join(row.get("channel_names", []) or [])
             row2["warnings"] = "|".join(row.get("warnings", []) or [])
-            row2["scientific_pass"] = bool(row.get("scientific_pass", False))
+            # Mock fixtures never emit window-level scientific_pass=True.
+            win_pass = bool(row.get("scientific_pass", False)) and not mock_run
+            row2["scientific_pass"] = win_pass
             row2["is_valid"] = bool(row.get("is_valid", False))
             row2["non_finite_samples"] = bool(row.get("non_finite_samples", False))
             w.writerow(row2)
@@ -695,6 +764,9 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
             {
                 "dataset_id": result.dataset_id,
                 "source_file": result.source_file,
+                "evidence_class": marks["evidence_class"],
+                "run_mode": marks["run_mode"],
+                "metrics_are_empirical": marks["metrics_are_empirical"],
                 "windows": [
                     {
                         "row_id": win["row_id"],
@@ -703,7 +775,7 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
                         "signal_values": win.get("signal_values"),
                         "channel_names": win.get("channel_names", []),
                         "extraction_status": win.get("extraction_status"),
-                        "scientific_pass": bool(win.get("scientific_pass", False)),
+                        "scientific_pass": bool(win.get("scientific_pass", False)) and not mock_run,
                         "is_valid": bool(win.get("is_valid", False)),
                         "non_finite_samples": bool(win.get("non_finite_samples", False)),
                     }
@@ -727,7 +799,10 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
                 "extraction_blockers": result.extraction_blockers,
                 "n_windows": result.n_windows,
                 "n_ready_windows": n_ready,
-                "scientific_pass": bool(result.scientific_pass),
+                "scientific_pass": bool(marks["scientific_pass"]),
+                "evidence_class": marks["evidence_class"],
+                "run_mode": marks["run_mode"],
+                "metrics_are_empirical": marks["metrics_are_empirical"],
                 "output_contract": result.output_contract,
                 "ready_for_signal_block_conversion": ready,
                 "warnings": result.warnings,
@@ -760,8 +835,14 @@ def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) ->
                 "## Extraction status",
                 result.extraction_status,
                 "",
+                "## Evidence watermark",
+                f"evidence_class: {marks['evidence_class']}",
+                f"run_mode: {marks['run_mode']}",
+                f"metrics_are_empirical: {marks['metrics_are_empirical']}",
+                f"scientific_pass: {bool(marks['scientific_pass'])}",
+                "",
                 "## Scientific pass",
-                f"scientific_pass: {bool(result.scientific_pass)}",
+                f"scientific_pass: {bool(marks['scientific_pass'])}",
                 "",
                 "## Window summary",
                 f"n_windows: {result.n_windows}",
