@@ -4,6 +4,9 @@ Never repairs inputs, never computes a Bayes factor, never emits scientific_pass
 """
 from __future__ import annotations
 
+import math
+import sys
+
 import json
 from pathlib import Path
 from typing import Any, Mapping
@@ -120,9 +123,13 @@ def _audit_cohort(cohort: Mapping[str, Any] | None, path_label: str) -> list[dic
     if finite_diffs:
         if all(d == 0.0 for d in finite_diffs):
             findings.append(_finding("ALL_ZERO_DIFFERENCES", severity="error", detail="all finite paired differences are zero", evidence_path=f"{path_label}.differences", state_hint="AUDIT_SCIENTIFIC_REVIEW_REQUIRED"))
-        mean = sum(finite_diffs) / len(finite_diffs)
-        var = sum((d - mean) ** 2 for d in finite_diffs) / max(len(finite_diffs) - 1, 1)
-        if var == 0.0:
+        # fsum + a spread test: naive sum() of identical values (e.g. ten 0.4s) is not exactly n*0.4 on
+        # Python < 3.12, which made var ~1e-33 instead of 0 and hid degenerate samples.
+        mean = math.fsum(finite_diffs) / len(finite_diffs)
+        var = math.fsum((d - mean) ** 2 for d in finite_diffs) / max(len(finite_diffs) - 1, 1)
+        spread = max(finite_diffs) - min(finite_diffs)
+        scale = max(abs(d) for d in finite_diffs)
+        if spread <= 8.0 * sys.float_info.epsilon * scale:
             findings.append(_finding("ZERO_VARIANCE", severity="error", detail="paired differences have zero variance", evidence_path=f"{path_label}.differences", state_hint="AUDIT_SCIENTIFIC_REVIEW_REQUIRED"))
         n_zero = sum(1 for d in finite_diffs if d == 0.0)
         if n_zero and n_zero < len(finite_diffs):

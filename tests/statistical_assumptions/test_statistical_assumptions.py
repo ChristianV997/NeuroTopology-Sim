@@ -7,6 +7,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -151,3 +153,17 @@ def test_cli_and_never_pass(tmp_path: Path) -> None:
     assert payload["scientific_pass"] is False
     assert payload["formal_bayes_factor"] is None
     assert payload["evidence_class"] == "statistical_assumption_audit"
+
+
+@pytest.mark.parametrize("value", [0.1, 0.4, 0.7, 1e-3, 123456.789])
+def test_zero_variance_is_robust_to_summation_roundoff(value) -> None:
+    """Identical differences must be flagged on every Python version (naive sum() is inexact < 3.12)."""
+    pairs = [{"pair_id": f"s{i}", "difference": value} for i in range(10)]
+    report = audit_payload(_spec(cohort=_clean_cohort(pairs=pairs)))
+    assert "ZERO_VARIANCE" in _codes(report)
+
+
+def test_small_but_real_spread_is_not_zero_variance() -> None:
+    pairs = [{"pair_id": f"s{i}", "difference": 0.4 + (1e-6 if i % 2 else 0.0)} for i in range(10)]
+    report = audit_payload(_spec(cohort=_clean_cohort(pairs=pairs)))
+    assert "ZERO_VARIANCE" not in _codes(report)
