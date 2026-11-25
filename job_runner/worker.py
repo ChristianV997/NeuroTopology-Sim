@@ -39,8 +39,7 @@ _WORKER_LIMITATIONS: list[str] = [
 ]
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+from shared.canonical_json import canonical_json_text as _canonical_json  # shared, byte-identical
 
 
 def compute_worker_run_id(*, jobs_root: str, worker_id: str, started_at: str, max_jobs: int, dry_run: bool) -> str:

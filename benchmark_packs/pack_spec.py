@@ -23,8 +23,7 @@ from benchmark_packs.validation import validate_benchmark_pack_spec
 _SCHEMA_VERSION = "1"
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+from shared.canonical_json import canonical_json_text as _canonical_json  # shared, byte-identical
 
 
 def _pipeline_spec_identities(pipeline_specs: list[dict[str, Any]], pipeline_spec_paths: list[str]) -> list[str]:

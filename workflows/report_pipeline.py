@@ -31,8 +31,7 @@ _SCHEMA_VERSION = "1"
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+from shared.canonical_json import canonical_json_text as _canonical_json  # shared, byte-identical
 
 
 def compute_pipeline_id(

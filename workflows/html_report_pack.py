@@ -40,8 +40,7 @@ INDEX_FILENAME = "index.html"
 ARTIFACTS_SUBDIR = "artifacts"
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+from shared.canonical_json import canonical_json_text as _canonical_json  # shared, byte-identical
 
 
 def compute_html_pack_id(

@@ -17,8 +17,7 @@ from job_runner.validation import validate_batch_run_manifest
 _SCHEMA_VERSION = "1"
 
 
-def _canonical_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+from shared.canonical_json import canonical_json_text as _canonical_json  # shared, byte-identical
 
 
 def compute_batch_id(*, jobs_root: str, batch_name: str, spec_paths: list[str], created_at: str) -> str:
