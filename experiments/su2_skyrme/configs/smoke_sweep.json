@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1.0",
+  "experiment_id": "su2-skyrme-smoke-sweep-001",
+  "mode": "nearest_neighbor_sweep",
+  "seed": 0,
+  "discretization": {
+    "shape": [4, 4, 4],
+    "spacing": [1.0, 1.0, 1.0],
+    "boundary": "fixed_vacuum",
+    "length_unit": "dimensionless"
+  },
+  "initial_condition": {
+    "kind": "hedgehog",
+    "radius": 1.0
+  },
+  "model": {
+    "f_pi": 1.0,
+    "e": 1.0,
+    "damping": 0.0
+  },
+  "solver": {
+    "max_iterations": 2,
+    "initial_step": 0.001,
+    "gradient_tolerance": 1e-07,
+    "max_backtracks": 4
+  },
+  "sweep": {
+    "axes": {
+      "f_pi": [1.0],
+      "e": [1.0, 1.5],
+      "max_iterations": [1, 2],
+      "initial_step": [0.001]
+    }
+  },
+  "notes": "Local smoke sweep: 1x2x2x1 = 4 points. Not a physics study."
+}
