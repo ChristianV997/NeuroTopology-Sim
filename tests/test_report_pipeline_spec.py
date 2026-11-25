@@ -2,12 +2,16 @@
 validation rules. Synthetic fixtures only.
 """
 from __future__ import annotations
+import pytest
 
 from workflows.report_pipeline import (
     ReportPipelineSpecV1,
     ReportPipelineValidationError,
     compute_pipeline_id,
 )
+
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
 
 
 def _minimal_spec(**overrides) -> ReportPipelineSpecV1:

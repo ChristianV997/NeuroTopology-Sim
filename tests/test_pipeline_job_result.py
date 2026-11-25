@@ -1,8 +1,12 @@
 """Tests for `job_runner.result.PipelineJobResultV1`: dict roundtrip,
 result_id determinism, and structural validation rules."""
 from __future__ import annotations
+import pytest
 
 from job_runner.result import PipelineJobResultV1, compute_result_id
+
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
 
 
 def _valid_result(**overrides):

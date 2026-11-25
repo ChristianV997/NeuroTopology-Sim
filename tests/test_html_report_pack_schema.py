@@ -2,9 +2,13 @@
 validation rules. Synthetic fixtures only.
 """
 from __future__ import annotations
+import pytest
 
 from workflows.html_report_pack import HtmlReportPackV1, compute_html_pack_id
 from workflows.html_validation import HtmlReportPackValidationError
+
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
 
 
 def _minimal_pack(**overrides) -> HtmlReportPackV1:

@@ -249,3 +249,41 @@ def require_optional_module() -> Any:
         pytest.fail(reason)
 
     return _require
+
+
+@pytest.fixture(autouse=True)
+def _serialize_serial_marked_tests(request: pytest.FixtureRequest) -> Generator[None, None, None]:
+    """Give the registered ``serial`` marker real semantics under pytest-xdist.
+
+    Tests that share fixed in-tree paths (e.g. ``outputs/jobs``) take one repository-wide
+    lock, so parallel workers cannot drain or overwrite each other's state. No-op without
+    the marker; a single process acquires the lock uncontended.
+    """
+    if request.node.get_closest_marker("serial") is None:
+        yield
+        return
+    lock_path = _repo_root / ".pytest-serial.lock"
+    with open(lock_path, "a+b") as handle:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

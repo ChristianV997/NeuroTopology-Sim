@@ -1,10 +1,14 @@
 """Tests for `job_runner.batch_manifest.BatchRunManifestV1`: dict
 roundtrip, batch_id determinism, and structural validation rules."""
 from __future__ import annotations
+import pytest
 
 from datetime import datetime, timezone
 
 from job_runner.batch_manifest import BatchRunManifestV1, compute_batch_id
+
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
 
 
 def _valid_manifest(**overrides):

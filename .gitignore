@@ -19,3 +19,6 @@ artifacts/
 data/empirical/
 apps/awareness_studio/inputs/sim_artifacts/
 =2.3
+
+# cross-worker lock for @pytest.mark.serial tests
+.pytest-serial.lock

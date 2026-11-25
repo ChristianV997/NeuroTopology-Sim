@@ -12,6 +12,9 @@ from benchmark_packs.gallery import BenchmarkGalleryV1
 from benchmark_packs.gallery_renderer import render_benchmark_gallery_index, render_gallery_index_html
 from benchmark_packs.validation import BenchmarkPackStoreError, scan_text_for_banned_phrases
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 _REQUIRED_SECTIONS = [

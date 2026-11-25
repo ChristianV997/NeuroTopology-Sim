@@ -9,6 +9,9 @@ import pytest
 from job_runner.validation import MAX_JOBS_CEILING, MAX_POLL_INTERVAL_SECONDS_CEILING
 from job_runner.worker import WorkerRunManifestV1, compute_worker_run_id
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 
 def _valid_manifest(**overrides):
     kwargs = dict(

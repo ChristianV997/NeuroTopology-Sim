@@ -9,6 +9,9 @@ import pytest
 from job_runner.job import PipelineJobV1, compute_job_id
 from job_runner.validation import MAX_ATTEMPTS_CEILING
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 
 def _valid_job(**overrides):
     kwargs = dict(

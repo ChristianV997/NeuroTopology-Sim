@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

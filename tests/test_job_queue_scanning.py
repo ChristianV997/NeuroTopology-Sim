@@ -12,6 +12,9 @@ from job_runner.queue import scan_job_queue, select_next_jobs
 from job_runner.store import JOB_FILENAME, JobStore
 from workflows.report_pipeline import ReportPipelineSpecV1
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SEED_REGISTRY = _REPO_ROOT / "benchmarks" / "registry_seed.json"
 

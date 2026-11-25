@@ -8,6 +8,9 @@ import pytest
 from benchmark_packs.pack_spec import BenchmarkPackSpecV1, compute_benchmark_pack_spec_id
 from benchmark_packs.validation import ALLOWED_PACK_KINDS
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 
 def _valid_spec(**overrides):
     kwargs = dict(

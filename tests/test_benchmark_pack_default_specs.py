@@ -15,6 +15,9 @@ from benchmark_packs.builder import (
     make_methods_supplement_pack_spec,
 )
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

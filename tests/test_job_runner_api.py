@@ -26,6 +26,9 @@ import job_runner.api as api
 from job_runner.store import JobStore
 from workflows.report_pipeline import ReportPipelineSpecV1
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _FASTAPI_ACTUALLY_INSTALLED = importlib.util.find_spec("fastapi") is not None
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -14,6 +14,9 @@ from benchmark_packs.pack_spec import BenchmarkPackSpecV1
 from benchmark_packs.validation import BenchmarkPackStoreError
 from workflows.report_pipeline import ReportPipelineSpecV1
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SEED_REGISTRY = _REPO_ROOT / "benchmarks" / "registry_seed.json"
 _DS005620_SOURCE = _REPO_ROOT / "contracts" / "btc_icft" / "ds005620" / "pitnn_cohort"

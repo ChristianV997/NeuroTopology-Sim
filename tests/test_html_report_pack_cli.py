@@ -14,6 +14,9 @@ import pytest
 
 from workflows.report_pipeline import ReportPipelineSpecV1, run_report_pipeline
 
+# Shares fixed in-tree paths under outputs/; serialized across xdist workers (root conftest).
+pytestmark = pytest.mark.serial
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SEED_REGISTRY = _REPO_ROOT / "benchmarks" / "registry_seed.json"
 
