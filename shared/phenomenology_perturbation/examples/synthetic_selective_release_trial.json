@@ -1,0 +1,123 @@
+{
+  "schema": "NeuroTopologySim.PhenomenologyPerturbationRecord.v1",
+  "record_id": "ppr-synth-selective-release-001",
+  "parent_run_id": "a1b2c3d4e5f60718",
+  "data_status": "synthetic",
+  "causal_claim_type": "randomized_intervention_intent",
+  "evidence_status": "exploratory_synthetic",
+  "practice": {
+    "instruction_id": "instr-open-monitoring-synth-01",
+    "instruction_text": "Keep attention open to sounds without elaborating.",
+    "practice_dose": {
+      "duration_s": 900.0,
+      "session_count": 1
+    },
+    "practice_control_skill": {
+      "label": "self_reported_stability",
+      "self_report_level": 0.35,
+      "notes": "Operational skill self-report only; not practice dose and not attainment."
+    },
+    "slow_transition_params": {
+      "parameters": {
+        "theta_w_proxy": 0.08
+      }
+    }
+  },
+  "perturbation": {
+    "event_id": "pert-synth-tone-07",
+    "randomized": true,
+    "onset_s": 240.0,
+    "offset_s": 240.4,
+    "modality": "sensory_probe",
+    "target": "auditory_probe_midline",
+    "amplitude": 0.25,
+    "units": "normalized_intensity",
+    "observation_origin": "synthetic",
+    "onset_sample": 61440,
+    "clock_alignment": {
+      "time_reference": "session_t0",
+      "sync_uncertainty_ms": 2.0
+    },
+    "parameters": {
+      "carrier_hz": 1000.0,
+      "envelope": "raised_cosine"
+    }
+  },
+  "behavior": {
+    "missing": false,
+    "response": {
+      "key": "present"
+    },
+    "missingness_reason": null,
+    "observation_origin": "synthetic",
+    "rt_s": 0.51
+  },
+  "delayed_report": {
+    "prompt_exact": "During the tone window, rate clarity of the auditory event (0-1) and note one short phrase.",
+    "target_interval_start_s": 240.0,
+    "target_interval_end_s": 240.4,
+    "response_time_s": 270.4,
+    "report_delay_s": 30.0,
+    "confidence": 0.6,
+    "report_text": "Tone briefly clear; then attention drifted.",
+    "language": "en",
+    "observation_origin": "synthetic"
+  },
+  "signal_quality": {
+    "eeg_ok": true,
+    "sync_ok": true,
+    "time_reference": "session_t0",
+    "sync_offset_ms": 1.5,
+    "sync_uncertainty_ms": 2.0,
+    "sample_rate_hz": 256.0,
+    "units": {
+      "eeg": "uV",
+      "time": "s"
+    },
+    "notes": "Synthetic stream; sync uncertainty declared, not eliminated."
+  },
+  "physiology_neural": {
+    "observation_origin": "synthetic",
+    "reference": "Cz",
+    "features": {
+      "alpha_band_power_proxy": {
+        "value": 0.91,
+        "units": "a.u."
+      }
+    }
+  },
+  "latent_profile": {
+    "label": "model_inferred",
+    "directly_observed": false,
+    "variables": {
+      "x_hat": {
+        "point": 0.18,
+        "uncertainty": 0.22
+      }
+    },
+    "model_provenance": {
+      "model_id": "toy-selective-release-estimator-v0",
+      "code_path": "shared/phenomenology_perturbation/record.py",
+      "recorded_code_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "notes": "Model estimate is not the delayed report and not a measured latent experience."
+  },
+  "artifact_paths": {
+    "eeg_path": "artifacts/synth_selective_release/eeg_stub.npy",
+    "behavior_log_path": "artifacts/synth_selective_release/behavior.jsonl",
+    "report_log_path": "artifacts/synth_selective_release/report.jsonl",
+    "parent_run_record_path": "artifacts/synth_selective_release/RunRecord.json"
+  },
+  "privacy": {
+    "consent_status": "synthetic_no_human_subjects",
+    "access_status": "public_synthetic",
+    "pseudonym_token": "synth-anon-0001",
+    "redaction_complete": null
+  },
+  "integrity": {
+    "mode": "record_only",
+    "path_sha256": {
+      "eeg_path": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  }
+}
