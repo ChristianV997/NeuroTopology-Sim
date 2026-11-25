@@ -6,6 +6,7 @@ only — not empirical or biological evidence.
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import math
 import py_compile
@@ -371,6 +372,12 @@ def test_git_diff_check():
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+# PR-scope check (git diff origin/main...): only meaningful on the PR that owns these paths, and
+# it fails on every other branch. Opt in with NTS_VERIFY_PR_SCOPE=1.
+@pytest.mark.skipif(
+    os.environ.get("NTS_VERIFY_PR_SCOPE") != "1",
+    reason="PR-scope check; set NTS_VERIFY_PR_SCOPE=1 to run against origin/main",
+)
 def test_preserve_owned_paths_only():
     completed = subprocess.run(
         ["git", "-C", str(REPO_ROOT), "diff", "--name-only", "origin/main...", "--"],

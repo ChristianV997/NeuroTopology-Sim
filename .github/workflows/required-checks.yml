@@ -82,6 +82,8 @@ jobs:
           tests/ci/test_round6_experimental_discovery.py
           tests/ci/test_round6_benchmark_makefile.py
           tests/docker_context/test_build_context_policy.py
+          tests/ci/test_workflow_contracts.py
+          tests/ci/test_optional_dependency_policy.py
 
       - name: Discover and run changed Round 6 candidate suites
         if: ${{ !cancelled() && steps.install_base.outcome == 'success' }}
