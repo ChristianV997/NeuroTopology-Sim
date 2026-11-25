@@ -36,6 +36,27 @@ def _canonical_json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _normalize_time_window_identity(
+    time_axis: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    """Extract canonical time-window identity fields from `time_axis` when present."""
+    if not time_axis:
+        return None
+    normalized: dict[str, Any] = {}
+    for key in ("unit", "source_column"):
+        value = time_axis.get(key)
+        if value is not None:
+            normalized[key] = str(value)
+    for key in ("start", "end"):
+        value = time_axis.get(key)
+        if value is not None:
+            normalized[key] = float(value)
+    n_samples = time_axis.get("n_samples")
+    if n_samples is not None:
+        normalized["n_samples"] = int(n_samples)
+    return normalized or None
+
+
 def compute_transition_id(
     *,
     dataset_id: Optional[str],
@@ -45,17 +66,20 @@ def compute_transition_id(
     target_state: Optional[str],
     modality: Optional[str],
     feature_names: list[str],
+    episode_id: Optional[str] = None,
+    time_axis: Optional[dict[str, Any]] = None,
+    intervention: Optional[dict[str, Any]] = None,
+    revision_key: Optional[str] = None,
 ) -> str:
-    """Stable sha256[:16] over the scientific-identity fields only.
+    """Stable sha256[:16] over the scientific-identity fields.
 
     Excludes created_at, artifact paths, computed summaries, claim_scope,
-    evidence_level, and free-text fields — none of those change what
-    transition is being described. Two records built from identical
-    dataset_id/subject_id/session_id/source_state/target_state/modality/
-    feature_names always produce the same ID; changing any one of those
-    seven fields always changes it.
+    evidence_level, and free-text fields. Episode/time-window/intervention/
+    revision discriminators are included whenever supplied (non-empty) so
+    distinct episodes or interventions never collide onto the same ID, while
+    records omitting all optional discriminators preserve the baseline hash.
     """
-    basis = {
+    basis: dict[str, Any] = {
         "dataset_id": dataset_id,
         "subject_id": subject_id,
         "session_id": session_id,
@@ -64,6 +88,15 @@ def compute_transition_id(
         "modality": modality,
         "feature_names": sorted(feature_names or []),
     }
+    if episode_id:
+        basis["episode_id"] = str(episode_id)
+    time_window = _normalize_time_window_identity(time_axis)
+    if time_window is not None:
+        basis["time_window"] = time_window
+    if intervention:
+        basis["intervention"] = intervention
+    if revision_key:
+        basis["revision_key"] = str(revision_key)
     return hashlib.sha256(_canonical_json(basis).encode("utf-8")).hexdigest()[:16]
 
 
@@ -122,6 +155,8 @@ class TransitionRecordV1:
         claim_scope: str = "computational_artifact",
         evidence_level: str = "L0_computational_artifact",
         repo_commit: Optional[str] = None,
+        episode_id: Optional[str] = None,
+        revision_key: Optional[str] = None,
         _now: Optional[datetime] = None,
         **extra: Any,
     ) -> "TransitionRecordV1":
@@ -132,6 +167,21 @@ class TransitionRecordV1:
         state_label_confidence, artifact_paths, metadata, ...).
         """
         names = feature_names or []
+        extra_kwargs = dict(extra)
+        meta = dict(extra_kwargs.get("metadata") or {})
+        resolved_episode_id = episode_id if episode_id is not None else meta.get("episode_id")
+        resolved_revision_key = (
+            revision_key
+            if revision_key is not None
+            else (meta.get("revision_key") or meta.get("content_key"))
+        )
+        if resolved_episode_id is not None:
+            meta["episode_id"] = str(resolved_episode_id)
+        if resolved_revision_key is not None:
+            meta["revision_key"] = str(resolved_revision_key)
+        if meta or "metadata" in extra_kwargs:
+            extra_kwargs["metadata"] = meta
+
         transition_id = compute_transition_id(
             dataset_id=dataset_id,
             subject_id=subject_id,
@@ -140,6 +190,10 @@ class TransitionRecordV1:
             target_state=target_state,
             modality=modality,
             feature_names=names,
+            episode_id=resolved_episode_id,
+            time_axis=extra_kwargs.get("time_axis"),
+            intervention=extra_kwargs.get("intervention"),
+            revision_key=resolved_revision_key,
         )
         ts = (_now or datetime.now(timezone.utc)).isoformat()
         kwargs: dict[str, Any] = dict(
@@ -159,7 +213,7 @@ class TransitionRecordV1:
             created_at=ts,
             repo_commit=repo_commit,
         )
-        kwargs.update(extra)
+        kwargs.update(extra_kwargs)
         return cls(**kwargs)
 
     # ── serialization ───────────────────────────────────────────────────
@@ -246,6 +300,7 @@ class TransitionRecordV1:
 
     def recompute_id(self) -> str:
         """Recompute the deterministic ID from this record's current identity fields."""
+        meta = self.metadata or {}
         return compute_transition_id(
             dataset_id=self.dataset_id,
             subject_id=self.subject_id,
@@ -254,6 +309,10 @@ class TransitionRecordV1:
             target_state=self.target_state,
             modality=self.modality,
             feature_names=self.feature_names,
+            episode_id=meta.get("episode_id"),
+            time_axis=self.time_axis,
+            intervention=self.intervention,
+            revision_key=meta.get("revision_key") or meta.get("content_key"),
         )
 
     def validate(self) -> list[str]:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from transitions.record import TransitionRecordV1
-from transitions.store import TransitionStore
+from transitions.store import TransitionConflictError, TransitionStore
 
 
 def _make_record(**overrides):
@@ -110,3 +110,43 @@ def test_artifact_paths_are_relative_not_absolute(tmp_path):
     store.write(record, trajectory=[[1.0, 2.0]])
     assert "/" not in record.trajectory_artifact
     assert not record.artifact_paths["trajectory"].startswith(str(tmp_path))
+
+
+def test_conflicting_record_or_trajectory_raises_and_preserves_original(tmp_path):
+    store = TransitionStore(tmp_path)
+    r1 = _make_record(transition_class="induction_v1")
+    traj1 = [[1.0, 2.0], [2.0, 3.0]]
+    store.write(r1, trajectory=traj1)
+
+    # Identical transition at a different created_at is idempotent
+    r1_same = _make_record(transition_class="induction_v1")
+    store.write(r1_same, trajectory=traj1)
+
+    # Conflicting record metadata under same transition_id must fail without clobbering
+    r2_diff = _make_record(transition_class="induction_v2_different")
+    with pytest.raises(TransitionConflictError):
+        store.write(r2_diff, trajectory=traj1)
+
+    # Conflicting trajectory CSV under same transition_id must fail without clobbering
+    with pytest.raises(TransitionConflictError):
+        store.write(r1_same, trajectory=[[9.0, 9.0], [9.5, 9.5]])
+
+    assert store.read(r1.transition_id).transition_class == "induction_v1"
+    _, stored_traj = store.read_trajectory(r1.transition_id)
+    assert stored_traj == traj1
+
+    # Explicit overwrite=True permits replacement
+    store.write(r2_diff, trajectory=[[9.0, 9.0], [9.5, 9.5]], overwrite=True)
+    assert store.read(r1.transition_id).transition_class == "induction_v2_different"
+
+
+def test_orphan_trajectory_file_blocks_implicit_overwrite(tmp_path):
+    store = TransitionStore(tmp_path)
+    record = _make_record()
+    orphan_dir = tmp_path / record.transition_id
+    orphan_dir.mkdir(parents=True, exist_ok=True)
+    (orphan_dir / "TransitionTrajectory.csv").write_text("col\n999.0\n", encoding="utf-8")
+
+    with pytest.raises(TransitionConflictError):
+        store.write(record, trajectory=[[1.0, 2.0]])
+    assert (orphan_dir / "TransitionTrajectory.csv").read_text(encoding="utf-8") == "col\n999.0\n"

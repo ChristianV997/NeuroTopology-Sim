@@ -8,7 +8,7 @@ import pytest
 
 from transitions.export_from_results import ExportError, export
 from transitions.record import TransitionValidationError
-from transitions.store import TransitionStore
+from transitions.store import TransitionConflictError, TransitionStore
 
 
 def _write_csv(path, rows, fieldnames):
@@ -232,3 +232,183 @@ def test_cli_main_end_to_end(tmp_path):
     assert "transition_id=" in result.stdout
     store = TransitionStore(out_dir)
     assert len(store.list_records()) == 1
+
+
+def test_export_irregular_sampling_computes_elapsed_time_velocity(tmp_path):
+    irregular_rows = [
+        {"row_id": "r1", "subject_id": "sub-1010", "window_start_s": "0.0", "q_net": "0.0", "q_abs": "1.0", "mean_plv": "0.2", "condition": "awake"},
+        {"row_id": "r2", "subject_id": "sub-1010", "window_start_s": "2.0", "q_net": "4.0", "q_abs": "3.0", "mean_plv": "0.6", "condition": "awake"},
+        {"row_id": "r3", "subject_id": "sub-1010", "window_start_s": "10.0", "q_net": "12.0", "q_abs": "11.0", "mean_plv": "1.4", "condition": "sedated"},
+    ]
+    input_csv = tmp_path / "irregular.csv"
+    _write_csv(input_csv, irregular_rows, _FIELDNAMES)
+    out_dir = tmp_path / "out"
+
+    result = export(
+        dataset_id="ds005620", input_path=input_csv, out_dir=out_dir,
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010",
+    )
+    rec = result["record"]
+    assert rec.duration == pytest.approx(10.0)
+    v = rec.velocity_summary["velocity_per_step"]
+    # Step 1 (dt=2.0): dq_net/dt = 4.0/2.0 = 2.0, dq_abs/dt = 1.0, dplv/dt = 0.2
+    assert v[0] == pytest.approx([2.0, 1.0, 0.2])
+    # Step 2 (dt=8.0): dq_net/dt = 8.0/8.0 = 1.0, dq_abs/dt = 1.0, dplv/dt = 0.1
+    assert v[1] == pytest.approx([1.0, 1.0, 0.1])
+
+
+def test_export_reordered_rows_reject_vs_sort_policy(tmp_path):
+    reordered_rows = [_ROWS[2], _ROWS[0], _ROWS[1]]  # 20.0, 0.0, 10.0
+    reordered_csv = tmp_path / "reordered.csv"
+    _write_csv(reordered_csv, reordered_rows, _FIELDNAMES)
+
+    ordered_csv = tmp_path / "ordered.csv"
+    _write_csv(ordered_csv, _ROWS, _FIELDNAMES)
+
+    with pytest.raises(ExportError, match="non-monotonic timestamps"):
+        export(
+            dataset_id="ds005620", input_path=reordered_csv, out_dir=tmp_path / "out_reject",
+            source_state="awake", target_state="sedated",
+            transition_class="anesthesia_induction", modality="eeg",
+            subject_id="sub-1010", timestamp_policy="reject",
+        )
+
+    res_ordered = export(
+        dataset_id="ds005620", input_path=ordered_csv, out_dir=tmp_path / "out_ordered",
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010", timestamp_policy="sort",
+    )
+    res_sorted = export(
+        dataset_id="ds005620", input_path=reordered_csv, out_dir=tmp_path / "out_sorted",
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010", timestamp_policy="sort",
+    )
+    assert res_sorted["record"].transition_id == res_ordered["record"].transition_id
+    assert res_sorted["record"].delta_summary == res_ordered["record"].delta_summary
+    assert res_sorted["record"].velocity_summary == res_ordered["record"].velocity_summary
+    assert res_sorted["record"].time_axis["rows_reordered"] is True
+    assert res_ordered["record"].time_axis["rows_reordered"] is False
+
+    store_sorted = TransitionStore(tmp_path / "out_sorted")
+    store_ordered = TransitionStore(tmp_path / "out_ordered")
+    assert store_sorted.read_trajectory(res_sorted["record"].transition_id) == (
+        store_ordered.read_trajectory(res_ordered["record"].transition_id)
+    )
+
+
+@pytest.mark.parametrize("policy", ["reject", "sort"])
+def test_export_duplicate_timestamps_fail_closed(tmp_path, policy):
+    dup_rows = [
+        {"row_id": "r1", "subject_id": "sub-1010", "window_start_s": "0.0", "q_net": "0.10", "q_abs": "0.20", "mean_plv": "0.50", "condition": "awake"},
+        {"row_id": "r2", "subject_id": "sub-1010", "window_start_s": "10.0", "q_net": "0.30", "q_abs": "0.25", "mean_plv": "0.60", "condition": "awake"},
+        {"row_id": "r3", "subject_id": "sub-1010", "window_start_s": "10.0", "q_net": "0.80", "q_abs": "0.40", "mean_plv": "0.70", "condition": "sedated"},
+    ]
+    input_csv = tmp_path / "dup.csv"
+    _write_csv(input_csv, dup_rows, _FIELDNAMES)
+    with pytest.raises(ExportError, match="duplicate timestamps"):
+        export(
+            dataset_id="ds005620", input_path=input_csv, out_dir=tmp_path / "out",
+            source_state="awake", target_state="sedated",
+            transition_class="anesthesia_induction", modality="eeg",
+            subject_id="sub-1010", timestamp_policy=policy,
+        )
+
+
+@pytest.mark.parametrize("bad_ts", ["", "NaN", "inf", "not_a_num"])
+def test_export_missing_or_nonfinite_timestamp_fails_closed(tmp_path, bad_ts):
+    bad_rows = [
+        {"row_id": "r1", "subject_id": "sub-1010", "window_start_s": "0.0", "q_net": "0.10", "q_abs": "0.20", "mean_plv": "0.50", "condition": "awake"},
+        {"row_id": "r2", "subject_id": "sub-1010", "window_start_s": bad_ts, "q_net": "0.30", "q_abs": "0.25", "mean_plv": "0.60", "condition": "awake"},
+    ]
+    input_csv = tmp_path / "bad_ts.csv"
+    _write_csv(input_csv, bad_rows, _FIELDNAMES)
+    with pytest.raises(ExportError, match="missing or non-finite timestamp"):
+        export(
+            dataset_id="ds005620", input_path=input_csv, out_dir=tmp_path / "out",
+            source_state="awake", target_state="sedated",
+            transition_class="anesthesia_induction", modality="eeg",
+            subject_id="sub-1010",
+        )
+
+
+def test_export_preserves_missingness_when_no_timestamps_or_single_row(tmp_path):
+    no_ts_fields = ["row_id", "subject_id", "q_net", "q_abs"]
+    no_ts_rows = [
+        {"row_id": "r1", "subject_id": "sub-1010", "q_net": "0.1", "q_abs": "0.2"},
+        {"row_id": "r2", "subject_id": "sub-1010", "q_net": "0.5", "q_abs": "0.6"},
+    ]
+    csv_no_ts = tmp_path / "no_ts.csv"
+    _write_csv(csv_no_ts, no_ts_rows, no_ts_fields)
+    res_no_ts = export(
+        dataset_id="ds005620", input_path=csv_no_ts, out_dir=tmp_path / "out_no_ts",
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010",
+    )
+    assert res_no_ts["record"].duration is None
+    assert res_no_ts["record"].time_axis["unit"] == "sample_index"
+
+    single_csv = tmp_path / "single.csv"
+    _write_csv(single_csv, [_ROWS[0]], _FIELDNAMES)
+    res_single = export(
+        dataset_id="ds005620", input_path=single_csv, out_dir=tmp_path / "out_single",
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010",
+    )
+    assert res_single["record"].duration is None
+    assert res_single["record"].delta_summary["status"] == "insufficient_data"
+    assert res_single["record"].velocity_summary["status"] == "insufficient_data"
+
+
+def test_export_distinct_episodes_interventions_and_collision_guard(tmp_path):
+    csv1 = tmp_path / "ep1.csv"
+    _write_csv(csv1, _ROWS, _FIELDNAMES)
+
+    # Same window/subject/features, DIFFERENT metric values -> same ID without discriminator -> conflict!
+    modified_rows = [dict(r) for r in _ROWS]
+    modified_rows[2]["q_net"] = "9.99"
+    csv2 = tmp_path / "ep2_modified.csv"
+    _write_csv(csv2, modified_rows, _FIELDNAMES)
+
+    out_dir = tmp_path / "store"
+    r1 = export(
+        dataset_id="ds005620", input_path=csv1, out_dir=out_dir,
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010",
+    )
+
+    with pytest.raises(TransitionConflictError):
+        export(
+            dataset_id="ds005620", input_path=csv2, out_dir=out_dir,
+            source_state="awake", target_state="sedated",
+            transition_class="anesthesia_induction", modality="eeg",
+            subject_id="sub-1010",
+        )
+
+    # Supplying distinct episode_id, intervention, or revision_key yields distinct non-colliding records
+    r_ep2 = export(
+        dataset_id="ds005620", input_path=csv2, out_dir=out_dir,
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010", episode_id="ep-02",
+    )
+    r_int = export(
+        dataset_id="ds005620", input_path=csv2, out_dir=out_dir,
+        source_state="awake", target_state="sedated",
+        transition_class="anesthesia_induction", modality="eeg",
+        subject_id="sub-1010", intervention={"agent": "propofol", "dose_level": "high"},
+    )
+    store = TransitionStore(out_dir)
+    ids = store.list_records()
+    assert len({r1["record"].transition_id, r_ep2["record"].transition_id, r_int["record"].transition_id}) == 3
+    assert set(ids) == {
+        r1["record"].transition_id,
+        r_ep2["record"].transition_id,
+        r_int["record"].transition_id,
+    }
