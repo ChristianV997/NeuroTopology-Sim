@@ -8,6 +8,12 @@ thermodynamic analysis on two very different kinds of input:
 
 Both are reduced to a common **SU(2) order-parameter field** and analysed identically.
 
+The current adapter is a fixed-axis U(1) phase embedding in SU(2), not a general
+three-dimensional SU(2) field. Its reported Q and Q_abs refer to phase-winding
+statistics on 2D slices, not the 3D Skyrme degree. A stack of time windows must
+not be interpreted as a 3D spatial volume. General SU(2) field construction is
+available separately in `field_theory.su2`; no neural interpretation is implied.
+
 > **Reality-first, no equivalence asserted.** This framework computes and reports numbers.
 > It does **not** claim that a cortical process and a quantum field are the same system, and
 > it does **not** claim any spectral-dimension convergence target. Such claims require real
@@ -60,3 +66,4 @@ PY
 ```bash
 python -m pytest tests/test_dual_engine.py -q     # 15 tests, offline
 ```
+
