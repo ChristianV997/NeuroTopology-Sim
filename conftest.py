@@ -151,3 +151,83 @@ def isolated_test_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     scratch.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("NEUROTOPOLOGY_TEST_SCRATCH", str(scratch))
     return scratch
+
+
+# ---------------------------------------------------------------------------
+# Optional-dependency policy
+#
+# Profiles other than requirements-base.txt are optional. When one of their
+# modules is missing in a LOCAL run, a test that needs it should skip with a
+# clear reason instead of failing (or erroring at collection) and burying real
+# regressions. This is deliberately OFF in CI (``CI`` is set by GitHub Actions)
+# and whenever ``NTS_STRICT_OPTIONAL_DEPS`` is set: the Round 6 discovery helper
+# exists so that a PR cannot pass by skipping an import, and an optional-profile
+# job that is missing its dependency must stay red.
+#
+# Only the modules below convert; any other ModuleNotFoundError still fails.
+# tests/ci/test_optional_dependency_policy.py pins every entry to a non-base
+# requirements profile so a base dependency can never be hidden here.
+# ---------------------------------------------------------------------------
+OPTIONAL_MODULE_DISTRIBUTIONS = {
+    "mne": "mne",
+    "fbm": "fbm",
+    "antropy": "antropy",
+    "torch": "torch",
+    "torch_geometric": "torch-geometric",
+    "qutip": "qutip",
+    "pde": "py-pde",
+    "boto3": "boto3",
+    "pynwb": "pynwb",
+    "neurolib": "neurolib",
+    "MFDFA": "MFDFA",
+    "specparam": "specparam",
+    "nilearn": "nilearn",
+}
+
+
+def _optional_skip_enabled() -> bool:
+    return not (os.environ.get("CI") or os.environ.get("NTS_STRICT_OPTIONAL_DEPS"))
+
+
+def _missing_optional_module(exc: BaseException | None, text: str = "") -> str | None:
+    """Return the allow-listed optional module named by a ModuleNotFoundError, else None."""
+    import re
+
+    name = None
+    if isinstance(exc, ModuleNotFoundError):
+        name = (exc.name or "").split(".")[0]
+    elif text:
+        match = re.search(r"ModuleNotFoundError: No module named '([A-Za-z0-9_]+)", text)
+        name = match.group(1) if match else None
+    return name if name in OPTIONAL_MODULE_DISTRIBUTIONS else None
+
+
+def _optional_skip_reason(module: str) -> str:
+    return (
+        f"optional dependency '{module}' is not installed "
+        f"(pip install {OPTIONAL_MODULE_DISTRIBUTIONS[module]}; set NTS_STRICT_OPTIONAL_DEPS=1 to fail instead)"
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(collector: Any) -> Generator[None, Any, None]:
+    outcome = yield
+    report = outcome.get_result()
+    if not report.failed or not _optional_skip_enabled():
+        return
+    module = _missing_optional_module(None, str(report.longrepr))
+    if module is not None:
+        report.outcome = "skipped"
+        report.longrepr = (str(getattr(collector, "path", "")), 0, "Skipped: " + _optional_skip_reason(module))
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: Any, call: Any) -> Generator[None, Any, None]:
+    outcome = yield
+    report = outcome.get_result()
+    if not report.failed or call.excinfo is None or not _optional_skip_enabled():
+        return
+    module = _missing_optional_module(call.excinfo.value)
+    if module is not None:
+        report.outcome = "skipped"
+        report.longrepr = (str(item.path), 0, "Skipped: " + _optional_skip_reason(module))

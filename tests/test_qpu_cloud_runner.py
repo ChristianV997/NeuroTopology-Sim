@@ -32,6 +32,7 @@ def test_missing_braket_sdk_fails_closed_before_cloud_execution(tmp_path: Path, 
 
 
 def test_two_site_compact_encoding_builds_current_circuit(tmp_path: Path) -> None:
+    pytest.importorskip("braket", reason="amazon-braket-sdk (requirements-quantum.txt) is required to build the circuit")
     path = tmp_path / "hamiltonian.npz"
     np.savez(path, H_sys_si=np.array([[1e-20, 2e-22j], [-2e-22j, 1.1e-20]], complex), hamiltonian_unit=np.array("J"))
     evaluator = QuantumCloudEvaluator(path, QpuCloudConfig(max_qubits=1, chiral_pairs=((0, 1),)))
