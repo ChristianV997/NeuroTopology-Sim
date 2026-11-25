@@ -63,7 +63,8 @@ def test_declared_openneuro_scope_is_never_reported_as_pass(tmp_path):
     )
     assert summary["verdict"] == "ambiguous"
     assert "openneuro" in summary["verdict_reason"]
-    assert summary["data_mode"] == "synthetic"  # records what actually ran
+    assert summary["declared_data_mode"] == "openneuro"
+    assert summary["data_mode"] is None  # nothing was executed on any data
 
 
 def test_conflicting_threshold_declarations_are_rejected(tmp_path):

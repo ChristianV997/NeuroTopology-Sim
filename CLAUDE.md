@@ -179,27 +179,52 @@ Any other combination → dry-run (returns planned payloads, no HTTP calls).
 
 ## Hypothesis Spec Format
 
-Specs live in `governance/specs/HYP-<date>-<seq>.yaml`. Required fields:
+Canonical form: the governance schema used by `governance/specs/HYP-<date>-<seq>.yaml`, validated by `python -m governance.validate`.
 
 ```yaml
-spec_id: HYP-YYYYMMDD-NNN
-claim_type: topology_gain_control   # or other claim types
-layer: biophysical
-data_mode: synthetic
-hypothesis: >
-  Free-text description.
-threshold:
-  I_mean_min: 0.1
-  Qabs_max: 10.0
-sim_params:
-  N: 32          # grid size
-  n_steps: 20    # diffusion steps
-  seed: 42
+id: HYP-YYYYMMDD-NNN
+claim_type: K                    # K known / M marker / C causal (see claim-boundary rules)
+layer: Topology
+data:
+  mode: synthetic                # or openneuro (requires --allow-network; chunked, see below)
+  dataset_id: ds002094           # openneuro only
+  params:                        # synthetic: N, n_steps, seed; openneuro: max_files (a cap)
+    N: 64
+    n_steps: 50
+    seed: 7
+discriminator:                   # openneuro: stimulus_sweep is implemented; others report ambiguous
+  mode: stimulus_sweep
+  config:
+    sweep_range_ms: [-200, 400]
+    step_ms: 10
+pass_fail:
+  criteria: "human-readable criterion"
+  thresholds:
+    I_mean_min: 0.1              # synthetic: I_mean_min, Qabs_max, I_std_max
+    Qabs_max: 2.0
+    auc_min: 0.65                # openneuro stimulus_sweep: auc_min, p_max
+    p_max: 0.01
+    n_shuffles: 200              # openneuro: shuffle count for the null (configuration, not a test)
 ```
 
-Run via: `python -m pipelines.hypothesis --spec governance/specs/HYP-YYYYMMDD-NNN.yaml --output artifacts/runN`
+The documented flat keys `spec_id`, `data_mode`, `dataset_id`, `sim_params` and `threshold` are still accepted as aliases. A field declared in both forms must agree, or the spec is rejected with `Conflicting ...`. Unknown threshold keys are rejected.
 
-Verdict is `PASS` if `I_mean >= I_mean_min AND Qabs <= Qabs_max`.
+Verdicts (`pipelines/hypothesis.py`):
+
+- `FAIL` if any evaluated threshold fails. Thresholds are inclusive (`>= min`, `<= max`).
+- `PASS` only if every declared threshold was evaluated on the data this run used.
+- `ambiguous` otherwise: no thresholds declared; a threshold the run's data mode cannot evaluate (for example `auc_min` on synthetic data); a data mode or discriminator the runner does not implement; or an OpenNeuro run without `--allow-network`.
+- The summary's `data_mode` records what was executed, and is `null` when nothing was. `declared_data_mode` records what the spec asked for.
+
+Run:
+
+```bash
+python -m pipelines.hypothesis --spec governance/specs/HYP-20260507-001.yaml --output outputs/hypothesis/run1
+python -m pipelines.hypothesis --spec governance/specs/HYP-20260506-003.yaml --output outputs/hypothesis/run1 \
+    --allow-network --max-recordings 5 --max-epochs 120
+```
+
+OpenNeuro runs (`pipelines/openneuro_chunked.py`) request bounded byte ranges through the approved adapter (`tools/data_access/approved_adapter`). Each chunk is deleted once consumed, the cache is checked for residual files, and only small sidecar metadata is fetched whole under a 1 MiB cap. The transition index is an operational definition for the stimulus-onset criterion; a verdict on it is not confirmation of the causal claim it tests.
 
 ---
 
