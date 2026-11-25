@@ -157,6 +157,8 @@ jobs:
           --report outputs/core_test_report_${{ matrix.python-version }}.json
           tests/test_run_record.py
           tests/test_run_records.py
+          tests/test_run_card_false_certainty.py
+          tests/test_hypothesis_false_certainty.py
           tests/test_topology.py
           tests/test_benchmarks_registry.py
           tests/test_transitions_governance.py
