@@ -10,6 +10,14 @@ from sciencer_d.btc_icft.datasets.ds005620 import DS005620LabelRow
 from sciencer_d.btc_icft.level_m.features import extract_level_m_features
 
 
+# Explicit quarantine: this scaffold builds label-conditioned toy vectors so the
+# Level M plumbing can be exercised offline. Metrics computed from those vectors
+# are circular demonstrations, never empirical EEG evidence.
+_MOCK_SIGNAL_PROVENANCE = "label_conditioned_toy_vector"
+_MOCK_EVIDENCE_CLASS = "synthetic_circular_demonstration"
+_MOCK_RUN_MODE = "mock"
+
+
 @dataclass(frozen=True)
 class LevelMFeatureRow:
     row_id: str
@@ -23,6 +31,9 @@ class LevelMFeatureRow:
     state_label: str | None
     behavior_label: str | None
     report_label: str | None
+    signal_provenance: str = _MOCK_SIGNAL_PROVENANCE
+    evidence_class: str = _MOCK_EVIDENCE_CLASS
+    run_mode: str = _MOCK_RUN_MODE
 
 
 @dataclass(frozen=True)
@@ -42,9 +53,20 @@ class LevelMBaselineResult:
     omega_event: dict
     safe_claim: str
     forbidden_claims: list[str]
+    evidence_class: str = _MOCK_EVIDENCE_CLASS
+    run_mode: str = _MOCK_RUN_MODE
+    signal_provenance: str = _MOCK_SIGNAL_PROVENANCE
+    circular_label_conditioned_signal: bool = True
+    metrics_are_empirical: bool = False
 
 
 def _signal_for_row(row: DS005620LabelRow) -> list[float]:
+    """Return a deterministic toy vector keyed by label.
+
+    This is intentionally circular: the same labels that define ``y`` also
+    choose the synthetic signal. Do not treat downstream AUC/Brier/ECE as
+    empirical EEG discrimination.
+    """
     if row.state_label == "awake":
         return [0.03, 0.07, 0.02, 0.05, 0.08, 0.06, 0.04, 0.01]
     if row.state_label == "sedated":
@@ -84,6 +106,9 @@ def extract_level_m_rows(label_rows: list[DS005620LabelRow]) -> list[LevelMFeatu
                 state_label=row.state_label,
                 behavior_label=row.behavior_label,
                 report_label=row.report_label,
+                signal_provenance=_MOCK_SIGNAL_PROVENANCE,
+                evidence_class=_MOCK_EVIDENCE_CLASS,
+                run_mode=_MOCK_RUN_MODE,
             )
         )
     return rows
@@ -186,12 +211,17 @@ def evaluate_level_m_baseline(rows: list[LevelMFeatureRow], task: str) -> LevelM
 
     artifact_report = build_artifact_report(selected)
     leakage_report = build_leakage_report(selected)
-    safe_claim = "Level M features provide an operational empirical baseline for DS005620 anesthesia/report-label tasks."
+    safe_claim = (
+        "Level M mock scaffold emits synthetic_circular_demonstration metrics "
+        "from label-conditioned toy vectors for DS005620 plumbing tests only; "
+        "AUC/Brier/ECE here are not empirical EEG discrimination."
+    )
     forbidden_claims = [
         "Level M does not prove consciousness.",
         "Sedation does not prove no experience.",
         "Unresponsiveness does not prove unconsciousness.",
         "EEG does not prove enlightenment, liberation, soul, afterlife, or ontology.",
+        "Mock AUC/Brier/ECE must not be cited as empirical baseline evidence.",
     ]
     omega_event = {
         "status": "ok",
@@ -199,6 +229,11 @@ def evaluate_level_m_baseline(rows: list[LevelMFeatureRow], task: str) -> LevelM
         "task": task,
         "warning": None if has_two_classes else "Task has fewer than two classes; metrics unavailable.",
         "safe_claim": safe_claim,
+        "evidence_class": _MOCK_EVIDENCE_CLASS,
+        "run_mode": _MOCK_RUN_MODE,
+        "signal_provenance": _MOCK_SIGNAL_PROVENANCE,
+        "metrics_are_empirical": False,
+        "circular_label_conditioned_signal": True,
     }
     return LevelMBaselineResult(
         dataset_id="ds005620",
@@ -216,6 +251,11 @@ def evaluate_level_m_baseline(rows: list[LevelMFeatureRow], task: str) -> LevelM
         omega_event=omega_event,
         safe_claim=safe_claim,
         forbidden_claims=forbidden_claims,
+        evidence_class=_MOCK_EVIDENCE_CLASS,
+        run_mode=_MOCK_RUN_MODE,
+        signal_provenance=_MOCK_SIGNAL_PROVENANCE,
+        circular_label_conditioned_signal=True,
+        metrics_are_empirical=False,
     )
 
 
@@ -249,14 +289,20 @@ def write_level_m_outputs(result: LevelMBaselineResult, out_dir: str) -> dict[st
         })
 
     report_text = "\n".join([
-        "# DS005620 Level M Baseline",
+        "# DS005620 Level M Baseline (mock / non-empirical)",
         "## Dataset/task",
         f"- dataset_id: {result.dataset_id}",
         f"- task: {result.task}",
+        "## Evidence watermark",
+        f"- evidence_class: {result.evidence_class}",
+        f"- run_mode: {result.run_mode}",
+        f"- signal_provenance: {result.signal_provenance}",
+        f"- circular_label_conditioned_signal: {result.circular_label_conditioned_signal}",
+        f"- metrics_are_empirical: {result.metrics_are_empirical}",
         "## Rows/subjects",
         f"- n_rows: {result.n_rows}",
         f"- n_subjects: {result.n_subjects}",
-        "## Metrics",
+        "## Metrics (circular demonstration only)",
         f"- auc: {result.auc}",
         f"- brier: {result.brier}",
         f"- ece: {result.ece}",
@@ -271,6 +317,7 @@ def write_level_m_outputs(result: LevelMBaselineResult, out_dir: str) -> dict[st
         "## Next required step",
         "- Run DS005620 M+T residual topology benchmark after Level M baseline is stable.",
         "- This is telemetry and proxy-only output for residual testing preparation.",
+        "- Do not promote mock AUC/Brier/ECE to empirical claims.",
     ])
     report_path.write_text(report_text + "\n", encoding="utf-8")
 

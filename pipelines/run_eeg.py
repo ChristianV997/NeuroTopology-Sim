@@ -69,17 +69,12 @@ _BIDS_TOKENS = {
     "run": re.compile(r"run-([A-Za-z0-9]+)"),
 }
 
-_STATE_KEYWORDS = (
-    "awake", "wake", "sleep", "anesthesia", "loc", "roc",
-    "seizure", "meditation",
-)
-
-
 def _infer_metadata(path: Path, dataset: str) -> dict:
-    """Best-effort BIDS-like metadata inference from file path tokens.
+    """Extract BIDS-like tokens from path without inventing state labels.
 
-    Missing fields fall back to the string ``"unknown"`` rather than blank so
-    downstream consumers can rely on stable column types.
+    Only ``sub-`` / ``ses-`` / ``task-`` / ``run-`` tokens are accepted.
+    Keyword inference of clinical/state labels from path strings is forbidden
+    (AGENTS.md / label-contract guardrails). Missing fields stay ``"unknown"``.
     """
     parts = path.as_posix()
     out: dict = {
@@ -89,6 +84,8 @@ def _infer_metadata(path: Path, dataset: str) -> dict:
         "session_id": "unknown",
         "condition": "unknown",
         "state_label": "unknown",
+        "metadata_source": "path_bids_tokens_only",
+        "label_inference": "forbidden",
     }
     for key, pat in _BIDS_TOKENS.items():
         m = pat.search(parts)
@@ -102,17 +99,8 @@ def _infer_metadata(path: Path, dataset: str) -> dict:
             else:
                 out[key] = m.group(1)
 
-    if out["condition"] == "unknown":
-        # Fall back to immediate parent directory name when meaningful
-        parent = path.parent.name
-        if parent and parent.lower() not in {"eeg", "raw", ""}:
-            out["condition"] = parent
-
-    lowered = parts.lower()
-    for kw in _STATE_KEYWORDS:
-        if kw in lowered:
-            out["state_label"] = kw
-            break
+    # Do not promote parent-directory names or free-text path keywords into
+    # condition/state_label — that is label inference.
     return out
 
 

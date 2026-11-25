@@ -80,11 +80,16 @@ def test_write_outputs(tmp_path: Path):
 
     metrics = json.loads(Path(outs["metrics_m.json"]).read_text())
     assert metrics["dataset_id"] == "ds005620"
+    assert metrics["evidence_class"] == "synthetic_circular_demonstration"
+    assert metrics["metrics_are_empirical"] is False
+    assert metrics["circular_label_conditioned_signal"] is True
     report = Path(outs["report.md"]).read_text().lower()
-    assert "operational empirical baseline" in report
+    assert "synthetic_circular_demonstration" in report
+    assert "empirical" not in report.split("forbidden")[0] or "not empirical" in report
+    assert "metrics_are_empirical: false" in report
     assert ("telemetry" in report) or ("proxy" in report)
     assert "residual testing" in report
-    for bad in ["proves consciousness", "soul proven", "afterlife proven", "liberation detected", "ontology solved", "ultimate reality"]:
+    for bad in ["proves consciousness", "soul proven", "afterlife proven", "liberation detected", "ontology solved", "ultimate reality", "operational empirical baseline"]:
         assert bad not in report
 
 
