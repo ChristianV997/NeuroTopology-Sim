@@ -1,4 +1,4 @@
-.PHONY: validate-governance test-root test-root-isolated test-runner test-core-isolated test-eeg-isolated test-ml-isolated dependency-inventory test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query benchmark-solvers validate-benchmark test-optimization-isolated optimization-cycle
+.PHONY: validate-governance check-hypothesis-watermarks check-eeg-watermarks check-run-card-watermarks check-artifact-watermarks test-root test-root-isolated test-runner test-core-isolated test-eeg-isolated test-ml-isolated dependency-inventory test-core test-awareness test-all smoke smoke-core eval-awareness check ds005620-e2e-dry-run ds005620-e2e-mock validate-ds005620-e2e validate-ds005620-e2e-json validate-ds005620-contracts ds005620-ci-evidence-report ds005620-e2e-ci github-governance-check ontology-governance-docs-check ds005620-autonomy-check ds005620-build-manifest ds005620-export-evidence ds005620-paper-skeleton ds005620-inspect-runtime ds005620-preflight ds005620-test-runtime ds005620-ontology-eval-mock ds005620-ontology-check ds005620-test-ontology ontology-language-check ontology-language-check-strict-outputs ontology-language-baseline-candidate ds005620-generated-language-check ds005620-generated-artifact-check ds005620-real-execution-gate ds005620-real-operator-check ds005620-real-artifact-plan ds005620-real-readiness-loop ds005620-autonomous-iteration ds005620-autonomous-iteration-dry-run real-data-source-matrix multi-dataset-real-readiness multi-dataset-autonomous-iteration multi-dataset-autonomous-iteration-dry-run validate-real-data-source-matrix local-agent-policy-check local-agent-loop-dry-run local-agent-loop-once sync-obsidian local-agent-status local-agent-healthcheck local-agent-scheduler-plan local-ops-healthcheck local-ops-status local-ops-install-plan local-ops-run-once local-ops-run-loop-dry-run local-ops-run-loop laptop-setup-plan laptop-setup-doctor laptop-smoke laptop-smoke-dry-run laptop-troubleshoot-report laptop-safe-run openai-rag-policy-check openai-rag-manifest openai-rag-dry-run-sync openai-rag-query-mock openai-rag-api-smoke openai-rag-sync openai-rag-query benchmark-solvers validate-benchmark test-optimization-isolated optimization-cycle
 
 benchmark-solvers:
 	python scripts/benchmark_simulation_solvers.py --n-layers 1 --solvers exact_dense sparse_shift_invert --output-dir outputs/benchmarks
@@ -31,7 +31,7 @@ test-runner:
 	python -m pytest tests/runner/ -v
 
 test-core-isolated:
-	python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120 --report outputs/core_test_report.json tests/test_run_record.py tests/test_run_records.py tests/test_topology.py tests/test_benchmarks_registry.py tests/test_transitions_governance.py tests/test_transitions_features.py tests/btc_icft/test_report_guardrails.py tests/btc_icft/test_ontology_schema.py tests/runner/test_runner_isolation.py
+	python scripts/run_tests_isolated.py --batch-size 8 --timeout-s 120 --report outputs/core_test_report.json tests/test_run_record.py tests/test_run_records.py tests/test_run_card_false_certainty.py tests/test_hypothesis_false_certainty.py tests/test_topology.py tests/test_benchmarks_registry.py tests/test_transitions_governance.py tests/test_transitions_features.py tests/btc_icft/test_report_guardrails.py tests/btc_icft/test_ontology_schema.py tests/runner/test_runner_isolation.py
 
 test-eeg-isolated:
 	python scripts/run_tests_isolated.py --batch-size 4 --timeout-s 120 --report outputs/eeg_test_report.json tests/test_connectivity_topology.py tests/btc_icft/test_eeg_mne_adapter.py tests/btc_icft/test_eeg_signal_blocks.py tests/test_preprocessing_artifact_rejection.py
@@ -59,6 +59,19 @@ check:
 	$(MAKE) validate-governance
 	$(MAKE) test-core
 	$(MAKE) smoke-core
+
+# Evidence-class watermark scanners (stdlib-only; fail-closed on mock-as-empirical /
+# fabricated topology / missing stamps). Empty roots exit 0 (nothing to scan).
+check-hypothesis-watermarks:
+	python tools/check_hypothesis_artifact_watermarks.py artifacts
+
+check-eeg-watermarks:
+	python tools/check_eeg_artifact_watermarks.py outputs
+
+check-run-card-watermarks:
+	python tools/check_run_card_artifact_watermarks.py outputs/run_cards
+
+check-artifact-watermarks: check-hypothesis-watermarks check-eeg-watermarks check-run-card-watermarks
 
 validate-ds005620-artifacts:
 	python tools/validate_ds005620_artifacts.py --root outputs/btc_icft/ds005620

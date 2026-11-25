@@ -158,6 +158,12 @@ class RunRecordV1:
             "h8_falsifiers": self.h8_falsifiers if self.h8_falsifiers is not None else [],
             "notes": self.notes,
             "steps": self.steps if self.steps is not None else [],
+            # Evidence watermarks (fail-closed provenance; optional on legacy cards)
+            "evidence_class": self.evidence_class,
+            "run_mode": self.run_mode,
+            "metrics_are_empirical": self.metrics_are_empirical,
+            "scientific_pass": self.scientific_pass,
+            "metric_kind": self.metric_kind,
         }
 
     def write_json(self, path: Path) -> Path:
