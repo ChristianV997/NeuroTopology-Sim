@@ -74,6 +74,7 @@ jobs:
           tests/test_run_card_false_certainty.py
           tests/test_hypothesis_false_certainty.py
           tests/test_neurolib_watermarks.py
+          tests/test_pipeline_csv_watermarks.py
           tests/test_benchmarks_registry.py
           tests/test_pipeline_job_schema.py
           tests/test_transitions_governance.py
