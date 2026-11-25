@@ -106,6 +106,18 @@ def _spectral_entropy(signal: np.ndarray, sfreq: float) -> float:
     return entropy / float(np.log2(len(p)))
 
 
+def _finite_channel_or_none(sig: np.ndarray) -> Optional[np.ndarray]:
+    """Return ``sig`` only when every sample is finite.
+
+    Partial-NaN / Inf channels are eligibility-blocking: never ``nan_to_num``
+    into a fabricated finite series for spectral or complexity features.
+    """
+    arr = np.asarray(sig, dtype=float)
+    if arr.size == 0 or not np.all(np.isfinite(arr)):
+        return None
+    return arr
+
+
 def compute_features_for_epochs(
     epochs: list[np.ndarray],
     *,
@@ -117,7 +129,11 @@ def compute_features_for_epochs(
     """`epochs` is a list of `(n_channels, n_samples)` arrays for one
     (subject, state). Returns `{feature_name: value}`, averaged across
     epochs and channels. Never fabricates a value for an empty `epochs`
-    list -- returns NaN for every requested feature instead."""
+    list -- returns NaN for every requested feature instead.
+
+    Partial-NaN channels are skipped (fail-closed); spectral/complexity
+    values are never imputed via ``nan_to_num``.
+    """
     bands = {name: tuple(bounds) for name, bounds in frequency_bands.items()}
     result: dict[str, float] = {}
 
@@ -135,10 +151,10 @@ def compute_features_for_epochs(
             values: list[float] = []
             for epoch in epochs:
                 for ch in range(epoch.shape[0]):
-                    sig = epoch[ch]
-                    if np.all(np.isnan(sig)):
+                    sig = _finite_channel_or_none(epoch[ch])
+                    if sig is None:
                         continue
-                    band_power = compute_band_power(np.nan_to_num(sig), sfreq, bands=bands)
+                    band_power = compute_band_power(sig, sfreq, bands=bands)
                     key = f"{band_name}_power_rel"
                     if key in band_power:
                         values.append(band_power[key])
@@ -148,10 +164,10 @@ def compute_features_for_epochs(
             values = []
             for epoch in epochs:
                 for ch in range(epoch.shape[0]):
-                    sig = epoch[ch]
-                    if np.all(np.isnan(sig)):
+                    sig = _finite_channel_or_none(epoch[ch])
+                    if sig is None:
                         continue
-                    values.append(_spectral_entropy(np.nan_to_num(sig), sfreq))
+                    values.append(_spectral_entropy(sig, sfreq))
             finite = [v for v in values if not np.isnan(v)]
             result[feature_name] = float(np.mean(finite)) if finite else float("nan")
 
@@ -528,6 +544,10 @@ def _write_derived_features_csv(rows: list[dict[str, Any]], path: Path) -> None:
             writer.writerow({col: row.get(col, "") if row.get(col) is not None else "" for col in _LONG_COLUMNS})
 
 
+_RECIPE_EVIDENCE_CLASS = "derived_feature_recipe_scaffold"
+_RECIPE_RUN_MODE = "offline_fixture"
+
+
 def _write_mapping_json(spec: FeatureRecipeSpecV1, path: Path) -> None:
     mapping = {
         "format": "long",
@@ -544,8 +564,14 @@ def _write_mapping_json(spec: FeatureRecipeSpecV1, path: Path) -> None:
             "reference_policy": spec.reference_policy,
             "filter_policy": spec.filter_policy,
             "artifact_policy": spec.artifact_policy,
+            "nan_imputation": "forbidden",
         },
         "null_control_status": "not_provided",
+        # Watermarks: recipe outputs are scaffolding until governed adapter promotion.
+        "evidence_class": _RECIPE_EVIDENCE_CLASS,
+        "run_mode": _RECIPE_RUN_MODE,
+        "scientific_pass": False,
+        "metrics_are_empirical": False,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(mapping, indent=2) + "\n", encoding="utf-8")
@@ -617,6 +643,11 @@ def write_recipe_outputs(
         "qc_summary": result.qc_summary,
         "output_features_path": manifest.output_features_path,
         "output_mapping_path": manifest.output_mapping_path,
+        "evidence_class": _RECIPE_EVIDENCE_CLASS,
+        "run_mode": _RECIPE_RUN_MODE,
+        "scientific_pass": False,
+        "metrics_are_empirical": False,
+        "nan_imputation": "forbidden",
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

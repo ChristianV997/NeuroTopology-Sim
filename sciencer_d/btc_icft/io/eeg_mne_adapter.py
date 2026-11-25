@@ -378,8 +378,9 @@ def iter_mne_signal_chunks(
 
         warnings: list[str] = list(montage_info.get("warnings", []))
         if not np.all(np.isfinite(data_arr)):
+            # Fail-closed: do not nan_to_num / zero-impute partial-NaN chunks.
             warnings.append("non_finite_values_detected_in_chunk")
-            data_arr = np.nan_to_num(data_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            warnings.append("scientific_eligibility_blocked_non_finite")
 
         chunk_annots: list[dict] = []
         if raw_annots is not None and len(raw_annots) > 0:
@@ -467,16 +468,21 @@ def extract_mne_signal_windows(path: str, dataset_id: str, window_seconds: float
         data = raw.get_data(picks=indices, start=s0, stop=s1)
         vals = []
         warn = []
+        non_finite = False
         for row in data:
             conv = []
             for x in row.tolist():
                 v = float(x)
                 if math.isnan(v) or math.isinf(v):
-                    warn.append("non_finite_replaced")
-                    v = 0.0
+                    non_finite = True
+                    warn.append("non_finite_values_detected")
+                    # Keep NaN; never silently replace with 0.0.
                 conv.append(v)
             vals.append(conv)
-        w = MNESignalExtractionWindow(dataset_id, f"{p.stem}__win_{i}", str(p), f"win-{i:03d}", s0 / sfreq, s1 / sfreq, s0, s1, sfreq, len(indices), win_samples, ch_names, vals, "extracted", sorted(set(warn)))
+        status = "skipped_non_finite" if non_finite else "extracted"
+        if non_finite:
+            warn.append("scientific_eligibility_blocked_non_finite")
+        w = MNESignalExtractionWindow(dataset_id, f"{p.stem}__win_{i}", str(p), f"win-{i:03d}", s0 / sfreq, s1 / sfreq, s0, s1, sfreq, len(indices), win_samples, ch_names, vals, status, sorted(set(warn)))
         windows.append(asdict(w))
     r = MNESignalExtractionResult(dataset_id, str(p), True, cap.get("version"), True, det["file_format"], sfreq, len(indices), ch_names, (n_total / sfreq if sfreq else None), len(windows), windows, "extracted" if windows else "no_windows", [] if windows else ["no_complete_windows"], {}, {}, SAFE_CLAIM, [], [])
     r.output_contract = {"artifacts": ["mne_signal_metadata.json", "mne_signal_windows.csv", "mne_signal_window_values.json", "mne_extraction_report.json", "omega_event.json", "report.md"]}
