@@ -175,7 +175,8 @@ class TestContainerInspection:
         assert report.is_synthetic is False
         assert report.quality_state == RecordingQualityState.VALIDATED_EMPIRICAL_LOCAL.value
 
-    def test_brainvision_complete_triplet(self, synthetic_brainvision_triplet: tuple[Path, Path, Path]):
+    def test_brainvision_complete_triplet(self, synthetic_brainvision_triplet: tuple[Path, Path, Path], require_optional_module):
+        require_optional_module("mne")
         vhdr, vmrk, eeg = synthetic_brainvision_triplet
         report = inspect_recording_quality(vhdr, bounded_samples=50)
         assert report.passed_validation is True

@@ -49,7 +49,8 @@ def test_ripser_runner_on_triangle():
     assert res.telemetry.runtime_seconds >= 0.0
 
 
-def test_gudhi_runner_on_circle():
+def test_gudhi_runner_on_circle(require_optional_module):
+    require_optional_module("gudhi")
     c = make_circle_fixture(n_points=12)
     runner = GudhiRunner()
     res = runner.run(c.distance_matrix, max_dimension=1)

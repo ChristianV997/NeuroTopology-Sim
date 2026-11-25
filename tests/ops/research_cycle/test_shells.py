@@ -57,6 +57,7 @@ def test_posix_wrapper_requires_output_dir():
 @pytest.mark.skipif(os.name == "nt", reason="POSIX wrapper requires POSIX bash path semantics; use the PowerShell wrapper on Windows")
 def test_posix_wrapper_smoke(tmp_path: Path):
     env = os.environ.copy()
+    env["NTS_PYTHON"] = sys.executable  # the wrapper must run the interpreter that has the test dependencies
     env["PYTHONPATH"] = str(REPO_ROOT)
     out = tmp_path / "posix-out"
     completed = subprocess.run(

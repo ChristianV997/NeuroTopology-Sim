@@ -182,6 +182,7 @@ OPTIONAL_MODULE_DISTRIBUTIONS = {
     "MFDFA": "MFDFA",
     "specparam": "specparam",
     "nilearn": "nilearn",
+    "gudhi": "gudhi",
 }
 
 
@@ -231,3 +232,20 @@ def pytest_runtest_makereport(item: Any, call: Any) -> Generator[None, Any, None
     if module is not None:
         report.outcome = "skipped"
         report.longrepr = (str(item.path), 0, "Skipped: " + _optional_skip_reason(module))
+
+
+@pytest.fixture
+def require_optional_module() -> Any:
+    """Skip (locally) or fail (CI / strict) when an optional-profile module that is reported
+    through a result object rather than raised as ModuleNotFoundError is missing."""
+    import importlib.util
+
+    def _require(module: str) -> None:
+        if importlib.util.find_spec(module) is not None:
+            return
+        reason = _optional_skip_reason(module) if module in OPTIONAL_MODULE_DISTRIBUTIONS else f"optional module {module!r} is not installed"
+        if _optional_skip_enabled():
+            pytest.skip(reason)
+        pytest.fail(reason)
+
+    return _require

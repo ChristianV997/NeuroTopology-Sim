@@ -60,7 +60,10 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
-if command -v python3 >/dev/null 2>&1; then
+# NTS_PYTHON pins the interpreter (a venv/CI python) instead of the first python3 on PATH.
+if [ -n "${NTS_PYTHON:-}" ]; then
+  PYTHON="${NTS_PYTHON}"
+elif command -v python3 >/dev/null 2>&1; then
   PYTHON=python3
 elif command -v python >/dev/null 2>&1; then
   PYTHON=python
