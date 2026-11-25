@@ -60,6 +60,14 @@ _REQUIRED_WINDOW_COLUMNS = {
 
 _SIMILARITY_THRESHOLD = 0.1
 
+# Channel-mean / correlation proxies are NOT spatial winding / Skyrme charge.
+# CSV still emits legacy q_* aliases for validators; metric_kind must be checked.
+_METRIC_KIND = "channel_mean_correlation_proxy"
+_LEGACY_Q_ALIAS_WARNING = (
+    "Legacy columns q_net/q_abs/f_dress are aliases of mean_diff_proxy_* "
+    "channel-mean correlation proxies, not spatial winding charges."
+)
+
 
 def _validate_safe_text(text: str) -> None:
     """Raise ValueError if text contains any banned phrase."""
@@ -71,7 +79,11 @@ def _validate_safe_text(text: str) -> None:
 
 @dataclass
 class EEGLevelTSignalTopologyRow:
-    """Topology telemetry for a single signal window."""
+    """Topology telemetry for a single signal window.
+
+    Metric fields may be ``None`` when the window is skipped or non-finite.
+    Never treat skipped nulls as observed zero charge.
+    """
     dataset_id: str
     row_id: str
     source_file: str
@@ -83,15 +95,37 @@ class EEGLevelTSignalTopologyRow:
     n_channels: int
     n_samples: int
     sample_rate_hz: float
-    q_net: float
-    q_abs: float
-    f_dress: float
-    defect_density: float
+    # Preferred proxy names (channel-mean / correlation scaffold).
+    mean_diff_proxy_net: float | None
+    mean_diff_proxy_abs: float | None
+    mean_diff_proxy_excess: float | None
+    defect_density: float | None
     n_triangles: int
     n_valid_triangles: int
-    topology_quality: float
+    topology_quality: float | None
     topology_status: str
+    metric_kind: str = _METRIC_KIND
+    # Legacy aliases kept for artifact validators; equal to mean_diff_proxy_* when set.
+    q_net: float | None = None
+    q_abs: float | None = None
+    f_dress: float | None = None
     warnings: list[str] = field(default_factory=list)
+    is_valid: bool = True
+
+    def __post_init__(self) -> None:
+        # Keep legacy aliases synchronized with proxy fields when not explicitly set.
+        if self.q_net is None and self.mean_diff_proxy_net is not None:
+            self.q_net = self.mean_diff_proxy_net
+        if self.q_abs is None and self.mean_diff_proxy_abs is not None:
+            self.q_abs = self.mean_diff_proxy_abs
+        if self.f_dress is None and self.mean_diff_proxy_excess is not None:
+            self.f_dress = self.mean_diff_proxy_excess
+        if self.topology_status.startswith("skipped_") or self.topology_status == "skipped":
+            self.is_valid = False
+
+
+_LEVEL_T_EVIDENCE_CLASS = "level_t_signal_proxy_scaffold"
+_LEVEL_T_RUN_MODE = "offline_fixture"
 
 
 @dataclass
@@ -109,6 +143,10 @@ class EEGLevelTSignalTopologyResult:
     safe_claim: str = _SAFE_CLAIM
     forbidden_claims: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    evidence_class: str = _LEVEL_T_EVIDENCE_CLASS
+    run_mode: str = _LEVEL_T_RUN_MODE
+    scientific_pass: bool = False
+    metric_kind: str = _METRIC_KIND
 
 
 # ---------------------------------------------------------------------------
@@ -210,43 +248,52 @@ def _pearson_proxy_from_moments(
 
 def _compute_topology_from_channels(
     channel_data: list[list[float]],
-) -> tuple[float, float, float, float, int, int, float]:
-    """Compute deterministic topology proxies from multi-channel signal data.
+) -> tuple[
+    float | None,
+    float | None,
+    float | None,
+    float | None,
+    int,
+    int,
+    float | None,
+]:
+    """Compute deterministic channel-mean / correlation proxies.
 
     Args:
         channel_data: List of per-channel sample lists (equal length).
 
     Returns:
-        (q_net, q_abs, f_dress, defect_density, n_triangles, n_valid_triangles, topology_quality)
+        (mean_diff_proxy_net, mean_diff_proxy_abs, mean_diff_proxy_excess,
+         defect_density, n_triangles, n_valid_triangles, topology_quality)
+
+    These are **not** spatial winding / Skyrme charges. Empty or non-finite
+    inputs return ``None`` metric fields (never fabricated zeros).
     """
     n_ch = len(channel_data)
     if n_ch == 0:
-        return 0.0, 0.0, 0.0, 0.0, 0, 0, 0.0
+        return None, None, None, None, 0, 0, None
 
-    # Channel means → use as proxy "charges"
+    # Channel means → proxy scalars (not conserved charges)
     means = [_channel_mean(ch) for ch in channel_data]
 
-    # q_net: signed sum of alternating mean differences (winding proxy)
-    # Treat sorted means as a closed ring; sum signed plaquette differences
+    # mean_diff_proxy_net: signed sum of alternating mean differences
     sorted_means = sorted(means)
     n = len(sorted_means)
-    q_net = 0.0
+    proxy_net = 0.0
     for i in range(n):
         diff = sorted_means[(i + 1) % n] - sorted_means[i]
-        q_net += diff if i % 2 == 0 else -diff
+        proxy_net += diff if i % 2 == 0 else -diff
 
-    # q_abs: sum of absolute pairwise mean differences across all ordered pairs
-    q_abs = 0.0
+    # mean_diff_proxy_abs: mean absolute pairwise mean differences
+    proxy_abs = 0.0
     for i in range(n_ch):
         for j in range(i + 1, n_ch):
-            q_abs += abs(means[i] - means[j])
-    # Normalize to [0, n_ch-1] range
+            proxy_abs += abs(means[i] - means[j])
     n_pairs = n_ch * (n_ch - 1) / 2
-    q_abs = q_abs / n_pairs if n_pairs > 0 else 0.0
+    proxy_abs = proxy_abs / n_pairs if n_pairs > 0 else 0.0
 
-    # f_dress = max(q_abs - abs(q_net), 0)
-    q_net_norm = q_net / max(n_ch, 1)
-    f_dress = max(q_abs - abs(q_net_norm), 0.0)
+    proxy_net_norm = proxy_net / max(n_ch, 1)
+    proxy_excess = max(proxy_abs - abs(proxy_net_norm), 0.0)
 
     # Triangles: n choose 3
     n_triangles = (n_ch * (n_ch - 1) * (n_ch - 2)) // 6 if n_ch >= 3 else 0
@@ -285,18 +332,18 @@ def _compute_topology_from_channels(
                         if avg_corr > _SIMILARITY_THRESHOLD:
                             n_valid_triangles += 1
 
-    defect_density = q_abs / max(n_valid_triangles, 1)
+    defect_density = proxy_abs / max(n_valid_triangles, 1)
     topology_quality = n_valid_triangles / max(n_triangles, 1) if n_triangles > 0 else 0.0
 
-    # Ensure all values are finite
-    for v in (q_net, q_abs, f_dress, defect_density, topology_quality):
+    # Non-finite → null metrics (align with base_real_topology missingness contract)
+    for v in (proxy_net_norm, proxy_abs, proxy_excess, defect_density, topology_quality):
         if not math.isfinite(v):
-            return 0.0, 0.0, 0.0, 0.0, n_triangles, 0, 0.0
+            return None, None, None, None, n_triangles, 0, None
 
     return (
-        q_net_norm,
-        q_abs,
-        f_dress,
+        proxy_net_norm,
+        proxy_abs,
+        proxy_excess,
         defect_density,
         n_triangles,
         n_valid_triangles,
@@ -304,11 +351,53 @@ def _compute_topology_from_channels(
     )
 
 
-# Public alias: this is real, signal-derived topology (channel means/correlations),
-# deliberately reused by other Level T implementations (e.g. ds005620_real_topology.py)
-# instead of each dataset reimplementing its own — or worse, fabricating one from a
-# metadata hash, as ds005620_real_topology.py's fixture path used to.
+# Public alias: signal-derived channel-mean / correlation proxies (not spatial winding).
+# Reused by other Level T implementations instead of hash-fabricated fixtures.
 compute_topology_from_channels = _compute_topology_from_channels
+
+
+def observed_proxy_metrics(row: "EEGLevelTSignalTopologyRow") -> dict[str, float] | None:
+    """Return proxy metrics only when observed under the missingness contract.
+
+    Requires ``is_valid``, known ``metric_kind``, and non-null proxy fields.
+    Never coerces skipped/null zeros into observed winding charge.
+    Legacy ``q_*`` aliases are returned only as named ``*_alias`` keys when valid.
+    Consumers that need topology charge must not read ``q_net``/``q_abs``/``f_dress``
+    directly after validators — use this helper or the ``mean_diff_proxy_*`` fields.
+    """
+    if not getattr(row, "is_valid", False):
+        return None
+    if getattr(row, "metric_kind", None) != _METRIC_KIND:
+        return None
+    net = row.mean_diff_proxy_net
+    abs_v = row.mean_diff_proxy_abs
+    excess = row.mean_diff_proxy_excess
+    if net is None or abs_v is None or excess is None:
+        return None
+    # Guard against treating missingness-as-zero via legacy aliases alone.
+    if row.q_net is None or row.q_abs is None or row.f_dress is None:
+        return None
+    return {
+        "metric_kind": _METRIC_KIND,
+        "mean_diff_proxy_net": float(net),
+        "mean_diff_proxy_abs": float(abs_v),
+        "mean_diff_proxy_excess": float(excess),
+        # Legacy aliases mirror proxies; not spatial winding charges.
+        "q_net_alias": float(row.q_net),
+        "q_abs_alias": float(row.q_abs),
+        "f_dress_alias": float(row.f_dress),
+    }
+
+
+def legacy_q_aliases_are_quarantined(row: "EEGLevelTSignalTopologyRow") -> bool:
+    """True when legacy q_* columns must not be treated as winding charge.
+
+    Retirement path after artifact validators: prefer ``mean_diff_proxy_*`` /
+    ``observed_proxy_metrics``; treat raw ``q_*`` as validator-compat dual-write only.
+    For ``channel_mean_correlation_proxy`` rows this is always True.
+    """
+    kind = getattr(row, "metric_kind", None)
+    return kind != "phase_grid_topology"
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +426,7 @@ def compute_signal_topology_for_window(
     warnings: list[str] = []
 
     def _make_skipped(status: str, reason: str) -> EEGLevelTSignalTopologyRow:
+        # Missingness contract: never write 0.0 for unobserved / skipped metrics.
         return EEGLevelTSignalTopologyRow(
             dataset_id=dataset_id,
             row_id=row_id,
@@ -349,15 +439,20 @@ def compute_signal_topology_for_window(
             n_channels=int(window.get("n_channels", 0) or 0),
             n_samples=int(window.get("n_samples", 0) or 0),
             sample_rate_hz=float(window.get("sample_rate_hz", 0.0) or 0.0),
-            q_net=0.0,
-            q_abs=0.0,
-            f_dress=0.0,
-            defect_density=0.0,
+            mean_diff_proxy_net=None,
+            mean_diff_proxy_abs=None,
+            mean_diff_proxy_excess=None,
+            defect_density=None,
             n_triangles=0,
             n_valid_triangles=0,
-            topology_quality=0.0,
+            topology_quality=None,
             topology_status=status,
-            warnings=[reason],
+            metric_kind=_METRIC_KIND,
+            q_net=None,
+            q_abs=None,
+            f_dress=None,
+            warnings=[reason, _LEGACY_Q_ALIAS_WARNING],
+            is_valid=False,
         )
 
     # Validate sample range
@@ -386,12 +481,23 @@ def compute_signal_topology_for_window(
         return _make_skipped("skipped_unreadable_source", f"Source file not found: {source_file!r}")
 
     try:
-        sig = parse_fixture_signal_file(source_file)
+        # Prefer inventory sample_rate; never rely on a silent parser default.
+        parse_rate = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else None
+        sig = parse_fixture_signal_file(source_file, sample_rate_hz=parse_rate)
     except Exception as e:
         return _make_skipped("skipped_parse_error", f"Parse error: {e}")
 
     if not sig.readable or not sig.samples:
-        return _make_skipped("skipped_unreadable_source", f"Source file not readable: {source_file!r}")
+        reason = "skipped_unreadable_source"
+        detail = f"Source file not readable: {source_file!r}"
+        if sig.errors and any("missing_sample_rate_hz" in e for e in sig.errors):
+            reason = "skipped_missing_sample_rate"
+            detail = f"Missing sample_rate_hz for source: {source_file!r}"
+        return _make_skipped(reason, detail)
+    if sig.sample_rate_source == "caller_explicit":
+        warnings.append(
+            "sample_rate_source=caller_explicit; treat as non-scientific rate provenance"
+        )
 
     # Slice samples
     actual_end = min(sample_end, sig.n_samples or 0)
@@ -430,11 +536,17 @@ def compute_signal_topology_for_window(
     else:
         topo_status = "ok"
 
-    # Compute topology
     (
-        q_net, q_abs, f_dress, defect_density,
+        proxy_net, proxy_abs, proxy_excess, defect_density,
         n_triangles, n_valid_triangles, topology_quality,
     ) = _compute_topology_from_channels(channel_data)
+
+    if proxy_net is None:
+        warnings.append("non_finite_or_empty_proxy_metrics")
+        is_valid = False
+    else:
+        is_valid = True
+    warnings.append(_LEGACY_Q_ALIAS_WARNING)
 
     return EEGLevelTSignalTopologyRow(
         dataset_id=dataset_id,
@@ -448,15 +560,20 @@ def compute_signal_topology_for_window(
         n_channels=actual_channels,
         n_samples=n_actual_samples,
         sample_rate_hz=sample_rate_hz,
-        q_net=q_net,
-        q_abs=q_abs,
-        f_dress=f_dress,
+        mean_diff_proxy_net=proxy_net,
+        mean_diff_proxy_abs=proxy_abs,
+        mean_diff_proxy_excess=proxy_excess,
         defect_density=defect_density,
         n_triangles=n_triangles,
         n_valid_triangles=n_valid_triangles,
         topology_quality=topology_quality,
         topology_status=topo_status,
+        metric_kind=_METRIC_KIND,
+        q_net=proxy_net,
+        q_abs=proxy_abs,
+        f_dress=proxy_excess,
         warnings=warnings,
+        is_valid=is_valid,
     )
 
 
@@ -481,6 +598,7 @@ def compute_signal_topology_rows(
         "skipped_invalid_window",
         "skipped_unreadable_source",
         "skipped_parse_error",
+        "skipped_missing_sample_rate",
     }
 
     for w in windows:
@@ -520,13 +638,16 @@ def build_topology_quality_report(
     n_skipped = len(skipped_windows)
     n_windows = n_rows + n_skipped
 
-    finite_rows = [r for r in rows if math.isfinite(r.topology_quality)]
+    finite_rows = [
+        r for r in rows
+        if r.topology_quality is not None and math.isfinite(r.topology_quality)
+    ]
     n_finite = len(finite_rows)
 
     mean_quality = (
-        sum(r.topology_quality for r in finite_rows) / n_finite if n_finite > 0 else 0.0
+        sum(float(r.topology_quality) for r in finite_rows) / n_finite if n_finite > 0 else 0.0
     )
-    low_quality = sum(1 for r in finite_rows if r.topology_quality < 0.25)
+    low_quality = sum(1 for r in finite_rows if float(r.topology_quality) < 0.25)
 
     # artifact dominance: mean_quality < 0.25 OR >half rows have quality < 0.25
     artifact_dominance = (
@@ -566,7 +687,11 @@ def build_signal_topology_artifact_report(
     dataset_id = rows[0].dataset_id if rows else ""
     n_rows = len(rows)
 
-    qualities = [r.topology_quality for r in rows if math.isfinite(r.topology_quality)]
+    qualities = [
+        float(r.topology_quality)
+        for r in rows
+        if r.topology_quality is not None and math.isfinite(r.topology_quality)
+    ]
     mean_q = sum(qualities) / len(qualities) if qualities else 0.0
     min_q = min(qualities) if qualities else 0.0
     low_quality = sum(1 for q in qualities if q < 0.25)
@@ -606,6 +731,11 @@ def build_level_t_signal_omega_event(result: EEGLevelTSignalTopologyResult) -> d
         "safe_claim": result.safe_claim,
         "forbidden_claims": result.forbidden_claims,
         "warnings": result.warnings[:20],
+        "evidence_class": result.evidence_class,
+        "run_mode": result.run_mode,
+        "scientific_pass": result.scientific_pass,
+        "metric_kind": result.metric_kind,
+        "legacy_q_alias_warning": _LEGACY_Q_ALIAS_WARNING,
     }
 
 
@@ -641,13 +771,19 @@ def write_level_t_signal_outputs(
 
     # 1. features_t_signal.csv
     feat_file = out_path / "features_t_signal.csv"
+    def _csv_cell(value: object) -> object:
+        return "" if value is None else value
+
     _FEAT_COLS = [
         "dataset_id", "row_id", "source_file", "window_id",
         "window_start_s", "window_end_s", "sample_start", "sample_end",
         "n_channels", "n_samples", "sample_rate_hz",
+        "metric_kind",
+        "mean_diff_proxy_net", "mean_diff_proxy_abs", "mean_diff_proxy_excess",
+        # Legacy aliases (same values when valid; empty when skipped/null).
         "q_net", "q_abs", "f_dress", "defect_density",
         "n_triangles", "n_valid_triangles", "topology_quality",
-        "topology_status", "warnings",
+        "topology_status", "is_valid", "warnings",
     ]
     import csv as _csv
     with open(feat_file, "w", newline="", encoding="utf-8") as f:
@@ -666,14 +802,19 @@ def write_level_t_signal_outputs(
                 row_dict.get("n_channels", ""),
                 row_dict.get("n_samples", ""),
                 row_dict.get("sample_rate_hz", ""),
-                row_dict.get("q_net", ""),
-                row_dict.get("q_abs", ""),
-                row_dict.get("f_dress", ""),
-                row_dict.get("defect_density", ""),
+                row_dict.get("metric_kind", _METRIC_KIND),
+                _csv_cell(row_dict.get("mean_diff_proxy_net")),
+                _csv_cell(row_dict.get("mean_diff_proxy_abs")),
+                _csv_cell(row_dict.get("mean_diff_proxy_excess")),
+                _csv_cell(row_dict.get("q_net")),
+                _csv_cell(row_dict.get("q_abs")),
+                _csv_cell(row_dict.get("f_dress")),
+                _csv_cell(row_dict.get("defect_density")),
                 row_dict.get("n_triangles", ""),
                 row_dict.get("n_valid_triangles", ""),
-                row_dict.get("topology_quality", ""),
+                _csv_cell(row_dict.get("topology_quality")),
                 row_dict.get("topology_status", ""),
+                row_dict.get("is_valid", ""),
                 "|".join(row_dict.get("warnings", [])),
             ])
     outputs["features_t_signal"] = str(feat_file)
@@ -727,6 +868,13 @@ def _build_markdown_report(result: EEGLevelTSignalTopologyResult) -> str:
     )
 
     md += f"## Dataset\n\n`{result.dataset_id}`\n\n"
+
+    md += "## Evidence watermark\n\n"
+    md += f"- evidence_class: {result.evidence_class}\n"
+    md += f"- run_mode: {result.run_mode}\n"
+    md += f"- scientific_pass: {result.scientific_pass}\n"
+    md += f"- metric_kind: {result.metric_kind}\n"
+    md += f"- legacy_q_alias_note: {_LEGACY_Q_ALIAS_WARNING}\n\n"
 
     md += "## Input Signal Windows\n\n"
     md += f"- Total windows: {result.n_windows}\n"

@@ -9,9 +9,11 @@ def _mock_result(dataset_id: str, source_file: str):
     r = _init_result(dataset_id, source_file, "extracted", [], True, Path(source_file).suffix.lower().lstrip('.') or "edf", cap)
     r.sample_rate_hz = 100.0; r.n_channels = 2; r.channel_names=["C3","C4"]; r.duration_s=4.0
     r.windows=[
-        {"dataset_id":dataset_id,"row_id":"mock__win_0","source_file":source_file,"window_id":"win-000","window_start_s":0.0,"window_end_s":2.0,"sample_start":0,"sample_end":200,"sample_rate_hz":100.0,"n_channels":2,"n_samples":200,"channel_names":["C3","C4"],"signal_values":[[0.1]*200,[0.2]*200],"extraction_status":"extracted","warnings":[]},
-        {"dataset_id":dataset_id,"row_id":"mock__win_1","source_file":source_file,"window_id":"win-001","window_start_s":2.0,"window_end_s":4.0,"sample_start":200,"sample_end":400,"sample_rate_hz":100.0,"n_channels":2,"n_samples":200,"channel_names":["C3","C4"],"signal_values":[[0.3]*200,[0.4]*200],"extraction_status":"extracted","warnings":[]},
+        {"dataset_id":dataset_id,"row_id":"mock__win_0","source_file":source_file,"window_id":"win-000","window_start_s":0.0,"window_end_s":2.0,"sample_start":0,"sample_end":200,"sample_rate_hz":100.0,"n_channels":2,"n_samples":200,"channel_names":["C3","C4"],"signal_values":[[0.1]*200,[0.2]*200],"extraction_status":"extracted","warnings":[],"scientific_pass":True,"is_valid":True,"non_finite_samples":False},
+        {"dataset_id":dataset_id,"row_id":"mock__win_1","source_file":source_file,"window_id":"win-001","window_start_s":2.0,"window_end_s":4.0,"sample_start":200,"sample_end":400,"sample_rate_hz":100.0,"n_channels":2,"n_samples":200,"channel_names":["C3","C4"],"signal_values":[[0.3]*200,[0.4]*200],"extraction_status":"extracted","warnings":[],"scientific_pass":True,"is_valid":True,"non_finite_samples":False},
     ]; r.n_windows=2
+    # Mock fixture is synthetic; never claim scientific_pass at result level.
+    r.scientific_pass = False
     return r
 
 def main() -> int:

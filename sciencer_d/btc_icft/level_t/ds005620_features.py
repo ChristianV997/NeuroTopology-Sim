@@ -9,8 +9,21 @@ from pathlib import Path
 from sciencer_d.btc_icft.level_m.ds005620_baseline import (
     LevelMFeatureRow,
     build_mock_ds005620_level_m_rows,
+    _MOCK_EVIDENCE_CLASS,
+    _MOCK_RUN_MODE,
+    _MOCK_SIGNAL_PROVENANCE,
 )
 from sciencer_d.btc_icft.report_guardrails import BANNED_REPORT_PHRASES, validate_safe_text
+
+
+# Mock Level T rows are label-conditioned scaffolds, not spatial winding charges.
+# Legacy q_* fields remain for validator dual-write; consumers must check metric_kind.
+_MOCK_T_METRIC_KIND = "mock_label_conditioned_topology_scaffold"
+_LEGACY_Q_ALIAS_NOTE = (
+    "Legacy columns q_net/q_abs/f_dress on mock Level T rows are "
+    "label-conditioned scaffold aliases under metric_kind="
+    f"{_MOCK_T_METRIC_KIND}; not spatial winding charges."
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +37,10 @@ class LevelTFeatureRow:
     defect_density: float
     n_valid_triangles: int
     topology_quality: float
+    metric_kind: str = _MOCK_T_METRIC_KIND
+    is_valid: bool = True
+    evidence_class: str = _MOCK_EVIDENCE_CLASS
+    run_mode: str = _MOCK_RUN_MODE
 
 
 @dataclass(frozen=True)
@@ -45,6 +62,11 @@ class LevelMTFeatureRow:
     state_label: str | None
     behavior_label: str | None
     report_label: str | None
+    signal_provenance: str
+    evidence_class: str
+    run_mode: str
+    metric_kind: str = _MOCK_T_METRIC_KIND
+    is_valid: bool = True
 
 
 @dataclass(frozen=True)
@@ -70,6 +92,11 @@ class LevelMTResidualResult:
     omega_event: dict
     safe_claim: str
     forbidden_claims: list[str]
+    evidence_class: str = _MOCK_EVIDENCE_CLASS
+    run_mode: str = _MOCK_RUN_MODE
+    signal_provenance: str = _MOCK_SIGNAL_PROVENANCE
+    metrics_are_empirical: bool = False
+    metric_kind: str = _MOCK_T_METRIC_KIND
 
 
 def _validate_safe_text(text: str) -> None:
@@ -132,6 +159,13 @@ def _score_m(row: LevelMFeatureRow) -> float:
 
 
 def build_mock_ds005620_level_t_rows() -> list[LevelTFeatureRow]:
+    """Build label-conditioned mock Level T rows (not empirical winding charge).
+
+    Legacy ``q_*`` fields are scaffold aliases under ``metric_kind`` =
+    ``mock_label_conditioned_topology_scaffold``. Consumers must check
+    ``metric_kind`` / ``evidence_class`` / ``run_mode`` and must not treat
+    these values as observed spatial charge.
+    """
     rows = []
     for m in build_mock_ds005620_level_m_rows():
         is_pos = 1 if m.state_label == "sedated" else 0
@@ -141,7 +175,23 @@ def build_mock_ds005620_level_t_rows() -> list[LevelTFeatureRow]:
         n_valid_triangles = 18 + 2 * is_pos
         defect_density = q_abs / n_valid_triangles
         topology_quality = 0.78 + 0.12 * is_pos
-        rows.append(LevelTFeatureRow(m.row_id, m.subject_id, m.task_label, q_net, q_abs, f_dress, defect_density, n_valid_triangles, topology_quality))
+        rows.append(
+            LevelTFeatureRow(
+                m.row_id,
+                m.subject_id,
+                m.task_label,
+                q_net,
+                q_abs,
+                f_dress,
+                defect_density,
+                n_valid_triangles,
+                topology_quality,
+                metric_kind=_MOCK_T_METRIC_KIND,
+                is_valid=True,
+                evidence_class=_MOCK_EVIDENCE_CLASS,
+                run_mode=_MOCK_RUN_MODE,
+            )
+        )
     return rows
 
 
@@ -192,6 +242,8 @@ def build_ablation_report(joined_rows: list[LevelMTFeatureRow], task: str) -> di
     selected = _select(joined_rows, task)
     y = [r.y for r in selected]
     m_scores = [_score_m(r) for r in selected]
+    # Scaffold ablations still read legacy q_* dual-write columns; metric_kind
+    # marks them as non-winding mock aliases (quarantined after validators).
     topology = _minmax([r.q_net + r.q_abs + r.f_dress + r.topology_quality - r.defect_density for r in selected])
     qnet = _minmax([r.q_net for r in selected])
     qabs = _minmax([r.q_abs for r in selected])
@@ -219,7 +271,13 @@ def build_ablation_report(joined_rows: list[LevelMTFeatureRow], task: str) -> di
     all_t_best = (models["M_plus_all_T"]["auc"] or 0.0) >= best
     any_improve = any((models[k]["delta_auc_vs_M"] > 0) for k in ["M_plus_q_net", "M_plus_q_abs", "M_plus_f_dress", "M_plus_all_T"])
     ablations_passed = all_t_best and any_improve
-    return {**models, "ablations_passed": ablations_passed, "note": "Deterministic scaffold ablations."}
+    return {
+        **models,
+        "ablations_passed": ablations_passed,
+        "note": "Deterministic scaffold ablations.",
+        "metric_kind": _MOCK_T_METRIC_KIND,
+        "legacy_q_alias_note": _LEGACY_Q_ALIAS_NOTE,
+    }
 
 
 def evaluate_mt_residual(joined_rows: list[LevelMTFeatureRow], task: str) -> LevelMTResidualResult:
@@ -273,8 +331,46 @@ def evaluate_mt_residual(joined_rows: list[LevelMTFeatureRow], task: str) -> Lev
         "Sedation does not prove no experience.", "Unresponsiveness does not prove unconsciousness.",
         "EEG does not prove liberation, enlightenment, afterlife, or ontology.",
     ]
-    omega_event = {"dataset_id": "ds005620", "task": task, "promoted": promoted, "promotion_reason": reason, "safe_claim": safe_claim}
-    return LevelMTResidualResult("ds005620", task, len(selected), n_subjects, metrics_m, metrics_mt, delta_auc, delta_ece, nulls_passed, ablations_passed, leakage_detected, artifact_dominance, promoted, reason, null_report, ablation_report, leakage_report, artifact_report, omega_event, safe_claim, forbidden_claims)
+    omega_event = {
+        "dataset_id": "ds005620",
+        "task": task,
+        "promoted": promoted,
+        "promotion_reason": reason,
+        "safe_claim": safe_claim,
+        "evidence_class": _MOCK_EVIDENCE_CLASS,
+        "run_mode": _MOCK_RUN_MODE,
+        "metrics_are_empirical": False,
+        "metric_kind": _MOCK_T_METRIC_KIND,
+        "legacy_q_alias_note": _LEGACY_Q_ALIAS_NOTE,
+    }
+    return LevelMTResidualResult(
+        "ds005620",
+        task,
+        len(selected),
+        n_subjects,
+        metrics_m,
+        metrics_mt,
+        delta_auc,
+        delta_ece,
+        nulls_passed,
+        ablations_passed,
+        leakage_detected,
+        artifact_dominance,
+        promoted,
+        reason,
+        null_report,
+        ablation_report,
+        leakage_report,
+        artifact_report,
+        omega_event,
+        safe_claim,
+        forbidden_claims,
+        evidence_class=_MOCK_EVIDENCE_CLASS,
+        run_mode=_MOCK_RUN_MODE,
+        signal_provenance=_MOCK_SIGNAL_PROVENANCE,
+        metrics_are_empirical=False,
+        metric_kind=_MOCK_T_METRIC_KIND,
+    )
 
 
 def write_mt_outputs(result: LevelMTResidualResult, out_dir: str) -> dict[str, str]:
@@ -292,7 +388,14 @@ def write_mt_outputs(result: LevelMTResidualResult, out_dir: str) -> dict[str, s
     with features.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(asdict(rows[0]).keys())); writer.writeheader(); [writer.writerow(asdict(r)) for r in rows]
 
-    metrics.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
+    # Stamp watermarks onto metrics JSON even when asdict already includes them.
+    metrics_payload = asdict(result)
+    metrics_payload.setdefault("evidence_class", result.evidence_class)
+    metrics_payload.setdefault("run_mode", result.run_mode)
+    metrics_payload.setdefault("metrics_are_empirical", result.metrics_are_empirical)
+    metrics_payload.setdefault("metric_kind", result.metric_kind)
+    metrics_payload["legacy_q_alias_note"] = _LEGACY_Q_ALIAS_NOTE
+    metrics.write_text(json.dumps(metrics_payload, indent=2), encoding="utf-8")
     nulls.write_text(json.dumps(result.null_report, indent=2), encoding="utf-8")
     ablations.write_text(json.dumps(result.ablation_report, indent=2), encoding="utf-8")
     leakage.write_text(json.dumps(result.leakage_report, indent=2), encoding="utf-8")
@@ -300,12 +403,40 @@ def write_mt_outputs(result: LevelMTResidualResult, out_dir: str) -> dict[str, s
     omega.write_text(json.dumps(result.omega_event, indent=2), encoding="utf-8")
 
     text = "\n".join([
-        "# DS005620 M+T Residual Topology Benchmark", "## Dataset/task", f"- dataset_id: {result.dataset_id}", f"- task: {result.task}",
-        "## M-only metrics", f"- {result.metrics_m}", "## M+T metrics", f"- {result.metrics_mt}", "## Residual deltas", f"- delta_auc: {result.delta_auc}", f"- delta_ece: {result.delta_ece}",
-        "## Null controls", f"- {result.null_report}", "## Ablations", f"- {result.ablation_report}", "## Artifact report", f"- {result.artifact_report}",
-        "## Leakage report", f"- {result.leakage_report}", "## Promotion decision", f"- promoted: {result.promoted}", f"- reason: {result.promotion_reason}",
-        "## Safe claim", f"- {result.safe_claim}", "## Forbidden claims", *[f"- {x}" for x in result.forbidden_claims],
-        "## Next required step", "- Replace deterministic mock features with real DS005620 EEG windows and montage-aware phase-grid topology extraction.",
+        "# DS005620 M+T Residual Topology Benchmark",
+        "## Dataset/task",
+        f"- dataset_id: {result.dataset_id}",
+        f"- task: {result.task}",
+        "## Evidence watermarks",
+        f"- evidence_class: {result.evidence_class}",
+        f"- run_mode: {result.run_mode}",
+        f"- metrics_are_empirical: {result.metrics_are_empirical}",
+        f"- metric_kind: {result.metric_kind}",
+        f"- legacy_q_alias_note: {_LEGACY_Q_ALIAS_NOTE}",
+        "## M-only metrics",
+        f"- {result.metrics_m}",
+        "## M+T metrics",
+        f"- {result.metrics_mt}",
+        "## Residual deltas",
+        f"- delta_auc: {result.delta_auc}",
+        f"- delta_ece: {result.delta_ece}",
+        "## Null controls",
+        f"- {result.null_report}",
+        "## Ablations",
+        f"- {result.ablation_report}",
+        "## Artifact report",
+        f"- {result.artifact_report}",
+        "## Leakage report",
+        f"- {result.leakage_report}",
+        "## Promotion decision",
+        f"- promoted: {result.promoted}",
+        f"- reason: {result.promotion_reason}",
+        "## Safe claim",
+        f"- {result.safe_claim}",
+        "## Forbidden claims",
+        *[f"- {x}" for x in result.forbidden_claims],
+        "## Next required step",
+        "- Replace deterministic mock features with real DS005620 EEG windows and montage-aware phase-grid topology extraction.",
         "- This benchmark is a deterministic scaffold using telemetry proxy features and candidate metrics for residual predictive value.",
     ])
     _validate_safe_text(text)

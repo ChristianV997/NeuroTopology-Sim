@@ -145,8 +145,10 @@ def test_infer_metadata_bids_tokens():
     meta = _infer_metadata(p, dataset="ds002094")
     assert meta["subject_id"] == "01"
     assert meta["session_id"] == "02"
+    # BIDS task token populates condition only; state_label is not inferred.
     assert meta["condition"] == "awake"
-    assert meta["state_label"] == "awake"
+    assert meta["state_label"] == "unknown"
+    assert meta["label_inference"] == "forbidden"
     assert meta["dataset"] == "ds002094"
     assert meta["dataset_id"] == "ds002094"
 
@@ -164,10 +166,12 @@ def test_infer_metadata_unknown_fallback():
     assert meta["state_label"] == "unknown"
 
 
-def test_infer_metadata_state_label_anesthesia():
+def test_infer_metadata_rejects_path_keyword_state_labels():
+    """Directory keywords like 'anesthesia' must not invent state_label."""
     from pipelines.run_eeg import _infer_metadata
     p = Path("/data/raw/ds_x/sub-03/anesthesia/sub-03_run-1_eeg.edf")
     meta = _infer_metadata(p, dataset="ds_x")
     assert meta["subject_id"] == "03"
     assert meta["session_id"] == "run-1"
-    assert meta["state_label"] == "anesthesia"
+    assert meta["state_label"] == "unknown"
+    assert meta["label_inference"] == "forbidden"

@@ -50,6 +50,23 @@ def _artifact_stem(created_at_compact: str, run_id: str) -> str:
     return f"run_{created_at_compact}_{run_id[:8]}"
 
 
+def _fmt_metric(value: Any) -> str:
+    """Format a metric cell; null/non-finite → n/a (never silent fabricated zero)."""
+    if value is None:
+        return "n/a"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        import math
+
+        if isinstance(value, float) and not math.isfinite(value):
+            return "n/a"
+        if isinstance(value, float):
+            return f"{value:.6f}"
+        return str(value)
+    return str(value)
+
+
 def save_run_card_markdown(record: RunRecord, out_dir: Path) -> Path:
     """Write the human-readable .md run card for RAG ingestion."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -58,6 +75,11 @@ def save_run_card_markdown(record: RunRecord, out_dir: Path) -> Path:
     path = out_dir / f"{stem}.md"
 
     m = record.metrics
+    n_steps_raw = m.get("n_steps", 0)
+    try:
+        n_steps_disp = int(n_steps_raw) if n_steps_raw is not None else 0
+    except (TypeError, ValueError):
+        n_steps_disp = 0
     lines = [
         f"# Run Card: {record.run_id}",
         "",
@@ -66,18 +88,26 @@ def save_run_card_markdown(record: RunRecord, out_dir: Path) -> Path:
         f"**Repo:** {record.repo}  ",
         f"**Commit:** {record.git_commit}  ",
         "",
+        "## Evidence watermark",
+        "",
+        f"- evidence_class: `{record.evidence_class}`",
+        f"- run_mode: `{record.run_mode}`",
+        f"- metrics_are_empirical: `{record.metrics_are_empirical}`",
+        f"- scientific_pass: `{record.scientific_pass}`",
+        f"- metric_kind: `{record.metric_kind}`",
+        "",
         "## Metrics",
         "",
         f"| Metric | Value |",
         f"|--------|-------|",
-        f"| I_mean | {m.get('I_mean', float('nan')):.6f} |",
-        f"| I_std | {m.get('I_std', float('nan')):.6f} |",
-        f"| I_final | {m.get('I_final', float('nan')):.6f} |",
-        f"| vort_mean | {m.get('vort_mean', float('nan')):.6f} |",
-        f"| n_steps | {int(m.get('n_steps', 0))} |",
-        f"| Qz_mean | {m.get('Qz_mean', float('nan')):.6f} |",
-        f"| Qabs_mean | {m.get('Qabs_mean', float('nan')):.6f} |",
-        f"| f_dress | {m.get('f_dress', float('nan')):.6f} |",
+        f"| I_mean | {_fmt_metric(m.get('I_mean'))} |",
+        f"| I_std | {_fmt_metric(m.get('I_std'))} |",
+        f"| I_final | {_fmt_metric(m.get('I_final'))} |",
+        f"| vort_mean | {_fmt_metric(m.get('vort_mean'))} |",
+        f"| n_steps | {n_steps_disp} |",
+        f"| Qz_mean | {_fmt_metric(m.get('Qz_mean'))} |",
+        f"| Qabs_mean | {_fmt_metric(m.get('Qabs_mean'))} |",
+        f"| f_dress | {_fmt_metric(m.get('f_dress'))} |",
         "",
         "## Input Parameters",
         "",
@@ -89,7 +119,7 @@ def save_run_card_markdown(record: RunRecord, out_dir: Path) -> Path:
         "",
     ]
     for c in CONFOUNDS_CHECKLIST:
-        mark = "x" if c in record.confounds else " "
+        mark = "x" if c in (record.confounds or []) else " "
         lines.append(f"- [{mark}] {c}")
     lines += [
         "",
@@ -102,7 +132,7 @@ def save_run_card_markdown(record: RunRecord, out_dir: Path) -> Path:
         "## H8 Falsifiers",
         "",
     ]
-    for h in record.h8_falsifiers:
+    for h in record.h8_falsifiers or []:
         lines.append(f"- **{h.get('status', '?')}** — {h.get('prediction', '')} _(discriminator: {h.get('discriminator', '')})_")
     if record.notes:
         lines += ["", "## Notes", "", record.notes]
@@ -132,7 +162,7 @@ def build_run_record(
     *,
     mode: str,
     input_params: Dict[str, Any],
-    metrics: Dict[str, float],
+    metrics: Dict[str, Any],
     confounds: Optional[List[str]] = None,
     guardrails: Optional[Dict[str, Any]] = None,
     h8_falsifiers: Optional[List[Dict[str, str]]] = None,
@@ -140,6 +170,11 @@ def build_run_record(
     repo: str = "ScienceR-Dsim",
     out_dir: Optional[Path] = None,
     steps: Optional[List[Dict[str, Any]]] = None,
+    evidence_class: Optional[str] = None,
+    run_mode: Optional[str] = None,
+    metrics_are_empirical: Optional[bool] = None,
+    scientific_pass: Optional[bool] = None,
+    metric_kind: Optional[str] = None,
     _now: Optional[datetime] = None,
 ) -> Tuple[RunRecord, Path, Path]:
     """Build a RunRecord and write both artifacts. Returns (record, md_path, json_path)."""
@@ -188,6 +223,11 @@ def build_run_record(
         h8_falsifiers=h8_falsifiers or [],
         notes=notes,
         steps=steps,
+        evidence_class=evidence_class,
+        run_mode=run_mode,
+        metrics_are_empirical=metrics_are_empirical,
+        scientific_pass=scientific_pass,
+        metric_kind=metric_kind,
     )
 
     md_path = save_run_card_markdown(record, _out_dir)
@@ -261,15 +301,16 @@ def run_psi_os(
         run of `run_psi_os` ever produced -- before this fix -- reported
         fabricated zero topology metrics, never real ones. Per-step
         telemetry below keeps a lenient except (a single divergent step
-        shouldn't kill the whole run's telemetry); the final metrics
-        computed after the loop do not use this helper's except path.
+        shouldn't kill the whole run's telemetry); on failure we emit
+        non-finite markers (not fabricated 0.0). Final metrics after the
+        loop do not use this helper's except path.
         """
         try:
             field3d = field[:, :, np.newaxis]
             qz_arr, qabs_arr = compute_Qz(field3d)
             return float(qz_arr[0]), float(qabs_arr[0]), float(compute_f_dress(qz_arr, qabs_arr))
         except Exception:
-            return 0.0, 0.0, 0.0
+            return float("nan"), float("nan"), float("nan")
 
     c1, c2, dt = 0.5, -0.5, 0.05  # standard defect-turbulence regime parameters
     intensities = []
@@ -377,6 +418,11 @@ def run_psi_os(
         ),
         out_dir=out_dir,
         steps=steps_telemetry,
+        evidence_class="synthetic_cgl_demonstration",
+        run_mode="synthetic",
+        metrics_are_empirical=False,
+        scientific_pass=False,
+        metric_kind="cgl_topology_metrics",
         _now=_now,
     )
 
@@ -389,7 +435,12 @@ def run_meditation_sim(
     out_dir: Optional[Path] = None,
     _now: Optional[datetime] = None,
 ) -> Tuple[RunRecord, Path, Path]:
-    """Synthetic EEG-like meditation simulation and dual run artifacts."""
+    """Synthetic EEG-like meditation simulation and dual run artifacts.
+
+    Topology fields (Qz/Qabs/f_dress/vort_mean) are **not computed** on this
+    1-D synthetic alpha path. They are written as ``null`` (not fabricated
+    ``0.0``) so consumers cannot treat missing topology as a measured zero.
+    """
     import numpy as np
 
     rng = np.random.default_rng(seed)
@@ -406,27 +457,30 @@ def run_meditation_sim(
 
     I_series = np.array(epoch_intensities)
 
-    metrics: Dict[str, float] = {
+    # Topology keys stay present for schema completeness but must be null —
+    # never fabricated 0.0 (false "measured zero topology" certainty).
+    metrics: Dict[str, Any] = {
         "I_mean": float(I_series.mean()),
         "I_std": float(I_series.std()),
         "I_final": float(I_series[-1]),
-        "vort_mean": 0.0,      # not applicable for EEG-like sims
+        "vort_mean": None,
         "n_steps": float(n_epochs),
-        "Qz_mean": 0.0,
-        "Qabs_mean": 0.0,
-        "f_dress": 0.0,
+        "Qz_mean": None,
+        "Qabs_mean": None,
+        "f_dress": None,
     }
 
     guardrails = {
-        "I_mean_in_valid_range": 0.0 < metrics["I_mean"] < 1e6,
+        "I_mean_in_valid_range": 0.0 < float(metrics["I_mean"]) < 1e6,
         "n_epochs_matches_input": int(metrics["n_steps"]) == n_epochs,
+        "topology_metrics_applicable": False,
     }
 
     h8_falsifiers = [
         {
             "prediction": "Alpha-band variance I_mean > noise floor (0.09)",
             "discriminator": "I_mean <= 0.09 would indicate pure noise",
-            "status": "PASS" if metrics["I_mean"] > 0.09 else "FAIL",
+            "status": "PASS" if float(metrics["I_mean"]) > 0.09 else "FAIL",
         },
     ]
 
@@ -442,7 +496,15 @@ def run_meditation_sim(
         confounds=["reproducibility_seed_fixed"],
         guardrails=guardrails,
         h8_falsifiers=h8_falsifiers,
-        notes=f"Synthetic meditation sim epochs={n_epochs} sfreq={sfreq}",
+        notes=(
+            f"Synthetic meditation sim epochs={n_epochs} sfreq={sfreq}; "
+            "topology metrics not applicable (null, not fabricated zero)"
+        ),
         out_dir=out_dir,
+        evidence_class="synthetic_meditation_scaffold",
+        run_mode="synthetic",
+        metrics_are_empirical=False,
+        scientific_pass=False,
+        metric_kind="synthetic_alpha_band_intensity_only",
         _now=_now,
     )

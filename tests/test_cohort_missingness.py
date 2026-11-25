@@ -1,0 +1,633 @@
+"""Unit and integration tests for cohort missingness auditing and pairing gates.
+
+Verifies:
+1. Complete paired cohorts pass all gates with PASS and gate_passed=True.
+2. Incomplete cohorts fail closed with INCOMPLETE when windows are missing.
+3. Excessive missingness (>20% skip rate) blocks evaluation with BLOCKED.
+4. Insufficient paired subjects (<5) yields INSUFFICIENT_POWER.
+5. Unpaired subjects in 2-condition experiments are detected and reported.
+6. Missing expected subjects from preregistered cohorts are caught.
+7. BrainVision companion file failures are accurately categorized.
+8. Empty datasets fail closed with EMPTY_DATASET.
+9. All audit outputs are deterministic, finite, and strictly JSON-serializable (no NaNs).
+10. Isolated subprocess execution verifies cross-platform execution safety.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+import pytest
+
+from sciencer_d.btc_icft.level_t.base_real_topology import (
+    LevelTRealTopologyRow,
+    audit_cohort_missingness,
+    build_level_t_rows_from_m_windows,
+)
+
+
+def _make_row(
+    index: int,
+    subject_id: str,
+    task_label: str,
+    is_valid: bool = True,
+    state: str = "computed",
+    reason: str | None = None,
+) -> tuple[LevelTRealTopologyRow, dict]:
+    t_row = LevelTRealTopologyRow(
+        row_id=f"row-{index}",
+        subject_id=subject_id,
+        session_id="ses-01",
+        run_id="run-01",
+        window_id=f"win-{index}",
+        task_label=task_label if is_valid else None,
+        q_net=0.15 if is_valid else None,
+        q_abs=0.30 if is_valid else None,
+        f_dress=0.08 if is_valid else None,
+        defect_density=0.03 if is_valid else None,
+        n_triangles=10 if is_valid else 0,
+        n_valid_triangles=9 if is_valid else 0,
+        topology_quality=0.9 if is_valid else None,
+        null_method="real_none",
+        null_seed=index,
+        source_file=f"/data/{subject_id}_{task_label}.edf",
+        window_start_s=float(index * 2),
+        window_end_s=float((index + 1) * 2),
+        warnings=[] if is_valid else ([reason] if reason else ["missing window"]),
+        topology_status="computed" if is_valid else "skipped",
+        missingness_state=state,
+        missingness_reason=reason,
+        is_valid=is_valid,
+        run_status="complete" if is_valid else "failed",
+        replicate_count=1 if is_valid else 0,
+    )
+    m_row = {
+        "row_id": f"row-{index}",
+        "subject_id": subject_id,
+        "task_label": task_label,
+        "state_label": task_label,
+    }
+    return t_row, m_row
+
+
+def _build_paired_cohort(
+    n_subjects: int = 6,
+    windows_per_condition: int = 2,
+    conditions: tuple[str, str] = ("awake", "sedated"),
+) -> tuple[list[LevelTRealTopologyRow], list[dict]]:
+    t_rows: list[LevelTRealTopologyRow] = []
+    m_rows: list[dict] = []
+    idx = 0
+    for s in range(1, n_subjects + 1):
+        sub_id = f"sub-{s:02d}"
+        for cond in conditions:
+            for _ in range(windows_per_condition):
+                t_row, m_row = _make_row(idx, sub_id, cond, is_valid=True)
+                t_rows.append(t_row)
+                m_rows.append(m_row)
+                idx += 1
+    return t_rows, m_rows
+
+
+# ---------------------------------------------------------------------------
+# 1. Complete paired cohort passes all gates
+# ---------------------------------------------------------------------------
+
+def test_complete_paired_cohort_passes():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "PASS"
+    assert report["gate_passed"] is True
+    assert report["skip_rate"] == 0.0
+    assert report["n_total_windows"] == 24
+    assert report["n_valid_windows"] == 24
+    assert report["n_missing_windows"] == 0
+    assert report["n_total_subjects"] == 6
+    assert report["n_complete_subjects"] == 6
+    assert report["n_partial_subjects"] == 0
+    assert report["n_failed_subjects"] == 0
+    assert report["n_paired_subjects"] == 6
+    assert len(report["unpaired_subjects"]) == 0
+    assert "complete and valid" in report["verdict_reason"]
+
+
+# ---------------------------------------------------------------------------
+# 2. Incomplete cohort with missing window fails closed
+# ---------------------------------------------------------------------------
+
+def test_incomplete_cohort_with_missing_window_fails_closed():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    # Invalidate one window for sub-03
+    t_rows[8] = LevelTRealTopologyRow(
+        row_id="row-8",
+        subject_id="sub-03",
+        session_id=None,
+        run_id=None,
+        window_id="win-8",
+        task_label=None,
+        q_net=None,
+        q_abs=None,
+        f_dress=None,
+        defect_density=None,
+        n_triangles=0,
+        n_valid_triangles=0,
+        topology_quality=None,
+        null_method="real_none",
+        null_seed=0,
+        source_file="/data/sub-03_awake.edf",
+        window_start_s=0.0,
+        window_end_s=2.0,
+        warnings=["signal corrupted"],
+        topology_status="skipped",
+        missingness_state="failed_read",
+        missingness_reason="signal corrupted",
+        is_valid=False,
+        run_status="failed",
+        replicate_count=0,
+    )
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_missing_windows"] == 1
+    assert report["n_valid_windows"] == 23
+    assert report["missingness_by_reason"]["failed_read"] == 1
+    assert "sub-03" in report["partial_subjects"]
+    assert report["subject_details"]["sub-03"]["status"] == "partial"
+    assert "1 missing windows" in report["verdict_reason"]
+
+
+# ---------------------------------------------------------------------------
+# 3. Excessive missingness blocks evaluation
+# ---------------------------------------------------------------------------
+
+def test_blocked_when_skip_rate_exceeds_threshold():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    # Invalidate 7 out of 24 windows -> 29.2% > 20%
+    for i in range(7):
+        t_rows[i] = LevelTRealTopologyRow(
+            row_id=f"row-{i}",
+            subject_id=t_rows[i].subject_id,
+            session_id=None,
+            run_id=None,
+            window_id=f"win-{i}",
+            task_label=None,
+            q_net=None,
+            q_abs=None,
+            f_dress=None,
+            defect_density=None,
+            n_triangles=0,
+            n_valid_triangles=0,
+            topology_quality=None,
+            null_method="real_none",
+            null_seed=0,
+            source_file="missing.edf",
+            window_start_s=0.0,
+            window_end_s=2.0,
+            warnings=["source missing"],
+            topology_status="skipped",
+            missingness_state="missing_source_file",
+            missingness_reason="source missing",
+            is_valid=False,
+            run_status="failed",
+            replicate_count=0,
+        )
+
+    report = audit_cohort_missingness(t_rows, m_rows, max_skip_rate=0.20)
+
+    assert report["verdict"] == "BLOCKED"
+    assert report["gate_passed"] is False
+    assert report["skip_rate"] > 0.20
+    assert "exceeds maximum threshold" in report["verdict_reason"]
+
+
+# ---------------------------------------------------------------------------
+# 4. Insufficient power when paired subjects below minimum requirement
+# ---------------------------------------------------------------------------
+
+def test_insufficient_power_when_paired_subjects_below_minimum():
+    # Only 3 paired subjects, but min_paired_subjects is 5
+    t_rows, m_rows = _build_paired_cohort(n_subjects=3, windows_per_condition=2)
+    report = audit_cohort_missingness(t_rows, m_rows, min_paired_subjects=5)
+
+    assert report["verdict"] == "INSUFFICIENT_POWER"
+    assert report["gate_passed"] is False
+    assert report["n_paired_subjects"] == 3
+    assert report["min_paired_subjects"] == 5
+    assert "below minimum power requirement" in report["verdict_reason"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Unpaired subjects in condition comparison are flagged
+# ---------------------------------------------------------------------------
+
+def test_unpaired_condition_subjects_detected():
+    # 8 subjects total: 6 paired (meets min_paired_subjects=5), plus 2 unpaired ("awake" only)
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    idx = len(t_rows)
+    for s in (7, 8):
+        sub_id = f"sub-{s:02d}"
+        for _ in range(2):
+            t_r, m_r = _make_row(idx, sub_id, "awake", is_valid=True)
+            t_rows.append(t_r)
+            m_rows.append(m_r)
+            idx += 1
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_paired_subjects"] == 6
+    assert set(report["unpaired_subjects"]) == {"sub-07", "sub-08"}
+
+
+def test_missing_condition_labels_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.task_label = None
+    for m_row in m_rows:
+        m_row.pop("task_label", None)
+        m_row.pop("state_label", None)
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["conditions_detected"] == []
+    assert report["n_unlabeled_valid_windows"] == len(t_rows)
+    assert report["n_paired_subjects"] == 0
+    assert all(detail["status"] != "complete" for detail in report["subject_details"].values())
+    assert all(detail["n_cohort_eligible_windows"] == 0 for detail in report["subject_details"].values())
+    assert "condition labels" in report["verdict_reason"]
+
+
+def test_partially_unlabeled_valid_windows_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    t_rows[0].task_label = None
+    m_rows[0].pop("task_label", None)
+    m_rows[0].pop("state_label", None)
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_unlabeled_valid_windows"] == 1
+    assert "condition labels" in report["verdict_reason"]
+
+
+def test_fixture_topology_rows_cannot_pass_empirical_cohort_gate():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.null_method = "fixture_none"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_synthetic_fixture_windows"] == len(t_rows)
+    assert report["n_paired_subjects"] == 0
+    assert "synthetic fixture" in report["verdict_reason"]
+
+
+def test_nonfinite_skip_threshold_is_rejected():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=1, windows_per_condition=1)
+
+    with pytest.raises(ValueError, match="max_skip_rate must be finite"):
+        audit_cohort_missingness(t_rows, m_rows, max_skip_rate=float("nan"))
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"min_paired_subjects": 2.5},
+        {"min_paired_subjects": "5"},
+        {"min_paired_subjects": True},
+        {"min_windows_per_subject": 1.5},
+        {"min_windows_per_subject": False},
+    ],
+)
+def test_non_integer_minimum_counts_are_rejected(kwargs):
+    t_rows, m_rows = _build_paired_cohort(n_subjects=1, windows_per_condition=1)
+
+    with pytest.raises(ValueError, match="must be"):
+        audit_cohort_missingness(t_rows, m_rows, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# 6. Missing expected subject from preregistered cohort
+# ---------------------------------------------------------------------------
+
+def test_missing_expected_subject_detected():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=2)
+    expected = [f"sub-{i:02d}" for i in range(1, 7)]  # sub-06 missing!
+
+    report = audit_cohort_missingness(
+        t_rows, m_rows, min_paired_subjects=5, expected_subjects=expected
+    )
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert "sub-06" in report["missing_expected_subjects"]
+
+
+# ---------------------------------------------------------------------------
+# 7. BrainVision companion file failures tracked accurately
+# ---------------------------------------------------------------------------
+
+def test_companion_file_failures_tracked():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    # Mark windows for sub-02 as missing companion file
+    t_rows[2] = LevelTRealTopologyRow(
+        row_id="row-2",
+        subject_id="sub-02",
+        session_id=None,
+        run_id=None,
+        window_id="win-2",
+        task_label=None,
+        q_net=None,
+        q_abs=None,
+        f_dress=None,
+        defect_density=None,
+        n_triangles=0,
+        n_valid_triangles=0,
+        topology_quality=None,
+        null_method="real_none",
+        null_seed=0,
+        source_file="/data/sub-02_ses-01_task-rest.vhdr",
+        window_start_s=0.0,
+        window_end_s=2.0,
+        warnings=["BrainVision companion file missing: sub-02_ses-01_task-rest.vmrk"],
+        topology_status="skipped",
+        missingness_state="missing_companion_file",
+        missingness_reason="BrainVision companion file missing: sub-02_ses-01_task-rest.vmrk",
+        is_valid=False,
+        run_status="failed",
+        replicate_count=0,
+    )
+
+    report = audit_cohort_missingness(t_rows, m_rows)
+
+    assert report["missingness_by_reason"]["missing_companion_file"] == 1
+    rec = report["missing_records"][0]
+    assert rec["row_id"] == "row-2"
+    assert rec["subject_id"] == "sub-02"
+    assert rec["missingness_state"] == "missing_companion_file"
+
+
+# ---------------------------------------------------------------------------
+# 8. Empty dataset fails closed
+# ---------------------------------------------------------------------------
+
+def test_empty_dataset_fails_closed():
+    report = audit_cohort_missingness([], [])
+    assert report["verdict"] == "EMPTY_DATASET"
+    assert report["gate_passed"] is False
+    assert report["n_total_windows"] == 0
+    assert report["n_valid_windows"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 9. Audit output is deterministic and strictly JSON-serializable
+# ---------------------------------------------------------------------------
+
+def test_audit_output_deterministic_and_json():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    r1 = audit_cohort_missingness(t_rows, m_rows)
+    r2 = audit_cohort_missingness(t_rows, m_rows)
+
+    s1 = json.dumps(r1, sort_keys=True)
+    s2 = json.dumps(r2, sort_keys=True)
+    assert s1 == s2
+
+    # Verify no NaN or Infinity exists in JSON
+    assert "NaN" not in s1
+    assert "Infinity" not in s1
+
+
+# ---------------------------------------------------------------------------
+# 10. Subprocess execution safety
+# ---------------------------------------------------------------------------
+
+def test_subprocess_isolated_audit_execution(tmp_path):
+    repo_root = str(Path(__file__).resolve().parents[1]).replace("\\", "/")
+    script_path = tmp_path / "run_audit.py"
+    script_path.write_text(
+        f"""
+import json
+import sys
+from pathlib import Path
+
+repo_root = {repo_root!r}
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
+from sciencer_d.btc_icft.level_t.base_real_topology import (
+    LevelTRealTopologyRow,
+    audit_cohort_missingness,
+)
+
+t_row = LevelTRealTopologyRow(
+    row_id="r1", subject_id="sub-01", session_id="ses-01", run_id="run-01",
+    window_id="w1", task_label="rest", q_net=0.1, q_abs=0.2, f_dress=0.05,
+    defect_density=0.02, n_triangles=10, n_valid_triangles=9, topology_quality=0.95,
+    null_method="real_none", null_seed=0, source_file="fake.edf",
+    window_start_s=0.0, window_end_s=2.0, warnings=[],
+)
+m_row = {{"row_id": "r1", "subject_id": "sub-01", "task_label": "rest"}}
+
+report = audit_cohort_missingness([t_row], [m_row], min_paired_subjects=1)
+print(json.dumps(report))
+""",
+        encoding="utf-8",
+    )
+
+    cmd = [sys.executable, str(script_path)]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout.strip())
+    assert payload["verdict"] == "PASS"
+    assert payload["gate_passed"] is True
+    assert payload["n_total_windows"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 11. Skip-rate exact boundary (0.20) vs above boundary (>0.20)
+# ---------------------------------------------------------------------------
+
+def test_cohort_skip_rate_exact_boundary_is_incomplete_not_blocked():
+    # 5 subjects x 2 conditions x 1 window = 10 windows total
+    # If 2 windows are missing (both in an extra 6th subject so 5 subjects remain paired),
+    # let's make 10 windows total: 5 subjects x 2 conditions = 10 windows.
+    # If 2 windows of sub-05 are missing, skip_rate = 2 / 10 = 0.20 exactly!
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=1)
+    # 6 subjects x 2 conditions = 12 windows; let's use 5 subjects x 2 conditions = 10 windows
+    t_rows = t_rows[:10]
+    m_rows = m_rows[:10]
+    # Invalidate 2 windows of sub-05 (indices 8 and 9) -> skip_rate = 2/10 = 0.20 exactly
+    for idx in (8, 9):
+        t_rows[idx], _ = _make_row(
+            idx, "sub-05", "awake" if idx == 8 else "sedated",
+            is_valid=False, state="partial_run", reason="window out of range (duration 3.2s)"
+        )
+
+    # With min_paired_subjects=4 and max_skip_rate=0.20, skip_rate == 0.20 does NOT trigger BLOCKED,
+    # it falls through to INCOMPLETE and tracks partial_run!
+    rep = audit_cohort_missingness(
+        t_rows, m_rows, min_paired_subjects=4, max_skip_rate=0.20
+    )
+    assert rep["skip_rate"] == 0.20
+    assert rep["verdict"] == "INCOMPLETE"
+    assert rep["gate_passed"] is False
+    assert rep["missingness_by_reason"]["partial_run"] == 2
+    assert "sub-05" in rep["failed_subjects"]
+
+
+
+def test_audit_cohort_missingness_flags_contradictory_condition_labels():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows[0]["task_label"] = "sedated"  # Contradicts t_rows[0].task_label == "awake"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1
+    assert "contradictory" in report["verdict_reason"]
+    subject = report["subject_details"][t_rows[0].subject_id]
+    assert subject["status"] == "partial"
+    assert subject["n_cohort_eligible_windows"] == 1
+    assert subject["n_contradictory_windows"] == 1
+
+
+def test_audit_cohort_missingness_respects_custom_group_col_over_task_label():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    for idx, m_row in enumerate(m_rows):
+        m_row["state_label"] = "" if idx == 0 else m_row["task_label"]
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="state_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_unlabeled_valid_windows"] == 1
+
+
+def test_audit_cohort_missingness_flags_duplicate_m_rows_with_conflicting_labels():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows.append({"row_id": t_rows[0].row_id, "subject_id": t_rows[0].subject_id, "task_label": "sedated"})
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1
+
+
+def test_audit_cohort_missingness_flags_contradictory_subject_ids():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=5, windows_per_condition=1)
+    m_rows[0]["subject_id"] = "sub-99"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["n_contradictory_label_windows"] == 1
+
+
+def test_failed_or_unobserved_status_rows_cannot_yield_cohort_pass():
+    """Regression: incomplete run/missingness status must not count as valid windows."""
+    from dataclasses import replace
+
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    poisoned = []
+    for idx, row in enumerate(t_rows):
+        if idx % 3 == 0:
+            poisoned.append(replace(row, run_status="failed"))
+        elif idx % 3 == 1:
+            poisoned.append(
+                replace(
+                    row,
+                    missingness_state="unobserved",
+                    missingness_reason="status metadata incomplete",
+                )
+            )
+        else:
+            poisoned.append(replace(row, replicate_count=0))
+
+    report = audit_cohort_missingness(poisoned, m_rows, group_col="task_label", max_skip_rate=1.0)
+
+    assert report["verdict"] != "PASS"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == 0
+    assert report["n_missing_windows"] == len(poisoned)
+    assert len(report["missing_records"]) == len(poisoned)
+    assert all(rec.get("missingness_reason") for rec in report["missing_records"])
+    json.dumps(report, allow_nan=False)
+
+
+def test_whitespace_only_condition_labels_do_not_pass_as_complete_cohort():
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    for row in t_rows:
+        row.task_label = "   "
+    for m_row in m_rows:
+        m_row["task_label"] = ""
+        m_row["state_label"] = "\t"
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["conditions_detected"] == []
+    assert report["n_unlabeled_valid_windows"] == len(t_rows)
+    assert "condition labels" in report["verdict_reason"]
+    json.dumps(report, allow_nan=False)
+
+
+def test_truthy_non_boolean_validity_marker_cannot_pass_cohort_gate():
+    """A malformed string validity flag must not be treated as True."""
+    from dataclasses import replace
+
+    t_rows, m_rows = _build_paired_cohort(n_subjects=6, windows_per_condition=2)
+    t_rows[0] = replace(t_rows[0], is_valid="false")
+
+    report = audit_cohort_missingness(t_rows, m_rows, group_col="task_label")
+
+    assert report["verdict"] == "INCOMPLETE"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == len(t_rows) - 1
+    assert report["n_missing_windows"] == 1
+
+
+def test_missing_source_rows_from_real_builder_cannot_pass_cohort_gate(tmp_path):
+    m_rows = [
+        {
+            "row_id": "missing-awake",
+            "subject_id": "sub-01",
+            "session_id": "ses-01",
+            "run_id": "run-01",
+            "window_id": "w-awake",
+            "task_label": "awake",
+            "source_file": str(tmp_path / "missing-awake.edf"),
+            "window_start_s": "0",
+            "window_end_s": "2",
+        },
+        {
+            "row_id": "missing-sedated",
+            "subject_id": "sub-01",
+            "session_id": "ses-01",
+            "run_id": "run-01",
+            "window_id": "w-sedated",
+            "task_label": "sedated",
+            "source_file": str(tmp_path / "missing-sedated.edf"),
+            "window_start_s": "2",
+            "window_end_s": "4",
+        },
+    ]
+    assert all(not Path(row["source_file"]).exists() for row in m_rows)
+    t_rows = build_level_t_rows_from_m_windows(m_rows, real=True)
+
+    assert all(row.is_valid is False for row in t_rows)
+    assert all(row.q_abs is None for row in t_rows)
+    assert all(row.missingness_state == "missing_source_file" for row in t_rows)
+
+    report = audit_cohort_missingness(t_rows, m_rows, min_paired_subjects=1)
+    assert report["verdict"] == "BLOCKED"
+    assert report["gate_passed"] is False
+    assert report["n_valid_windows"] == 0
+    assert report["n_missing_windows"] == 2
+    assert report["missingness_by_reason"]["missing_source_file"] == 2

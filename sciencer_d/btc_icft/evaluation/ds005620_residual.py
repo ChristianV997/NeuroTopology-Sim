@@ -40,7 +40,24 @@ def load_level_m_real_features(path:str)->list[LevelMFeatureRow]:
     with p.open() as f: rows=list(csv.DictReader(f))
     miss=_missing(set(rows[0].keys() if rows else []), M_REQUIRED_COLUMNS)
     if miss: raise ValueError(f"Missing required Level M columns: {', '.join(miss)}")
-    return [LevelMFeatureRow(**{k:(int(r[k]) if k=="y" else float(r[k]) if k in {"spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score"} else r[k]) for k in LevelMFeatureRow.__dataclass_fields__}) for r in rows]
+    out=[]
+    for r in rows:
+        payload={}
+        for k in LevelMFeatureRow.__dataclass_fields__:
+            if k=="y":
+                payload[k]=int(r[k])
+            elif k in {"spectral_power_proxy","entropy_proxy","lzc_proxy","artifact_score"}:
+                payload[k]=float(r[k])
+            elif k=="signal_provenance":
+                payload[k]=r.get(k) or "real_or_fixture_csv"
+            elif k=="evidence_class":
+                payload[k]=r.get(k) or "unmarked_csv_load"
+            elif k=="run_mode":
+                payload[k]=r.get(k) or "real_csv"
+            else:
+                payload[k]=r[k]
+        out.append(LevelMFeatureRow(**payload))
+    return out
 
 def load_level_t_real_features(path:str)->list[LevelTFeatureRow]:
     p=Path(path)

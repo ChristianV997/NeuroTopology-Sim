@@ -45,11 +45,17 @@ class MNESignalChunk:
     montage_source: str
     unmatched_channels: list[str]
     warnings: list[str] = field(default_factory=list)
+    # Fail-closed: partial-NaN / Inf chunks never claim scientific usability.
+    scientific_pass: bool = True
+    non_finite_samples: bool = False
 
     def to_dict(self) -> dict:
         d = asdict(self)
         if hasattr(self.data, "tolist"):
             d["data"] = self.data.tolist()
+        # Never promote a non-finite chunk.
+        if d.get("non_finite_samples"):
+            d["scientific_pass"] = False
         return d
 
 
@@ -67,9 +73,22 @@ class MNESignalExtractionWindow:
     n_channels: int
     n_samples: int
     channel_names: list[str]
-    signal_values: list[list[float]]
+    # None when fail-closed on non-finite samples (never zero-filled).
+    signal_values: list[list[float]] | None
     extraction_status: str
     warnings: list[str] = field(default_factory=list)
+    scientific_pass: bool = True
+    is_valid: bool = True
+    non_finite_samples: bool = False
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        # Never promote a non-finite / skipped window.
+        if d.get("non_finite_samples") or d.get("extraction_status") == "skipped_non_finite":
+            d["scientific_pass"] = False
+            d["is_valid"] = False
+            d["signal_values"] = None
+        return d
 
 
 @dataclass
@@ -93,6 +112,8 @@ class MNESignalExtractionResult:
     safe_claim: str
     forbidden_claims: list[str]
     warnings: list[str]
+    # Fail-closed watermark: false when any window had non-finite samples.
+    scientific_pass: bool = False
 
 
 def _validate_safe_text(text: str) -> None:
@@ -377,9 +398,14 @@ def iter_mne_signal_chunks(
         data_arr = np.asarray(data_slice, dtype=float)
 
         warnings: list[str] = list(montage_info.get("warnings", []))
-        if not np.all(np.isfinite(data_arr)):
+        non_finite = not np.all(np.isfinite(data_arr))
+        scientific_pass = True
+        if non_finite:
+            # Fail-closed: do not nan_to_num / zero-fill. Leave NaNs/Infs and
+            # block scientific use so consumers must check isfinite / scientific_pass.
             warnings.append("non_finite_values_detected_in_chunk")
-            data_arr = np.nan_to_num(data_arr, nan=0.0, posinf=0.0, neginf=0.0)
+            warnings.append("scientific_use_blocked_partial_nan")
+            scientific_pass = False
 
         chunk_annots: list[dict] = []
         if raw_annots is not None and len(raw_annots) > 0:
@@ -410,6 +436,8 @@ def iter_mne_signal_chunks(
             montage_source=montage_info["montage_source"],
             unmatched_channels=picked_unmatched,
             warnings=sorted(set(warnings)),
+            scientific_pass=scientific_pass,
+            non_finite_samples=bool(non_finite),
         )
 
         yield chunk.to_dict() if return_dict else chunk
@@ -461,24 +489,112 @@ def extract_mne_signal_windows(path: str, dataset_id: str, window_seconds: float
     if max_windows is not None:
         n_windows = min(n_windows, max_windows)
     windows = []
+    result_warnings: list[str] = []
+    blockers: list[str] = []
+    n_finite = 0
+    n_non_finite = 0
     for i in range(n_windows):
         s0 = i * win_samples
         s1 = s0 + win_samples
         data = raw.get_data(picks=indices, start=s0, stop=s1)
-        vals = []
-        warn = []
+        vals: list[list[float]] = []
+        warn: list[str] = []
+        non_finite = False
         for row in data:
-            conv = []
+            conv: list[float] = []
             for x in row.tolist():
                 v = float(x)
                 if math.isnan(v) or math.isinf(v):
-                    warn.append("non_finite_replaced")
-                    v = 0.0
+                    non_finite = True
+                    # Fail-closed: never replace with 0.0 (false certainty).
+                    break
                 conv.append(v)
+            if non_finite:
+                break
             vals.append(conv)
-        w = MNESignalExtractionWindow(dataset_id, f"{p.stem}__win_{i}", str(p), f"win-{i:03d}", s0 / sfreq, s1 / sfreq, s0, s1, sfreq, len(indices), win_samples, ch_names, vals, "extracted", sorted(set(warn)))
-        windows.append(asdict(w))
-    r = MNESignalExtractionResult(dataset_id, str(p), True, cap.get("version"), True, det["file_format"], sfreq, len(indices), ch_names, (n_total / sfreq if sfreq else None), len(windows), windows, "extracted" if windows else "no_windows", [] if windows else ["no_complete_windows"], {}, {}, SAFE_CLAIM, [], [])
+        if non_finite:
+            n_non_finite += 1
+            warn.extend(
+                [
+                    "non_finite_values_detected",
+                    "scientific_use_blocked_partial_nan",
+                ]
+            )
+            w = MNESignalExtractionWindow(
+                dataset_id,
+                f"{p.stem}__win_{i}",
+                str(p),
+                f"win-{i:03d}",
+                s0 / sfreq,
+                s1 / sfreq,
+                s0,
+                s1,
+                sfreq,
+                len(indices),
+                win_samples,
+                ch_names,
+                None,  # never zero-fill
+                "skipped_non_finite",
+                sorted(set(warn)),
+                scientific_pass=False,
+                is_valid=False,
+                non_finite_samples=True,
+            )
+        else:
+            n_finite += 1
+            w = MNESignalExtractionWindow(
+                dataset_id,
+                f"{p.stem}__win_{i}",
+                str(p),
+                f"win-{i:03d}",
+                s0 / sfreq,
+                s1 / sfreq,
+                s0,
+                s1,
+                sfreq,
+                len(indices),
+                win_samples,
+                ch_names,
+                vals,
+                "extracted",
+                sorted(set(warn)),
+                scientific_pass=True,
+                is_valid=True,
+                non_finite_samples=False,
+            )
+        windows.append(w.to_dict())
+    if n_non_finite:
+        result_warnings.append("non_finite_windows_skipped")
+        result_warnings.append("scientific_use_blocked_partial_nan")
+    if windows and n_finite == 0:
+        blockers.append("all_windows_non_finite")
+    if not windows:
+        blockers.append("no_complete_windows")
+    status = "extracted" if windows else "no_windows"
+    # Result scientific_pass only when every emitted window is finite/valid.
+    scientific_pass = bool(windows) and n_non_finite == 0 and n_finite > 0
+    r = MNESignalExtractionResult(
+        dataset_id,
+        str(p),
+        True,
+        cap.get("version"),
+        True,
+        det["file_format"],
+        sfreq,
+        len(indices),
+        ch_names,
+        (n_total / sfreq if sfreq else None),
+        len(windows),
+        windows,
+        status,
+        blockers,
+        {},
+        {},
+        SAFE_CLAIM,
+        [],
+        result_warnings,
+        scientific_pass=scientific_pass,
+    )
     r.output_contract = {"artifacts": ["mne_signal_metadata.json", "mne_signal_windows.csv", "mne_signal_window_values.json", "mne_extraction_report.json", "omega_event.json", "report.md"]}
     r.omega_event = build_mne_adapter_omega_event(r)
     return r
@@ -486,25 +602,188 @@ def extract_mne_signal_windows(path: str, dataset_id: str, window_seconds: float
 
 def build_mne_adapter_omega_event(result: MNESignalExtractionResult) -> dict:
     _validate_safe_text(result.safe_claim)
-    return {"event_type": "eeg_mne_adapter", "dataset_id": result.dataset_id, "source_file": result.source_file, "extraction_status": result.extraction_status, "n_windows": result.n_windows, "safe_claim": result.safe_claim, "forbidden_claims": result.forbidden_claims}
+    return {
+        "event_type": "eeg_mne_adapter",
+        "dataset_id": result.dataset_id,
+        "source_file": result.source_file,
+        "extraction_status": result.extraction_status,
+        "n_windows": result.n_windows,
+        "scientific_pass": bool(result.scientific_pass),
+        "safe_claim": result.safe_claim,
+        "forbidden_claims": result.forbidden_claims,
+    }
+
+
+def _window_is_ready(w: dict) -> bool:
+    """True only for finite extracted windows; never for non-finite skips."""
+    status = w.get("extraction_status", "extracted")
+    if status == "skipped_non_finite" or w.get("non_finite_samples") is True:
+        return False
+    if w.get("is_valid") is False:
+        return False
+    if w.get("signal_values") is None:
+        return False
+    return status == "extracted"
+
+
+def _n_ready_windows(result: MNESignalExtractionResult) -> int:
+    return sum(1 for w in result.windows if _window_is_ready(w))
 
 
 def write_mne_signal_outputs(result: MNESignalExtractionResult, out_dir: str) -> dict[str, str]:
     _validate_safe_text(result.safe_claim)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     files = {}
-    meta = out / "mne_signal_metadata.json"; meta.write_text(json.dumps({"dataset_id": result.dataset_id, "source_file": result.source_file, "file_format": result.file_format, "mne_available": result.mne_available, "mne_version": result.mne_version, "sample_rate_hz": result.sample_rate_hz, "n_channels": result.n_channels, "channel_names": result.channel_names, "duration_s": result.duration_s, "extraction_status": result.extraction_status, "warnings": result.warnings}, indent=2)); files[meta.name]=str(meta)
+    n_ready = _n_ready_windows(result)
+    ready = result.extraction_status == "extracted" and n_ready > 0
+    meta = out / "mne_signal_metadata.json"
+    meta.write_text(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "source_file": result.source_file,
+                "file_format": result.file_format,
+                "mne_available": result.mne_available,
+                "mne_version": result.mne_version,
+                "sample_rate_hz": result.sample_rate_hz,
+                "n_channels": result.n_channels,
+                "channel_names": result.channel_names,
+                "duration_s": result.duration_s,
+                "extraction_status": result.extraction_status,
+                "scientific_pass": bool(result.scientific_pass),
+                "warnings": result.warnings,
+            },
+            indent=2,
+        )
+    )
+    files[meta.name] = str(meta)
     csvf = out / "mne_signal_windows.csv"
-    cols=["dataset_id","row_id","source_file","window_id","window_start_s","window_end_s","sample_start","sample_end","sample_rate_hz","n_channels","n_samples","channel_names","extraction_status","warnings"]
+    cols = [
+        "dataset_id",
+        "row_id",
+        "source_file",
+        "window_id",
+        "window_start_s",
+        "window_end_s",
+        "sample_start",
+        "sample_end",
+        "sample_rate_hz",
+        "n_channels",
+        "n_samples",
+        "channel_names",
+        "extraction_status",
+        "scientific_pass",
+        "is_valid",
+        "non_finite_samples",
+        "warnings",
+    ]
     with csvf.open("w", newline="", encoding="utf-8") as f:
-        w=csv.DictWriter(f, fieldnames=cols); w.writeheader()
+        w = csv.DictWriter(f, fieldnames=cols)
+        w.writeheader()
         for row in result.windows:
-            row2={k:row.get(k) for k in cols}; row2["channel_names"]="|".join(row.get("channel_names",[])); row2["warnings"]="|".join(row.get("warnings",[])); w.writerow(row2)
-    files[csvf.name]=str(csvf)
-    vals = out/"mne_signal_window_values.json"; vals.write_text(json.dumps({"dataset_id":result.dataset_id,"source_file":result.source_file,"windows":[{"row_id":w["row_id"],"window_id":w["window_id"],"signal_values":w.get("signal_values",[]),"channel_names":w.get("channel_names",[])} for w in result.windows]},indent=2)); files[vals.name]=str(vals)
-    repj = out/"mne_extraction_report.json"; repj.write_text(json.dumps({"dataset_id":result.dataset_id,"source_file":result.source_file,"supported_file":result.supported_file,"mne_available":result.mne_available,"extraction_status":result.extraction_status,"extraction_blockers":result.extraction_blockers,"n_windows":result.n_windows,"output_contract":result.output_contract,"ready_for_signal_block_conversion":result.extraction_status=="extracted" and result.n_windows>0,"warnings":result.warnings}, indent=2)); files[repj.name]=str(repj)
-    omg = out/"omega_event.json"; omg.write_text(json.dumps(result.omega_event, indent=2)); files[omg.name]=str(omg)
-    md = out/"report.md"; md.write_text("\n".join(["# MNE EEG Signal Extraction Prototype","","## Stage","P19.1 optional MNE adapter reader prototype.","","## Dataset",result.dataset_id,"","## Source file",result.source_file,"","## Dependency status",f"mne_available: {result.mne_available}","","## Extraction status",result.extraction_status,"","## Window summary",f"n_windows: {result.n_windows}","","## Blockers",json.dumps(result.extraction_blockers),"","## Safe claim",result.safe_claim,"","## Forbidden claims","- None","","## Next required step","Convert extracted windows into the canonical P8.2/P9 signal-block path only after validating local file provenance and extraction quality.","","This optional MNE adapter exports fixed signal windows without inferring labels or targets."]), encoding="utf-8")
+            row2 = {k: row.get(k) for k in cols}
+            row2["channel_names"] = "|".join(row.get("channel_names", []) or [])
+            row2["warnings"] = "|".join(row.get("warnings", []) or [])
+            row2["scientific_pass"] = bool(row.get("scientific_pass", False))
+            row2["is_valid"] = bool(row.get("is_valid", False))
+            row2["non_finite_samples"] = bool(row.get("non_finite_samples", False))
+            w.writerow(row2)
+    files[csvf.name] = str(csvf)
+    vals = out / "mne_signal_window_values.json"
+    vals.write_text(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "source_file": result.source_file,
+                "windows": [
+                    {
+                        "row_id": win["row_id"],
+                        "window_id": win["window_id"],
+                        # Preserve None for skipped non-finite windows (never 0.0 fill).
+                        "signal_values": win.get("signal_values"),
+                        "channel_names": win.get("channel_names", []),
+                        "extraction_status": win.get("extraction_status"),
+                        "scientific_pass": bool(win.get("scientific_pass", False)),
+                        "is_valid": bool(win.get("is_valid", False)),
+                        "non_finite_samples": bool(win.get("non_finite_samples", False)),
+                    }
+                    for win in result.windows
+                ],
+            },
+            indent=2,
+            allow_nan=False,
+        )
+    )
+    files[vals.name] = str(vals)
+    repj = out / "mne_extraction_report.json"
+    repj.write_text(
+        json.dumps(
+            {
+                "dataset_id": result.dataset_id,
+                "source_file": result.source_file,
+                "supported_file": result.supported_file,
+                "mne_available": result.mne_available,
+                "extraction_status": result.extraction_status,
+                "extraction_blockers": result.extraction_blockers,
+                "n_windows": result.n_windows,
+                "n_ready_windows": n_ready,
+                "scientific_pass": bool(result.scientific_pass),
+                "output_contract": result.output_contract,
+                "ready_for_signal_block_conversion": ready,
+                "warnings": result.warnings,
+            },
+            indent=2,
+        )
+    )
+    files[repj.name] = str(repj)
+    omg = out / "omega_event.json"
+    omg.write_text(json.dumps(result.omega_event, indent=2))
+    files[omg.name] = str(omg)
+    md = out / "report.md"
+    md.write_text(
+        "\n".join(
+            [
+                "# MNE EEG Signal Extraction Prototype",
+                "",
+                "## Stage",
+                "P19.1 optional MNE adapter reader prototype.",
+                "",
+                "## Dataset",
+                result.dataset_id,
+                "",
+                "## Source file",
+                result.source_file,
+                "",
+                "## Dependency status",
+                f"mne_available: {result.mne_available}",
+                "",
+                "## Extraction status",
+                result.extraction_status,
+                "",
+                "## Scientific pass",
+                f"scientific_pass: {bool(result.scientific_pass)}",
+                "",
+                "## Window summary",
+                f"n_windows: {result.n_windows}",
+                f"n_ready_windows: {n_ready}",
+                "",
+                "## Blockers",
+                json.dumps(result.extraction_blockers),
+                "",
+                "## Safe claim",
+                result.safe_claim,
+                "",
+                "## Forbidden claims",
+                "- None",
+                "",
+                "## Next required step",
+                "Convert extracted windows into the canonical P8.2/P9 signal-block path only after validating local file provenance and extraction quality.",
+                "",
+                "This optional MNE adapter exports fixed signal windows without inferring labels or targets.",
+            ]
+        ),
+        encoding="utf-8",
+    )
     _validate_safe_text(md.read_text())
-    files[md.name]=str(md)
+    files[md.name] = str(md)
     return files

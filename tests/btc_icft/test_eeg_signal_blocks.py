@@ -213,7 +213,7 @@ class TestParseTxtWhitespace:
         assert sf.n_samples == 50
         assert sf.sample_rate_hz == pytest.approx(128.0)
 
-    def test_txt_fallback_sample_rate(self, tmp_path):
+    def test_txt_explicit_sample_rate_is_non_scientific(self, tmp_path):
         p = tmp_path / "nsr.txt"
         with open(p, "w") as f:
             for i in range(20):
@@ -221,6 +221,19 @@ class TestParseTxtWhitespace:
         sf = parse_fixture_signal_file(str(p), sample_rate_hz=42.0)
         assert sf.readable is True
         assert sf.sample_rate_hz == pytest.approx(42.0)
+        assert sf.sample_rate_source == "caller_explicit"
+        assert sf.imputed is True
+        assert sf.scientific_eligible is False
+
+    def test_txt_missing_sample_rate_fails_closed(self, tmp_path):
+        p = tmp_path / "nsr_missing.txt"
+        with open(p, "w") as f:
+            for i in range(20):
+                f.write(f"{i * 0.1} {i * 0.2}\n")
+        sf = parse_fixture_signal_file(str(p))
+        assert sf.readable is False
+        assert sf.sample_rate_hz is None
+        assert any("missing_sample_rate_hz" in e for e in sf.errors)
 
 
 # ---------------------------------------------------------------------------
