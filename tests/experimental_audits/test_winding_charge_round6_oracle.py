@@ -41,12 +41,24 @@ from tools.experimental_audits.winding_charge_round6.oracle import (
 
 
 def test_oracle_does_not_import_candidate_engine():
+    import json
+    import subprocess
     import sys
+    from pathlib import Path as _Path
 
-    import tools.experimental_audits.winding_charge_round6.audit  # noqa: F401
-    import tools.experimental_audits.winding_charge_round6.oracle  # noqa: F401
-
-    loaded = [name for name in sys.modules if "phase_cochain_reference" in name]
+    # Check in a fresh interpreter: this process's sys.modules is shared with every earlier
+    # test on the same worker, which made the assertion order-dependent under xdist.
+    probe = (
+        "import json, sys\n"
+        "import tools.experimental_audits.winding_charge_round6.audit\n"
+        "import tools.experimental_audits.winding_charge_round6.oracle\n"
+        "print(json.dumps([n for n in sys.modules if 'phase_cochain_reference' in n]))\n"
+    )
+    repo_root = _Path(__file__).resolve().parents[2]
+    completed = subprocess.run(
+        [sys.executable, "-c", probe], cwd=str(repo_root), capture_output=True, text=True, check=True
+    )
+    loaded = json.loads(completed.stdout.strip().splitlines()[-1])
     assert loaded == [], f"candidate engine modules loaded: {loaded}"
     # Source may mention the candidate by name in disclaimers; imports must not.
     from pathlib import Path
