@@ -49,7 +49,8 @@ TRANSITION_INDEX_DEFINITION = (
     "For each epoch: linear interpolation of the TMS artifact window [0, 15) ms per channel; "
     "alpha-band (8-13 Hz) analytic phase; geometry-aware phase-grid Qabs (repository "
     "phase_grid_topology_from_band on the colin27_1005 montage triangulation) averaged over a "
-    "10 ms window centred at each offset tau; transition index(tau) = |Qabs(tau) - Qabs(tau - 10 ms)|. "
+    "10 ms window centred at each offset tau; transition index(tau) = |Qabs(tau) - Qabs(tau - 10 ms)|, "
+    "snapped to the 1/51 grid of integer window sums (float residue removed; off-grid values raise). "
     "Offsets in [0, 50) ms are not evaluated (artifact exclusion)."
 )
 
@@ -389,7 +390,14 @@ def transition_index_vector(
         centre = onset_index + int(round(tau * sfreq / 1000.0))
         window = phases[:, centre - half: centre + half + 1]
         qabs[tau] = float(phase_grid_topology_from_band(window, xy, triangles)["Qabs"])
-    return np.asarray([abs(qabs[int(t)] - qabs[int(t) - LAG_MS]) for t in offsets_ms], dtype=float)
+    # Each window mean is an integer sum of per-sample windings over (2*half+1) samples, so every
+    # difference lies on the grid k / (2*half+1). Float residue (~1e-16) is removed by snapping to that
+    # grid; a value that is off the grid by more than 1e-6 means the readout is not quantized, so fail.
+    grid = float(2 * half + 1)
+    steps = np.asarray([abs(qabs[int(t)] - qabs[int(t) - LAG_MS]) * grid for t in offsets_ms], dtype=float)
+    if not np.all(np.isfinite(steps)) or float(np.max(np.abs(steps - np.round(steps)))) > 1e-6:
+        raise ValueError("transition-index windows are off the integer-winding grid; the phase readout is not quantized")
+    return np.round(steps) / grid
 
 
 # ── statistics: AUC, leave-one-recording-out held-out AUC, label-shuffle null ─

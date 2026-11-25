@@ -379,3 +379,38 @@ def test_auc_threshold_is_not_evaluable_on_synthetic_data(tmp_path):
     summary = run(spec, tmp_path / "out")
     assert summary["verdict"] == "ambiguous"
     assert "cannot be evaluated on synthetic data" in summary["verdict_reason"]
+
+
+# ── transition-index readout: exact zeros and grid values ────────────────────
+
+def _plane_wave_epoch(n_samples: int = 5500) -> np.ndarray:
+    """A spatially uniform phase gradient has no windings anywhere, so the index must be exactly zero."""
+    t = np.arange(n_samples) / SFREQ
+    phase_offsets = np.linspace(0.0, 2.0 * np.pi, len(CHANNELS), endpoint=False)
+    return 10.0 * np.sin(2 * np.pi * 10.0 * t[None, :] + phase_offsets[:, None])
+
+
+def _epoch_geometry():
+    names, xy, triangles, index = oc._geometry(tuple(CHANNELS), SFREQ)
+    return xy, triangles, index
+
+
+def test_transition_index_is_exactly_zero_without_topological_change():
+    xy, triangles, index = _epoch_geometry()
+    samples = _plane_wave_epoch()[index, :]
+    offsets = oc.sweep_offsets((-200, 400), 10, (0, 50))
+    values = oc.transition_index_vector(samples, sfreq=SFREQ, xy=xy, triangles=triangles,
+                                        onset_index=2500, offsets_ms=offsets)
+    assert values.shape == (len(offsets),)
+    assert np.all(values == 0.0)  # exact, not merely small
+
+
+def test_transition_index_values_lie_on_the_integer_winding_grid():
+    xy, triangles, index = _epoch_geometry()
+    rng = np.random.default_rng(11)
+    samples = rng.normal(size=(len(CHANNELS), 5500)) * 100.0
+    offsets = oc.sweep_offsets((-200, 400), 10, (0, 50))
+    values = oc.transition_index_vector(samples[index, :], sfreq=SFREQ, xy=xy, triangles=triangles,
+                                        onset_index=2500, offsets_ms=offsets)
+    scaled = values * 51.0
+    assert np.max(np.abs(scaled - np.round(scaled))) < 1e-9
